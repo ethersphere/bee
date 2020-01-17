@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -42,6 +43,20 @@ type StreamSpec struct {
 	Name    string
 	Version string
 	Handler func(Peer)
+}
+
+type IncompatibleStreamError struct {
+	err error
+}
+
+func NewIncompatibleStreamError(err error) *IncompatibleStreamError {
+	return &IncompatibleStreamError{err: err}
+}
+
+func (e *IncompatibleStreamError) Unwrap() error { return e.err }
+
+func (e *IncompatibleStreamError) Error() string {
+	return fmt.Sprintf("incompatible stream: %v", e.err)
 }
 
 func NewSwarmStreamName(protocol, stream, version string) string {

@@ -25,6 +25,7 @@ require (
 	github.com/libp2p/go-libp2p-transport v0.1.0 // indirect
 	github.com/libp2p/go-stream-muxer v0.1.0 // indirect
 	github.com/multiformats/go-multiaddr v0.2.0
+	github.com/multiformats/go-multistream v0.1.0
 	github.com/whyrusleeping/go-smux-multiplex v3.0.16+incompatible // indirect
 	github.com/whyrusleeping/go-smux-multistream v2.0.2+incompatible // indirect
 	github.com/whyrusleeping/go-smux-yamux v2.0.9+incompatible // indirect

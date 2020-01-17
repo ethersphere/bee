@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/multiformats/go-multistream"
+
 	"github.com/janos/bee/pkg/p2p"
 
 	"github.com/libp2p/go-libp2p"
@@ -20,7 +22,6 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	secio "github.com/libp2p/go-libp2p-secio"
 	libp2ptls "github.com/libp2p/go-libp2p-tls"
-	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -129,7 +130,7 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	return addrs, nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr multiaddr.Multiaddr) (peerID string, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peerID string, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := peer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
@@ -149,6 +150,9 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, streamName, version)
 	st, err := s.host.NewStream(ctx, id, protocol.ID(swarmStreamName))
 	if err != nil {
+		if err == multistream.ErrNotSupported || err == multistream.ErrIncorrectVersion {
+			return nil, p2p.NewIncompatibleStreamError(err)
+		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
 	}
 	return stream{st}, nil
