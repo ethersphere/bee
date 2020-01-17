@@ -16,17 +16,7 @@ type Service interface {
 
 type Stream interface {
 	io.ReadWriter
-
-	// Close closes the stream for writing. Reading will still work (that
-	// is, the remote side can still write).
 	io.Closer
-
-	// Reset closes both ends of the stream. Use this to tell the remote
-	// side to hang up and go away.
-	Reset() error
-
-	// Gracefully terminate stream on both ends.
-	FullClose() error
 }
 
 type Peer struct {

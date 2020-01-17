@@ -162,6 +162,6 @@ type stream struct {
 	network.Stream
 }
 
-func (s stream) FullClose() error {
+func (s stream) Close() error {
 	return helpers.FullClose(s)
 }

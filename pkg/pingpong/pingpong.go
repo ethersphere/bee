@@ -45,7 +45,7 @@ func New(p2ps p2p.Service) (s *Service, err error) {
 
 func (s *Service) Handler(p p2p.Peer) {
 	w, r := protobuf.NewRW(p.Stream)
-	defer p.Stream.FullClose()
+	defer p.Stream.Close()
 
 	var ping Ping
 	for {
@@ -72,7 +72,7 @@ func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt 
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.FullClose()
+	defer stream.Close()
 
 	w, r := protobuf.NewRW(stream)
 
