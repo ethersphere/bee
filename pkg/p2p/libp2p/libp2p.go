@@ -108,7 +108,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		s.host.SetStreamHandlerMatch(id, matcher, func(s network.Stream) {
 			ss.Handler(p2p.Peer{
 				Addr:   s.Conn().RemoteMultiaddr(),
-				Stream: stream{s},
+				Stream: s,
 			})
 		})
 	}
@@ -155,13 +155,5 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
 	}
-	return stream{st}, nil
-}
-
-type stream struct {
-	network.Stream
-}
-
-func (s stream) Close() error {
-	return helpers.FullClose(s)
+	return st, nil
 }
