@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/janos/bee/pkg/p2p/libp2p"
 	"github.com/janos/bee/pkg/pingpong"
@@ -55,11 +56,29 @@ func main() {
 			if err != nil {
 				log.Fatal("connect to target: ", err)
 			}
-			rtt, err := pingPong.Ping(ctx, peerID, "hey", "there", ",", "how are", "you", "?")
-			if err != nil {
-				log.Fatal("ping target: ", err)
-			}
-			fmt.Println("RTT", i, rtt)
+
+			var wg sync.WaitGroup
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+				rtt, err := pingPong.Ping(ctx, peerID, "hey", "there", ",", "how are", "you", "?")
+				if err != nil {
+					log.Fatal("ping: ", err)
+				}
+				fmt.Println("RTT 1", i, rtt)
+			}()
+
+			go func() {
+				defer wg.Done()
+				rtt, err := pingPong.Ping(ctx, peerID, "1", "2", "3", "4", "5", "6")
+				if err != nil {
+					log.Fatal("ping: ", err)
+				}
+				fmt.Println("RTT 2", i, rtt)
+			}()
+
+			wg.Wait()
 		}
 	}
 
