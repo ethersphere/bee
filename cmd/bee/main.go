@@ -22,6 +22,7 @@ func main() {
 
 	//var idht *dht.IpfsDHT
 
+	// Construct P2P service.
 	s, err := libp2p.New(ctx, libp2p.Options{
 		// Routing: func(h host.Host) (r routing.PeerRouting, err error) {
 		// 	idht, err = dht.New(ctx, h)
@@ -32,10 +33,15 @@ func main() {
 		log.Fatal("p2p service: ", err)
 	}
 
-	pingPong, err := pingpong.New(s)
-	if err != nil {
+	// Construct protocols.
+	pingPong := pingpong.New(s)
+
+	// Add protocols to the P2P service.
+	if err = s.AddProtocol(pingPong.Protocol()); err != nil {
 		log.Fatal("pingpong service: ", err)
 	}
+
+	// Bellow is only demo code.
 
 	addrs, err := s.Addresses()
 	if err != nil {

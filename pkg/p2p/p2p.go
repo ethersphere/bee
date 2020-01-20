@@ -11,6 +11,9 @@ import (
 type Service interface {
 	AddProtocol(ProtocolSpec) error
 	Connect(ctx context.Context, addr ma.Multiaddr) (peerID string, err error)
+}
+
+type Streamer interface {
 	NewStream(ctx context.Context, peerID, protocol, stream, version string) (Stream, error)
 }
 

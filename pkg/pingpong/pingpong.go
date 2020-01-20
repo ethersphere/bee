@@ -20,15 +20,15 @@ const (
 )
 
 type Service struct {
-	p2p p2p.Service
+	streamer p2p.Streamer
 }
 
-func New(p2ps p2p.Service) (s *Service, err error) {
-	s = &Service{
-		p2p: p2ps,
-	}
+func New(streamer p2p.Streamer) *Service {
+	return &Service{streamer: streamer}
+}
 
-	if err := p2ps.AddProtocol(p2p.ProtocolSpec{
+func (s *Service) Protocol() p2p.ProtocolSpec {
+	return p2p.ProtocolSpec{
 		Name: protocolName,
 		StreamSpecs: []p2p.StreamSpec{
 			{
@@ -37,10 +37,7 @@ func New(p2ps p2p.Service) (s *Service, err error) {
 				Handler: s.Handler,
 			},
 		},
-	}); err != nil {
-		return nil, err
 	}
-	return s, nil
 }
 
 func (s *Service) Handler(p p2p.Peer) {
@@ -68,7 +65,7 @@ func (s *Service) Handler(p p2p.Peer) {
 }
 
 func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt time.Duration, err error) {
-	stream, err := s.p2p.NewStream(ctx, peerID, protocolName, streamName, streamVersion)
+	stream, err := s.streamer.NewStream(ctx, peerID, protocolName, streamName, streamVersion)
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}
