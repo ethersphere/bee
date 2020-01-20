@@ -41,7 +41,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) Handler(p p2p.Peer) {
-	w, r := protobuf.NewRW(p.Stream)
+	w, r := protobuf.NewWriterAndReader(p.Stream)
 	defer p.Stream.Close()
 
 	var ping Ping
@@ -56,7 +56,7 @@ func (s *Service) Handler(p p2p.Peer) {
 		log.Printf("got ping: %q\n", ping.Greeting)
 
 		if err := w.WriteMsg(&Pong{
-			Response: ping.Greeting,
+			Response: "{" + ping.Greeting + "}",
 		}); err != nil {
 			log.Printf("pingpong handler: write message: %v\n", err)
 			return
@@ -71,7 +71,7 @@ func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt 
 	}
 	defer stream.Close()
 
-	w, r := protobuf.NewRW(stream)
+	w, r := protobuf.NewWriterAndReader(stream)
 
 	var pong Pong
 	start := time.Now()
