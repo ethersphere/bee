@@ -10,14 +10,14 @@ import (
 )
 
 type Streamer struct {
-	In, Out *Buffer
+	In, Out *Recorder
 	handler func(p2p.Peer)
 }
 
 func NewStreamer(handler func(p2p.Peer)) *Streamer {
 	return &Streamer{
-		In:      NewBuffer(),
-		Out:     NewBuffer(),
+		In:      NewRecorder(),
+		Out:     NewRecorder(),
 		handler: handler,
 	}
 }
@@ -59,58 +59,58 @@ func (s *Stream) Close() error {
 	return nil
 }
 
-type Buffer struct {
+type Recorder struct {
 	b      []byte
 	c      int
 	closed bool
 	cond   *sync.Cond
 }
 
-func NewBuffer() *Buffer {
-	return &Buffer{
+func NewRecorder() *Recorder {
+	return &Recorder{
 		cond: sync.NewCond(new(sync.Mutex)),
 	}
 }
 
-func (b *Buffer) Read(p []byte) (n int, err error) {
-	b.cond.L.Lock()
-	defer b.cond.L.Unlock()
+func (r *Recorder) Read(p []byte) (n int, err error) {
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
 
-	for b.c == len(b.b) || b.closed {
-		b.cond.Wait()
+	for r.c == len(r.b) || r.closed {
+		r.cond.Wait()
 	}
-	end := b.c + len(p)
-	if end > len(b.b) {
-		end = len(b.b)
+	end := r.c + len(p)
+	if end > len(r.b) {
+		end = len(r.b)
 	}
-	n = copy(p, b.b[b.c:end])
-	b.c += n
-	if b.closed {
+	n = copy(p, r.b[r.c:end])
+	r.c += n
+	if r.closed {
 		err = io.EOF
 	}
 	return n, err
 }
 
-func (b *Buffer) Write(p []byte) (int, error) {
-	b.cond.L.Lock()
-	defer b.cond.L.Unlock()
+func (r *Recorder) Write(p []byte) (int, error) {
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
 
-	defer b.cond.Signal()
+	defer r.cond.Signal()
 
-	b.b = append(b.b, p...)
+	r.b = append(r.b, p...)
 	return len(p), nil
 }
 
-func (b *Buffer) Close() error {
-	b.cond.L.Lock()
-	defer b.cond.L.Unlock()
+func (r *Recorder) Close() error {
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
 
-	defer b.cond.Broadcast()
+	defer r.cond.Broadcast()
 
-	b.closed = true
+	r.closed = true
 	return nil
 }
 
-func (b *Buffer) Bytes() []byte {
-	return b.b
+func (r *Recorder) Bytes() []byte {
+	return r.b
 }
