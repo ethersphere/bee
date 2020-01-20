@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"testing"
 
 	"github.com/janos/bee/pkg/p2p/mock"
@@ -34,39 +33,38 @@ func TestPing(t *testing.T) {
 		t.Errorf("invalid RTT value %v", rtt)
 	}
 
-	// validate received ping greetings
-	r := protobuf.NewReader(bytes.NewReader(streamer.In.Bytes()))
-	var gotGreetings []string
-	for {
-		var ping pingpong.Ping
-		if err := r.ReadMsg(&ping); err != nil {
-			if err == io.EOF {
-				break
-			}
-			t.Fatal(err)
-		}
-		gotGreetings = append(gotGreetings, ping.Greeting)
+	// validate received ping greetings from the client
+	wantGreetings := greetings
+	messages, err := protobuf.ReadMessages(
+		bytes.NewReader(streamer.In.Bytes()),
+		func() protobuf.Message { return new(pingpong.Ping) },
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if fmt.Sprint(gotGreetings) != fmt.Sprint(greetings) {
-		t.Errorf("got greetings %v, want %v", gotGreetings, greetings)
+	var gotGreetings []string
+	for _, m := range messages {
+		gotGreetings = append(gotGreetings, m.(*pingpong.Ping).Greeting)
+	}
+	if fmt.Sprint(gotGreetings) != fmt.Sprint(wantGreetings) {
+		t.Errorf("got greetings %v, want %v", gotGreetings, wantGreetings)
 	}
 
-	// validate send pong responses by handler
-	r = protobuf.NewReader(bytes.NewReader(streamer.Out.Bytes()))
+	// validate sent pong responses by handler
 	var wantResponses []string
 	for _, g := range greetings {
 		wantResponses = append(wantResponses, "{"+g+"}")
 	}
+	messages, err = protobuf.ReadMessages(
+		bytes.NewReader(streamer.Out.Bytes()),
+		func() protobuf.Message { return new(pingpong.Pong) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var gotResponses []string
-	for {
-		var pong pingpong.Pong
-		if err := r.ReadMsg(&pong); err != nil {
-			if err == io.EOF {
-				break
-			}
-			t.Fatal(err)
-		}
-		gotResponses = append(gotResponses, pong.Response)
+	for _, m := range messages {
+		gotResponses = append(gotResponses, m.(*pingpong.Pong).Response)
 	}
 	if fmt.Sprint(gotResponses) != fmt.Sprint(wantResponses) {
 		t.Errorf("got responses %v, want %v", gotResponses, wantResponses)
