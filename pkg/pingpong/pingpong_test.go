@@ -16,14 +16,15 @@ func TestPing(t *testing.T) {
 	server := pingpong.New(nil)
 
 	// setup the stream recorder to record stream data
-	recorder := mock.NewRecorder(server.Handler)
+	recorder := mock.NewRecorder(server.Protocol())
 
 	// create a pingpong client that will do pinging
 	client := pingpong.New(recorder)
 
 	// ping
+	peerID := "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"
 	greetings := []string{"hey", "there", "fella"}
-	rtt, err := client.Ping(context.Background(), "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS", greetings...)
+	rtt, err := client.Ping(context.Background(), peerID, greetings...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,10 +34,20 @@ func TestPing(t *testing.T) {
 		t.Errorf("invalid RTT value %v", rtt)
 	}
 
+	// get a record for this stream
+	records, err := recorder.Records(peerID, "pingpong", "pingpong", "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := len(records); l != 1 {
+		t.Fatalf("got %v records, want %v", l, 1)
+	}
+	record := records[0]
+
 	// validate received ping greetings from the client
 	wantGreetings := greetings
 	messages, err := protobuf.ReadMessages(
-		bytes.NewReader(recorder.In()),
+		bytes.NewReader(record.In()),
 		func() protobuf.Message { return new(pingpong.Ping) },
 	)
 	if err != nil {
@@ -56,7 +67,7 @@ func TestPing(t *testing.T) {
 		wantResponses = append(wantResponses, "{"+g+"}")
 	}
 	messages, err = protobuf.ReadMessages(
-		bytes.NewReader(recorder.Out()),
+		bytes.NewReader(record.Out()),
 		func() protobuf.Message { return new(pingpong.Pong) },
 	)
 	if err != nil {

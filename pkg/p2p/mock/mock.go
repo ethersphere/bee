@@ -2,6 +2,7 @@ package mock
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
@@ -10,33 +11,75 @@ import (
 )
 
 type Recorder struct {
-	in, out *record
-	handler func(p2p.Peer)
+	records   map[string][]Record
+	recordsMu sync.Mutex
+	protocols []p2p.ProtocolSpec
 }
 
-func NewRecorder(handler func(p2p.Peer)) *Recorder {
+func NewRecorder(protocols ...p2p.ProtocolSpec) *Recorder {
 	return &Recorder{
-		in:      newRecord(),
-		out:     newRecord(),
-		handler: handler,
+		records:   make(map[string][]Record),
+		protocols: protocols,
 	}
 }
 
-func (r *Recorder) NewStream(ctx context.Context, peerID, protocolName, streamName, version string) (p2p.Stream, error) {
-	out := newStream(r.in, r.out)
-	in := newStream(r.out, r.in)
-	go r.handler(p2p.Peer{
+func (r *Recorder) NewStream(_ context.Context, peerID, protocolName, streamName, version string) (p2p.Stream, error) {
+	recordIn := newRecord()
+	recordOut := newRecord()
+	streamOut := newStream(recordIn, recordOut)
+	streamIn := newStream(recordOut, recordIn)
+
+	var handler func(p2p.Peer)
+	for _, p := range r.protocols {
+		if p.Name == protocolName {
+			for _, s := range p.StreamSpecs {
+				if s.Name == streamName && s.Version == version {
+					handler = s.Handler
+				}
+			}
+		}
+	}
+	if handler == nil {
+		return nil, fmt.Errorf("unsupported protocol stream %q %q %q", protocolName, streamName, version)
+	}
+
+	go handler(p2p.Peer{
 		Addr:   ma.StringCast(peerID),
-		Stream: in,
+		Stream: streamIn,
 	})
-	return out, nil
+
+	id := peerID + p2p.NewSwarmStreamName(protocolName, streamName, version)
+
+	r.recordsMu.Lock()
+	defer r.recordsMu.Unlock()
+
+	r.records[id] = append(r.records[id], Record{in: recordIn, out: recordOut})
+	return streamOut, nil
 }
 
-func (r *Recorder) In() []byte {
+func (r *Recorder) Records(peerID, protocolName, streamName, version string) ([]Record, error) {
+	id := peerID + p2p.NewSwarmStreamName(protocolName, streamName, version)
+
+	r.recordsMu.Lock()
+	defer r.recordsMu.Unlock()
+
+	records, ok := r.records[id]
+	if !ok {
+		return nil, fmt.Errorf("records not found for %q %q %q %q", peerID, protocolName, streamName, version)
+	}
+	return records, nil
+}
+
+type Record struct {
+	in  *record
+	out *record
+}
+
+func (r *Record) In() []byte {
 	return r.in.bytes()
 }
 
-func (r *Recorder) Out() []byte {
+func (r *Record) Out() []byte {
 	return r.out.bytes()
 }
 
@@ -120,5 +163,8 @@ func (r *record) Close() error {
 }
 
 func (r *record) bytes() []byte {
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
+
 	return r.b
 }
