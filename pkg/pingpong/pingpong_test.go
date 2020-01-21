@@ -15,11 +15,11 @@ func TestPing(t *testing.T) {
 	// create a pingpong server that handles the incoming stream
 	server := pingpong.New(nil)
 
-	// setup the mock streamer to record stream data
-	streamer := mock.NewStreamer(server.Handler)
+	// setup the stream recorder to record stream data
+	recorder := mock.NewRecorder(server.Handler)
 
 	// create a pingpong client that will do pinging
-	client := pingpong.New(streamer)
+	client := pingpong.New(recorder)
 
 	// ping
 	greetings := []string{"hey", "there", "fella"}
@@ -36,7 +36,7 @@ func TestPing(t *testing.T) {
 	// validate received ping greetings from the client
 	wantGreetings := greetings
 	messages, err := protobuf.ReadMessages(
-		bytes.NewReader(streamer.In.Bytes()),
+		bytes.NewReader(recorder.In()),
 		func() protobuf.Message { return new(pingpong.Ping) },
 	)
 	if err != nil {
@@ -56,7 +56,7 @@ func TestPing(t *testing.T) {
 		wantResponses = append(wantResponses, "{"+g+"}")
 	}
 	messages, err = protobuf.ReadMessages(
-		bytes.NewReader(streamer.Out.Bytes()),
+		bytes.NewReader(recorder.Out()),
 		func() protobuf.Message { return new(pingpong.Pong) },
 	)
 	if err != nil {
