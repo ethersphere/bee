@@ -41,16 +41,14 @@ jobs:
       run: go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
       working-directory: ~
 
-    - name: GolangCI-Lint
-      run: golangci-lint run
+    - name: Lint
+      run: make lint
 
     - name: Vet
-      run: go vet -v ./...
+      run: make vet
 
     - name: Build
-      env:
-        CGO_ENABLED: 0
-      run: go build -ldflags "-s -w" ./...
+      run: make build
 
     - name: Test
-      run: go test -v -race ./...
+      run: make test
