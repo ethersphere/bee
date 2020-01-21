@@ -74,7 +74,9 @@ func (c *command) initStartCmd() (err error) {
 
 	cmd.Flags().String(optionNameListen, ":8500", "HTTP API listen address")
 
-	c.config.BindPFlags(cmd.Flags())
+	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
+		return err
+	}
 
 	c.root.AddCommand(cmd)
 	return nil

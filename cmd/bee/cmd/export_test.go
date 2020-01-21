@@ -11,11 +11,11 @@ var (
 	NewCommand = newCommand
 )
 
-func WithCfgFile(f string) func(c *Command) {
-	return func(c *Command) {
-		c.cfgFile = f
-	}
-}
+// func WithCfgFile(f string) func(c *Command) {
+// 	return func(c *Command) {
+// 		c.cfgFile = f
+// 	}
+// }
 
 func WithHomeDir(dir string) func(c *Command) {
 	return func(c *Command) {
@@ -29,11 +29,11 @@ func WithArgs(a ...string) func(c *Command) {
 	}
 }
 
-func WithInput(r io.Reader) func(c *Command) {
-	return func(c *Command) {
-		c.root.SetIn(r)
-	}
-}
+// func WithInput(r io.Reader) func(c *Command) {
+// 	return func(c *Command) {
+// 		c.root.SetIn(r)
+// 	}
+// }
 
 func WithOutput(w io.Writer) func(c *Command) {
 	return func(c *Command) {
@@ -41,8 +41,8 @@ func WithOutput(w io.Writer) func(c *Command) {
 	}
 }
 
-func WithErrorOutput(w io.Writer) func(c *Command) {
-	return func(c *Command) {
-		c.root.SetErr(w)
-	}
-}
+// func WithErrorOutput(w io.Writer) func(c *Command) {
+// 	return func(c *Command) {
+// 		c.root.SetErr(w)
+// 	}
+// }
