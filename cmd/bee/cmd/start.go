@@ -16,7 +16,10 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameListen = "listen"
+		optionNameAPIAddr        = "api-addr"
+		optionNameP2PAddr        = "p2p-addr"
+		optionNameP2PDisableWS   = "p2p-disable-ws"
+		optionNameP2PDisableQUIC = "p2p-disable-quic"
 	)
 
 	cmd := &cobra.Command{
@@ -30,6 +33,9 @@ func (c *command) initStartCmd() (err error) {
 
 			// Construct P2P service.
 			p2ps, err := libp2p.New(ctx, libp2p.Options{
+				Addr:        c.config.GetString(optionNameP2PAddr),
+				DisableWS:   c.config.GetBool(optionNameP2PDisableWS),
+				DisableQUIC: c.config.GetBool(optionNameP2PDisableQUIC),
 				// Routing: func(h host.Host) (r routing.PeerRouting, err error) {
 				// 	idht, err = dht.New(ctx, h)
 				// 	return idht, err
@@ -61,7 +67,7 @@ func (c *command) initStartCmd() (err error) {
 				Pingpong: pingPong,
 			})
 
-			l, err := net.Listen("tcp", c.config.GetString(optionNameListen))
+			l, err := net.Listen("tcp", c.config.GetString(optionNameAPIAddr))
 			if err != nil {
 				return fmt.Errorf("listen TCP: %w", err)
 			}
@@ -72,7 +78,10 @@ func (c *command) initStartCmd() (err error) {
 		},
 	}
 
-	cmd.Flags().String(optionNameListen, ":8500", "HTTP API listen address")
+	cmd.Flags().String(optionNameAPIAddr, ":8500", "HTTP API listen address")
+	cmd.Flags().String(optionNameP2PAddr, ":30399", "P2P listen address")
+	cmd.Flags().Bool(optionNameP2PDisableWS, false, "Disable P2P WebSocket protocol")
+	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "Disable P2P QUIC protocol")
 
 	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
 		return err

@@ -18,11 +18,11 @@ Docker image `janos/bee`.
 Execute the commands in two terminals to start `node 1` and `node 2`:
 
 ```sh
-bee start --listen :8501
+bee start --api-addr :8501 --p2p-addr :30401
 ```
 
 ```sh
-bee start --listen :8502
+bee start --api-addr :8502 --p2p-addr :30402
 ```
 
 Copy one of the multiaddresses from one running instance.

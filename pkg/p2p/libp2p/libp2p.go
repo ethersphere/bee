@@ -3,9 +3,8 @@ package libp2p
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
-
-	"github.com/multiformats/go-multistream"
 
 	"github.com/janos/bee/pkg/p2p"
 
@@ -18,11 +17,11 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
-	"github.com/libp2p/go-libp2p-core/routing"
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	secio "github.com/libp2p/go-libp2p-secio"
 	libp2ptls "github.com/libp2p/go-libp2p-tls"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multistream"
 )
 
 var _ p2p.Service = new(Service)
@@ -32,25 +31,60 @@ type Service struct {
 }
 
 type Options struct {
-	Port       int
-	ListenIPv4 string
-	PrivKey    []byte
-	Routing    func(host.Host) (routing.PeerRouting, error)
+	Addr        string
+	DisableWS   bool
+	DisableQUIC bool
+	// PrivKey     []byte
+	// Routing     func(host.Host) (routing.PeerRouting, error)
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
-	ipV4Addr := o.ListenIPv4
-	if ipV4Addr == "" {
-		ipV4Addr = "0.0.0.0"
+	host, port, err := net.SplitHostPort(o.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("address: %w", err)
 	}
+
+	ip4Addr := "0.0.0.0"
+	ip6Addr := "::1"
+
+	if host != "" {
+		ip := net.ParseIP(host)
+		if ip4 := ip.To4(); ip4 != nil {
+			ip4Addr = ip4.String()
+			ip6Addr = ""
+		} else if ip6 := ip.To16(); ip6 != nil {
+			ip6Addr = ip6.String()
+			ip4Addr = ""
+		}
+	}
+
+	var listenAddrs []string
+
+	if ip4Addr != "" {
+		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+		if !o.DisableWS {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+		}
+		if !o.DisableQUIC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/udp/%s/quic", ip4Addr, port))
+		}
+	}
+
+	if ip6Addr != "" {
+		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
+		if !o.DisableWS {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+		}
+		if !o.DisableQUIC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/udp/%s/quic", ip6Addr, port))
+		}
+	}
+
 	opts := []libp2p.Option{
 		// Use the keypair we generated
 		//libp2p.Identity(priv),
 		// Multiple listen addresses
-		libp2p.ListenAddrStrings(
-			fmt.Sprintf("/ip4/%s/tcp/%v", ipV4Addr, o.Port),      // regular tcp connections
-			fmt.Sprintf("/ip4/%s/udp/%v/quic", ipV4Addr, o.Port), // a UDP endpoint for the QUIC transport
-		),
+		libp2p.ListenAddrStrings(listenAddrs...),
 		// support TLS connections
 		libp2p.Security(libp2ptls.ID, libp2ptls.New),
 		// support secio connections
