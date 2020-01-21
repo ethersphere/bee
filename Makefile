@@ -1,6 +1,20 @@
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
+LDFLAGS ?= -s -w -X github.com/janos/bee.commit="$(shell git describe --long --dirty --always --match "" || true)"
+
+.PHONY: all
+all: lint vet test binary
+
+.PHONY: binary
+binary: export CGO_ENABLED=0
+binary: dist FORCE
+	$(GO) version
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
+
+dist:
+	mkdir $@
+
 .PHONY: lint
 lint:
 	$(GOLANGCI_LINT) run
@@ -16,4 +30,6 @@ test:
 .PHONY: build
 build: export CGO_ENABLED=0
 build:
-	$(GO) build -trimpath -ldflags "-s -w" ./...
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
+
+FORCE:

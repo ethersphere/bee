@@ -1,4 +1,13 @@
 package bee
 
-// Version is a manually set semantic version number.
-var Version = "v0.1.0-alpha"
+var (
+	version = "v0.1.0" // manually set semantic version number
+	commit  string     // automatically set git commit hash
+
+	Version = func() string {
+		if commit != "" {
+			return version + "-" + commit
+		}
+		return version
+	}()
+)

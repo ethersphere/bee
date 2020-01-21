@@ -1,0 +1,65 @@
+project_name: bee
+
+builds:
+  - main: ./cmd/bee/main.go
+
+    binary: bee
+
+    flags:
+      - -v
+      - -trimpath
+
+    ldflags:
+      - -s -w -X github.com/janos/bee.version={{.Version}} -X github.com/janos/bee.commit={{.ShortCommit}}
+
+    env:
+      - CGO_ENABLED=0
+
+    goos:
+      - darwin
+      - linux
+      - windows
+
+    goarch:
+      - amd64
+      - 386
+      - arm64
+      - arm
+
+    ignore:
+      - goos: darwin
+        goarch: 386
+      - goos: darwin
+        goarch: arm64
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+
+snapshot:
+  name_template: "{{.Tag}}-snapshot"
+
+archives:
+  - name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+
+    format: binary
+
+nfpms:
+  - file_name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+
+    vendor: Ethereum Swarm
+    homepage: https://swarm.ethereum.org/
+
+    maintainer: Janoš Guljaš <janos@ethswarm.org>
+
+    description: Ethereum Swarm node
+
+    license: GPL-3
+
+    formats:
+      - deb
+      - rpm
+
+    bindir: /usr/bin
