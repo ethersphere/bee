@@ -28,6 +28,7 @@ Ping pong messages should be exchanged.
 - cmd/bee - a simple application integrating p2p and pingpong service
 - pkg/p2p - p2p abstraction
 - pkg/p2p/libp2p - p2p implementation using libp2p
+- pkg/p2p/mock - p2p protocol testing tools
 - pkg/p2p/protobuf - protobuf message encoding and decoding functions
 - pkg/pingpong - p2p protocol implementation example
 
@@ -39,8 +40,8 @@ Ping pong messages should be exchanged.
 
 ## TODO
 
-- Mock testing for pingpong service as the example
-- P2P mock (protocol tester) implementation
+- P2P mock (protocol tester) implementation improvements
+- Overlay addressing in libp2p (provide overlay address in p2p.Peer)
 - Identity with private keys
 - Figure out routing (whether to use libp2p Routing or to abstract hive on top of p2p package)
 - Listener configurations (ipv4, ipv6, dns, tcp, ws, quic)
