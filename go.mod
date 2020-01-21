@@ -25,12 +25,18 @@ require (
 	github.com/libp2p/go-libp2p-tls v0.1.2
 	github.com/libp2p/go-libp2p-transport v0.1.0 // indirect
 	github.com/libp2p/go-stream-muxer v0.1.0 // indirect
+	github.com/mitchellh/go-homedir v1.1.0
 	github.com/multiformats/go-multiaddr v0.2.0
 	github.com/multiformats/go-multistream v0.1.0
+	github.com/olekukonko/tablewriter v0.0.4
+	github.com/spf13/cobra v0.0.5
+	github.com/spf13/viper v1.6.1
 	github.com/whyrusleeping/go-smux-multiplex v3.0.16+incompatible // indirect
 	github.com/whyrusleeping/go-smux-multistream v2.0.2+incompatible // indirect
 	github.com/whyrusleeping/go-smux-yamux v2.0.9+incompatible // indirect
 	github.com/whyrusleeping/yamux v1.2.0 // indirect
 	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc
+	newreleases.io/cmd v0.1.0
+	newreleases.io/newreleases v1.3.1
 	resenje.org/web v0.4.0
 )
