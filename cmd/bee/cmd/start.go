@@ -26,6 +26,10 @@ func (c *command) initStartCmd() (err error) {
 		Use:   "start",
 		Short: "Start a Swarm node",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			if len(args) > 0 {
+				return cmd.Help()
+			}
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
