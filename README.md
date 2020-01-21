@@ -6,22 +6,21 @@ Work in progress. This is by no means the final abstraction.
 
 ## Usage
 
-In one terminal:
+Execute the same command in two terminals to start `node 1` and `node 2`:
 
 ```sh
 go run ./cmd/bee
 ```
 
-Copy one of the multiaddresses.
+Copy one of the multiaddresses from one running instance.
 
-In another terminal
-
+Make an HTTP request to `localhost:{PORT1}/pingpong/{MULTIADDRESS2}` like:
 
 ```sh
-go run ./cmd/bee -target COPIED_ADDRESS
+curl localhost:8080/pingpong/ip4/127.0.0.1/tcp/60304/p2p/Qmdao2FbfSK8ZcFxuUVmVDPUJifgRmbofNWH21WQESZm7x
 ```
 
-Ping pong messages should be exchanged.
+Ping pong messages should be exchanged from `node 1` (listening on `PORT1`) to `node 2` (with multiaddress `MULTIADDRESS2`).
 
 ## Structure
 

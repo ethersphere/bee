@@ -5,14 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"sync"
+	"net"
+	"net/http"
 
+	"github.com/janos/bee/pkg/api"
 	"github.com/janos/bee/pkg/p2p/libp2p"
 	"github.com/janos/bee/pkg/pingpong"
-	"github.com/multiformats/go-multiaddr"
 )
 
-var target = flag.String("target", "", "")
+var addr = flag.String("addr", ":0", "http api listen address")
 
 func main() {
 	flag.Parse()
@@ -23,7 +24,7 @@ func main() {
 	//var idht *dht.IpfsDHT
 
 	// Construct P2P service.
-	s, err := libp2p.New(ctx, libp2p.Options{
+	p2ps, err := libp2p.New(ctx, libp2p.Options{
 		// Routing: func(h host.Host) (r routing.PeerRouting, err error) {
 		// 	idht, err = dht.New(ctx, h)
 		// 	return idht, err
@@ -34,16 +35,14 @@ func main() {
 	}
 
 	// Construct protocols.
-	pingPong := pingpong.New(s)
+	pingPong := pingpong.New(p2ps)
 
 	// Add protocols to the P2P service.
-	if err = s.AddProtocol(pingPong.Protocol()); err != nil {
+	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
 		log.Fatal("pingpong service: ", err)
 	}
 
-	// Bellow is only demo code.
-
-	addrs, err := s.Addresses()
+	addrs, err := p2ps.Addresses()
 	if err != nil {
 		log.Fatal("get server addresses: ", err)
 	}
@@ -52,41 +51,17 @@ func main() {
 		fmt.Println(addr)
 	}
 
-	if *target != "" {
-		for i := 1; i <= 10; i++ {
-			addr, err := multiaddr.NewMultiaddr(*target)
-			if err != nil {
-				log.Fatal("parse target address: ", err)
-			}
-			peerID, err := s.Connect(ctx, addr)
-			if err != nil {
-				log.Fatal("connect to target: ", err)
-			}
+	h := api.New(api.Options{
+		P2P:      p2ps,
+		Pingpong: pingPong,
+	})
 
-			var wg sync.WaitGroup
-			wg.Add(2)
-
-			go func() {
-				defer wg.Done()
-				rtt, err := pingPong.Ping(ctx, peerID, "hey", "there", ",", "how are", "you", "?")
-				if err != nil {
-					log.Fatal("ping: ", err)
-				}
-				fmt.Println("RTT 1", i, rtt)
-			}()
-
-			go func() {
-				defer wg.Done()
-				rtt, err := pingPong.Ping(ctx, peerID, "1", "2", "3", "4", "5", "6")
-				if err != nil {
-					log.Fatal("ping: ", err)
-				}
-				fmt.Println("RTT 2", i, rtt)
-			}()
-
-			wg.Wait()
-		}
+	l, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatal("tcp: ", err)
 	}
 
-	select {}
+	log.Println("listening: ", l.Addr())
+
+	log.Fatal(http.Serve(l, h))
 }

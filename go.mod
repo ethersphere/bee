@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/gogo/protobuf v1.3.1
+	github.com/gorilla/handlers v1.4.2
 	github.com/ipfs/go-log v1.0.1 // indirect
 	github.com/libp2p/go-conn-security v0.1.0 // indirect
 	github.com/libp2p/go-libp2p v0.5.0
@@ -30,5 +31,6 @@ require (
 	github.com/whyrusleeping/go-smux-multistream v2.0.2+incompatible // indirect
 	github.com/whyrusleeping/go-smux-yamux v2.0.9+incompatible // indirect
 	github.com/whyrusleeping/yamux v1.2.0 // indirect
-	honnef.co/go/tools v0.0.0-20190102054323-c2f93a96b099
+	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc
+	resenje.org/web v0.4.0
 )
