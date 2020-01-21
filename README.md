@@ -1,19 +1,28 @@
-# Swarm Bee
+# Ethereum Swarm Bee
 
 This is an experiment to abstract libp2p as underlay networking for Ethereum Swarm.
 
-Work in progress. This is by no means the final abstraction.
+Work in progress. This is not the final abstraction.
 
-## Usage
+## Install
+
+```sh
+make binary
+cp dist/bee /usr/local/bin/bee
+```
+
+Docker image `janos/bee`.
+
+## Usage (experimental api)
 
 Execute the commands in two terminals to start `node 1` and `node 2`:
 
 ```sh
-go run ./cmd/bee start --listen :8501
+bee start --listen :8501
 ```
 
 ```sh
-go run ./cmd/bee start --listen :8502
+bee start --listen :8502
 ```
 
 Copy one of the multiaddresses from one running instance.
@@ -49,3 +58,4 @@ Ping pong messages should be exchanged from `node 1` (listening on `PORT1`) to `
 - Identity with private keys
 - Figure out routing (whether to use libp2p Routing or to abstract hive on top of p2p package)
 - Listener configurations (ipv4, ipv6, dns, tcp, ws, quic)
+- Instrumentation: logging, metrics, tracing, pprof...
