@@ -17,6 +17,7 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "ping error", peerID, err)
 		return
 	}
+	s.metrics.PingRequestCount.Inc()
 
 	fmt.Fprintln(w, "RTT", rtt)
 }

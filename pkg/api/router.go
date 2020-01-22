@@ -20,6 +20,7 @@ func (s *server) setupRouting() {
 
 	s.Handler = web.ChainHandlers(
 		handlers.CompressHandler,
+		s.pageviewMetricsHandler,
 		web.FinalHandler(baseRouter),
 	)
 }

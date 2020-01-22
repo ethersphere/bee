@@ -21,10 +21,14 @@ const (
 
 type Service struct {
 	streamer p2p.Streamer
+	metrics  metrics
 }
 
 func New(streamer p2p.Streamer) *Service {
-	return &Service{streamer: streamer}
+	return &Service{
+		streamer: streamer,
+		metrics:  newMetrics(),
+	}
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -54,6 +58,7 @@ func (s *Service) Handler(p p2p.Peer) {
 			return
 		}
 		log.Printf("got ping: %q\n", ping.Greeting)
+		s.metrics.PingReceivedCount.Inc()
 
 		if err := w.WriteMsg(&Pong{
 			Response: "{" + ping.Greeting + "}",
@@ -61,6 +66,7 @@ func (s *Service) Handler(p p2p.Peer) {
 			log.Printf("pingpong handler: write message: %v\n", err)
 			return
 		}
+		s.metrics.PongSentCount.Inc()
 	}
 }
 
@@ -81,6 +87,7 @@ func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt 
 		}); err != nil {
 			return 0, fmt.Errorf("stream write: %w", err)
 		}
+		s.metrics.PingSentCount.Inc()
 
 		if err := r.ReadMsg(&pong); err != nil {
 			if err == io.EOF {
@@ -90,6 +97,7 @@ func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt 
 		}
 
 		log.Printf("got pong: %q\n", pong.Response)
+		s.metrics.PongReceivedCount.Inc()
 	}
 	return time.Since(start) / time.Duration(len(msgs)), nil
 }

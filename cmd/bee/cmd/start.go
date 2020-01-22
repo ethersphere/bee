@@ -76,14 +76,15 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			// API server
+			apiService := api.New(api.Options{
+				P2P:      p2ps,
+				Pingpong: pingPong,
+			})
 			apiListener, err := net.Listen("tcp", c.config.GetString(optionNameAPIAddr))
 			if err != nil {
 				return fmt.Errorf("api listener: %w", err)
 			}
-			apiServer := &http.Server{Handler: api.New(api.Options{
-				P2P:      p2ps,
-				Pingpong: pingPong,
-			})}
+			apiServer := &http.Server{Handler: apiService}
 
 			go func() {
 				cmd.Println("api address:", apiListener.Addr())
@@ -93,20 +94,29 @@ func (c *command) initStartCmd() (err error) {
 				}
 			}()
 
-			// Debug API server
-			debugAPIListener, err := net.Listen("tcp", c.config.GetString(optionNameDebugAPIAddr))
-			if err != nil {
-				return fmt.Errorf("debug api listener: %w", err)
-			}
-			debugAPIServer := &http.Server{Handler: debugapi.New(debugapi.Options{})}
+			var debugAPIServer *http.Server
+			if addr := c.config.GetString(optionNameDebugAPIAddr); addr != "" {
+				// Debug API server
+				debugAPIService := debugapi.New(debugapi.Options{})
+				// register metrics from components
+				debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
+				debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
 
-			go func() {
-				cmd.Println("debug api address:", debugAPIListener.Addr())
-
-				if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-					log.Println("debug api server:", err)
+				debugAPIListener, err := net.Listen("tcp", addr)
+				if err != nil {
+					return fmt.Errorf("debug api listener: %w", err)
 				}
-			}()
+
+				debugAPIServer := &http.Server{Handler: debugAPIService}
+
+				go func() {
+					cmd.Println("debug api address:", debugAPIListener.Addr())
+
+					if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+						log.Println("debug api server:", err)
+					}
+				}()
+			}
 
 			// Wait for termination or interrupt signals.
 			// We want to clean up things at the end.
@@ -135,8 +145,10 @@ func (c *command) initStartCmd() (err error) {
 					log.Println("api server shutdown:", err)
 				}
 
-				if err := debugAPIServer.Shutdown(ctx); err != nil {
-					log.Println("debug api server shutdown:", err)
+				if debugAPIServer != nil {
+					if err := debugAPIServer.Shutdown(ctx); err != nil {
+						log.Println("debug api server shutdown:", err)
+					}
 				}
 
 				if err := p2ps.Close(); err != nil {
