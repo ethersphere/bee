@@ -1,12 +1,15 @@
-FROM golang AS builder
-ADD . /src
+FROM golang:1.13 AS build
+
 WORKDIR /src
+COPY . ./
+
 RUN make binary
 
-FROM debian
-RUN apt update && apt install -y \
-        ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /src/dist/bee /usr/local/bin/bee
-RUN chmod +x /usr/local/bin/bee
+FROM alpine:3.11
+
+RUN apk update && \
+    apk add --no-cache ca-certificates 
+
+COPY --from=build /src/dist/bee /usr/local/bin/bee
+
 ENTRYPOINT ["bee"]
