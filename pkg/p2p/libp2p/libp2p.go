@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	secio "github.com/libp2p/go-libp2p-secio"
@@ -171,7 +170,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peerID string
 		return "", err
 	}
 
-	s.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
+	if err := s.host.Connect(ctx, *info); err != nil {
+		return "", err
+	}
 
 	return info.ID.String(), nil
 }
