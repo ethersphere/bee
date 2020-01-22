@@ -3,12 +3,18 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/janos/bee/pkg/api"
+	"github.com/janos/bee/pkg/debugapi"
 	"github.com/janos/bee/pkg/p2p/libp2p"
 	"github.com/janos/bee/pkg/pingpong"
 )
@@ -20,6 +26,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameP2PAddr        = "p2p-addr"
 		optionNameP2PDisableWS   = "p2p-disable-ws"
 		optionNameP2PDisableQUIC = "p2p-disable-quic"
+		optionNameDebugAPIAddr   = "debug-api-addr"
 		optionNameBootnodes      = "bootnode"
 	)
 
@@ -68,19 +75,81 @@ func (c *command) initStartCmd() (err error) {
 				cmd.Println(addr)
 			}
 
-			h := api.New(api.Options{
+			// API server
+			apiListener, err := net.Listen("tcp", c.config.GetString(optionNameAPIAddr))
+			if err != nil {
+				return fmt.Errorf("api listener: %w", err)
+			}
+			apiServer := &http.Server{Handler: api.New(api.Options{
 				P2P:      p2ps,
 				Pingpong: pingPong,
-			})
+			})}
 
-			l, err := net.Listen("tcp", c.config.GetString(optionNameAPIAddr))
+			go func() {
+				cmd.Println("api address:", apiListener.Addr())
+
+				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+					log.Println("api server:", err)
+				}
+			}()
+
+			// Debug API server
+			debugAPIListener, err := net.Listen("tcp", c.config.GetString(optionNameDebugAPIAddr))
 			if err != nil {
-				return fmt.Errorf("listen TCP: %w", err)
+				return fmt.Errorf("debug api listener: %w", err)
+			}
+			debugAPIServer := &http.Server{Handler: debugapi.New(debugapi.Options{})}
+
+			go func() {
+				cmd.Println("debug api address:", debugAPIListener.Addr())
+
+				if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+					log.Println("debug api server:", err)
+				}
+			}()
+
+			// Wait for termination or interrupt signals.
+			// We want to clean up things at the end.
+			interruptChannel := make(chan os.Signal, 1)
+			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
+			// Block main goroutine until it is interrupted
+			sig := <-interruptChannel
+
+			log.Println("received signal:", sig)
+
+			// Shutdown
+			done := make(chan struct{})
+			go func() {
+				defer func() {
+					if err := recover(); err != nil {
+						log.Println("shutdown panic:", err)
+					}
+				}()
+				defer close(done)
+
+				ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				defer cancel()
+
+				if err := apiServer.Shutdown(ctx); err != nil {
+					log.Println("api server shutdown:", err)
+				}
+
+				if err := debugAPIServer.Shutdown(ctx); err != nil {
+					log.Println("debug api server shutdown:", err)
+				}
+			}()
+
+			// If shutdown function is blocking too long,
+			// allow process termination by receiving another signal.
+			// Blocking part
+			select {
+			case sig := <-interruptChannel:
+				log.Printf("received signal: %v\n", sig)
+			case <-done:
 			}
 
-			cmd.Println("http address:", l.Addr())
-
-			return http.Serve(l, h)
+			return nil
 		},
 	}
 
@@ -89,6 +158,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
+	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "Debug HTTP API listen address")
 
 	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
 		return err
