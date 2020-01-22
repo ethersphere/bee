@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/gogo/protobuf v1.3.1
 	github.com/gorilla/handlers v1.4.2
+	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/ipfs/go-log v1.0.1 // indirect
 	github.com/libp2p/go-libp2p v0.5.0

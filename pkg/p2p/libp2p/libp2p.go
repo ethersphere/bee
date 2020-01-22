@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	secio "github.com/libp2p/go-libp2p-secio"
@@ -33,9 +32,9 @@ type Service struct {
 
 type Options struct {
 	Addr        string
-	Overlay 	string
 	DisableWS   bool
 	DisableQUIC bool
+	Bootnodes   []string
 	// PrivKey     []byte
 	// Routing     func(host.Host) (routing.PeerRouting, error)
 }
@@ -131,7 +130,21 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	return &Service{host: h, overlay: o.Overlay}, nil
+	s := &Service{host: h, overlay: o.Overlay}
+
+	// TODO: be more resilient on connection errors and connect in parallel
+	for _, a := range o.Bootnodes {
+		addr, err := ma.NewMultiaddr(a)
+		if err != nil {
+			return nil, fmt.Errorf("bootnode %s: %w", a, err)
+		}
+
+		if _, err := s.Connect(ctx, addr); err != nil {
+			return nil, fmt.Errorf("connect to bootnode %s: %w", a, err)
+		}
+	}
+
+	return s, nil
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -173,9 +186,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peerID string
 		return "", err
 	}
 
-	s.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
-
-	// init overlay protocol to get the overlay
+	if err := s.host.Connect(ctx, *info); err != nil {
+		return "", err
+	}
 
 	return info.ID.String(), nil
 }
@@ -194,4 +207,8 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
 	}
 	return st, nil
+}
+
+func (s *Service) Close() error {
+	return s.host.Close()
 }
