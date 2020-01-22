@@ -207,3 +207,7 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 	}
 	return st, nil
 }
+
+func (s *Service) Close() error {
+	return s.host.Close()
+}

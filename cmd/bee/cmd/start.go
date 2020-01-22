@@ -138,11 +138,14 @@ func (c *command) initStartCmd() (err error) {
 				if err := debugAPIServer.Shutdown(ctx); err != nil {
 					log.Println("debug api server shutdown:", err)
 				}
+
+				if err := p2ps.Close(); err != nil {
+					log.Println("p2p server shutdown:", err)
+				}
 			}()
 
 			// If shutdown function is blocking too long,
 			// allow process termination by receiving another signal.
-			// Blocking part
 			select {
 			case sig := <-interruptChannel:
 				log.Printf("received signal: %v\n", sig)
