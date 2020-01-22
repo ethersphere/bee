@@ -33,6 +33,7 @@ type Options struct {
 	Addr        string
 	DisableWS   bool
 	DisableQUIC bool
+	Bootnodes   []string
 	// PrivKey     []byte
 	// Routing     func(host.Host) (routing.PeerRouting, error)
 }
@@ -128,7 +129,21 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	return &Service{host: h}, nil
+	s := &Service{host: h}
+
+	// TODO: be more resilient on connection errors and connect in parallel
+	for _, a := range o.Bootnodes {
+		addr, err := ma.NewMultiaddr(a)
+		if err != nil {
+			return nil, fmt.Errorf("bootnode %s: %w", a, err)
+		}
+
+		if _, err := s.Connect(ctx, addr); err != nil {
+			return nil, fmt.Errorf("connect to bootnode %s: %w", a, err)
+		}
+	}
+
+	return s, nil
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -191,4 +206,8 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
 	}
 	return st, nil
+}
+
+func (s *Service) Close() error {
+	return s.host.Close()
 }
