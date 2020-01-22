@@ -8,7 +8,11 @@ RUN make binary
 FROM alpine:3.11
 
 RUN apk update && \
-    apk add --no-cache ca-certificates 
+    apk add --no-cache ca-certificates && \
+    addgroup -S drone && \
+    adduser -S drone -G drone
+
+USER drone
 
 COPY --from=build /src/dist/bee /usr/local/bin/bee
 
