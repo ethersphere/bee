@@ -42,7 +42,7 @@ func (s *Service) Handler(stream p2p.Stream) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
-	var req OverlayReq
+	var req ShakeHand
 	if err := r.ReadMsg(&req); err != nil {
 		if err == io.EOF {
 			return
@@ -54,7 +54,7 @@ func (s *Service) Handler(stream p2p.Stream) {
 	log.Printf("received overlay req %s\n", req.Address)
 	// todo: create a peer or perform some action with the address
 
-	if err := w.WriteMsg(&OverlayResp{
+	if err := w.WriteMsg(&ShakeHand{
 		Address: s.overlay,
 	}); err != nil {
 		log.Printf("overlay handler: write message: %v\n", err)
@@ -72,8 +72,8 @@ func (s *Service) Overlay(ctx context.Context, peerID string) (overlay string, e
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	var resp OverlayResp
-	if err := w.WriteMsg(&OverlayReq{Address:s.overlay}); err != nil {
+	var resp ShakeHand
+	if err := w.WriteMsg(&ShakeHand{Address: s.overlay}); err != nil {
 		return "", fmt.Errorf("overlay handler: write message: %v\n", err)
 	}
 

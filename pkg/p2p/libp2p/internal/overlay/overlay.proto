@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package overlay;
+
+message ShakeHand {
+    string Address = 1;
+}
+

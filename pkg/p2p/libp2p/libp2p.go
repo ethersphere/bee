@@ -3,7 +3,7 @@ package libp2p
 import (
 	"context"
 	"fmt"
-	"github.com/janos/bee/pkg/p2p/internal/overlay"
+	"github.com/janos/bee/pkg/p2p/libp2p/internal/overlay"
 	"math/rand"
 	"net"
 	"strconv"
