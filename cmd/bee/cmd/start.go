@@ -20,6 +20,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameP2PAddr        = "p2p-addr"
 		optionNameP2PDisableWS   = "p2p-disable-ws"
 		optionNameP2PDisableQUIC = "p2p-disable-quic"
+		optionNameBootnodes      = "bootnode"
 	)
 
 	cmd := &cobra.Command{
@@ -40,6 +41,7 @@ func (c *command) initStartCmd() (err error) {
 				Addr:        c.config.GetString(optionNameP2PAddr),
 				DisableWS:   c.config.GetBool(optionNameP2PDisableWS),
 				DisableQUIC: c.config.GetBool(optionNameP2PDisableQUIC),
+				Bootnodes:   c.config.GetStringSlice(optionNameBootnodes),
 				// Routing: func(h host.Host) (r routing.PeerRouting, err error) {
 				// 	idht, err = dht.New(ctx, h)
 				// 	return idht, err
@@ -84,8 +86,9 @@ func (c *command) initStartCmd() (err error) {
 
 	cmd.Flags().String(optionNameAPIAddr, ":8500", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":30399", "P2P listen address")
-	cmd.Flags().Bool(optionNameP2PDisableWS, false, "Disable P2P WebSocket protocol")
-	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "Disable P2P QUIC protocol")
+	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")
+	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
+	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
 
 	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
 		return err

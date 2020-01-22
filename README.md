@@ -15,25 +15,23 @@ Docker image `janos/bee`.
 
 ## Usage (experimental api)
 
-Execute the commands in two terminals to start `node 1` and `node 2`:
+Execute the command terminals to start `node 1`:
 
 ```sh
 bee start --api-addr :8501 --p2p-addr :30401
 ```
 
-```sh
-bee start --api-addr :8502 --p2p-addr :30402
-```
-
-Copy one of the multiaddresses from one running instance.
-
-Make an HTTP request to `localhost:{PORT1}/pingpong/{MULTIADDRESS2}` like:
+Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
 
 ```sh
-curl localhost:8501/pingpong/ip4/127.0.0.1/tcp/60304/p2p/Qmdao2FbfSK8ZcFxuUVmVDPUJifgRmbofNWH21WQESZm7x
+bee start --api-addr :8502 --p2p-addr :30402 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
-Ping pong messages should be exchanged from `node 1` (listening on `PORT1`) to `node 2` (with multiaddress `MULTIADDRESS2`).
+Use the last part of `node 1` multiaddress to ping it using `node 2` by making an HTTP request to `localhost:{PORT2}/pingpong/{ID1}` like:
+
+```sh
+curl localhost:8502/pingpong/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+```
 
 ## Structure
 
