@@ -32,4 +32,9 @@ build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
 
+.PHONY: clean
+clean:
+	$(GO) clean
+	rm -rf dist/
+
 FORCE:
