@@ -5,12 +5,15 @@ COPY . ./
 
 RUN make binary
 
-FROM alpine:3.11
+FROM debian:10.2
 
-RUN apk update && \
-    apk add --no-cache ca-certificates && \
-    addgroup -S drone && \
-    adduser -S drone -G drone
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update && apt-get install -y \
+        ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    groupadd -r drone && \
+    useradd --no-log-init -r -g drone drone
 
 USER drone
 
