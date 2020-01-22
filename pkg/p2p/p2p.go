@@ -10,7 +10,7 @@ import (
 
 type Service interface {
 	AddProtocol(ProtocolSpec) error
-	Connect(ctx context.Context, addr ma.Multiaddr) (peerID string, err error)
+	Connect(ctx context.Context, addr ma.Multiaddr) (peer *Peer, err error)
 }
 
 type Streamer interface {
@@ -23,9 +23,7 @@ type Stream interface {
 }
 
 type Peer struct {
-	Addr   ma.Multiaddr
-	OverlayAddr string
-	Stream Stream
+	Overlay string
 }
 
 type ProtocolSpec struct {
@@ -36,7 +34,7 @@ type ProtocolSpec struct {
 type StreamSpec struct {
 	Name    string
 	Version string
-	Handler func(Peer)
+	Handler func(Stream)
 }
 
 type IncompatibleStreamError struct {

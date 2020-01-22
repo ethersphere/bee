@@ -3,6 +3,7 @@ syntax = "proto3";
 package overlay;
 
 message OverlayReq {
+    string Address = 1;
 }
 
 message OverlayResp {

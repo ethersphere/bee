@@ -43,9 +43,9 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) Handler(p p2p.Peer) {
-	w, r := protobuf.NewWriterAndReader(p.Stream)
-	defer p.Stream.Close()
+func (s *Service) Handler(stream p2p.Stream) {
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
 
 	var ping Ping
 	for {
