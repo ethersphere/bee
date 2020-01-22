@@ -26,7 +26,8 @@ import (
 var _ p2p.Service = new(Service)
 
 type Service struct {
-	host host.Host
+	host    host.Host
+	metrics metrics
 }
 
 type Options struct {
@@ -129,7 +130,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	s := &Service{host: h}
+	s := &Service{
+		host:    h,
+		metrics: newMetrics(),
+	}
 
 	// TODO: be more resilient on connection errors and connect in parallel
 	for _, a := range o.Bootnodes {
@@ -143,6 +147,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 	}
 
+	h.Network().SetConnHandler(func(_ network.Conn) {
+		s.metrics.HandledConnectionCount.Inc()
+	})
+
 	return s, nil
 }
 
@@ -153,10 +161,11 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		if err != nil {
 			return fmt.Errorf("match semver %s: %w", id, err)
 		}
-		s.host.SetStreamHandlerMatch(id, matcher, func(s network.Stream) {
+		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+			s.metrics.HandledStreamCount.Inc()
 			ss.Handler(p2p.Peer{
-				Addr:   s.Conn().RemoteMultiaddr(),
-				Stream: s,
+				Addr:   stream.Conn().RemoteMultiaddr(),
+				Stream: stream,
 			})
 		})
 	}
@@ -189,6 +198,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peerID string
 		return "", err
 	}
 
+	s.metrics.CreatedConnectionCount.Inc()
+
 	return info.ID.String(), nil
 }
 
@@ -205,6 +216,7 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
 	}
+	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
 }
 
