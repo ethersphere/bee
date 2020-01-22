@@ -1,8 +1,7 @@
 package pingpong
 
 import (
-	"reflect"
-
+	m "github.com/janos/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -37,15 +36,6 @@ func newMetrics() (m metrics) {
 	}
 }
 
-func (s *Service) Metrics() (cs []prometheus.Collector) {
-	v := reflect.Indirect(reflect.ValueOf(s.metrics))
-	for i := 0; i < v.NumField(); i++ {
-		if !v.Field(i).CanInterface() {
-			continue
-		}
-		if u, ok := v.Field(i).Interface().(prometheus.Collector); ok {
-			cs = append(cs, u)
-		}
-	}
-	return cs
+func (s *Service) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(s.metrics)
 }
