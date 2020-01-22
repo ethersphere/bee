@@ -24,6 +24,7 @@ type Stream interface {
 
 type Peer struct {
 	Addr   ma.Multiaddr
+	OverlayAddr string
 	Stream Stream
 }
 

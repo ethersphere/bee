@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package overlay;
+
+message OverlayReq {
+}
+
+message OverlayResp {
+    string Address = 1;
+}
+

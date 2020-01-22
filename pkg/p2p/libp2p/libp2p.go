@@ -28,10 +28,12 @@ var _ p2p.Service = new(Service)
 
 type Service struct {
 	host host.Host
+	overlay string
 }
 
 type Options struct {
 	Addr        string
+	Overlay 	string
 	DisableWS   bool
 	DisableQUIC bool
 	// PrivKey     []byte
@@ -129,7 +131,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	return &Service{host: h}, nil
+	return &Service{host: h, overlay: o.Overlay}, nil
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -172,6 +174,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peerID string
 	}
 
 	s.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
+
+	// init overlay protocol to get the overlay
 
 	return info.ID.String(), nil
 }
