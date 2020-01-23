@@ -243,7 +243,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 		return err
 	}
 
-	overlay, err := s.handshakeService.Overlay(ctx, info.ID)
+	overlay, err := s.handshakeService.Handshake(ctx, info.ID)
 	if err != nil {
 		return err
 	}

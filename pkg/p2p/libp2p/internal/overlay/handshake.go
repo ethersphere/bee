@@ -32,7 +32,7 @@ func New(libp2pService StreamerService) *Service {
 	return &Service{streamerService: libp2pService}
 }
 
-func (s *Service) Overlay(ctx context.Context, peerID peer.ID) (overlay string, err error) {
+func (s *Service) Handshake(ctx context.Context, peerID peer.ID) (overlay string, err error) {
 	stream, err := s.streamerService.NewStreamForPeerID(ctx, peerID, ProtocolName, StreamName, StreamVersion)
 	if err != nil {
 		return "", fmt.Errorf("new stream: %w", err)
