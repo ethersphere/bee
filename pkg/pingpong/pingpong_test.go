@@ -8,22 +8,31 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"testing"
 
+	"github.com/janos/bee/pkg/logging"
 	"github.com/janos/bee/pkg/p2p/mock"
 	"github.com/janos/bee/pkg/p2p/protobuf"
 	"github.com/janos/bee/pkg/pingpong"
 )
 
 func TestPing(t *testing.T) {
+	logger := logging.New(ioutil.Discard)
+
 	// create a pingpong server that handles the incoming stream
-	server := pingpong.New(nil)
+	server := pingpong.New(pingpong.Options{
+		Logger: logger,
+	})
 
 	// setup the stream recorder to record stream data
 	recorder := mock.NewRecorder(server.Protocol())
 
 	// create a pingpong client that will do pinging
-	client := pingpong.New(recorder)
+	client := pingpong.New(pingpong.Options{
+		Streamer: recorder,
+		Logger:   logger,
+	})
 
 	// ping
 	peerID := "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"

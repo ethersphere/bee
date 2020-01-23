@@ -15,10 +15,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/janos/bee/pkg/api"
 	"github.com/janos/bee/pkg/debugapi"
+	"github.com/janos/bee/pkg/logging"
 	"github.com/janos/bee/pkg/p2p/libp2p"
 	"github.com/janos/bee/pkg/pingpong"
 )
@@ -45,6 +47,12 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
+			logger := logging.New(cmd.OutOrStdout())
+			logger.SetLevel(logrus.TraceLevel)
+
+			errorLogWriter := logger.WriterLevel(logrus.ErrorLevel)
+			defer errorLogWriter.Close()
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -63,7 +71,10 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			// Construct protocols.
-			pingPong := pingpong.New(p2ps)
+			pingPong := pingpong.New(pingpong.Options{
+				Streamer: p2ps,
+				Logger:   logger,
+			})
 
 			// Add protocols to the P2P service.
 			if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
@@ -76,7 +87,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			for _, addr := range addrs {
-				cmd.Println(addr)
+				logger.Infof("address: %s", addr)
 			}
 
 			// API server
@@ -88,13 +99,17 @@ func (c *command) initStartCmd() (err error) {
 			if err != nil {
 				return fmt.Errorf("api listener: %w", err)
 			}
-			apiServer := &http.Server{Handler: apiService}
+
+			apiServer := &http.Server{
+				Handler:  apiService,
+				ErrorLog: log.New(errorLogWriter, "", 0),
+			}
 
 			go func() {
-				cmd.Println("api address:", apiListener.Addr())
+				logger.Infof("api address: %s", apiListener.Addr())
 
 				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-					log.Println("api server:", err)
+					logger.Errorf("api server: %v", err)
 				}
 			}()
 
@@ -112,13 +127,16 @@ func (c *command) initStartCmd() (err error) {
 					return fmt.Errorf("debug api listener: %w", err)
 				}
 
-				debugAPIServer := &http.Server{Handler: debugAPIService}
+				debugAPIServer := &http.Server{
+					Handler:  debugAPIService,
+					ErrorLog: log.New(errorLogWriter, "", 0),
+				}
 
 				go func() {
-					cmd.Println("debug api address:", debugAPIListener.Addr())
+					logger.Infof("debug api address: %s", debugAPIListener.Addr())
 
 					if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-						log.Println("debug api server:", err)
+						logger.Errorf("debug api server: %v", err)
 					}
 				}()
 			}
@@ -131,14 +149,14 @@ func (c *command) initStartCmd() (err error) {
 			// Block main goroutine until it is interrupted
 			sig := <-interruptChannel
 
-			log.Println("received signal:", sig)
+			logger.Debugf("received signal: %v", sig)
 
 			// Shutdown
 			done := make(chan struct{})
 			go func() {
 				defer func() {
 					if err := recover(); err != nil {
-						log.Println("shutdown panic:", err)
+						logger.Errorf("shutdown panic: %v", err)
 					}
 				}()
 				defer close(done)
@@ -147,17 +165,17 @@ func (c *command) initStartCmd() (err error) {
 				defer cancel()
 
 				if err := apiServer.Shutdown(ctx); err != nil {
-					log.Println("api server shutdown:", err)
+					logger.Errorf("api server shutdown: %v", err)
 				}
 
 				if debugAPIServer != nil {
 					if err := debugAPIServer.Shutdown(ctx); err != nil {
-						log.Println("debug api server shutdown:", err)
+						logger.Errorf("debug api server shutdown: %v", err)
 					}
 				}
 
 				if err := p2ps.Close(); err != nil {
-					log.Println("p2p server shutdown:", err)
+					logger.Errorf("p2p server shutdown: %v", err)
 				}
 			}()
 
@@ -165,7 +183,7 @@ func (c *command) initStartCmd() (err error) {
 			// allow process termination by receiving another signal.
 			select {
 			case sig := <-interruptChannel:
-				log.Printf("received signal: %v\n", sig)
+				logger.Debugf("received signal: %v", sig)
 			case <-done:
 			}
 

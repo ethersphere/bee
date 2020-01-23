@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"time"
 
 	"github.com/janos/bee/pkg/p2p"
@@ -25,12 +24,24 @@ const (
 
 type Service struct {
 	streamer p2p.Streamer
+	logger   Logger
 	metrics  metrics
 }
 
-func New(streamer p2p.Streamer) *Service {
+type Options struct {
+	Streamer p2p.Streamer
+	Logger   Logger
+}
+
+type Logger interface {
+	Debugf(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
+}
+
+func New(o Options) *Service {
 	return &Service{
-		streamer: streamer,
+		streamer: o.Streamer,
+		logger:   o.Logger,
 		metrics:  newMetrics(),
 	}
 }
@@ -74,7 +85,7 @@ func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt 
 			return 0, err
 		}
 
-		log.Printf("got pong: %q\n", pong.Response)
+		s.logger.Debugf("got pong: %q", pong.Response)
 		s.metrics.PongReceivedCount.Inc()
 	}
 	return time.Since(start) / time.Duration(len(msgs)), nil
@@ -90,16 +101,16 @@ func (s *Service) Handler(p p2p.Peer) {
 			if err == io.EOF {
 				break
 			}
-			log.Printf("pingpong handler: read message: %v\n", err)
+			s.logger.Errorf("pingpong handler: read message: %v\n", err)
 			return
 		}
-		log.Printf("got ping: %q\n", ping.Greeting)
+		s.logger.Debugf("got ping: %q", ping.Greeting)
 		s.metrics.PingReceivedCount.Inc()
 
 		if err := w.WriteMsg(&Pong{
 			Response: "{" + ping.Greeting + "}",
 		}); err != nil {
-			log.Printf("pingpong handler: write message: %v\n", err)
+			s.logger.Errorf("pingpong handler: write message: %v\n", err)
 			return
 		}
 		s.metrics.PongSentCount.Inc()
