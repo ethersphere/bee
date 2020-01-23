@@ -6,8 +6,10 @@ package cmd
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
+		optionNameDataDir          = "data-dir"
 		optionNameAPIAddr          = "api-addr"
 		optionNameP2PAddr          = "p2p-addr"
 		optionNameP2PDisableWS     = "p2p-disable-ws"
@@ -45,10 +48,24 @@ func (c *command) initStartCmd() (err error) {
 			logger := logging.New(cmd.OutOrStdout())
 			logger.SetLevel(logrus.TraceLevel)
 
+			var libp2pPrivateKey io.ReadWriteCloser
+			if dataDir := c.config.GetString(optionNameDataDir); dataDir != "" {
+				dir := filepath.Join(dataDir, "libp2p")
+				if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+					return err
+				}
+				f, err := os.OpenFile(filepath.Join(dir, "private.key"), os.O_CREATE|os.O_RDWR, 0600)
+				if err != nil {
+					return err
+				}
+				libp2pPrivateKey = f
+			}
+
 			b, err := node.NewBee(node.Options{
 				APIAddr:      c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr: c.config.GetString(optionNameDebugAPIAddr),
 				LibP2POptions: libp2p.Options{
+					PrivateKey:       libp2pPrivateKey,
 					Addr:             c.config.GetString(optionNameP2PAddr),
 					DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
 					DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
@@ -99,6 +116,7 @@ func (c *command) initStartCmd() (err error) {
 		},
 	}
 
+	cmd.Flags().String(optionNameDataDir, filepath.Join(baseDir, "data"), "data directory")
 	cmd.Flags().String(optionNameAPIAddr, ":8500", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":30399", "P2P listen address")
 	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")
