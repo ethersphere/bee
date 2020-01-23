@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package libp2p
 
 import (
@@ -26,16 +30,18 @@ import (
 var _ p2p.Service = new(Service)
 
 type Service struct {
-	host host.Host
+	host    host.Host
+	metrics metrics
 }
 
 type Options struct {
-	Addr        string
-	DisableWS   bool
-	DisableQUIC bool
-	Bootnodes   []string
-	// PrivKey     []byte
-	// Routing     func(host.Host) (routing.PeerRouting, error)
+	Addr             string
+	DisableWS        bool
+	DisableQUIC      bool
+	Bootnodes        []string
+	ConnectionsLow   int
+	ConnectionsHigh  int
+	ConnectionsGrace time.Duration
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -89,25 +95,24 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		libp2p.Security(libp2ptls.ID, libp2ptls.New),
 		// support secio connections
 		libp2p.Security(secio.ID, secio.New),
-		// support QUIC - experimental
-		libp2p.Transport(libp2pquic.NewTransport),
 		// support any other default transports (TCP)
 		libp2p.DefaultTransports,
 		// Let's prevent our peer from having too many
 		// connections by attaching a connection manager.
 		libp2p.ConnectionManager(connmgr.NewConnManager(
-			100,         // Lowwater
-			400,         // HighWater,
-			time.Minute, // GracePeriod
+			o.ConnectionsLow,
+			o.ConnectionsHigh,
+			o.ConnectionsGrace,
 		)),
 		// Attempt to open ports using uPNP for NATed hosts.
 		libp2p.NATPortMap(),
-		// Let this host use the DHT to find other hosts
-		//libp2p.Routing(o.Routing),
-		// Let this host use relays and advertise itself on relays if
-		// it finds it is behind NAT. Use libp2p.Relay(options...) to
-		// enable active relays and more.
-		//libp2p.EnableAutoRelay(),
+	}
+
+	if !o.DisableQUIC {
+		opts = append(opts,
+			// support QUIC - experimental
+			libp2p.Transport(libp2pquic.NewTransport),
+		)
 	}
 
 	h, err := libp2p.New(ctx, opts...)
@@ -129,7 +134,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	s := &Service{host: h}
+	s := &Service{
+		host:    h,
+		metrics: newMetrics(),
+	}
 
 	// TODO: be more resilient on connection errors and connect in parallel
 	for _, a := range o.Bootnodes {
@@ -143,6 +151,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 	}
 
+	h.Network().SetConnHandler(func(_ network.Conn) {
+		s.metrics.HandledConnectionCount.Inc()
+	})
+
 	return s, nil
 }
 
@@ -153,10 +165,11 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		if err != nil {
 			return fmt.Errorf("match semver %s: %w", id, err)
 		}
-		s.host.SetStreamHandlerMatch(id, matcher, func(s network.Stream) {
+		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+			s.metrics.HandledStreamCount.Inc()
 			ss.Handler(p2p.Peer{
-				Addr:   s.Conn().RemoteMultiaddr(),
-				Stream: s,
+				Addr:   stream.Conn().RemoteMultiaddr(),
+				Stream: stream,
 			})
 		})
 	}
@@ -189,6 +202,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peerID string
 		return "", err
 	}
 
+	s.metrics.CreatedConnectionCount.Inc()
+
 	return info.ID.String(), nil
 }
 
@@ -205,6 +220,7 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
 	}
+	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
 }
 

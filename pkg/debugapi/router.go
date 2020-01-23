@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package debugapi
 
 import (
@@ -6,11 +10,17 @@ import (
 	"net/http/pprof"
 
 	"github.com/gorilla/handlers"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
 
 func (s *server) setupRouting() {
 	internalBaseRouter := http.NewServeMux()
+
+	internalBaseRouter.Handle("/metrics", promhttp.InstrumentMetricHandler(
+		s.metricsRegistry,
+		promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+	))
 
 	internalRouter := http.NewServeMux()
 	internalBaseRouter.Handle("/", web.ChainHandlers(

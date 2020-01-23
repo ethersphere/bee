@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package cmd
 
 import (
@@ -22,12 +26,15 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameAPIAddr        = "api-addr"
-		optionNameP2PAddr        = "p2p-addr"
-		optionNameP2PDisableWS   = "p2p-disable-ws"
-		optionNameP2PDisableQUIC = "p2p-disable-quic"
-		optionNameDebugAPIAddr   = "debug-api-addr"
-		optionNameBootnodes      = "bootnode"
+		optionNameAPIAddr          = "api-addr"
+		optionNameP2PAddr          = "p2p-addr"
+		optionNameP2PDisableWS     = "p2p-disable-ws"
+		optionNameP2PDisableQUIC   = "p2p-disable-quic"
+		optionNameDebugAPIAddr     = "debug-api-addr"
+		optionNameBootnodes        = "bootnode"
+		optionNameConnectionsLow   = "connections-low"
+		optionNameConnectionsHigh  = "connections-high"
+		optionNameConnectionsGrace = "connections-grace"
 	)
 
 	cmd := &cobra.Command{
@@ -41,18 +48,15 @@ func (c *command) initStartCmd() (err error) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			//var idht *dht.IpfsDHT
-
 			// Construct P2P service.
 			p2ps, err := libp2p.New(ctx, libp2p.Options{
-				Addr:        c.config.GetString(optionNameP2PAddr),
-				DisableWS:   c.config.GetBool(optionNameP2PDisableWS),
-				DisableQUIC: c.config.GetBool(optionNameP2PDisableQUIC),
-				Bootnodes:   c.config.GetStringSlice(optionNameBootnodes),
-				// Routing: func(h host.Host) (r routing.PeerRouting, err error) {
-				// 	idht, err = dht.New(ctx, h)
-				// 	return idht, err
-				// },
+				Addr:             c.config.GetString(optionNameP2PAddr),
+				DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
+				DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
+				Bootnodes:        c.config.GetStringSlice(optionNameBootnodes),
+				ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
+				ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
+				ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
 			})
 			if err != nil {
 				return fmt.Errorf("p2p service: %w", err)
@@ -76,14 +80,15 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			// API server
+			apiService := api.New(api.Options{
+				P2P:      p2ps,
+				Pingpong: pingPong,
+			})
 			apiListener, err := net.Listen("tcp", c.config.GetString(optionNameAPIAddr))
 			if err != nil {
 				return fmt.Errorf("api listener: %w", err)
 			}
-			apiServer := &http.Server{Handler: api.New(api.Options{
-				P2P:      p2ps,
-				Pingpong: pingPong,
-			})}
+			apiServer := &http.Server{Handler: apiService}
 
 			go func() {
 				cmd.Println("api address:", apiListener.Addr())
@@ -93,20 +98,30 @@ func (c *command) initStartCmd() (err error) {
 				}
 			}()
 
-			// Debug API server
-			debugAPIListener, err := net.Listen("tcp", c.config.GetString(optionNameDebugAPIAddr))
-			if err != nil {
-				return fmt.Errorf("debug api listener: %w", err)
-			}
-			debugAPIServer := &http.Server{Handler: debugapi.New(debugapi.Options{})}
+			var debugAPIServer *http.Server
+			if addr := c.config.GetString(optionNameDebugAPIAddr); addr != "" {
+				// Debug API server
+				debugAPIService := debugapi.New(debugapi.Options{})
+				// register metrics from components
+				debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
+				debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
+				debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
 
-			go func() {
-				cmd.Println("debug api address:", debugAPIListener.Addr())
-
-				if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-					log.Println("debug api server:", err)
+				debugAPIListener, err := net.Listen("tcp", addr)
+				if err != nil {
+					return fmt.Errorf("debug api listener: %w", err)
 				}
-			}()
+
+				debugAPIServer := &http.Server{Handler: debugAPIService}
+
+				go func() {
+					cmd.Println("debug api address:", debugAPIListener.Addr())
+
+					if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+						log.Println("debug api server:", err)
+					}
+				}()
+			}
 
 			// Wait for termination or interrupt signals.
 			// We want to clean up things at the end.
@@ -135,8 +150,10 @@ func (c *command) initStartCmd() (err error) {
 					log.Println("api server shutdown:", err)
 				}
 
-				if err := debugAPIServer.Shutdown(ctx); err != nil {
-					log.Println("debug api server shutdown:", err)
+				if debugAPIServer != nil {
+					if err := debugAPIServer.Shutdown(ctx); err != nil {
+						log.Println("debug api server shutdown:", err)
+					}
 				}
 
 				if err := p2ps.Close(); err != nil {
@@ -162,6 +179,9 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "Debug HTTP API listen address")
+	cmd.Flags().Int(optionNameConnectionsLow, 200, "low watermark governing the number of connections that'll be maintained")
+	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
+	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
 
 	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
 		return err
