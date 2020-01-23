@@ -8,5 +8,5 @@ type Peer struct {
 }
 
 func (p *Peer) Overlay() string {
-	return p.Overlay()
+	return p.overlay
 }
