@@ -29,10 +29,10 @@ type StreamerService interface {
 }
 
 func New(libp2pService StreamerService) *Service {
-	return &Service{streamerService:libp2pService}
+	return &Service{streamerService: libp2pService}
 }
 
-func (s *Service) Overlay(ctx context.Context,peerID peer.ID) (overlay string, err error) {
+func (s *Service) Overlay(ctx context.Context, peerID peer.ID) (overlay string, err error) {
 	stream, err := s.streamerService.NewStreamForPeerID(ctx, peerID, ProtocolName, StreamName, StreamVersion)
 	if err != nil {
 		return "", fmt.Errorf("new stream: %w", err)
@@ -48,20 +48,17 @@ func (s *Service) Overlay(ctx context.Context,peerID peer.ID) (overlay string, e
 
 	log.Printf("sent overlay req %s\n", s.streamerService.Overlay())
 
-
 	if err := r.ReadMsg(&resp); err != nil {
 		if err == io.EOF {
-			 return "", nil
+			return "", nil
 		}
 
 		return "", fmt.Errorf("overlay handler: read message: %v\n", err)
 	}
 
-
 	log.Printf("read overlay resp: %s\n", resp.Address)
 	return resp.Address, nil
 }
-
 
 func (s *Service) Handler(stream p2p.Stream, peerID peer.ID) {
 	w, r := protobuf.NewWriterAndReader(stream)
@@ -86,4 +83,3 @@ func (s *Service) Handler(stream p2p.Stream, peerID peer.ID) {
 	s.streamerService.InitPeer(req.Address, peerID)
 	log.Printf("sent overlay resp: %s\n", s.streamerService.Overlay())
 }
-

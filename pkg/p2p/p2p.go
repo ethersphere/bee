@@ -34,7 +34,7 @@ type ProtocolSpec struct {
 type StreamSpec struct {
 	Name    string
 	Version string
-	Handler func(Peer,Stream)
+	Handler func(Peer, Stream)
 }
 
 type IncompatibleStreamError struct {

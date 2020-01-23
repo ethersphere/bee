@@ -47,7 +47,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-
 func (s *Service) Ping(ctx context.Context, overlay string, msgs ...string) (rtt time.Duration, err error) {
 	fmt.Printf("got overlay address %s\n", overlay)
 	stream, err := s.streamer.NewStream(ctx, overlay, protocolName, streamName, streamVersion)
