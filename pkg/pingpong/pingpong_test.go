@@ -37,14 +37,9 @@ func TestPing(t *testing.T) {
 	// ping
 	peerID := "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"
 	greetings := []string{"hey", "there", "fella"}
-	rtt, err := client.Ping(context.Background(), peerID, greetings...)
+	_, err := client.Ping(context.Background(), peerID, greetings...)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// check that RTT is a sane value
-	if rtt <= 0 {
-		t.Errorf("invalid RTT value %v", rtt)
 	}
 
 	// get a record for this stream
