@@ -38,7 +38,6 @@ type Service struct {
 	handshakeService *handshake.Service
 	peers            map[string]*Peer         // overlay -> peer
 	addresses        map[libp2ppeer.ID]string // peerID -> overlay
-	overlay          string
 }
 
 type Options struct {
@@ -144,16 +143,15 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	overlay := strconv.Itoa(rand.Int())
 	s := &Service{
 		host:      h,
 		metrics:   newMetrics(),
 		peers:     make(map[string]*Peer),
 		addresses: make(map[libp2ppeer.ID]string),
-		overlay:   strconv.Itoa(rand.Int()),
+		handshakeService: handshake.New(overlay),
 	}
 
-	handshakeService := handshake.New(s)
-	s.handshakeService = handshakeService
 
 	// Construct protocols.
 
@@ -165,7 +163,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		s.metrics.HandledStreamCount.Inc()
-		handshakeService.Handler(stream, stream.Conn().RemotePeer())
+		overlay := s.handshakeService.Handler(stream)
+		s.initPeer(overlay, stream.Conn().RemotePeer())
 	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
@@ -243,12 +242,18 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 		return err
 	}
 
-	overlay, err := s.handshakeService.Handshake(ctx, info.ID)
+	stream, err := s.NewStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
+	if err != nil {
+		return fmt.Errorf("new stream: %w", err)
+	}
+	defer stream.Close()
+
+	overlay, err := s.handshakeService.Handshake(stream)
 	if err != nil {
 		return err
 	}
 
-	s.InitPeer(overlay, info.ID)
+	s.initPeer(overlay, info.ID)
 	s.metrics.CreatedConnectionCount.Inc()
 	fmt.Println("overlay handshake finished")
 	return nil
@@ -277,7 +282,7 @@ func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamNa
 	return s.NewStreamForPeerID(ctx, peer.peerID, protocolName, streamName, version)
 }
 
-func (s *Service) InitPeer(overlay string, peerID libp2ppeer.ID) {
+func (s *Service) initPeer(overlay string, peerID libp2ppeer.ID) {
 	s.peers[overlay] = &Peer{
 		overlay: overlay,
 		peerID:  peerID,
@@ -286,9 +291,6 @@ func (s *Service) InitPeer(overlay string, peerID libp2ppeer.ID) {
 	s.addresses[peerID] = overlay
 }
 
-func (s *Service) Overlay() string {
-	return s.overlay
-}
 
 func (s *Service) Close() error {
 	return s.host.Close()
