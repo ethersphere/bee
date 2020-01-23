@@ -15,6 +15,14 @@ type Recorder struct {
 	protocols []p2p.ProtocolSpec
 }
 
+type PeerMock struct {
+	overlay string
+}
+
+func (p PeerMock) Overlay() string {
+	return p.overlay
+}
+
 func NewRecorder(protocols ...p2p.ProtocolSpec) *Recorder {
 	return &Recorder{
 		records:   make(map[string][]Record),
@@ -22,13 +30,13 @@ func NewRecorder(protocols ...p2p.ProtocolSpec) *Recorder {
 	}
 }
 
-func (r *Recorder) NewStream(_ context.Context, peerID, protocolName, streamName, version string) (p2p.Stream, error) {
+func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
 	streamOut := newStream(recordIn, recordOut)
 	streamIn := newStream(recordOut, recordIn)
 
-	var handler func(p2p.Stream)
+	var handler func(p2p.Peer, p2p.Stream)
 	for _, p := range r.protocols {
 		if p.Name == protocolName {
 			for _, s := range p.StreamSpecs {
@@ -42,9 +50,12 @@ func (r *Recorder) NewStream(_ context.Context, peerID, protocolName, streamName
 		return nil, fmt.Errorf("unsupported protocol stream %q %q %q", protocolName, streamName, version)
 	}
 
-	go handler(streamIn)
+	peer := PeerMock{
+		overlay: overlay,
+	}
+	go handler(peer, streamIn)
 
-	id := peerID + p2p.NewSwarmStreamName(protocolName, streamName, version)
+	id := overlay + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()

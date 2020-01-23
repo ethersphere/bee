@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package overlay;
+package handshake;
 
 message ShakeHand {
     string Address = 1;
