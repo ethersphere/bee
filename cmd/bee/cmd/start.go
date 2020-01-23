@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package cmd
 
 import (
@@ -22,12 +26,15 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameAPIAddr        = "api-addr"
-		optionNameP2PAddr        = "p2p-addr"
-		optionNameP2PDisableWS   = "p2p-disable-ws"
-		optionNameP2PDisableQUIC = "p2p-disable-quic"
-		optionNameDebugAPIAddr   = "debug-api-addr"
-		optionNameBootnodes      = "bootnode"
+		optionNameAPIAddr          = "api-addr"
+		optionNameP2PAddr          = "p2p-addr"
+		optionNameP2PDisableWS     = "p2p-disable-ws"
+		optionNameP2PDisableQUIC   = "p2p-disable-quic"
+		optionNameDebugAPIAddr     = "debug-api-addr"
+		optionNameBootnodes        = "bootnode"
+		optionNameConnectionsLow   = "connections-low"
+		optionNameConnectionsHigh  = "connections-high"
+		optionNameConnectionsGrace = "connections-grace"
 	)
 
 	cmd := &cobra.Command{
@@ -41,18 +48,15 @@ func (c *command) initStartCmd() (err error) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			//var idht *dht.IpfsDHT
-
 			// Construct P2P service.
 			p2ps, err := libp2p.New(ctx, libp2p.Options{
-				Addr:        c.config.GetString(optionNameP2PAddr),
-				DisableWS:   c.config.GetBool(optionNameP2PDisableWS),
-				DisableQUIC: c.config.GetBool(optionNameP2PDisableQUIC),
-				Bootnodes:   c.config.GetStringSlice(optionNameBootnodes),
-				// Routing: func(h host.Host) (r routing.PeerRouting, err error) {
-				// 	idht, err = dht.New(ctx, h)
-				// 	return idht, err
-				// },
+				Addr:             c.config.GetString(optionNameP2PAddr),
+				DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
+				DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
+				Bootnodes:        c.config.GetStringSlice(optionNameBootnodes),
+				ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
+				ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
+				ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
 			})
 			if err != nil {
 				return fmt.Errorf("p2p service: %w", err)
@@ -175,6 +179,9 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "Debug HTTP API listen address")
+	cmd.Flags().Int(optionNameConnectionsLow, 200, "low watermark governing the number of connections that'll be maintained")
+	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
+	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
 
 	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
 		return err

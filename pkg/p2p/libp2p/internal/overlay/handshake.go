@@ -32,31 +32,6 @@ func New(libp2pService StreamerService) *Service {
 	return &Service{streamerService:libp2pService}
 }
 
-
-func (s *Service) Handler(stream p2p.Stream, peerID peer.ID) {
-	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
-
-	var req ShakeHand
-	if err := r.ReadMsg(&req); err != nil {
-		if err == io.EOF {
-			return
-		}
-		log.Printf("overlay handler: read message: %v\n", err)
-		return
-	}
-
-	log.Printf("received overlay req %s\n", req.Address)
-	if err := w.WriteMsg(&ShakeHand{
-		Address: s.streamerService.Overlay(),
-	}); err != nil {
-		log.Printf("overlay handler: write message: %v\n", err)
-	}
-
-	s.streamerService.InitPeer(req.Address, peerID)
-	log.Printf("sent overlay resp: %s\n", s.streamerService.Overlay())
-}
-
 func (s *Service) Overlay(ctx context.Context,peerID peer.ID) (overlay string, err error) {
 	stream, err := s.streamerService.NewStreamForPeerID(ctx, peerID, ProtocolName, StreamName, StreamVersion)
 	if err != nil {
@@ -86,3 +61,29 @@ func (s *Service) Overlay(ctx context.Context,peerID peer.ID) (overlay string, e
 	log.Printf("read overlay resp: %s\n", resp.Address)
 	return resp.Address, nil
 }
+
+
+func (s *Service) Handler(stream p2p.Stream, peerID peer.ID) {
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
+
+	var req ShakeHand
+	if err := r.ReadMsg(&req); err != nil {
+		if err == io.EOF {
+			return
+		}
+		log.Printf("overlay handler: read message: %v\n", err)
+		return
+	}
+
+	log.Printf("received overlay req %s\n", req.Address)
+	if err := w.WriteMsg(&ShakeHand{
+		Address: s.streamerService.Overlay(),
+	}); err != nil {
+		log.Printf("overlay handler: write message: %v\n", err)
+	}
+
+	s.streamerService.InitPeer(req.Address, peerID)
+	log.Printf("sent overlay resp: %s\n", s.streamerService.Overlay())
+}
+

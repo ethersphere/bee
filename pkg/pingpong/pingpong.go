@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 //go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. pingpong.proto"
 package pingpong
 
@@ -43,32 +47,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
-	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
-
-	fmt.Printf("Initiate pinpong for peer %s", peer)
-	var ping Ping
-	for {
-		if err := r.ReadMsg(&ping); err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Printf("pingpong handler: read message: %v\n", err)
-			return
-		}
-		log.Printf("got ping: %q\n", ping.Greeting)
-		s.metrics.PingReceivedCount.Inc()
-
-		if err := w.WriteMsg(&Pong{
-			Response: "{" + ping.Greeting + "}",
-		}); err != nil {
-			log.Printf("pingpong handler: write message: %v\n", err)
-			return
-		}
-		s.metrics.PongSentCount.Inc()
-	}
-}
 
 func (s *Service) Ping(ctx context.Context, overlay string, msgs ...string) (rtt time.Duration, err error) {
 	fmt.Printf("got overlay address %s\n", overlay)
@@ -101,4 +79,31 @@ func (s *Service) Ping(ctx context.Context, overlay string, msgs ...string) (rtt
 		s.metrics.PongReceivedCount.Inc()
 	}
 	return time.Since(start) / time.Duration(len(msgs)), nil
+}
+
+func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
+
+	fmt.Printf("Initiate pinpong for peer %s", peer)
+	var ping Ping
+	for {
+		if err := r.ReadMsg(&ping); err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Printf("pingpong handler: read message: %v\n", err)
+			return
+		}
+		log.Printf("got ping: %q\n", ping.Greeting)
+		s.metrics.PingReceivedCount.Inc()
+
+		if err := w.WriteMsg(&Pong{
+			Response: "{" + ping.Greeting + "}",
+		}); err != nil {
+			log.Printf("pingpong handler: write message: %v\n", err)
+			return
+		}
+		s.metrics.PongSentCount.Inc()
+	}
 }
