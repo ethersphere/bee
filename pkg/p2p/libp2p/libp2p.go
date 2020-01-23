@@ -31,12 +31,13 @@ type Service struct {
 }
 
 type Options struct {
-	Addr        string
-	DisableWS   bool
-	DisableQUIC bool
-	Bootnodes   []string
-	// PrivKey     []byte
-	// Routing     func(host.Host) (routing.PeerRouting, error)
+	Addr             string
+	DisableWS        bool
+	DisableQUIC      bool
+	Bootnodes        []string
+	ConnectionsLow   int
+	ConnectionsHigh  int
+	ConnectionsGrace time.Duration
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -90,25 +91,24 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		libp2p.Security(libp2ptls.ID, libp2ptls.New),
 		// support secio connections
 		libp2p.Security(secio.ID, secio.New),
-		// support QUIC - experimental
-		libp2p.Transport(libp2pquic.NewTransport),
 		// support any other default transports (TCP)
 		libp2p.DefaultTransports,
 		// Let's prevent our peer from having too many
 		// connections by attaching a connection manager.
 		libp2p.ConnectionManager(connmgr.NewConnManager(
-			100,         // Lowwater
-			400,         // HighWater,
-			time.Minute, // GracePeriod
+			o.ConnectionsLow,
+			o.ConnectionsHigh,
+			o.ConnectionsGrace,
 		)),
 		// Attempt to open ports using uPNP for NATed hosts.
 		libp2p.NATPortMap(),
-		// Let this host use the DHT to find other hosts
-		//libp2p.Routing(o.Routing),
-		// Let this host use relays and advertise itself on relays if
-		// it finds it is behind NAT. Use libp2p.Relay(options...) to
-		// enable active relays and more.
-		//libp2p.EnableAutoRelay(),
+	}
+
+	if !o.DisableQUIC {
+		opts = append(opts,
+			// support QUIC - experimental
+			libp2p.Transport(libp2pquic.NewTransport),
+		)
 	}
 
 	h, err := libp2p.New(ctx, opts...)
