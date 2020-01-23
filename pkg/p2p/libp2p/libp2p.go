@@ -29,7 +29,8 @@ import (
 var _ p2p.Service = new(Service)
 
 type Service struct {
-	host host.Host
+	host    host.Host
+	metrics metrics
 	overlayService *overlay.Service
 }
 
@@ -133,7 +134,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	s := &Service{host: h}
+	s := &Service{
+		host:    h,
+		metrics: newMetrics(),
+	}
 
 	overAddr := strconv.Itoa(rand.Int())
 	// Construct protocols.
@@ -161,6 +165,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		fmt.Printf("connectd bootnode %s, overlay: %s\n", a, peer.Overlay)
 	}
 
+	h.Network().SetConnHandler(func(_ network.Conn) {
+		s.metrics.HandledConnectionCount.Inc()
+	})
+
 	return s, nil
 }
 
@@ -172,8 +180,9 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			return fmt.Errorf("match semver %s: %w", id, err)
 		}
 
-		s.host.SetStreamHandlerMatch(id, matcher, func(s network.Stream) {
-			ss.Handler(s)
+		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+			s.metrics.HandledStreamCount.Inc()
+			ss.Handler(stream)
 		})
 	}
 	return nil
@@ -211,9 +220,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peer *p2p.Pee
 		return nil, err
 	}
 
+	s.metrics.CreatedConnectionCount.Inc()
 	fmt.Println("overlay handshake finished")
-	return &p2p.Peer{Overlay:overlayAddr}, nil
-}
+	return &p2p.Peer{Overlay:overlayAddr}, nil}
 
 func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamName, version string) (p2p.Stream, error) {
 	id, err := libp2ppeer.Decode(peerID)
@@ -228,6 +237,7 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
 	}
+	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
 }
 

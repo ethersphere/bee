@@ -99,6 +99,7 @@ func (c *command) initStartCmd() (err error) {
 				// Debug API server
 				debugAPIService := debugapi.New(debugapi.Options{})
 				// register metrics from components
+				debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 				debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 				debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
 
