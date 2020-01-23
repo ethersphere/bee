@@ -70,7 +70,7 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	for _, addr := range addrs {
-		logger.Infof("address: %s", addr)
+		logger.Infof("p2p address: %s", addr)
 	}
 
 	var apiService api.Service
