@@ -48,32 +48,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) Handler(p p2p.Peer) {
-	w, r := protobuf.NewWriterAndReader(p.Stream)
-	defer p.Stream.Close()
-
-	var ping Ping
-	for {
-		if err := r.ReadMsg(&ping); err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Printf("pingpong handler: read message: %v\n", err)
-			return
-		}
-		log.Printf("got ping: %q\n", ping.Greeting)
-		s.metrics.PingReceivedCount.Inc()
-
-		if err := w.WriteMsg(&Pong{
-			Response: "{" + ping.Greeting + "}",
-		}); err != nil {
-			log.Printf("pingpong handler: write message: %v\n", err)
-			return
-		}
-		s.metrics.PongSentCount.Inc()
-	}
-}
-
 func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt time.Duration, err error) {
 	stream, err := s.streamer.NewStream(ctx, peerID, protocolName, streamName, streamVersion)
 	if err != nil {
@@ -104,4 +78,30 @@ func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt 
 		s.metrics.PongReceivedCount.Inc()
 	}
 	return time.Since(start) / time.Duration(len(msgs)), nil
+}
+
+func (s *Service) Handler(p p2p.Peer) {
+	w, r := protobuf.NewWriterAndReader(p.Stream)
+	defer p.Stream.Close()
+
+	var ping Ping
+	for {
+		if err := r.ReadMsg(&ping); err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Printf("pingpong handler: read message: %v\n", err)
+			return
+		}
+		log.Printf("got ping: %q\n", ping.Greeting)
+		s.metrics.PingReceivedCount.Inc()
+
+		if err := w.WriteMsg(&Pong{
+			Response: "{" + ping.Greeting + "}",
+		}); err != nil {
+			log.Printf("pingpong handler: write message: %v\n", err)
+			return
+		}
+		s.metrics.PongSentCount.Inc()
+	}
 }
