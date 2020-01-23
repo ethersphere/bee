@@ -39,6 +39,7 @@ type Options struct {
 	DisableWS        bool
 	DisableQUIC      bool
 	Bootnodes        []string
+	NetworkID        int // TODO: to be used in the handshake protocol
 	ConnectionsLow   int
 	ConnectionsHigh  int
 	ConnectionsGrace time.Duration

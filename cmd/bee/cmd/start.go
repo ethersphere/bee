@@ -34,6 +34,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameP2PDisableQUIC   = "p2p-disable-quic"
 		optionNameDebugAPIAddr     = "debug-api-addr"
 		optionNameBootnodes        = "bootnode"
+		optionNameNetworkID        = "network-id"
 		optionNameConnectionsLow   = "connections-low"
 		optionNameConnectionsHigh  = "connections-high"
 		optionNameConnectionsGrace = "connections-grace"
@@ -62,6 +63,7 @@ func (c *command) initStartCmd() (err error) {
 				DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
 				DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
 				Bootnodes:        c.config.GetStringSlice(optionNameBootnodes),
+				NetworkID:        c.config.GetInt(optionNameNetworkID),
 				ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
 				ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
 				ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
@@ -197,6 +199,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "Debug HTTP API listen address")
+	cmd.Flags().Int(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().Int(optionNameConnectionsLow, 200, "low watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
