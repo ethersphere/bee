@@ -22,7 +22,7 @@ import (
 )
 
 type Bee struct {
-	p2pServer      io.Closer
+	p2pService     io.Closer
 	p2pCancel      context.CancelFunc
 	apiServer      *http.Server
 	debugAPIServer *http.Server
@@ -51,7 +51,7 @@ func NewBee(o Options) (*Bee, error) {
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
-	b.p2pServer = p2ps
+	b.p2pService = p2ps
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
@@ -158,7 +158,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	b.p2pCancel()
-	if err := b.p2pServer.Close(); err != nil {
+	if err := b.p2pService.Close(); err != nil {
 		return fmt.Errorf("p2p server: %w", err)
 	}
 
