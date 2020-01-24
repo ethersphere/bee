@@ -6,10 +6,13 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +38,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameConnectionsLow   = "connections-low"
 		optionNameConnectionsHigh  = "connections-high"
 		optionNameConnectionsGrace = "connections-grace"
+		optionNameVerbosity        = "verbosity"
 	)
 
 	cmd := &cobra.Command{
@@ -46,7 +50,22 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			logger := logging.New(cmd.OutOrStdout())
-			logger.SetLevel(logrus.TraceLevel)
+			switch v := strings.ToLower(c.config.GetString(optionNameVerbosity)); v {
+			case "0", "silent":
+				logger.SetOutput(ioutil.Discard)
+			case "1", "error":
+				logger.SetLevel(logrus.ErrorLevel)
+			case "2", "warn":
+				logger.SetLevel(logrus.WarnLevel)
+			case "3", "info":
+				logger.SetLevel(logrus.InfoLevel)
+			case "4", "debug":
+				logger.SetLevel(logrus.DebugLevel)
+			case "5", "trace":
+				logger.SetLevel(logrus.TraceLevel)
+			default:
+				return fmt.Errorf("unknown verbosity level %q", v)
+			}
 
 			var libp2pPrivateKey io.ReadWriteCloser
 			if dataDir := c.config.GetString(optionNameDataDir); dataDir != "" {
@@ -127,6 +146,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Int(optionNameConnectionsLow, 200, "low watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
+	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
 		return err
