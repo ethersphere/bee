@@ -50,6 +50,5 @@ curl localhost:8502/pingpong/4932309428148935717
 ## TODO
 
 - P2P mock (protocol tester) implementation improvements
-- Overlay addressing in libp2p (provide overlay address in p2p.Peer)
 - Figure out routing (whether to use libp2p Routing or to abstract hive on top of p2p package)
 - Instrumentation: logging, metrics, tracing, pprof...
