@@ -11,8 +11,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/janos/bee/pkg/p2p"
-	"github.com/janos/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/janos/bee/cmd/bee/cmd"
+	"github.com/ethersphere/bee/cmd/bee/cmd"
 )
 
 var homeDir string

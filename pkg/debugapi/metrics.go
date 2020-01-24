@@ -5,7 +5,7 @@
 package debugapi
 
 import (
-	"github.com/janos/bee"
+	"github.com/ethersphere/bee"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

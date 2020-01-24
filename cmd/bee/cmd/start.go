@@ -19,9 +19,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/janos/bee/pkg/logging"
-	"github.com/janos/bee/pkg/node"
-	"github.com/janos/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/node"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 )
 
 func (c *command) initStartCmd() (err error) {

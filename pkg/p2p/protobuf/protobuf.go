@@ -7,7 +7,7 @@ package protobuf
 import (
 	ggio "github.com/gogo/protobuf/io"
 	"github.com/gogo/protobuf/proto"
-	"github.com/janos/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"io"
 )
 

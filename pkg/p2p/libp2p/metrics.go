@@ -5,9 +5,10 @@
 package libp2p
 
 import (
-	m "github.com/janos/bee/pkg/metrics"
+	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
 
 type metrics struct {
 	// all metrics fields must be exported

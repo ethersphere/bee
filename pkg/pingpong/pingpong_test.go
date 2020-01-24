@@ -11,10 +11,10 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/janos/bee/pkg/logging"
-	"github.com/janos/bee/pkg/p2p/mock"
-	"github.com/janos/bee/pkg/p2p/protobuf"
-	"github.com/janos/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/pingpong"
 )
 
 func TestPing(t *testing.T) {

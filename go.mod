@@ -1,4 +1,4 @@
-module github.com/janos/bee
+module github.com/ethersphere/bee
 
 go 1.13
 

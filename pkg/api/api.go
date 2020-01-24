@@ -7,8 +7,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/janos/bee/pkg/p2p"
-	"github.com/janos/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

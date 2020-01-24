@@ -16,9 +16,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/janos/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p"
 
-	handshake "github.com/janos/bee/pkg/p2p/libp2p/internal/handshake"
+	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"

@@ -5,7 +5,7 @@
 package cmd
 
 import (
-	"github.com/janos/bee"
+	"github.com/ethersphere/bee"
 
 	"github.com/spf13/cobra"
 )

@@ -11,8 +11,6 @@ make binary
 cp dist/bee /usr/local/bin/bee
 ```
 
-Docker image `janos/bee`.
-
 ## Usage (experimental api)
 
 Execute the command terminals to start `node 1`:
