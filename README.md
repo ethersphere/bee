@@ -18,13 +18,13 @@ Docker image `janos/bee`.
 Execute the command terminals to start `node 1`:
 
 ```sh
-bee start --api-addr :8501 --p2p-addr :30401 --debug-api-addr :6061
+bee start --api-addr :8501 --p2p-addr :30401 --data-dir data1
 ```
 
 Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
 
 ```sh
-bee start --api-addr :8502 --p2p-addr :30402 --debug-api-addr :6062 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+bee start --api-addr :8502 --p2p-addr :30402 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
 Use the last part of `node 1` multiaddress to ping it using `node 2` by making an HTTP request to `localhost:{PORT2}/pingpong/{ID1}` like:
@@ -53,7 +53,5 @@ curl localhost:8502/pingpong/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 
 - P2P mock (protocol tester) implementation improvements
 - Overlay addressing in libp2p (provide overlay address in p2p.Peer)
-- Identity with private keys
 - Figure out routing (whether to use libp2p Routing or to abstract hive on top of p2p package)
-- Listener configurations (ipv4, ipv6, dns, tcp, ws, quic)
 - Instrumentation: logging, metrics, tracing, pprof...

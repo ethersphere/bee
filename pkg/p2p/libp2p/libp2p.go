@@ -5,10 +5,14 @@
 package libp2p
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math/rand"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -18,6 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -41,10 +46,12 @@ type Service struct {
 }
 
 type Options struct {
+	PrivateKey       io.ReadWriteCloser
 	Addr             string
 	DisableWS        bool
 	DisableQUIC      bool
 	Bootnodes        []string
+	NetworkID        int // TODO: to be used in the handshake protocol
 	ConnectionsLow   int
 	ConnectionsHigh  int
 	ConnectionsGrace time.Duration
@@ -92,9 +99,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	}
 
 	opts := []libp2p.Option{
-		// Use the keypair we generated
-		//libp2p.Identity(priv),
-		// Multiple listen peerIDToOverlay
+		// Multiple listen addresses
 		libp2p.ListenAddrStrings(listenAddrs...),
 		// support TLS connections
 		libp2p.Security(libp2ptls.ID, libp2ptls.New),
@@ -113,6 +118,41 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		libp2p.NATPortMap(),
 	}
 
+	if o.PrivateKey != nil {
+		var privateKey crypto.PrivKey
+		privateKeyData, err := ioutil.ReadAll(o.PrivateKey)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read private key: %w", err)
+		}
+		if len(privateKeyData) == 0 {
+			var err error
+			privateKey, _, err = crypto.GenerateSecp256k1Key(nil)
+			if err != nil {
+				return nil, fmt.Errorf("generate secp256k1 key: %w", err)
+			}
+			d, err := crypto.MarshalPrivateKey(privateKey)
+			if err != nil {
+				return nil, fmt.Errorf("encode private key: %w", err)
+			}
+			if _, err := io.Copy(o.PrivateKey, bytes.NewReader(d)); err != nil {
+				return nil, fmt.Errorf("write private key: %w", err)
+			}
+		} else {
+			var err error
+			privateKey, err = crypto.UnmarshalPrivateKey(privateKeyData)
+			if err != nil {
+				return nil, fmt.Errorf("decode private key: %w", err)
+			}
+		}
+		if err := o.PrivateKey.Close(); err != nil {
+			return nil, fmt.Errorf("close private key: %w", err)
+		}
+		opts = append(opts,
+			// Use the keypair we generated
+			libp2p.Identity(privateKey),
+		)
+	}
+
 	if !o.DisableQUIC {
 		opts = append(opts,
 			// support QUIC - experimental
@@ -125,7 +165,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, err
 	}
 
-	// If you want to help other overlayToPeerID to figure out if they are behind
+	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
 	if _, err = autonat.NewAutoNATService(ctx, h,
@@ -213,7 +253,7 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	}
 
 	// Now we can build a full multiaddress to reach this host
-	// by encapsulating both peerIDToOverlay:
+	// by encapsulating both addresses:
 	for _, addr := range s.host.Addrs() {
 		addrs = append(addrs, addr.Encapsulate(hostAddr).String())
 	}
