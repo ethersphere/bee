@@ -14,7 +14,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/janos/bee/pkg/p2p"
@@ -42,9 +41,7 @@ type Service struct {
 	host             host.Host
 	metrics          metrics
 	handshakeService *handshake.Service
-	overlayToPeerID  map[string]libp2ppeer.ID
-	peerIDToOverlay  map[libp2ppeer.ID]string
-	overlayPeerIDMu  sync.RWMutex
+	peers            *peerRegistry
 }
 
 type Options struct {
@@ -185,9 +182,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
-		overlayToPeerID:  make(map[string]libp2ppeer.ID),
-		peerIDToOverlay:  make(map[libp2ppeer.ID]string),
 		handshakeService: handshake.New(overlay),
+		peers:            newPeerRegistry(),
 	}
 
 	// Construct protocols.
@@ -201,7 +197,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		s.metrics.HandledStreamCount.Inc()
 		overlay := s.handshakeService.Handler(stream)
-		s.addAddresses(overlay, stream.Conn().RemotePeer())
+		s.peers.add(stream.Conn().RemotePeer(), overlay)
 	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
@@ -234,8 +230,8 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 			peerID := stream.Conn().RemotePeer()
-			overlay, ok := s.overlayForPeerID(peerID)
-			if !ok {
+			overlay, found := s.peers.overlay(peerID)
+			if !found {
 				// todo: handle better
 				fmt.Printf("Could not fetch handshake for peerID %s\n", stream)
 				return
@@ -285,14 +281,14 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 		return err
 	}
 
-	s.addAddresses(overlay, info.ID)
+	s.peers.add(info.ID, overlay)
 	s.metrics.CreatedConnectionCount.Inc()
 	fmt.Println("handshake handshake finished")
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
-	peerID, ok := s.peerIDForOverlay(overlay)
-	if !ok {
+	peerID, found := s.peers.peerID(overlay)
+	if !found {
 		return nil, p2p.ErrPeerNotFound
 	}
 
@@ -310,27 +306,6 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 	}
 	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
-}
-
-func (s *Service) peerIDForOverlay(overlay string) (peerID libp2ppeer.ID, ok bool) {
-	s.overlayPeerIDMu.RLock()
-	peerID, ok = s.overlayToPeerID[overlay]
-	s.overlayPeerIDMu.RUnlock()
-	return peerID, ok
-}
-
-func (s *Service) overlayForPeerID(peerID libp2ppeer.ID) (overlay string, ok bool) {
-	s.overlayPeerIDMu.RLock()
-	overlay, ok = s.peerIDToOverlay[peerID]
-	s.overlayPeerIDMu.RUnlock()
-	return overlay, ok
-}
-
-func (s *Service) addAddresses(overlay string, peerID libp2ppeer.ID) {
-	s.overlayPeerIDMu.Lock()
-	s.overlayToPeerID[overlay] = peerID
-	s.peerIDToOverlay[peerID] = overlay
-	s.overlayPeerIDMu.Unlock()
 }
 
 func (s *Service) Close() error {
