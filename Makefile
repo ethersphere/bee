@@ -3,11 +3,7 @@ COMMIT ?= ""
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-<<<<<<< HEAD
-LDFLAGS ?= -s -w -X github.com/janos/bee.commit="$(COMMIT)"
-=======
 LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
->>>>>>> 1971bae2015d482f60af4e87b73d1999abc90157
 
 .PHONY: all
 all: build lint vet test binary
