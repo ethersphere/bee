@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y \
     groupadd -r drone && \
     useradd --no-log-init -r -g drone drone
 
-USER drone
-
 COPY --from=build /src/dist/bee /usr/local/bin/bee
+
+USER drone
 
 ENTRYPOINT ["bee"]
