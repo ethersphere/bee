@@ -36,7 +36,7 @@ type Service struct {
 	host             host.Host
 	metrics          metrics
 	handshakeService *handshake.Service
-	peers            map[string]*Peer         // overlay -> peer
+	peers            map[string]*peer         // overlay -> peer
 	addresses        map[libp2ppeer.ID]string // peerID -> overlay
 }
 
@@ -147,7 +147,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	s := &Service{
 		host:      h,
 		metrics:   newMetrics(),
-		peers:     make(map[string]*Peer),
+		peers:     make(map[string]*peer),
 		addresses: make(map[libp2ppeer.ID]string),
 		handshakeService: handshake.New(overlay),
 	}
@@ -203,14 +203,8 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
-			peer, ok := s.peers[overlay]
-			if !ok {
-				fmt.Printf("Could not fetch peer for overlay %s\n", overlay)
-				return
-			}
-
 			s.metrics.HandledStreamCount.Inc()
-			ss.Handler(peer, stream)
+			ss.Handler(p2p.Peer{Address:overlay}, stream)
 		})
 	}
 	return nil
@@ -242,7 +236,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 		return err
 	}
 
-	stream, err := s.NewStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
+	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
@@ -258,8 +252,17 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 	fmt.Println("overlay handshake finished")
 	return nil
 }
+func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
+	peer, ok := s.peers[overlay]
+	if !ok {
+		fmt.Printf("Could not fetch peer for overlay %s\n", overlay)
+		return nil, nil
+	}
 
-func (s *Service) NewStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, streamName, version string) (p2p.Stream, error) {
+	return s.newStreamForPeerID(ctx, peer.peerID, protocolName, streamName, version)
+}
+
+func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, streamName, version string) (p2p.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, streamName, version)
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
@@ -272,18 +275,9 @@ func (s *Service) NewStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 	return st, nil
 }
 
-func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
-	peer, ok := s.peers[overlay]
-	if !ok {
-		fmt.Printf("Could not fetch peer for overlay %s\n", overlay)
-		return nil, nil
-	}
-
-	return s.NewStreamForPeerID(ctx, peer.peerID, protocolName, streamName, version)
-}
 
 func (s *Service) initPeer(overlay string, peerID libp2ppeer.ID) {
-	s.peers[overlay] = &Peer{
+	s.peers[overlay] = &peer{
 		overlay: overlay,
 		peerID:  peerID,
 	}

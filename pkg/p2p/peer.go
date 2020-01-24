@@ -1,5 +1,5 @@
 package p2p
 
-type Peer interface {
-	Overlay() string
+type Peer struct {
+	Address string
 }

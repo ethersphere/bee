@@ -1,12 +1,9 @@
 package libp2p
 
-import "github.com/libp2p/go-libp2p-core/peer"
+import libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 
-type Peer struct {
+type peer struct {
 	overlay string
-	peerID  peer.ID
+	peerID  libp2ppeer.ID
 }
 
-func (p *Peer) Overlay() string {
-	return p.overlay
-}

@@ -53,11 +53,7 @@ func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamNam
 	if handler == nil {
 		return nil, fmt.Errorf("unsupported protocol stream %q %q %q", protocolName, streamName, version)
 	}
-
-	peer := PeerMock{
-		overlay: overlay,
-	}
-	go handler(peer, streamIn)
+	go handler(p2p.Peer{Address:overlay}, streamIn)
 
 	id := overlay + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
