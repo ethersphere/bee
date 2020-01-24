@@ -14,21 +14,16 @@ import (
 
 type Service interface {
 	AddProtocol(ProtocolSpec) error
-	Connect(ctx context.Context, addr ma.Multiaddr) (peerID string, err error)
+	Connect(ctx context.Context, addr ma.Multiaddr) (err error)
 }
 
 type Streamer interface {
-	NewStream(ctx context.Context, peerID, protocol, stream, version string) (Stream, error)
+	NewStream(ctx context.Context, address, protocol, stream, version string) (Stream, error)
 }
 
 type Stream interface {
 	io.ReadWriter
 	io.Closer
-}
-
-type Peer struct {
-	Addr   ma.Multiaddr
-	Stream Stream
 }
 
 type ProtocolSpec struct {
@@ -39,7 +34,7 @@ type ProtocolSpec struct {
 type StreamSpec struct {
 	Name    string
 	Version string
-	Handler func(Peer)
+	Handler func(Peer, Stream)
 }
 
 type IncompatibleStreamError struct {

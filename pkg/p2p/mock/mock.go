@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/janos/bee/pkg/p2p"
-	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Recorder struct {
@@ -27,13 +26,13 @@ func NewRecorder(protocols ...p2p.ProtocolSpec) *Recorder {
 	}
 }
 
-func (r *Recorder) NewStream(_ context.Context, peerID, protocolName, streamName, version string) (p2p.Stream, error) {
+func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
 	streamOut := newStream(recordIn, recordOut)
 	streamIn := newStream(recordOut, recordIn)
 
-	var handler func(p2p.Peer)
+	var handler func(p2p.Peer, p2p.Stream)
 	for _, p := range r.protocols {
 		if p.Name == protocolName {
 			for _, s := range p.StreamSpecs {
@@ -46,13 +45,9 @@ func (r *Recorder) NewStream(_ context.Context, peerID, protocolName, streamName
 	if handler == nil {
 		return nil, fmt.Errorf("unsupported protocol stream %q %q %q", protocolName, streamName, version)
 	}
+	go handler(p2p.Peer{Address: overlay}, streamIn)
 
-	go handler(p2p.Peer{
-		Addr:   ma.StringCast(peerID),
-		Stream: streamIn,
-	})
-
-	id := peerID + p2p.NewSwarmStreamName(protocolName, streamName, version)
+	id := overlay + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()
