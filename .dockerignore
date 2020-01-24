@@ -1,0 +1,12 @@
+.dockerignore
+.DS_Store
+.git
+.gitignore
+.github
+.idea
+.vscode
+dist
+Dockerfile
+*.yaml
+*.yml
+*.md
