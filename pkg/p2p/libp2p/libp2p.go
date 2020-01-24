@@ -50,9 +50,6 @@ type Options struct {
 	ConnectionsGrace time.Duration
 }
 
-type Handshake interface {
-}
-
 func New(ctx context.Context, o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(o.Addr)
 	if err != nil {
