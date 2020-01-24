@@ -32,7 +32,7 @@ import (
 	"github.com/multiformats/go-multistream"
 )
 
-var _ p2p.Service = new(Service)
+var _ p2p.Service = (*Service)(nil)
 
 type Service struct {
 	host    host.Host
