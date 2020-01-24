@@ -28,19 +28,19 @@ func (s *Service) Handshake(stream p2p.Stream) (overlay string, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	var resp ShakeHand
 	if err := w.WriteMsg(&ShakeHand{Address: s.overlay}); err != nil {
-		return "", fmt.Errorf("overlay handler: write message: %v\n", err)
+		return "", fmt.Errorf("handshake handler: write message: %v\n", err)
 	}
 
-	log.Printf("sent overlay req %s\n", s.overlay)
+	log.Printf("sent handshake req %s\n", s.overlay)
 	if err := r.ReadMsg(&resp); err != nil {
 		if err == io.EOF {
 			return "", nil
 		}
 
-		return "", fmt.Errorf("overlay handler: read message: %v\n", err)
+		return "", fmt.Errorf("handshake handler: read message: %v\n", err)
 	}
 
-	log.Printf("read overlay resp: %s\n", resp.Address)
+	log.Printf("read handshake resp: %s\n", resp.Address)
 	return resp.Address, nil
 }
 
@@ -53,17 +53,17 @@ func (s *Service) Handler(stream p2p.Stream) string {
 		if err == io.EOF {
 			return ""
 		}
-		log.Printf("overlay handler: read message: %v\n", err)
+		log.Printf("handshake handler: read message: %v\n", err)
 		return ""
 	}
 
-	log.Printf("received overlay req %s\n", req.Address)
+	log.Printf("received handshake req %s\n", req.Address)
 	if err := w.WriteMsg(&ShakeHand{
 		Address: s.overlay,
 	}); err != nil {
-		log.Printf("overlay handler: write message: %v\n", err)
+		log.Printf("handshake handler: write message: %v\n", err)
 	}
 
-	log.Printf("sent overlay resp: %s\n", s.overlay)
+	log.Printf("sent handshake resp: %s\n", s.overlay)
 	return req.Address
 }

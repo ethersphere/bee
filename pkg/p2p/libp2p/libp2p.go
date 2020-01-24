@@ -14,7 +14,7 @@ import (
 
 	"github.com/janos/bee/pkg/p2p"
 
-	handshake "github.com/janos/bee/pkg/p2p/libp2p/internal/overlay"
+	handshake "github.com/janos/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
@@ -194,7 +194,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			overlay, ok := s.peerIDToOverlay[stream.Conn().RemotePeer()]
 			if !ok {
 				// todo: handle better
-				fmt.Printf("Could not fetch overlay for peerID %s\n", stream)
+				fmt.Printf("Could not fetch handshake for peerID %s\n", stream)
 				return
 			}
 
@@ -244,13 +244,13 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 
 	s.addAddresses(overlay, info.ID)
 	s.metrics.CreatedConnectionCount.Inc()
-	fmt.Println("overlay handshake finished")
+	fmt.Println("handshake handshake finished")
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
 	peerID, ok := s.overlayToPeerID[overlay]
 	if !ok {
-		fmt.Printf("Could not fetch peerID for overlay %s\n", overlay)
+		fmt.Printf("Could not fetch peerID for handshake %s\n", overlay)
 		return nil, nil
 	}
 
