@@ -8,8 +8,6 @@ package handshake
 
 import (
 	"fmt"
-	"io"
-	"log"
 
 	"github.com/janos/bee/pkg/p2p"
 	"github.com/janos/bee/pkg/p2p/protobuf"
@@ -23,52 +21,52 @@ const (
 
 type Service struct {
 	overlay string
+	logger  Logger
 }
 
-func New(overlay string) *Service {
-	return &Service{overlay: overlay}
+func New(overlay string, logger Logger) *Service {
+	return &Service{
+		overlay: overlay,
+		logger:  logger,
+	}
+}
+
+type Logger interface {
+	Tracef(format string, args ...interface{})
 }
 
 func (s *Service) Handshake(stream p2p.Stream) (overlay string, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	var resp ShakeHand
 	if err := w.WriteMsg(&ShakeHand{Address: s.overlay}); err != nil {
-		return "", fmt.Errorf("handshake handler: write message: %v\n", err)
+		return "", fmt.Errorf("handshake handler: write message: %w", err)
 	}
 
-	log.Printf("sent handshake req %s\n", s.overlay)
+	s.logger.Tracef("handshake: sent request %s", s.overlay)
 	if err := r.ReadMsg(&resp); err != nil {
-		if err == io.EOF {
-			return "", nil
-		}
-
-		return "", fmt.Errorf("handshake handler: read message: %v\n", err)
+		return "", fmt.Errorf("handshake handler: read message: %w", err)
 	}
 
-	log.Printf("read handshake resp: %s\n", resp.Address)
+	s.logger.Tracef("handshake: read response: %s", resp.Address)
 	return resp.Address, nil
 }
 
-func (s *Service) Handler(stream p2p.Stream) string {
+func (s *Service) Handle(stream p2p.Stream) (overlay string, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
 	var req ShakeHand
 	if err := r.ReadMsg(&req); err != nil {
-		if err == io.EOF {
-			return ""
-		}
-		log.Printf("handshake handler: read message: %v\n", err)
-		return ""
+		return "", fmt.Errorf("read message: %w", err)
 	}
 
-	log.Printf("received handshake req %s\n", req.Address)
+	s.logger.Tracef("handshake: received request %s", req.Address)
 	if err := w.WriteMsg(&ShakeHand{
 		Address: s.overlay,
 	}); err != nil {
-		log.Printf("handshake handler: write message: %v\n", err)
+		return "", fmt.Errorf("write message: %w", err)
 	}
 
-	log.Printf("sent handshake resp: %s\n", s.overlay)
-	return req.Address
+	s.logger.Tracef("handshake: handled response: %s", s.overlay)
+	return req.Address, nil
 }

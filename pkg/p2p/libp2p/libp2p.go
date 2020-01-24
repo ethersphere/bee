@@ -42,6 +42,7 @@ type Service struct {
 	metrics          metrics
 	handshakeService *handshake.Service
 	peers            *peerRegistry
+	logger           Logger
 }
 
 type Options struct {
@@ -54,6 +55,13 @@ type Options struct {
 	ConnectionsLow   int
 	ConnectionsHigh  int
 	ConnectionsGrace time.Duration
+	Logger           Logger
+}
+
+type Logger interface {
+	Tracef(format string, args ...interface{})
+	Infof(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -182,8 +190,9 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
-		handshakeService: handshake.New(overlay),
+		handshakeService: handshake.New(overlay, o.Logger),
 		peers:            newPeerRegistry(),
+		logger:           o.Logger,
 	}
 
 	// Construct protocols.
@@ -195,9 +204,14 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	}
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+		peerID := stream.Conn().RemotePeer()
+		overlay, err := s.handshakeService.Handle(stream)
+		if err != nil {
+			s.logger.Errorf("handshake with peer %s: %w", peerID, err)
+		}
+		s.peers.add(peerID, overlay)
 		s.metrics.HandledStreamCount.Inc()
-		overlay := s.handshakeService.Handler(stream)
-		s.peers.add(stream.Conn().RemotePeer(), overlay)
+		s.logger.Infof("peer %q connected", overlay)
 	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
@@ -233,7 +247,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
 				// todo: handle better
-				fmt.Printf("Could not fetch handshake for peerID %s\n", stream)
+				s.logger.Errorf("overlay address for peer %q not found", peerID)
 				return
 			}
 
@@ -283,7 +297,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 
 	s.peers.add(info.ID, overlay)
 	s.metrics.CreatedConnectionCount.Inc()
-	fmt.Println("handshake handshake finished")
+	s.logger.Infof("peer %q connected", overlay)
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {

@@ -93,6 +93,7 @@ func (c *command) initStartCmd() (err error) {
 					ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
 					ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
 					ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
+					Logger:           logger,
 				},
 				Logger: logger,
 			})
