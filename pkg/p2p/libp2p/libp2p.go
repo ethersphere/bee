@@ -14,12 +14,11 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
-	"github.com/janos/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p"
 
-	handshake "github.com/janos/bee/pkg/p2p/libp2p/internal/handshake"
+	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
@@ -38,13 +37,18 @@ import (
 
 var _ p2p.Service = (*Service)(nil)
 
+func init() {
+	// Only temporary for fake overlay address generation.
+	rand.Seed(time.Now().UnixNano())
+}
+
 type Service struct {
 	host             host.Host
 	metrics          metrics
+	networkID        int32
 	handshakeService *handshake.Service
-	overlayToPeerID  map[string]libp2ppeer.ID
-	peerIDToOverlay  map[libp2ppeer.ID]string
-	overlayPeerIDMu  sync.RWMutex
+	peers            *peerRegistry
+	logger           Logger
 }
 
 type Options struct {
@@ -53,10 +57,17 @@ type Options struct {
 	DisableWS        bool
 	DisableQUIC      bool
 	Bootnodes        []string
-	NetworkID        int // TODO: to be used in the handshake protocol
+	NetworkID        int32
 	ConnectionsLow   int
 	ConnectionsHigh  int
 	ConnectionsGrace time.Duration
+	Logger           Logger
+}
+
+type Logger interface {
+	Tracef(format string, args ...interface{})
+	Infof(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -181,13 +192,16 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	// This is just a temporary way to generate an overlay address.
+	// TODO: proper key management and overlay address generation
 	overlay := strconv.Itoa(rand.Int())
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
-		overlayToPeerID:  make(map[string]libp2ppeer.ID),
-		peerIDToOverlay:  make(map[libp2ppeer.ID]string),
-		handshakeService: handshake.New(overlay),
+		networkID:        o.NetworkID,
+		handshakeService: handshake.New(overlay, o.NetworkID, o.Logger),
+		peers:            newPeerRegistry(),
+		logger:           o.Logger,
 	}
 
 	// Construct protocols.
@@ -199,9 +213,19 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	}
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+		peerID := stream.Conn().RemotePeer()
+		i, err := s.handshakeService.Handle(stream)
+		if err != nil {
+			s.logger.Errorf("handshake with peer %s: %w", peerID, err)
+			return
+		}
+		if i.NetworkID != s.networkID {
+			s.logger.Errorf("handshake with peer %s: invalid network id %v", peerID, i.NetworkID)
+			return
+		}
+		s.peers.add(peerID, i.Address)
 		s.metrics.HandledStreamCount.Inc()
-		overlay := s.handshakeService.Handler(stream)
-		s.addAddresses(overlay, stream.Conn().RemotePeer())
+		s.logger.Infof("peer %q connected", overlay)
 	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
@@ -234,10 +258,10 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 			peerID := stream.Conn().RemotePeer()
-			overlay, ok := s.overlayForPeerID(peerID)
-			if !ok {
+			overlay, found := s.peers.overlay(peerID)
+			if !found {
 				// todo: handle better
-				fmt.Printf("Could not fetch handshake for peerID %s\n", stream)
+				s.logger.Errorf("overlay address for peer %q not found", peerID)
 				return
 			}
 
@@ -280,19 +304,22 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 	}
 	defer stream.Close()
 
-	overlay, err := s.handshakeService.Handshake(stream)
+	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
 		return err
 	}
+	if i.NetworkID != s.networkID {
+		return fmt.Errorf("invalid network id %v", i.NetworkID)
+	}
 
-	s.addAddresses(overlay, info.ID)
+	s.peers.add(info.ID, i.Address)
 	s.metrics.CreatedConnectionCount.Inc()
-	fmt.Println("handshake handshake finished")
+	s.logger.Infof("peer %q connected", i.Address)
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
-	peerID, ok := s.peerIDForOverlay(overlay)
-	if !ok {
+	peerID, found := s.peers.peerID(overlay)
+	if !found {
 		return nil, p2p.ErrPeerNotFound
 	}
 
@@ -310,27 +337,6 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 	}
 	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
-}
-
-func (s *Service) peerIDForOverlay(overlay string) (peerID libp2ppeer.ID, ok bool) {
-	s.overlayPeerIDMu.RLock()
-	peerID, ok = s.overlayToPeerID[overlay]
-	s.overlayPeerIDMu.RUnlock()
-	return peerID, ok
-}
-
-func (s *Service) overlayForPeerID(peerID libp2ppeer.ID) (overlay string, ok bool) {
-	s.overlayPeerIDMu.RLock()
-	overlay, ok = s.peerIDToOverlay[peerID]
-	s.overlayPeerIDMu.RUnlock()
-	return overlay, ok
-}
-
-func (s *Service) addAddresses(overlay string, peerID libp2ppeer.ID) {
-	s.overlayPeerIDMu.Lock()
-	s.overlayToPeerID[overlay] = peerID
-	s.peerIDToOverlay[peerID] = overlay
-	s.overlayPeerIDMu.Unlock()
 }
 
 func (s *Service) Close() error {

@@ -5,7 +5,7 @@
 package pingpong
 
 import (
-	m "github.com/janos/bee/pkg/metrics"
+	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

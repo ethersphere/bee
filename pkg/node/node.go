@@ -15,10 +15,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/janos/bee/pkg/api"
-	"github.com/janos/bee/pkg/debugapi"
-	"github.com/janos/bee/pkg/p2p/libp2p"
-	"github.com/janos/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/pingpong"
 )
 
 type Bee struct {

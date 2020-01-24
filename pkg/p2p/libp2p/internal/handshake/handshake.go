@@ -8,11 +8,9 @@ package handshake
 
 import (
 	"fmt"
-	"io"
-	"log"
 
-	"github.com/janos/bee/pkg/p2p"
-	"github.com/janos/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 )
 
 const (
@@ -22,53 +20,73 @@ const (
 )
 
 type Service struct {
-	overlay string
+	overlay   string
+	networkID int32
+	logger    Logger
 }
 
-func New(overlay string) *Service {
-	return &Service{overlay: overlay}
+func New(overlay string, networkID int32, logger Logger) *Service {
+	return &Service{
+		overlay:   overlay,
+		networkID: networkID,
+		logger:    logger,
+	}
 }
 
-func (s *Service) Handshake(stream p2p.Stream) (overlay string, err error) {
+type Logger interface {
+	Tracef(format string, args ...interface{})
+}
+
+func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	var resp ShakeHand
-	if err := w.WriteMsg(&ShakeHand{Address: s.overlay}); err != nil {
-		return "", fmt.Errorf("handshake handler: write message: %v\n", err)
+	if err := w.WriteMsg(&ShakeHand{
+		Address:   s.overlay,
+		NetworkID: s.networkID,
+	}); err != nil {
+		return nil, fmt.Errorf("handshake handler: write message: %w", err)
 	}
 
-	log.Printf("sent handshake req %s\n", s.overlay)
+	s.logger.Tracef("handshake: sent request %s", s.overlay)
 	if err := r.ReadMsg(&resp); err != nil {
-		if err == io.EOF {
-			return "", nil
-		}
-
-		return "", fmt.Errorf("handshake handler: read message: %v\n", err)
+		return nil, fmt.Errorf("handshake handler: read message: %w", err)
 	}
 
-	log.Printf("read handshake resp: %s\n", resp.Address)
-	return resp.Address, nil
+	s.logger.Tracef("handshake: read response: %s", resp.Address)
+	return &Info{
+		Address:   resp.Address,
+		NetworkID: resp.NetworkID,
+		Light:     resp.Light,
+	}, nil
 }
 
-func (s *Service) Handler(stream p2p.Stream) string {
+func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
 	var req ShakeHand
 	if err := r.ReadMsg(&req); err != nil {
-		if err == io.EOF {
-			return ""
-		}
-		log.Printf("handshake handler: read message: %v\n", err)
-		return ""
+		return nil, fmt.Errorf("read message: %w", err)
 	}
 
-	log.Printf("received handshake req %s\n", req.Address)
+	s.logger.Tracef("handshake: received request %s", req.Address)
 	if err := w.WriteMsg(&ShakeHand{
-		Address: s.overlay,
+		Address:   s.overlay,
+		NetworkID: s.networkID,
 	}); err != nil {
-		log.Printf("handshake handler: write message: %v\n", err)
+		return nil, fmt.Errorf("write message: %w", err)
 	}
 
-	log.Printf("sent handshake resp: %s\n", s.overlay)
-	return req.Address
+	s.logger.Tracef("handshake: handled response: %s", s.overlay)
+	return &Info{
+		Address:   req.Address,
+		NetworkID: req.NetworkID,
+		Light:     req.Light,
+	}, nil
+}
+
+type Info struct {
+	Address   string
+	NetworkID int32
+	Light     bool
 }

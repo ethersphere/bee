@@ -10,7 +10,7 @@ builds:
       - -trimpath
 
     ldflags:
-      - -s -w -X github.com/janos/bee.version={{.Version}} -X github.com/janos/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
 
     env:
       - CGO_ENABLED=0

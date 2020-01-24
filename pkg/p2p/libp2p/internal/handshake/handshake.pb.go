@@ -23,7 +23,9 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type ShakeHand struct {
-	Address string `protobuf:"bytes,1,opt,name=PeerID,proto3" json:"PeerID,omitempty"`
+	Address   string `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
+	NetworkID int32  `protobuf:"varint,2,opt,name=NetworkID,proto3" json:"NetworkID,omitempty"`
+	Light     bool   `protobuf:"varint,3,opt,name=Light,proto3" json:"Light,omitempty"`
 }
 
 func (m *ShakeHand) Reset()         { *m = ShakeHand{} }
@@ -66,6 +68,20 @@ func (m *ShakeHand) GetAddress() string {
 	return ""
 }
 
+func (m *ShakeHand) GetNetworkID() int32 {
+	if m != nil {
+		return m.NetworkID
+	}
+	return 0
+}
+
+func (m *ShakeHand) GetLight() bool {
+	if m != nil {
+		return m.Light
+	}
+	return false
+}
+
 func init() {
 	proto.RegisterType((*ShakeHand)(nil), "handshake.ShakeHand")
 }
@@ -73,14 +89,17 @@ func init() {
 func init() { proto.RegisterFile("handshake.proto", fileDescriptor_a77305914d5d202f) }
 
 var fileDescriptor_a77305914d5d202f = []byte{
-	// 108 bytes of a gzipped FileDescriptorProto
+	// 148 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcf, 0x48, 0xcc, 0x4b,
 	0x29, 0xce, 0x48, 0xcc, 0x4e, 0xd5, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0x84, 0x0b, 0x28,
-	0xa9, 0x72, 0x71, 0x06, 0x83, 0x18, 0x1e, 0x89, 0x79, 0x29, 0x42, 0x12, 0x5c, 0xec, 0x8e, 0x29,
-	0x29, 0x45, 0xa9, 0xc5, 0xc5, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0x30, 0xae, 0x93, 0xc4,
-	0x89, 0x47, 0x72, 0x8c, 0x17, 0x1e, 0xc9, 0x31, 0x3e, 0x78, 0x24, 0xc7, 0x38, 0xe1, 0xb1, 0x1c,
-	0xc3, 0x85, 0xc7, 0x72, 0x0c, 0x37, 0x1e, 0xcb, 0x31, 0x24, 0xb1, 0x81, 0x8d, 0x34, 0x06, 0x04,
-	0x00, 0x00, 0xff, 0xff, 0x5d, 0x34, 0x69, 0xba, 0x65, 0x00, 0x00, 0x00,
+	0x45, 0x72, 0x71, 0x06, 0x83, 0x18, 0x1e, 0x89, 0x79, 0x29, 0x42, 0x12, 0x5c, 0xec, 0x8e, 0x29,
+	0x29, 0x45, 0xa9, 0xc5, 0xc5, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0x30, 0xae, 0x90, 0x0c,
+	0x17, 0xa7, 0x5f, 0x6a, 0x49, 0x79, 0x7e, 0x51, 0xb6, 0xa7, 0x8b, 0x04, 0x93, 0x02, 0xa3, 0x06,
+	0x6b, 0x10, 0x42, 0x40, 0x48, 0x84, 0x8b, 0xd5, 0x27, 0x33, 0x3d, 0xa3, 0x44, 0x82, 0x59, 0x81,
+	0x51, 0x83, 0x23, 0x08, 0xc2, 0x71, 0x92, 0x38, 0xf1, 0x48, 0x8e, 0xf1, 0xc2, 0x23, 0x39, 0xc6,
+	0x07, 0x8f, 0xe4, 0x18, 0x27, 0x3c, 0x96, 0x63, 0xb8, 0xf0, 0x58, 0x8e, 0xe1, 0xc6, 0x63, 0x39,
+	0x86, 0x24, 0x36, 0xb0, 0x33, 0x8c, 0x01, 0x01, 0x00, 0x00, 0xff, 0xff, 0x62, 0x1c, 0xa2, 0x06,
+	0x99, 0x00, 0x00, 0x00,
 }
 
 func (m *ShakeHand) Marshal() (dAtA []byte, err error) {
@@ -103,6 +122,21 @@ func (m *ShakeHand) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Light {
+		i--
+		if m.Light {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.NetworkID != 0 {
+		i = encodeVarintHandshake(dAtA, i, uint64(m.NetworkID))
+		i--
+		dAtA[i] = 0x10
+	}
 	if len(m.Address) > 0 {
 		i -= len(m.Address)
 		copy(dAtA[i:], m.Address)
@@ -133,6 +167,12 @@ func (m *ShakeHand) Size() (n int) {
 	l = len(m.Address)
 	if l > 0 {
 		n += 1 + l + sovHandshake(uint64(l))
+	}
+	if m.NetworkID != 0 {
+		n += 1 + sovHandshake(uint64(m.NetworkID))
+	}
+	if m.Light {
+		n += 2
 	}
 	return n
 }
@@ -174,7 +214,7 @@ func (m *ShakeHand) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PeerID", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -204,6 +244,45 @@ func (m *ShakeHand) Unmarshal(dAtA []byte) error {
 			}
 			m.Address = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NetworkID", wireType)
+			}
+			m.NetworkID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NetworkID |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Light", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Light = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipHandshake(dAtA[iNdEx:])

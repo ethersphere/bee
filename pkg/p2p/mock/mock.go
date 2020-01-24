@@ -10,7 +10,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/janos/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p"
 )
 
 type Recorder struct {

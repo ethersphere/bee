@@ -11,8 +11,6 @@ make binary
 cp dist/bee /usr/local/bin/bee
 ```
 
-Docker image `janos/bee`.
-
 ## Usage (experimental api)
 
 Execute the command terminals to start `node 1`:
@@ -27,10 +25,10 @@ Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
 bee start --api-addr :8502 --p2p-addr :30402 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
-Use the last part of `node 1` multiaddress to ping it using `node 2` by making an HTTP request to `localhost:{PORT2}/pingpong/{ID1}` like:
+Take the address of the connected peer to `node 1` from log line `peer "4932309428148935717" connected` and make an HTTP request to `localhost:{PORT1}/pingpong/{ADDRESS}` like:
 
 ```sh
-curl localhost:8502/pingpong/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+curl localhost:8502/pingpong/4932309428148935717
 ```
 
 ## Structure
@@ -52,6 +50,5 @@ curl localhost:8502/pingpong/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ## TODO
 
 - P2P mock (protocol tester) implementation improvements
-- Overlay addressing in libp2p (provide overlay address in p2p.Peer)
 - Figure out routing (whether to use libp2p Routing or to abstract hive on top of p2p package)
 - Instrumentation: logging, metrics, tracing, pprof...

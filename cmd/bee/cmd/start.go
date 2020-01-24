@@ -19,9 +19,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/janos/bee/pkg/logging"
-	"github.com/janos/bee/pkg/node"
-	"github.com/janos/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/node"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 )
 
 func (c *command) initStartCmd() (err error) {
@@ -89,10 +89,11 @@ func (c *command) initStartCmd() (err error) {
 					DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
 					DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
 					Bootnodes:        c.config.GetStringSlice(optionNameBootnodes),
-					NetworkID:        c.config.GetInt(optionNameNetworkID),
+					NetworkID:        c.config.GetInt32(optionNameNetworkID),
 					ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
 					ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
 					ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
+					Logger:           logger,
 				},
 				Logger: logger,
 			})
@@ -142,7 +143,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
 	cmd.Flags().String(optionNameDebugAPIAddr, "", "debug HTTP API listen address, e.g. 127.0.0.1:6060")
-	cmd.Flags().Int(optionNameNetworkID, 1, "ID of the Swarm network")
+	cmd.Flags().Int32(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().Int(optionNameConnectionsLow, 200, "low watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
