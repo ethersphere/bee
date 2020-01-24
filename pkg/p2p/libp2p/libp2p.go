@@ -36,8 +36,8 @@ type Service struct {
 	host             host.Host
 	metrics          metrics
 	handshakeService *handshake.Service
-	peers            map[string]*peer         // overlay -> peer
-	addresses        map[libp2ppeer.ID]string // peerID -> overlay
+	overlayToPeerID  map[string]libp2ppeer.ID
+	peerIDToOverlay  map[libp2ppeer.ID]string
 }
 
 type Options struct {
@@ -98,7 +98,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	opts := []libp2p.Option{
 		// Use the keypair we generated
 		//libp2p.Identity(priv),
-		// Multiple listen addresses
+		// Multiple listen peerIDToOverlay
 		libp2p.ListenAddrStrings(listenAddrs...),
 		// support TLS connections
 		libp2p.Security(libp2ptls.ID, libp2ptls.New),
@@ -129,7 +129,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, err
 	}
 
-	// If you want to help other peers to figure out if they are behind
+	// If you want to help other overlayToPeerID to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
 	if _, err = autonat.NewAutoNATService(ctx, h,
@@ -145,10 +145,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	overlay := strconv.Itoa(rand.Int())
 	s := &Service{
-		host:      h,
-		metrics:   newMetrics(),
-		peers:     make(map[string]*peer),
-		addresses: make(map[libp2ppeer.ID]string),
+		host:             h,
+		metrics:          newMetrics(),
+		overlayToPeerID:  make(map[string]libp2ppeer.ID),
+		peerIDToOverlay:  make(map[libp2ppeer.ID]string),
 		handshakeService: handshake.New(overlay),
 	}
 
@@ -164,7 +164,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		s.metrics.HandledStreamCount.Inc()
 		overlay := s.handshakeService.Handler(stream)
-		s.initPeer(overlay, stream.Conn().RemotePeer())
+		s.addAddresses(overlay, stream.Conn().RemotePeer())
 	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
@@ -196,7 +196,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		}
 
 		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
-			overlay, ok := s.addresses[stream.Conn().RemotePeer()]
+			overlay, ok := s.peerIDToOverlay[stream.Conn().RemotePeer()]
 			if !ok {
 				// todo: handle better
 				fmt.Printf("Could not fetch overlay for peerID %s\n", stream)
@@ -218,7 +218,7 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	}
 
 	// Now we can build a full multiaddress to reach this host
-	// by encapsulating both addresses:
+	// by encapsulating both peerIDToOverlay:
 	for _, addr := range s.host.Addrs() {
 		addrs = append(addrs, addr.Encapsulate(hostAddr).String())
 	}
@@ -247,19 +247,19 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 		return err
 	}
 
-	s.initPeer(overlay, info.ID)
+	s.addAddresses(overlay, info.ID)
 	s.metrics.CreatedConnectionCount.Inc()
 	fmt.Println("overlay handshake finished")
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
-	peer, ok := s.peers[overlay]
+	peerID, ok := s.overlayToPeerID[overlay]
 	if !ok {
-		fmt.Printf("Could not fetch peer for overlay %s\n", overlay)
+		fmt.Printf("Could not fetch peerID for overlay %s\n", overlay)
 		return nil, nil
 	}
 
-	return s.newStreamForPeerID(ctx, peer.peerID, protocolName, streamName, version)
+	return s.newStreamForPeerID(ctx, peerID, protocolName, streamName, version)
 }
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, streamName, version string) (p2p.Stream, error) {
@@ -276,13 +276,9 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 }
 
 
-func (s *Service) initPeer(overlay string, peerID libp2ppeer.ID) {
-	s.peers[overlay] = &peer{
-		overlay: overlay,
-		peerID:  peerID,
-	}
-
-	s.addresses[peerID] = overlay
+func (s *Service) addAddresses(overlay string, peerID libp2ppeer.ID) {
+	s.overlayToPeerID[overlay] = peerID
+	s.peerIDToOverlay[peerID] = overlay
 }
 
 
