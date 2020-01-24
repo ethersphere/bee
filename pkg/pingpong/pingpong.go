@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. pingpong.proto"
-
 package pingpong
 
 import (
@@ -59,8 +58,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt time.Duration, err error) {
-	stream, err := s.streamer.NewStream(ctx, peerID, protocolName, streamName, streamVersion)
+func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt time.Duration, err error) {
+	stream, err := s.streamer.NewStream(ctx, address, protocolName, streamName, streamVersion)
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}
@@ -91,10 +90,11 @@ func (s *Service) Ping(ctx context.Context, peerID string, msgs ...string) (rtt 
 	return time.Since(start) / time.Duration(len(msgs)), nil
 }
 
-func (s *Service) Handler(p p2p.Peer) {
-	w, r := protobuf.NewWriterAndReader(p.Stream)
-	defer p.Stream.Close()
+func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
 
+	fmt.Printf("Initiate pinpong for peer %s", peer)
 	var ping Ping
 	for {
 		if err := r.ReadMsg(&ping); err != nil {

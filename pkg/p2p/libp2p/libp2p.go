@@ -10,12 +10,15 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/janos/bee/pkg/p2p"
 
+	handshake "github.com/janos/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
@@ -23,7 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
+	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	secio "github.com/libp2p/go-libp2p-secio"
@@ -35,8 +38,11 @@ import (
 var _ p2p.Service = (*Service)(nil)
 
 type Service struct {
-	host    host.Host
-	metrics metrics
+	host             host.Host
+	metrics          metrics
+	handshakeService *handshake.Service
+	overlayToPeerID  map[string]libp2ppeer.ID
+	peerIDToOverlay  map[libp2ppeer.ID]string
 }
 
 type Options struct {
@@ -72,7 +78,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	}
 
 	var listenAddrs []string
-
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
 		if !o.DisableWS {
@@ -174,10 +179,28 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	overlay := strconv.Itoa(rand.Int())
 	s := &Service{
-		host:    h,
-		metrics: newMetrics(),
+		host:             h,
+		metrics:          newMetrics(),
+		overlayToPeerID:  make(map[string]libp2ppeer.ID),
+		peerIDToOverlay:  make(map[libp2ppeer.ID]string),
+		handshakeService: handshake.New(overlay),
 	}
+
+	// Construct protocols.
+
+	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion))
+	matcher, err := helpers.MultistreamSemverMatcher(id)
+	if err != nil {
+		return nil, fmt.Errorf("match semver %s: %w", id, err)
+	}
+
+	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+		s.metrics.HandledStreamCount.Inc()
+		overlay := s.handshakeService.Handler(stream)
+		s.addAddresses(overlay, stream.Conn().RemotePeer())
+	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
 	for _, a := range o.Bootnodes {
@@ -186,7 +209,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return nil, fmt.Errorf("bootnode %s: %w", a, err)
 		}
 
-		if _, err := s.Connect(ctx, addr); err != nil {
+		err = s.Connect(ctx, addr)
+		if err != nil {
 			return nil, fmt.Errorf("connect to bootnode %s: %w", a, err)
 		}
 	}
@@ -205,12 +229,17 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		if err != nil {
 			return fmt.Errorf("match semver %s: %w", id, err)
 		}
+
 		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+			overlay, ok := s.peerIDToOverlay[stream.Conn().RemotePeer()]
+			if !ok {
+				// todo: handle better
+				fmt.Printf("Could not fetch handshake for peerID %s\n", stream)
+				return
+			}
+
 			s.metrics.HandledStreamCount.Inc()
-			ss.Handler(p2p.Peer{
-				Addr:   stream.Conn().RemoteMultiaddr(),
-				Stream: stream,
-			})
+			ss.Handler(p2p.Peer{Address: overlay}, stream)
 		})
 	}
 	return nil
@@ -231,29 +260,46 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	return addrs, nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (peerID string, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 	// Extract the peer ID from the multiaddr.
-	info, err := peer.AddrInfoFromP2pAddr(addr)
+	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	if err := s.host.Connect(ctx, *info); err != nil {
-		return "", err
+		return err
 	}
 
-	s.metrics.CreatedConnectionCount.Inc()
+	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
+	if err != nil {
+		return fmt.Errorf("new stream: %w", err)
+	}
+	defer stream.Close()
 
-	return info.ID.String(), nil
+	overlay, err := s.handshakeService.Handshake(stream)
+	if err != nil {
+		return err
+	}
+
+	s.addAddresses(overlay, info.ID)
+	s.metrics.CreatedConnectionCount.Inc()
+	fmt.Println("handshake handshake finished")
+	return nil
+}
+func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
+	peerID, ok := s.overlayToPeerID[overlay]
+	if !ok {
+		fmt.Printf("Could not fetch peerID for handshake %s\n", overlay)
+		return nil, nil
+	}
+
+	return s.newStreamForPeerID(ctx, peerID, protocolName, streamName, version)
 }
 
-func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamName, version string) (p2p.Stream, error) {
-	id, err := peer.Decode(peerID)
-	if err != nil {
-		return nil, fmt.Errorf("decode peer id %q: %w", peerID, err)
-	}
+func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, streamName, version string) (p2p.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, streamName, version)
-	st, err := s.host.NewStream(ctx, id, protocol.ID(swarmStreamName))
+	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
 		if err == multistream.ErrNotSupported || err == multistream.ErrIncorrectVersion {
 			return nil, p2p.NewIncompatibleStreamError(err)
@@ -262,6 +308,11 @@ func (s *Service) NewStream(ctx context.Context, peerID, protocolName, streamNam
 	}
 	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
+}
+
+func (s *Service) addAddresses(overlay string, peerID libp2ppeer.ID) {
+	s.overlayToPeerID[overlay] = peerID
+	s.peerIDToOverlay[peerID] = overlay
 }
 
 func (s *Service) Close() error {
