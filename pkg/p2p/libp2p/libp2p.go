@@ -71,7 +71,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	}
 
 	var listenAddrs []string
-
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
 		if !o.DisableWS {
@@ -149,7 +148,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		handshakeService: handshake.New(overlay),
 	}
 
-
 	// Construct protocols.
 
 	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion))
@@ -201,7 +199,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			}
 
 			s.metrics.HandledStreamCount.Inc()
-			ss.Handler(p2p.Peer{Address:overlay}, stream)
+			ss.Handler(p2p.Peer{Address: overlay}, stream)
 		})
 	}
 	return nil
@@ -272,12 +270,10 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 	return st, nil
 }
 
-
 func (s *Service) addAddresses(overlay string, peerID libp2ppeer.ID) {
 	s.overlayToPeerID[overlay] = peerID
 	s.peerIDToOverlay[peerID] = overlay
 }
-
 
 func (s *Service) Close() error {
 	return s.host.Close()

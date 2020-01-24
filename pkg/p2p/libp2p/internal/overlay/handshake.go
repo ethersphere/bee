@@ -25,16 +25,13 @@ func New(overlay string) *Service {
 }
 
 func (s *Service) Handshake(stream p2p.Stream) (overlay string, err error) {
-
 	w, r := protobuf.NewWriterAndReader(stream)
-
 	var resp ShakeHand
 	if err := w.WriteMsg(&ShakeHand{Address: s.overlay}); err != nil {
 		return "", fmt.Errorf("overlay handler: write message: %v\n", err)
 	}
 
 	log.Printf("sent overlay req %s\n", s.overlay)
-
 	if err := r.ReadMsg(&resp); err != nil {
 		if err == io.EOF {
 			return "", nil

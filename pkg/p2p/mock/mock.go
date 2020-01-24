@@ -19,14 +19,6 @@ type Recorder struct {
 	protocols []p2p.ProtocolSpec
 }
 
-type PeerMock struct {
-	overlay string
-}
-
-func (p PeerMock) Overlay() string {
-	return p.overlay
-}
-
 func NewRecorder(protocols ...p2p.ProtocolSpec) *Recorder {
 	return &Recorder{
 		records:   make(map[string][]Record),
@@ -53,7 +45,7 @@ func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamNam
 	if handler == nil {
 		return nil, fmt.Errorf("unsupported protocol stream %q %q %q", protocolName, streamName, version)
 	}
-	go handler(p2p.Peer{Address:overlay}, streamIn)
+	go handler(p2p.Peer{Address: overlay}, streamIn)
 
 	id := overlay + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
