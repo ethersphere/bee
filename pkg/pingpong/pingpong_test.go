@@ -9,14 +9,16 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong"
 )
-
 
 func TestPing(t *testing.T) {
 	logger := logging.New(ioutil.Discard)
@@ -27,7 +29,18 @@ func TestPing(t *testing.T) {
 	})
 
 	// setup the stream recorder to record stream data
-	recorder := mock.NewRecorder(server.Protocol())
+	recorder := mock.NewRecorder(
+		mock.WithProtocols(server.Protocol()),
+		mock.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
+			if runtime.GOOS == "windows" {
+				// windows has a bit lower time resolution
+				// so, slow down the handler with a middleware
+				// not to get 0s for rtt value
+				time.Sleep(100 * time.Millisecond)
+			}
+			return f
+		}),
+	)
 
 	// create a pingpong client that will do pinging
 	client := pingpong.New(pingpong.Options{
@@ -36,11 +49,16 @@ func TestPing(t *testing.T) {
 	})
 
 	// ping
-	peerID := "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"
+	peerID := "124"
 	greetings := []string{"hey", "there", "fella"}
-	_, err := client.Ping(context.Background(), peerID, greetings...)
+	rtt, err := client.Ping(context.Background(), peerID, greetings...)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// check that RTT is a sane value
+	if rtt <= 0 {
+		t.Errorf("invalid RTT value %v", rtt)
 	}
 
 	// get a record for this stream

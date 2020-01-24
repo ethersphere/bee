@@ -94,7 +94,6 @@ func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
-	fmt.Printf("Initiate pinpong for peer %s", peer)
 	var ping Ping
 	for {
 		if err := r.ReadMsg(&ping); err != nil {
