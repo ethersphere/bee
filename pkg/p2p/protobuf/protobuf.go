@@ -5,9 +5,9 @@
 package protobuf
 
 import (
+	"github.com/ethersphere/bee/pkg/p2p"
 	ggio "github.com/gogo/protobuf/io"
 	"github.com/gogo/protobuf/proto"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"io"
 )
 

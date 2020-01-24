@@ -59,7 +59,7 @@ func TestHandle(t *testing.T) {
 			Light:     false,
 		}
 
-		w.WriteMsg(&ShakeHand{
+		_ = w.WriteMsg(&ShakeHand{
 			Address:   info.Address,
 			NetworkID: info.NetworkID,
 			Light:     info.Light,
