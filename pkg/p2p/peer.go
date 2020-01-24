@@ -4,6 +4,10 @@
 
 package p2p
 
+import "errors"
+
 type Peer struct {
 	Address string
 }
+
+var ErrPeerNotFound = errors.New("peer not found")

@@ -234,9 +234,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 			peerID := stream.Conn().RemotePeer()
-			s.overlayPeerIDMu.Lock()
-			overlay, ok := s.peerIDToOverlay[peerID]
-			s.overlayPeerIDMu.Unlock()
+			overlay, ok := s.overlayForPeerID(peerID)
 			if !ok {
 				// todo: handle better
 				fmt.Printf("Could not fetch handshake for peerID %s\n", stream)
@@ -293,12 +291,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
-	s.overlayPeerIDMu.Lock()
-	peerID, ok := s.overlayToPeerID[overlay]
-	s.overlayPeerIDMu.Unlock()
+	peerID, ok := s.peerIDForOverlay(overlay)
 	if !ok {
-		fmt.Printf("Could not fetch peerID for handshake %s\n", overlay)
-		return nil, nil
+		return nil, p2p.ErrPeerNotFound
 	}
 
 	return s.newStreamForPeerID(ctx, peerID, protocolName, streamName, version)
@@ -315,6 +310,20 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 	}
 	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
+}
+
+func (s *Service) peerIDForOverlay(overlay string) (peerID libp2ppeer.ID, ok bool) {
+	s.overlayPeerIDMu.RLock()
+	peerID, ok = s.overlayToPeerID[overlay]
+	s.overlayPeerIDMu.RUnlock()
+	return peerID, ok
+}
+
+func (s *Service) overlayForPeerID(peerID libp2ppeer.ID) (overlay string, ok bool) {
+	s.overlayPeerIDMu.RLock()
+	overlay, ok = s.peerIDToOverlay[peerID]
+	s.overlayPeerIDMu.RUnlock()
+	return overlay, ok
 }
 
 func (s *Service) addAddresses(overlay string, peerID libp2ppeer.ID) {
