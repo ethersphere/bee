@@ -37,6 +37,11 @@ import (
 
 var _ p2p.Service = (*Service)(nil)
 
+func init() {
+	// Only temporary for fake overlay address generation.
+	rand.Seed(time.Now().UnixNano())
+}
+
 type Service struct {
 	host             host.Host
 	metrics          metrics
@@ -186,6 +191,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	// This is just a temporary way to generate an overlay address.
+	// TODO: proper key management and overlay address generation
 	overlay := strconv.Itoa(rand.Int())
 	s := &Service{
 		host:             h,
