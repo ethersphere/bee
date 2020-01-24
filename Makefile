@@ -1,7 +1,9 @@
+COMMIT ?= ""
+
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-LDFLAGS ?= -s -w -X github.com/janos/bee.commit="$(shell git describe --long --dirty --always --match "" || true)"
+LDFLAGS ?= -s -w -X github.com/janos/bee.commit="$(COMMIT)"
 
 .PHONY: all
 all: lint vet test binary

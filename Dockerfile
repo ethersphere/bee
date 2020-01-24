@@ -1,9 +1,11 @@
 FROM golang:1.13 AS build
 
+ARG COMMIT=""
+
 WORKDIR /src
 COPY . ./
 
-RUN make binary
+RUN make binary COMMIT=$COMMIT
 
 FROM debian:10.2-slim
 
