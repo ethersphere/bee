@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/janos/bee/pkg/p2p"
@@ -43,6 +44,7 @@ type Service struct {
 	handshakeService *handshake.Service
 	overlayToPeerID  map[string]libp2ppeer.ID
 	peerIDToOverlay  map[libp2ppeer.ID]string
+	overlayPeerIDMu  sync.RWMutex
 }
 
 type Options struct {
@@ -231,7 +233,10 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		}
 
 		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
-			overlay, ok := s.peerIDToOverlay[stream.Conn().RemotePeer()]
+			peerID := stream.Conn().RemotePeer()
+			s.overlayPeerIDMu.Lock()
+			overlay, ok := s.peerIDToOverlay[peerID]
+			s.overlayPeerIDMu.Unlock()
 			if !ok {
 				// todo: handle better
 				fmt.Printf("Could not fetch handshake for peerID %s\n", stream)
@@ -288,7 +293,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
+	s.overlayPeerIDMu.Lock()
 	peerID, ok := s.overlayToPeerID[overlay]
+	s.overlayPeerIDMu.Unlock()
 	if !ok {
 		fmt.Printf("Could not fetch peerID for handshake %s\n", overlay)
 		return nil, nil
@@ -311,8 +318,10 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 }
 
 func (s *Service) addAddresses(overlay string, peerID libp2ppeer.ID) {
+	s.overlayPeerIDMu.Lock()
 	s.overlayToPeerID[overlay] = peerID
 	s.peerIDToOverlay[peerID] = overlay
+	s.overlayPeerIDMu.Unlock()
 }
 
 func (s *Service) Close() error {
