@@ -4,5 +4,7 @@ package handshake;
 
 message ShakeHand {
     string Address = 1;
+    int32 NetworkID = 2;
+    bool Light = 3;
 }
 

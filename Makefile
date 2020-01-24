@@ -6,7 +6,7 @@ GOLANGCI_LINT ?= golangci-lint
 LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
 
 .PHONY: all
-all: lint vet test binary
+all: build lint vet test binary
 
 .PHONY: binary
 binary: export CGO_ENABLED=0

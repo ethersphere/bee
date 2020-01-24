@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pingpong"
 )
 
+
 func TestPing(t *testing.T) {
 	logger := logging.New(ioutil.Discard)
 

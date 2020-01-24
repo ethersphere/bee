@@ -45,6 +45,7 @@ func init() {
 type Service struct {
 	host             host.Host
 	metrics          metrics
+	networkID        int32
 	handshakeService *handshake.Service
 	peers            *peerRegistry
 	logger           Logger
@@ -56,7 +57,7 @@ type Options struct {
 	DisableWS        bool
 	DisableQUIC      bool
 	Bootnodes        []string
-	NetworkID        int // TODO: to be used in the handshake protocol
+	NetworkID        int32
 	ConnectionsLow   int
 	ConnectionsHigh  int
 	ConnectionsGrace time.Duration
@@ -197,7 +198,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
-		handshakeService: handshake.New(overlay, o.Logger),
+		networkID:        o.NetworkID,
+		handshakeService: handshake.New(overlay, o.NetworkID, o.Logger),
 		peers:            newPeerRegistry(),
 		logger:           o.Logger,
 	}
@@ -212,11 +214,16 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		overlay, err := s.handshakeService.Handle(stream)
+		i, err := s.handshakeService.Handle(stream)
 		if err != nil {
 			s.logger.Errorf("handshake with peer %s: %w", peerID, err)
+			return
 		}
-		s.peers.add(peerID, overlay)
+		if i.NetworkID != s.networkID {
+			s.logger.Errorf("handshake with peer %s: invalid network id %v", peerID, i.NetworkID)
+			return
+		}
+		s.peers.add(peerID, i.Address)
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Infof("peer %q connected", overlay)
 	})
@@ -297,14 +304,17 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
 	}
 	defer stream.Close()
 
-	overlay, err := s.handshakeService.Handshake(stream)
+	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
 		return err
 	}
+	if i.NetworkID != s.networkID {
+		return fmt.Errorf("invalid network id %v", i.NetworkID)
+	}
 
-	s.peers.add(info.ID, overlay)
+	s.peers.add(info.ID, i.Address)
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("peer %q connected", overlay)
+	s.logger.Infof("peer %q connected", i.Address)
 	return nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
