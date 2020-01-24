@@ -59,6 +59,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt time.Duration, err error) {
+	start := time.Now()
 	stream, err := s.streamer.NewStream(ctx, address, protocolName, streamName, streamVersion)
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
@@ -68,7 +69,6 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	var pong Pong
-	start := time.Now()
 	for _, msg := range msgs {
 		if err := w.WriteMsg(&Ping{
 			Greeting: msg,
@@ -87,14 +87,13 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 		s.logger.Debugf("got pong: %q", pong.Response)
 		s.metrics.PongReceivedCount.Inc()
 	}
-	return time.Since(start) / time.Duration(len(msgs)), nil
+	return time.Since(start), nil
 }
 
 func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
-	fmt.Printf("Initiate pinpong for peer %s", peer)
 	var ping Ping
 	for {
 		if err := r.ReadMsg(&ping); err != nil {
