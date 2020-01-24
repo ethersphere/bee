@@ -6,32 +6,32 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"log"
-	"net"
-	"net/http"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/janos/bee/pkg/api"
-	"github.com/janos/bee/pkg/debugapi"
+	"github.com/janos/bee/pkg/logging"
+	"github.com/janos/bee/pkg/node"
 	"github.com/janos/bee/pkg/p2p/libp2p"
-	"github.com/janos/bee/pkg/pingpong"
 )
 
 func (c *command) initStartCmd() (err error) {
 
 	const (
+		optionNameDataDir          = "data-dir"
 		optionNameAPIAddr          = "api-addr"
 		optionNameP2PAddr          = "p2p-addr"
 		optionNameP2PDisableWS     = "p2p-disable-ws"
 		optionNameP2PDisableQUIC   = "p2p-disable-quic"
 		optionNameDebugAPIAddr     = "debug-api-addr"
 		optionNameBootnodes        = "bootnode"
+		optionNameNetworkID        = "network-id"
 		optionNameConnectionsLow   = "connections-low"
 		optionNameConnectionsHigh  = "connections-high"
 		optionNameConnectionsGrace = "connections-grace"
@@ -45,82 +45,40 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			logger := logging.New(cmd.OutOrStdout())
+			logger.SetLevel(logrus.TraceLevel)
 
-			// Construct P2P service.
-			p2ps, err := libp2p.New(ctx, libp2p.Options{
-				Addr:             c.config.GetString(optionNameP2PAddr),
-				DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
-				DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
-				Bootnodes:        c.config.GetStringSlice(optionNameBootnodes),
-				ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
-				ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
-				ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
-			})
-			if err != nil {
-				return fmt.Errorf("p2p service: %w", err)
-			}
-
-			// Construct protocols.
-			pingPong := pingpong.New(p2ps)
-
-			// Add protocols to the P2P service.
-			if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
-				return fmt.Errorf("pingpong service: %w", err)
-			}
-
-			addrs, err := p2ps.Addresses()
-			if err != nil {
-				return fmt.Errorf("get server addresses: %w", err)
-			}
-
-			for _, addr := range addrs {
-				cmd.Println(addr)
-			}
-
-			// API server
-			apiService := api.New(api.Options{
-				P2P:      p2ps,
-				Pingpong: pingPong,
-			})
-			apiListener, err := net.Listen("tcp", c.config.GetString(optionNameAPIAddr))
-			if err != nil {
-				return fmt.Errorf("api listener: %w", err)
-			}
-			apiServer := &http.Server{Handler: apiService}
-
-			go func() {
-				cmd.Println("api address:", apiListener.Addr())
-
-				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-					log.Println("api server:", err)
+			var libp2pPrivateKey io.ReadWriteCloser
+			if dataDir := c.config.GetString(optionNameDataDir); dataDir != "" {
+				dir := filepath.Join(dataDir, "libp2p")
+				if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+					return err
 				}
-			}()
-
-			var debugAPIServer *http.Server
-			if addr := c.config.GetString(optionNameDebugAPIAddr); addr != "" {
-				// Debug API server
-				debugAPIService := debugapi.New(debugapi.Options{})
-				// register metrics from components
-				debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
-				debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
-				debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
-
-				debugAPIListener, err := net.Listen("tcp", addr)
+				f, err := os.OpenFile(filepath.Join(dir, "private.key"), os.O_CREATE|os.O_RDWR, 0600)
 				if err != nil {
-					return fmt.Errorf("debug api listener: %w", err)
+					return err
 				}
+				libp2pPrivateKey = f
+			}
 
-				debugAPIServer := &http.Server{Handler: debugAPIService}
-
-				go func() {
-					cmd.Println("debug api address:", debugAPIListener.Addr())
-
-					if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-						log.Println("debug api server:", err)
-					}
-				}()
+			b, err := node.NewBee(node.Options{
+				APIAddr:      c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr: c.config.GetString(optionNameDebugAPIAddr),
+				LibP2POptions: libp2p.Options{
+					PrivateKey:       libp2pPrivateKey,
+					Addr:             c.config.GetString(optionNameP2PAddr),
+					DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
+					DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
+					Bootnodes:        c.config.GetStringSlice(optionNameBootnodes),
+					NetworkID:        c.config.GetInt(optionNameNetworkID),
+					ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
+					ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
+					ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
+				},
+				Logger: logger,
+			})
+			if err != nil {
+				return err
 			}
 
 			// Wait for termination or interrupt signals.
@@ -131,33 +89,18 @@ func (c *command) initStartCmd() (err error) {
 			// Block main goroutine until it is interrupted
 			sig := <-interruptChannel
 
-			log.Println("received signal:", sig)
+			logger.Debugf("received signal: %v", sig)
 
 			// Shutdown
 			done := make(chan struct{})
 			go func() {
-				defer func() {
-					if err := recover(); err != nil {
-						log.Println("shutdown panic:", err)
-					}
-				}()
 				defer close(done)
 
-				ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				defer cancel()
 
-				if err := apiServer.Shutdown(ctx); err != nil {
-					log.Println("api server shutdown:", err)
-				}
-
-				if debugAPIServer != nil {
-					if err := debugAPIServer.Shutdown(ctx); err != nil {
-						log.Println("debug api server shutdown:", err)
-					}
-				}
-
-				if err := p2ps.Close(); err != nil {
-					log.Println("p2p server shutdown:", err)
+				if err := b.Shutdown(ctx); err != nil {
+					logger.Errorf("shutdown: %v", err)
 				}
 			}()
 
@@ -165,7 +108,7 @@ func (c *command) initStartCmd() (err error) {
 			// allow process termination by receiving another signal.
 			select {
 			case sig := <-interruptChannel:
-				log.Printf("received signal: %v\n", sig)
+				logger.Debugf("received signal: %v", sig)
 			case <-done:
 			}
 
@@ -173,12 +116,14 @@ func (c *command) initStartCmd() (err error) {
 		},
 	}
 
+	cmd.Flags().String(optionNameDataDir, filepath.Join(baseDir, "data"), "data directory")
 	cmd.Flags().String(optionNameAPIAddr, ":8500", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":30399", "P2P listen address")
 	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
-	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "Debug HTTP API listen address")
+	cmd.Flags().String(optionNameDebugAPIAddr, "", "debug HTTP API listen address, e.g. 127.0.0.1:6060")
+	cmd.Flags().Int(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().Int(optionNameConnectionsLow, 200, "low watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
