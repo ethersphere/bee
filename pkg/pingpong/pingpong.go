@@ -34,7 +34,6 @@ type Options struct {
 
 type Logger interface {
 	Debugf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
 }
 
 func New(o Options) *Service {
@@ -73,7 +72,7 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 		if err := w.WriteMsg(&Ping{
 			Greeting: msg,
 		}); err != nil {
-			return 0, fmt.Errorf("stream write: %w", err)
+			return 0, fmt.Errorf("write message: %w", err)
 		}
 		s.metrics.PingSentCount.Inc()
 
@@ -81,7 +80,7 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 			if err == io.EOF {
 				break
 			}
-			return 0, err
+			return 0, fmt.Errorf("read message: %w", err)
 		}
 
 		s.logger.Debugf("got pong: %q", pong.Response)
@@ -90,7 +89,7 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 	return time.Since(start), nil
 }
 
-func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
+func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
@@ -100,8 +99,7 @@ func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
 			if err == io.EOF {
 				break
 			}
-			s.logger.Errorf("pingpong handler: read message: %v\n", err)
-			return
+			return fmt.Errorf("read message: %w", err)
 		}
 		s.logger.Debugf("got ping: %q", ping.Greeting)
 		s.metrics.PingReceivedCount.Inc()
@@ -109,9 +107,9 @@ func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
 		if err := w.WriteMsg(&Pong{
 			Response: "{" + ping.Greeting + "}",
 		}); err != nil {
-			s.logger.Errorf("pingpong handler: write message: %v\n", err)
-			return
+			return fmt.Errorf("write message: %w", err)
 		}
 		s.metrics.PongSentCount.Inc()
 	}
+	return nil
 }

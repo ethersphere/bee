@@ -270,7 +270,9 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			}
 
 			s.metrics.HandledStreamCount.Inc()
-			ss.Handler(p2p.Peer{Address: overlay}, stream)
+			if err := ss.Handler(p2p.Peer{Address: overlay}, stream); err != nil {
+				s.logger.Errorf("%s: %s/%s: %w", p.Name, ss.Name, ss.Version, err)
+			}
 		})
 	}
 	return nil

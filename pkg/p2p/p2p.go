@@ -37,7 +37,7 @@ type StreamSpec struct {
 	Handler HandlerFunc
 }
 
-type HandlerFunc func(Peer, Stream)
+type HandlerFunc func(Peer, Stream) error
 
 type HandlerMiddleware func(HandlerFunc) HandlerFunc
 

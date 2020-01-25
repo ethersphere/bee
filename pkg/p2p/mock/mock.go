@@ -48,7 +48,7 @@ func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamNam
 	streamOut := newStream(recordIn, recordOut)
 	streamIn := newStream(recordOut, recordIn)
 
-	var handler func(p2p.Peer, p2p.Stream)
+	var handler p2p.HandlerFunc
 	for _, p := range r.protocols {
 		if p.Name == protocolName {
 			for _, s := range p.StreamSpecs {
@@ -64,7 +64,11 @@ func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamNam
 	for _, m := range r.middlewares {
 		handler = m(handler)
 	}
-	go handler(p2p.Peer{Address: overlay}, streamIn)
+	go func() {
+		if err := handler(p2p.Peer{Address: overlay}, streamIn); err != nil {
+			panic(err) // todo: store error and export error records for inspection
+		}
+	}()
 
 	id := overlay + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
