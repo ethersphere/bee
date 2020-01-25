@@ -217,10 +217,14 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		i, err := s.handshakeService.Handle(stream)
 		if err != nil {
 			s.logger.Errorf("handshake with peer %s: %w", peerID, err)
+			// todo: test connection close and refactor
+			stream.Conn().Close()
 			return
 		}
 		if i.NetworkID != s.networkID {
 			s.logger.Errorf("handshake with peer %s: invalid network id %v", peerID, i.NetworkID)
+			// todo: test connection close and refactor
+			stream.Conn().Close()
 			return
 		}
 		s.peers.add(peerID, i.Address)
