@@ -83,7 +83,7 @@ func TestHandshake(t *testing.T) {
 		expectedErr := fmt.Errorf("handshake write message: %w", testErr)
 		stream := &StreamMock{writeError: testErr}
 		res, err := handshakeService.Handshake(stream)
-		if err.Error() != expectedErr.Error() {
+		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
 
@@ -97,7 +97,7 @@ func TestHandshake(t *testing.T) {
 		expectedErr := fmt.Errorf("handshake read message: %w", testErr)
 		stream := &StreamMock{writeBuffer: &bytes.Buffer{}, readError: testErr}
 		res, err := handshakeService.Handshake(stream)
-		if err.Error() != expectedErr.Error() {
+		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
 
@@ -163,7 +163,7 @@ func TestHandle(t *testing.T) {
 		expectedErr := fmt.Errorf("handshake handler read message: %w", testErr)
 		stream := &StreamMock{readError: testErr}
 		res, err := handshakeService.Handle(stream)
-		if err.Error() != expectedErr.Error() {
+		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
 
@@ -188,9 +188,8 @@ func TestHandle(t *testing.T) {
 		}
 
 		stream.writeError = testErr
-
 		res, err := handshakeService.Handle(stream)
-		if err.Error() != expectedErr.Error() {
+		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
 
