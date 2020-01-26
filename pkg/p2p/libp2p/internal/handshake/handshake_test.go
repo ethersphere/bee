@@ -2,23 +2,36 @@ package handshake
 
 import (
 	"bytes"
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 )
 
 type StreamMock struct {
-	ReadBuffer  *bytes.Buffer
-	WriteBuffer *bytes.Buffer
+	readBuffer  *bytes.Buffer
+	writeBuffer *bytes.Buffer
+	readError   error
+	writeError  error
 }
 
 func (s *StreamMock) Read(p []byte) (n int, err error) {
-	return s.ReadBuffer.Read(p)
+	if s.readError != nil {
+		return 0, s.readError
+	}
+
+	return s.readBuffer.Read(p)
 }
 
 func (s *StreamMock) Write(p []byte) (n int, err error) {
-	return s.WriteBuffer.Write(p)
+	if s.writeError != nil {
+		return 0, s.writeError
+	}
+
+	return s.writeBuffer.Write(p)
 }
 
 func (s *StreamMock) Close() error {
@@ -43,8 +56,8 @@ func TestHandshake(t *testing.T) {
 
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
-		stream1 := &StreamMock{ReadBuffer: &buffer1, WriteBuffer: &buffer2}
-		stream2 := &StreamMock{ReadBuffer: &buffer2, WriteBuffer: &buffer1}
+		stream1 := &StreamMock{readBuffer: &buffer1, writeBuffer: &buffer2}
+		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&ShakeHand{
@@ -62,6 +75,34 @@ func TestHandshake(t *testing.T) {
 
 		if *res != expectedInfo {
 			t.Fatalf("got %+v, expected %+v", res, info)
+		}
+	})
+
+	t.Run("ERROR - write error ", func(t *testing.T) {
+		testErr := errors.New("test error")
+		expectedErr := fmt.Errorf("handshake write message: %w", testErr)
+		stream := &StreamMock{writeError: testErr}
+		res, err := handshakeService.Handshake(stream)
+		if err.Error() != expectedErr.Error() {
+			t.Fatal("expected:", expectedErr, "got:", err)
+		}
+
+		if res != nil {
+			t.Fatal("handshake returned non-nil res")
+		}
+	})
+
+	t.Run("ERROR - read error ", func(t *testing.T) {
+		testErr := errors.New("test error")
+		expectedErr := fmt.Errorf("handshake read message: %w", testErr)
+		stream := &StreamMock{writeBuffer: &bytes.Buffer{}, readError: testErr}
+		res, err := handshakeService.Handshake(stream)
+		if err.Error() != expectedErr.Error() {
+			t.Fatal("expected:", expectedErr, "got:", err)
+		}
+
+		if res != nil {
+			t.Fatal("handshake returned non-nil res")
 		}
 	})
 }
@@ -85,8 +126,8 @@ func TestHandle(t *testing.T) {
 
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
-		stream1 := &StreamMock{ReadBuffer: &buffer1, WriteBuffer: &buffer2}
-		stream2 := &StreamMock{ReadBuffer: &buffer2, WriteBuffer: &buffer1}
+		stream1 := &StreamMock{readBuffer: &buffer1, writeBuffer: &buffer2}
+		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&ShakeHand{
@@ -114,6 +155,47 @@ func TestHandle(t *testing.T) {
 
 		if nodeInfo != Info(got) {
 			t.Fatalf("got %+v, expected %+v", got, node2Info)
+		}
+	})
+
+	t.Run("ERROR - read error ", func(t *testing.T) {
+		testErr := errors.New("test error")
+		expectedErr := fmt.Errorf("handshake handler read message: %w", testErr)
+		stream := &StreamMock{readError: testErr}
+		res, err := handshakeService.Handle(stream)
+		if err.Error() != expectedErr.Error() {
+			t.Fatal("expected:", expectedErr, "got:", err)
+		}
+
+		if res != nil {
+			t.Fatal("handle returned non-nil res")
+		}
+	})
+
+	t.Run("ERROR - write error ", func(t *testing.T) {
+		testErr := errors.New("test error")
+		expectedErr := fmt.Errorf("handshake handler write message: %w", testErr)
+		var buffer bytes.Buffer
+		stream := &StreamMock{readBuffer: &buffer, writeBuffer: &buffer}
+
+		w, _ := protobuf.NewWriterAndReader(stream)
+		if err := w.WriteMsg(&ShakeHand{
+			Address:   "node1",
+			NetworkID: 0,
+			Light:     false,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		stream.writeError = testErr
+
+		res, err := handshakeService.Handle(stream)
+		if err.Error() != expectedErr.Error() {
+			t.Fatal("expected:", expectedErr, "got:", err)
+		}
+
+		if res != nil {
+			t.Fatal("handshake returned non-nil res")
 		}
 	})
 }

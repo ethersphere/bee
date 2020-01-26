@@ -216,7 +216,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peerID := stream.Conn().RemotePeer()
 		i, err := s.handshakeService.Handle(stream)
 		if err != nil {
-			s.logger.Errorf("handshake with peer %s: %w", peerID, err)
+			s.logger.Errorf("handshake with x %s: %w", peerID, err)
 			// todo: test connection close and refactor
 			stream.Conn().Close()
 			return
