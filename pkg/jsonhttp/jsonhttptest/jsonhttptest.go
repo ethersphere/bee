@@ -16,56 +16,49 @@ import (
 func ResponseDirect(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {
 	t.Helper()
 
-	resp, err := request(client, method, url, body, responseCode)
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp := request(t, client, method, url, body, responseCode)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != responseCode {
-		t.Errorf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
-	}
-
-	gotBytes, err := ioutil.ReadAll(resp.Body)
+	got, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantBytes, err := json.Marshal(response)
+	got = bytes.TrimSpace(got)
+
+	want, err := json.Marshal(response)
 	if err != nil {
 		t.Error(err)
 	}
 
-	got := string(bytes.TrimSpace(gotBytes))
-	want := string(wantBytes)
-
-	if got != want {
-		t.Errorf("got response %s, want %s", got, want)
+	if !bytes.Equal(got, want) {
+		t.Errorf("got response %s, want %s", string(got), string(want))
 	}
 }
 
 func ResponseUnmarshal(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {
 	t.Helper()
 
-	resp, err := request(client, method, url, body, responseCode)
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp := request(t, client, method, url, body, responseCode)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != responseCode {
-		t.Errorf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
-	}
-
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	if err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func request(client *http.Client, method, url string, body io.Reader, responseCode int) (resp *http.Response, err error) {
+func request(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int) *http.Response {
+	t.Helper()
+
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != responseCode {
+		t.Errorf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
+	}
+	return resp
 }
