@@ -26,6 +26,9 @@ var (
 // Code field corresponds with HTTP status code, and Message field is a short
 // description of that code or provides more context about the reason for such
 // response.
+//
+// If response is string, error or Stringer type the string will be set as
+// value to the Message field.
 type StatusResponse struct {
 	Message string `json:"message,omitempty"`
 	Code    int    `json:"code,omitempty"`
