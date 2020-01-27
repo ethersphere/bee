@@ -7,6 +7,7 @@ package libp2p
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -216,11 +217,15 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peerID := stream.Conn().RemotePeer()
 		i, err := s.handshakeService.Handle(stream)
 		if err != nil {
-			s.logger.Errorf("handshake with peer %s: %w", peerID, err)
+			s.logger.Errorf("handshake with x %s: %w", peerID, err)
+			// todo: test connection close and refactor
+			_ = stream.Conn().Close()
 			return
 		}
 		if i.NetworkID != s.networkID {
 			s.logger.Errorf("handshake with peer %s: invalid network id %v", peerID, i.NetworkID)
+			// todo: test connection close and refactor
+			_ = stream.Conn().Close()
 			return
 		}
 		s.peers.add(peerID, i.Address)
@@ -260,13 +265,24 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			peerID := stream.Conn().RemotePeer()
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
-				// todo: handle better
+				// todo: this should never happen, should we disconnect in this case?
+				// todo: test connection close and refactor
+				_ = stream.Conn().Close()
 				s.logger.Errorf("overlay address for peer %q not found", peerID)
 				return
 			}
 
 			s.metrics.HandledStreamCount.Inc()
-			ss.Handler(p2p.Peer{Address: overlay}, stream)
+			if err := ss.Handler(p2p.Peer{Address: overlay}, stream); err != nil {
+				var e *disconnectError
+				if errors.Is(err, e) {
+					// todo: test connection close and refactor
+					s.peers.remove(peerID)
+					_ = stream.Conn().Close()
+				}
+
+				s.logger.Errorf("%s: %s/%s: %w", p.Name, ss.Name, ss.Version, err)
+			}
 		})
 	}
 	return nil

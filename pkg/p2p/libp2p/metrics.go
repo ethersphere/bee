@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-
 type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()

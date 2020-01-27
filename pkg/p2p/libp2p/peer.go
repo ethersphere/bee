@@ -43,3 +43,11 @@ func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (overlay string, found bool
 	r.mu.RUnlock()
 	return overlay, found
 }
+
+func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
+	r.mu.Lock()
+	overlay := r.overlays[peerID]
+	delete(r.overlays, peerID)
+	delete(r.peers, overlay)
+	r.mu.Unlock()
+}

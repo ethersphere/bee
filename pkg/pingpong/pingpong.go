@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. pingpong.proto"
 package pingpong
 
 import (
@@ -13,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/pingpong/pb"
 )
 
 const (
@@ -34,7 +34,6 @@ type Options struct {
 
 type Logger interface {
 	Debugf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
 }
 
 func New(o Options) *Service {
@@ -59,6 +58,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt time.Duration, err error) {
+	start := time.Now()
 	stream, err := s.streamer.NewStream(ctx, address, protocolName, streamName, streamVersion)
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
@@ -67,13 +67,12 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	var pong Pong
-	start := time.Now()
+	var pong pb.Pong
 	for _, msg := range msgs {
-		if err := w.WriteMsg(&Ping{
+		if err := w.WriteMsg(&pb.Ping{
 			Greeting: msg,
 		}); err != nil {
-			return 0, fmt.Errorf("stream write: %w", err)
+			return 0, fmt.Errorf("write message: %w", err)
 		}
 		s.metrics.PingSentCount.Inc()
 
@@ -81,38 +80,36 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 			if err == io.EOF {
 				break
 			}
-			return 0, err
+			return 0, fmt.Errorf("read message: %w", err)
 		}
 
 		s.logger.Debugf("got pong: %q", pong.Response)
 		s.metrics.PongReceivedCount.Inc()
 	}
-	return time.Since(start) / time.Duration(len(msgs)), nil
+	return time.Since(start), nil
 }
 
-func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) {
+func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
-	fmt.Printf("Initiate pinpong for peer %s", peer)
-	var ping Ping
+	var ping pb.Ping
 	for {
 		if err := r.ReadMsg(&ping); err != nil {
 			if err == io.EOF {
 				break
 			}
-			s.logger.Errorf("pingpong handler: read message: %v\n", err)
-			return
+			return fmt.Errorf("read message: %w", err)
 		}
 		s.logger.Debugf("got ping: %q", ping.Greeting)
 		s.metrics.PingReceivedCount.Inc()
 
-		if err := w.WriteMsg(&Pong{
+		if err := w.WriteMsg(&pb.Pong{
 			Response: "{" + ping.Greeting + "}",
 		}); err != nil {
-			s.logger.Errorf("pingpong handler: write message: %v\n", err)
-			return
+			return fmt.Errorf("write message: %w", err)
 		}
 		s.metrics.PongSentCount.Inc()
 	}
+	return nil
 }

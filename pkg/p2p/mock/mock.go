@@ -14,16 +14,32 @@ import (
 )
 
 type Recorder struct {
-	records   map[string][]Record
-	recordsMu sync.Mutex
-	protocols []p2p.ProtocolSpec
+	records     map[string][]Record
+	recordsMu   sync.Mutex
+	protocols   []p2p.ProtocolSpec
+	middlewares []p2p.HandlerMiddleware
 }
 
-func NewRecorder(protocols ...p2p.ProtocolSpec) *Recorder {
-	return &Recorder{
-		records:   make(map[string][]Record),
-		protocols: protocols,
+func WithProtocols(protocols ...p2p.ProtocolSpec) Option {
+	return optionFunc(func(r *Recorder) {
+		r.protocols = append(r.protocols, protocols...)
+	})
+}
+
+func WithMiddlewares(middlewares ...p2p.HandlerMiddleware) Option {
+	return optionFunc(func(r *Recorder) {
+		r.middlewares = append(r.middlewares, middlewares...)
+	})
+}
+
+func NewRecorder(opts ...Option) *Recorder {
+	r := &Recorder{
+		records: make(map[string][]Record),
 	}
+	for _, o := range opts {
+		o.apply(r)
+	}
+	return r
 }
 
 func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
@@ -32,7 +48,7 @@ func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamNam
 	streamOut := newStream(recordIn, recordOut)
 	streamIn := newStream(recordOut, recordIn)
 
-	var handler func(p2p.Peer, p2p.Stream)
+	var handler p2p.HandlerFunc
 	for _, p := range r.protocols {
 		if p.Name == protocolName {
 			for _, s := range p.StreamSpecs {
@@ -45,7 +61,14 @@ func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamNam
 	if handler == nil {
 		return nil, fmt.Errorf("unsupported protocol stream %q %q %q", protocolName, streamName, version)
 	}
-	go handler(p2p.Peer{Address: overlay}, streamIn)
+	for _, m := range r.middlewares {
+		handler = m(handler)
+	}
+	go func() {
+		if err := handler(p2p.Peer{Address: overlay}, streamIn); err != nil {
+			panic(err) // todo: store error and export error records for inspection
+		}
+	}()
 
 	id := overlay + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
@@ -167,3 +190,10 @@ func (r *record) bytes() []byte {
 
 	return r.b
 }
+
+type Option interface {
+	apply(*Recorder)
+}
+type optionFunc func(*Recorder)
+
+func (f optionFunc) apply(r *Recorder) { f(r) }

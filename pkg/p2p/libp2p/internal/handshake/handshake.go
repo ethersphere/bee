@@ -2,14 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. handshake.proto"
-
 package handshake
 
 import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 )
 
@@ -39,20 +38,20 @@ type Logger interface {
 
 func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	var resp ShakeHand
-	if err := w.WriteMsg(&ShakeHand{
+	var resp pb.ShakeHand
+	if err := w.WriteMsg(&pb.ShakeHand{
 		Address:   s.overlay,
 		NetworkID: s.networkID,
 	}); err != nil {
-		return nil, fmt.Errorf("handshake handler: write message: %w", err)
+		return nil, fmt.Errorf("handshake write message: %w", err)
 	}
 
-	s.logger.Tracef("handshake: sent request %s", s.overlay)
+	s.logger.Tracef("handshake sent request %s", s.overlay)
 	if err := r.ReadMsg(&resp); err != nil {
-		return nil, fmt.Errorf("handshake handler: read message: %w", err)
+		return nil, fmt.Errorf("handshake read message: %w", err)
 	}
 
-	s.logger.Tracef("handshake: read response: %s", resp.Address)
+	s.logger.Tracef("handshake read response: %s", resp.Address)
 	return &Info{
 		Address:   resp.Address,
 		NetworkID: resp.NetworkID,
@@ -64,20 +63,20 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
-	var req ShakeHand
+	var req pb.ShakeHand
 	if err := r.ReadMsg(&req); err != nil {
-		return nil, fmt.Errorf("read message: %w", err)
+		return nil, fmt.Errorf("handshake handler read message: %w", err)
 	}
 
-	s.logger.Tracef("handshake: received request %s", req.Address)
-	if err := w.WriteMsg(&ShakeHand{
+	s.logger.Tracef("handshake handler received request %s", req.Address)
+	if err := w.WriteMsg(&pb.ShakeHand{
 		Address:   s.overlay,
 		NetworkID: s.networkID,
 	}); err != nil {
-		return nil, fmt.Errorf("write message: %w", err)
+		return nil, fmt.Errorf("handshake handler write message: %w", err)
 	}
 
-	s.logger.Tracef("handshake: handled response: %s", s.overlay)
+	s.logger.Tracef("handshake handled response: %s", s.overlay)
 	return &Info{
 		Address:   req.Address,
 		NetworkID: req.NetworkID,
