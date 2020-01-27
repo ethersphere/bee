@@ -78,6 +78,7 @@ func NewBee(o Options) (*Bee, error) {
 		// API server
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
+			Logger:   logger,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
@@ -103,7 +104,8 @@ func NewBee(o Options) (*Bee, error) {
 	if o.DebugAPIAddr != "" {
 		// Debug API server
 		debugAPIService := debugapi.New(debugapi.Options{
-			P2P: p2ps,
+			P2P:    p2ps,
+			Logger: logger,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)

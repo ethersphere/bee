@@ -9,8 +9,10 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
 	"resenje.org/web"
 )
 
@@ -26,6 +28,7 @@ func (s *server) setupRouting() {
 	})
 
 	s.Handler = web.ChainHandlers(
+		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
 		handlers.CompressHandler,
 		s.pageviewMetricsHandler,
 		web.FinalHandler(baseRouter),

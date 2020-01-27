@@ -22,6 +22,9 @@ type Logger interface {
 	Errorf(format string, args ...interface{})
 	Error(args ...interface{})
 	SetOutput(io.Writer)
+	SetLevel(logrus.Level)
+	WithField(key string, value interface{}) *logrus.Entry
+	WithFields(fields logrus.Fields) *logrus.Entry
 }
 
 func New(w io.Writer) Logger {

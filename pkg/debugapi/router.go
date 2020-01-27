@@ -10,9 +10,11 @@ import (
 	"net/http/pprof"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/sirupsen/logrus"
 	"resenje.org/web"
 )
 
@@ -26,6 +28,7 @@ func (s *server) setupRouting() {
 
 	internalRouter := mux.NewRouter()
 	internalBaseRouter.Handle("/", web.ChainHandlers(
+		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
 		handlers.CompressHandler,
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(internalRouter),
