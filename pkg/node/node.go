@@ -17,6 +17,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 )
@@ -33,7 +35,7 @@ type Options struct {
 	APIAddr       string
 	DebugAPIAddr  string
 	LibP2POptions libp2p.Options
-	Logger        *logrus.Logger
+	Logger        logging.Logger
 }
 
 func NewBee(o Options) (*Bee, error) {
@@ -112,6 +114,9 @@ func NewBee(o Options) (*Bee, error) {
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		if apiService != nil {
 			debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
+		}
+		if l, ok := logger.(metrics.Collector); ok {
+			debugAPIService.MustRegisterMetrics(l.Metrics()...)
 		}
 
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)

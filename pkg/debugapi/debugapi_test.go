@@ -24,7 +24,7 @@ type testServerOptions struct {
 func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
 	s := debugapi.New(debugapi.Options{
 		P2P:    o.P2P,
-		Logger: logging.New(ioutil.Discard),
+		Logger: logging.New(ioutil.Discard, 0),
 	})
 	ts := httptest.NewServer(s)
 	cleanup = ts.Close

@@ -10,6 +10,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+type Collector interface {
+	Metrics() []prometheus.Collector
+}
+
 func PrometheusCollectorsFromFields(i interface{}) (cs []prometheus.Collector) {
 	v := reflect.Indirect(reflect.ValueOf(i))
 	for i := 0; i < v.NumField(); i++ {

@@ -22,7 +22,7 @@ import (
 )
 
 func TestPing(t *testing.T) {
-	logger := logging.New(ioutil.Discard)
+	logger := logging.New(ioutil.Discard, 0)
 
 	// create a pingpong server that handles the incoming stream
 	server := pingpong.New(pingpong.Options{

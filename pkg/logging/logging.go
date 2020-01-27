@@ -21,17 +21,27 @@ type Logger interface {
 	Warning(args ...interface{})
 	Errorf(format string, args ...interface{})
 	Error(args ...interface{})
-	SetOutput(io.Writer)
-	SetLevel(logrus.Level)
 	WithField(key string, value interface{}) *logrus.Entry
 	WithFields(fields logrus.Fields) *logrus.Entry
+	WriterLevel(logrus.Level) *io.PipeWriter
 }
 
-func New(w io.Writer) Logger {
+type logger struct {
+	*logrus.Logger
+	metrics metrics
+}
+
+func New(w io.Writer, level logrus.Level) Logger {
 	l := logrus.New()
 	l.SetOutput(w)
+	l.SetLevel(level)
 	l.Formatter = &logrus.TextFormatter{
 		FullTimestamp: true,
 	}
-	return l
+	metrics := newMetrics()
+	l.AddHook(metrics)
+	return &logger{
+		Logger:  l,
+		metrics: metrics,
+	}
 }

@@ -24,7 +24,7 @@ type testServerOptions struct {
 func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
 	s := api.New(api.Options{
 		Pingpong: o.Pingpong,
-		Logger:   logging.New(ioutil.Discard),
+		Logger:   logging.New(ioutil.Discard, 0),
 	})
 	ts := httptest.NewServer(s)
 	cleanup = ts.Close

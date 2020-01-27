@@ -43,7 +43,7 @@ func (s *StreamMock) Close() error {
 }
 
 func TestHandshake(t *testing.T) {
-	logger := logging.New(ioutil.Discard)
+	logger := logging.New(ioutil.Discard, 0)
 	info := Info{
 		Address:   "node1",
 		NetworkID: 0,
@@ -118,7 +118,7 @@ func TestHandle(t *testing.T) {
 		Light:     false,
 	}
 
-	logger := logging.New(ioutil.Discard)
+	logger := logging.New(ioutil.Discard, 0)
 	handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
 
 	t.Run("OK", func(t *testing.T) {

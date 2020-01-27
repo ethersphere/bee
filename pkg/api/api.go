@@ -8,13 +8,13 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Service interface {
 	http.Handler
-	Metrics() (cs []prometheus.Collector)
+	m.Collector
 }
 
 type server struct {
