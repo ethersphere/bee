@@ -1,9 +1,10 @@
-COMMIT ?= ""
-
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
+LDFLAGS ?= -s -w
+ifdef COMMIT
+LDFLAGS += -X github.com/ethersphere/bee.commit="$(COMMIT)"
+endif
 
 .PHONY: all
 all: build lint vet test binary
