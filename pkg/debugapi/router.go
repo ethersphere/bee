@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -42,7 +43,9 @@ func (s *server) setupRouting() {
 	internalRouter.HandleFunc("/health", s.statusHandler)
 	internalRouter.HandleFunc("/readiness", s.statusHandler)
 
-	internalRouter.HandleFunc("/connect/{multi-address:.+}", s.peerConnectHandler)
+	internalRouter.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.peerConnectHandler),
+	})
 
 	s.Handler = internalBaseRouter
 }

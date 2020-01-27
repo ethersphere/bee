@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -25,6 +26,7 @@ type server struct {
 
 type Options struct {
 	P2P p2p.Service
+	Logger logging.Logger
 }
 
 func New(o Options) Service {

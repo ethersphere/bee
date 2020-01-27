@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package api
+package debugapi
 
 import (
 	"io/ioutil"
@@ -12,18 +12,18 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"resenje.org/web"
 )
 
 type testServerOptions struct {
-	Pingpong pingpong.Interface
+	P2P p2p.Service
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
 	s := New(Options{
-		Pingpong: o.Pingpong,
-		Logger:   logging.New(ioutil.Discard),
+		P2P:    o.P2P,
+		Logger: logging.New(ioutil.Discard),
 	})
 	ts := httptest.NewServer(s)
 	cleanup = ts.Close
