@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/pingpong/pb"
 )
 
 func TestPing(t *testing.T) {
@@ -75,14 +76,14 @@ func TestPing(t *testing.T) {
 	wantGreetings := greetings
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(record.In()),
-		func() protobuf.Message { return new(pingpong.Ping) },
+		func() protobuf.Message { return new(pb.Ping) },
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var gotGreetings []string
 	for _, m := range messages {
-		gotGreetings = append(gotGreetings, m.(*pingpong.Ping).Greeting)
+		gotGreetings = append(gotGreetings, m.(*pb.Ping).Greeting)
 	}
 	if fmt.Sprint(gotGreetings) != fmt.Sprint(wantGreetings) {
 		t.Errorf("got greetings %v, want %v", gotGreetings, wantGreetings)
@@ -95,14 +96,14 @@ func TestPing(t *testing.T) {
 	}
 	messages, err = protobuf.ReadMessages(
 		bytes.NewReader(record.Out()),
-		func() protobuf.Message { return new(pingpong.Pong) },
+		func() protobuf.Message { return new(pb.Pong) },
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var gotResponses []string
 	for _, m := range messages {
-		gotResponses = append(gotResponses, m.(*pingpong.Pong).Response)
+		gotResponses = append(gotResponses, m.(*pb.Pong).Response)
 	}
 	if fmt.Sprint(gotResponses) != fmt.Sprint(wantResponses) {
 		t.Errorf("got responses %v, want %v", gotResponses, wantResponses)

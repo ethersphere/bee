@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. pingpong.proto"
 package pingpong
 
 import (
@@ -13,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/pingpong/pb"
 )
 
 const (
@@ -67,9 +67,9 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	var pong Pong
+	var pong pb.Pong
 	for _, msg := range msgs {
-		if err := w.WriteMsg(&Ping{
+		if err := w.WriteMsg(&pb.Ping{
 			Greeting: msg,
 		}); err != nil {
 			return 0, fmt.Errorf("write message: %w", err)
@@ -93,7 +93,7 @@ func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
-	var ping Ping
+	var ping pb.Ping
 	for {
 		if err := r.ReadMsg(&ping); err != nil {
 			if err == io.EOF {
@@ -104,7 +104,7 @@ func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
 		s.logger.Debugf("got ping: %q", ping.Greeting)
 		s.metrics.PingReceivedCount.Inc()
 
-		if err := w.WriteMsg(&Pong{
+		if err := w.WriteMsg(&pb.Pong{
 			Response: "{" + ping.Greeting + "}",
 		}); err != nil {
 			return fmt.Errorf("write message: %w", err)
