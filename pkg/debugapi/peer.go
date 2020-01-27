@@ -5,9 +5,9 @@
 package debugapi
 
 import (
-	"encoding/json"
 	"net/http"
 
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/gorilla/mux"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -19,17 +19,17 @@ type peerConnectResponse struct {
 func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr, err := multiaddr.NewMultiaddr("/" + mux.Vars(r)["multi-address"])
 	if err != nil {
-		panic(err)
+		jsonhttp.BadRequest(w, err.Error())
+		return
 	}
 
 	address, err := s.P2P.Connect(r.Context(), addr)
 	if err != nil {
-		panic(err)
+		jsonhttp.InternalServerError(w, err.Error())
+		return
 	}
 
-	if err := json.NewEncoder(w).Encode(peerConnectResponse{
+	jsonhttp.OK(w, peerConnectResponse{
 		Address: address,
-	}); err != nil {
-		panic(err)
-	}
+	})
 }
