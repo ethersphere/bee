@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package debugapi
+package debugapi_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
@@ -33,7 +34,7 @@ func TestConnect(t *testing.T) {
 	defer cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, peerConnectResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
 			Address: overlay,
 		})
 	})

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package api
+package api_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -40,7 +41,7 @@ func TestPingpong(t *testing.T) {
 	defer cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+peerID, nil, http.StatusOK, pingpongResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+peerID, nil, http.StatusOK, api.PingpongResponse{
 			RTT: rtt,
 		})
 	})
