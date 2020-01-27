@@ -19,6 +19,14 @@ import (
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 )
 
+type mockPeerSuggester struct {
+	returnValue string
+}
+
+func (v mockPeerSuggester) SuggestPeer(_ []byte) (string, error) {
+	return v.returnValue, nil
+}
+
 // TestDelivery tests that a naive request -> delivery flow works
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard)
@@ -28,7 +36,7 @@ func TestDelivery(t *testing.T) {
 	reqData := []byte("data data data")
 
 	// put testdata in the mock store of the server
-	mockStorer.Put(context.TODO(), reqAddr, reqData)
+	_ = mockStorer.Put(context.TODO(), reqAddr, reqData)
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(retrieval.Options{
@@ -45,25 +53,38 @@ func TestDelivery(t *testing.T) {
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
+	ps := mockPeerSuggester{returnValue: "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"}
 	client := retrieval.New(retrieval.Options{
-		Streamer: recorder,
-		Storer:   clientMockStorer,
-		Logger:   logger,
+		Streamer:      recorder,
+		PeerSuggester: ps,
+		Storer:        clientMockStorer,
+		Logger:        logger,
 	})
 
-	peerID := "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"
-	done := make(chan struct{})
+	errc := make(chan error)
 	go func() {
-		defer close(done)
-		v, err := client.RetrieveChunk(context.Background(), peerID, reqAddr)
+		defer close(errc)
+		v, err := client.RetrieveChunk(context.Background(), reqAddr)
+		if err != nil {
+			errc <- err
+			return
+		}
+		if !bytes.Equal(v, reqData) {
+			errc <- fmt.Errorf("request and response data not equal. got %s want %s", v, reqData)
+		}
+	}()
+
+	// wait for the flow to finish before performing the check
+	select {
+	case err := <-errc:
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(v, reqData) {
-			t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
-		}
-	}()
-	time.Sleep(1 * time.Second)
+	case <-time.After(5 * time.Second):
+		t.Fatal("test timed out after 5 seconds")
+	}
+
+	peerID, _ := ps.SuggestPeer(nil)
 	records, err := recorder.Records(peerID, "retrieval", "retrieval", "1.0.0")
 	if err != nil {
 		t.Fatal(err)

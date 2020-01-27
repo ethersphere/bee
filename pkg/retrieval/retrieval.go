@@ -23,15 +23,17 @@ const (
 )
 
 type Service struct {
-	streamer p2p.Streamer
-	storer   storage.Storer
-	logger   Logger
+	streamer      p2p.Streamer
+	peerSuggester p2p.PeerSuggester
+	storer        storage.Storer
+	logger        Logger
 }
 
 type Options struct {
-	Streamer p2p.Streamer
-	Storer   storage.Storer
-	Logger   Logger
+	Streamer      p2p.Streamer
+	PeerSuggester p2p.PeerSuggester
+	Storer        storage.Storer
+	Logger        Logger
 }
 
 type Logger interface {
@@ -44,9 +46,10 @@ type Storer interface {
 
 func New(o Options) *Service {
 	return &Service{
-		streamer: o.Streamer,
-		storer:   o.Storer,
-		logger:   o.Logger,
+		streamer:      o.Streamer,
+		peerSuggester: o.PeerSuggester,
+		storer:        o.Storer,
+		logger:        o.Logger,
 	}
 }
 
@@ -63,7 +66,12 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) RetrieveChunk(ctx context.Context, peerID string, addr []byte) (data []byte, err error) {
+func (s *Service) RetrieveChunk(ctx context.Context, addr []byte) (data []byte, err error) {
+	peerID, err := s.peerSuggester.SuggestPeer(addr)
+	if err != nil {
+		return nil, err
+	}
+
 	stream, err := s.streamer.NewStream(ctx, peerID, protocolName, streamName, streamVersion)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -92,7 +100,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, peerID string, addr []byte)
 func (s *Service) Handler(p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
-
 	var req Request
 	if err := r.ReadMsg(&req); err != nil {
 		if err == io.EOF {
@@ -106,6 +113,7 @@ func (s *Service) Handler(p p2p.Peer, stream p2p.Stream) error {
 	if err != nil {
 		return err
 	}
+
 	if err := w.WriteMsg(&Delivery{
 		Data: data,
 	}); err != nil {

@@ -1,7 +1,6 @@
 // Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
 package p2p
 
 import (
@@ -25,6 +24,11 @@ type Streamer interface {
 type Stream interface {
 	io.ReadWriter
 	io.Closer
+}
+
+// PeerSuggester suggests a peer to retrieve a chunk from
+type PeerSuggester interface {
+	SuggestPeer(addr []byte) (peerAddr string, err error)
 }
 
 type ProtocolSpec struct {
