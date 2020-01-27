@@ -17,8 +17,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
@@ -49,7 +49,7 @@ type Service struct {
 	networkID        int32
 	handshakeService *handshake.Service
 	peers            *peerRegistry
-	logger           Logger
+	logger           logging.Logger
 }
 
 type Options struct {
@@ -62,13 +62,7 @@ type Options struct {
 	ConnectionsLow   int
 	ConnectionsHigh  int
 	ConnectionsGrace time.Duration
-	Logger           Logger
-}
-
-type Logger interface {
-	Tracef(format string, args ...interface{})
-	Infof(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
+	Logger           logging.Logger
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {

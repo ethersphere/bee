@@ -49,7 +49,7 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
-			logger := logging.New(cmd.OutOrStdout())
+			logger := logging.New(cmd.OutOrStdout()).(*logrus.Logger)
 			switch v := strings.ToLower(c.config.GetString(optionNameVerbosity)); v {
 			case "0", "silent":
 				logger.SetOutput(ioutil.Discard)

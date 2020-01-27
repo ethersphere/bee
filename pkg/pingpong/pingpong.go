@@ -10,6 +10,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
@@ -27,17 +28,13 @@ type Interface interface {
 
 type Service struct {
 	streamer p2p.Streamer
-	logger   Logger
+	logger   logging.Logger
 	metrics  metrics
 }
 
 type Options struct {
 	Streamer p2p.Streamer
-	Logger   Logger
-}
-
-type Logger interface {
-	Debugf(format string, args ...interface{})
+	Logger   logging.Logger
 }
 
 func New(o Options) *Service {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/prometheus/client_golang/prometheus"
 	"resenje.org/web"
@@ -26,10 +27,7 @@ type server struct {
 
 type Options struct {
 	Pingpong pingpong.Interface
-	Logger   interface {
-		Debugf(format string, args ...interface{})
-		Errorf(format string, args ...interface{})
-	}
+	Logger   logging.Logger
 }
 
 func New(o Options) Service {
