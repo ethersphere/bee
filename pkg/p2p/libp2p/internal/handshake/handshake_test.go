@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 )
 
@@ -63,7 +64,7 @@ func TestHandshake(t *testing.T) {
 		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&ShakeHand{
+		if err := w.WriteMsg(&pb.ShakeHand{
 			Address:   expectedInfo.Address,
 			NetworkID: expectedInfo.NetworkID,
 			Light:     expectedInfo.Light,
@@ -133,7 +134,7 @@ func TestHandle(t *testing.T) {
 		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&ShakeHand{
+		if err := w.WriteMsg(&pb.ShakeHand{
 			Address:   node2Info.Address,
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
@@ -151,7 +152,7 @@ func TestHandle(t *testing.T) {
 		}
 
 		_, r := protobuf.NewWriterAndReader(stream2)
-		var got ShakeHand
+		var got pb.ShakeHand
 		if err := r.ReadMsg(&got); err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +183,7 @@ func TestHandle(t *testing.T) {
 		stream := &StreamMock{readBuffer: &buffer, writeBuffer: &buffer}
 
 		w, _ := protobuf.NewWriterAndReader(stream)
-		if err := w.WriteMsg(&ShakeHand{
+		if err := w.WriteMsg(&pb.ShakeHand{
 			Address:   "node1",
 			NetworkID: 0,
 			Light:     false,

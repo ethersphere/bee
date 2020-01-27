@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 syntax = "proto3";
 
-package handshake;
+package pb;
 
 message ShakeHand {
     string Address = 1;
