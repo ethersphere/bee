@@ -21,6 +21,6 @@ func Disconnect(err error) error {
 func (e *disconnectError) Unwrap() error { return e.err }
 
 // Error implements function of the standard go error interface
-func (w *disconnectError) Error() string {
-	return w.err.Error()
+func (e *disconnectError) Error() string {
+	return e.err.Error()
 }
