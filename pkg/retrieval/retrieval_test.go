@@ -11,11 +11,10 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/janos/bee/pkg/logging"
-	"github.com/janos/bee/pkg/p2p/mock"
-	"github.com/janos/bee/pkg/p2p/protobuf"
-	"github.com/janos/bee/pkg/retrieval"
-	storemock "github.com/janos/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 )
 
 // TestDelivery tests that a naive request -> delivery flow works

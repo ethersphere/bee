@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/janos/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 type mockStorer struct {

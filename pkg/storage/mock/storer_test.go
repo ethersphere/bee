@@ -5,8 +5,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/janos/bee/pkg/storage"
-	"github.com/janos/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/mock"
 )
 
 func TestMockStorer(t *testing.T) {
