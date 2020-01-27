@@ -240,9 +240,9 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return nil, fmt.Errorf("bootnode %s: %w", a, err)
 		}
 
-		err = s.Connect(ctx, addr)
+		overlay, err := s.Connect(ctx, addr)
 		if err != nil {
-			return nil, fmt.Errorf("connect to bootnode %s: %w", a, err)
+			return nil, fmt.Errorf("connect to bootnode %s %s: %w", a, overlay, err)
 		}
 	}
 
@@ -303,35 +303,35 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	return addrs, nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if err := s.host.Connect(ctx, *info); err != nil {
-		return err
+		return "", err
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
 	if err != nil {
-		return fmt.Errorf("new stream: %w", err)
+		return "", fmt.Errorf("new stream: %w", err)
 	}
 	defer stream.Close()
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if i.NetworkID != s.networkID {
-		return fmt.Errorf("invalid network id %v", i.NetworkID)
+		return "", fmt.Errorf("invalid network id %v", i.NetworkID)
 	}
 
 	s.peers.add(info.ID, i.Address)
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %q connected", i.Address)
-	return nil
+	return i.Address, nil
 }
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)

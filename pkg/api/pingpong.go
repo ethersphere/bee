@@ -5,11 +5,16 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/gorilla/mux"
 )
+
+type pingpongResponse struct {
+	RTT time.Duration `json:"rtt"`
+}
 
 func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	peerID := mux.Vars(r)["peer-id"]
@@ -17,11 +22,12 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	rtt, err := s.Pingpong.Ping(ctx, peerID, "hey", "there", ",", "how are", "you", "?")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, "ping error", peerID, err)
+		jsonhttp.InternalServerError(w, err.Error())
 		return
 	}
 	s.metrics.PingRequestCount.Inc()
 
-	fmt.Fprintln(w, "RTT", rtt)
+	jsonhttp.OK(w, pingpongResponse{
+		RTT: rtt,
+	})
 }
