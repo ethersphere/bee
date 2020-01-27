@@ -21,6 +21,10 @@ const (
 	streamVersion = "1.0.0"
 )
 
+type Interface interface {
+	Ping(ctx context.Context, address string, msgs ...string) (rtt time.Duration, err error)
+}
+
 type Service struct {
 	streamer p2p.Streamer
 	logger   Logger
