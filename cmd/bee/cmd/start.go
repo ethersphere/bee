@@ -137,8 +137,8 @@ func (c *command) initStartCmd() (err error) {
 	}
 
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
-	cmd.Flags().String(optionNameAPIAddr, ":8500", "HTTP API listen address")
-	cmd.Flags().String(optionNameP2PAddr, ":30399", "P2P listen address")
+	cmd.Flags().String(optionNameAPIAddr, ":8080", "HTTP API listen address")
+	cmd.Flags().String(optionNameP2PAddr, ":7070", "P2P listen address")
 	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
