@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
@@ -51,15 +52,18 @@ func TestDelivery(t *testing.T) {
 	})
 
 	peerID := "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"
-	v, err := client.RetrieveChunk(context.Background(), peerID, reqAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(v, reqData) {
-		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
-	}
-
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		v, err := client.RetrieveChunk(context.Background(), peerID, reqAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(v, reqData) {
+			t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
+		}
+	}()
+	time.Sleep(1 * time.Second)
 	records, err := recorder.Records(peerID, "retrieval", "retrieval", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
@@ -67,6 +71,7 @@ func TestDelivery(t *testing.T) {
 	if l := len(records); l != 1 {
 		t.Fatalf("got %v records, want %v", l, 1)
 	}
+
 	record := records[0]
 
 	messages, err := protobuf.ReadMessages(
@@ -76,7 +81,6 @@ func TestDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	var reqs []string
 	for _, m := range messages {
 		reqs = append(reqs, fmt.Sprintf("%x", m.(*retrieval.Request).Addr))
