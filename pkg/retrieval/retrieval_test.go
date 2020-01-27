@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/retrieval"
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 )
 
@@ -33,8 +34,9 @@ func TestDelivery(t *testing.T) {
 		Storer: mockStorer,
 		Logger: logger,
 	})
-
-	recorder := mock.NewRecorder(server.Protocol())
+	recorder := mock.NewRecorder(
+		mock.WithProtocols(server.Protocol()),
+	)
 
 	// client mock storer does not store any data at this point
 	// but should be checked at at the end of the test for the
@@ -44,7 +46,7 @@ func TestDelivery(t *testing.T) {
 
 	client := retrieval.New(retrieval.Options{
 		Streamer: recorder,
-		Storer:   clinetMockStorer,
+		Storer:   clientMockStorer,
 		Logger:   logger,
 	})
 

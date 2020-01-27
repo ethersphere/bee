@@ -89,55 +89,28 @@ func (s *Service) RetrieveChunk(ctx context.Context, peerID string, addr []byte)
 	return d.Data, nil
 }
 
-func (s *Service) Handler(p p2p.Peer) {
-	w, r := protobuf.NewWriterAndReader(p.Stream)
-	defer p.Stream.Close()
+func (s *Service) Handler(p p2p.Peer, stream p2p.Stream) error {
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
 
 	var req Request
 	if err := r.ReadMsg(&req); err != nil {
 		if err == io.EOF {
-			return
+			return nil
 		}
 		// log this
-		return
+		return err
 	}
 
 	data, err := s.storer.Get(context.TODO(), req.Addr)
 	if err != nil {
-		return
+		return err
 	}
 	if err := w.WriteMsg(&Delivery{
 		Data: data,
 	}); err != nil {
-		return
+		return err
 	}
+
+	return nil
 }
-
-// should be replaced by protobuf compilation
-//type Request struct {
-//Addr []byte
-//}
-
-//type Delivery struct {
-//Data []byte
-//}
-
-//func (r *Request) Reset() {
-
-//}
-//func (r *Request) String() string {
-//return fmt.Sprintf("%x", r.Addr)
-//}
-//func (r *Request) ProtoMessage() {
-
-//}
-
-//func (d *Delivery) Reset() {
-
-//}
-//func (d *Delivery) String() string {
-//return fmt.Sprintf("%x", d.Data)
-//}
-//func (d *Delivery) ProtoMessage() {
-
-//}
