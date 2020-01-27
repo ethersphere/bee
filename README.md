@@ -16,13 +16,13 @@ cp dist/bee /usr/local/bin/bee
 Execute the command terminals to start `node 1`:
 
 ```sh
-bee start --api-addr :8501 --p2p-addr :30401 --data-dir data1
+bee start --api-addr :8081 --p2p-addr :7071 --data-dir data1
 ```
 
 Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
 
 ```sh
-bee start --api-addr :8502 --p2p-addr :30402 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+bee start --api-addr :8082 --p2p-addr :7072 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
 Take the address of the connected peer to `node 1` from log line `peer "4932309428148935717" connected` and make an HTTP POST request to `localhost:{PORT1}/pingpong/{ADDRESS}` like:
