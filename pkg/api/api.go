@@ -7,8 +7,10 @@ package api
 import (
 	"net/http"
 
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/prometheus/client_golang/prometheus"
+	"resenje.org/web"
 )
 
 type Service interface {
@@ -39,4 +41,10 @@ func New(o Options) Service {
 	s.setupRouting()
 
 	return s
+}
+
+type methodHandler map[string]http.Handler
+
+func (h methodHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	web.HandleMethods(h, `{"message":"Method Not Allowed","code":405}`, jsonhttp.DefaultContentTypeHeader, w, r)
 }

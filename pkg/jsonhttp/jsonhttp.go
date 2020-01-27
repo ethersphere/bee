@@ -27,21 +27,21 @@ var (
 // description of that code or provides more context about the reason for such
 // response.
 type StatusResponse struct {
-	Code    int    `json:"code,omitempty"`
 	Message string `json:"message,omitempty"`
+	Code    int    `json:"code,omitempty"`
 }
 
 // Respond writes a JSON-encoded body to http.ResponseWriter.
 func Respond(w http.ResponseWriter, statusCode int, response interface{}) {
 	if response == nil {
 		response = &StatusResponse{
-			Code:    statusCode,
 			Message: http.StatusText(statusCode),
+			Code:    statusCode,
 		}
 	} else if message, ok := response.(string); ok {
 		response = &StatusResponse{
-			Code:    statusCode,
 			Message: message,
+			Code:    statusCode,
 		}
 	}
 	var b bytes.Buffer

@@ -20,7 +20,9 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	baseRouter.HandleFunc("/pingpong/{peer-id}", s.pingpongHandler)
+	baseRouter.Handle("/pingpong/{peer-id}", methodHandler{
+		"POST": http.HandlerFunc(s.pingpongHandler),
+	})
 
 	s.Handler = web.ChainHandlers(
 		handlers.CompressHandler,

@@ -39,22 +39,29 @@ func TestPingpong(t *testing.T) {
 	defer cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		testResponseDirect(t, client, http.MethodGet, "/pingpong/"+peerID, "", http.StatusOK, pingpongResponse{
+		testResponseDirect(t, client, http.MethodPost, "/pingpong/"+peerID, "", http.StatusOK, pingpongResponse{
 			RTT: rtt,
 		})
 	})
 
 	t.Run("peer not found", func(t *testing.T) {
-		testResponseDirect(t, client, http.MethodGet, "/pingpong/"+unknownPeerID, "", http.StatusNotFound, jsonhttp.StatusResponse{
+		testResponseDirect(t, client, http.MethodPost, "/pingpong/"+unknownPeerID, "", http.StatusNotFound, jsonhttp.StatusResponse{
 			Code:    http.StatusNotFound,
 			Message: "peer not found",
 		})
 	})
 
 	t.Run("error", func(t *testing.T) {
-		testResponseDirect(t, client, http.MethodGet, "/pingpong/"+errorPeerID, "", http.StatusInternalServerError, jsonhttp.StatusResponse{
+		testResponseDirect(t, client, http.MethodPost, "/pingpong/"+errorPeerID, "", http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: testErr.Error(),
+		})
+	})
+
+	t.Run("get method not allowed", func(t *testing.T) {
+		testResponseDirect(t, client, http.MethodGet, "/pingpong/"+peerID, "", http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
+			Code:    http.StatusMethodNotAllowed,
+			Message: http.StatusText(http.StatusMethodNotAllowed),
 		})
 	})
 }
