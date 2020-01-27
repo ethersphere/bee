@@ -77,7 +77,6 @@ func NewBee(o Options) (*Bee, error) {
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			P2P:      p2ps,
 			Pingpong: pingPong,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)

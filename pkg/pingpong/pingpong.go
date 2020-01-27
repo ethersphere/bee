@@ -10,6 +10,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
@@ -21,19 +22,19 @@ const (
 	streamVersion = "1.0.0"
 )
 
+type Interface interface {
+	Ping(ctx context.Context, address string, msgs ...string) (rtt time.Duration, err error)
+}
+
 type Service struct {
 	streamer p2p.Streamer
-	logger   Logger
+	logger   logging.Logger
 	metrics  metrics
 }
 
 type Options struct {
 	Streamer p2p.Streamer
-	Logger   Logger
-}
-
-type Logger interface {
-	Debugf(format string, args ...interface{})
+	Logger   logging.Logger
 }
 
 func New(o Options) *Service {

@@ -6,7 +6,6 @@ package cmd
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -120,16 +119,3 @@ func (c *command) setHomeDir() (err error) {
 	c.homeDir = dir
 	return nil
 }
-
-// baseDir is the directory where the executable is located.
-var baseDir = func() string {
-	path, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-	path, err = filepath.EvalSymlinks(path)
-	if err != nil {
-		panic(err)
-	}
-	return filepath.Dir(path)
-}()

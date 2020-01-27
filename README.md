@@ -25,10 +25,10 @@ Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
 bee start --api-addr :8502 --p2p-addr :30402 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
-Take the address of the connected peer to `node 1` from log line `peer "4932309428148935717" connected` and make an HTTP request to `localhost:{PORT1}/pingpong/{ADDRESS}` like:
+Take the address of the connected peer to `node 1` from log line `peer "4932309428148935717" connected` and make an HTTP POST request to `localhost:{PORT1}/pingpong/{ADDRESS}` like:
 
 ```sh
-curl localhost:8502/pingpong/4932309428148935717
+curl -XPOST localhost:8502/pingpong/4932309428148935717
 ```
 
 ## Structure

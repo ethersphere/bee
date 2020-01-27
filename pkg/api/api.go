@@ -7,7 +7,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -24,8 +24,8 @@ type server struct {
 }
 
 type Options struct {
-	P2P      p2p.Service
-	Pingpong *pingpong.Service
+	Pingpong pingpong.Interface
+	Logger   logging.Logger
 }
 
 func New(o Options) Service {

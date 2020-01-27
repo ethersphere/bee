@@ -7,6 +7,7 @@ package handshake
 import (
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -21,19 +22,15 @@ const (
 type Service struct {
 	overlay   string
 	networkID int32
-	logger    Logger
+	logger    logging.Logger
 }
 
-func New(overlay string, networkID int32, logger Logger) *Service {
+func New(overlay string, networkID int32, logger logging.Logger) *Service {
 	return &Service{
 		overlay:   overlay,
 		networkID: networkID,
 		logger:    logger,
 	}
-}
-
-type Logger interface {
-	Tracef(format string, args ...interface{})
 }
 
 func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {

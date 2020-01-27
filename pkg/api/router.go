@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"resenje.org/web"
@@ -20,7 +21,9 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	baseRouter.HandleFunc("/pingpong/{peer-id}", s.pingpongHandler)
+	baseRouter.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.pingpongHandler),
+	})
 
 	s.Handler = web.ChainHandlers(
 		handlers.CompressHandler,

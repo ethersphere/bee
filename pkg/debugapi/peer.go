@@ -19,13 +19,15 @@ type peerConnectResponse struct {
 func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr, err := multiaddr.NewMultiaddr("/" + mux.Vars(r)["multi-address"])
 	if err != nil {
-		jsonhttp.BadRequest(w, err.Error())
+		s.Logger.Debugf("debug api: peer connect: parse multiaddress: %w", err)
+		jsonhttp.BadRequest(w, err)
 		return
 	}
 
 	address, err := s.P2P.Connect(r.Context(), addr)
 	if err != nil {
-		jsonhttp.InternalServerError(w, err.Error())
+		s.Logger.Errorf("debug api: peer connect: %w", err)
+		jsonhttp.InternalServerError(w, err)
 		return
 	}
 

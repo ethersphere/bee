@@ -10,11 +10,25 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func New(w io.Writer) *logrus.Logger {
-	logger := logrus.New()
-	logger.SetOutput(w)
-	logger.Formatter = &logrus.TextFormatter{
+type Logger interface {
+	Tracef(format string, args ...interface{})
+	Trace(args ...interface{})
+	Debugf(format string, args ...interface{})
+	Debug(args ...interface{})
+	Infof(format string, args ...interface{})
+	Info(args ...interface{})
+	Warningf(format string, args ...interface{})
+	Warning(args ...interface{})
+	Errorf(format string, args ...interface{})
+	Error(args ...interface{})
+	SetOutput(io.Writer)
+}
+
+func New(w io.Writer) Logger {
+	l := logrus.New()
+	l.SetOutput(w)
+	l.Formatter = &logrus.TextFormatter{
 		FullTimestamp: true,
 	}
-	return logger
+	return l
 }

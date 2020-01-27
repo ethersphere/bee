@@ -5,10 +5,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/gorilla/mux"
 )
 
@@ -22,7 +24,13 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	rtt, err := s.Pingpong.Ping(ctx, peerID, "hey", "there", ",", "how are", "you", "?")
 	if err != nil {
-		jsonhttp.InternalServerError(w, err.Error())
+		if errors.Is(err, p2p.ErrPeerNotFound) {
+			s.Logger.Debugf("pingpong: ping %s: %w", peerID, err)
+			jsonhttp.NotFound(w, "peer not found")
+			return
+		}
+		s.Logger.Errorf("pingpong: ping %s: %w", peerID, err)
+		jsonhttp.InternalServerError(w, err)
 		return
 	}
 	s.metrics.PingRequestCount.Inc()

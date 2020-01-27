@@ -6,12 +6,30 @@ package mock
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	ma "github.com/multiformats/go-multiaddr"
 )
+
+type Service struct {
+	connectFunc func(ctx context.Context, addr ma.Multiaddr) (overlay string, err error)
+}
+
+func NewService(connectFunc func(ctx context.Context, addr ma.Multiaddr) (overlay string, err error)) *Service {
+	return &Service{connectFunc: connectFunc}
+}
+
+func (s *Service) AddProtocol(_ p2p.ProtocolSpec) error {
+	return errors.New("not implemented")
+}
+
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error) {
+	return s.connectFunc(ctx, addr)
+}
 
 type Recorder struct {
 	records     map[string][]Record
