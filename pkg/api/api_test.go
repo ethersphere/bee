@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"resenje.org/web"
 )
@@ -27,11 +28,10 @@ type testServerOptions struct {
 func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
 	s := New(Options{
 		Pingpong: o.Pingpong,
+		Logger:   logging.New(ioutil.Discard),
 	})
 	ts := httptest.NewServer(s)
-	cleanup = func() {
-		ts.Close()
-	}
+	cleanup = ts.Close
 
 	client = &http.Client{
 		Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {

@@ -24,6 +24,10 @@ type server struct {
 
 type Options struct {
 	Pingpong pingpong.Interface
+	Logger   interface {
+		Debugf(format string, args ...interface{})
+		Errorf(format string, args ...interface{})
+	}
 }
 
 func New(o Options) Service {
