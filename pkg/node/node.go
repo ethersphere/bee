@@ -103,7 +103,9 @@ func NewBee(o Options) (*Bee, error) {
 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
-		debugAPIService := debugapi.New(debugapi.Options{})
+		debugAPIService := debugapi.New(debugapi.Options{
+			P2P: p2ps,
+		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)

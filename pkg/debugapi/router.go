@@ -10,6 +10,7 @@ import (
 	"net/http/pprof"
 
 	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
@@ -22,16 +23,13 @@ func (s *server) setupRouting() {
 		promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
 	))
 
-	internalRouter := http.NewServeMux()
+	internalRouter := mux.NewRouter()
 	internalBaseRouter.Handle("/", web.ChainHandlers(
 		handlers.CompressHandler,
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(internalRouter),
 	))
 	internalRouter.Handle("/", http.NotFoundHandler())
-
-	internalRouter.HandleFunc("/health", s.statusHandler)
-	internalRouter.HandleFunc("/readiness", s.statusHandler)
 
 	internalRouter.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
 	internalRouter.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
@@ -40,6 +38,11 @@ func (s *server) setupRouting() {
 	internalRouter.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 
 	internalRouter.Handle("/debug/vars", expvar.Handler())
+
+	internalRouter.HandleFunc("/health", s.statusHandler)
+	internalRouter.HandleFunc("/readiness", s.statusHandler)
+
+	internalRouter.HandleFunc("/connect/{multi-address:.+}", s.peerConnectHandler)
 
 	s.Handler = internalBaseRouter
 }

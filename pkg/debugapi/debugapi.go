@@ -7,6 +7,7 @@ package debugapi
 import (
 	"net/http"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -22,7 +23,9 @@ type server struct {
 	metricsRegistry *prometheus.Registry
 }
 
-type Options struct{}
+type Options struct {
+	P2P p2p.Service
+}
 
 func New(o Options) Service {
 	s := &server{
