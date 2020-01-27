@@ -224,7 +224,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 		s.peers.add(peerID, i.Address)
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("peer %q connected", overlay)
+		s.logger.Infof("peer %q connected", i.Address)
 	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
