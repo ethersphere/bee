@@ -7,9 +7,9 @@ syntax = "proto3";
 package retrieval;
 
 message Request {
-    bytes Addr;
+    bytes Addr = 1;
 }
 
 message Delivery {
-    bytes Data;
+    bytes Data = 1;
 }
