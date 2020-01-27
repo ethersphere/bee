@@ -30,7 +30,7 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.Logger.Errorf("pingpong: ping %s: %w", peerID, err)
-		jsonhttp.InternalServerError(w, err.Error())
+		jsonhttp.InternalServerError(w, err)
 		return
 	}
 	s.metrics.PingRequestCount.Inc()

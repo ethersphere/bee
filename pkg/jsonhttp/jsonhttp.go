@@ -38,10 +38,25 @@ func Respond(w http.ResponseWriter, statusCode int, response interface{}) {
 			Message: http.StatusText(statusCode),
 			Code:    statusCode,
 		}
-	} else if message, ok := response.(string); ok {
-		response = &StatusResponse{
-			Message: message,
-			Code:    statusCode,
+	} else {
+		switch message := response.(type) {
+		case string:
+			response = &StatusResponse{
+				Message: message,
+				Code:    statusCode,
+			}
+		case error:
+			response = &StatusResponse{
+				Message: message.Error(),
+				Code:    statusCode,
+			}
+		case interface {
+			String() string
+		}:
+			response = &StatusResponse{
+				Message: message.String(),
+				Code:    statusCode,
+			}
 		}
 	}
 	var b bytes.Buffer
