@@ -1,0 +1,60 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package api
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/p2p"
+	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
+)
+
+func TestPingpong(t *testing.T) {
+	rtt := time.Minute
+	peerID := "124762324"
+	unknownPeerID := "55555555"
+	errorPeerID := "77777777"
+	testErr := errors.New("test error")
+
+	pingpongService := pingpongmock.New(func(ctx context.Context, address string, msgs ...string) (time.Duration, error) {
+		if address == errorPeerID {
+			return 0, testErr
+		}
+		if address != peerID {
+			return 0, p2p.ErrPeerNotFound
+		}
+		return rtt, nil
+	})
+
+	client, cleanup := newTestServer(t, testServerOptions{
+		Pingpong: pingpongService,
+	})
+	defer cleanup()
+
+	t.Run("ok", func(t *testing.T) {
+		testResponseDirect(t, client, http.MethodGet, "/pingpong/"+peerID, "", http.StatusOK, pingpongResponse{
+			RTT: rtt,
+		})
+	})
+
+	t.Run("peer not found", func(t *testing.T) {
+		testResponseDirect(t, client, http.MethodGet, "/pingpong/"+unknownPeerID, "", http.StatusNotFound, jsonhttp.StatusResponse{
+			Code:    http.StatusNotFound,
+			Message: "peer not found",
+		})
+	})
+
+	t.Run("error", func(t *testing.T) {
+		testResponseDirect(t, client, http.MethodGet, "/pingpong/"+errorPeerID, "", http.StatusInternalServerError, jsonhttp.StatusResponse{
+			Code:    http.StatusInternalServerError,
+			Message: testErr.Error(),
+		})
+	})
+}
