@@ -22,21 +22,24 @@ var (
 	EscapeHTML = false
 )
 
+// StatusResponse is a standardized error format for specific HTTP responses.
+// Code field corresponds with HTTP status code, and Message field is a short
+// description of that code or provides more context about the reason for such
+// response.
+type StatusResponse struct {
+	Code    int    `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 // Respond writes a JSON-encoded body to http.ResponseWriter.
 func Respond(w http.ResponseWriter, statusCode int, response interface{}) {
-
-	type statusResponse struct {
-		Code    int    `json:"code,omitempty"`
-		Message string `json:"message,omitempty"`
-	}
-
 	if response == nil {
-		response = &statusResponse{
+		response = &StatusResponse{
 			Code:    statusCode,
 			Message: http.StatusText(statusCode),
 		}
 	} else if message, ok := response.(string); ok {
-		response = &statusResponse{
+		response = &StatusResponse{
 			Code:    statusCode,
 			Message: message,
 		}
