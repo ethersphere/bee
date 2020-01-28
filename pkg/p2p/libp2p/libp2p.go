@@ -268,7 +268,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 			s.metrics.HandledStreamCount.Inc()
 			if err := ss.Handler(p2p.Peer{Address: overlay}, stream); err != nil {
-				var e *disconnectError
+				var e *p2p.DisconnectError
 				if errors.Is(err, e) {
 					// todo: test connection close and refactor
 					s.peers.remove(peerID)
