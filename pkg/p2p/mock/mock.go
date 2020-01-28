@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -16,19 +15,21 @@ import (
 )
 
 type Service struct {
-	connectFunc func(ctx context.Context, addr ma.Multiaddr) (overlay string, err error)
+	AddProtocolFunc func(p2p.ProtocolSpec) error
+	ConnectFunc     func(ctx context.Context, addr ma.Multiaddr) (overlay string, err error)
+	DisconnectFunc  func(overlay string) error
 }
 
-func NewService(connectFunc func(ctx context.Context, addr ma.Multiaddr) (overlay string, err error)) *Service {
-	return &Service{connectFunc: connectFunc}
-}
-
-func (s *Service) AddProtocol(_ p2p.ProtocolSpec) error {
-	return errors.New("not implemented")
+func (s *Service) AddProtocol(spec p2p.ProtocolSpec) error {
+	return s.AddProtocolFunc(spec)
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error) {
-	return s.connectFunc(ctx, addr)
+	return s.ConnectFunc(ctx, addr)
+}
+
+func (s *Service) Disconnect(overlay string) error {
+	return s.DisconnectFunc(overlay)
 }
 
 type Recorder struct {

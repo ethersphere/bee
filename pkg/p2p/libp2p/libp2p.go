@@ -327,6 +327,15 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay strin
 	s.logger.Infof("peer %q connected", i.Address)
 	return i.Address, nil
 }
+
+func (s *Service) Disconnect(overlay string) error {
+	peerID, found := s.peers.peerID(overlay)
+	if !found {
+		return p2p.ErrPeerNotFound
+	}
+	return s.host.Network().ClosePeer(peerID)
+}
+
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {

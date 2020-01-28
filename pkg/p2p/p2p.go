@@ -15,6 +15,7 @@ import (
 type Service interface {
 	AddProtocol(ProtocolSpec) error
 	Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error)
+	Disconnect(overlay string) error
 }
 
 type Streamer interface {

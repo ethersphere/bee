@@ -24,12 +24,14 @@ func TestConnect(t *testing.T) {
 	testErr := errors.New("test error")
 
 	client, cleanup := newTestServer(t, testServerOptions{
-		P2P: mock.NewService(func(ctx context.Context, addr ma.Multiaddr) (string, error) {
-			if addr.String() == errorUnderlay {
-				return "", testErr
-			}
-			return overlay, nil
-		}),
+		P2P: &mock.Service{
+			ConnectFunc: func(ctx context.Context, addr ma.Multiaddr) (string, error) {
+				if addr.String() == errorUnderlay {
+					return "", testErr
+				}
+				return overlay, nil
+			},
+		},
 	})
 	defer cleanup()
 
