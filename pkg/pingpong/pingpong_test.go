@@ -15,8 +15,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
 )
@@ -30,9 +30,9 @@ func TestPing(t *testing.T) {
 	})
 
 	// setup the stream recorder to record stream data
-	recorder := mock.NewRecorder(
-		mock.WithProtocols(server.Protocol()),
-		mock.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
+	recorder := streamtest.New(
+		streamtest.WithProtocols(server.Protocol()),
+		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
 			if runtime.GOOS == "windows" {
 				// windows has a bit lower time resolution
 				// so, slow down the handler with a middleware
