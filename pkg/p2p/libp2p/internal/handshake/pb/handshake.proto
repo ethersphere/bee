@@ -11,5 +11,11 @@ message ShakeHand {
     bool Light = 3;
 }
 
-message Ack {}
+message ShakeHandAck {
+    ShakeHand ShakeHand = 1;
+    Ack Ack = 2;
+}
 
+message Ack {
+    string Address = 1;
+}

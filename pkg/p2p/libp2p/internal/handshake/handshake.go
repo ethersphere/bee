@@ -6,7 +6,6 @@ package handshake
 
 import (
 	"fmt"
-
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
@@ -35,7 +34,7 @@ func New(overlay string, networkID int32, logger logging.Logger) *Service {
 
 func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	var resp pb.ShakeHand
+	var resp pb.ShakeHandAck
 	if err := w.WriteMsg(&pb.ShakeHand{
 		Address:   s.overlay,
 		NetworkID: s.networkID,
@@ -48,15 +47,15 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("handshake read message: %w", err)
 	}
 
-	if err := w.WriteMsg(&pb.Ack{}); err != nil {
-		return nil, fmt.Errorf("handshake write message: %w", err)
+	if err := w.WriteMsg(&pb.Ack{Address: resp.ShakeHand.Address}); err != nil {
+		return nil, fmt.Errorf("ack write message: %w", err)
 	}
 
-	s.logger.Tracef("handshake read response: %s", resp.Address)
+	s.logger.Tracef("handshake read response: %s", resp.ShakeHand.Address)
 	return &Info{
-		Address:   resp.Address,
-		NetworkID: resp.NetworkID,
-		Light:     resp.Light,
+		Address:   resp.ShakeHand.Address,
+		NetworkID: resp.ShakeHand.NetworkID,
+		Light:     resp.ShakeHand.Light,
 	}, nil
 }
 
@@ -70,16 +69,19 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 	}
 
 	s.logger.Tracef("handshake handler received request %s", req.Address)
-	if err := w.WriteMsg(&pb.ShakeHand{
-		Address:   s.overlay,
-		NetworkID: s.networkID,
+	if err := w.WriteMsg(&pb.ShakeHandAck{
+		ShakeHand: &pb.ShakeHand{
+			Address:   s.overlay,
+			NetworkID: s.networkID,
+		},
+		Ack: &pb.Ack{Address: req.Address},
 	}); err != nil {
 		return nil, fmt.Errorf("handshake handler write message: %w", err)
 	}
 
 	var ack pb.Ack
 	if err := r.ReadMsg(&ack); err != nil {
-		return nil, fmt.Errorf("handshake handler read message: %w", err)
+		return nil, fmt.Errorf("ack read message: %w", err)
 	}
 
 	s.logger.Tracef("handshake handled response: %s", s.overlay)

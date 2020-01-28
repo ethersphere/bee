@@ -3,6 +3,7 @@ module github.com/ethersphere/bee
 go 1.13
 
 require (
+	github.com/btcsuite/btcd v0.20.1-beta
 	github.com/gogo/protobuf v1.3.1
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
