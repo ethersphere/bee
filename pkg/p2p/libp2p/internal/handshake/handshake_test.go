@@ -88,7 +88,7 @@ func TestHandshake(t *testing.T) {
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
 			},
-			Ack: &pb.Ack{},
+			Ack: &pb.Ack{Address: info.Address},
 		}); err != nil {
 			t.Fatal(err)
 		}
