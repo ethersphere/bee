@@ -7,6 +7,8 @@ package swarm
 
 import "encoding/hex"
 
+import "bytes"
+
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.
 type Address []byte
@@ -20,3 +22,16 @@ func NewAddress(s string) (Address, error) {
 func (a Address) String() string {
 	return hex.EncodeToString(a)
 }
+
+// Equal returns true if two addresses are identical.
+func (a Address) Equal(b Address) bool {
+	return bytes.Equal(a, b)
+}
+
+// IsZero returns true if the Address is not set to any value.
+func (a Address) IsZero() bool {
+	return a.Equal(ZeroAddress)
+}
+
+// ZeroAddress is the address that has no value.
+var ZeroAddress = Address(nil)
