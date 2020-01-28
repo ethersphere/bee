@@ -24,17 +24,19 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	rtt, err := s.Pingpong.Ping(ctx, peerID, "hey", "there", ",", "how are", "you", "?")
 	if err != nil {
+		s.Logger.Debugf("pingpong: ping %s: %v", peerID, err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
-			s.Logger.Debugf("pingpong: ping %s: %v", peerID, err)
 			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
-		s.Logger.Errorf("pingpong: ping %s: %v", peerID, err)
-		jsonhttp.InternalServerError(w, err)
+
+		s.Logger.Errorf("pingpong failed to peer %s", peerID)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 	s.metrics.PingRequestCount.Inc()
 
+	s.Logger.Infof("pingpong succeeded to peer %s", peerID)
 	jsonhttp.OK(w, pingpongResponse{
 		RTT: rtt,
 	})

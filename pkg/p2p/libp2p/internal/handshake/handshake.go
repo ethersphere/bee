@@ -50,7 +50,7 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("ack: write message: %w", err)
 	}
 
-	s.logger.Debugf("handshake finished for peer %s", resp.ShakeHand.Address)
+	s.logger.Tracef("handshake finished for peer %s", resp.ShakeHand.Address)
 
 	return &Info{
 		Address:   resp.ShakeHand.Address,
@@ -83,7 +83,7 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("ack: read message: %w", err)
 	}
 
-	s.logger.Debugf("handshake finished for peer %s", req.Address)
+	s.logger.Tracef("handshake finished for peer %s", req.Address)
 	return &Info{
 		Address:   req.Address,
 		NetworkID: req.NetworkID,

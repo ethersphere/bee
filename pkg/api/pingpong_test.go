@@ -56,7 +56,7 @@ func TestPingpong(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+errorPeerID, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
-			Message: testErr.Error(),
+			Message: http.StatusText(http.StatusInternalServerError), // do not leek internal error
 		})
 	})
 

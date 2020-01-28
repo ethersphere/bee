@@ -116,6 +116,7 @@ func (c *command) initStartCmd() (err error) {
 			sig := <-interruptChannel
 
 			logger.Debugf("received signal: %v", sig)
+			logger.Info("shutting down")
 
 			// Shutdown
 			done := make(chan struct{})

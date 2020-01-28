@@ -211,20 +211,21 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peerID := stream.Conn().RemotePeer()
 		i, err := s.handshakeService.Handle(stream)
 		if err != nil {
-			s.logger.Errorf("handshake with x %s: %w", peerID, err)
+			s.logger.Debugf("handshake: handle %s: %w", peerID, err)
+			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			// todo: test connection close and refactor
 			_ = stream.Conn().Close()
 			return
 		}
 		if i.NetworkID != s.networkID {
-			s.logger.Errorf("handshake with peer %s: invalid network id %v", peerID, i.NetworkID)
+			s.logger.Warningf("peer %s has a different network id %v", peerID, i.NetworkID)
 			// todo: test connection close and refactor
 			_ = stream.Conn().Close()
 			return
 		}
 		s.peers.add(peerID, i.Address)
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("peer %q connected", i.Address)
+		s.logger.Infof("peer %s connected", i.Address)
 	})
 
 	// TODO: be more resilient on connection errors and connect in parallel
@@ -275,7 +276,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					_ = stream.Conn().Close()
 				}
 
-				s.logger.Errorf("%s: %s/%s: %w", p.Name, ss.Name, ss.Version, err)
+				s.logger.Debugf("handle protocol %s: stream %s/%s: peer %s: %w", p.Name, ss.Name, ss.Version, overlay, err)
 			}
 		})
 	}
@@ -324,7 +325,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay strin
 
 	s.peers.add(info.ID, i.Address)
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("peer %q connected", i.Address)
+	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil
 }
 

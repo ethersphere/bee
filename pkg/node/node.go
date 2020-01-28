@@ -96,7 +96,8 @@ func NewBee(o Options) (*Bee, error) {
 			logger.Infof("api address: %s", apiListener.Addr())
 
 			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Errorf("api server: %v", err)
+				logger.Debugf("api server: %v", err)
+				logger.Error("unable to serve api")
 			}
 		}()
 
@@ -133,7 +134,8 @@ func NewBee(o Options) (*Bee, error) {
 			logger.Infof("debug api address: %s", debugAPIListener.Addr())
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Errorf("debug api server: %v", err)
+				logger.Debugf("debug api server: %v", err)
+				logger.Error("unable to serve debug api")
 			}
 		}()
 

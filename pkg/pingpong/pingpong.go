@@ -84,7 +84,7 @@ func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt
 			return 0, fmt.Errorf("read message: %w", err)
 		}
 
-		s.logger.Debugf("got pong: %q", pong.Response)
+		s.logger.Tracef("got pong: %q", pong.Response)
 		s.metrics.PongReceivedCount.Inc()
 	}
 	return time.Since(start), nil
@@ -102,7 +102,7 @@ func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
 			}
 			return fmt.Errorf("read message: %w", err)
 		}
-		s.logger.Debugf("got ping: %q", ping.Greeting)
+		s.logger.Tracef("got ping: %q", ping.Greeting)
 		s.metrics.PingReceivedCount.Inc()
 
 		if err := w.WriteMsg(&pb.Pong{

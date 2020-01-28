@@ -47,8 +47,36 @@ curl -XPOST localhost:8502/pingpong/4932309428148935717
 - Package pkg/p2p/libp2p and is only allowed to depend on go-libp2p packages given that it is just one pkg/p2p implementation. No other implementation should depend on go-libp2p packages.
 - Package pkg/p2p/protobuf provides all the helpers needed to make easer for protocol implementations to use protocol buffers for encoding.
 
+## Logging guidelines
+
+Log messages are categorized in five different severities: error, warning, info, debug and trace, with semantic meaning associated with each of them.
+
+Two types of application users are identified: regular user and developer. Regular user should not be presented with confusing technical implementation details in log messages, but only with meaningful information related to application operability in a form of meaningful statements. Developers are users that are aware of implementation details and they will benefit from technical details to help them debug the application problematic state.
+
+This means that the same problematic event may have two log lines but with different severities. This is the case with Error/Debug or Warning/Debug combo where Error or Warning is meant for the regular user and the Debug for developers to help them investigate the issue. Info and Trace log levels are informative about the expected state changes, but Info, with operable information, for regular user, and Trace, with technical details, for developer.
+
+### Error
+
+Error log messages are meant for regular users to be informed about the event that is happening which is not expected or may require intervention from the user for application to function properly. Log messages should be written as a statement, e.g. *unable to connect to peer 12345* and should not reveal technical details about internal implementation, such are package name, variable name or internal variable state. It should contain information only relevant to the user operating the application, concepts that can be operated on using exposed application interfaces.
+
+### Warning
+
+Warning log messages are also meant for regular users, as Error log messages, but are just informative about the state of the application that it can handle itself, by retry mechanism, for example. They should have the same form as the Error log messages.
+
+### Info
+
+Info log messages are informing users about the changes that are changing the application state in the expected manner, or presenting the user the information that can be used to operate the application, such as *node address: 12345*.
+
+### Debug
+
+Debug log messages are meant for developers to identify the problem that has happened. They should contain as much as possible internal technical information and applications state to be able to reproduce and debug the issue. Format of such log messages should be declarative with colon `:` as the separator between code concepts as nested call stacks, components or abstractions, e.g. *handshake: parse peer /p2p/Qm2313123 address 12345: encoding/hex: odd length hex string*, just like Go error values are chained with annotations.
+
+### Trace
+
+Trace log messages are meant to inform developers about expected successful operations that are not relevant for regular users, but may be useful for understanding states in which application is going through. The form should be the same as Debug log messages.
+
 ## TODO
 
 - P2P mock (protocol tester) implementation improvements
 - Figure out routing (whether to use libp2p Routing or to abstract hive on top of p2p package)
-- Instrumentation: logging, metrics, tracing, pprof...
+- Instrumentation: tracing
