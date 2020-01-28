@@ -109,7 +109,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("ERROR - shakehand write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("handshake write message: %w", testErr)
+		expectedErr := fmt.Errorf("write message: %w", testErr)
 		stream := &StreamMock{}
 		stream.setWriteErr(testErr, 0)
 		res, err := handshakeService.Handshake(stream)
@@ -124,7 +124,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("ERROR - shakehand read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("handshake read message: %w", testErr)
+		expectedErr := fmt.Errorf("read message: %w", testErr)
 		stream := &StreamMock{writeBuffer: &bytes.Buffer{}}
 		stream.setReadErr(testErr, 0)
 		res, err := handshakeService.Handshake(stream)
@@ -139,7 +139,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("ERROR - ack write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("ack write message: %w", testErr)
+		expectedErr := fmt.Errorf("ack: write message: %w", testErr)
 
 		expectedInfo := Info{
 			Address:   "node2",
@@ -233,7 +233,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("handshake handler read message: %w", testErr)
+		expectedErr := fmt.Errorf("read message: %w", testErr)
 		stream := &StreamMock{}
 		stream.setReadErr(testErr, 0)
 		res, err := handshakeService.Handle(stream)
@@ -248,7 +248,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("ERROR - write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("handshake handler write message: %w", testErr)
+		expectedErr := fmt.Errorf("write message: %w", testErr)
 		var buffer bytes.Buffer
 		stream := &StreamMock{readBuffer: &buffer, writeBuffer: &buffer}
 		stream.setWriteErr(testErr, 1)
@@ -273,7 +273,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("ack read message: %w", testErr)
+		expectedErr := fmt.Errorf("ack: read message: %w", testErr)
 
 		node2Info := Info{
 			Address:   "node2",

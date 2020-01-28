@@ -39,19 +39,19 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		Address:   s.overlay,
 		NetworkID: s.networkID,
 	}); err != nil {
-		return nil, fmt.Errorf("handshake write message: %w", err)
+		return nil, fmt.Errorf("write message: %w", err)
 	}
 
-	s.logger.Tracef("handshake sent request %s", s.overlay)
 	if err := r.ReadMsg(&resp); err != nil {
-		return nil, fmt.Errorf("handshake read message: %w", err)
+		return nil, fmt.Errorf("read message: %w", err)
 	}
 
 	if err := w.WriteMsg(&pb.Ack{Address: resp.ShakeHand.Address}); err != nil {
-		return nil, fmt.Errorf("ack write message: %w", err)
+		return nil, fmt.Errorf("ack: write message: %w", err)
 	}
 
-	s.logger.Tracef("handshake read response: %s", resp.ShakeHand.Address)
+	s.logger.Debugf("handshake finished for peer %s", resp.ShakeHand.Address)
+
 	return &Info{
 		Address:   resp.ShakeHand.Address,
 		NetworkID: resp.ShakeHand.NetworkID,
@@ -65,10 +65,9 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 
 	var req pb.ShakeHand
 	if err := r.ReadMsg(&req); err != nil {
-		return nil, fmt.Errorf("handshake handler read message: %w", err)
+		return nil, fmt.Errorf("read message: %w", err)
 	}
 
-	s.logger.Tracef("handshake handler received request %s", req.Address)
 	if err := w.WriteMsg(&pb.ShakeHandAck{
 		ShakeHand: &pb.ShakeHand{
 			Address:   s.overlay,
@@ -76,15 +75,15 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 		},
 		Ack: &pb.Ack{Address: req.Address},
 	}); err != nil {
-		return nil, fmt.Errorf("handshake handler write message: %w", err)
+		return nil, fmt.Errorf("write message: %w", err)
 	}
 
 	var ack pb.Ack
 	if err := r.ReadMsg(&ack); err != nil {
-		return nil, fmt.Errorf("ack read message: %w", err)
+		return nil, fmt.Errorf("ack: read message: %w", err)
 	}
 
-	s.logger.Tracef("handshake handled response: %s", s.overlay)
+	s.logger.Debugf("handshake finished for peer %s", req.Address)
 	return &Info{
 		Address:   req.Address,
 		NetworkID: req.NetworkID,
