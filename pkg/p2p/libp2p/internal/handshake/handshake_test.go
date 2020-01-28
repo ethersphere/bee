@@ -63,7 +63,7 @@ func TestHandshake(t *testing.T) {
 		stream1 := &StreamMock{readBuffer: &buffer1, writeBuffer: &buffer2}
 		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w, r := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHand{
 			Address:   expectedInfo.Address,
 			NetworkID: expectedInfo.NetworkID,
@@ -79,6 +79,10 @@ func TestHandshake(t *testing.T) {
 
 		if *res != expectedInfo {
 			t.Fatalf("got %+v, expected %+v", res, info)
+		}
+
+		if err := r.ReadMsg(&pb.Ack{}); err != nil {
+			t.Fatal(err)
 		}
 	})
 
@@ -139,6 +143,10 @@ func TestHandle(t *testing.T) {
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
 		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := w.WriteMsg(&pb.Ack{}); err != nil {
 			t.Fatal(err)
 		}
 
