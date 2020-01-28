@@ -11,3 +11,5 @@ message ShakeHand {
     bool Light = 3;
 }
 
+message Ack {}
+

@@ -48,6 +48,10 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("handshake read message: %w", err)
 	}
 
+	if err := w.WriteMsg(&pb.Ack{}); err != nil {
+		return nil, fmt.Errorf("handshake write message: %w", err)
+	}
+
 	s.logger.Tracef("handshake read response: %s", resp.Address)
 	return &Info{
 		Address:   resp.Address,
@@ -71,6 +75,11 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 		NetworkID: s.networkID,
 	}); err != nil {
 		return nil, fmt.Errorf("handshake handler write message: %w", err)
+	}
+
+	var ack pb.Ack
+	if err := r.ReadMsg(&ack); err != nil {
+		return nil, fmt.Errorf("handshake handler read message: %w", err)
 	}
 
 	s.logger.Tracef("handshake handled response: %s", s.overlay)
