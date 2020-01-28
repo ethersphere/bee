@@ -5,9 +5,10 @@
 // Package swarm contains most basic and general Swarm concepts.
 package swarm
 
-import "encoding/hex"
-
-import "bytes"
+import (
+	"bytes"
+	"encoding/hex"
+)
 
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.
