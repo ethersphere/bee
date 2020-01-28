@@ -6,6 +6,7 @@ package mock
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	ma "github.com/multiformats/go-multiaddr"
@@ -44,14 +45,23 @@ func New(opts ...Option) *Service {
 }
 
 func (s *Service) AddProtocol(spec p2p.ProtocolSpec) error {
+	if s.addProtocolFunc == nil {
+		return errors.New("AddProtocol function not configured")
+	}
 	return s.addProtocolFunc(spec)
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error) {
+	if s.connectFunc == nil {
+		return "", errors.New("Connect function not configured")
+	}
 	return s.connectFunc(ctx, addr)
 }
 
 func (s *Service) Disconnect(overlay string) error {
+	if s.disconnectFunc == nil {
+		return errors.New("Disconnect function not configured")
+	}
 	return s.disconnectFunc(overlay)
 }
 
