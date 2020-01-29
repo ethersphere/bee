@@ -6,7 +6,7 @@ syntax = "proto3";
 package pb;
 
 message ShakeHand {
-    string Address = 1;
+    bytes Address = 1;
     int32 NetworkID = 2;
     bool Light = 3;
 }
@@ -17,5 +17,5 @@ message ShakeHandAck {
 }
 
 message Ack {
-    string Address = 1;
+    bytes Address = 1;
 }

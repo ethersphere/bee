@@ -44,5 +44,10 @@ func (a Address) IsZero() bool {
 	return a.Equal(ZeroAddress)
 }
 
+// Bytes returns
+func (a Address) Bytes() []byte {
+	return a.b
+}
+
 // ZeroAddress is the address that has no value.
 var ZeroAddress = NewAddress(nil)
