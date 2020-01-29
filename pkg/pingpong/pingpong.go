@@ -7,7 +7,6 @@ package pingpong
 import (
 	"context"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"io"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (

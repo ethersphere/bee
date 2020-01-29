@@ -5,9 +5,9 @@
 package libp2p
 
 import (
-	"github.com/ethersphere/bee/pkg/swarm"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/swarm"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
 

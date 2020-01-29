@@ -7,9 +7,9 @@ package mock
 import (
 	"context"
 	"errors"
-	"github.com/ethersphere/bee/pkg/swarm"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 

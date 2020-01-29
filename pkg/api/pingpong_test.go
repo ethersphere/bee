@@ -7,7 +7,6 @@ package api_test
 import (
 	"context"
 	"errors"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"net/http"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
 	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestPingpong(t *testing.T) {

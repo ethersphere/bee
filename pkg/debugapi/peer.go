@@ -6,11 +6,11 @@ package debugapi
 
 import (
 	"errors"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 	"github.com/multiformats/go-multiaddr"
 )

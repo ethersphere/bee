@@ -7,9 +7,9 @@ package p2p
 import (
 	"context"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 

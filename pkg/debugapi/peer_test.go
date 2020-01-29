@@ -7,7 +7,6 @@ package debugapi_test
 import (
 	"context"
 	"errors"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"net/http"
 	"testing"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
