@@ -262,7 +262,7 @@ func TestHandle(t *testing.T) {
 		stream.setWriteErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   []byte("node1"),
+			Address:   node1Addr,
 			NetworkID: 0,
 			Light:     false,
 		}); err != nil {
