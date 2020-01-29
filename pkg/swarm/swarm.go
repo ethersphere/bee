@@ -44,7 +44,7 @@ func (a Address) IsZero() bool {
 	return a.Equal(ZeroAddress)
 }
 
-// Bytes returns
+// Bytes returns bytes representation of the Address.
 func (a Address) Bytes() []byte {
 	return a.b
 }
