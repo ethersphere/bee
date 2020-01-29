@@ -195,7 +195,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		host:             h,
 		metrics:          newMetrics(),
 		networkID:        o.NetworkID,
-		handshakeService: handshake.New(overlay, o.NetworkID, o.Logger),
+		handshakeService: handshake.New(swarm.NewAddress(overlay), o.NetworkID, o.Logger),
 		peers:            newPeerRegistry(),
 		logger:           o.Logger,
 	}
@@ -303,25 +303,25 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return nil, err
+		return swarm.Address{}, err
 	}
 
 	if err := s.host.Connect(ctx, *info); err != nil {
-		return nil, err
+		return swarm.Address{}, err
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
 	if err != nil {
-		return nil, fmt.Errorf("new stream: %w", err)
+		return swarm.Address{}, fmt.Errorf("new stream: %w", err)
 	}
 	defer stream.Close()
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
-		return nil, err
+		return swarm.Address{}, err
 	}
 	if i.NetworkID != s.networkID {
-		return nil, fmt.Errorf("invalid network id %v", i.NetworkID)
+		return swarm.Address{}, fmt.Errorf("invalid network id %v", i.NetworkID)
 	}
 
 	s.peers.add(info.ID, i.Address)

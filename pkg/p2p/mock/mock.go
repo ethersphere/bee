@@ -54,7 +54,7 @@ func (s *Service) AddProtocol(spec p2p.ProtocolSpec) error {
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
 	if s.connectFunc == nil {
-		return nil, errors.New("Connect function not configured")
+		return swarm.Address{}, errors.New("Connect function not configured")
 	}
 	return s.connectFunc(ctx, addr)
 }

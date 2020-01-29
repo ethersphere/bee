@@ -42,9 +42,9 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["address"]
-	swarmAddr, err := swarm.NewAddress(addr)
+	swarmAddr, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		jsonhttp.BadRequest(w, "peer not found")
+		jsonhttp.BadRequest(w, "invalid peer address")
 		return
 	}
 

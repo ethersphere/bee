@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"io/ioutil"
 	"testing"
 
@@ -63,7 +64,7 @@ func (s *StreamMock) Close() error {
 func TestHandshake(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	info := Info{
-		Address:   []byte("node1"),
+		Address:   swarm.NewAddress([]byte("node1")),
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -71,7 +72,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		expectedInfo := Info{
-			Address:   []byte("node2"),
+			Address:   swarm.NewAddress([]byte("node2")),
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -84,11 +85,11 @@ func TestHandshake(t *testing.T) {
 		w, r := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHandAck{
 			ShakeHand: &pb.ShakeHand{
-				Address:   expectedInfo.Address,
+				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
 			},
-			Ack: &pb.Ack{Address: info.Address},
+			Ack: &pb.Ack{Address: info.Address.Bytes()},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -141,7 +142,7 @@ func TestHandshake(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: write message: %w", testErr)
 		expectedInfo := Info{
-			Address:   []byte("node2"),
+			Address:   swarm.NewAddress([]byte("node2")),
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -155,11 +156,11 @@ func TestHandshake(t *testing.T) {
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHandAck{
 			ShakeHand: &pb.ShakeHand{
-				Address:   expectedInfo.Address,
+				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
 			},
-			Ack: &pb.Ack{Address: info.Address},
+			Ack: &pb.Ack{Address: info.Address.Bytes()},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -177,7 +178,7 @@ func TestHandshake(t *testing.T) {
 
 func TestHandle(t *testing.T) {
 	nodeInfo := Info{
-		Address:   []byte("node1"),
+		Address:   swarm.NewAddress([]byte("node1")),
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -187,7 +188,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		node2Info := Info{
-			Address:   []byte("node2"),
+			Address:   swarm.NewAddress([]byte("node2")),
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -199,14 +200,14 @@ func TestHandle(t *testing.T) {
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   node2Info.Address,
+			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
 		}); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := w.WriteMsg(&pb.Ack{Address: node2Info.Address}); err != nil {
+		if err := w.WriteMsg(&pb.Ack{Address: node2Info.Address.Bytes()}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -226,7 +227,7 @@ func TestHandle(t *testing.T) {
 		}
 
 		if !nodeInfo.Equal(Info{
-			Address:   got.ShakeHand.Address,
+			Address:   swarm.NewAddress(got.ShakeHand.Address),
 			NetworkID: got.ShakeHand.NetworkID,
 			Light:     got.ShakeHand.Light,
 		}) {
@@ -278,7 +279,7 @@ func TestHandle(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: read message: %w", testErr)
 		node2Info := Info{
-			Address:   []byte("node2"),
+			Address:   swarm.NewAddress([]byte("node2")),
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -290,7 +291,7 @@ func TestHandle(t *testing.T) {
 		stream1.setReadErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   node2Info.Address,
+			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
 		}); err != nil {

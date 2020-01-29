@@ -37,7 +37,7 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	var resp pb.ShakeHandAck
 	if err := w.WriteMsg(&pb.ShakeHand{
-		Address:   s.overlay,
+		Address:   s.overlay.Bytes(),
 		NetworkID: s.networkID,
 	}); err != nil {
 		return nil, fmt.Errorf("write message: %w", err)
@@ -54,7 +54,7 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	s.logger.Tracef("handshake finished for peer %s", resp.ShakeHand.Address)
 
 	return &Info{
-		Address:   resp.ShakeHand.Address,
+		Address:   swarm.NewAddress(resp.ShakeHand.Address),
 		NetworkID: resp.ShakeHand.NetworkID,
 		Light:     resp.ShakeHand.Light,
 	}, nil
@@ -71,7 +71,7 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 
 	if err := w.WriteMsg(&pb.ShakeHandAck{
 		ShakeHand: &pb.ShakeHand{
-			Address:   s.overlay,
+			Address:   s.overlay.Bytes(),
 			NetworkID: s.networkID,
 		},
 		Ack: &pb.Ack{Address: req.Address},
@@ -86,7 +86,7 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 
 	s.logger.Tracef("handshake finished for peer %s", req.Address)
 	return &Info{
-		Address:   req.Address,
+		Address:   swarm.NewAddress(req.Address),
 		NetworkID: req.NetworkID,
 		Light:     req.Light,
 	}, nil

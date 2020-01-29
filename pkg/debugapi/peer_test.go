@@ -22,13 +22,13 @@ import (
 func TestConnect(t *testing.T) {
 	underlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS"
 	errorUnderlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkw88cjH2orYrB6fDui4eUNdmgkwnDM8W681UbfsPgM9QY"
-	overlay := swarm.Address("985732527402")
+	overlay, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testErr := errors.New("test error")
 
 	client, cleanup := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() == errorUnderlay {
-				return nil, testErr
+				return swarm.Address{}, testErr
 			}
 			return overlay, nil
 		})),

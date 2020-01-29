@@ -26,14 +26,14 @@ func newPeerRegistry() *peerRegistry {
 
 func (r *peerRegistry) add(peerID libp2ppeer.ID, overlay swarm.Address) {
 	r.mu.Lock()
-	r.peers[string(overlay)] = peerID
-	r.overlays[peerID] = string(overlay)
+	r.peers[string(overlay.Bytes())] = peerID
+	r.overlays[peerID] = string(overlay.Bytes())
 	r.mu.Unlock()
 }
 
 func (r *peerRegistry) peerID(overlay swarm.Address) (peerID libp2ppeer.ID, found bool) {
 	r.mu.RLock()
-	peerID, found = r.peers[string(overlay)]
+	peerID, found = r.peers[string(overlay.Bytes())]
 	r.mu.RUnlock()
 	return peerID, found
 }
@@ -42,7 +42,7 @@ func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (swarm.Address, bool) {
 	r.mu.RLock()
 	overlay, found := r.overlays[peerID]
 	r.mu.RUnlock()
-	return []byte(overlay), found
+	return swarm.NewAddress([]byte(overlay)), found
 }
 
 func (r *peerRegistry) remove(peerID libp2ppeer.ID) {

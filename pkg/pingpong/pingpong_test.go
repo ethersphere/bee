@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"io/ioutil"
 	"runtime"
 	"testing"
@@ -52,7 +53,7 @@ func TestPing(t *testing.T) {
 	// ping
 	peerID := "124"
 	greetings := []string{"hey", "there", "fella"}
-	rtt, err := client.Ping(context.Background(), []byte(peerID), greetings...)
+	rtt, err := client.Ping(context.Background(), swarm.NewAddress([]byte(peerID)), greetings...)
 	if err != nil {
 		t.Fatal(err)
 	}
