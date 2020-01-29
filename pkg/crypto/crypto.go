@@ -30,7 +30,7 @@ func NewAddress(p ecdsa.PublicKey) swarm.Address {
 	return swarm.NewAddress(keccak256(d))
 }
 
-// privateKey holds information about Swarm private key for mashaling.
+// privateKey holds information about Swarm private key for marshaling.
 type privateKey struct {
 	Type string `json:"type"`
 	Key  []byte `json:"key"`
