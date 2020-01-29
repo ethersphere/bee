@@ -101,9 +101,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !res.Equal(expectedInfo) {
-			t.Fatalf("got %+v, expected %+v", res, info)
-		}
+		testInfo(t, *res, expectedInfo)
 
 		if err := r.ReadMsg(&pb.Ack{}); err != nil {
 			t.Fatal(err)
@@ -220,9 +218,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !res.Equal(node2Info) {
-			t.Fatalf("got %+v, expected %+v", res, node2Info)
-		}
+		testInfo(t, *res, node2Info)
 
 		_, r := protobuf.NewWriterAndReader(stream2)
 		var got pb.ShakeHandAck
@@ -230,13 +226,11 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !nodeInfo.Equal(Info{
+		testInfo(t, nodeInfo, Info{
 			Address:   swarm.NewAddress(got.ShakeHand.Address),
 			NetworkID: got.ShakeHand.NetworkID,
 			Light:     got.ShakeHand.Light,
-		}) {
-			t.Fatalf("got %+v, expected %+v", got, node2Info)
-		}
+		})
 	})
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
@@ -311,4 +305,13 @@ func TestHandle(t *testing.T) {
 			t.Fatal("handshake returned non-nil res")
 		}
 	})
+}
+
+// testInfo validates if two Info instances are equal.
+func testInfo(t *testing.T, got, want Info) {
+	t.Helper()
+
+	if !got.Address.Equal(want.Address) || got.NetworkID != want.NetworkID || got.Light != want.Light {
+		t.Fatalf("got info %+v, want %+v", got, want)
+	}
 }

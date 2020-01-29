@@ -97,8 +97,3 @@ type Info struct {
 	NetworkID int32
 	Light     bool
 }
-
-// Equal returns true if two info objects are identical.
-func (a Info) Equal(b Info) bool {
-	return a.Address.Equal(b.Address) && a.NetworkID == b.NetworkID && a.Light == b.Light
-}
