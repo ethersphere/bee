@@ -6,6 +6,7 @@ package debugapi
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -41,8 +42,13 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["address"]
+	swarmAddr, err := swarm.NewAddress(addr)
+	if err != nil {
+		jsonhttp.BadRequest(w, "peer not found")
+		return
+	}
 
-	if err := s.P2P.Disconnect(addr); err != nil {
+	if err := s.P2P.Disconnect(swarmAddr); err != nil {
 		s.Logger.Debugf("debug api: peer disconnect %s: %v", addr, err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.BadRequest(w, "peer not found")

@@ -57,14 +57,14 @@ func TestConnect(t *testing.T) {
 }
 
 func TestDisconnect(t *testing.T) {
-	address := "985732527402"
-	unknwonAdddress := "123456"
+	address := "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"
+	unknwonAdddress := "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e"
 	errorAddress := "33333333"
 	testErr := errors.New("test error")
 
 	client, cleanup := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithDisconnectFunc(func(addr string) error {
-			switch addr {
+		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address) error {
+			switch addr.String() {
 			case address:
 				return nil
 			case errorAddress:
