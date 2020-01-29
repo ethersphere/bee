@@ -16,6 +16,7 @@ type Address struct {
 	b []byte
 }
 
+// NewAddress constructs Address from a byte slice.
 func NewAddress(b []byte) Address {
 	return Address{b: b}
 }
