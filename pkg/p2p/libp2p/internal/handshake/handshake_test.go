@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"io/ioutil"
 	"testing"
 
@@ -61,9 +62,11 @@ func (s *StreamMock) Close() error {
 }
 
 func TestHandshake(t *testing.T) {
+	node1Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	node2Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
 	logger := logging.New(ioutil.Discard, 0)
 	info := Info{
-		Address:   "node1",
+		Address:   node1Addr,
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -71,7 +74,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		expectedInfo := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -84,11 +87,11 @@ func TestHandshake(t *testing.T) {
 		w, r := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHandAck{
 			ShakeHand: &pb.ShakeHand{
-				Address:   expectedInfo.Address,
+				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
 			},
-			Ack: &pb.Ack{Address: info.Address},
+			Ack: &pb.Ack{Address: info.Address.Bytes()},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -98,7 +101,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if *res != expectedInfo {
+		if !res.Equal(expectedInfo) {
 			t.Fatalf("got %+v, expected %+v", res, info)
 		}
 
@@ -140,9 +143,8 @@ func TestHandshake(t *testing.T) {
 	t.Run("ERROR - ack write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: write message: %w", testErr)
-
 		expectedInfo := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -156,11 +158,11 @@ func TestHandshake(t *testing.T) {
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHandAck{
 			ShakeHand: &pb.ShakeHand{
-				Address:   expectedInfo.Address,
+				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
 			},
-			Ack: &pb.Ack{Address: info.Address},
+			Ack: &pb.Ack{Address: info.Address.Bytes()},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -177,8 +179,10 @@ func TestHandshake(t *testing.T) {
 }
 
 func TestHandle(t *testing.T) {
+	node1Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	node2Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
 	nodeInfo := Info{
-		Address:   "node1",
+		Address:   node1Addr,
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -188,7 +192,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		node2Info := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -200,14 +204,14 @@ func TestHandle(t *testing.T) {
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   node2Info.Address,
+			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
 		}); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := w.WriteMsg(&pb.Ack{Address: node2Info.Address}); err != nil {
+		if err := w.WriteMsg(&pb.Ack{Address: node2Info.Address.Bytes()}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -216,7 +220,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if *res != node2Info {
+		if !res.Equal(node2Info) {
 			t.Fatalf("got %+v, expected %+v", res, node2Info)
 		}
 
@@ -226,7 +230,11 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if nodeInfo != Info(*got.ShakeHand) {
+		if !nodeInfo.Equal(Info{
+			Address:   swarm.NewAddress(got.ShakeHand.Address),
+			NetworkID: got.ShakeHand.NetworkID,
+			Light:     got.ShakeHand.Light,
+		}) {
 			t.Fatalf("got %+v, expected %+v", got, node2Info)
 		}
 	})
@@ -254,7 +262,7 @@ func TestHandle(t *testing.T) {
 		stream.setWriteErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   "node1",
+			Address:   node1Addr.Bytes(),
 			NetworkID: 0,
 			Light:     false,
 		}); err != nil {
@@ -274,9 +282,8 @@ func TestHandle(t *testing.T) {
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: read message: %w", testErr)
-
 		node2Info := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -288,7 +295,7 @@ func TestHandle(t *testing.T) {
 		stream1.setReadErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   node2Info.Address,
+			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
 		}); err != nil {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
@@ -22,7 +23,13 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	peerID := mux.Vars(r)["peer-id"]
 	ctx := r.Context()
 
-	rtt, err := s.Pingpong.Ping(ctx, peerID, "hey", "there", ",", "how are", "you", "?")
+	address, err := swarm.ParseHexAddress(peerID)
+	if err != nil {
+		s.Logger.Debugf("pingpong: ping %s: %v", peerID, err)
+		jsonhttp.BadRequest(w, "invalid peer address")
+	}
+
+	rtt, err := s.Pingpong.Ping(ctx, address, "hey", "there", ",", "how are", "you", "?")
 	if err != nil {
 		s.Logger.Debugf("pingpong: ping %s: %v", peerID, err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {

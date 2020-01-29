@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -35,14 +36,20 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, peerConnectResponse{
-		Address: address,
+		Address: address.String(),
 	})
 }
 
 func (s *server) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["address"]
+	swarmAddr, err := swarm.ParseHexAddress(addr)
+	if err != nil {
+		s.Logger.Debugf("debug api: peer disconnect %s: %v", addr, err)
+		jsonhttp.BadRequest(w, "invalid peer address")
+		return
+	}
 
-	if err := s.P2P.Disconnect(addr); err != nil {
+	if err := s.P2P.Disconnect(swarmAddr); err != nil {
 		s.Logger.Debugf("debug api: peer disconnect %s: %v", addr, err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.BadRequest(w, "peer not found")

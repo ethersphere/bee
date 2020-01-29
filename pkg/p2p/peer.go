@@ -4,10 +4,14 @@
 
 package p2p
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/ethersphere/bee/pkg/swarm"
+)
 
 type Peer struct {
-	Address string
+	Address swarm.Address
 }
 
 var ErrPeerNotFound = errors.New("peer not found")

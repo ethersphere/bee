@@ -15,19 +15,20 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 func TestConnect(t *testing.T) {
 	underlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS"
 	errorUnderlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkw88cjH2orYrB6fDui4eUNdmgkwnDM8W681UbfsPgM9QY"
-	overlay := "985732527402"
+	overlay, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testErr := errors.New("test error")
 
 	client, cleanup := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (string, error) {
+		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() == errorUnderlay {
-				return "", testErr
+				return swarm.Address{}, testErr
 			}
 			return overlay, nil
 		})),
@@ -36,7 +37,7 @@ func TestConnect(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
-			Address: overlay,
+			Address: overlay.String(),
 		})
 	})
 
@@ -56,41 +57,42 @@ func TestConnect(t *testing.T) {
 }
 
 func TestDisconnect(t *testing.T) {
-	address := "985732527402"
-	unknwonAdddress := "123456"
-	errorAddress := "33333333"
+	address, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	unknownAdddress, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e")
+	errorAddress, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
 	testErr := errors.New("test error")
 
 	client, cleanup := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithDisconnectFunc(func(addr string) error {
-			switch addr {
-			case address:
+		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address) error {
+			if addr.Equal(address) {
 				return nil
-			case errorAddress:
-				return testErr
-			default:
-				return p2p.ErrPeerNotFound
 			}
+
+			if addr.Equal(errorAddress) {
+				return testErr
+			}
+
+			return p2p.ErrPeerNotFound
 		})),
 	})
 	defer cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+address, nil, http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+address.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
 			Code:    http.StatusOK,
 			Message: http.StatusText(http.StatusOK),
 		})
 	})
 
 	t.Run("unknown", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+unknwonAdddress, nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+unknownAdddress.String(), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Code:    http.StatusBadRequest,
 			Message: "peer not found",
 		})
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+errorAddress, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+errorAddress.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: testErr.Error(),
 		})
