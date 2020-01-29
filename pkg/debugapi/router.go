@@ -49,6 +49,9 @@ func (s *server) setupRouting() {
 	internalRouter.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
+	internalRouter.Handle("/peers/{address}", jsonhttp.MethodHandler{
+		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
+	})
 
 	s.Handler = internalBaseRouter
 }

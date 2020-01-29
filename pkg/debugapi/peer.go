@@ -5,9 +5,11 @@
 package debugapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/gorilla/mux"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -35,4 +37,21 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, peerConnectResponse{
 		Address: address,
 	})
+}
+
+func (s *server) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
+	addr := mux.Vars(r)["address"]
+
+	if err := s.P2P.Disconnect(addr); err != nil {
+		s.Logger.Debugf("debug api: peer disconnect %s: %v", addr, err)
+		if errors.Is(err, p2p.ErrPeerNotFound) {
+			jsonhttp.BadRequest(w, "peer not found")
+			return
+		}
+		s.Logger.Errorf("unable to disconnect peer %s", addr)
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	jsonhttp.OK(w, nil)
 }
