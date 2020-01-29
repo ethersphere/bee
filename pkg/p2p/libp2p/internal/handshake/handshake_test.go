@@ -62,8 +62,8 @@ func (s *StreamMock) Close() error {
 }
 
 func TestHandshake(t *testing.T) {
-	node1Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	node2Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
+	node1Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	node2Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
 	logger := logging.New(ioutil.Discard, 0)
 	info := Info{
 		Address:   node1Addr,
@@ -179,8 +179,8 @@ func TestHandshake(t *testing.T) {
 }
 
 func TestHandle(t *testing.T) {
-	node1Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	node2Addr, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
+	node1Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	node2Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
 	nodeInfo := Info{
 		Address:   node1Addr,
 		NetworkID: 0,

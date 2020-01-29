@@ -30,6 +30,16 @@ func ParseHexAddress(s string) (a Address, err error) {
 	return NewAddress(b), nil
 }
 
+// MustParseHexAddress returns an Address from a hex-encoded string
+// representation, and panics if there is a parse error.
+func MustParseHexAddress(s string) Address {
+	a, err := ParseHexAddress(s)
+	if err != nil {
+		panic(err)
+	}
+	return a
+}
+
 // String returns a hex-encoded representation of the Address.
 func (a Address) String() string {
 	return hex.EncodeToString(a.b)
