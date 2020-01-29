@@ -70,15 +70,14 @@ func (c *command) initStartCmd() (err error) {
 
 			var libp2pPrivateKey io.ReadWriteCloser
 			if dataDir := c.config.GetString(optionNameDataDir); dataDir != "" {
-				dir := filepath.Join(dataDir, "libp2p")
-				if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+				if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
 					return err
 				}
-				f, err := os.OpenFile(filepath.Join(dir, "private.key"), os.O_CREATE|os.O_RDWR, 0600)
+				libp2pKey, err := os.OpenFile(filepath.Join(dataDir, "libp2p.key"), os.O_CREATE|os.O_RDWR, 0600)
 				if err != nil {
 					return err
 				}
-				libp2pPrivateKey = f
+				libp2pPrivateKey = libp2pKey
 			}
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
