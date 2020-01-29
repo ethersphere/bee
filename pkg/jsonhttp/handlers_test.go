@@ -17,12 +17,15 @@ import (
 )
 
 func TestMethodHandler(t *testing.T) {
+	contentType := "application/swarm"
+
 	h := jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			got, err := ioutil.ReadAll(r.Body)
 			if err != nil {
 				t.Fatal(err)
 			}
+			w.Header().Set("Content-Type", contentType)
 			fmt.Fprint(w, "got: ", string(got))
 		}),
 	}
@@ -45,6 +48,10 @@ func TestMethodHandler(t *testing.T) {
 
 		if gotBody != wantBody {
 			t.Errorf("got body %q, want %q", gotBody, wantBody)
+		}
+
+		if got := w.Header().Get("Content-Type"); got != contentType {
+			t.Errorf("got content type %q, want %q", got, contentType)
 		}
 	})
 
@@ -74,6 +81,8 @@ func TestMethodHandler(t *testing.T) {
 		if m.Message != wantMessage {
 			t.Errorf("got message message %q, want %q", m.Message, wantMessage)
 		}
+
+		testContentType(t, w)
 	})
 }
 
@@ -102,4 +111,6 @@ func TestNotFoundHandler(t *testing.T) {
 	if m.Message != wantMessage {
 		t.Errorf("got message message %q, want %q", m.Message, wantMessage)
 	}
+
+	testContentType(t, w)
 }
