@@ -19,39 +19,43 @@ import (
 )
 
 func (s *server) setupRouting() {
-	internalBaseRouter := http.NewServeMux()
+	baseRouter := http.NewServeMux()
 
-	internalBaseRouter.Handle("/metrics", promhttp.InstrumentMetricHandler(
+	baseRouter.Handle("/metrics", promhttp.InstrumentMetricHandler(
 		s.metricsRegistry,
 		promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
 	))
 
-	internalRouter := mux.NewRouter()
-	internalBaseRouter.Handle("/", web.ChainHandlers(
-		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
-		handlers.CompressHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(internalRouter),
-	))
-	internalRouter.Handle("/", http.NotFoundHandler())
+	router := mux.NewRouter()
+	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		jsonhttp.NotFound(w, nil)
+	})
 
-	internalRouter.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
-	internalRouter.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-	internalRouter.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	internalRouter.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	internalRouter.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	router.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
+	router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 
-	internalRouter.Handle("/debug/vars", expvar.Handler())
+	router.Handle("/debug/vars", expvar.Handler())
 
-	internalRouter.HandleFunc("/health", s.statusHandler)
-	internalRouter.HandleFunc("/readiness", s.statusHandler)
+	router.HandleFunc("/health", s.statusHandler)
+	router.HandleFunc("/readiness", s.statusHandler)
 
-	internalRouter.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
+	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
-	internalRouter.Handle("/peers/{address}", jsonhttp.MethodHandler{
+	router.Handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
 
-	s.Handler = internalBaseRouter
+	baseRouter.Handle("/", web.ChainHandlers(
+		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
+		handlers.CompressHandler,
+		// todo: add recovery handler
+		web.NoCacheHeadersHandler,
+		web.FinalHandler(router),
+	))
+
+	s.Handler = baseRouter
 }
