@@ -43,7 +43,7 @@ func TestPingpong(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+peerID.String(), nil, http.StatusOK, api.PingpongResponse{
-			RTT: rtt,
+			RTT: rtt.String(),
 		})
 	})
 
