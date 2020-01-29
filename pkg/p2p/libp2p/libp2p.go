@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -38,11 +37,6 @@ import (
 
 var _ p2p.Service = (*Service)(nil)
 
-func init() {
-	// Only temporary for fake overlay address generation.
-	rand.Seed(time.Now().UnixNano())
-}
-
 type Service struct {
 	host             host.Host
 	metrics          metrics
@@ -54,6 +48,7 @@ type Service struct {
 
 type Options struct {
 	PrivateKey       io.ReadWriteCloser
+	Overlay          swarm.Address
 	Addr             string
 	DisableWS        bool
 	DisableQUIC      bool
@@ -187,15 +182,11 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	// This is just a temporary way to generate an overlay address.
-	// TODO: proper key management and overlay address generation
-	overlay := make([]byte, 32)
-	rand.Read(overlay)
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
 		networkID:        o.NetworkID,
-		handshakeService: handshake.New(swarm.NewAddress(overlay), o.NetworkID, o.Logger),
+		handshakeService: handshake.New(o.Overlay, o.NetworkID, o.Logger),
 		peers:            newPeerRegistry(),
 		logger:           o.Logger,
 	}
