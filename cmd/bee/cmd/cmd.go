@@ -34,6 +34,9 @@ func newCommand(opts ...option) (c *command, err error) {
 			Short:         "Ethereum Swarm Bee",
 			SilenceErrors: true,
 			SilenceUsage:  true,
+			PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+				return c.initConfig()
+			},
 		},
 	}
 
@@ -42,9 +45,6 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	c.initGlobalFlags()
-	if err := c.initConfig(); err != nil {
-		return nil, err
-	}
 
 	if err := c.initStartCmd(); err != nil {
 		return nil, err
