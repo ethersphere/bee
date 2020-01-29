@@ -141,6 +141,9 @@ func (c *command) initStartCmd() (err error) {
 
 			return nil
 		},
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return c.config.BindPFlags(cmd.Flags())
+		},
 	}
 
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
@@ -156,10 +159,6 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
-
-	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
-		return err
-	}
 
 	c.root.AddCommand(cmd)
 	return nil
