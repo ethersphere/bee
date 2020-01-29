@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-
 func TestHandshake(t *testing.T) {
 	node1Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	node2Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
