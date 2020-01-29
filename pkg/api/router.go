@@ -22,6 +22,10 @@ func (s *server) setupRouting() {
 		jsonhttp.NotFound(w, nil)
 	})
 
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "Ethereum Swarm Bee")
+	})
+
 	router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
