@@ -334,7 +334,11 @@ func (s *Service) Disconnect(overlay string) error {
 	if !found {
 		return p2p.ErrPeerNotFound
 	}
-	return s.host.Network().ClosePeer(peerID)
+	if err := s.host.Network().ClosePeer(peerID); err != nil {
+		return err
+	}
+	s.peers.remove(peerID)
+	return nil
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
