@@ -6,8 +6,9 @@ package mock
 
 import (
 	"context"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type Service struct {
