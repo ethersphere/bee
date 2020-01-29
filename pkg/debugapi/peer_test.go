@@ -91,6 +91,13 @@ func TestDisconnect(t *testing.T) {
 		})
 	})
 
+	t.Run("invalid peer address", func(t *testing.T) {
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid peer address",
+		})
+	})
+
 	t.Run("error", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+errorAddress.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
