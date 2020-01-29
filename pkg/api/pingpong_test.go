@@ -54,6 +54,13 @@ func TestPingpong(t *testing.T) {
 		})
 	})
 
+	t.Run("invalid peer address", func(t *testing.T) {
+		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid peer address",
+		})
+	})
+
 	t.Run("error", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+errorPeerID.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
