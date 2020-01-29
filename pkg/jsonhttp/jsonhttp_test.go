@@ -41,6 +41,8 @@ func TestRespond_defaults(t *testing.T) {
 	if m.Message != wantMessage {
 		t.Errorf("got message message %q, want %q", m.Message, wantMessage)
 	}
+
+	testContentType(t, w)
 }
 
 func TestRespond_statusResponse(t *testing.T) {
@@ -117,6 +119,8 @@ func TestRespond_statusResponse(t *testing.T) {
 		if m.Message != wantMessage {
 			t.Errorf("got message message %q, want %q", m.Message, wantMessage)
 		}
+
+		testContentType(t, w)
 	}
 }
 
@@ -187,6 +191,8 @@ func TestRespond_special(t *testing.T) {
 			if m.Message != tc.wantMessage {
 				t.Errorf("got message message %q, want %q", m.Message, tc.wantMessage)
 			}
+
+			testContentType(t, w)
 		})
 	}
 }
@@ -221,6 +227,8 @@ func TestRespond_custom(t *testing.T) {
 	if !reflect.DeepEqual(m, r) {
 		t.Errorf("got response %+v, want %+v", m, r)
 	}
+
+	testContentType(t, w)
 }
 
 func TestStandardHTTPResponds(t *testing.T) {
@@ -290,6 +298,8 @@ func TestStandardHTTPResponds(t *testing.T) {
 		if m.Message != http.StatusText(tc.code) {
 			t.Errorf("expected message message \"%s\", got \"%s\"", http.StatusText(tc.code), m.Message)
 		}
+
+		testContentType(t, w)
 	}
 }
 
@@ -306,4 +316,12 @@ func TestPanicRespond(t *testing.T) {
 	jsonhttp.Respond(w, http.StatusNotFound, map[bool]string{
 		true: "",
 	})
+}
+
+func testContentType(t *testing.T, r *httptest.ResponseRecorder) {
+	t.Helper()
+
+	if got := r.Header().Get("Content-Type"); got != jsonhttp.DefaultContentTypeHeader {
+		t.Errorf("got content type %q, want %q", got, jsonhttp.DefaultContentTypeHeader)
+	}
 }
