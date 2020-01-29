@@ -26,8 +26,8 @@ func GenerateSecp256k1Key() (*ecdsa.PrivateKey, error) {
 
 // NewAddress constructs a Swarm Address from ECDSA private key.
 func NewAddress(p ecdsa.PublicKey) swarm.Address {
-	d := elliptic.Marshal(btcec.S256(), p.X, p.Y)
-	return swarm.NewAddress(keccak256(d))
+	h := sha3.Sum256(elliptic.Marshal(btcec.S256(), p.X, p.Y))
+	return swarm.NewAddress(h[:])
 }
 
 // privateKey holds information about Swarm private key for marshaling.
@@ -66,16 +66,4 @@ func decodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 	}
 	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), data)
 	return (*ecdsa.PrivateKey)(privk), nil
-}
-
-// keccak256 calculates a hash sum from provided data.
-func keccak256(data ...[]byte) []byte {
-	d := sha3.New256()
-	for _, b := range data {
-		_, err := d.Write(b)
-		if err != nil {
-			panic(err)
-		}
-	}
-	return d.Sum(nil)
 }
