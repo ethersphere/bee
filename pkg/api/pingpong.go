@@ -25,7 +25,8 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := swarm.ParseHexAddress(peerID)
 	if err != nil {
-		jsonhttp.NotFound(w, "invalid peer address")
+		s.Logger.Debugf("pingpong: ping %s: %v", peerID, err)
+		jsonhttp.BadRequest(w, "invalid peer address")
 	}
 
 	rtt, err := s.Pingpong.Ping(ctx, address, "hey", "there", ",", "how are", "you", "?")

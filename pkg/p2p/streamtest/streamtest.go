@@ -71,7 +71,7 @@ func (r *Recorder) NewStream(_ context.Context, overlay swarm.Address, protocolN
 		}
 	}()
 
-	id := string(overlay.Bytes()) + p2p.NewSwarmStreamName(protocolName, streamName, version)
+	id := overlay.String() + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()

@@ -51,9 +51,10 @@ func TestPing(t *testing.T) {
 	})
 
 	// ping
-	peerID := "124"
+	peerID := "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"
+	peerIDAddress, _ := swarm.ParseHexAddress(peerID)
 	greetings := []string{"hey", "there", "fella"}
-	rtt, err := client.Ping(context.Background(), swarm.NewAddress([]byte(peerID)), greetings...)
+	rtt, err := client.Ping(context.Background(), peerIDAddress, greetings...)
 	if err != nil {
 		t.Fatal(err)
 	}

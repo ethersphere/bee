@@ -57,41 +57,42 @@ func TestConnect(t *testing.T) {
 }
 
 func TestDisconnect(t *testing.T) {
-	address := "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"
-	unknwonAdddress := "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e"
-	errorAddress := "33333333"
+	address, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	unknownAdddress, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e")
+	errorAddress, _ := swarm.ParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
 	testErr := errors.New("test error")
 
 	client, cleanup := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address) error {
-			switch addr.String() {
-			case address:
+			if addr.Equal(address) {
 				return nil
-			case errorAddress:
-				return testErr
-			default:
-				return p2p.ErrPeerNotFound
 			}
+
+			if addr.Equal(errorAddress) {
+				return testErr
+			}
+
+			return p2p.ErrPeerNotFound
 		})),
 	})
 	defer cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+address, nil, http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+address.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
 			Code:    http.StatusOK,
 			Message: http.StatusText(http.StatusOK),
 		})
 	})
 
 	t.Run("unknown", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+unknwonAdddress, nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+unknownAdddress.String(), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Code:    http.StatusBadRequest,
 			Message: "peer not found",
 		})
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+errorAddress, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+errorAddress.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: testErr.Error(),
 		})
