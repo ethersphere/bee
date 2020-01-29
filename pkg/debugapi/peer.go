@@ -35,7 +35,7 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, peerConnectResponse{
-		Address: address,
+		Address: address.String(),
 	})
 }
 

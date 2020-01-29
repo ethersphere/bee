@@ -7,6 +7,7 @@ package debugapi_test
 import (
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"net/http"
 	"testing"
 
@@ -21,13 +22,13 @@ import (
 func TestConnect(t *testing.T) {
 	underlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS"
 	errorUnderlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkw88cjH2orYrB6fDui4eUNdmgkwnDM8W681UbfsPgM9QY"
-	overlay := "985732527402"
+	overlay := swarm.Address("985732527402")
 	testErr := errors.New("test error")
 
 	client, cleanup := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (string, error) {
+		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() == errorUnderlay {
-				return "", testErr
+				return nil, testErr
 			}
 			return overlay, nil
 		})),
@@ -36,7 +37,7 @@ func TestConnect(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
-			Address: overlay,
+			Address: overlay.String(),
 		})
 	})
 

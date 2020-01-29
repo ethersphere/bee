@@ -10,6 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -19,12 +20,12 @@ const (
 )
 
 type Service struct {
-	overlay   string
+	overlay   swarm.Address
 	networkID int32
 	logger    logging.Logger
 }
 
-func New(overlay string, networkID int32, logger logging.Logger) *Service {
+func New(overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
 	return &Service{
 		overlay:   overlay,
 		networkID: networkID,
@@ -92,7 +93,12 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 }
 
 type Info struct {
-	Address   string
+	Address   swarm.Address
 	NetworkID int32
 	Light     bool
+}
+
+// Equal returns true if two info objects are identical.
+func (a Info) Equal(b Info) bool {
+	return a.Address.Equal(b.Address) && a.NetworkID == b.NetworkID && a.Light == b.Light
 }

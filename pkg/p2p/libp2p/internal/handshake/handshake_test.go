@@ -63,7 +63,7 @@ func (s *StreamMock) Close() error {
 func TestHandshake(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	info := Info{
-		Address:   "node1",
+		Address:   []byte("node1"),
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -71,7 +71,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		expectedInfo := Info{
-			Address:   "node2",
+			Address:   []byte("node2"),
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -98,7 +98,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if *res != expectedInfo {
+		if !res.Equal(expectedInfo) {
 			t.Fatalf("got %+v, expected %+v", res, info)
 		}
 
@@ -140,9 +140,8 @@ func TestHandshake(t *testing.T) {
 	t.Run("ERROR - ack write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: write message: %w", testErr)
-
 		expectedInfo := Info{
-			Address:   "node2",
+			Address:   []byte("node2"),
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -178,7 +177,7 @@ func TestHandshake(t *testing.T) {
 
 func TestHandle(t *testing.T) {
 	nodeInfo := Info{
-		Address:   "node1",
+		Address:   []byte("node1"),
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -188,7 +187,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		node2Info := Info{
-			Address:   "node2",
+			Address:   []byte("node2"),
 			NetworkID: 1,
 			Light:     false,
 		}
@@ -216,7 +215,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if *res != node2Info {
+		if !res.Equal(node2Info) {
 			t.Fatalf("got %+v, expected %+v", res, node2Info)
 		}
 
@@ -226,7 +225,11 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if nodeInfo != Info(*got.ShakeHand) {
+		if !nodeInfo.Equal(Info{
+			Address:   got.ShakeHand.Address,
+			NetworkID: got.ShakeHand.NetworkID,
+			Light:     got.ShakeHand.Light,
+		}) {
 			t.Fatalf("got %+v, expected %+v", got, node2Info)
 		}
 	})
@@ -254,7 +257,7 @@ func TestHandle(t *testing.T) {
 		stream.setWriteErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   "node1",
+			Address:   []byte("node1"),
 			NetworkID: 0,
 			Light:     false,
 		}); err != nil {
@@ -274,9 +277,8 @@ func TestHandle(t *testing.T) {
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: read message: %w", testErr)
-
 		node2Info := Info{
-			Address:   "node2",
+			Address:   []byte("node2"),
 			NetworkID: 1,
 			Light:     false,
 		}

@@ -52,7 +52,7 @@ func TestPing(t *testing.T) {
 	// ping
 	peerID := "124"
 	greetings := []string{"hey", "there", "fella"}
-	rtt, err := client.Ping(context.Background(), peerID, greetings...)
+	rtt, err := client.Ping(context.Background(), []byte(peerID), greetings...)
 	if err != nil {
 		t.Fatal(err)
 	}

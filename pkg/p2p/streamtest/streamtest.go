@@ -7,6 +7,7 @@ package streamtest
 import (
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"io"
 	"sync"
 
@@ -42,7 +43,7 @@ func New(opts ...Option) *Recorder {
 	return r
 }
 
-func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
+func (r *Recorder) NewStream(_ context.Context, overlay swarm.Address, protocolName, streamName, version string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
 	streamOut := newStream(recordIn, recordOut)
@@ -70,7 +71,7 @@ func (r *Recorder) NewStream(_ context.Context, overlay, protocolName, streamNam
 		}
 	}()
 
-	id := overlay + p2p.NewSwarmStreamName(protocolName, streamName, version)
+	id := string(overlay) + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()

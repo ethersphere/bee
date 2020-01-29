@@ -7,6 +7,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"io"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -14,12 +15,12 @@ import (
 
 type Service interface {
 	AddProtocol(ProtocolSpec) error
-	Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error)
-	Disconnect(overlay string) error
+	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+	Disconnect(overlay swarm.Address) error
 }
 
 type Streamer interface {
-	NewStream(ctx context.Context, address, protocol, stream, version string) (Stream, error)
+	NewStream(ctx context.Context, address swarm.Address, protocol, stream, version string) (Stream, error)
 }
 
 type Stream interface {

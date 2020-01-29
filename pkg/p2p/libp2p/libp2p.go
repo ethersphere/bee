@@ -9,12 +9,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -189,7 +189,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	// This is just a temporary way to generate an overlay address.
 	// TODO: proper key management and overlay address generation
-	overlay := strconv.Itoa(rand.Int())
+	overlay := make([]byte, 32)
+	rand.Read(overlay)
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
@@ -298,29 +299,29 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	return addrs, nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if err := s.host.Connect(ctx, *info); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
 	if err != nil {
-		return "", fmt.Errorf("new stream: %w", err)
+		return nil, fmt.Errorf("new stream: %w", err)
 	}
 	defer stream.Close()
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if i.NetworkID != s.networkID {
-		return "", fmt.Errorf("invalid network id %v", i.NetworkID)
+		return nil, fmt.Errorf("invalid network id %v", i.NetworkID)
 	}
 
 	s.peers.add(info.ID, i.Address)
@@ -329,7 +330,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay strin
 	return i.Address, nil
 }
 
-func (s *Service) Disconnect(overlay string) error {
+func (s *Service) Disconnect(overlay swarm.Address) error {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return p2p.ErrPeerNotFound
@@ -341,7 +342,7 @@ func (s *Service) Disconnect(overlay string) error {
 	return nil
 }
 
-func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
+func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocolName, streamName, version string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return nil, p2p.ErrPeerNotFound

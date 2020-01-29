@@ -7,6 +7,7 @@ package api_test
 import (
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"net/http"
 	"testing"
 	"time"
@@ -20,16 +21,16 @@ import (
 
 func TestPingpong(t *testing.T) {
 	rtt := time.Minute
-	peerID := "124762324"
-	unknownPeerID := "55555555"
+	peerID := "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"
+	unknownPeerID := "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e"
 	errorPeerID := "77777777"
 	testErr := errors.New("test error")
 
-	pingpongService := pingpongmock.New(func(ctx context.Context, address string, msgs ...string) (time.Duration, error) {
-		if address == errorPeerID {
+	pingpongService := pingpongmock.New(func(ctx context.Context, address swarm.Address, msgs ...string) (time.Duration, error) {
+		if address.String() == errorPeerID {
 			return 0, testErr
 		}
-		if address != peerID {
+		if address.String() != peerID {
 			return 0, p2p.ErrPeerNotFound
 		}
 		return rtt, nil

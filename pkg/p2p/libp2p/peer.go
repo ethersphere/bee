@@ -5,6 +5,7 @@
 package libp2p
 
 import (
+	"github.com/ethersphere/bee/pkg/swarm"
 	"sync"
 
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
@@ -23,25 +24,25 @@ func newPeerRegistry() *peerRegistry {
 	}
 }
 
-func (r *peerRegistry) add(peerID libp2ppeer.ID, overlay string) {
+func (r *peerRegistry) add(peerID libp2ppeer.ID, overlay swarm.Address) {
 	r.mu.Lock()
-	r.peers[overlay] = peerID
-	r.overlays[peerID] = overlay
+	r.peers[string(overlay)] = peerID
+	r.overlays[peerID] = string(overlay)
 	r.mu.Unlock()
 }
 
-func (r *peerRegistry) peerID(overlay string) (peerID libp2ppeer.ID, found bool) {
+func (r *peerRegistry) peerID(overlay swarm.Address) (peerID libp2ppeer.ID, found bool) {
 	r.mu.RLock()
-	peerID, found = r.peers[overlay]
+	peerID, found = r.peers[string(overlay)]
 	r.mu.RUnlock()
 	return peerID, found
 }
 
-func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (overlay string, found bool) {
+func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (swarm.Address, bool) {
 	r.mu.RLock()
-	overlay, found = r.overlays[peerID]
+	overlay, found := r.overlays[peerID]
 	r.mu.RUnlock()
-	return overlay, found
+	return []byte(overlay), found
 }
 
 func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
