@@ -149,7 +149,7 @@ func (r *record) Read(p []byte) (n int, err error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
-	for r.c == len(r.b) || r.closed {
+	for r.c == len(r.b) && !r.closed {
 		r.cond.Wait()
 	}
 	end := r.c + len(p)

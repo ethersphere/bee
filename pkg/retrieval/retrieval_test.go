@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var testTimeout = 5 * time.Second
@@ -48,7 +49,10 @@ func TestDelivery(t *testing.T) {
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
-	ps := mockPeerSuggester{spFunc: func(_ []byte) (string, error) { return "testpeeraddr", nil }}
+	ps := mockPeerSuggester{spFunc: func(_ swarm.Address) (swarm.Address, error) {
+		v, err := swarm.NewAddress("9ee7add7")
+		return v, err
+	}}
 	client := retrieval.New(retrieval.Options{
 		Streamer:      recorder,
 		PeerSuggester: ps,
@@ -57,19 +61,15 @@ func TestDelivery(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-	go func() {
-		v, err := client.RetrieveChunk(ctx, reqAddr)
-		if err != nil {
-			return
-		}
-		if !bytes.Equal(v, reqData) {
-			t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
-		}
-	}()
-	time.Sleep(1 * time.Second)
-
+	v, err := client.RetrieveChunk(ctx, reqAddr)
+	if err != nil {
+		return
+	}
+	if !bytes.Equal(v, reqData) {
+		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
+	}
 	peerID, _ := ps.SuggestPeer(nil)
-	records, err := recorder.Records(peerID, "retrieval", "retrieval", "1.0.0")
+	records, err := recorder.Records(peerID.String(), "retrieval", "retrieval", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,9 +114,9 @@ func TestDelivery(t *testing.T) {
 }
 
 type mockPeerSuggester struct {
-	spFunc func([]byte) (string, error)
+	spFunc func(swarm.Address) (swarm.Address, error)
 }
 
-func (v mockPeerSuggester) SuggestPeer(addr []byte) (string, error) {
+func (v mockPeerSuggester) SuggestPeer(addr swarm.Address) (swarm.Address, error) {
 	return v.spFunc(addr)
 }

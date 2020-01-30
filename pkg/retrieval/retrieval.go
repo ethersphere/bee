@@ -66,8 +66,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data [
 	if err != nil {
 		return nil, err
 	}
-
-	stream, err := s.streamer.NewStream(ctx, peerID, protocolName, streamName, streamVersion)
+	stream, err := s.streamer.NewStream(ctx, peerID.String(), protocolName, streamName, streamVersion)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
