@@ -9,10 +9,11 @@ package retrieval
 import (
 	"context"
 	"fmt"
-	"io"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
@@ -26,19 +27,14 @@ type Service struct {
 	streamer      p2p.Streamer
 	peerSuggester p2p.PeerSuggester
 	storer        storage.Storer
-	logger        Logger
+	logger        logging.Logger
 }
 
 type Options struct {
 	Streamer      p2p.Streamer
 	PeerSuggester p2p.PeerSuggester
 	Storer        storage.Storer
-	Logger        Logger
-}
-
-type Logger interface {
-	Debugf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
+	Logger        logging.Logger
 }
 
 type Storer interface {
@@ -80,17 +76,14 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr []byte) (data []byte, 
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	if err := w.WriteMsg(&Request{
+	if err := w.WriteMsg(&pb.Request{
 		Addr: addr,
 	}); err != nil {
 		return nil, fmt.Errorf("stream write: %w", err)
 	}
 
-	var d Delivery
+	var d pb.Delivery
 	if err := r.ReadMsg(&d); err != nil {
-		if err == io.EOF {
-			return nil, err
-		}
 		return nil, err
 	}
 
@@ -100,12 +93,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr []byte) (data []byte, 
 func (s *Service) Handler(p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
-	var req Request
+	var req pb.Request
 	if err := r.ReadMsg(&req); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		// log this
 		return err
 	}
 
@@ -114,7 +103,7 @@ func (s *Service) Handler(p p2p.Peer, stream p2p.Stream) error {
 		return err
 	}
 
-	if err := w.WriteMsg(&Delivery{
+	if err := w.WriteMsg(&pb.Delivery{
 		Data: data,
 	}); err != nil {
 		return err

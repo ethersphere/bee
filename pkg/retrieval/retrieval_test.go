@@ -7,29 +7,24 @@ package retrieval_test
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"encoding/hex"
 	"io/ioutil"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 )
 
-type mockPeerSuggester struct {
-	returnValue string
-}
+var testTimeout = 5 * time.Second
 
-func (v mockPeerSuggester) SuggestPeer(_ []byte) (string, error) {
-	return v.returnValue, nil
-}
-
-// TestDelivery tests that a naive request -> delivery flow works
+// TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
-	logger := logging.New(ioutil.Discard)
+	logger := logging.New(ioutil.Discard, 0)
 
 	mockStorer := storemock.NewStorer()
 	reqAddr := []byte("reqaddr")
@@ -43,8 +38,8 @@ func TestDelivery(t *testing.T) {
 		Storer: mockStorer,
 		Logger: logger,
 	})
-	recorder := mock.NewRecorder(
-		mock.WithProtocols(server.Protocol()),
+	recorder := streamtest.New(
+		streamtest.WithProtocols(server.Protocol()),
 	)
 
 	// client mock storer does not store any data at this point
@@ -53,36 +48,25 @@ func TestDelivery(t *testing.T) {
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
-	ps := mockPeerSuggester{returnValue: "/p2p/QmZt98UimwpW9ptJumKTq7B7t3FzNfyoWVNGcd8PFCd7XS"}
+	ps := mockPeerSuggester{spFunc: func(_ []byte) (string, error) { return "testpeeraddr", nil }}
 	client := retrieval.New(retrieval.Options{
 		Streamer:      recorder,
 		PeerSuggester: ps,
 		Storer:        clientMockStorer,
 		Logger:        logger,
 	})
-
-	errc := make(chan error)
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
 	go func() {
-		defer close(errc)
-		v, err := client.RetrieveChunk(context.Background(), reqAddr)
+		v, err := client.RetrieveChunk(ctx, reqAddr)
 		if err != nil {
-			errc <- err
 			return
 		}
 		if !bytes.Equal(v, reqData) {
-			errc <- fmt.Errorf("request and response data not equal. got %s want %s", v, reqData)
+			t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
 		}
 	}()
-
-	// wait for the flow to finish before performing the check
-	select {
-	case err := <-errc:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("test timed out after 5 seconds")
-	}
+	time.Sleep(1 * time.Second)
 
 	peerID, _ := ps.SuggestPeer(nil)
 	records, err := recorder.Records(peerID, "retrieval", "retrieval", "1.0.0")
@@ -97,14 +81,14 @@ func TestDelivery(t *testing.T) {
 
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(record.In()),
-		func() protobuf.Message { return new(retrieval.Request) },
+		func() protobuf.Message { return new(pb.Request) },
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var reqs []string
 	for _, m := range messages {
-		reqs = append(reqs, fmt.Sprintf("%x", m.(*retrieval.Request).Addr))
+		reqs = append(reqs, hex.EncodeToString(m.(*pb.Request).Addr))
 	}
 
 	if len(reqs) != 1 {
@@ -113,18 +97,26 @@ func TestDelivery(t *testing.T) {
 
 	messages, err = protobuf.ReadMessages(
 		bytes.NewReader(record.Out()),
-		func() protobuf.Message { return new(retrieval.Delivery) },
+		func() protobuf.Message { return new(pb.Delivery) },
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var gotDeliveries []string
 	for _, m := range messages {
-		gotDeliveries = append(gotDeliveries, string(m.(*retrieval.Delivery).Data))
+		gotDeliveries = append(gotDeliveries, string(m.(*pb.Delivery).Data))
 	}
 
 	if len(gotDeliveries) != 1 {
 		t.Fatalf("got too many deliveries. want 1 got %d", len(gotDeliveries))
 	}
 
+}
+
+type mockPeerSuggester struct {
+	spFunc func([]byte) (string, error)
+}
+
+func (v mockPeerSuggester) SuggestPeer(addr []byte) (string, error) {
+	return v.spFunc(addr)
 }
