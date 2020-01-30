@@ -5,10 +5,11 @@
 package protobuf
 
 import (
+	"io"
+
 	"github.com/ethersphere/bee/pkg/p2p"
 	ggio "github.com/gogo/protobuf/io"
 	"github.com/gogo/protobuf/proto"
-	"io"
 )
 
 const delimitedReaderMaxSize = 128 * 1024 // max message size
