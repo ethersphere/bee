@@ -20,8 +20,10 @@ const (
 )
 
 type Service struct {
-	streamer p2p.Streamer
-	logger   logging.Logger
+	streamer          p2p.Streamer
+	logger            logging.Logger
+	peerSuggester     PeerSuggester
+	saturationTracker SaturationTracker
 
 	tickInterval time.Duration
 	done         chan struct{}
@@ -29,9 +31,11 @@ type Service struct {
 }
 
 type Options struct {
-	Streamer     p2p.Streamer
-	Logger       logging.Logger
-	TickInterval time.Duration
+	Streamer          p2p.Streamer
+	Logger            logging.Logger
+	PeerSuggester     PeerSuggester
+	SaturationTracker SaturationTracker
+	TickInterval      time.Duration
 }
 
 // PeerSuggester suggests a peer to connect to
@@ -46,10 +50,12 @@ type SaturationTracker interface {
 
 func New(o Options) *Service {
 	return &Service{
-		streamer:     o.Streamer,
-		logger:       o.Logger,
-		tickInterval: o.TickInterval,
-		done:         make(chan struct{}),
+		streamer:          o.Streamer,
+		logger:            o.Logger,
+		tickInterval:      o.TickInterval,
+		peerSuggester:     o.PeerSuggester,
+		saturationTracker: o.SaturationTracker,
+		done:              make(chan struct{}),
 	}
 }
 
