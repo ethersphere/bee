@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. retrieval.proto"
-
 package retrieval
 
 import (
@@ -15,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -62,7 +61,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) RetrieveChunk(ctx context.Context, addr []byte) (data []byte, err error) {
+func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
 	peerID, err := s.peerSuggester.SuggestPeer(addr)
 	if err != nil {
 		return nil, err

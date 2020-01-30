@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -28,7 +29,7 @@ type Stream interface {
 
 // PeerSuggester suggests a peer to retrieve a chunk from
 type PeerSuggester interface {
-	SuggestPeer(addr []byte) (peerAddr string, err error)
+	SuggestPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 type ProtocolSpec struct {

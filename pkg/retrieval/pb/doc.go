@@ -2,14 +2,5 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-syntax = "proto3";
+//go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. retrieval.proto"
 
-package pb;
-
-message Request {
-    bytes Addr = 1;
-}
-
-message Delivery {
-    bytes Data = 1;
-}
