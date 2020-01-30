@@ -6,7 +6,6 @@ package p2p
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -39,23 +38,13 @@ type StreamSpec struct {
 	Handler HandlerFunc
 }
 
+type Peer struct {
+	Address swarm.Address
+}
+
 type HandlerFunc func(Peer, Stream) error
 
 type HandlerMiddleware func(HandlerFunc) HandlerFunc
-
-type IncompatibleStreamError struct {
-	err error
-}
-
-func NewIncompatibleStreamError(err error) *IncompatibleStreamError {
-	return &IncompatibleStreamError{err: err}
-}
-
-func (e *IncompatibleStreamError) Unwrap() error { return e.err }
-
-func (e *IncompatibleStreamError) Error() string {
-	return fmt.Sprintf("incompatible stream: %v", e.err)
-}
 
 func NewSwarmStreamName(protocol, stream, version string) string {
 	return "/swarm/" + protocol + "/" + stream + "/" + version

@@ -16,7 +16,7 @@ import (
 )
 
 type peerConnectResponse struct {
-	Address string
+	Address string `json:"address"`
 }
 
 func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {

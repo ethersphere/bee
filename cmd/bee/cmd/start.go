@@ -68,7 +68,7 @@ func (c *command) initStartCmd() (err error) {
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
 
-			var libp2pPrivateKey io.ReadWriteCloser
+			var libp2pPrivateKey, swarmPrivateKey io.ReadWriteCloser
 			if dataDir := c.config.GetString(optionNameDataDir); dataDir != "" {
 				if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
 					return err
@@ -78,6 +78,11 @@ func (c *command) initStartCmd() (err error) {
 					return err
 				}
 				libp2pPrivateKey = libp2pKey
+				swarmKey, err := os.OpenFile(filepath.Join(dataDir, "swarm.key"), os.O_CREATE|os.O_RDWR, 0600)
+				if err != nil {
+					return err
+				}
+				swarmPrivateKey = swarmKey
 			}
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
@@ -86,6 +91,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			b, err := node.NewBee(node.Options{
+				PrivateKey:   swarmPrivateKey,
 				APIAddr:      c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr: debugAPIAddr,
 				LibP2POptions: libp2p.Options{

@@ -7,7 +7,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -16,7 +15,7 @@ import (
 )
 
 type pingpongResponse struct {
-	RTT time.Duration `json:"rtt"`
+	RTT string `json:"rtt"`
 }
 
 func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +45,6 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.Logger.Infof("pingpong succeeded to peer %s", peerID)
 	jsonhttp.OK(w, pingpongResponse{
-		RTT: rtt,
+		RTT: rtt.String(),
 	})
 }
