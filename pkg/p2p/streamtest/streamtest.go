@@ -15,7 +15,7 @@ import (
 )
 
 type Recorder struct {
-	records     map[string][]Record
+	records     map[string][]*Record
 	recordsMu   sync.Mutex
 	protocols   []p2p.ProtocolSpec
 	middlewares []p2p.HandlerMiddleware
@@ -35,7 +35,7 @@ func WithMiddlewares(middlewares ...p2p.HandlerMiddleware) Option {
 
 func New(opts ...Option) *Recorder {
 	r := &Recorder{
-		records: make(map[string][]Record),
+		records: make(map[string][]*Record),
 	}
 	for _, o := range opts {
 		o.apply(r)
@@ -43,7 +43,7 @@ func New(opts ...Option) *Recorder {
 	return r
 }
 
-func (r *Recorder) NewStream(_ context.Context, overlay swarm.Address, protocolName, streamName, version string) (p2p.Stream, error) {
+func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName, streamName, version string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
 	streamOut := newStream(recordIn, recordOut)
@@ -65,37 +65,39 @@ func (r *Recorder) NewStream(_ context.Context, overlay swarm.Address, protocolN
 	for _, m := range r.middlewares {
 		handler = m(handler)
 	}
+	record := &Record{in: recordIn, out: recordOut}
 	go func() {
-		if err := handler(p2p.Peer{Address: overlay}, streamIn); err != nil {
-			panic(err) // todo: store error and export error records for inspection
-		}
+		err := handler(p2p.Peer{Address: addr}, streamIn)
+		record.setErr(err)
 	}()
 
-	id := overlay.String() + p2p.NewSwarmStreamName(protocolName, streamName, version)
+	id := addr.String() + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()
 
-	r.records[id] = append(r.records[id], Record{in: recordIn, out: recordOut})
+	r.records[id] = append(r.records[id], record)
 	return streamOut, nil
 }
 
-func (r *Recorder) Records(peerID, protocolName, streamName, version string) ([]Record, error) {
-	id := peerID + p2p.NewSwarmStreamName(protocolName, streamName, version)
+func (r *Recorder) Records(addr swarm.Address, protocolName, streamName, version string) ([]*Record, error) {
+	id := addr.String() + p2p.NewSwarmStreamName(protocolName, streamName, version)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()
 
 	records, ok := r.records[id]
 	if !ok {
-		return nil, fmt.Errorf("records not found for %q %q %q %q", peerID, protocolName, streamName, version)
+		return nil, fmt.Errorf("records not found for %q %q %q %q", addr, protocolName, streamName, version)
 	}
 	return records, nil
 }
 
 type Record struct {
-	in  *record
-	out *record
+	in    *record
+	out   *record
+	err   error
+	errMu sync.Mutex
 }
 
 func (r *Record) In() []byte {
@@ -104,6 +106,20 @@ func (r *Record) In() []byte {
 
 func (r *Record) Out() []byte {
 	return r.out.bytes()
+}
+
+func (r *Record) Err() error {
+	r.errMu.Lock()
+	defer r.errMu.Unlock()
+
+	return r.err
+}
+
+func (r *Record) setErr(err error) {
+	r.errMu.Lock()
+	defer r.errMu.Unlock()
+
+	r.err = err
 }
 
 type stream struct {
