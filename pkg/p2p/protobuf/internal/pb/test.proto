@@ -2,16 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package p2p
+syntax = "proto3";
 
-import (
-	"errors"
+package pb;
 
-	"github.com/ethersphere/bee/pkg/swarm"
-)
-
-type Peer struct {
-	Address swarm.Address
+message Message {
+    string Text = 1;
 }
 
-var ErrPeerNotFound = errors.New("peer not found")

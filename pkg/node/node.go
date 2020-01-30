@@ -5,17 +5,22 @@
 package node
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
@@ -32,6 +37,7 @@ type Bee struct {
 }
 
 type Options struct {
+	PrivateKey    io.ReadWriteCloser
 	APIAddr       string
 	DebugAPIAddr  string
 	LibP2POptions libp2p.Options
@@ -48,8 +54,50 @@ func NewBee(o Options) (*Bee, error) {
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 	}
 
+	var privateKey *ecdsa.PrivateKey
+	if o.PrivateKey != nil {
+		privateKeyData, err := ioutil.ReadAll(o.PrivateKey)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read private key: %w", err)
+		}
+		if len(privateKeyData) == 0 {
+			var err error
+			privateKey, err = crypto.GenerateSecp256k1Key()
+			if err != nil {
+				return nil, fmt.Errorf("generate secp256k1 key: %w", err)
+			}
+			d, err := crypto.MarshalSecp256k1PrivateKey(privateKey)
+			if err != nil {
+				return nil, fmt.Errorf("encode private key: %w", err)
+			}
+			if _, err := io.Copy(o.PrivateKey, bytes.NewReader(d)); err != nil {
+				return nil, fmt.Errorf("write private key: %w", err)
+			}
+		} else {
+			var err error
+			privateKey, err = crypto.UnmarshalPrivateKey(privateKeyData)
+			if err != nil {
+				return nil, fmt.Errorf("decode private key: %w", err)
+			}
+		}
+		if err := o.PrivateKey.Close(); err != nil {
+			return nil, fmt.Errorf("close private key: %w", err)
+		}
+	} else {
+		var err error
+		privateKey, err = crypto.GenerateSecp256k1Key()
+		if err != nil {
+			return nil, fmt.Errorf("generate secp256k1 key: %w", err)
+		}
+	}
+
+	address := crypto.NewAddress(privateKey.PublicKey)
+	logger.Infof("address: %s", address)
+
 	// Construct P2P service.
-	p2ps, err := libp2p.New(p2pCtx, o.LibP2POptions)
+	libP2POptions := o.LibP2POptions
+	libP2POptions.Overlay = address
+	p2ps, err := libp2p.New(p2pCtx, libP2POptions)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}

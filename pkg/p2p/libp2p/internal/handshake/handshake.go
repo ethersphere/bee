@@ -51,10 +51,12 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("ack: write message: %w", err)
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", resp.ShakeHand.Address)
+	address := swarm.NewAddress(resp.ShakeHand.Address)
+
+	s.logger.Tracef("handshake finished for peer %s", address)
 
 	return &Info{
-		Address:   swarm.NewAddress(resp.ShakeHand.Address),
+		Address:   address,
 		NetworkID: resp.ShakeHand.NetworkID,
 		Light:     resp.ShakeHand.Light,
 	}, nil
@@ -84,9 +86,11 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("ack: read message: %w", err)
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", req.Address)
+	address := swarm.NewAddress(req.Address)
+
+	s.logger.Tracef("handshake finished for peer %s", address)
 	return &Info{
-		Address:   swarm.NewAddress(req.Address),
+		Address:   address,
 		NetworkID: req.NetworkID,
 		Light:     req.Light,
 	}, nil

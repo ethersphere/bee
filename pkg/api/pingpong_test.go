@@ -43,7 +43,7 @@ func TestPingpong(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+peerID.String(), nil, http.StatusOK, api.PingpongResponse{
-			RTT: rtt,
+			RTT: rtt.String(),
 		})
 	})
 
@@ -64,7 +64,7 @@ func TestPingpong(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+errorPeerID.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
-			Message: http.StatusText(http.StatusInternalServerError), // do not leek internal error
+			Message: http.StatusText(http.StatusInternalServerError), // do not leak internal error
 		})
 	})
 

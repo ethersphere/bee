@@ -36,6 +36,9 @@ type StatusResponse struct {
 
 // Respond writes a JSON-encoded body to http.ResponseWriter.
 func Respond(w http.ResponseWriter, statusCode int, response interface{}) {
+	if statusCode == 0 {
+		statusCode = http.StatusOK
+	}
 	if response == nil {
 		response = &StatusResponse{
 			Message: http.StatusText(statusCode),

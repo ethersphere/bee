@@ -27,9 +27,7 @@ func (s *server) setupRouting() {
 	))
 
 	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		jsonhttp.NotFound(w, nil)
-	})
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
 	router.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
 	router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
