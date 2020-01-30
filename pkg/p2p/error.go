@@ -4,6 +4,15 @@
 
 package p2p
 
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrPeerNotFound should be returned by p2p service methods when the requested
+// peer is not found.
+var ErrPeerNotFound = errors.New("peer not found")
+
 // DisconnectError is an error that is specifically handled inside p2p. If returned by specific protocol
 // handler it causes peer disconnect.
 type DisconnectError struct {
@@ -24,4 +33,25 @@ func (e *DisconnectError) Unwrap() error { return e.err }
 // Error implements function of the standard go error interface.
 func (e *DisconnectError) Error() string {
 	return e.err.Error()
+}
+
+// IncompatibleStreamError is the error that should be returned by p2p service
+// NewStream method when the stream or its version is not supported.
+type IncompatibleStreamError struct {
+	err error
+}
+
+// NewIncompatibleStreamError wraps the error that is the cause of stream
+// incompatibility with IncompatibleStreamError that it can be detected and
+// returns it.
+func NewIncompatibleStreamError(err error) *IncompatibleStreamError {
+	return &IncompatibleStreamError{err: err}
+}
+
+// Unwrap returns an underlying error.
+func (e *IncompatibleStreamError) Unwrap() error { return e.err }
+
+// Error implements function of the standard go error interface.
+func (e *IncompatibleStreamError) Error() string {
+	return fmt.Sprintf("incompatible stream: %v", e.err)
 }
