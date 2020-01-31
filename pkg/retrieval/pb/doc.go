@@ -3,4 +3,5 @@
 // license that can be found in the LICENSE file.
 
 //go:generate sh -c "protoc -I . -I \"$(go list -f '{{ .Dir }}' -m github.com/gogo/protobuf)/protobuf\" --gogofaster_out=. retrieval.proto"
+
 package pb
