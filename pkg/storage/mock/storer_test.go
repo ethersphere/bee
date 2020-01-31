@@ -7,14 +7,20 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestMockStorer(t *testing.T) {
-
 	s := mock.NewStorer()
 
-	keyFound := []byte("exists")
-	keyNotFound := []byte("not found")
+	keyFound, err := swarm.ParseHexAddress("aabbcc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyNotFound, err := swarm.ParseHexAddress("bbccdd")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	valueFound := []byte("data data data")
 
