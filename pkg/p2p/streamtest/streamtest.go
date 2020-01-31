@@ -6,12 +6,17 @@ package streamtest
 
 import (
 	"context"
-	"fmt"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"errors"
 	"io"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+var (
+	ErrRecordsNotFound    = errors.New("records not found")
+	ErrStreamNotSupported = errors.New("stream not supported")
 )
 
 type Recorder struct {
@@ -60,7 +65,7 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 		}
 	}
 	if handler == nil {
-		return nil, fmt.Errorf("unsupported protocol stream %q %q %q", protocolName, streamName, version)
+		return nil, ErrStreamNotSupported
 	}
 	for _, m := range r.middlewares {
 		handler = m(handler)
@@ -88,7 +93,7 @@ func (r *Recorder) Records(addr swarm.Address, protocolName, streamName, version
 
 	records, ok := r.records[id]
 	if !ok {
-		return nil, fmt.Errorf("records not found for %q %q %q %q", addr, protocolName, streamName, version)
+		return nil, ErrRecordsNotFound
 	}
 	return records, nil
 }
@@ -166,7 +171,7 @@ func (r *record) Read(p []byte) (n int, err error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
-	for r.c == len(r.b) || r.closed {
+	for r.c == len(r.b) && !r.closed {
 		r.cond.Wait()
 	}
 	end := r.c + len(p)
