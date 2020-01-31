@@ -12,21 +12,42 @@ import (
 
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.
-type Address []byte
+type Address struct {
+	b []byte
+}
 
-// NewAddress returns an Address from a hex-encoded string representation.
-func NewAddress(s string) (Address, error) {
-	return hex.DecodeString(s)
+// NewAddress constructs Address from a byte slice.
+func NewAddress(b []byte) Address {
+	return Address{b: b}
+}
+
+// ParseHexAddress returns an Address from a hex-encoded string representation.
+func ParseHexAddress(s string) (a Address, err error) {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return a, err
+	}
+	return NewAddress(b), nil
+}
+
+// MustParseHexAddress returns an Address from a hex-encoded string
+// representation, and panics if there is a parse error.
+func MustParseHexAddress(s string) Address {
+	a, err := ParseHexAddress(s)
+	if err != nil {
+		panic(err)
+	}
+	return a
 }
 
 // String returns a hex-encoded representation of the Address.
 func (a Address) String() string {
-	return hex.EncodeToString(a)
+	return hex.EncodeToString(a.b)
 }
 
 // Equal returns true if two addresses are identical.
 func (a Address) Equal(b Address) bool {
-	return bytes.Equal(a, b)
+	return bytes.Equal(a.b, b.b)
 }
 
 // IsZero returns true if the Address is not set to any value.
@@ -34,5 +55,10 @@ func (a Address) IsZero() bool {
 	return a.Equal(ZeroAddress)
 }
 
+// Bytes returns bytes representation of the Address.
+func (a Address) Bytes() []byte {
+	return a.b
+}
+
 // ZeroAddress is the address that has no value.
-var ZeroAddress = Address(nil)
+var ZeroAddress = NewAddress(nil)

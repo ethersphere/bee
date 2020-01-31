@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -23,7 +24,7 @@ const (
 )
 
 type Interface interface {
-	Ping(ctx context.Context, address string, msgs ...string) (rtt time.Duration, err error)
+	Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error)
 }
 
 type Service struct {
@@ -58,7 +59,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) Ping(ctx context.Context, address string, msgs ...string) (rtt time.Duration, err error) {
+func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
 	start := time.Now()
 	stream, err := s.streamer.NewStream(ctx, address, protocolName, streamName, streamVersion)
 	if err != nil {

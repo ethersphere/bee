@@ -11,59 +11,18 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/mock"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type StreamMock struct {
-	readBuffer        *bytes.Buffer
-	writeBuffer       *bytes.Buffer
-	writeCounter      int
-	readCounter       int
-	readError         error
-	writeError        error
-	readErrCheckmark  int
-	writeErrCheckmark int
-}
-
-func (s *StreamMock) setReadErr(err error, checkmark int) {
-	s.readError = err
-	s.readErrCheckmark = checkmark
-
-}
-
-func (s *StreamMock) setWriteErr(err error, checkmark int) {
-	s.writeError = err
-	s.writeErrCheckmark = checkmark
-
-}
-
-func (s *StreamMock) Read(p []byte) (n int, err error) {
-	if s.readError != nil && s.readErrCheckmark <= s.readCounter {
-		return 0, s.readError
-	}
-
-	s.readCounter++
-	return s.readBuffer.Read(p)
-}
-
-func (s *StreamMock) Write(p []byte) (n int, err error) {
-	if s.writeError != nil && s.writeErrCheckmark <= s.writeCounter {
-		return 0, s.writeError
-	}
-
-	s.writeCounter++
-	return s.writeBuffer.Write(p)
-}
-
-func (s *StreamMock) Close() error {
-	return nil
-}
-
 func TestHandshake(t *testing.T) {
+	node1Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	node2Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
 	logger := logging.New(ioutil.Discard, 0)
 	info := Info{
-		Address:   "node1",
+		Address:   node1Addr,
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -71,24 +30,24 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		expectedInfo := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
 
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
-		stream1 := &StreamMock{readBuffer: &buffer1, writeBuffer: &buffer2}
-		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, r := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHandAck{
 			ShakeHand: &pb.ShakeHand{
-				Address:   expectedInfo.Address,
+				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
 			},
-			Ack: &pb.Ack{Address: info.Address},
+			Ack: &pb.Ack{Address: info.Address.Bytes()},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -98,9 +57,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if *res != expectedInfo {
-			t.Fatalf("got %+v, expected %+v", res, info)
-		}
+		testInfo(t, *res, expectedInfo)
 
 		if err := r.ReadMsg(&pb.Ack{}); err != nil {
 			t.Fatal(err)
@@ -110,8 +67,8 @@ func TestHandshake(t *testing.T) {
 	t.Run("ERROR - shakehand write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write message: %w", testErr)
-		stream := &StreamMock{}
-		stream.setWriteErr(testErr, 0)
+		stream := &mock.StreamMock{}
+		stream.SetWriteErr(testErr, 0)
 		res, err := handshakeService.Handshake(stream)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
@@ -125,8 +82,8 @@ func TestHandshake(t *testing.T) {
 	t.Run("ERROR - shakehand read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("read message: %w", testErr)
-		stream := &StreamMock{writeBuffer: &bytes.Buffer{}}
-		stream.setReadErr(testErr, 0)
+		stream := mock.NewStream(nil, &bytes.Buffer{})
+		stream.SetReadErr(testErr, 0)
 		res, err := handshakeService.Handshake(stream)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
@@ -140,27 +97,26 @@ func TestHandshake(t *testing.T) {
 	t.Run("ERROR - ack write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: write message: %w", testErr)
-
 		expectedInfo := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
 
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
-		stream1 := &StreamMock{readBuffer: &buffer1, writeBuffer: &buffer2}
-		stream1.setWriteErr(testErr, 1)
-		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream1.SetWriteErr(testErr, 1)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHandAck{
 			ShakeHand: &pb.ShakeHand{
-				Address:   expectedInfo.Address,
+				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
 			},
-			Ack: &pb.Ack{Address: info.Address},
+			Ack: &pb.Ack{Address: info.Address.Bytes()},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -177,8 +133,10 @@ func TestHandshake(t *testing.T) {
 }
 
 func TestHandle(t *testing.T) {
+	node1Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	node2Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
 	nodeInfo := Info{
-		Address:   "node1",
+		Address:   node1Addr,
 		NetworkID: 0,
 		Light:     false,
 	}
@@ -188,26 +146,26 @@ func TestHandle(t *testing.T) {
 
 	t.Run("OK", func(t *testing.T) {
 		node2Info := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
 
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
-		stream1 := &StreamMock{readBuffer: &buffer1, writeBuffer: &buffer2}
-		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   node2Info.Address,
+			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
 		}); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := w.WriteMsg(&pb.Ack{Address: node2Info.Address}); err != nil {
+		if err := w.WriteMsg(&pb.Ack{Address: node2Info.Address.Bytes()}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -216,9 +174,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if *res != node2Info {
-			t.Fatalf("got %+v, expected %+v", res, node2Info)
-		}
+		testInfo(t, *res, node2Info)
 
 		_, r := protobuf.NewWriterAndReader(stream2)
 		var got pb.ShakeHandAck
@@ -226,16 +182,18 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if nodeInfo != Info(*got.ShakeHand) {
-			t.Fatalf("got %+v, expected %+v", got, node2Info)
-		}
+		testInfo(t, nodeInfo, Info{
+			Address:   swarm.NewAddress(got.ShakeHand.Address),
+			NetworkID: got.ShakeHand.NetworkID,
+			Light:     got.ShakeHand.Light,
+		})
 	})
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("read message: %w", testErr)
-		stream := &StreamMock{}
-		stream.setReadErr(testErr, 0)
+		stream := &mock.StreamMock{}
+		stream.SetReadErr(testErr, 0)
 		res, err := handshakeService.Handle(stream)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
@@ -250,11 +208,11 @@ func TestHandle(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write message: %w", testErr)
 		var buffer bytes.Buffer
-		stream := &StreamMock{readBuffer: &buffer, writeBuffer: &buffer}
-		stream.setWriteErr(testErr, 1)
+		stream := mock.NewStream(&buffer, &buffer)
+		stream.SetWriteErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   "node1",
+			Address:   node1Addr.Bytes(),
 			NetworkID: 0,
 			Light:     false,
 		}); err != nil {
@@ -274,21 +232,20 @@ func TestHandle(t *testing.T) {
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("ack: read message: %w", testErr)
-
 		node2Info := Info{
-			Address:   "node2",
+			Address:   node2Addr,
 			NetworkID: 1,
 			Light:     false,
 		}
 
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
-		stream1 := &StreamMock{readBuffer: &buffer1, writeBuffer: &buffer2}
-		stream2 := &StreamMock{readBuffer: &buffer2, writeBuffer: &buffer1}
-		stream1.setReadErr(testErr, 1)
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+		stream1.SetReadErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream2)
 		if err := w.WriteMsg(&pb.ShakeHand{
-			Address:   node2Info.Address,
+			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
 		}); err != nil {
@@ -304,4 +261,13 @@ func TestHandle(t *testing.T) {
 			t.Fatal("handshake returned non-nil res")
 		}
 	})
+}
+
+// testInfo validates if two Info instances are equal.
+func testInfo(t *testing.T, got, want Info) {
+	t.Helper()
+
+	if !got.Address.Equal(want.Address) || got.NetworkID != want.NetworkID || got.Light != want.Light {
+		t.Fatalf("got info %+v, want %+v", got, want)
+	}
 }

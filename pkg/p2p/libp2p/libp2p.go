@@ -11,15 +11,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
@@ -38,11 +37,6 @@ import (
 
 var _ p2p.Service = (*Service)(nil)
 
-func init() {
-	// Only temporary for fake overlay address generation.
-	rand.Seed(time.Now().UnixNano())
-}
-
 type Service struct {
 	host             host.Host
 	metrics          metrics
@@ -54,6 +48,7 @@ type Service struct {
 
 type Options struct {
 	PrivateKey       io.ReadWriteCloser
+	Overlay          swarm.Address
 	Addr             string
 	DisableWS        bool
 	DisableQUIC      bool
@@ -187,14 +182,11 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	// This is just a temporary way to generate an overlay address.
-	// TODO: proper key management and overlay address generation
-	overlay := strconv.Itoa(rand.Int())
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
 		networkID:        o.NetworkID,
-		handshakeService: handshake.New(overlay, o.NetworkID, o.Logger),
+		handshakeService: handshake.New(o.Overlay, o.NetworkID, o.Logger),
 		peers:            newPeerRegistry(),
 		logger:           o.Logger,
 	}
@@ -298,29 +290,29 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	return addrs, nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay string, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return "", err
+		return swarm.Address{}, err
 	}
 
 	if err := s.host.Connect(ctx, *info); err != nil {
-		return "", err
+		return swarm.Address{}, err
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
 	if err != nil {
-		return "", fmt.Errorf("new stream: %w", err)
+		return swarm.Address{}, fmt.Errorf("new stream: %w", err)
 	}
 	defer stream.Close()
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
-		return "", err
+		return swarm.Address{}, err
 	}
 	if i.NetworkID != s.networkID {
-		return "", fmt.Errorf("invalid network id %v", i.NetworkID)
+		return swarm.Address{}, fmt.Errorf("invalid network id %v", i.NetworkID)
 	}
 
 	s.peers.add(info.ID, i.Address)
@@ -329,15 +321,19 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay strin
 	return i.Address, nil
 }
 
-func (s *Service) Disconnect(overlay string) error {
+func (s *Service) Disconnect(overlay swarm.Address) error {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return p2p.ErrPeerNotFound
 	}
-	return s.host.Network().ClosePeer(peerID)
+	if err := s.host.Network().ClosePeer(peerID); err != nil {
+		return err
+	}
+	s.peers.remove(peerID)
+	return nil
 }
 
-func (s *Service) NewStream(ctx context.Context, overlay, protocolName, streamName, version string) (p2p.Stream, error) {
+func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocolName, streamName, version string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return nil, p2p.ErrPeerNotFound

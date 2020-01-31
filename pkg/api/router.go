@@ -17,20 +17,26 @@ import (
 )
 
 func (s *server) setupRouting() {
-	baseRouter := mux.NewRouter()
+	router := mux.NewRouter()
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
-	baseRouter.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "Ethereum Swarm Bee")
+	})
+
+	router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	baseRouter.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+	router.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
 	s.Handler = web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
 		handlers.CompressHandler,
+		// todo: add recovery handler
 		s.pageviewMetricsHandler,
-		web.FinalHandler(baseRouter),
+		web.FinalHandler(router),
 	)
 }

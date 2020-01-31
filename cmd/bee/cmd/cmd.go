@@ -34,6 +34,9 @@ func newCommand(opts ...option) (c *command, err error) {
 			Short:         "Ethereum Swarm Bee",
 			SilenceErrors: true,
 			SilenceUsage:  true,
+			PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+				return c.initConfig()
+			},
 		},
 	}
 
@@ -41,10 +44,12 @@ func newCommand(opts ...option) (c *command, err error) {
 		o(c)
 	}
 
-	c.initGlobalFlags()
-	if err := c.initConfig(); err != nil {
+	// Find home directory.
+	if err := c.setHomeDir(); err != nil {
 		return nil, err
 	}
+
+	c.initGlobalFlags()
 
 	if err := c.initStartCmd(); err != nil {
 		return nil, err
@@ -79,10 +84,6 @@ func (c *command) initConfig() (err error) {
 		// Use config file from the flag.
 		config.SetConfigFile(c.cfgFile)
 	} else {
-		// Find home directory.
-		if err := c.setHomeDir(); err != nil {
-			return err
-		}
 		// Search config in home directory with name ".bee" (without extension).
 		config.AddConfigPath(c.homeDir)
 		config.SetConfigName(configName)

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"io/ioutil"
 	"runtime"
 	"testing"
@@ -50,9 +51,9 @@ func TestPing(t *testing.T) {
 	})
 
 	// ping
-	peerID := "124"
+	addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	greetings := []string{"hey", "there", "fella"}
-	rtt, err := client.Ping(context.Background(), peerID, greetings...)
+	rtt, err := client.Ping(context.Background(), addr, greetings...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestPing(t *testing.T) {
 	}
 
 	// get a record for this stream
-	records, err := recorder.Records(peerID, "pingpong", "pingpong", "1.0.0")
+	records, err := recorder.Records(addr, "pingpong", "pingpong", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,5 +108,9 @@ func TestPing(t *testing.T) {
 	}
 	if fmt.Sprint(gotResponses) != fmt.Sprint(wantResponses) {
 		t.Errorf("got responses %v, want %v", gotResponses, wantResponses)
+	}
+
+	if err := record.Err(); err != nil {
+		t.Fatal(err)
 	}
 }

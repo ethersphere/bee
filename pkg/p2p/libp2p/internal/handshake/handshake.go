@@ -10,6 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -19,12 +20,12 @@ const (
 )
 
 type Service struct {
-	overlay   string
+	overlay   swarm.Address
 	networkID int32
 	logger    logging.Logger
 }
 
-func New(overlay string, networkID int32, logger logging.Logger) *Service {
+func New(overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
 	return &Service{
 		overlay:   overlay,
 		networkID: networkID,
@@ -36,7 +37,7 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	var resp pb.ShakeHandAck
 	if err := w.WriteMsg(&pb.ShakeHand{
-		Address:   s.overlay,
+		Address:   s.overlay.Bytes(),
 		NetworkID: s.networkID,
 	}); err != nil {
 		return nil, fmt.Errorf("write message: %w", err)
@@ -50,10 +51,12 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("ack: write message: %w", err)
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", resp.ShakeHand.Address)
+	address := swarm.NewAddress(resp.ShakeHand.Address)
+
+	s.logger.Tracef("handshake finished for peer %s", address)
 
 	return &Info{
-		Address:   resp.ShakeHand.Address,
+		Address:   address,
 		NetworkID: resp.ShakeHand.NetworkID,
 		Light:     resp.ShakeHand.Light,
 	}, nil
@@ -70,7 +73,7 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 
 	if err := w.WriteMsg(&pb.ShakeHandAck{
 		ShakeHand: &pb.ShakeHand{
-			Address:   s.overlay,
+			Address:   s.overlay.Bytes(),
 			NetworkID: s.networkID,
 		},
 		Ack: &pb.Ack{Address: req.Address},
@@ -83,16 +86,18 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("ack: read message: %w", err)
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", req.Address)
+	address := swarm.NewAddress(req.Address)
+
+	s.logger.Tracef("handshake finished for peer %s", address)
 	return &Info{
-		Address:   req.Address,
+		Address:   address,
 		NetworkID: req.NetworkID,
 		Light:     req.Light,
 	}, nil
 }
 
 type Info struct {
-	Address   string
+	Address   swarm.Address
 	NetworkID int32
 	Light     bool
 }

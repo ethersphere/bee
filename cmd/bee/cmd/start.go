@@ -68,17 +68,21 @@ func (c *command) initStartCmd() (err error) {
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
 
-			var libp2pPrivateKey io.ReadWriteCloser
+			var libp2pPrivateKey, swarmPrivateKey io.ReadWriteCloser
 			if dataDir := c.config.GetString(optionNameDataDir); dataDir != "" {
-				dir := filepath.Join(dataDir, "libp2p")
-				if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+				if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
 					return err
 				}
-				f, err := os.OpenFile(filepath.Join(dir, "private.key"), os.O_CREATE|os.O_RDWR, 0600)
+				libp2pKey, err := os.OpenFile(filepath.Join(dataDir, "libp2p.key"), os.O_CREATE|os.O_RDWR, 0600)
 				if err != nil {
 					return err
 				}
-				libp2pPrivateKey = f
+				libp2pPrivateKey = libp2pKey
+				swarmKey, err := os.OpenFile(filepath.Join(dataDir, "swarm.key"), os.O_CREATE|os.O_RDWR, 0600)
+				if err != nil {
+					return err
+				}
+				swarmPrivateKey = swarmKey
 			}
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
@@ -87,6 +91,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			b, err := node.NewBee(node.Options{
+				PrivateKey:   swarmPrivateKey,
 				APIAddr:      c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr: debugAPIAddr,
 				LibP2POptions: libp2p.Options{
@@ -141,6 +146,9 @@ func (c *command) initStartCmd() (err error) {
 
 			return nil
 		},
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return c.config.BindPFlags(cmd.Flags())
+		},
 	}
 
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
@@ -156,10 +164,6 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
 	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
-
-	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
-		return err
-	}
 
 	c.root.AddCommand(cmd)
 	return nil
