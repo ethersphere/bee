@@ -67,8 +67,8 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 	if handler == nil {
 		return nil, ErrStreamNotSupported
 	}
-	for _, m := range r.middlewares {
-		handler = m(handler)
+	for i := len(r.middlewares) - 1; i >= 0; i-- {
+		handler = r.middlewares[i](handler)
 	}
 	record := &Record{in: recordIn, out: recordOut}
 	go func() {
