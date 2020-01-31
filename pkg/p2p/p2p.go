@@ -27,6 +27,11 @@ type Stream interface {
 	io.Closer
 }
 
+// PeerSuggester suggests a peer to retrieve a chunk from
+type PeerSuggester interface {
+	SuggestPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
+}
+
 type ProtocolSpec struct {
 	Name        string
 	StreamSpecs []StreamSpec
