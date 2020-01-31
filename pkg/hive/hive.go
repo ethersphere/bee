@@ -5,8 +5,9 @@
 package hive
 
 import (
-	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -19,43 +20,48 @@ const (
 	streamVersion = "1.0.0"
 )
 
+// PeerSuggester suggests a peer to connect to
+type PeerSuggester interface {
+	Subscribe() (c <-chan swarm.Address, unsubscribe func())
+}
+
+type PeerTracker interface {
+	AddPeer(address swarm.Address) error
+	Peers() (peers []p2p.Peer, err error)
+}
+
+// SaturationTracker tracks weather the saturation has changed
+type SaturationTracker interface {
+	Subscribe() (c <-chan struct{}, unsubscribe func())
+	Depth() (int, error)
+}
+
 type Service struct {
 	streamer          p2p.Streamer
 	logger            logging.Logger
 	peerSuggester     PeerSuggester
+	peerTracker       PeerTracker
 	saturationTracker SaturationTracker
-
-	tickInterval time.Duration
-	done         chan struct{}
-	wg           sync.WaitGroup
+	quit              chan struct{}
 }
 
 type Options struct {
 	Streamer          p2p.Streamer
 	Logger            logging.Logger
 	PeerSuggester     PeerSuggester
+	PeerTracker       PeerTracker
 	SaturationTracker SaturationTracker
 	TickInterval      time.Duration
-}
-
-// PeerSuggester suggests a peer to connect to
-type PeerSuggester interface {
-	SuggestPeer(addr swarm.Address) (peerAddress swarm.Address, err error)
-}
-
-// SaturationTracker tracks weather the saturation has changed
-type SaturationTracker interface {
-	SaturationChanged() (saturationDepth int, changed bool)
 }
 
 func New(o Options) *Service {
 	return &Service{
 		streamer:          o.Streamer,
 		logger:            o.Logger,
-		tickInterval:      o.TickInterval,
 		peerSuggester:     o.PeerSuggester,
 		saturationTracker: o.SaturationTracker,
-		done:              make(chan struct{}),
+		peerTracker:       o.PeerTracker,
+		quit:              make(chan struct{}),
 	}
 }
 
@@ -72,36 +78,79 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) Start() error {
-	s.wg.Add(1)
-	go func() {
-		t := time.NewTicker(s.tickInterval)
-		defer t.Stop()
-		defer s.wg.Done()
+// todo:
+// Hive is a skeleton of a hive function that should be called when the general hive service is started
+// this is an attempt to run these loops outside of the peer level, to avoid having them for every peer
+func (s *Service) Start() {
+	peerSuggestEvents, unsubPS := s.peerSuggester.Subscribe()
+	saturationChangeSignal, unsubSC := s.saturationTracker.Subscribe()
+	defer unsubPS()
+	defer unsubSC()
 
-		for {
-			select {
-			case <-t.C:
-				s.hive()
-			case <-s.done:
+	// todo: maybe refactor and listen separately on these events, this is just a skeleton for now
+	for {
+		select {
+		// todo: handle channel close and similar stuff, depending on the implementation of publishers
+		case ps := <-peerSuggestEvents:
+			if err := s.peerTracker.AddPeer(ps); err != nil {
+				// todo: handle err
 				return
 			}
-		}
-	}()
+		case <-saturationChangeSignal:
+			depth, err := s.saturationTracker.Depth()
+			if err != nil {
+				// todo: handle err
+				return
+			}
+			if err := s.notifyAllPeers(depth); err != nil {
+				// todo: handle err
+				return
+			}
 
-	return nil
+		// todo: cancel, quit, etc...
+		case <-s.quit:
+			return
+
+		}
+	}
 }
 
-func (s *Service) Stop() error {
-	close(s.done)
-	s.wg.Wait()
-	return nil
+// Init is called when the new peer is being initialized.
+// This should happen after overlay handshake is finished.
+func (s *Service) Init(peer p2p.Peer) error {
+	depth, err := s.saturationTracker.Depth()
+	if err != nil {
+		// todo: handle err
+		return err
+	}
+
+	// todo: handle err
+	return s.notifyPeer(peer, depth)
 }
 
 func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
+	// todo:
 	return nil
 }
 
-func (s *Service) hive() {
-	// todo:
+func (s *Service) notifyAllPeers(depth int) error {
+	peers, err := s.peerTracker.Peers()
+	if err != nil {
+		return err
+	}
+
+	var eg errgroup.Group
+	for _, peer := range peers {
+		peer := peer
+		eg.Go(func() error {
+			return s.notifyPeer(peer, depth)
+		})
+	}
+
+	return eg.Wait()
+}
+
+func (s *Service) notifyPeer(peer p2p.Peer, depth int) error {
+	// todo: hive notify msg
+	return nil
 }
