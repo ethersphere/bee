@@ -147,6 +147,7 @@ func (s *Service) notifyAllPeers(depth int) error {
 		})
 	}
 
+	// todo: add timeout
 	return eg.Wait()
 }
 
