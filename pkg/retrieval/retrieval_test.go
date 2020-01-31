@@ -28,7 +28,10 @@ func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	mockStorer := storemock.NewStorer()
-	reqAddr := []byte("reqaddr")
+	reqAddr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
 	reqData := []byte("data data data")
 
 	// put testdata in the mock store of the server
@@ -50,7 +53,7 @@ func TestDelivery(t *testing.T) {
 	clientMockStorer := storemock.NewStorer()
 
 	ps := mockPeerSuggester{spFunc: func(_ swarm.Address) (swarm.Address, error) {
-		v, err := swarm.NewAddress("9ee7add7")
+		v, err := swarm.ParseHexAddress("9ee7add7")
 		return v, err
 	}}
 	client := retrieval.New(retrieval.Options{
@@ -68,8 +71,8 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(v, reqData) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
 	}
-	peerID, _ := ps.SuggestPeer(nil)
-	records, err := recorder.Records(peerID.String(), "retrieval", "retrieval", "1.0.0")
+	peerID, _ := ps.SuggestPeer(swarm.ZeroAddress)
+	records, err := recorder.Records(peerID, "retrieval", "retrieval", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
