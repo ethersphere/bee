@@ -75,7 +75,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data [
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	if err := w.WriteMsg(&pb.Request{
-		Addr: addr,
+		Addr: addr[:],
 	}); err != nil {
 		return nil, fmt.Errorf("stream write: %w", err)
 	}
@@ -96,7 +96,7 @@ func (s *Service) Handler(p p2p.Peer, stream p2p.Stream) error {
 		return err
 	}
 
-	data, err := s.storer.Get(context.TODO(), req.Addr)
+	data, err := s.storer.Get(context.TODO(), swarm.Address(req.Addr))
 	if err != nil {
 		return err
 	}
