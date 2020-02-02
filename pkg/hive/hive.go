@@ -15,19 +15,17 @@ import (
 )
 
 const (
-	protocolName  = "hive"
-	streamName    = "hive"
-	streamVersion = "1.0.0"
+	protocolName       = "hive"
+	depthStreamName    = "hive_depth"
+	depthStreamVersion = "1.0.0"
+	peersStreamName    = "hive_peers"
+	peersStreamVersion = "1.0.0"
 )
-
-// PeerSuggester suggests a peer to connect to
-type PeerSuggester interface {
-	Subscribe() (c <-chan swarm.Address, unsubscribe func())
-}
 
 type PeerTracker interface {
 	AddPeer(address swarm.Address) error
-	Peers() (peers []p2p.Peer, err error)
+	SuggestPeers() (peers []p2p.Peer, err error)
+	Subscribe() (c <-chan p2p.Peer, unsubscribe func())
 }
 
 // SaturationTracker tracks weather the saturation has changed
@@ -39,7 +37,6 @@ type SaturationTracker interface {
 type Service struct {
 	streamer          p2p.Streamer
 	logger            logging.Logger
-	peerSuggester     PeerSuggester
 	peerTracker       PeerTracker
 	saturationTracker SaturationTracker
 	quit              chan struct{}
@@ -48,7 +45,6 @@ type Service struct {
 type Options struct {
 	Streamer          p2p.Streamer
 	Logger            logging.Logger
-	PeerSuggester     PeerSuggester
 	PeerTracker       PeerTracker
 	SaturationTracker SaturationTracker
 	TickInterval      time.Duration
@@ -58,7 +54,6 @@ func New(o Options) *Service {
 	return &Service{
 		streamer:          o.Streamer,
 		logger:            o.Logger,
-		peerSuggester:     o.PeerSuggester,
 		saturationTracker: o.SaturationTracker,
 		peerTracker:       o.PeerTracker,
 		quit:              make(chan struct{}),
@@ -70,9 +65,14 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 		Name: protocolName,
 		StreamSpecs: []p2p.StreamSpec{
 			{
-				Name:    streamName,
-				Version: streamVersion,
-				Handler: s.Handler,
+				Name:    depthStreamName,
+				Version: depthStreamVersion,
+				Handler: s.DepthHandler,
+			},
+			{
+				Name:    peersStreamName,
+				Version: peersStreamVersion,
+				Handler: s.PeersHandler,
 			},
 		},
 	}
@@ -82,7 +82,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 // Hive is a skeleton of a hive function that should be called when the general hive service is started
 // this is an attempt to run these loops outside of the peer level, to avoid having them for every peer
 func (s *Service) Start() {
-	peerSuggestEvents, unsubPS := s.peerSuggester.Subscribe()
+	peerAddedEvents, unsubPS := s.peerTracker.Subscribe()
 	saturationChangeSignal, unsubSC := s.saturationTracker.Subscribe()
 	defer unsubPS()
 	defer unsubSC()
@@ -91,8 +91,8 @@ func (s *Service) Start() {
 	for {
 		select {
 		// todo: handle channel close and similar stuff, depending on the implementation of publishers
-		case ps := <-peerSuggestEvents:
-			if err := s.peerTracker.AddPeer(ps); err != nil {
+		case peer := <-peerAddedEvents:
+			if err := s.notifyPeerAdded(peer); err != nil {
 				// todo: handle err
 				return
 			}
@@ -102,7 +102,7 @@ func (s *Service) Start() {
 				// todo: handle err
 				return
 			}
-			if err := s.notifyAllPeers(depth); err != nil {
+			if err := s.notifyDepthChanged(depth); err != nil {
 				// todo: handle err
 				return
 			}
@@ -125,16 +125,22 @@ func (s *Service) Init(peer p2p.Peer) error {
 	}
 
 	// todo: handle err
-	return s.notifyPeer(peer, depth)
+	return s.sendDepthMsg(peer, depth)
 }
 
-func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
+func (s *Service) DepthHandler(peer p2p.Peer, stream p2p.Stream) error {
 	// todo:
 	return nil
 }
 
-func (s *Service) notifyAllPeers(depth int) error {
-	peers, err := s.peerTracker.Peers()
+func (s *Service) PeersHandler(peer p2p.Peer, stream p2p.Stream) error {
+	// todo:
+	return nil
+}
+
+// notify new depth to all suggested peers
+func (s *Service) notifyDepthChanged(depth int) error {
+	peers, err := s.peerTracker.SuggestPeers()
 	if err != nil {
 		return err
 	}
@@ -143,7 +149,7 @@ func (s *Service) notifyAllPeers(depth int) error {
 	for _, peer := range peers {
 		peer := peer
 		eg.Go(func() error {
-			return s.notifyPeer(peer, depth)
+			return s.sendDepthMsg(peer, depth)
 		})
 	}
 
@@ -151,7 +157,31 @@ func (s *Service) notifyAllPeers(depth int) error {
 	return eg.Wait()
 }
 
-func (s *Service) notifyPeer(peer p2p.Peer, depth int) error {
-	// todo: hive notify msg
+func (s *Service) sendDepthMsg(peer p2p.Peer, depth int) error {
+	// todo:
+	return nil
+}
+
+// notify to suggested peers that the new peer has been added
+func (s *Service) notifyPeerAdded(peer p2p.Peer) error {
+	peers, err := s.peerTracker.SuggestPeers()
+	if err != nil {
+		return err
+	}
+
+	var eg errgroup.Group
+	for _, peer := range peers {
+		peer := peer
+		eg.Go(func() error {
+			return s.sendPeers(peer, []p2p.Peer{peer})
+		})
+	}
+
+	// todo: add timeout
+	return eg.Wait()
+}
+
+func (s *Service) sendPeers(peer p2p.Peer, peers []p2p.Peer) error {
+	// todo:
 	return nil
 }
