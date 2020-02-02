@@ -20,12 +20,14 @@ const (
 	depthStreamVersion = "1.0.0"
 	peersStreamName    = "hive_peers"
 	peersStreamVersion = "1.0.0"
+	maxPeersCount      = 50
 )
 
 type PeerTracker interface {
 	AddPeer(address swarm.Address) error
 	SuggestPeers() (peers []p2p.Peer, err error)
 	Subscribe() (c <-chan p2p.Peer, unsubscribe func())
+	Peers(limit int) (peers []p2p.Peer)
 }
 
 // SaturationTracker tracks weather the saturation has changed
@@ -118,14 +120,19 @@ func (s *Service) Start() {
 // Init is called when the new peer is being initialized.
 // This should happen after overlay handshake is finished.
 func (s *Service) Init(peer p2p.Peer) error {
+	// todo: handle err
 	depth, err := s.saturationTracker.Depth()
 	if err != nil {
-		// todo: handle err
 		return err
 	}
 
-	// todo: handle err
-	return s.sendDepthMsg(peer, depth)
+	err = s.sendDepthMsg(peer, depth)
+	if err != nil {
+		return err
+	}
+
+	peers := s.peerTracker.Peers(maxPeersCount)
+	return s.sendPeers(peer, peers)
 }
 
 func (s *Service) DepthHandler(peer p2p.Peer, stream p2p.Stream) error {
