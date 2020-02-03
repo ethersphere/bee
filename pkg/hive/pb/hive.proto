@@ -6,15 +6,23 @@ syntax = "proto3";
 
 package pb;
 
-message SaturationDepth {
+message Subscribe {
     uint32 Depth = 1;
 }
 
-message Peers {
-    repeated BzzAddress BzzAddress = 1;
+message SubscribeResponse {
+     repeated Peer Peers = 1;
+}
+
+message Peer {
+    BzzAddress BzzAddress = 1;
 }
 
 message BzzAddress {
     bytes Overlay = 1;
     bytes Underlay = 2;
+}
+
+message Depth {
+    uint32 Depth = 1;
 }
