@@ -73,7 +73,9 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 	record := &Record{in: recordIn, out: recordOut}
 	go func() {
 		err := handler(p2p.Peer{Address: addr}, streamIn)
-		record.setErr(err)
+		if err != nil && err != io.EOF {
+			record.setErr(err)
+		}
 	}()
 
 	id := addr.String() + p2p.NewSwarmStreamName(protocolName, streamName, version)
