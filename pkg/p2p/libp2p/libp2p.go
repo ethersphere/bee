@@ -315,10 +315,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
-		if err == handshake.ErrNetworkIDIncompatible {
-			s.logger.Warningf("peer %s has a different network id.", info.ID)
-		}
-
 		_ = s.host.Network().ClosePeer(info.ID)
 		return swarm.Address{}, err
 	}
