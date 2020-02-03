@@ -41,7 +41,7 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, r := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.SynPlusAck{
+		if err := w.WriteMsg(&pb.SynAck{
 			Syn: &pb.Syn{
 				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
@@ -110,7 +110,7 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.SynPlusAck{
+		if err := w.WriteMsg(&pb.SynAck{
 			Syn: &pb.Syn{
 				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
@@ -177,7 +177,7 @@ func TestHandle(t *testing.T) {
 		testInfo(t, *res, node2Info)
 
 		_, r := protobuf.NewWriterAndReader(stream2)
-		var got pb.SynPlusAck
+		var got pb.SynAck
 		if err := r.ReadMsg(&got); err != nil {
 			t.Fatal(err)
 		}
