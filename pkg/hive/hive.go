@@ -170,7 +170,9 @@ func (s *Service) HandshakeHandler(peer p2p.Peer, stream p2p.Stream) error {
 
 	//todo: update depth
 
-	var peers []*pb.BzzAddress // todo: populate bzzAddresses
+	s.peerTracker.Peers(maxPeersCount)
+	// todo: populate bzzAddresses
+	var peers []*pb.BzzAddress
 	if err := w.WriteMsg(&pb.Peers{
 		BzzAddress: peers,
 	}); err != nil {
