@@ -5,7 +5,13 @@
 package hive
 
 import (
+	"context"
+	"fmt"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/hive/pb"
+
+	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 
 	"golang.org/x/sync/errgroup"
 
@@ -15,12 +21,14 @@ import (
 )
 
 const (
-	protocolName       = "hive"
-	depthStreamName    = "hive_depth"
-	depthStreamVersion = "1.0.0"
-	peersStreamName    = "hive_peers"
-	peersStreamVersion = "1.0.0"
-	maxPeersCount      = 50
+	protocolName           = "hive"
+	handshakeStreamName    = "hive_handshake"
+	handshakeStreamVersion = "1.0.0"
+	peersStreamName        = "hive_peers"
+	peersStreamVersion     = "1.0.0"
+	subscribeStreamName    = "hive_subscribe"
+	subscribeStreamVersion = "1.0.0"
+	maxPeersCount          = 50
 )
 
 type PeerTracker interface {
@@ -33,7 +41,7 @@ type PeerTracker interface {
 // SaturationTracker tracks weather the saturation has changed
 type SaturationTracker interface {
 	Subscribe() (c <-chan struct{}, unsubscribe func())
-	Depth() (int, error)
+	Depth() (uint32, error)
 }
 
 type Service struct {
@@ -67,9 +75,14 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 		Name: protocolName,
 		StreamSpecs: []p2p.StreamSpec{
 			{
-				Name:    depthStreamName,
-				Version: depthStreamVersion,
-				Handler: s.DepthHandler,
+				Name:    handshakeStreamName,
+				Version: handshakeStreamVersion,
+				Handler: s.HandshakeHandler,
+			},
+			{
+				Name:    subscribeStreamName,
+				Version: subscribeStreamVersion,
+				Handler: s.SubscribeHandler,
 			},
 			{
 				Name:    peersStreamName,
@@ -119,34 +132,56 @@ func (s *Service) Start() {
 
 // Init is called when the new peer is being initialized.
 // This should happen after overlay handshake is finished.
-func (s *Service) Init(peer p2p.Peer) error {
+func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 	// todo: handle err
 	depth, err := s.saturationTracker.Depth()
 	if err != nil {
 		return err
 	}
 
-	err = s.sendDepthMsg(peer, depth)
+	stream, err := s.streamer.NewStream(ctx, peer.Address, protocolName, subscribeStreamName, subscribeStreamVersion)
 	if err != nil {
-		return err
+		return fmt.Errorf("new stream: %w", err)
 	}
 
-	peers := s.peerTracker.Peers(maxPeersCount)
-	return s.sendPeers(peer, peers)
-}
+	w, r := protobuf.NewWriterAndReader(stream)
+	if err := w.WriteMsg(&pb.Subscribe{
+		Depth: depth,
+	}); err != nil {
+		return fmt.Errorf("write message: %w", err)
+	}
 
-func (s *Service) DepthHandler(peer p2p.Peer, stream p2p.Stream) error {
-	// todo:
+	var resp pb.Peers
+	if err := r.ReadMsg(&resp); err != nil {
+		return fmt.Errorf("read message: %w", err)
+	}
+
+	//todo: handle resp
+	//todo optional: return peers message here to avoid init on both sides, similar to handshake protocol
 	return nil
 }
 
-func (s *Service) PeersHandler(peer p2p.Peer, stream p2p.Stream) error {
-	// todo:
+func (s *Service) HandshakeHandler(peer p2p.Peer, stream p2p.Stream) error {
+	w, r := protobuf.NewWriterAndReader(stream)
+	var subscribe pb.Subscribe
+	if err := r.ReadMsg(&subscribe); err != nil {
+		return fmt.Errorf("read message: %w", err)
+	}
+
+	//todo: update depth
+
+	var peers []*pb.BzzAddress // todo: populate bzzAddresses
+	if err := w.WriteMsg(&pb.Peers{
+		BzzAddress: peers,
+	}); err != nil {
+		return fmt.Errorf("write message: %w", err)
+	}
+
 	return nil
 }
 
 // notify new depth to all suggested peers
-func (s *Service) notifyDepthChanged(depth int) error {
+func (s *Service) notifyDepthChanged(depth uint32) error {
 	peers, err := s.peerTracker.SuggestPeers()
 	if err != nil {
 		return err
@@ -156,17 +191,12 @@ func (s *Service) notifyDepthChanged(depth int) error {
 	for _, peer := range peers {
 		peer := peer
 		eg.Go(func() error {
-			return s.sendDepthMsg(peer, depth)
+			return s.sendSubscribeMsg(peer, depth)
 		})
 	}
 
 	// todo: add timeout
 	return eg.Wait()
-}
-
-func (s *Service) sendDepthMsg(peer p2p.Peer, depth int) error {
-	// todo:
-	return nil
 }
 
 // notify to suggested peers that the new peer has been added
@@ -180,7 +210,7 @@ func (s *Service) notifyPeerAdded(peer p2p.Peer) error {
 	for _, peer := range peers {
 		peer := peer
 		eg.Go(func() error {
-			return s.sendPeers(peer, []p2p.Peer{peer})
+			return s.sendPeersMsg(peer, []p2p.Peer{peer})
 		})
 	}
 
@@ -188,7 +218,22 @@ func (s *Service) notifyPeerAdded(peer p2p.Peer) error {
 	return eg.Wait()
 }
 
-func (s *Service) sendPeers(peer p2p.Peer, peers []p2p.Peer) error {
+func (s *Service) sendPeersMsg(peer p2p.Peer, peers []p2p.Peer) error {
+	// todo:
+	return nil
+}
+
+func (s *Service) sendSubscribeMsg(peer p2p.Peer, depth uint32) error {
+	// todo:
+	return nil
+}
+
+func (s *Service) PeersHandler(peer p2p.Peer, stream p2p.Stream) error {
+	// todo:
+	return nil
+}
+
+func (s *Service) SubscribeHandler(peer p2p.Peer, stream p2p.Stream) error {
 	// todo:
 	return nil
 }
