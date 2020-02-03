@@ -82,23 +82,23 @@ func (m *Syn) GetLight() bool {
 	return false
 }
 
-type SynPlusAck struct {
+type SynAck struct {
 	Syn *Syn `protobuf:"bytes,1,opt,name=Syn,proto3" json:"Syn,omitempty"`
 	Ack *Ack `protobuf:"bytes,2,opt,name=Ack,proto3" json:"Ack,omitempty"`
 }
 
-func (m *SynPlusAck) Reset()         { *m = SynPlusAck{} }
-func (m *SynPlusAck) String() string { return proto.CompactTextString(m) }
-func (*SynPlusAck) ProtoMessage()    {}
-func (*SynPlusAck) Descriptor() ([]byte, []int) {
+func (m *SynAck) Reset()         { *m = SynAck{} }
+func (m *SynAck) String() string { return proto.CompactTextString(m) }
+func (*SynAck) ProtoMessage()    {}
+func (*SynAck) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a77305914d5d202f, []int{1}
 }
-func (m *SynPlusAck) XXX_Unmarshal(b []byte) error {
+func (m *SynAck) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *SynPlusAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *SynAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_SynPlusAck.Marshal(b, m, deterministic)
+		return xxx_messageInfo_SynAck.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -108,26 +108,26 @@ func (m *SynPlusAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *SynPlusAck) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_SynPlusAck.Merge(m, src)
+func (m *SynAck) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SynAck.Merge(m, src)
 }
-func (m *SynPlusAck) XXX_Size() int {
+func (m *SynAck) XXX_Size() int {
 	return m.Size()
 }
-func (m *SynPlusAck) XXX_DiscardUnknown() {
-	xxx_messageInfo_SynPlusAck.DiscardUnknown(m)
+func (m *SynAck) XXX_DiscardUnknown() {
+	xxx_messageInfo_SynAck.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_SynPlusAck proto.InternalMessageInfo
+var xxx_messageInfo_SynAck proto.InternalMessageInfo
 
-func (m *SynPlusAck) GetSyn() *Syn {
+func (m *SynAck) GetSyn() *Syn {
 	if m != nil {
 		return m.Syn
 	}
 	return nil
 }
 
-func (m *SynPlusAck) GetAck() *Ack {
+func (m *SynAck) GetAck() *Ack {
 	if m != nil {
 		return m.Ack
 	}
@@ -180,27 +180,27 @@ func (m *Ack) GetAddress() []byte {
 
 func init() {
 	proto.RegisterType((*Syn)(nil), "pb.Syn")
-	proto.RegisterType((*SynPlusAck)(nil), "pb.SynPlusAck")
+	proto.RegisterType((*SynAck)(nil), "pb.SynAck")
 	proto.RegisterType((*Ack)(nil), "pb.Ack")
 }
 
 func init() { proto.RegisterFile("handshake.proto", fileDescriptor_a77305914d5d202f) }
 
 var fileDescriptor_a77305914d5d202f = []byte{
-	// 200 bytes of a gzipped FileDescriptorProto
+	// 196 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcf, 0x48, 0xcc, 0x4b,
 	0x29, 0xce, 0x48, 0xcc, 0x4e, 0xd5, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x2a, 0x48, 0x52,
 	0x0a, 0xe6, 0x62, 0x0e, 0xae, 0xcc, 0x13, 0x92, 0xe0, 0x62, 0x77, 0x4c, 0x49, 0x29, 0x4a, 0x2d,
 	0x2e, 0x96, 0x60, 0x54, 0x60, 0xd4, 0xe0, 0x09, 0x82, 0x71, 0x85, 0x64, 0xb8, 0x38, 0xfd, 0x52,
 	0x4b, 0xca, 0xf3, 0x8b, 0xb2, 0x3d, 0x5d, 0x24, 0x98, 0x14, 0x18, 0x35, 0x58, 0x83, 0x10, 0x02,
 	0x42, 0x22, 0x5c, 0xac, 0x3e, 0x99, 0xe9, 0x19, 0x25, 0x12, 0xcc, 0x0a, 0x8c, 0x1a, 0x1c, 0x41,
-	0x10, 0x8e, 0x92, 0x13, 0x17, 0x57, 0x70, 0x65, 0x5e, 0x40, 0x4e, 0x69, 0xb1, 0x63, 0x72, 0xb6,
-	0x90, 0x24, 0xd8, 0x0a, 0xb0, 0xb9, 0xdc, 0x46, 0xec, 0x7a, 0x05, 0x49, 0x7a, 0xc1, 0x95, 0x79,
-	0x41, 0x60, 0x6b, 0x25, 0xb9, 0x98, 0x1d, 0x93, 0xb3, 0xc1, 0xc6, 0x42, 0xa5, 0x1c, 0x93, 0xb3,
-	0x83, 0x40, 0x62, 0x4a, 0xf2, 0x60, 0x29, 0xdc, 0x0e, 0x73, 0x92, 0x38, 0xf1, 0x48, 0x8e, 0xf1,
-	0xc2, 0x23, 0x39, 0xc6, 0x07, 0x8f, 0xe4, 0x18, 0x27, 0x3c, 0x96, 0x63, 0xb8, 0xf0, 0x58, 0x8e,
-	0xe1, 0xc6, 0x63, 0x39, 0x86, 0x24, 0x36, 0xb0, 0xf7, 0x8c, 0x01, 0x01, 0x00, 0x00, 0xff, 0xff,
-	0x1b, 0xbc, 0x78, 0x5e, 0xf1, 0x00, 0x00, 0x00,
+	0x10, 0x8e, 0x92, 0x1d, 0x17, 0x5b, 0x70, 0x65, 0x9e, 0x63, 0x72, 0xb6, 0x90, 0x24, 0xd8, 0x78,
+	0xb0, 0x99, 0xdc, 0x46, 0xec, 0x7a, 0x05, 0x49, 0x7a, 0xc1, 0x95, 0x79, 0x41, 0x60, 0x2b, 0x25,
+	0xb9, 0x98, 0x1d, 0x93, 0xb3, 0xc1, 0x46, 0x42, 0xa5, 0x1c, 0x93, 0xb3, 0x83, 0x40, 0x62, 0x4a,
+	0xf2, 0x60, 0x29, 0xdc, 0x8e, 0x72, 0x92, 0x38, 0xf1, 0x48, 0x8e, 0xf1, 0xc2, 0x23, 0x39, 0xc6,
+	0x07, 0x8f, 0xe4, 0x18, 0x27, 0x3c, 0x96, 0x63, 0xb8, 0xf0, 0x58, 0x8e, 0xe1, 0xc6, 0x63, 0x39,
+	0x86, 0x24, 0x36, 0xb0, 0xd7, 0x8c, 0x01, 0x01, 0x00, 0x00, 0xff, 0xff, 0xac, 0x8b, 0xa0, 0x7f,
+	0xed, 0x00, 0x00, 0x00,
 }
 
 func (m *Syn) Marshal() (dAtA []byte, err error) {
@@ -248,7 +248,7 @@ func (m *Syn) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SynPlusAck) Marshal() (dAtA []byte, err error) {
+func (m *SynAck) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -258,12 +258,12 @@ func (m *SynPlusAck) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SynPlusAck) MarshalTo(dAtA []byte) (int, error) {
+func (m *SynAck) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *SynPlusAck) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *SynAck) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -355,7 +355,7 @@ func (m *Syn) Size() (n int) {
 	return n
 }
 
-func (m *SynPlusAck) Size() (n int) {
+func (m *SynAck) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -517,7 +517,7 @@ func (m *Syn) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SynPlusAck) Unmarshal(dAtA []byte) error {
+func (m *SynAck) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -540,10 +540,10 @@ func (m *SynPlusAck) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SynPlusAck: wiretype end group for non-group")
+			return fmt.Errorf("proto: SynAck: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SynPlusAck: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SynAck: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

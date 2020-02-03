@@ -11,7 +11,7 @@ message Syn {
     bool Light = 3;
 }
 
-message SynPlusAck {
+message SynAck {
     Syn Syn = 1;
     Ack Ack = 2;
 }

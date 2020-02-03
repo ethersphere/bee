@@ -36,7 +36,7 @@ func New(overlay swarm.Address, networkID int32, logger logging.Logger) *Service
 
 func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	var resp pb.SynPlusAck
+	var resp pb.SynAck
 	if err := w.WriteMsg(&pb.Syn{
 		Address:   s.overlay.Bytes(),
 		NetworkID: s.networkID,
@@ -72,7 +72,7 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("read message: %w", err)
 	}
 
-	if err := w.WriteMsg(&pb.SynPlusAck{
+	if err := w.WriteMsg(&pb.SynAck{
 		Syn: &pb.Syn{
 			Address:   s.overlay.Bytes(),
 			NetworkID: s.networkID,
