@@ -24,8 +24,12 @@ const (
 // ErrNetworkIDIncompatible should be returned by handshake handlers if
 // response from the other peer does not have valid networkID.
 var ErrNetworkIDIncompatible = errors.New("incompatible networkID")
+
+// ErrHandshakeDuplicate should be returned by handshake handlers if
+// the handshake response has been received by an already processed peer.
 var ErrHandshakeDuplicate = errors.New("duplicate handshake")
 
+// PeerFinder has the information if the peer already exists in swarm.
 type PeerFinder interface {
 	Exists(overlay swarm.Address) (found bool)
 }
