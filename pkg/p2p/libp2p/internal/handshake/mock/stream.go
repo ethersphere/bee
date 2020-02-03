@@ -23,13 +23,11 @@ func NewStream(readBuffer, writeBuffer *bytes.Buffer) *StreamMock {
 func (s *StreamMock) SetReadErr(err error, checkmark int) {
 	s.readError = err
 	s.readErrCheckmark = checkmark
-
 }
 
 func (s *StreamMock) SetWriteErr(err error, checkmark int) {
 	s.writeError = err
 	s.writeErrCheckmark = checkmark
-
 }
 
 func (s *StreamMock) Read(p []byte) (n int, err error) {

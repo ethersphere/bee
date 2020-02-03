@@ -24,6 +24,11 @@ func newPeerRegistry() *peerRegistry {
 	}
 }
 
+func (r *peerRegistry) Exists(overlay swarm.Address) (found bool) {
+	_, found = r.peerID(overlay)
+	return found
+}
+
 func (r *peerRegistry) add(peerID libp2ppeer.ID, overlay swarm.Address) {
 	r.mu.Lock()
 	r.peers[encodePeersKey(overlay)] = peerID
