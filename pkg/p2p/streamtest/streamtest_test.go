@@ -205,6 +205,16 @@ func TestRecorder_withMiddlewares(t *testing.T) {
 		streamtest.WithMiddlewares(
 			func(h p2p.HandlerFunc) p2p.HandlerFunc {
 				return func(peer p2p.Peer, stream p2p.Stream) error {
+					if err := h(peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(peer p2p.Peer, stream p2p.Stream) error {
 					if _, err := stream.Write([]byte("pre 1, ")); err != nil {
 						return err
 					}
@@ -245,16 +255,6 @@ func TestRecorder_withMiddlewares(t *testing.T) {
 						return err
 					}
 					return nil
-				}
-			},
-			func(h p2p.HandlerFunc) p2p.HandlerFunc {
-				return func(peer p2p.Peer, stream p2p.Stream) error {
-					if err := h(peer, stream); err != nil {
-						return err
-					}
-					// close stream after all previous middlewares wrote to it
-					// so that the receiving peer can get all the post messages
-					return stream.Close()
 				}
 			},
 		),
