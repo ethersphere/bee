@@ -41,8 +41,8 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, r := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.ShakeHandAck{
-			ShakeHand: &pb.ShakeHand{
+		if err := w.WriteMsg(&pb.SynPlusAck{
+			Syn: &pb.Syn{
 				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
@@ -64,7 +64,7 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("ERROR - shakehand write error ", func(t *testing.T) {
+	t.Run("ERROR - Syn write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write message: %w", testErr)
 		stream := &mock.StreamMock{}
@@ -79,7 +79,7 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("ERROR - shakehand read error ", func(t *testing.T) {
+	t.Run("ERROR - Syn read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("read message: %w", testErr)
 		stream := mock.NewStream(nil, &bytes.Buffer{})
@@ -110,8 +110,8 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.ShakeHandAck{
-			ShakeHand: &pb.ShakeHand{
+		if err := w.WriteMsg(&pb.SynPlusAck{
+			Syn: &pb.Syn{
 				Address:   expectedInfo.Address.Bytes(),
 				NetworkID: expectedInfo.NetworkID,
 				Light:     expectedInfo.Light,
@@ -157,7 +157,7 @@ func TestHandle(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.ShakeHand{
+		if err := w.WriteMsg(&pb.Syn{
 			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,
@@ -177,15 +177,15 @@ func TestHandle(t *testing.T) {
 		testInfo(t, *res, node2Info)
 
 		_, r := protobuf.NewWriterAndReader(stream2)
-		var got pb.ShakeHandAck
+		var got pb.SynPlusAck
 		if err := r.ReadMsg(&got); err != nil {
 			t.Fatal(err)
 		}
 
 		testInfo(t, nodeInfo, Info{
-			Address:   swarm.NewAddress(got.ShakeHand.Address),
-			NetworkID: got.ShakeHand.NetworkID,
-			Light:     got.ShakeHand.Light,
+			Address:   swarm.NewAddress(got.Syn.Address),
+			NetworkID: got.Syn.NetworkID,
+			Light:     got.Syn.Light,
 		})
 	})
 
@@ -211,7 +211,7 @@ func TestHandle(t *testing.T) {
 		stream := mock.NewStream(&buffer, &buffer)
 		stream.SetWriteErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream)
-		if err := w.WriteMsg(&pb.ShakeHand{
+		if err := w.WriteMsg(&pb.Syn{
 			Address:   node1Addr.Bytes(),
 			NetworkID: 0,
 			Light:     false,
@@ -244,7 +244,7 @@ func TestHandle(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 		stream1.SetReadErr(testErr, 1)
 		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.ShakeHand{
+		if err := w.WriteMsg(&pb.Syn{
 			Address:   node2Info.Address.Bytes(),
 			NetworkID: node2Info.NetworkID,
 			Light:     node2Info.Light,

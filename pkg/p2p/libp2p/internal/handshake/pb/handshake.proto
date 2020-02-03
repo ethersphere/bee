@@ -5,14 +5,14 @@ syntax = "proto3";
 
 package pb;
 
-message ShakeHand {
+message Syn {
     bytes Address = 1;
     int32 NetworkID = 2;
     bool Light = 3;
 }
 
-message ShakeHandAck {
-    ShakeHand ShakeHand = 1;
+message SynPlusAck {
+    Syn Syn = 1;
     Ack Ack = 2;
 }
 
