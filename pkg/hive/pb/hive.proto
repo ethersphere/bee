@@ -11,7 +11,7 @@ message SaturationDepth {
 }
 
 message Peers {
-    repeated bytes BzzAddress = 1;
+    repeated BzzAddress BzzAddress = 1;
 }
 
 message BzzAddress {
