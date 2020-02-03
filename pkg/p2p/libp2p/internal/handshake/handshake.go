@@ -5,6 +5,7 @@
 package handshake
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -19,6 +20,10 @@ const (
 	StreamName    = "handshake"
 	StreamVersion = "1.0.0"
 )
+
+// ErrNetworkIDIncompatible should be returned by handshake handlers if
+// response from the other peer does not have valid networkID.
+var ErrNetworkIDIncompatible = errors.New("incompatible networkID")
 
 type Service struct {
 	overlay   swarm.Address
@@ -48,6 +53,10 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("read message: %w", err)
 	}
 
+	if resp.Syn.NetworkID != s.networkID {
+		return nil, ErrNetworkIDIncompatible
+	}
+
 	if err := w.WriteMsg(&pb.Ack{Address: resp.Syn.Address}); err != nil {
 		return nil, fmt.Errorf("ack: write message: %w", err)
 	}
@@ -70,6 +79,10 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 	var req pb.Syn
 	if err := r.ReadMsg(&req); err != nil {
 		return nil, fmt.Errorf("read message: %w", err)
+	}
+
+	if req.NetworkID != s.networkID {
+		return nil, ErrNetworkIDIncompatible
 	}
 
 	if err := w.WriteMsg(&pb.SynAck{

@@ -203,18 +203,24 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peerID := stream.Conn().RemotePeer()
 		i, err := s.handshakeService.Handle(stream)
 		if err != nil {
+			if err == handshake.ErrNetworkIDIncompatible {
+				s.logger.Warningf("peer %s has a different network id.", peerID)
+			}
+
 			s.logger.Debugf("handshake: handle %s: %w", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			// todo: test connection close and refactor
-			_ = stream.Conn().Close()
+			_ = s.host.Network().ClosePeer(peerID)
 			return
 		}
-		if i.NetworkID != s.networkID {
-			s.logger.Warningf("peer %s has a different network id %v", peerID, i.NetworkID)
-			// todo: test connection close and refactor
-			_ = stream.Conn().Close()
+
+		if peerID, found := s.peers.peerID(i.Address); found {
+			s.logger.Warningf("handshake happened for already connected peer %s", peerID)
+			// disconnect if handshake was performed for already existing peer
+			_ = s.Disconnect(i.Address)
 			return
 		}
+
 		s.peers.add(peerID, i.Address)
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Infof("peer %s connected", i.Address)
@@ -254,7 +260,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			if !found {
 				// todo: this should never happen, should we disconnect in this case?
 				// todo: test connection close and refactor
-				_ = stream.Conn().Close()
+				_ = s.host.Network().ClosePeer(peerID)
 				s.logger.Errorf("overlay address for peer %q not found", peerID)
 				return
 			}
@@ -264,8 +270,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				var e *p2p.DisconnectError
 				if errors.Is(err, e) {
 					// todo: test connection close and refactor
-					s.peers.remove(peerID)
-					_ = stream.Conn().Close()
+					_ = s.Disconnect(overlay)
 				}
 
 				s.logger.Debugf("handle protocol %s: stream %s/%s: peer %s: %w", p.Name, ss.Name, ss.Version, overlay, err)
@@ -303,16 +308,26 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
 	if err != nil {
+		_ = s.host.Network().ClosePeer(info.ID)
 		return swarm.Address{}, fmt.Errorf("new stream: %w", err)
 	}
 	defer stream.Close()
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
+		if err == handshake.ErrNetworkIDIncompatible {
+			s.logger.Warningf("peer %s has a different network id.", info.ID)
+		}
+
+		_ = s.host.Network().ClosePeer(info.ID)
 		return swarm.Address{}, err
 	}
-	if i.NetworkID != s.networkID {
-		return swarm.Address{}, fmt.Errorf("invalid network id %v", i.NetworkID)
+
+	if peerID, found := s.peers.peerID(i.Address); found {
+		s.logger.Warningf("handshake happened for already connected peer %s", peerID)
+		// disconnect if handshake was performed for already existing peer
+		_ = s.Disconnect(i.Address)
+		return
 	}
 
 	s.peers.add(info.ID, i.Address)

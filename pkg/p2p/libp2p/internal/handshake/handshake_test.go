@@ -31,7 +31,7 @@ func TestHandshake(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		expectedInfo := Info{
 			Address:   node2Addr,
-			NetworkID: 1,
+			NetworkID: 0,
 			Light:     false,
 		}
 
@@ -58,7 +58,6 @@ func TestHandshake(t *testing.T) {
 		}
 
 		testInfo(t, *res, expectedInfo)
-
 		if err := r.ReadMsg(&pb.Ack{}); err != nil {
 			t.Fatal(err)
 		}
@@ -99,7 +98,7 @@ func TestHandshake(t *testing.T) {
 		expectedErr := fmt.Errorf("ack: write message: %w", testErr)
 		expectedInfo := Info{
 			Address:   node2Addr,
-			NetworkID: 1,
+			NetworkID: 0,
 			Light:     false,
 		}
 
@@ -130,6 +129,40 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("handshake returned non-nil res")
 		}
 	})
+
+	t.Run("ERROR - networkID mismatch ", func(t *testing.T) {
+		node2Info := Info{
+			Address:   node2Addr,
+			NetworkID: 2,
+			Light:     false,
+		}
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w, _ := protobuf.NewWriterAndReader(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			Syn: &pb.Syn{
+				Address:   node2Info.Address.Bytes(),
+				NetworkID: node2Info.NetworkID,
+				Light:     node2Info.Light,
+			},
+			Ack: &pb.Ack{Address: info.Address.Bytes()},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(stream1)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+
+		if err != ErrNetworkIDIncompatible {
+			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
+		}
+	})
 }
 
 func TestHandle(t *testing.T) {
@@ -147,7 +180,7 @@ func TestHandle(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		node2Info := Info{
 			Address:   node2Addr,
-			NetworkID: 1,
+			NetworkID: 0,
 			Light:     false,
 		}
 
@@ -234,7 +267,7 @@ func TestHandle(t *testing.T) {
 		expectedErr := fmt.Errorf("ack: read message: %w", testErr)
 		node2Info := Info{
 			Address:   node2Addr,
-			NetworkID: 1,
+			NetworkID: 0,
 			Light:     false,
 		}
 
@@ -259,6 +292,37 @@ func TestHandle(t *testing.T) {
 
 		if res != nil {
 			t.Fatal("handshake returned non-nil res")
+		}
+	})
+
+	t.Run("ERROR - networkID mismatch ", func(t *testing.T) {
+		node2Info := Info{
+			Address:   node2Addr,
+			NetworkID: 2,
+			Light:     false,
+		}
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w, _ := protobuf.NewWriterAndReader(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			Address:   node2Info.Address.Bytes(),
+			NetworkID: node2Info.NetworkID,
+			Light:     node2Info.Light,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handle(stream1)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+
+		if err != ErrNetworkIDIncompatible {
+			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
 		}
 	})
 }
