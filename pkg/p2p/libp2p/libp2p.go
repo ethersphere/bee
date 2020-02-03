@@ -182,12 +182,13 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	peerRegistry := newPeerRegistry()
 	s := &Service{
 		host:             h,
 		metrics:          newMetrics(),
 		networkID:        o.NetworkID,
-		handshakeService: handshake.New(o.Overlay, o.NetworkID, o.Logger),
-		peers:            newPeerRegistry(),
+		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
+		peers:            peerRegistry,
 		logger:           o.Logger,
 	}
 
@@ -207,17 +208,14 @@ func New(ctx context.Context, o Options) (*Service, error) {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
 			}
 
+			if err == handshake.ErrHandshakeDuplicate {
+				s.logger.Warningf("handshake happened for already connected peer %s", peerID)
+			}
+
 			s.logger.Debugf("handshake: handle %s: %w", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			// todo: test connection close and refactor
 			_ = s.host.Network().ClosePeer(peerID)
-			return
-		}
-
-		if peerID, found := s.peers.peerID(i.Address); found {
-			s.logger.Warningf("handshake happened for already connected peer %s", peerID)
-			// disconnect if handshake was performed for already existing peer
-			_ = s.Disconnect(i.Address)
 			return
 		}
 
@@ -317,13 +315,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	if err != nil {
 		_ = s.host.Network().ClosePeer(info.ID)
 		return swarm.Address{}, err
-	}
-
-	if peerID, found := s.peers.peerID(i.Address); found {
-		s.logger.Warningf("handshake happened for already connected peer %s", peerID)
-		// disconnect if handshake was performed for already existing peer
-		_ = s.Disconnect(i.Address)
-		return
 	}
 
 	s.peers.add(info.ID, i.Address)

@@ -24,18 +24,25 @@ const (
 // ErrNetworkIDIncompatible should be returned by handshake handlers if
 // response from the other peer does not have valid networkID.
 var ErrNetworkIDIncompatible = errors.New("incompatible networkID")
+var ErrHandshakeDuplicate = errors.New("duplicate handshake")
 
-type Service struct {
-	overlay   swarm.Address
-	networkID int32
-	logger    logging.Logger
+type PeerFinder interface {
+	Exists(overlay swarm.Address) (found bool)
 }
 
-func New(overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
+type Service struct {
+	peerFinder PeerFinder
+	overlay    swarm.Address
+	networkID  int32
+	logger     logging.Logger
+}
+
+func New(peerFinder PeerFinder, overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
 	return &Service{
-		overlay:   overlay,
-		networkID: networkID,
-		logger:    logger,
+		peerFinder: peerFinder,
+		overlay:    overlay,
+		networkID:  networkID,
+		logger:     logger,
 	}
 }
 
@@ -53,6 +60,11 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("read message: %w", err)
 	}
 
+	address := swarm.NewAddress(resp.Syn.Address)
+	if s.peerFinder.Exists(address) {
+		return nil, ErrHandshakeDuplicate
+	}
+
 	if resp.Syn.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
 	}
@@ -60,8 +72,6 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	if err := w.WriteMsg(&pb.Ack{Address: resp.Syn.Address}); err != nil {
 		return nil, fmt.Errorf("ack: write message: %w", err)
 	}
-
-	address := swarm.NewAddress(resp.Syn.Address)
 
 	s.logger.Tracef("handshake finished for peer %s", address)
 
@@ -79,6 +89,11 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 	var req pb.Syn
 	if err := r.ReadMsg(&req); err != nil {
 		return nil, fmt.Errorf("read message: %w", err)
+	}
+
+	address := swarm.NewAddress(req.Address)
+	if s.peerFinder.Exists(address) {
+		return nil, ErrHandshakeDuplicate
 	}
 
 	if req.NetworkID != s.networkID {
@@ -99,8 +114,6 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 	if err := r.ReadMsg(&ack); err != nil {
 		return nil, fmt.Errorf("ack: read message: %w", err)
 	}
-
-	address := swarm.NewAddress(req.Address)
 
 	s.logger.Tracef("handshake finished for peer %s", address)
 	return &Info{
