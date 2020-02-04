@@ -1,5 +1,8 @@
 # Ethereum Swarm Bee
 
+[![Go](https://github.com/ethersphere/bee/workflows/Go/badge.svg)](https://github.com/ethersphere/bee/actions)
+[![GoDoc](https://godoc.org/github.com/ethersphere/bee?status.svg)](https://godoc.org/github.com/ethersphere/bee)
+
 This is an experiment to abstract libp2p as underlay networking for Ethereum Swarm.
 
 Work in progress. This is not the final abstraction.
