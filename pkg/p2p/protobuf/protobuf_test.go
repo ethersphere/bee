@@ -74,7 +74,7 @@ func TestReader_timeout(t *testing.T) {
 		{
 			name: "NewReader",
 			readerFunc: func() protobuf.Reader {
-				return protobuf.NewReader(newMessageReader(messages, 200*time.Millisecond))
+				return protobuf.NewReader(newMessageReader(messages, 400*time.Millisecond))
 			},
 		},
 		{
@@ -82,7 +82,7 @@ func TestReader_timeout(t *testing.T) {
 			readerFunc: func() protobuf.Reader {
 				_, r := protobuf.NewWriterAndReader(
 					newNoopWriteCloser(
-						newMessageReader(messages, 200*time.Millisecond),
+						newMessageReader(messages, 400*time.Millisecond),
 					),
 				)
 				return r
@@ -96,9 +96,9 @@ func TestReader_timeout(t *testing.T) {
 				for i := 0; i < len(messages); i++ {
 					var timeout time.Duration
 					if i == 0 {
-						timeout = 300 * time.Millisecond
+						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 100 * time.Millisecond
+						timeout = 200 * time.Millisecond
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), timeout)
 					defer cancel()
@@ -126,9 +126,9 @@ func TestReader_timeout(t *testing.T) {
 				for i := 0; i < len(messages); i++ {
 					var timeout time.Duration
 					if i == 0 {
-						timeout = 300 * time.Millisecond
+						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 100 * time.Millisecond
+						timeout = 200 * time.Millisecond
 					}
 					err := r.ReadMsgWithTimeout(timeout, &msg)
 					if i == 0 {
@@ -203,14 +203,14 @@ func TestWriter_timeout(t *testing.T) {
 		{
 			name: "NewWriter",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(200 * time.Millisecond)
+				w, msgs := newMessageWriter(400 * time.Millisecond)
 				return protobuf.NewWriter(w), msgs
 			},
 		},
 		{
 			name: "NewWriterAndReader",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(200 * time.Millisecond)
+				w, msgs := newMessageWriter(400 * time.Millisecond)
 				writer, _ := protobuf.NewWriterAndReader(newNoopReadCloser(w))
 				return writer, msgs
 			},
@@ -223,9 +223,9 @@ func TestWriter_timeout(t *testing.T) {
 				for i, m := range messages {
 					var timeout time.Duration
 					if i == 0 {
-						timeout = 300 * time.Millisecond
+						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 100 * time.Millisecond
+						timeout = 200 * time.Millisecond
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), timeout)
 					defer cancel()
@@ -253,9 +253,9 @@ func TestWriter_timeout(t *testing.T) {
 				for i, m := range messages {
 					var timeout time.Duration
 					if i == 0 {
-						timeout = 300 * time.Millisecond
+						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 100 * time.Millisecond
+						timeout = 200 * time.Millisecond
 					}
 					err := w.WriteMsgWithTimeout(timeout, &pb.Message{
 						Text: m,
