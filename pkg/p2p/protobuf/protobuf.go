@@ -49,11 +49,11 @@ func ReadMessages(r io.Reader, newMessage func() Message) (m []Message, err erro
 }
 
 type Reader struct {
-	ggio.Reader
+	ggio.ReadCloser
 }
 
-func newReader(r ggio.Reader) Reader {
-	return Reader{Reader: r}
+func newReader(r ggio.ReadCloser) Reader {
+	return Reader{ReadCloser: r}
 }
 
 func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error {
@@ -66,6 +66,7 @@ func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error
 	case err := <-errChan:
 		return err
 	case <-ctx.Done():
+		_ = r.Close()
 		return ctx.Err()
 	}
 }
@@ -83,16 +84,17 @@ func (r Reader) ReadMsgWithTimeout(d time.Duration, msg proto.Message) error {
 	case err := <-errChan:
 		return err
 	case <-timer.C:
+		_ = r.Close()
 		return ErrTimeout
 	}
 }
 
 type Writer struct {
-	ggio.Writer
+	ggio.WriteCloser
 }
 
-func newWriter(r ggio.Writer) Writer {
-	return Writer{Writer: r}
+func newWriter(r ggio.WriteCloser) Writer {
+	return Writer{WriteCloser: r}
 }
 
 func (w Writer) WriteMsgWithContext(ctx context.Context, msg proto.Message) error {
@@ -105,6 +107,7 @@ func (w Writer) WriteMsgWithContext(ctx context.Context, msg proto.Message) erro
 	case err := <-errChan:
 		return err
 	case <-ctx.Done():
+		_ = w.Close()
 		return ctx.Err()
 	}
 }
@@ -122,6 +125,7 @@ func (w Writer) WriteMsgWithTimeout(d time.Duration, msg proto.Message) error {
 	case err := <-errChan:
 		return err
 	case <-timer.C:
+		_ = w.Close()
 		return ErrTimeout
 	}
 }

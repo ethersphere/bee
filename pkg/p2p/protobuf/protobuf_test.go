@@ -6,6 +6,7 @@ package protobuf_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -309,7 +310,7 @@ func newMessageReader(messages []string, delay time.Duration) io.Reader {
 			time.Sleep(delay)
 			if err := w.WriteMsg(&pb.Message{
 				Text: m,
-			}); err != nil {
+			}); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 				panic(err)
 			}
 		}
