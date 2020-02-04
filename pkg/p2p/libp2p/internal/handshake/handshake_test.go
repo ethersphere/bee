@@ -1,6 +1,7 @@
 // Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
 package handshake
 
 import (
@@ -67,7 +68,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("ERROR - Syn write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("write message: %w", testErr)
+		expectedErr := fmt.Errorf("write syn message: %w", testErr)
 		stream := &mock.StreamMock{}
 		stream.SetWriteErr(testErr, 0)
 		res, err := handshakeService.Handshake(stream)
@@ -82,7 +83,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("ERROR - Syn read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("read message: %w", testErr)
+		expectedErr := fmt.Errorf("read synack message: %w", testErr)
 		stream := mock.NewStream(nil, &bytes.Buffer{})
 		stream.SetReadErr(testErr, 0)
 		res, err := handshakeService.Handshake(stream)
@@ -97,7 +98,7 @@ func TestHandshake(t *testing.T) {
 
 	t.Run("ERROR - ack write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("ack: write message: %w", testErr)
+		expectedErr := fmt.Errorf("write ack message: %w", testErr)
 		expectedInfo := Info{
 			Address:   node2Addr,
 			NetworkID: 0,
@@ -262,7 +263,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("read message: %w", testErr)
+		expectedErr := fmt.Errorf("read syn message: %w", testErr)
 		stream := &mock.StreamMock{}
 		stream.SetReadErr(testErr, 0)
 		res, err := handshakeService.Handle(stream)
@@ -277,7 +278,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("ERROR - write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("write message: %w", testErr)
+		expectedErr := fmt.Errorf("write synack message: %w", testErr)
 		var buffer bytes.Buffer
 		stream := mock.NewStream(&buffer, &buffer)
 		stream.SetWriteErr(testErr, 1)
@@ -302,7 +303,7 @@ func TestHandle(t *testing.T) {
 
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
-		expectedErr := fmt.Errorf("ack: read message: %w", testErr)
+		expectedErr := fmt.Errorf("read ack message: %w", testErr)
 		node2Info := Info{
 			Address:   node2Addr,
 			NetworkID: 0,
