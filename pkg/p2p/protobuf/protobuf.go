@@ -22,16 +22,14 @@ var ErrTimeout = errors.New("timeout")
 type Message = proto.Message
 
 func NewWriterAndReader(s p2p.Stream) (Writer, Reader) {
-	w := ggio.NewDelimitedWriter(s)
-	r := ggio.NewDelimitedReader(s, delimitedReaderMaxSize)
-	return newWriter(w), newReader(r)
+	return NewWriter(s), NewReader(s)
 }
 
 func NewReader(r io.Reader) Reader {
 	return newReader(ggio.NewDelimitedReader(r, delimitedReaderMaxSize))
 }
 
-func NewWriter(w io.Writer) ggio.Writer {
+func NewWriter(w io.Writer) Writer {
 	return newWriter(ggio.NewDelimitedWriter(w))
 }
 
