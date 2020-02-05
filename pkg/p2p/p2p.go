@@ -45,6 +45,7 @@ type StreamSpec struct {
 
 type Peer struct {
 	Address swarm.Address
+	Depth   uint32
 }
 
 type HandlerFunc func(Peer, Stream) error

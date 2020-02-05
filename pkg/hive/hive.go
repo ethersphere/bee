@@ -31,10 +31,10 @@ const (
 )
 
 type PeerTracker interface {
-	AddPeer(address swarm.Address) error
+	AddPeer(overlay, underlay swarm.Address) error // todo: introduce bzz address if needed
 	SuggestPeers() (peers []p2p.Peer, err error)
 	Subscribe() (c <-chan p2p.Peer, unsubscribe func())
-	Peers(limit int) (peers []p2p.Peer)
+	ConnectedPeers() (peers []p2p.Peer)
 }
 
 // SaturationTracker tracks weather the saturation has changed
@@ -154,18 +154,65 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 		return fmt.Errorf("read message: %w", err)
 	}
 
-	//todo: handle resp
+	for _, address := range resp.Peers.BzzAddress {
+		if err := s.peerTracker.AddPeer(swarm.NewAddress(address.Overlay), swarm.NewAddress(address.Underlay)); err != nil {
+			return err
+		}
+	}
 	//todo optional: return peers message here to avoid init on both sides, similar to handshake protocol
 	return nil
 }
 
+func (s *Service) SubscribeHandler(peer p2p.Peer, stream p2p.Stream) error {
+	w, r := protobuf.NewWriterAndReader(stream)
+	var subscribe pb.Subscribe
+	if err := r.ReadMsg(&subscribe); err != nil {
+		return fmt.Errorf("read message: %w", err)
+	}
+
+	connPeers := s.peerTracker.ConnectedPeers()
+	bzzAddresses := make([]*pb.BzzAddress, 1)
+	for _, peer := range connPeers {
+		if peer.Depth < subscribe.Depth {
+			// todo: should we also check seen peers here?
+			bzzAddresses = append(bzzAddresses, &pb.BzzAddress{
+				Overlay:  peer.Address.Bytes(),
+				Underlay: peer.Address.Bytes(), // todo: correct underlay
+			})
+		}
+	}
+
+	// todo: filter peers per depth criteria if needed
+	// todo: populate bzzAddresses
+	var peers pb.Peers
+	peers.BzzAddress = bzzAddresses[:maxPeersCount]
+	if err := w.WriteMsg(&pb.SubscribeResponse{
+		Peers: &peers,
+	}); err != nil {
+		return fmt.Errorf("write message: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) DepthHandler(peer p2p.Peer, stream p2p.Stream) error {
-	// todo: update depth
+	// todo: update depth for peer
 	return nil
 }
 
 func (s *Service) PeersHandler(peer p2p.Peer, stream p2p.Stream) error {
-	// todo: update peers
+	_, r := protobuf.NewWriterAndReader(stream)
+	var peers pb.Peers
+	if err := r.ReadMsg(&peers); err != nil {
+		return fmt.Errorf("read message: %w", err)
+	}
+
+	for _, address := range peers.BzzAddress {
+		if err := s.peerTracker.AddPeer(swarm.NewAddress(address.Overlay), swarm.NewAddress(address.Underlay)); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -214,26 +261,5 @@ func (s *Service) notifyPeerAdded(peer p2p.Peer) error {
 
 func (s *Service) sendPeer(peer p2p.Peer, peerUpdate p2p.Peer) error {
 	// todo: send peer request
-	return nil
-}
-
-func (s *Service) SubscribeHandler(peer p2p.Peer, stream p2p.Stream) error {
-	w, r := protobuf.NewWriterAndReader(stream)
-	var subscribe pb.Subscribe
-	if err := r.ReadMsg(&subscribe); err != nil {
-		return fmt.Errorf("read message: %w", err)
-	}
-
-	//todo: update depth
-
-	s.peerTracker.Peers(maxPeersCount)
-	// todo: populate bzzAddresses
-	var peers []*pb.Peer
-	if err := w.WriteMsg(&pb.SubscribeResponse{
-		Peers: peers,
-	}); err != nil {
-		return fmt.Errorf("write message: %w", err)
-	}
-
 	return nil
 }

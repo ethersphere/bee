@@ -11,11 +11,11 @@ message Subscribe {
 }
 
 message SubscribeResponse {
-     repeated Peer Peers = 1;
+      Peers Peers = 1;
 }
 
-message Peer {
-    BzzAddress BzzAddress = 1;
+message Peers {
+    repeated BzzAddress BzzAddress = 1;
 }
 
 message BzzAddress {
