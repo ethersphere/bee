@@ -27,21 +27,18 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameDataDir          = "data-dir"
-		optionNamePassword         = "password"
-		optionNamePasswordFile     = "password-file"
-		optionNameAPIAddr          = "api-addr"
-		optionNameP2PAddr          = "p2p-addr"
-		optionNameP2PDisableWS     = "p2p-disable-ws"
-		optionNameP2PDisableQUIC   = "p2p-disable-quic"
-		optionNameEnableDebugAPI   = "enable-debug-api"
-		optionNameDebugAPIAddr     = "debug-api-addr"
-		optionNameBootnodes        = "bootnode"
-		optionNameNetworkID        = "network-id"
-		optionNameConnectionsLow   = "connections-low"
-		optionNameConnectionsHigh  = "connections-high"
-		optionNameConnectionsGrace = "connections-grace"
-		optionNameVerbosity        = "verbosity"
+		optionNameDataDir        = "data-dir"
+		optionNamePassword       = "password"
+		optionNamePasswordFile   = "password-file"
+		optionNameAPIAddr        = "api-addr"
+		optionNameP2PAddr        = "p2p-addr"
+		optionNameP2PDisableWS   = "p2p-disable-ws"
+		optionNameP2PDisableQUIC = "p2p-disable-quic"
+		optionNameEnableDebugAPI = "enable-debug-api"
+		optionNameDebugAPIAddr   = "debug-api-addr"
+		optionNameBootnodes      = "bootnode"
+		optionNameNetworkID      = "network-id"
+		optionNameVerbosity      = "verbosity"
 	)
 
 	cmd := &cobra.Command{
@@ -98,15 +95,12 @@ func (c *command) initStartCmd() (err error) {
 				APIAddr:      c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr: debugAPIAddr,
 				LibP2POptions: libp2p.Options{
-					Addr:             c.config.GetString(optionNameP2PAddr),
-					DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
-					DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
-					Bootnodes:        c.config.GetStringSlice(optionNameBootnodes),
-					NetworkID:        c.config.GetInt32(optionNameNetworkID),
-					ConnectionsLow:   c.config.GetInt(optionNameConnectionsLow),
-					ConnectionsHigh:  c.config.GetInt(optionNameConnectionsHigh),
-					ConnectionsGrace: c.config.GetDuration(optionNameConnectionsGrace),
-					Logger:           logger,
+					Addr:        c.config.GetString(optionNameP2PAddr),
+					DisableWS:   c.config.GetBool(optionNameP2PDisableWS),
+					DisableQUIC: c.config.GetBool(optionNameP2PDisableQUIC),
+					Bootnodes:   c.config.GetStringSlice(optionNameBootnodes),
+					NetworkID:   c.config.GetInt32(optionNameNetworkID),
+					Logger:      logger,
 				},
 				Logger: logger,
 			})
@@ -164,9 +158,6 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameEnableDebugAPI, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
 	cmd.Flags().Int32(optionNameNetworkID, 1, "ID of the Swarm network")
-	cmd.Flags().Int(optionNameConnectionsLow, 200, "low watermark governing the number of connections that'll be maintained")
-	cmd.Flags().Int(optionNameConnectionsHigh, 400, "high watermark governing the number of connections that'll be maintained")
-	cmd.Flags().Duration(optionNameConnectionsGrace, time.Minute, "the amount of time a newly opened connection is given before it becomes subject to pruning")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	c.root.AddCommand(cmd)

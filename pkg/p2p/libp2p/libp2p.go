@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -18,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
-	connmgr "github.com/libp2p/go-libp2p-connmgr"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -44,17 +42,14 @@ type Service struct {
 }
 
 type Options struct {
-	PrivateKey       *ecdsa.PrivateKey
-	Overlay          swarm.Address
-	Addr             string
-	DisableWS        bool
-	DisableQUIC      bool
-	Bootnodes        []string
-	NetworkID        int32
-	ConnectionsLow   int
-	ConnectionsHigh  int
-	ConnectionsGrace time.Duration
-	Logger           logging.Logger
+	PrivateKey  *ecdsa.PrivateKey
+	Overlay     swarm.Address
+	Addr        string
+	DisableWS   bool
+	DisableQUIC bool
+	Bootnodes   []string
+	NetworkID   int32
+	Logger      logging.Logger
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -107,13 +102,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		libp2p.Security(secio.ID, secio.New),
 		// support any other default transports (TCP)
 		libp2p.DefaultTransports,
-		// Let's prevent our peer from having too many
-		// connections by attaching a connection manager.
-		libp2p.ConnectionManager(connmgr.NewConnManager(
-			o.ConnectionsLow,
-			o.ConnectionsHigh,
-			o.ConnectionsGrace,
-		)),
 		// Attempt to open ports using uPNP for NATed hosts.
 		libp2p.NATPortMap(),
 	}
