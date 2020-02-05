@@ -5,16 +5,13 @@
 package node
 
 import (
-	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"os"
+	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -22,6 +19,9 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/keystore"
+	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
+	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
@@ -37,7 +37,8 @@ type Bee struct {
 }
 
 type Options struct {
-	PrivateKey    io.ReadWriteCloser
+	DataDir       string
+	Password      string
 	APIAddr       string
 	DebugAPIAddr  string
 	LibP2POptions libp2p.Options
@@ -54,49 +55,37 @@ func NewBee(o Options) (*Bee, error) {
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 	}
 
-	var privateKey *ecdsa.PrivateKey
-	if o.PrivateKey != nil {
-		privateKeyData, err := ioutil.ReadAll(o.PrivateKey)
-		if err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("read private key: %w", err)
-		}
-		if len(privateKeyData) == 0 {
-			var err error
-			privateKey, err = crypto.GenerateSecp256k1Key()
-			if err != nil {
-				return nil, fmt.Errorf("generate secp256k1 key: %w", err)
-			}
-			d, err := crypto.MarshalSecp256k1PrivateKey(privateKey)
-			if err != nil {
-				return nil, fmt.Errorf("encode private key: %w", err)
-			}
-			if _, err := io.Copy(o.PrivateKey, bytes.NewReader(d)); err != nil {
-				return nil, fmt.Errorf("write private key: %w", err)
-			}
-		} else {
-			var err error
-			privateKey, err = crypto.UnmarshalPrivateKey(privateKeyData)
-			if err != nil {
-				return nil, fmt.Errorf("decode private key: %w", err)
-			}
-		}
-		if err := o.PrivateKey.Close(); err != nil {
-			return nil, fmt.Errorf("close private key: %w", err)
-		}
+	var keyStore keystore.Service
+	if o.DataDir == "" {
+		keyStore = memkeystore.New()
+		logger.Warning("data directory not provided, keys are not persisted")
 	} else {
-		var err error
-		privateKey, err = crypto.GenerateSecp256k1Key()
-		if err != nil {
-			return nil, fmt.Errorf("generate secp256k1 key: %w", err)
-		}
+		keyStore = filekeystore.New(filepath.Join(o.DataDir, "keys"))
 	}
 
-	address := crypto.NewAddress(privateKey.PublicKey)
+	swarmPrivateKey, created, err := keyStore.Key("swarm", o.Password)
+	if err != nil {
+		return nil, fmt.Errorf("swarm key: %w", err)
+	}
+	address := crypto.NewAddress(swarmPrivateKey.PublicKey)
+	if created {
+		logger.Info("new swarm key created")
+	}
+
 	logger.Infof("address: %s", address)
 
 	// Construct P2P service.
+	libp2pPrivateKey, created, err := keyStore.Key("libp2p", o.Password)
+	if err != nil {
+		return nil, fmt.Errorf("libp2p key: %w", err)
+	}
+	if created {
+		logger.Infof("new libp2p key created")
+	}
+
 	libP2POptions := o.LibP2POptions
 	libP2POptions.Overlay = address
+	libP2POptions.PrivateKey = libp2pPrivateKey
 	p2ps, err := libp2p.New(p2pCtx, libP2POptions)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
