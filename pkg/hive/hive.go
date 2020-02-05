@@ -16,7 +16,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -31,16 +30,22 @@ const (
 )
 
 type PeerTracker interface {
-	AddPeer(overlay, underlay swarm.Address) error // todo: introduce bzz address if needed
+	AddPeer(overlay, underlay []byte) error // todo: introduce bzz address if needed
 	SuggestPeers() (peers []p2p.Peer, err error)
 	Subscribe() (c <-chan p2p.Peer, unsubscribe func())
-	ConnectedPeers() (peers []p2p.Peer)
+	ConnectedPeers() (peers []Peer)
 }
 
 // SaturationTracker tracks weather the saturation has changed
 type SaturationTracker interface {
 	Subscribe() (c <-chan struct{}, unsubscribe func())
 	Depth() (uint32, error)
+}
+
+type Peer struct {
+	po       uint32
+	overlay  []byte
+	underlay []byte
 }
 
 type Service struct {
@@ -155,7 +160,7 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 	}
 
 	for _, address := range resp.Peers.BzzAddress {
-		if err := s.peerTracker.AddPeer(swarm.NewAddress(address.Overlay), swarm.NewAddress(address.Underlay)); err != nil {
+		if err := s.peerTracker.AddPeer(address.Overlay, address.Underlay); err != nil {
 			return err
 		}
 	}
@@ -173,11 +178,11 @@ func (s *Service) SubscribeHandler(peer p2p.Peer, stream p2p.Stream) error {
 	connPeers := s.peerTracker.ConnectedPeers()
 	bzzAddresses := make([]*pb.BzzAddress, 1)
 	for _, peer := range connPeers {
-		if peer.Depth < subscribe.Depth {
+		if peer.po < subscribe.Depth {
 			// todo: should we also check seen peers here?
 			bzzAddresses = append(bzzAddresses, &pb.BzzAddress{
-				Overlay:  peer.Address.Bytes(),
-				Underlay: peer.Address.Bytes(), // todo: correct underlay
+				Overlay:  peer.overlay,
+				Underlay: peer.underlay, // todo: correct underlay
 			})
 		}
 	}
@@ -208,7 +213,7 @@ func (s *Service) PeersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	}
 
 	for _, address := range peers.BzzAddress {
-		if err := s.peerTracker.AddPeer(swarm.NewAddress(address.Overlay), swarm.NewAddress(address.Underlay)); err != nil {
+		if err := s.peerTracker.AddPeer(address.Overlay, address.Underlay); err != nil {
 			return err
 		}
 	}
