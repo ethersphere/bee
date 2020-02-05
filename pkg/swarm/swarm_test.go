@@ -6,6 +6,7 @@ package swarm_test
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -60,5 +61,23 @@ func TestAddress(t *testing.T) {
 				t.Errorf("got address as zero=%v, want zero=%v", a.IsZero(), tc.want.IsZero())
 			}
 		})
+	}
+}
+
+func TestAddress_jsonMarshalling(t *testing.T) {
+	a1 := swarm.MustParseHexAddress("24798dd5a470e927fa")
+
+	b, err := json.Marshal(a1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var a2 swarm.Address
+	if err := json.Unmarshal(b, &a2); err != nil {
+		t.Fatal(err)
+	}
+
+	if !a1.Equal(a2) {
+		t.Error("unmarshalled address is not equal to the original")
 	}
 }

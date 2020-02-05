@@ -8,6 +8,7 @@ package swarm
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 )
 
 // Address represents an address in Swarm metric space of
@@ -58,6 +59,21 @@ func (a Address) IsZero() bool {
 // Bytes returns bytes representation of the Address.
 func (a Address) Bytes() []byte {
 	return a.b
+}
+
+// UnmarshalJSON sets Address to a value from JSON-encoded representation.
+func (a *Address) UnmarshalJSON(b []byte) (err error) {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	*a, err = ParseHexAddress(s)
+	return err
+}
+
+// MarshalJSON returns JSON-encoded representation of Address.
+func (a Address) MarshalJSON() ([]byte, error) {
+	return json.Marshal(a.String())
 }
 
 // ZeroAddress is the address that has no value.

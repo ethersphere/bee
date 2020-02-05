@@ -19,10 +19,11 @@ func init() {
 }
 
 type command struct {
-	root    *cobra.Command
-	config  *viper.Viper
-	cfgFile string
-	homeDir string
+	root           *cobra.Command
+	config         *viper.Viper
+	passwordReader passwordReader
+	cfgFile        string
+	homeDir        string
 }
 
 type option func(*command)
@@ -42,6 +43,9 @@ func newCommand(opts ...option) (c *command, err error) {
 
 	for _, o := range opts {
 		o(c)
+	}
+	if c.passwordReader == nil {
+		c.passwordReader = new(stdInPasswordReader)
 	}
 
 	// Find home directory.

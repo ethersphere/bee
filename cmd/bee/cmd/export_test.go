@@ -7,8 +7,9 @@ package cmd
 import "io"
 
 type (
-	Command = command
-	Option  = option
+	Command        = command
+	Option         = option
+	PasswordReader = passwordReader
 )
 
 var (
@@ -18,6 +19,7 @@ var (
 	_ = WithCfgFile
 	_ = WithInput
 	_ = WithErrorOutput
+	_ = WithPasswordReader
 )
 
 func WithCfgFile(f string) func(c *Command) {
@@ -53,5 +55,11 @@ func WithOutput(w io.Writer) func(c *Command) {
 func WithErrorOutput(w io.Writer) func(c *Command) {
 	return func(c *Command) {
 		c.root.SetErr(w)
+	}
+}
+
+func WithPasswordReader(r PasswordReader) func(c *Command) {
+	return func(c *Command) {
+		c.passwordReader = r
 	}
 }

@@ -5,9 +5,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -28,6 +28,8 @@ func (c *command) initStartCmd() (err error) {
 
 	const (
 		optionNameDataDir          = "data-dir"
+		optionNamePassword         = "password"
+		optionNamePasswordFile     = "password-file"
 		optionNameAPIAddr          = "api-addr"
 		optionNameP2PAddr          = "p2p-addr"
 		optionNameP2PDisableWS     = "p2p-disable-ws"
@@ -68,34 +70,34 @@ func (c *command) initStartCmd() (err error) {
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
 
-			var libp2pPrivateKey, swarmPrivateKey io.ReadWriteCloser
-			if dataDir := c.config.GetString(optionNameDataDir); dataDir != "" {
-				if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
-					return err
-				}
-				libp2pKey, err := os.OpenFile(filepath.Join(dataDir, "libp2p.key"), os.O_CREATE|os.O_RDWR, 0600)
-				if err != nil {
-					return err
-				}
-				libp2pPrivateKey = libp2pKey
-				swarmKey, err := os.OpenFile(filepath.Join(dataDir, "swarm.key"), os.O_CREATE|os.O_RDWR, 0600)
-				if err != nil {
-					return err
-				}
-				swarmPrivateKey = swarmKey
-			}
-
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameEnableDebugAPI) {
 				debugAPIAddr = ""
 			}
 
+			var password string
+			if p := c.config.GetString(optionNamePassword); p != "" {
+				password = p
+			} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
+				b, err := ioutil.ReadFile(pf)
+				if err != nil {
+					return err
+				}
+				password = string(bytes.Trim(b, "\n"))
+			} else {
+				p, err := terminalPromptPassword(cmd, c.passwordReader, "Password")
+				if err != nil {
+					return err
+				}
+				password = p
+			}
+
 			b, err := node.NewBee(node.Options{
-				PrivateKey:   swarmPrivateKey,
+				DataDir:      c.config.GetString(optionNameDataDir),
+				Password:     password,
 				APIAddr:      c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr: debugAPIAddr,
 				LibP2POptions: libp2p.Options{
-					PrivateKey:       libp2pPrivateKey,
 					Addr:             c.config.GetString(optionNameP2PAddr),
 					DisableWS:        c.config.GetBool(optionNameP2PDisableWS),
 					DisableQUIC:      c.config.GetBool(optionNameP2PDisableQUIC),
@@ -152,6 +154,8 @@ func (c *command) initStartCmd() (err error) {
 	}
 
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
+	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
+	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, ":8080", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":7070", "P2P listen address")
 	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")

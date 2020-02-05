@@ -5,14 +5,11 @@
 package libp2p
 
 import (
-	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net"
-	"os"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -22,7 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
-	"github.com/libp2p/go-libp2p-core/crypto"
+	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -47,7 +44,7 @@ type Service struct {
 }
 
 type Options struct {
-	PrivateKey       io.ReadWriteCloser
+	PrivateKey       *ecdsa.PrivateKey
 	Overlay          swarm.Address
 	Addr             string
 	DisableWS        bool
@@ -122,37 +119,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	}
 
 	if o.PrivateKey != nil {
-		var privateKey crypto.PrivKey
-		privateKeyData, err := ioutil.ReadAll(o.PrivateKey)
-		if err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("read private key: %w", err)
-		}
-		if len(privateKeyData) == 0 {
-			var err error
-			privateKey, _, err = crypto.GenerateSecp256k1Key(nil)
-			if err != nil {
-				return nil, fmt.Errorf("generate secp256k1 key: %w", err)
-			}
-			d, err := crypto.MarshalPrivateKey(privateKey)
-			if err != nil {
-				return nil, fmt.Errorf("encode private key: %w", err)
-			}
-			if _, err := io.Copy(o.PrivateKey, bytes.NewReader(d)); err != nil {
-				return nil, fmt.Errorf("write private key: %w", err)
-			}
-		} else {
-			var err error
-			privateKey, err = crypto.UnmarshalPrivateKey(privateKeyData)
-			if err != nil {
-				return nil, fmt.Errorf("decode private key: %w", err)
-			}
-		}
-		if err := o.PrivateKey.Close(); err != nil {
-			return nil, fmt.Errorf("close private key: %w", err)
-		}
 		opts = append(opts,
-			// Use the keypair we generated
-			libp2p.Identity(privateKey),
+			libp2p.Identity((*crypto.Secp256k1PrivateKey)(o.PrivateKey)),
 		)
 	}
 

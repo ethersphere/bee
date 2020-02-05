@@ -43,20 +43,17 @@ func TestNewAddress(t *testing.T) {
 	}
 }
 
-func TestMarshalSecp256k1PrivateKey(t *testing.T) {
+func TestEncodeSecp256k1PrivateKey(t *testing.T) {
 	k1, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := crypto.MarshalSecp256k1PrivateKey(k1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	k2, err := crypto.UnmarshalPrivateKey(d)
+	d := crypto.EncodeSecp256k1PrivateKey(k1)
+	k2, err := crypto.DecodeSecp256k1PrivateKey(d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
-		t.Fatal("marshaled and unmarshaled keys are not equal")
+		t.Fatal("encoded and decoded keys are not equal")
 	}
 }
