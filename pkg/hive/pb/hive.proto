@@ -8,10 +8,7 @@ package pb;
 
 message Subscribe {
     uint32 Depth = 1;
-}
-
-message SubscribeResponse {
-      Peers Peers = 1;
+    bool PeersResponse = 2;
 }
 
 message Peers {
@@ -21,8 +18,4 @@ message Peers {
 message BzzAddress {
     bytes Overlay = 1;
     bytes Underlay = 2;
-}
-
-message Depth {
-    uint32 Depth = 1;
 }
