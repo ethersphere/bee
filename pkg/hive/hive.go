@@ -7,6 +7,7 @@ package hive
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -26,6 +27,9 @@ const (
 	peersStreamVersion     = "1.0.0"
 	//maxPeersCount     = 50
 )
+
+// messageTimeout is the maximal allowed time for a message to be read or written.
+var messageTimeout = 5 * time.Second
 
 type AddressBook interface {
 	// Add peer to knows peers (address book)
@@ -122,7 +126,7 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 	}
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	if err := w.WriteMsg(&pb.Subscribe{
+	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Subscribe{
 		Depth:         uint32(depth),
 		PeersResponse: true,
 	}); err != nil {
@@ -130,7 +134,7 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 	}
 
 	var peers pb.Peers
-	if err := r.ReadMsg(&peers); err != nil {
+	if err := r.ReadMsgWithTimeout(messageTimeout, &peers); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
 
