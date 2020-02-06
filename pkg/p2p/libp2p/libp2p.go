@@ -282,6 +282,12 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	s.peers.add(info.ID, i.Address)
+	for _, service := range s.services {
+		if err := service.Init(ctx, p2p.Peer{Address: i.Address}); err != nil {
+			_ = s.host.Network().ClosePeer(info.ID)
+			return swarm.Address{}, err
+		}
+	}
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil
