@@ -21,9 +21,9 @@ const (
 	protocolName           = "hive"
 	initStreamName         = "hive_init"
 	initStreamVersion      = "1.0.0"
-	subscribeStreamName    = "hive_init"
+	subscribeStreamName    = "hive_subscribe"
 	subscribeStreamVersion = "1.0.0"
-	peersStreamName        = "hive_init"
+	peersStreamName        = "hive_peers"
 	peersStreamVersion     = "1.0.0"
 	//maxPeersCount     = 50
 )
@@ -79,13 +79,13 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 				Handler: s.InitHandler,
 			},
 			{
-				Name:    initStreamName,
-				Version: initStreamVersion,
+				Name:    subscribeStreamName,
+				Version: subscribeStreamVersion,
 				Handler: s.SubscribeHandler,
 			},
 			{
-				Name:    initStreamName,
-				Version: initStreamVersion,
+				Name:    peersStreamName,
+				Version: peersStreamVersion,
 				Handler: s.PeersHandler,
 			},
 		},
