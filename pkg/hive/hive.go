@@ -167,7 +167,7 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 func (s *Service) InitHandler(peer p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	var subscribe pb.Subscribe
-	if err := r.ReadMsg(&subscribe); err != nil {
+	if err := r.ReadMsgWithTimeout(messageTimeout, &subscribe); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
 
@@ -175,7 +175,7 @@ func (s *Service) InitHandler(peer p2p.Peer, stream p2p.Stream) error {
 
 	var peers pb.Peers
 	// todo: populate peers response
-	if err := w.WriteMsg(&peers); err != nil {
+	if err := w.WriteMsgWithTimeout(messageTimeout, &peers); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
 
