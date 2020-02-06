@@ -182,6 +182,40 @@ func (s *Service) InitHandler(peer p2p.Peer, stream p2p.Stream) error {
 	return nil
 }
 
+func (s *Service) SubscribeHandler(peer p2p.Peer, stream p2p.Stream) error {
+	_, r := protobuf.NewWriterAndReader(stream)
+	var subscribe pb.Subscribe
+	if err := r.ReadMsg(&subscribe); err != nil {
+		return fmt.Errorf("read message: %w", err)
+	}
+
+	s.addressBook.UpdateDepth(peer, uint8(subscribe.Depth))
+
+	return nil
+}
+
+func (s *Service) PeersHandler(peer p2p.Peer, stream p2p.Stream) error {
+	_, r := protobuf.NewWriterAndReader(stream)
+
+	var peers pb.Peers
+	if err := r.ReadMsgWithTimeout(messageTimeout, &peers); err != nil {
+		return fmt.Errorf("read message: %w", err)
+	}
+
+	for _, address := range peers.BzzAddress {
+		// todo: maybe add and notify peers in a single batch
+		if err := s.addressBook.AddPeer(address.Overlay, address.Underlay); err != nil {
+			return err
+		}
+
+		if err := s.notifyPeerAdded(context.Background(), address.Overlay, address.Underlay); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // notify new depth to all suggested peers
 func (s *Service) notifyDepthChanged(ctx context.Context, depth uint8) error {
 	peers := s.addressBook.ConnectedPeers()
@@ -238,38 +272,4 @@ func (s *Service) notifyPeerAdded(ctx context.Context, overlay, underlay []byte)
 
 	// todo: add timeout
 	return eg.Wait()
-}
-
-func (s *Service) SubscribeHandler(peer p2p.Peer, stream p2p.Stream) error {
-	_, r := protobuf.NewWriterAndReader(stream)
-	var subscribe pb.Subscribe
-	if err := r.ReadMsg(&subscribe); err != nil {
-		return fmt.Errorf("read message: %w", err)
-	}
-
-	s.addressBook.UpdateDepth(peer, uint8(subscribe.Depth))
-
-	return nil
-}
-
-func (s *Service) PeersHandler(peer p2p.Peer, stream p2p.Stream) error {
-	_, r := protobuf.NewWriterAndReader(stream)
-
-	var peers pb.Peers
-	if err := r.ReadMsgWithTimeout(messageTimeout, &peers); err != nil {
-		return fmt.Errorf("read message: %w", err)
-	}
-
-	for _, address := range peers.BzzAddress {
-		// todo: maybe add and notify peers in a single batch
-		if err := s.addressBook.AddPeer(address.Overlay, address.Underlay); err != nil {
-			return err
-		}
-
-		if err := s.notifyPeerAdded(context.Background(), address.Overlay, address.Underlay); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
