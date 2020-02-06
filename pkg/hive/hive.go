@@ -7,7 +7,6 @@ package hive
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -53,7 +52,6 @@ type Options struct {
 	Logger            logging.Logger
 	PeerTracker       AddressBook
 	SaturationTracker SaturationTracker
-	TickInterval      time.Duration
 }
 
 func New(o Options) *Service {

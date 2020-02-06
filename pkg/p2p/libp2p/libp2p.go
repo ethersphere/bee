@@ -37,6 +37,7 @@ type Service struct {
 	metrics          metrics
 	networkID        int32
 	handshakeService *handshake.Service
+	services         []ProtocolService
 	peers            *peerRegistry
 	logger           logging.Logger
 }
@@ -198,6 +199,13 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	})
 
 	return s, nil
+}
+
+func (s *Service) AddService(service ProtocolService) {
+	s.services = append(s.services, service)
+
+	// todo: refactor service.Start to node.Start probably
+	service.Start()
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {

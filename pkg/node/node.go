@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
@@ -102,6 +103,21 @@ func NewBee(o Options) (*Bee, error) {
 	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
+
+	// example hive
+	hiveService := hive.New(
+		hive.Options{
+			Streamer:          p2ps,
+			Logger:            logger,
+			PeerTracker:       nil,
+			SaturationTracker: nil,
+		})
+
+	if err = p2ps.AddProtocol(hiveService.Protocol()); err != nil {
+		return nil, fmt.Errorf("pingpong service: %w", err)
+	}
+
+	p2ps.AddService(hiveService)
 
 	addrs, err := p2ps.Addresses()
 	if err != nil {
