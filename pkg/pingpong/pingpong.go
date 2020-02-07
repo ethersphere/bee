@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	protocolName  = "pingpong"
-	streamName    = "pingpong"
-	streamVersion = "1.0.0"
+	protocolName    = "pingpong"
+	protocolVersion = "1.0.0"
+	streamName      = "pingpong"
 )
 
 type Interface interface {
@@ -48,11 +48,11 @@ func New(o Options) *Service {
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
-		Name: protocolName,
+		Name:    protocolName,
+		Version: protocolVersion,
 		StreamSpecs: []p2p.StreamSpec{
 			{
 				Name:    streamName,
-				Version: streamVersion,
 				Handler: s.Handler,
 			},
 		},
@@ -61,7 +61,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
 	start := time.Now()
-	stream, err := s.streamer.NewStream(ctx, address, protocolName, streamName, streamVersion)
+	stream, err := s.streamer.NewStream(ctx, address, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}

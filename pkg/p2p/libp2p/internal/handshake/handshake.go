@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	ProtocolName  = "handshake"
-	StreamName    = "handshake"
-	StreamVersion = "1.0.0"
+	ProtocolName    = "handshake"
+	ProtocolVersion = "1.0.0"
+	StreamName      = "handshake"
 )
 
 // ErrNetworkIDIncompatible should be returned by handshake handlers if

@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	protocolName  = "retrieval"
-	streamName    = "retrieval"
-	streamVersion = "1.0.0"
+	protocolName    = "retrieval"
+	protocolVersion = "1.0.0"
+	streamName      = "retrieval"
 )
 
 type Service struct {
@@ -50,11 +50,11 @@ func New(o Options) *Service {
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
-		Name: protocolName,
+		Name:    protocolName,
+		Version: protocolVersion,
 		StreamSpecs: []p2p.StreamSpec{
 			{
 				Name:    streamName,
-				Version: streamVersion,
 				Handler: s.Handler,
 			},
 		},
@@ -66,7 +66,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data [
 	if err != nil {
 		return nil, err
 	}
-	stream, err := s.streamer.NewStream(ctx, peerID, protocolName, streamName, streamVersion)
+	stream, err := s.streamer.NewStream(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}

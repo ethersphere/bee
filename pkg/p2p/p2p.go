@@ -19,7 +19,7 @@ type Service interface {
 }
 
 type Streamer interface {
-	NewStream(ctx context.Context, address swarm.Address, protocol, stream, version string) (Stream, error)
+	NewStream(ctx context.Context, address swarm.Address, protocol, version, stream string) (Stream, error)
 }
 
 type Stream interface {
@@ -34,12 +34,12 @@ type PeerSuggester interface {
 
 type ProtocolSpec struct {
 	Name        string
+	Version     string
 	StreamSpecs []StreamSpec
 }
 
 type StreamSpec struct {
 	Name    string
-	Version string
 	Handler HandlerFunc
 }
 
@@ -51,6 +51,6 @@ type HandlerFunc func(Peer, Stream) error
 
 type HandlerMiddleware func(HandlerFunc) HandlerFunc
 
-func NewSwarmStreamName(protocol, stream, version string) string {
-	return "/swarm/" + protocol + "/" + stream + "/" + version
+func NewSwarmStreamName(protocol, version, stream string) string {
+	return "/swarm/" + protocol + "/" + version + "/" + stream
 }
