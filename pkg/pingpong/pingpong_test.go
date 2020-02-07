@@ -8,11 +8,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"io/ioutil"
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -64,7 +65,7 @@ func TestPing(t *testing.T) {
 	}
 
 	// get a record for this stream
-	records, err := recorder.Records(addr, "pingpong", "pingpong", "1.0.0")
+	records, err := recorder.Records(addr, "pingpong", "1.0.0", "pingpong")
 	if err != nil {
 		t.Fatal(err)
 	}

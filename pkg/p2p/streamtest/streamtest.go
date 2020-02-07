@@ -48,7 +48,7 @@ func New(opts ...Option) *Recorder {
 	return r
 }
 
-func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName, streamName, version string) (p2p.Stream, error) {
+func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
 	streamOut := newStream(recordIn, recordOut)
@@ -56,9 +56,9 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 
 	var handler p2p.HandlerFunc
 	for _, p := range r.protocols {
-		if p.Name == protocolName {
+		if p.Name == protocolName && p.Version == protocolVersion {
 			for _, s := range p.StreamSpecs {
-				if s.Name == streamName && s.Version == version {
+				if s.Name == streamName {
 					handler = s.Handler
 				}
 			}
@@ -78,7 +78,7 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 		}
 	}()
 
-	id := addr.String() + p2p.NewSwarmStreamName(protocolName, streamName, version)
+	id := addr.String() + p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()
@@ -87,8 +87,8 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 	return streamOut, nil
 }
 
-func (r *Recorder) Records(addr swarm.Address, protocolName, streamName, version string) ([]*Record, error) {
-	id := addr.String() + p2p.NewSwarmStreamName(protocolName, streamName, version)
+func (r *Recorder) Records(addr swarm.Address, protocolName, protocolVersio, streamName string) ([]*Record, error) {
+	id := addr.String() + p2p.NewSwarmStreamName(protocolName, protocolVersio, streamName)
 
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()
