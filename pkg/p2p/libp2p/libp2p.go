@@ -18,7 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
@@ -150,10 +149,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	// Construct protocols.
 
-	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion))
-	matcher, err := helpers.MultistreamSemverMatcher(id)
+	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
+	matcher, err := s.protocolSemverMatcher(id)
 	if err != nil {
-		return nil, fmt.Errorf("match semver %s: %w", id, err)
+		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
@@ -202,10 +201,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	for _, ss := range p.StreamSpecs {
-		id := protocol.ID(p2p.NewSwarmStreamName(p.Name, ss.Name, ss.Version))
-		matcher, err := helpers.MultistreamSemverMatcher(id)
+		id := protocol.ID(p2p.NewSwarmStreamName(p.Name, p.Version, ss.Name))
+		matcher, err := s.protocolSemverMatcher(id)
 		if err != nil {
-			return fmt.Errorf("match semver %s: %w", id, err)
+			return fmt.Errorf("protocol version match %s: %w", id, err)
 		}
 
 		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
@@ -227,7 +226,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					_ = s.Disconnect(overlay)
 				}
 
-				s.logger.Debugf("handle protocol %s: stream %s/%s: peer %s: %w", p.Name, ss.Name, ss.Version, overlay, err)
+				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: %w", p.Name, p.Version, ss.Name, overlay, err)
 			}
 		})
 	}
@@ -260,7 +259,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.StreamName, handshake.StreamVersion)
+	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.host.Network().ClosePeer(info.ID)
 		return swarm.Address{}, fmt.Errorf("new stream: %w", err)
@@ -291,17 +290,17 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return nil
 }
 
-func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocolName, streamName, version string) (p2p.Stream, error) {
+func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return nil, p2p.ErrPeerNotFound
 	}
 
-	return s.newStreamForPeerID(ctx, peerID, protocolName, streamName, version)
+	return s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 }
 
-func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, streamName, version string) (p2p.Stream, error) {
-	swarmStreamName := p2p.NewSwarmStreamName(protocolName, streamName, version)
+func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
+	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
 		if err == multistream.ErrNotSupported || err == multistream.ErrIncorrectVersion {
