@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -15,12 +16,15 @@ type peerRegistry struct {
 	peers    map[string]libp2ppeer.ID        // map overlay address to underlay peer id
 	overlays map[libp2ppeer.ID]swarm.Address // map underlay peer id to overlay address
 	mu       sync.RWMutex
+
+	network.Notifiee // peerRegistry can be the receiver for network.Notify
 }
 
 func newPeerRegistry() *peerRegistry {
 	return &peerRegistry{
 		peers:    make(map[string]libp2ppeer.ID),
 		overlays: make(map[libp2ppeer.ID]swarm.Address),
+		Notifiee: new(network.NoopNotifiee),
 	}
 }
 
@@ -60,4 +64,10 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 
 func encodePeersKey(overlay swarm.Address) string {
 	return string(overlay.Bytes())
+}
+
+// Disconnect removes the peer from registry in disconnect.
+// peerRegistry has to be set by network.Network.Notify().
+func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
+	r.remove(c.RemotePeer())
 }

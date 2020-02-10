@@ -169,10 +169,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 				s.logger.Warningf("handshake happened for already connected peer %s", peerID)
 			}
 
-			s.logger.Debugf("handshake: handle %s: %w", peerID, err)
+			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			// todo: test connection close and refactor
-			_ = s.host.Network().ClosePeer(peerID)
+			_ = s.disconnect(peerID)
 			return
 		}
 
@@ -198,6 +198,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		s.metrics.HandledConnectionCount.Inc()
 	})
 
+	h.Network().Notify(peerRegistry) // update peer registry on network events
+
 	return s, nil
 }
 
@@ -215,7 +217,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			if !found {
 				// todo: this should never happen, should we disconnect in this case?
 				// todo: test connection close and refactor
-				_ = s.host.Network().ClosePeer(peerID)
+				_ = s.disconnect(peerID)
 				s.logger.Errorf("overlay address for peer %q not found", peerID)
 				return
 			}
@@ -235,7 +237,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() (addrs []string, err error) {
+func (s *Service) Addresses() (addrs []ma.Multiaddr, err error) {
 	// Build host multiaddress
 	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", s.host.ID().Pretty()))
 	if err != nil {
@@ -245,7 +247,7 @@ func (s *Service) Addresses() (addrs []string, err error) {
 	// Now we can build a full multiaddress to reach this host
 	// by encapsulating both addresses:
 	for _, addr := range s.host.Addrs() {
-		addrs = append(addrs, addr.Encapsulate(hostAddr).String())
+		addrs = append(addrs, addr.Encapsulate(hostAddr))
 	}
 	return addrs, nil
 }
@@ -263,14 +265,14 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
-		_ = s.host.Network().ClosePeer(info.ID)
+		_ = s.disconnect(info.ID)
 		return swarm.Address{}, err
 	}
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
-		_ = s.host.Network().ClosePeer(info.ID)
-		return swarm.Address{}, err
+		_ = s.disconnect(info.ID)
+		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
@@ -289,6 +291,10 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	if !found {
 		return p2p.ErrPeerNotFound
 	}
+	return s.disconnect(peerID)
+}
+
+func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 	if err := s.host.Network().ClosePeer(peerID); err != nil {
 		return err
 	}
