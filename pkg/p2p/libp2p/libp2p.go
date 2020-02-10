@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/libp2p/go-libp2p-core/helpers"
+
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
@@ -262,13 +264,17 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.host.Network().ClosePeer(info.ID)
-		return swarm.Address{}, fmt.Errorf("new stream: %w", err)
+		return swarm.Address{}, err
 	}
-	defer stream.Close()
 
 	i, err := s.handshakeService.Handshake(stream)
 	if err != nil {
 		_ = s.host.Network().ClosePeer(info.ID)
+		return swarm.Address{}, err
+	}
+
+	if err := helpers.FullClose(stream); err != nil {
+		_ = stream.Reset()
 		return swarm.Address{}, err
 	}
 
@@ -299,7 +305,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocol
 	return s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 }
 
-func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
+func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
