@@ -60,6 +60,7 @@ func (s *Service) Init(peer p2p.Peer) error {
 	return errors.New("not implemented")
 }
 
+// BroadcastPeers broadcasts the provided list of peers to the provided peer.
 func (s *Service) BroadcastPeers(peer p2p.Peer, peers []p2p.Peer) error {
 	// todo: create Peers request and broadcast over peers_broadcast stream
 	return errors.New("not implemented")

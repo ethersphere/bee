@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+message GetPeers {
+    uint32 bin = 1;
+    uint32 limit = 2;
+}
+
+message Peers {
+    repeated BzzAddress peers = 1;
+}
+
+message BzzAddress {
+    bytes Overlay = 1;
+    bytes Underlay = 2;
+}
