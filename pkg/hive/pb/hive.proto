@@ -1,4 +1,5 @@
 syntax = "proto3";
+package pb;
 
 message GetPeers {
     uint32 bin = 1;
