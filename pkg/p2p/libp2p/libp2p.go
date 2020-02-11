@@ -42,7 +42,7 @@ type Service struct {
 	handshakeService *handshake.Service
 	peers            *peerRegistry
 	topologyDriver   topology.Driver
-	addressbook      addressbook.Putter
+	addressBook      addressbook.Putter
 	logger           logging.Logger
 }
 
@@ -54,7 +54,7 @@ type Options struct {
 	DisableQUIC    bool
 	Bootnodes      []string
 	NetworkID      int32
-	Addressbook    addressbook.Putter
+	AddressBook    addressbook.GetPutter
 	TopologyDriver topology.Driver
 	Logger         logging.Logger
 }
@@ -152,7 +152,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		networkID:        o.NetworkID,
 		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
 		peers:            peerRegistry,
-		addressbook:      o.Addressbook,
+		addressBook:      o.AddressBook,
 		topologyDriver:   o.TopologyDriver,
 		logger:           o.Logger,
 	}
@@ -289,6 +289,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	s.peers.add(info.ID, i.Address)
+	s.addressBook.Put(info.ID, i.Address)
 
 	err = s.topologyDriver.AddPeer(i.Address)
 	if err != nil {

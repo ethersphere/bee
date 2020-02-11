@@ -6,17 +6,11 @@ package topology
 
 import (
 	"errors"
-	"math/rand"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var ErrNotFound = errors.New("no peer found")
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 type Driver interface {
 	AddPeer(overlay swarm.Address) error

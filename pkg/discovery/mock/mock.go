@@ -23,7 +23,9 @@ type broadcastRecord struct {
 }
 
 func NewMockDiscovery() *MockDiscovery {
-	return &MockDiscovery{}
+	return &MockDiscovery{
+		records: make(map[string]broadcastRecord),
+	}
 }
 
 func (d *MockDiscovery) BroadcastPeer(addressee swarm.Address, peerID libp2ppeer.ID, overlay swarm.Address) error {

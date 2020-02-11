@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package topology
+package full
 
 import (
 	"math/rand"
@@ -32,10 +32,11 @@ type driver struct {
 	addressBook addressbook.Getter
 }
 
-func New(disc discovery.Driver) topology.Driver {
+func New(disc discovery.Driver, addressBook addressbook.Getter) topology.Driver {
 	return &driver{
-		connected: make(map[string]swarm.Address),
-		discovery: disc,
+		connected:   make(map[string]swarm.Address),
+		discovery:   disc,
+		addressBook: addressBook,
 	}
 }
 
@@ -44,14 +45,15 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 	defer d.mtx.Unlock()
 
 	d.connected[overlay.String()] = overlay
-	underlay, err := addressBook.Get(overlay)
-	if err != nil {
-		return err
+	underlay, exists := d.addressBook.Get(overlay)
+	if !exists {
+		return topology.ErrNotFound
 	}
 
 	for _, addressee := range d.connected {
 		d.discovery.BroadcastPeer(addressee, underlay, overlay)
 	}
+	return nil
 }
 
 // ChunkPeer is used to suggest a peer to ask a certain chunk from
@@ -59,8 +61,8 @@ func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	if len(connected) == 0 {
-		return nil, ErrNotFound
+	if len(d.connected) == 0 {
+		return swarm.Address{}, topology.ErrNotFound
 	}
 
 	itemIdx := rand.Intn(len(d.connected))
@@ -72,5 +74,5 @@ func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 		i++
 	}
 
-	return nil, ErrNotFound
+	return swarm.Address{}, topology.ErrNotFound
 }
