@@ -10,5 +10,5 @@ import (
 )
 
 type Driver interface {
-	BroadcastPeer(addressee swarm.Address, peerID libp2ppeer.ID, overlay swarm.Address)
+	BroadcastPeer(addressee swarm.Address, peerID libp2ppeer.ID, overlay swarm.Address) error
 }
