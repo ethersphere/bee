@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -21,7 +20,7 @@ func init() {
 
 type Driver interface {
 	AddPeer(overlay swarm.Address) error
-	p2p.PeerSuggester
+	ChunkPeerer
 }
 
 type ChunkPeerer interface {

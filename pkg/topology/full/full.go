@@ -27,7 +27,7 @@ type driver struct {
 	addressBook addressbook.Getter
 }
 
-func NewFull(disc discovery.Driver) Driver {
+func New(disc discovery.Driver) Driver {
 	return &driver{
 		connected: make(map[string]swarm.Address),
 		discovery: disc,
@@ -49,8 +49,8 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 	}
 }
 
-// SuggestPeer is used to suggest a peer to ask a certain chunk from
-func (d *driver) SuggestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+// ChunkPeer is used to suggest a peer to ask a certain chunk from
+func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
