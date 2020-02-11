@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/multiformats/go-multiaddr"
 )
 
 func TestAddresses(t *testing.T) {
@@ -43,11 +44,7 @@ func TestConnectDisconnect(t *testing.T) {
 	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup2()
 
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
+	addr := serviceUnderlayAddress(t, s1)
 
 	overlay, err := s2.Connect(ctx, addr)
 	if err != nil {
@@ -75,11 +72,7 @@ func TestDoubleConnect(t *testing.T) {
 	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup2()
 
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
+	addr := serviceUnderlayAddress(t, s1)
 
 	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
@@ -106,11 +99,7 @@ func TestDoubleDisconnect(t *testing.T) {
 	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup2()
 
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
+	addr := serviceUnderlayAddress(t, s1)
 
 	overlay, err := s2.Connect(ctx, addr)
 	if err != nil {
@@ -145,11 +134,7 @@ func TestReconnectAfterDoubleConnect(t *testing.T) {
 	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup2()
 
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
+	addr := serviceUnderlayAddress(t, s1)
 
 	overlay, err := s2.Connect(ctx, addr)
 	if err != nil {
@@ -188,11 +173,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup2()
 
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
+	addr := serviceUnderlayAddress(t, s1)
 
 	overlay, err := s2.Connect(ctx, addr)
 	if err != nil {
@@ -298,11 +279,7 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	s2, _, cleanup2 := newService(t, libp2p.Options{NetworkID: 2})
 	defer cleanup2()
 
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
+	addr := serviceUnderlayAddress(t, s1)
 
 	if _, err := s2.Connect(ctx, addr); err == nil {
 		t.Fatal("connect attempt should result with an error")
@@ -340,6 +317,34 @@ func TestBootnodes(t *testing.T) {
 	expectPeers(t, s3, overlay1, overlay2)
 	expectPeers(t, s1, overlay3)
 	expectPeers(t, s2, overlay3)
+}
+
+func TestConnectWithDisabledQUICAndWSTransports(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, overlay1, cleanup1 := newService(t, libp2p.Options{
+		NetworkID:   1,
+		DisableQUIC: true,
+		DisableWS:   true,
+	})
+	defer cleanup1()
+
+	s2, overlay2, cleanup2 := newService(t, libp2p.Options{
+		NetworkID:   1,
+		DisableQUIC: true,
+		DisableWS:   true,
+	})
+	defer cleanup2()
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
 }
 
 // newService constructs a new libp2p service.
@@ -446,4 +451,14 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 			t.Errorf("got %v peer %s, want %s", i, got.Address, want)
 		}
 	}
+}
+
+func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr {
+	t.Helper()
+
+	addrs, err := s.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addrs[0]
 }
