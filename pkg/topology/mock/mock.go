@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package topology
+package mock
 
 import (
 	"math/rand"
@@ -20,7 +20,7 @@ var _ topology.Driver = (*driver)(nil)
 // that enabled full connectivity in the sense that:
 // - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (PeerSuggester interface)
-type driver struct {
+type MockDriver struct {
 	mtx         sync.Mutex
 	connected   map[string]swarm.Address
 	discovery   discovery.Driver
@@ -28,7 +28,7 @@ type driver struct {
 }
 
 func New(disc discovery.Driver) topology.Driver {
-	return &driver{
+	return &MockDriver{
 		connected: make(map[string]swarm.Address),
 		discovery: disc,
 	}

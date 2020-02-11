@@ -10,8 +10,13 @@ import (
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
 
+type GetPutter interface {
+	Getter
+	Putter
+}
+
 type Getter interface {
-	Get(overlay swarm.Address) (underlay libp2ppeer.ID)
+	Get(overlay swarm.Address) (underlay libp2ppeer.ID, exists bool)
 }
 
 type Putter interface {
