@@ -7,12 +7,17 @@ package topology
 import (
 	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 var _ topology.Driver = (*driver)(nil)
 
