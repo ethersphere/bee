@@ -17,6 +17,7 @@ type Service struct {
 	addProtocolFunc func(p2p.ProtocolSpec) error
 	connectFunc     func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
 	disconnectFunc  func(overlay swarm.Address) error
+	peersFunc       func() []p2p.Peer
 }
 
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
@@ -37,6 +38,12 @@ func WithDisconnectFunc(f func(overlay swarm.Address) error) Option {
 	})
 }
 
+func WithPeersFunc(f func() []p2p.Peer) Option {
+	return optionFunc(func(s *Service) {
+		s.peersFunc = f
+	})
+}
+
 func New(opts ...Option) *Service {
 	s := new(Service)
 	for _, o := range opts {
@@ -47,23 +54,30 @@ func New(opts ...Option) *Service {
 
 func (s *Service) AddProtocol(spec p2p.ProtocolSpec) error {
 	if s.addProtocolFunc == nil {
-		return errors.New("AddProtocol function not configured")
+		return errors.New("function AddProtocol not configured")
 	}
 	return s.addProtocolFunc(spec)
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
 	if s.connectFunc == nil {
-		return swarm.Address{}, errors.New("Connect function not configured")
+		return swarm.Address{}, errors.New("function Connect not configured")
 	}
 	return s.connectFunc(ctx, addr)
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
 	if s.disconnectFunc == nil {
-		return errors.New("Disconnect function not configured")
+		return errors.New("function Disconnect not configured")
 	}
 	return s.disconnectFunc(overlay)
+}
+
+func (s *Service) Peers() []p2p.Peer {
+	if s.peersFunc == nil {
+		return nil
+	}
+	return s.peersFunc()
 }
 
 type Option interface {
