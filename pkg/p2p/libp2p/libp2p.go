@@ -176,7 +176,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
-		s.peers.add(peerID, i.Address)
+		s.peers.add(stream.Conn(), i.Address)
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Infof("peer %s connected", i.Address)
 	})
@@ -280,7 +280,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	s.peers.add(info.ID, i.Address)
+	s.peers.add(stream.Conn(), i.Address)
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil
@@ -300,6 +300,10 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 	}
 	s.peers.remove(peerID)
 	return nil
+}
+
+func (s *Service) Peers() []p2p.Peer {
+	return s.peers.peers()
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
