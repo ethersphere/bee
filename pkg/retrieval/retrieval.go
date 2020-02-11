@@ -24,16 +24,16 @@ const (
 
 type Service struct {
 	streamer      p2p.Streamer
-	peerSuggester p2p.PeerSuggester
+	peerSuggester topology.ChunkPeerer
 	storer        storage.Storer
 	logger        logging.Logger
 }
 
 type Options struct {
-	Streamer      p2p.Streamer
-	PeerSuggester p2p.PeerSuggester
-	Storer        storage.Storer
-	Logger        logging.Logger
+	Streamer    p2p.Streamer
+	ChunkPeerer topology.ChunkPeerer
+	Storer      storage.Storer
+	Logger      logging.Logger
 }
 
 type Storer interface {
@@ -42,7 +42,7 @@ type Storer interface {
 func New(o Options) *Service {
 	return &Service{
 		streamer:      o.Streamer,
-		peerSuggester: o.PeerSuggester,
+		peerSuggester: o.ChunkPeerer,
 		storer:        o.Storer,
 		logger:        o.Logger,
 	}
@@ -62,7 +62,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
-	peerID, err := s.peerSuggester.SuggestPeer(addr)
+	peerID, err := s.peerSuggester.ChunkPeer(addr)
 	if err != nil {
 		return nil, err
 	}

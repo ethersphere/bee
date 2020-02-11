@@ -13,6 +13,7 @@ import (
 
 	"github.com/libp2p/go-libp2p-core/helpers"
 
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
@@ -39,6 +40,7 @@ type Service struct {
 	networkID        int32
 	handshakeService *handshake.Service
 	peers            *peerRegistry
+	addressbook      addressbook.Putter
 	logger           logging.Logger
 }
 
@@ -50,6 +52,7 @@ type Options struct {
 	DisableQUIC bool
 	Bootnodes   []string
 	NetworkID   int32
+	Addressbook addressbook.Putter
 	Logger      logging.Logger
 }
 
@@ -146,6 +149,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		networkID:        o.NetworkID,
 		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
 		peers:            peerRegistry,
+		addressbook:      o.Addressbook,
 		logger:           o.Logger,
 	}
 
