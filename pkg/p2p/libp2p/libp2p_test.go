@@ -7,7 +7,6 @@ package libp2p_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io/ioutil"
 	"sort"
 	"testing"
