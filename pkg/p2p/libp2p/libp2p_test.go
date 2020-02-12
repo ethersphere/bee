@@ -5,236 +5,31 @@
 package libp2p_test
 
 import (
+	"bytes"
 	"context"
-	"errors"
 	"io/ioutil"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/multiformats/go-multiaddr"
 )
 
-func TestAddresses(t *testing.T) {
-	s := newService(t, &libp2p.Options{
-		NetworkID: 1,
-	})
-
-	addrs, err := s.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if l := len(addrs); l == 0 {
-		t.Fatal("no addresses")
-	}
-}
-
-func TestConnectDisconnect(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1 := newService(t, &o1)
-	o2 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s2 := newService(t, &o2)
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
-
-	overlay, err := s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := s2.Disconnect(overlay); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestDoubleConnect(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1 := newService(t, &o1)
-	o2 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s2 := newService(t, &o2)
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
-
-	if _, err := s2.Connect(context.Background(), addr); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := s2.Connect(context.Background(), addr); err == nil {
-		t.Fatal("second connect attempt should result with an error")
-	}
-}
-
-func TestDoubleDisconnect(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1 := newService(t, &o1)
-	o2 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s2 := newService(t, &o2)
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
-
-	overlay, err := s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := s2.Disconnect(overlay); err != nil {
-		t.Fatal(err)
-	}
-	if err := s2.Disconnect(overlay); !errors.Is(err, p2p.ErrPeerNotFound) {
-		t.Errorf("got error %v, want %v", err, p2p.ErrPeerNotFound)
-	}
-}
-
-func TestReconnectAfterDoubleConnect(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1 := newService(t, &o1)
-	o2 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s2 := newService(t, &o2)
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
-
-	overlay, err := s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := s2.Connect(context.Background(), addr); err == nil {
-		t.Fatal("second connect attempt should result with an error")
-	}
-
-	overlay, err = s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !overlay.Equal(o1.Overlay) {
-		t.Errorf("got overlay %s, want %s", overlay, o1.Overlay)
-	}
-}
-
-func TestMultipleConnectDisconnect(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1 := newService(t, &o1)
-	o2 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s2 := newService(t, &o2)
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
-
-	overlay, err := s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := s2.Disconnect(overlay); err != nil {
-		t.Fatal(err)
-	}
-
-	overlay, err = s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := s2.Disconnect(overlay); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestConnectDisconnectOnAllAddresses(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1 := newService(t, &o1)
-	o2 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s2 := newService(t, &o2)
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, addr := range addrs {
-		overlay, err := s2.Connect(context.Background(), addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if err := s2.Disconnect(overlay); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestDoubleConnectOnAllAddresses(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1 := newService(t, &o1)
-	o2 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s2 := newService(t, &o2)
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, addr := range addrs {
-		if _, err := s2.Connect(context.Background(), addr); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s2.Connect(context.Background(), addr); err == nil {
-			t.Fatal("second connect attempt should result with an error")
-		}
-	}
-}
-
-func newService(t *testing.T, o *libp2p.Options) *libp2p.Service {
+// newService constructs a new libp2p service.
+func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address, cleanup func()) {
 	t.Helper()
 
-	if o == nil {
-		o = new(libp2p.Options)
-	}
+	// disable ws until the race condition in:
+	// github.com/gorilla/websocket@v1.4.1/conn.go:614
+	// github.com/gorilla/websocket@v1.4.1/conn.go:781
+	// using github.com/libp2p/go-libp2p-transport-upgrader@v0.1.1
+	// is solved
+	o.DisableWS = true
 
 	if o.PrivateKey == nil {
 		var err error
@@ -261,9 +56,82 @@ func newService(t *testing.T, o *libp2p.Options) *libp2p.Service {
 		o.Addr = ":0"
 	}
 
-	s, err := libp2p.New(context.Background(), *o)
+	ctx, cancel := context.WithCancel(context.Background())
+	s, err := libp2p.New(ctx, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s
+	return s, o.Overlay, func() {
+		cancel()
+		s.Close()
+	}
+}
+
+// expectPeers validates that peers with addresses are connected.
+func expectPeers(t *testing.T, s *libp2p.Service, addrs ...swarm.Address) {
+	t.Helper()
+
+	peers := s.Peers()
+
+	if len(peers) != len(addrs) {
+		t.Fatalf("got peers %v, want %v", len(peers), len(addrs))
+	}
+
+	sort.Slice(addrs, func(i, j int) bool {
+		return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) == -1
+	})
+	sort.Slice(peers, func(i, j int) bool {
+		return bytes.Compare(peers[i].Address.Bytes(), peers[j].Address.Bytes()) == -1
+	})
+
+	for i, got := range peers {
+		want := addrs[i]
+		if !got.Address.Equal(want) {
+			t.Errorf("got %v peer %s, want %s", i, got.Address, want)
+		}
+	}
+}
+
+// expectPeersEventually validates that peers with addresses are connected with
+// retires. It is supposed to be used to validate asynchronous connecting on the
+// peer that is connected to.
+func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Address) {
+	t.Helper()
+
+	var peers []p2p.Peer
+	for i := 0; i < 100; i++ {
+		peers = s.Peers()
+		if len(peers) == len(addrs) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if len(peers) != len(addrs) {
+		t.Fatalf("got peers %v, want %v", len(peers), len(addrs))
+	}
+
+	sort.Slice(addrs, func(i, j int) bool {
+		return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) == -1
+	})
+	sort.Slice(peers, func(i, j int) bool {
+		return bytes.Compare(peers[i].Address.Bytes(), peers[j].Address.Bytes()) == -1
+	})
+
+	for i, got := range peers {
+		want := addrs[i]
+		if !got.Address.Equal(want) {
+			t.Errorf("got %v peer %s, want %s", i, got.Address, want)
+		}
+	}
+}
+
+func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr {
+	t.Helper()
+
+	addrs, err := s.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addrs[0]
 }

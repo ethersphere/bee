@@ -16,6 +16,7 @@ type Service interface {
 	AddProtocol(ProtocolSpec) error
 	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
 	Disconnect(overlay swarm.Address) error
+	Peers() []Peer
 }
 
 type Streamer interface {
