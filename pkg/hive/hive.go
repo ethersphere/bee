@@ -64,7 +64,7 @@ type PeerSuggester interface {
 }
 
 type AddressFinder interface {
-	Underlay(overlay swarm.Address) (underlay []byte, err error)
+	Underlay(overlay swarm.Address) (underlay string, err error)
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -153,7 +153,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 
 		peersResp.Peers = append(peersResp.Peers, &pb.BzzAddress{
 			Overlay:  p.Address.Bytes(),
-			Underlay: string(underlay),
+			Underlay: underlay,
 		})
 	}
 

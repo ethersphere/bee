@@ -21,9 +21,9 @@ import (
 
 func TestInit(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	connectionManager := ConnectionManagerMock{}
-	peerSuggester := PeerSuggesterMock{}
-	addressFinder := AddressFinderMock{}
+	connectionManager := &ConnectionManagerMock{}
+	peerSuggester := &PeerSuggesterMock{}
+	addressFinder := &AddressFinderMock{}
 
 	// this is the receiving side
 	nodeReceiver := New(Options{
@@ -54,15 +54,16 @@ func TestInit(t *testing.T) {
 			{Address: addr1},
 			{Address: addr2},
 		}
-		suggesterPeers[2] = []p2p.Peer{
+		suggesterPeers[1] = []p2p.Peer{
 			{Address: addr3},
 		}
 
 		peerSuggester.Peers = suggesterPeers
-		addresses := make(map[string][]byte)
-		addresses[addr1.String()] = addr1.Bytes()
-		addresses[addr2.String()] = addr2.Bytes()
-		addresses[addr3.String()] = addr3.Bytes()
+		addresses := make(map[string]string)
+		addresses[addr1.String()] = string(addr1.Bytes())
+		addresses[addr2.String()] = string(addr2.Bytes())
+		addresses[addr3.String()] = string(addr3.Bytes())
+		addressFinder.Underlays = addresses
 
 		initAddr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 		err := nodeInit.Init(context.Background(), p2p.Peer{
@@ -108,7 +109,44 @@ func TestInit(t *testing.T) {
 		}
 
 		if fmt.Sprint(gotGetPeers) != fmt.Sprint(wantGetPeers) {
-			t.Errorf("got getPeers %v, want %v", gotGetPeers, wantGetPeers)
+			t.Errorf("getPeers got %v, want %v", gotGetPeers, wantGetPeers)
+		}
+
+		// validate Peers response
+		var wantPeers []*pb.Peers
+		var gotPeers []*pb.Peers
+
+		wantPeers = append(wantPeers,
+			&pb.Peers{Peers: []*pb.BzzAddress{
+				{Overlay: addr1.Bytes(), Underlay: addresses[addr1.String()]},
+				{Overlay: addr2.Bytes(), Underlay: addresses[addr2.String()]},
+			}},
+			&pb.Peers{Peers: []*pb.BzzAddress{{Overlay: addr3.Bytes(), Underlay: addresses[addr3.String()]}}})
+
+		for i := 0; i < maxPO; i++ {
+			if i > 1 {
+				wantPeers = append(wantPeers, &pb.Peers{Peers: []*pb.BzzAddress{}})
+			}
+
+			messages, err := protobuf.ReadMessages(
+				bytes.NewReader(records[i].Out()),
+				func() protobuf.Message { return new(pb.Peers) },
+			)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(messages) != 1 {
+				t.Fatalf("got %v messages, want %v", len(messages), 1)
+			}
+
+			for _, m := range messages {
+				gotPeers = append(gotPeers, m.(*pb.Peers))
+			}
+		}
+
+		if fmt.Sprint(gotPeers) != fmt.Sprint(wantPeers) {
+			t.Errorf("Peers got %v, want %v", gotPeers, wantPeers)
 		}
 
 	})
@@ -118,7 +156,7 @@ type ConnectionManagerMock struct {
 	Err error
 }
 
-func (c ConnectionManagerMock) Connect(ctx context.Context, underlay []byte) error {
+func (c *ConnectionManagerMock) Connect(ctx context.Context, underlay []byte) error {
 	return c.Err
 }
 
@@ -126,18 +164,18 @@ type PeerSuggesterMock struct {
 	Peers map[int][]p2p.Peer
 }
 
-func (p PeerSuggesterMock) SuggestPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
+func (p *PeerSuggesterMock) SuggestPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
 	return p.Peers[bin]
 }
 
 type AddressFinderMock struct {
-	Underlays map[string][]byte
+	Underlays map[string]string
 	Err       error
 }
 
-func (a AddressFinderMock) Underlay(overlay swarm.Address) (underlay []byte, err error) {
+func (a *AddressFinderMock) Underlay(overlay swarm.Address) (underlay string, err error) {
 	if a.Err != nil {
-		return nil, a.Err
+		return "", a.Err
 	}
 
 	return a.Underlays[overlay.String()], nil
