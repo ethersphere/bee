@@ -285,8 +285,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 
 	s.peers.add(stream.Conn(), i.Address)
 	for _, protocol := range s.protocols {
-		if err := protocol.Init(p2p.Peer{Address: i.Address}); err != nil {
-			_ = s.host.Network().ClosePeer(info.ID)
+		if err := protocol.Init(ctx, p2p.Peer{Address: i.Address}); err != nil {
+			_ = s.Disconnect(i.Address)
 			return swarm.Address{}, err
 		}
 	}

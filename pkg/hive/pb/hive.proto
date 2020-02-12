@@ -12,5 +12,5 @@ message Peers {
 
 message BzzAddress {
     bytes Overlay = 1;
-    bytes Underlay = 2;
+    string Underlay = 2;
 }

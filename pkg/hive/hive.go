@@ -50,13 +50,13 @@ func New(o Options) *Service {
 	}
 }
 
-type BzzAddress struct {
+type bzzAddress struct {
 	Overlay, Underlay []byte
 }
 
 type ConnectionManager interface {
 	// todo: this can be the libp2p.Connect or something else
-	Connect(underlay []byte) error
+	Connect(ctx context.Context, underlay []byte) error
 }
 
 type PeerSuggester interface {
@@ -83,16 +83,17 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 // Init is called when the new peer is being initialized.
 // This should happen after overlay handshake is finished.
-func (s *Service) Init(peer p2p.Peer) error {
+func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 	for i := 0; i < maxPO; i++ {
 		// todo: figure out the limit
-		resp, err := s.getPeers(peer, i, 10)
+		resp, err := s.getPeers(ctx, peer, i, 10)
 		if err != nil {
 			return err
 		}
 
 		for _, newPeer := range resp {
-			if err := s.connectionManager.Connect(newPeer.Underlay); err != nil {
+			if err := s.connectionManager.Connect(ctx, newPeer.Underlay); err != nil {
+				s.logger.Infof("Connect failed for %s: %w", string(newPeer.Underlay), err)
 				continue
 			}
 		}
@@ -101,8 +102,8 @@ func (s *Service) Init(peer p2p.Peer) error {
 	return nil
 }
 
-func (s *Service) getPeers(peer p2p.Peer, bin, limit int) ([]BzzAddress, error) {
-	stream, err := s.streamer.NewStream(context.Background(), peer.Address, protocolName, protocolVersion, peersStreamName)
+func (s *Service) getPeers(ctx context.Context, peer p2p.Peer, bin, limit int) ([]bzzAddress, error) {
+	stream, err := s.streamer.NewStream(ctx, peer.Address, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
@@ -121,11 +122,11 @@ func (s *Service) getPeers(peer p2p.Peer, bin, limit int) ([]BzzAddress, error) 
 		return nil, fmt.Errorf("read getPeers message: %w", err)
 	}
 
-	var res []BzzAddress
+	var res []bzzAddress
 	for _, peer := range peersResponse.Peers {
-		res = append(res, BzzAddress{
+		res = append(res, bzzAddress{
 			Overlay:  peer.Overlay,
-			Underlay: peer.Underlay,
+			Underlay: []byte(peer.Underlay),
 		})
 	}
 
@@ -152,7 +153,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 
 		peersResp.Peers = append(peersResp.Peers, &pb.BzzAddress{
 			Overlay:  p.Address.Bytes(),
-			Underlay: underlay,
+			Underlay: string(underlay),
 		})
 	}
 

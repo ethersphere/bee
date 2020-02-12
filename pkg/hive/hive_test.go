@@ -6,11 +6,11 @@ package hive
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/hive/mock"
 	pb "github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -21,9 +21,9 @@ import (
 
 func TestInit(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	connectionManager := mock.ConnectionManagerMock{}
-	peerSuggester := mock.PeerSuggesterMock{}
-	addressFinder := mock.AddressFinderMock{}
+	connectionManager := ConnectionManagerMock{}
+	peerSuggester := PeerSuggesterMock{}
+	addressFinder := AddressFinderMock{}
 
 	// this is the receiving side
 	nodeReceiver := New(Options{
@@ -65,7 +65,7 @@ func TestInit(t *testing.T) {
 		addresses[addr3.String()] = addr3.Bytes()
 
 		initAddr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-		err := nodeInit.Init(p2p.Peer{
+		err := nodeInit.Init(context.Background(), p2p.Peer{
 			Address: initAddr,
 		})
 
@@ -112,4 +112,33 @@ func TestInit(t *testing.T) {
 		}
 
 	})
+}
+
+type ConnectionManagerMock struct {
+	Err error
+}
+
+func (c ConnectionManagerMock) Connect(ctx context.Context, underlay []byte) error {
+	return c.Err
+}
+
+type PeerSuggesterMock struct {
+	Peers map[int][]p2p.Peer
+}
+
+func (p PeerSuggesterMock) SuggestPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
+	return p.Peers[bin]
+}
+
+type AddressFinderMock struct {
+	Underlays map[string][]byte
+	Err       error
+}
+
+func (a AddressFinderMock) Underlay(overlay swarm.Address) (underlay []byte, err error) {
+	if a.Err != nil {
+		return nil, a.Err
+	}
+
+	return a.Underlays[overlay.String()], nil
 }
