@@ -8,46 +8,46 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
-type MockDiscovery struct {
+type Discovery struct {
 	mtx     sync.Mutex
 	ctr     int //how many ops
 	records map[string]broadcastRecord
 }
 
 type broadcastRecord struct {
-	underlay libp2ppeer.ID
-	overlay  swarm.Address
+	overlay   swarm.Address
+	multiaddr ma.Multiaddr
 }
 
-func NewMockDiscovery() *MockDiscovery {
-	return &MockDiscovery{
+func NewDiscovery() *Discovery {
+	return &Discovery{
 		records: make(map[string]broadcastRecord),
 	}
 }
 
-func (d *MockDiscovery) BroadcastPeer(addressee swarm.Address, peerID libp2ppeer.ID, overlay swarm.Address) error {
+func (d *Discovery) BroadcastPeer(addressee swarm.Address, overlay swarm.Address, addr ma.Multiaddr) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	d.ctr++
-	d.records[addressee.String()] = broadcastRecord{underlay: peerID, overlay: overlay}
+	d.records[addressee.String()] = broadcastRecord{overlay: overlay, multiaddr: addr}
 	return nil
 }
 
-func (d *MockDiscovery) Broadcasts() int {
+func (d *Discovery) Broadcasts() int {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	return d.ctr
 }
 
-func (d *MockDiscovery) AddresseeRecord(addressee swarm.Address) (overlay swarm.Address, underlay libp2ppeer.ID) {
+func (d *Discovery) AddresseeRecord(addressee swarm.Address) (overlay swarm.Address, addr ma.Multiaddr) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	rec, exists := d.records[addressee.String()]
 	if !exists {
-		return swarm.Address{}, ""
+		return swarm.Address{}, nil
 	}
-	return rec.overlay, rec.underlay
+	return rec.overlay, rec.multiaddr
 }

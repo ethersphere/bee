@@ -21,10 +21,10 @@ func init() {
 
 var _ topology.Driver = (*driver)(nil)
 
-// driver drives the connectivity between nodes. It is a basic implementation of a connectivity driver
+// driver drives the connectivity between nodes. It is a basic implementation of a connectivity driver.
 // that enabled full connectivity in the sense that:
-// - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address
-// - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (PeerSuggester interface)
+// - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address.
+// - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (PeerSuggester interface).
 type driver struct {
 	mtx         sync.Mutex
 	connected   map[string]swarm.Address
@@ -40,18 +40,20 @@ func New(disc discovery.Driver, addressBook addressbook.Getter) topology.Driver 
 	}
 }
 
+// AddPeer adds a new peer to the topology driver.
+// the peer would be subsequently broadcasted to all connected peers.
 func (d *driver) AddPeer(overlay swarm.Address) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
 	d.connected[overlay.String()] = overlay
-	underlay, exists := d.addressBook.Get(overlay)
+	ma, exists := d.addressBook.Get(overlay)
 	if !exists {
 		return topology.ErrNotFound
 	}
 
 	for _, addressee := range d.connected {
-		err := d.discovery.BroadcastPeer(addressee, underlay, overlay)
+		err := d.discovery.BroadcastPeer(addressee, overlay, ma)
 		if err != nil {
 			return err
 		}
@@ -59,7 +61,7 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 	return nil
 }
 
-// ChunkPeer is used to suggest a peer to ask a certain chunk from
+// ChunkPeer is used to suggest a peer to ask a certain chunk from.
 func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()

@@ -6,9 +6,10 @@ package discovery
 
 import (
 	"github.com/ethersphere/bee/pkg/swarm"
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Driver interface {
-	BroadcastPeer(addressee swarm.Address, peerID libp2ppeer.ID, overlay swarm.Address) error
+	BroadcastPeer(addressee swarm.Address, overlay swarm.Address, addr ma.Multiaddr) error
 }

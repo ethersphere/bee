@@ -7,7 +7,7 @@ package addressbook
 import (
 	"github.com/ethersphere/bee/pkg/swarm"
 
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type GetPutter interface {
@@ -16,9 +16,9 @@ type GetPutter interface {
 }
 
 type Getter interface {
-	Get(overlay swarm.Address) (underlay libp2ppeer.ID, exists bool)
+	Get(overlay swarm.Address) (addr ma.Multiaddr, exists bool)
 }
 
 type Putter interface {
-	Put(underlay libp2ppeer.ID, overlay swarm.Address) (exists bool)
+	Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool)
 }

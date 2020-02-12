@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/swarm"
 
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type inmem struct {
@@ -19,8 +19,8 @@ type inmem struct {
 }
 
 type peerEntry struct {
-	underlay libp2ppeer.ID // underlay address
-	overlay  swarm.Address //overlay address
+	overlay   swarm.Address //overlay address
+	multiaddr ma.Multiaddr
 }
 
 func New() addressbook.GetPutter {
@@ -29,15 +29,15 @@ func New() addressbook.GetPutter {
 	}
 }
 
-func (i *inmem) Get(overlay swarm.Address) (underlay libp2ppeer.ID, exists bool) {
+func (i *inmem) Get(overlay swarm.Address) (addr ma.Multiaddr, exists bool) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
 	val, exists := i.entries[overlay.String()]
-	return val.underlay, exists
+	return val.multiaddr, exists
 }
 
-func (i *inmem) Put(underlay libp2ppeer.ID, overlay swarm.Address) (exists bool) {
+func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
@@ -46,6 +46,6 @@ func (i *inmem) Put(underlay libp2ppeer.ID, overlay swarm.Address) (exists bool)
 		return e // not sure if this is the right thing to do actually, maybe better to override? error?
 	}
 
-	i.entries[overlay.String()] = peerEntry{underlay: underlay, overlay: overlay}
+	i.entries[overlay.String()] = peerEntry{overlay: overlay, multiaddr: addr}
 	return e
 }

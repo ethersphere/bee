@@ -298,7 +298,7 @@ func TestConnectWithMockDiscovery(t *testing.T) {
 	s1, _, cleanup1 := newService(t, o1)
 	defer cleanup1()
 
-	disc2 := mock.NewMockDiscovery()
+	disc2 := mock.NewDiscovery()
 	ab2 := inmem.New()
 	o2 := libp2p.Options{
 		NetworkID:      1,
@@ -422,7 +422,7 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 	}
 
 	if o.TopologyDriver == nil {
-		disc := mock.NewMockDiscovery()
+		disc := mock.NewDiscovery()
 		o.TopologyDriver = full.New(disc, o.AddressBook)
 	}
 

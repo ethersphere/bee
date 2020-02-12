@@ -289,7 +289,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	s.peers.add(stream.Conn(), i.Address)
-	s.addressBook.Put(info.ID, i.Address)
+	s.addressBook.Put(i.Address, addr)
 
 	err = s.topologyDriver.AddPeer(i.Address)
 	if err != nil {
