@@ -6,7 +6,6 @@ package hive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -18,34 +17,27 @@ import (
 )
 
 const (
-	protocolName             = "hive"
-	protocolVersion          = "1.0.0"
-	peersStreamName          = "peers"
-	peersBroadcastStreamName = "peers_broadcast"
-	maxPO                    = 7
-	messageTimeout           = 5 * time.Second // maximum allowed time for a message to be read or written.
+	protocolName    = "hive"
+	protocolVersion = "1.0.0"
+	peersStreamName = "peers"
+	maxPO           = 7
+	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
 )
 
 type Service struct {
 	streamer          p2p.Streamer
 	connectionManager ConnectionManager
+	peerSuggester     PeerSuggester
+	addressFinder     AddressFinder
 	logger            logging.Logger
-	quit              chan struct{}
 }
 
 type Options struct {
 	Streamer          p2p.Streamer
 	ConnectionManager ConnectionManager
+	PeerSuggester     PeerSuggester
+	AddressFinder     AddressFinder
 	Logger            logging.Logger
-}
-
-type BzzAddress struct {
-	Overlay, Underlay swarm.Address
-}
-
-type ConnectionManager interface {
-	// todo: this can be the libp2p.Connect
-	Connect(underlay swarm.Address) error
 }
 
 func New(o Options) *Service {
@@ -53,22 +45,37 @@ func New(o Options) *Service {
 		streamer:          o.Streamer,
 		logger:            o.Logger,
 		connectionManager: o.ConnectionManager,
-		quit:              make(chan struct{}),
+		peerSuggester:     o.PeerSuggester,
+		addressFinder:     o.AddressFinder,
 	}
+}
+
+type BzzAddress struct {
+	Overlay, Underlay []byte
+}
+
+type ConnectionManager interface {
+	// todo: this can be the libp2p.Connect or something else
+	Connect(underlay []byte) error
+}
+
+type PeerSuggester interface {
+	SuggestPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
+}
+
+type AddressFinder interface {
+	Underlay(overlay swarm.Address) (underlay []byte, err error)
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
-		Name: protocolName,
-		Init: s.Init,
+		Name:    protocolName,
+		Version: protocolVersion,
+		Init:    s.Init,
 		StreamSpecs: []p2p.StreamSpec{
 			{
 				Name:    peersStreamName,
 				Handler: s.peersHandler,
-			},
-			{
-				Name:    peersBroadcastStreamName,
-				Handler: s.peersBroadcastHandler,
 			},
 		},
 	}
@@ -94,12 +101,6 @@ func (s *Service) Init(peer p2p.Peer) error {
 	return nil
 }
 
-// BroadcastPeers broadcasts the provided list of peers to the provided peer.
-func (s *Service) BroadcastPeers(peer p2p.Peer, peers []p2p.Peer) error {
-	// todo: create Peers request and broadcast over peers_broadcast stream
-	return errors.New("not implemented")
-}
-
 func (s *Service) getPeers(peer p2p.Peer, bin, limit int) ([]BzzAddress, error) {
 	stream, err := s.streamer.NewStream(context.Background(), peer.Address, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
@@ -123,8 +124,8 @@ func (s *Service) getPeers(peer p2p.Peer, bin, limit int) ([]BzzAddress, error) 
 	var res []BzzAddress
 	for _, peer := range peersResponse.Peers {
 		res = append(res, BzzAddress{
-			Overlay:  swarm.NewAddress(peer.Overlay),
-			Underlay: swarm.NewAddress(peer.Underlay),
+			Overlay:  peer.Overlay,
+			Underlay: peer.Underlay,
 		})
 	}
 
@@ -132,11 +133,33 @@ func (s *Service) getPeers(peer p2p.Peer, bin, limit int) ([]BzzAddress, error) 
 }
 
 func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
-	// todo: receive getPeers msg and send Peers response
-	return errors.New("not implemented")
-}
+	w, r := protobuf.NewWriterAndReader(stream)
+	var peersReq pb.GetPeers
+	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
+		return fmt.Errorf("read getPeers message: %w", err)
+	}
 
-func (s *Service) peersBroadcastHandler(peer p2p.Peer, stream p2p.Stream) error {
-	// todo: receive peers response close the stream and try to connect to each of them
-	return errors.New("not implemented")
+	// the assumption is that the peer suggester is taking care of the validity of suggested peers
+	// todo: should we track peer sent in hive or leave it to the peerSuggester?
+	peers := s.peerSuggester.SuggestPeers(peer, int(peersReq.Bin), int(peersReq.Limit))
+	var peersResp pb.Peers
+	for _, p := range peers {
+		underlay, err := s.addressFinder.Underlay(p.Address)
+		if err != nil {
+			// skip this peer
+			continue
+		}
+
+		peersResp.Peers = append(peersResp.Peers, &pb.BzzAddress{
+			Overlay:  p.Address.Bytes(),
+			Underlay: underlay,
+		})
+	}
+
+	if err := w.WriteMsg(&peersResp); err != nil {
+		return fmt.Errorf("write Peers message: %w", err)
+	}
+
+	// todo: await close from the receiver
+	return nil
 }
