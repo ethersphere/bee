@@ -37,7 +37,10 @@ func (s *Service) protocolSemverMatcher(base protocol.ID) (func(string) bool, er
 			return false
 		}
 
-		for i, v := range chparts[:chpartsLen-2] {
+		for i, v := range chparts {
+			if i == chpartsLen-2 {
+				continue
+			}
 			if parts[i] != v {
 				return false
 			}
