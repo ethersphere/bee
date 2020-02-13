@@ -313,6 +313,7 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 	if err := s.host.Network().ClosePeer(peerID); err != nil {
 		return err
 	}
+	s.host.Peerstore().ClearAddrs(peerID)
 	s.peers.remove(peerID)
 	return nil
 }
