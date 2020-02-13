@@ -48,9 +48,9 @@ func TestInit(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		suggesterPeers := make(map[int][]p2p.Peer)
 		addr1, addr2, addr3 :=
-			swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a"),
-			swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b"),
-			swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+			swarm.MustParseHexAddress("1aaaaaaa"),
+			swarm.MustParseHexAddress("1bbbbbbb"),
+			swarm.MustParseHexAddress("1ccccccc")
 
 		suggesterPeers[0] = []p2p.Peer{
 			{Address: addr1},
@@ -67,12 +67,12 @@ func TestInit(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		addr2Multi, err := ma.NewMultiaddr("/ip4/1.1.1.1")
+		addr2Multi, err := ma.NewMultiaddr("/ip4/1.1.1.2")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		addr3Multi, err := ma.NewMultiaddr("/ip4/1.1.1.1")
+		addr3Multi, err := ma.NewMultiaddr("/ip4/1.1.1.3")
 		if err != nil {
 			t.Fatal(err)
 		}
