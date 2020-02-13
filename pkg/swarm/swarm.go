@@ -61,7 +61,7 @@ func (a Address) Bytes() []byte {
 	return a.b
 }
 
-// ByteString returns raw Address string without decoding.
+// ByteString returns raw Address string without encoding.
 func (a Address) ByteString() string {
 	return string(a.Bytes())
 }
