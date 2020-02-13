@@ -57,10 +57,10 @@ func TestDelivery(t *testing.T) {
 		return v, err
 	}}
 	client := retrieval.New(retrieval.Options{
-		Streamer:      recorder,
-		PeerSuggester: ps,
-		Storer:        clientMockStorer,
-		Logger:        logger,
+		Streamer:    recorder,
+		ChunkPeerer: ps,
+		Storer:      clientMockStorer,
+		Logger:      logger,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
@@ -71,7 +71,7 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(v, reqData) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
 	}
-	peerID, _ := ps.SuggestPeer(swarm.ZeroAddress)
+	peerID, _ := ps.ChunkPeer(swarm.ZeroAddress)
 	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +120,6 @@ type mockPeerSuggester struct {
 	spFunc func(swarm.Address) (swarm.Address, error)
 }
 
-func (v mockPeerSuggester) SuggestPeer(addr swarm.Address) (swarm.Address, error) {
+func (v mockPeerSuggester) ChunkPeer(addr swarm.Address) (swarm.Address, error) {
 	return v.spFunc(addr)
 }
