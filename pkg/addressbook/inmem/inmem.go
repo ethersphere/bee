@@ -19,11 +19,11 @@ type inmem struct {
 }
 
 type peerEntry struct {
-	overlay   swarm.Address //overlay address
+	overlay   swarm.Address
 	multiaddr ma.Multiaddr
 }
 
-func New() addressbook.GetPutter {
+func New() addressbook.GetterPutter {
 	return &inmem{
 		entries: make(map[string]peerEntry),
 	}
@@ -42,10 +42,6 @@ func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	defer i.mtx.Unlock()
 
 	_, e := i.entries[overlay.String()]
-	if e {
-		return e // not sure if this is the right thing to do actually, maybe better to override? error?
-	}
-
 	i.entries[overlay.String()] = peerEntry{overlay: overlay, multiaddr: addr}
 	return e
 }

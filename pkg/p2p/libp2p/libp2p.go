@@ -54,7 +54,7 @@ type Options struct {
 	DisableQUIC    bool
 	Bootnodes      []string
 	NetworkID      int32
-	AddressBook    addressbook.GetPutter
+	AddressBook    addressbook.GetterPutter
 	TopologyDriver topology.Driver
 	Logger         logging.Logger
 }

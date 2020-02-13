@@ -10,7 +10,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type GetPutter interface {
+type GetterPutter interface {
 	Getter
 	Putter
 }
