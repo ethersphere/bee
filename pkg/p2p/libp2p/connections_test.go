@@ -9,8 +9,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+	"github.com/ethersphere/bee/pkg/discovery/mock"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/topology/full"
 )
 
 func TestAddresses(t *testing.T) {
@@ -337,4 +340,41 @@ func TestConnectWithDisabledQUICAndWSTransports(t *testing.T) {
 
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
+}
+
+func TestConnectWithMockDiscovery(t *testing.T) {
+	o1 := libp2p.Options{
+		NetworkID: 1,
+	}
+	s1, _, cleanup1 := newService(t, o1)
+	defer cleanup1()
+
+	disc2 := mock.NewDiscovery()
+	ab2 := inmem.New()
+	o2 := libp2p.Options{
+		NetworkID:      1,
+		TopologyDriver: full.New(disc2, ab2),
+		AddressBook:    ab2,
+	}
+	s2, _, cleanup2 := newService(t, o2)
+	defer cleanup2()
+
+	addrs, err := s1.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := addrs[0]
+
+	overlay, err := s2.Connect(context.Background(), addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if v := disc2.Broadcasts(); v != 1 {
+		t.Fatalf("expected 1 peer broadcasts, got %d", v)
+	}
+
+	if err := s2.Disconnect(overlay); err != nil {
+		t.Fatal(err)
+	}
 }
