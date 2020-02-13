@@ -7,10 +7,5 @@ message GetPeers {
 }
 
 message Peers {
-    repeated BzzAddress peers = 1;
-}
-
-message BzzAddress {
-    bytes Overlay = 1;
-    string Underlay = 2;
+    repeated string peers = 1;
 }

@@ -11,6 +11,8 @@ import (
 	"io/ioutil"
 	"testing"
 
+	ma "github.com/multiformats/go-multiaddr"
+
 	pb "github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -82,7 +84,7 @@ func TestInit(t *testing.T) {
 			t.Fatalf("got %v records, want %v", l, 1)
 		}
 
-		// validate received getPeers requests
+		// validate received requestPeers requests
 		var wantGetPeers []*pb.GetPeers
 		var gotGetPeers []*pb.GetPeers
 		for i := 0; i < maxPO; i++ {
@@ -109,7 +111,7 @@ func TestInit(t *testing.T) {
 		}
 
 		if fmt.Sprint(gotGetPeers) != fmt.Sprint(wantGetPeers) {
-			t.Errorf("getPeers got %v, want %v", gotGetPeers, wantGetPeers)
+			t.Errorf("requestPeers got %v, want %v", gotGetPeers, wantGetPeers)
 		}
 
 		// validate Peers response
@@ -117,15 +119,15 @@ func TestInit(t *testing.T) {
 		var gotPeers []*pb.Peers
 
 		wantPeers = append(wantPeers,
-			&pb.Peers{Peers: []*pb.BzzAddress{
-				{Overlay: addr1.Bytes(), Underlay: addresses[addr1.String()]},
-				{Overlay: addr2.Bytes(), Underlay: addresses[addr2.String()]},
+			&pb.Peers{Peers: []string{
+				addresses[addr1.String()],
+				addresses[addr2.String()],
 			}},
-			&pb.Peers{Peers: []*pb.BzzAddress{{Overlay: addr3.Bytes(), Underlay: addresses[addr3.String()]}}})
+			&pb.Peers{Peers: []string{addresses[addr3.String()]}})
 
 		for i := 0; i < maxPO; i++ {
 			if i > 1 {
-				wantPeers = append(wantPeers, &pb.Peers{Peers: []*pb.BzzAddress{}})
+				wantPeers = append(wantPeers, &pb.Peers{Peers: []string{}})
 			}
 
 			messages, err := protobuf.ReadMessages(
@@ -156,15 +158,15 @@ type ConnectionManagerMock struct {
 	Err error
 }
 
-func (c *ConnectionManagerMock) Connect(ctx context.Context, underlay []byte) error {
-	return c.Err
+func (c *ConnectionManagerMock) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
+	return swarm.Address{}, c.Err
 }
 
 type PeerSuggesterMock struct {
 	Peers map[int][]p2p.Peer
 }
 
-func (p *PeerSuggesterMock) SuggestPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
+func (p *PeerSuggesterMock) DiscoveryPeer(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
 	return p.Peers[bin]
 }
 
@@ -173,7 +175,7 @@ type AddressFinderMock struct {
 	Err       error
 }
 
-func (a *AddressFinderMock) Underlay(overlay swarm.Address) (underlay string, err error) {
+func (a *AddressFinderMock) FindAddress(overlay swarm.Address) (underlay string, err error) {
 	if a.Err != nil {
 		return "", a.Err
 	}

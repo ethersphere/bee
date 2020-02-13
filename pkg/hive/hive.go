@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	ma "github.com/multiformats/go-multiaddr"
+
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -26,16 +28,16 @@ const (
 
 type Service struct {
 	streamer          p2p.Streamer
-	connectionManager ConnectionManager
-	peerSuggester     PeerSuggester
+	connectionManager p2p.Connecter
+	peerSuggester     DiscoveryPeerer
 	addressFinder     AddressFinder
 	logger            logging.Logger
 }
 
 type Options struct {
 	Streamer          p2p.Streamer
-	ConnectionManager ConnectionManager
-	PeerSuggester     PeerSuggester
+	ConnectionManager p2p.Connecter
+	PeerSuggester     DiscoveryPeerer
 	AddressFinder     AddressFinder
 	Logger            logging.Logger
 }
@@ -50,21 +52,12 @@ func New(o Options) *Service {
 	}
 }
 
-type bzzAddress struct {
-	Overlay, Underlay []byte
-}
-
-type ConnectionManager interface {
-	// todo: this can be the libp2p.Connect or something else
-	Connect(ctx context.Context, underlay []byte) error
-}
-
-type PeerSuggester interface {
-	SuggestPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
+type DiscoveryPeerer interface {
+	DiscoveryPeer(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
 }
 
 type AddressFinder interface {
-	Underlay(overlay swarm.Address) (underlay string, err error)
+	FindAddress(overlay swarm.Address) (underlay string, err error)
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -86,14 +79,20 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 	for i := 0; i < maxPO; i++ {
 		// todo: figure out the limit
-		resp, err := s.getPeers(ctx, peer, i, 10)
+		resp, err := s.requestPeers(ctx, peer, i, 10)
 		if err != nil {
 			return err
 		}
 
 		for _, newPeer := range resp {
-			if err := s.connectionManager.Connect(ctx, newPeer.Underlay); err != nil {
-				s.logger.Infof("Connect failed for %s: %w", string(newPeer.Underlay), err)
+			addr, err := ma.NewMultiaddr(newPeer)
+			if err != nil {
+				s.logger.Infof("Connect failed for %s: %w", newPeer, err)
+				continue
+			}
+
+			if _, err := s.connectionManager.Connect(ctx, addr); err != nil {
+				s.logger.Infof("Connect failed for %s: %w", addr.String(), err)
 				continue
 			}
 		}
@@ -102,7 +101,7 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 	return nil
 }
 
-func (s *Service) getPeers(ctx context.Context, peer p2p.Peer, bin, limit int) ([]bzzAddress, error) {
+func (s *Service) requestPeers(ctx context.Context, peer p2p.Peer, bin, limit int) ([]string, error) {
 	stream, err := s.streamer.NewStream(ctx, peer.Address, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -114,47 +113,36 @@ func (s *Service) getPeers(ctx context.Context, peer p2p.Peer, bin, limit int) (
 		Bin:   uint32(bin),
 		Limit: uint32(limit),
 	}); err != nil {
-		return nil, fmt.Errorf("write getPeers message: %w", err)
+		return nil, fmt.Errorf("write requestPeers message: %w", err)
 	}
 
 	var peersResponse pb.Peers
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersResponse); err != nil {
-		return nil, fmt.Errorf("read getPeers message: %w", err)
+		return nil, fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	var res []bzzAddress
-	for _, peer := range peersResponse.Peers {
-		res = append(res, bzzAddress{
-			Overlay:  peer.Overlay,
-			Underlay: []byte(peer.Underlay),
-		})
-	}
-
-	return res, nil
+	return peersResponse.Peers, nil
 }
 
 func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	var peersReq pb.GetPeers
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
-		return fmt.Errorf("read getPeers message: %w", err)
+		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
 	// the assumption is that the peer suggester is taking care of the validity of suggested peers
 	// todo: should we track peer sent in hive or leave it to the peerSuggester?
-	peers := s.peerSuggester.SuggestPeers(peer, int(peersReq.Bin), int(peersReq.Limit))
+	peers := s.peerSuggester.DiscoveryPeer(peer, int(peersReq.Bin), int(peersReq.Limit))
 	var peersResp pb.Peers
 	for _, p := range peers {
-		underlay, err := s.addressFinder.Underlay(p.Address)
+		underlay, err := s.addressFinder.FindAddress(p.Address)
 		if err != nil {
 			// skip this peer
 			continue
 		}
 
-		peersResp.Peers = append(peersResp.Peers, &pb.BzzAddress{
-			Overlay:  p.Address.Bytes(),
-			Underlay: underlay,
-		})
+		peersResp.Peers = append(peersResp.Peers, underlay)
 	}
 
 	if err := w.WriteMsg(&peersResp); err != nil {
