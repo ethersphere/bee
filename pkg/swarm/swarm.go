@@ -61,6 +61,11 @@ func (a Address) Bytes() []byte {
 	return a.b
 }
 
+// ByteString returns raw Address string without decoding.
+func (a Address) ByteString() string {
+	return string(a.Bytes())
+}
+
 // UnmarshalJSON sets Address to a value from JSON-encoded representation.
 func (a *Address) UnmarshalJSON(b []byte) (err error) {
 	var s string
