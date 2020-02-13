@@ -139,6 +139,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 		underlay, err := s.addressFinder.FindAddress(p.Address)
 		if err != nil {
 			// skip this peer
+			s.logger.Warningf("Skipping peer in peers response %s: %w", p, err)
 			continue
 		}
 
@@ -148,7 +149,6 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	if err := w.WriteMsg(&peersResp); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
 	}
-
 	// todo: await close from the receiver
 	return nil
 }
