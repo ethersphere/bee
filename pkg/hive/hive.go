@@ -57,7 +57,7 @@ type DiscoveryPeerer interface {
 }
 
 type AddressFinder interface {
-	FindAddress(overlay swarm.Address) (underlay string, err error)
+	FindAddress(overlay swarm.Address) (underlay ma.Multiaddr, err error)
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -143,7 +143,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 			continue
 		}
 
-		peersResp.Peers = append(peersResp.Peers, underlay)
+		peersResp.Peers = append(peersResp.Peers, underlay.String())
 	}
 
 	if err := w.WriteMsg(&peersResp); err != nil {

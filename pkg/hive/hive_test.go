@@ -61,14 +61,29 @@ func TestInit(t *testing.T) {
 		}
 
 		peerSuggester.Peers = suggesterPeers
-		addresses := make(map[string]string)
-		addresses[addr1.String()] = string(addr1.Bytes())
-		addresses[addr2.String()] = string(addr2.Bytes())
-		addresses[addr3.String()] = string(addr3.Bytes())
+		addresses := make(map[string]ma.Multiaddr)
+		addr1Multi, err := ma.NewMultiaddr("/ip4/1.1.1.1")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addr2Multi, err := ma.NewMultiaddr("/ip4/1.1.1.1")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addr3Multi, err := ma.NewMultiaddr("/ip4/1.1.1.1")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addresses[addr1.String()] = addr1Multi
+		addresses[addr2.String()] = addr2Multi
+		addresses[addr3.String()] = addr3Multi
 		addressFinder.Underlays = addresses
 
 		initAddr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-		err := nodeInit.Init(context.Background(), p2p.Peer{
+		err = nodeInit.Init(context.Background(), p2p.Peer{
 			Address: initAddr,
 		})
 
@@ -120,10 +135,10 @@ func TestInit(t *testing.T) {
 
 		wantPeers = append(wantPeers,
 			&pb.Peers{Peers: []string{
-				addresses[addr1.String()],
-				addresses[addr2.String()],
+				addresses[addr1.String()].String(),
+				addresses[addr2.String()].String(),
 			}},
-			&pb.Peers{Peers: []string{addresses[addr3.String()]}})
+			&pb.Peers{Peers: []string{addresses[addr3.String()].String()}})
 
 		for i := 0; i < maxPO; i++ {
 			if i > 1 {
@@ -171,13 +186,13 @@ func (p *PeerSuggesterMock) DiscoveryPeer(peer p2p.Peer, bin, limit int) (peers 
 }
 
 type AddressFinderMock struct {
-	Underlays map[string]string
+	Underlays map[string]ma.Multiaddr
 	Err       error
 }
 
-func (a *AddressFinderMock) FindAddress(overlay swarm.Address) (underlay string, err error) {
+func (a *AddressFinderMock) FindAddress(overlay swarm.Address) (underlay ma.Multiaddr, err error) {
 	if a.Err != nil {
-		return "", a.Err
+		return nil, a.Err
 	}
 
 	return a.Underlays[overlay.String()], nil
