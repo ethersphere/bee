@@ -45,37 +45,27 @@ func TestInit(t *testing.T) {
 		Logger:            logger,
 	})
 
-	t.Run("OK", func(t *testing.T) {
-		suggesterPeers := make(map[int][]p2p.Peer)
+	t.Run("OK - node responds with some peers for bin 1 & 2", func(t *testing.T) {
+		// prepare expected peers to return from discovery peerer for bins 0 & 1
+		discoveryPeers := make(map[int][]p2p.Peer)
 		addr1, addr2, addr3 :=
 			swarm.MustParseHexAddress("1aaaaaaa"),
 			swarm.MustParseHexAddress("1bbbbbbb"),
 			swarm.MustParseHexAddress("1ccccccc")
-
-		suggesterPeers[0] = []p2p.Peer{
+		discoveryPeers[0] = []p2p.Peer{
 			{Address: addr1},
 			{Address: addr2},
 		}
-		suggesterPeers[1] = []p2p.Peer{
+		discoveryPeers[1] = []p2p.Peer{
 			{Address: addr3},
 		}
+		peerSuggester.Peers = discoveryPeers
 
-		peerSuggester.Peers = suggesterPeers
+		// map overlay addresses to multiaddr in address finder
 		addresses := make(map[string]ma.Multiaddr)
-		addr1Multi, err := ma.NewMultiaddr("/ip4/1.1.1.1")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		addr2Multi, err := ma.NewMultiaddr("/ip4/1.1.1.2")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		addr3Multi, err := ma.NewMultiaddr("/ip4/1.1.1.3")
-		if err != nil {
-			t.Fatal(err)
-		}
+		addr1Multi, addr2Multi, addr3Multi := newMultiAddr("/ip4/1.1.1.1"),
+			newMultiAddr("/ip4/1.1.1.2"),
+			newMultiAddr("/ip4/1.1.1.3")
 
 		addresses[addr1.String()] = addr1Multi
 		addresses[addr2.String()] = addr2Multi
@@ -83,11 +73,9 @@ func TestInit(t *testing.T) {
 		addressFinder.Underlays = addresses
 
 		initAddr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-		err = nodeInit.Init(context.Background(), p2p.Peer{
+		if err := nodeInit.Init(context.Background(), p2p.Peer{
 			Address: initAddr,
-		})
-
-		if err != nil {
+		}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -100,6 +88,7 @@ func TestInit(t *testing.T) {
 		}
 
 		// validate received requestPeers requests
+		// there should be maxPO peer requests
 		var wantGetPeers []*pb.GetPeers
 		var gotGetPeers []*pb.GetPeers
 		for i := 0; i < maxPO; i++ {
@@ -108,20 +97,9 @@ func TestInit(t *testing.T) {
 				Limit: 10,
 			})
 
-			messages, err := protobuf.ReadMessages(
-				bytes.NewReader(records[i].In()),
-				func() protobuf.Message { return new(pb.GetPeers) },
-			)
-
+			gotGetPeers, err = readGetPeersMsgs(records[i].In(), gotGetPeers)
 			if err != nil {
 				t.Fatal(err)
-			}
-			if len(messages) != 1 {
-				t.Fatalf("got %v messages, want %v", len(messages), 1)
-			}
-
-			for _, m := range messages {
-				gotGetPeers = append(gotGetPeers, m.(*pb.GetPeers))
 			}
 		}
 
@@ -130,6 +108,7 @@ func TestInit(t *testing.T) {
 		}
 
 		// validate Peers response
+		// only response for bin 0, 1 should have appropriate peers, others are empty
 		var wantPeers []*pb.Peers
 		var gotPeers []*pb.Peers
 
@@ -145,28 +124,65 @@ func TestInit(t *testing.T) {
 				wantPeers = append(wantPeers, &pb.Peers{Peers: []string{}})
 			}
 
-			messages, err := protobuf.ReadMessages(
-				bytes.NewReader(records[i].Out()),
-				func() protobuf.Message { return new(pb.Peers) },
-			)
-
+			gotPeers, err = readPeersMsgs(records[i].Out(), gotPeers)
 			if err != nil {
 				t.Fatal(err)
-			}
-			if len(messages) != 1 {
-				t.Fatalf("got %v messages, want %v", len(messages), 1)
-			}
-
-			for _, m := range messages {
-				gotPeers = append(gotPeers, m.(*pb.Peers))
 			}
 		}
 
 		if fmt.Sprint(gotPeers) != fmt.Sprint(wantPeers) {
 			t.Errorf("Peers got %v, want %v", gotPeers, wantPeers)
 		}
-
 	})
+}
+
+func readGetPeersMsgs(in []byte, peers []*pb.GetPeers) ([]*pb.GetPeers, error) {
+	messages, err := protobuf.ReadMessages(
+		bytes.NewReader(in),
+		func() protobuf.Message { return new(pb.GetPeers) },
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) != 1 {
+		return nil, fmt.Errorf("got %v messages, want %v", len(messages), 1)
+	}
+
+	for _, m := range messages {
+		peers = append(peers, m.(*pb.GetPeers))
+	}
+
+	return peers, nil
+}
+
+func readPeersMsgs(in []byte, peers []*pb.Peers) ([]*pb.Peers, error) {
+	messages, err := protobuf.ReadMessages(
+		bytes.NewReader(in),
+		func() protobuf.Message { return new(pb.Peers) },
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) != 1 {
+		return nil, fmt.Errorf("got %v messages, want %v", len(messages), 1)
+	}
+
+	for _, m := range messages {
+		peers = append(peers, m.(*pb.Peers))
+	}
+
+	return peers, nil
+}
+
+func newMultiAddr(address string) ma.Multiaddr {
+	addr, err := ma.NewMultiaddr(address)
+	if err != nil {
+		panic(err)
+	}
+
+	return addr
 }
 
 type ConnectionManagerMock struct {
