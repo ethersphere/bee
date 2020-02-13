@@ -53,7 +53,7 @@ func New(o Options) *Service {
 }
 
 type DiscoveryPeerer interface {
-	DiscoveryPeer(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
+	DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
 }
 
 type AddressFinder interface {
@@ -133,7 +133,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 
 	// the assumption is that the peer suggester is taking care of the validity of suggested peers
 	// todo: should we track peer sent in hive or leave it to the peerSuggester?
-	peers := s.peerSuggester.DiscoveryPeer(peer, int(peersReq.Bin), int(peersReq.Limit))
+	peers := s.peerSuggester.DiscoveryPeers(peer, int(peersReq.Bin), int(peersReq.Limit))
 	var peersResp pb.Peers
 	for _, p := range peers {
 		underlay, err := s.addressFinder.FindAddress(p.Address)

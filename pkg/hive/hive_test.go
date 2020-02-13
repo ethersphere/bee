@@ -181,7 +181,7 @@ type PeerSuggesterMock struct {
 	Peers map[int][]p2p.Peer
 }
 
-func (p *PeerSuggesterMock) DiscoveryPeer(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
+func (p *PeerSuggesterMock) DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
 	return p.Peers[bin]
 }
 
