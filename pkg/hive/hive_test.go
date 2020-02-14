@@ -97,10 +97,14 @@ func TestInit(t *testing.T) {
 				Limit: 10,
 			})
 
-			gotGetPeers, err = readGetPeersMsgs(records[i].In(), gotGetPeers)
+			messages, err := readAndAssertMessages(records[i].In(), 1, func() protobuf.Message {
+				return new(pb.GetPeers)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			gotGetPeers = append(gotGetPeers, messages[0].(*pb.GetPeers))
 		}
 
 		if fmt.Sprint(gotGetPeers) != fmt.Sprint(wantGetPeers) {
@@ -124,10 +128,14 @@ func TestInit(t *testing.T) {
 				wantPeers = append(wantPeers, &pb.Peers{Peers: []string{}})
 			}
 
-			gotPeers, err = readPeersMsgs(records[i].Out(), gotPeers)
+			messages, err := readAndAssertMessages(records[i].Out(), 1, func() protobuf.Message {
+				return new(pb.Peers)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			gotPeers = append(gotPeers, messages[0].(*pb.Peers))
 		}
 
 		if fmt.Sprint(gotPeers) != fmt.Sprint(wantPeers) {
@@ -136,44 +144,21 @@ func TestInit(t *testing.T) {
 	})
 }
 
-func readGetPeersMsgs(in []byte, peers []*pb.GetPeers) ([]*pb.GetPeers, error) {
+func readAndAssertMessages(in []byte, expectedLen int, initMsgFunc func() protobuf.Message) ([]protobuf.Message, error) {
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(in),
-		func() protobuf.Message { return new(pb.GetPeers) },
+		initMsgFunc,
 	)
 
 	if err != nil {
 		return nil, err
 	}
-	if len(messages) != 1 {
+
+	if len(messages) != expectedLen {
 		return nil, fmt.Errorf("got %v messages, want %v", len(messages), 1)
 	}
 
-	for _, m := range messages {
-		peers = append(peers, m.(*pb.GetPeers))
-	}
-
-	return peers, nil
-}
-
-func readPeersMsgs(in []byte, peers []*pb.Peers) ([]*pb.Peers, error) {
-	messages, err := protobuf.ReadMessages(
-		bytes.NewReader(in),
-		func() protobuf.Message { return new(pb.Peers) },
-	)
-
-	if err != nil {
-		return nil, err
-	}
-	if len(messages) != 1 {
-		return nil, fmt.Errorf("got %v messages, want %v", len(messages), 1)
-	}
-
-	for _, m := range messages {
-		peers = append(peers, m.(*pb.Peers))
-	}
-
-	return peers, nil
+	return messages, nil
 }
 
 func newMultiAddr(address string) ma.Multiaddr {

@@ -27,11 +27,11 @@ const (
 )
 
 type Service struct {
-	streamer          p2p.Streamer
-	connectionManager p2p.Connecter
-	peerSuggester     DiscoveryPeerer
-	addressFinder     AddressFinder
-	logger            logging.Logger
+	streamer        p2p.Streamer
+	connecter       p2p.Connecter
+	discoveryPeerer DiscoveryPeerer
+	addressFinder   AddressFinder
+	logger          logging.Logger
 }
 
 type Options struct {
@@ -44,11 +44,11 @@ type Options struct {
 
 func New(o Options) *Service {
 	return &Service{
-		streamer:          o.Streamer,
-		logger:            o.Logger,
-		connectionManager: o.ConnectionManager,
-		peerSuggester:     o.PeerSuggester,
-		addressFinder:     o.AddressFinder,
+		streamer:        o.Streamer,
+		logger:          o.Logger,
+		connecter:       o.ConnectionManager,
+		discoveryPeerer: o.PeerSuggester,
+		addressFinder:   o.AddressFinder,
 	}
 }
 
@@ -91,7 +91,7 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 				continue
 			}
 
-			if _, err := s.connectionManager.Connect(ctx, addr); err != nil {
+			if _, err := s.connecter.Connect(ctx, addr); err != nil {
 				s.logger.Infof("Connect failed for %s: %w", addr.String(), err)
 				continue
 			}
@@ -132,8 +132,8 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	}
 
 	// the assumption is that the peer suggester is taking care of the validity of suggested peers
-	// todo: should we track peer sent in hive or leave it to the peerSuggester?
-	peers := s.peerSuggester.DiscoveryPeers(peer, int(peersReq.Bin), int(peersReq.Limit))
+	// todo: should we track peer sent in hive or leave it to the discoveryPeerer?
+	peers := s.discoveryPeerer.DiscoveryPeers(peer, int(peersReq.Bin), int(peersReq.Limit))
 	var peersResp pb.Peers
 	for _, p := range peers {
 		underlay, err := s.addressFinder.FindAddress(p.Address)
