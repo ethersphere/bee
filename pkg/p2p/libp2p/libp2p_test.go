@@ -27,13 +27,6 @@ import (
 func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address, cleanup func()) {
 	t.Helper()
 
-	// disable ws until the race condition in:
-	// github.com/gorilla/websocket@v1.4.1/conn.go:614
-	// github.com/gorilla/websocket@v1.4.1/conn.go:781
-	// using github.com/libp2p/go-libp2p-transport-upgrader@v0.1.1
-	// is solved
-	o.DisableWS = true
-
 	if o.PrivateKey == nil {
 		var err error
 		o.PrivateKey, err = crypto.GenerateSecp256k1Key()
