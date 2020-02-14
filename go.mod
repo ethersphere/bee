@@ -11,6 +11,7 @@ require (
 	github.com/libp2p/go-libp2p v0.5.1
 	github.com/libp2p/go-libp2p-autonat-svc v0.1.0
 	github.com/libp2p/go-libp2p-core v0.3.0
+	github.com/libp2p/go-libp2p-peerstore v0.1.4
 	github.com/libp2p/go-libp2p-quic-transport v0.2.2
 	github.com/libp2p/go-tcp-transport v0.1.1
 	github.com/libp2p/go-ws-transport v0.2.0
