@@ -24,7 +24,7 @@ var _ topology.Driver = (*driver)(nil)
 // driver drives the connectivity between nodes. It is a basic implementation of a connectivity driver.
 // that enabled full connectivity in the sense that:
 // - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address.
-// - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (PeerSuggester interface).
+// - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (DiscoveryPeerer interface).
 type driver struct {
 	mtx         sync.Mutex
 	connected   map[string]swarm.Address

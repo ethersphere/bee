@@ -29,9 +29,9 @@ func TestInit(t *testing.T) {
 
 	// this is the receiving side
 	nodeReceiver := New(Options{
-		PeerSuggester: peerSuggester,
-		AddressFinder: addressFinder,
-		Logger:        logger,
+		DiscoveryPeerer: peerSuggester,
+		AddressFinder:   addressFinder,
+		Logger:          logger,
 	})
 
 	// setup the stream recorder to record stream data
@@ -40,9 +40,9 @@ func TestInit(t *testing.T) {
 	)
 
 	nodeInit := New(Options{
-		Streamer:          streamer,
-		ConnectionManager: connectionManager,
-		Logger:            logger,
+		Streamer:  streamer,
+		Connecter: connectionManager,
+		Logger:    logger,
 	})
 
 	t.Run("OK - node responds with some peers for bin 1 & 2", func(t *testing.T) {
@@ -83,8 +83,8 @@ func TestInit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if l := len(records); l != 7 {
-			t.Fatalf("got %v records, want %v", l, 1)
+		if l := len(records); l != maxPO {
+			t.Fatalf("got %v records, want %v", l, maxPO)
 		}
 
 		// validate received requestPeers requests

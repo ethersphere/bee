@@ -22,7 +22,7 @@ const (
 	protocolName    = "hive"
 	protocolVersion = "1.0.0"
 	peersStreamName = "peers"
-	maxPO           = 7
+	maxPO           = 16
 	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
 )
 
@@ -35,19 +35,19 @@ type Service struct {
 }
 
 type Options struct {
-	Streamer          p2p.Streamer
-	ConnectionManager p2p.Connecter
-	PeerSuggester     DiscoveryPeerer
-	AddressFinder     AddressFinder
-	Logger            logging.Logger
+	Streamer        p2p.Streamer
+	Connecter       p2p.Connecter
+	DiscoveryPeerer DiscoveryPeerer
+	AddressFinder   AddressFinder
+	Logger          logging.Logger
 }
 
 func New(o Options) *Service {
 	return &Service{
 		streamer:        o.Streamer,
 		logger:          o.Logger,
-		connecter:       o.ConnectionManager,
-		discoveryPeerer: o.PeerSuggester,
+		connecter:       o.Connecter,
+		discoveryPeerer: o.DiscoveryPeerer,
 		addressFinder:   o.AddressFinder,
 	}
 }
@@ -139,6 +139,8 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 		underlay, err := s.addressFinder.FindAddress(p.Address)
 		if err != nil {
 			// skip this peer
+			// this might happen if there is a disconnect of the peer before the call to findAddress
+			// or if there is an inconsistency between the suggested peer and our addresses bookkeeping
 			s.logger.Warningf("Skipping peer in peers response %s: %w", p, err)
 			continue
 		}
