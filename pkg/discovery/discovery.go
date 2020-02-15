@@ -17,7 +17,7 @@ type Driver interface {
 
 // Peerer can suggest new known or connected peers to other peers
 type Peerer interface {
-	// Peers fetches limit amount of new known peers for provided peer & bin
-	// Subsequent call to this method should fetch different, new peers if any
+	// Peers fetches up to limit amount of new known peers for provided peer & bin
+	// Subsequent call to this method should fetch different, new peers, if any
 	Peers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
 }
