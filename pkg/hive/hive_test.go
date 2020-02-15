@@ -11,6 +11,8 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+
 	ma "github.com/multiformats/go-multiaddr"
 
 	pb "github.com/ethersphere/bee/pkg/hive/pb"
@@ -25,12 +27,12 @@ func TestInit(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	connectionManager := &ConnectionManagerMock{}
 	peerSuggester := &PeerSuggesterMock{}
-	addressFinder := &AddressFinderMock{}
+	addressBook := inmem.New()
 
 	// this is the receiving side
 	nodeReceiver := New(Options{
 		DiscoveryPeerer: peerSuggester,
-		AddressFinder:   addressFinder,
+		AddressBook:     addressBook,
 		Logger:          logger,
 	})
 
@@ -46,31 +48,28 @@ func TestInit(t *testing.T) {
 	})
 
 	t.Run("OK - node responds with some peers for bin 1 & 2", func(t *testing.T) {
-		// prepare expected peers to return from discovery peerer for bins 0 & 1
-		discoveryPeers := make(map[int][]p2p.Peer)
-		addr1, addr2, addr3 :=
-			swarm.MustParseHexAddress("1aaaaaaa"),
+		overlays := []swarm.Address{swarm.MustParseHexAddress("1aaaaaaa"),
 			swarm.MustParseHexAddress("1bbbbbbb"),
-			swarm.MustParseHexAddress("1ccccccc")
+			swarm.MustParseHexAddress("1ccccccc")}
+		underlays := []ma.Multiaddr{newMultiAddr("/ip4/1.1.1.1"),
+			newMultiAddr("/ip4/1.1.1.2"),
+			newMultiAddr("/ip4/1.1.1.3")}
+
+		//populate discovery peerer for bin 1 & 2
+		discoveryPeers := make(map[int][]p2p.Peer)
 		discoveryPeers[0] = []p2p.Peer{
-			{Address: addr1},
-			{Address: addr2},
+			{Address: overlays[0]},
+			{Address: overlays[1]},
 		}
 		discoveryPeers[1] = []p2p.Peer{
-			{Address: addr3},
+			{Address: overlays[2]},
 		}
 		peerSuggester.Peers = discoveryPeers
 
-		// map overlay addresses to multiaddr in address finder
-		addresses := make(map[string]ma.Multiaddr)
-		addr1Multi, addr2Multi, addr3Multi := newMultiAddr("/ip4/1.1.1.1"),
-			newMultiAddr("/ip4/1.1.1.2"),
-			newMultiAddr("/ip4/1.1.1.3")
-
-		addresses[addr1.String()] = addr1Multi
-		addresses[addr2.String()] = addr2Multi
-		addresses[addr3.String()] = addr3Multi
-		addressFinder.Underlays = addresses
+		// populate address book
+		for i := 0; i < 3; i++ {
+			addressBook.Put(overlays[i], underlays[i])
+		}
 
 		initAddr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 		if err := nodeInit.Init(context.Background(), p2p.Peer{
@@ -116,17 +115,18 @@ func TestInit(t *testing.T) {
 		var wantPeers []*pb.Peers
 		var gotPeers []*pb.Peers
 
-		wantPeers = append(wantPeers,
-			&pb.Peers{Peers: []string{
-				addresses[addr1.String()].String(),
-				addresses[addr2.String()].String(),
-			}},
-			&pb.Peers{Peers: []string{addresses[addr3.String()].String()}})
-
 		for i := 0; i < maxPO; i++ {
-			if i > 1 {
-				wantPeers = append(wantPeers, &pb.Peers{Peers: []string{}})
+			p := discoveryPeers[i]
+			var addrs []string
+			for _, addr := range p {
+				underlay, exists := addressBook.Get(addr.Address)
+				if !exists {
+					t.Fatalf("underlay not found")
+				}
+
+				addrs = append(addrs, underlay.String())
 			}
+			wantPeers = append(wantPeers, &pb.Peers{Peers: addrs})
 
 			messages, err := readAndAssertMessages(records[i].Out(), 1, func() protobuf.Message {
 				return new(pb.Peers)
@@ -184,17 +184,4 @@ type PeerSuggesterMock struct {
 
 func (p *PeerSuggesterMock) DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
 	return p.Peers[bin]
-}
-
-type AddressFinderMock struct {
-	Underlays map[string]ma.Multiaddr
-	Err       error
-}
-
-func (a *AddressFinderMock) FindAddress(overlay swarm.Address) (underlay ma.Multiaddr, err error) {
-	if a.Err != nil {
-		return nil, a.Err
-	}
-
-	return a.Underlays[overlay.String()], nil
 }

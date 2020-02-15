@@ -9,13 +9,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/addressbook"
+
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -30,7 +31,7 @@ type Service struct {
 	streamer        p2p.Streamer
 	connecter       p2p.Connecter
 	discoveryPeerer DiscoveryPeerer
-	addressFinder   AddressFinder
+	addressBook     addressbook.GetterPutter
 	logger          logging.Logger
 }
 
@@ -38,7 +39,7 @@ type Options struct {
 	Streamer        p2p.Streamer
 	Connecter       p2p.Connecter
 	DiscoveryPeerer DiscoveryPeerer
-	AddressFinder   AddressFinder
+	AddressBook     addressbook.GetterPutter
 	Logger          logging.Logger
 }
 
@@ -48,16 +49,12 @@ func New(o Options) *Service {
 		logger:          o.Logger,
 		connecter:       o.Connecter,
 		discoveryPeerer: o.DiscoveryPeerer,
-		addressFinder:   o.AddressFinder,
+		addressBook:     o.AddressBook,
 	}
 }
 
 type DiscoveryPeerer interface {
 	DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
-}
-
-type AddressFinder interface {
-	FindAddress(overlay swarm.Address) (underlay ma.Multiaddr, err error)
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -136,12 +133,12 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	peers := s.discoveryPeerer.DiscoveryPeers(peer, int(peersReq.Bin), int(peersReq.Limit))
 	var peersResp pb.Peers
 	for _, p := range peers {
-		underlay, err := s.addressFinder.FindAddress(p.Address)
-		if err != nil {
+		underlay, exists := s.addressBook.Get(p.Address)
+		if !exists {
 			// skip this peer
 			// this might happen if there is a disconnect of the peer before the call to findAddress
 			// or if there is an inconsistency between the suggested peer and our addresses bookkeeping
-			s.logger.Warningf("Skipping peer in peers response %s: %w", p, err)
+			s.logger.Warningf("Skipping peer in peers response, peer does not exists in address book.", p)
 			continue
 		}
 
