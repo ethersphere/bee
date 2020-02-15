@@ -47,24 +47,24 @@ func TestInit(t *testing.T) {
 		Logger:    logger,
 	})
 
+	overlays := []swarm.Address{swarm.MustParseHexAddress("1aaaaaaa"),
+		swarm.MustParseHexAddress("1bbbbbbb"),
+		swarm.MustParseHexAddress("1ccccccc")}
+	underlays := []ma.Multiaddr{newMultiAddr("/ip4/1.1.1.1"),
+		newMultiAddr("/ip4/1.1.1.2"),
+		newMultiAddr("/ip4/1.1.1.3")}
+	testPeer := p2p.Peer{Address: swarm.MustParseHexAddress("ca1e9f3a")}
+
+	//populate discovery peerer for bin 1 & 2
+	peerer.Add(testPeer, 0, p2p.Peer{Address: overlays[0]}, p2p.Peer{Address: overlays[1]})
+	peerer.Add(testPeer, 1, p2p.Peer{Address: overlays[2]})
+
+	// populate address book
+	for i := 0; i < len(overlays); i++ {
+		addressBook.Put(overlays[i], underlays[i])
+	}
+
 	t.Run("OK - node responds with some peers for bin 1 & 2", func(t *testing.T) {
-		overlays := []swarm.Address{swarm.MustParseHexAddress("1aaaaaaa"),
-			swarm.MustParseHexAddress("1bbbbbbb"),
-			swarm.MustParseHexAddress("1ccccccc")}
-		underlays := []ma.Multiaddr{newMultiAddr("/ip4/1.1.1.1"),
-			newMultiAddr("/ip4/1.1.1.2"),
-			newMultiAddr("/ip4/1.1.1.3")}
-		testPeer := p2p.Peer{Address: swarm.MustParseHexAddress("ca1e9f3a")}
-
-		//populate discovery peerer for bin 1 & 2
-		peerer.Add(testPeer, 0, p2p.Peer{Address: overlays[0]}, p2p.Peer{Address: overlays[1]})
-		peerer.Add(testPeer, 1, p2p.Peer{Address: overlays[2]})
-
-		// populate address book
-		for i := 0; i < len(overlays); i++ {
-			addressBook.Put(overlays[i], underlays[i])
-		}
-
 		if err := nodeInit.Init(context.Background(), testPeer); err != nil {
 			t.Fatal(err)
 		}
