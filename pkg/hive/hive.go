@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/discovery"
+
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -27,33 +29,29 @@ const (
 )
 
 type Service struct {
-	streamer        p2p.Streamer
-	connecter       p2p.Connecter
-	discoveryPeerer DiscoveryPeerer
-	addressBook     addressbook.GetterPutter
-	logger          logging.Logger
+	streamer    p2p.Streamer
+	connecter   p2p.Connecter
+	peerer      discovery.Peerer
+	addressBook addressbook.GetterPutter
+	logger      logging.Logger
 }
 
 type Options struct {
-	Streamer        p2p.Streamer
-	Connecter       p2p.Connecter
-	DiscoveryPeerer DiscoveryPeerer
-	AddressBook     addressbook.GetterPutter
-	Logger          logging.Logger
+	Streamer    p2p.Streamer
+	Connecter   p2p.Connecter
+	Peerer      discovery.Peerer
+	AddressBook addressbook.GetterPutter
+	Logger      logging.Logger
 }
 
 func New(o Options) *Service {
 	return &Service{
-		streamer:        o.Streamer,
-		logger:          o.Logger,
-		connecter:       o.Connecter,
-		discoveryPeerer: o.DiscoveryPeerer,
-		addressBook:     o.AddressBook,
+		streamer:    o.Streamer,
+		logger:      o.Logger,
+		connecter:   o.Connecter,
+		peerer:      o.Peerer,
+		addressBook: o.AddressBook,
 	}
-}
-
-type DiscoveryPeerer interface {
-	DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer)
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -128,8 +126,8 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	}
 
 	// the assumption is that the peer suggester is taking care of the validity of suggested peers
-	// todo: should we track peer sent in hive or leave it to the discoveryPeerer?
-	peers := s.discoveryPeerer.DiscoveryPeers(peer, int(peersReq.Bin), int(peersReq.Limit))
+	// todo: should we track peer sent in hive or leave it to the peerer?
+	peers := s.peerer.Peers(peer, int(peersReq.Bin), int(peersReq.Limit))
 	var peersResp pb.Peers
 	for _, p := range peers {
 		underlay, exists := s.addressBook.Get(p.Address)

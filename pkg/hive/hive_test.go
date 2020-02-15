@@ -11,6 +11,8 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/discovery/mock"
+
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook/inmem"
@@ -25,14 +27,14 @@ import (
 func TestInit(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	connectionManager := &ConnecterMock{}
-	peerSuggester := &DiscoveryPeererMock{}
+	peerer := mock.NewPeerer()
 	addressBook := inmem.New()
 
 	// this is the receiving side
 	nodeReceiver := New(Options{
-		DiscoveryPeerer: peerSuggester,
-		AddressBook:     addressBook,
-		Logger:          logger,
+		Peerer:      peerer,
+		AddressBook: addressBook,
+		Logger:      logger,
 	})
 
 	// setup the stream recorder to record stream data
@@ -54,30 +56,22 @@ func TestInit(t *testing.T) {
 			newMultiAddr("/ip4/1.1.1.2"),
 			newMultiAddr("/ip4/1.1.1.3")}
 
+		testPeer := p2p.Peer{Address: swarm.MustParseHexAddress("ca1e9f3a")}
+
 		//populate discovery peerer for bin 1 & 2
-		discoveryPeers := make(map[int][]p2p.Peer)
-		discoveryPeers[0] = []p2p.Peer{
-			{Address: overlays[0]},
-			{Address: overlays[1]},
-		}
-		discoveryPeers[1] = []p2p.Peer{
-			{Address: overlays[2]},
-		}
-		peerSuggester.Peers = discoveryPeers
+		peerer.Add(testPeer, 0, p2p.Peer{Address: overlays[0]}, p2p.Peer{Address: overlays[1]})
+		peerer.Add(testPeer, 1, p2p.Peer{Address: overlays[2]})
 
 		// populate address book
-		for i := 0; i < 3; i++ {
+		for i := 0; i < len(overlays); i++ {
 			addressBook.Put(overlays[i], underlays[i])
 		}
 
-		initAddr := swarm.MustParseHexAddress("ca1e9f3a")
-		if err := nodeInit.Init(context.Background(), p2p.Peer{
-			Address: initAddr,
-		}); err != nil {
+		if err := nodeInit.Init(context.Background(), testPeer); err != nil {
 			t.Fatal(err)
 		}
 
-		records, err := streamer.Records(initAddr, protocolName, protocolVersion, peersStreamName)
+		records, err := streamer.Records(testPeer.Address, protocolName, protocolVersion, peersStreamName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +109,7 @@ func TestInit(t *testing.T) {
 		var gotPeers []*pb.Peers
 
 		for i := 0; i < maxPO; i++ {
-			p := discoveryPeers[i]
+			p := peerer.Peers(testPeer, i, 0)
 			var addrs []string
 			for _, addr := range p {
 				underlay, exists := addressBook.Get(addr.Address)
@@ -175,12 +169,4 @@ type ConnecterMock struct {
 
 func (c *ConnecterMock) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
 	return swarm.Address{}, c.Err
-}
-
-type DiscoveryPeererMock struct {
-	Peers map[int][]p2p.Peer
-}
-
-func (p *DiscoveryPeererMock) DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
-	return p.Peers[bin]
 }
