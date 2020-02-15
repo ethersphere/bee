@@ -71,7 +71,7 @@ func TestInit(t *testing.T) {
 			addressBook.Put(overlays[i], underlays[i])
 		}
 
-		initAddr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+		initAddr := swarm.MustParseHexAddress("ca1e9f3a")
 		if err := nodeInit.Init(context.Background(), p2p.Peer{
 			Address: initAddr,
 		}); err != nil {
