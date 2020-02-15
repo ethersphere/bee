@@ -11,10 +11,9 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
-
 	ma "github.com/multiformats/go-multiaddr"
 
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	pb "github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"

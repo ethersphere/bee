@@ -9,10 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
-
 	ma "github.com/multiformats/go-multiaddr"
 
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
