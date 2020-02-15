@@ -25,7 +25,7 @@ import (
 
 func TestInit(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	connectionManager := &ConnecterMock{}
+	connecter := &ConnecterMock{}
 	peerer := mock.NewPeerer()
 	addressBook := inmem.New()
 
@@ -43,7 +43,7 @@ func TestInit(t *testing.T) {
 
 	nodeInit := New(Options{
 		Streamer:  streamer,
-		Connecter: connectionManager,
+		Connecter: connecter,
 		Logger:    logger,
 	})
 
