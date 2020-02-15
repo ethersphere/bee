@@ -11,11 +11,10 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/discovery/mock"
-
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+	"github.com/ethersphere/bee/pkg/discovery/mock"
 	pb "github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -55,7 +54,6 @@ func TestInit(t *testing.T) {
 		underlays := []ma.Multiaddr{newMultiAddr("/ip4/1.1.1.1"),
 			newMultiAddr("/ip4/1.1.1.2"),
 			newMultiAddr("/ip4/1.1.1.3")}
-
 		testPeer := p2p.Peer{Address: swarm.MustParseHexAddress("ca1e9f3a")}
 
 		//populate discovery peerer for bin 1 & 2
