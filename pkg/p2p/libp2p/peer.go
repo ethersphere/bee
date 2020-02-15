@@ -54,7 +54,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 
 	overlay := r.overlays[peerID]
 	delete(r.overlays, peerID)
-	delete(r.underlays, encodeunderlaysKey(overlay))
+	delete(r.underlays, overlay.ByteString())
 
 	delete(r.connections[peerID], c)
 	if len(r.connections[peerID]) == 0 {
@@ -81,7 +81,7 @@ func (r *peerRegistry) add(c network.Conn, overlay swarm.Address) {
 	peerID := c.RemotePeer()
 
 	r.mu.Lock()
-	r.underlays[encodeunderlaysKey(overlay)] = peerID
+	r.underlays[overlay.ByteString()] = peerID
 	r.overlays[peerID] = overlay
 	if _, ok := r.connections[peerID]; !ok {
 		r.connections[peerID] = make(map[network.Conn]struct{})
@@ -92,7 +92,7 @@ func (r *peerRegistry) add(c network.Conn, overlay swarm.Address) {
 
 func (r *peerRegistry) peerID(overlay swarm.Address) (peerID libp2ppeer.ID, found bool) {
 	r.mu.RLock()
-	peerID, found = r.underlays[encodeunderlaysKey(overlay)]
+	peerID, found = r.underlays[overlay.ByteString()]
 	r.mu.RUnlock()
 	return peerID, found
 }
@@ -108,11 +108,7 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	r.mu.Lock()
 	overlay := r.overlays[peerID]
 	delete(r.overlays, peerID)
-	delete(r.underlays, encodeunderlaysKey(overlay))
+	delete(r.underlays, overlay.ByteString())
 	delete(r.connections, peerID)
 	r.mu.Unlock()
-}
-
-func encodeunderlaysKey(overlay swarm.Address) string {
-	return string(overlay.Bytes())
 }

@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/libp2p/go-libp2p-core/helpers"
-
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -22,13 +20,16 @@ import (
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
-	secio "github.com/libp2p/go-libp2p-secio"
-	libp2ptls "github.com/libp2p/go-libp2p-tls"
+	"github.com/libp2p/go-tcp-transport"
+	ws "github.com/libp2p/go-ws-transport"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 )
@@ -37,6 +38,7 @@ var _ p2p.Service = (*Service)(nil)
 
 type Service struct {
 	host             host.Host
+	libp2pPeerstore  peerstore.Peerstore
 	metrics          metrics
 	networkID        int32
 	handshakeService *handshake.Service
@@ -101,17 +103,16 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 	}
 
+	security := libp2p.DefaultSecurity
+	libp2pPeerstore := pstoremem.NewPeerstore()
+
 	opts := []libp2p.Option{
-		// Multiple listen addresses
 		libp2p.ListenAddrStrings(listenAddrs...),
-		// support TLS connections
-		libp2p.Security(libp2ptls.ID, libp2ptls.New),
-		// support secio connections
-		libp2p.Security(secio.ID, secio.New),
-		// support any other default transports (TCP)
-		libp2p.DefaultTransports,
+		security,
 		// Attempt to open ports using uPNP for NATed hosts.
 		libp2p.NATPortMap(),
+		// Use dedicated peerstore instead the global DefaultPeerstore
+		libp2p.Peerstore(libp2pPeerstore),
 	}
 
 	if o.PrivateKey != nil {
@@ -120,12 +121,19 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		)
 	}
 
-	if !o.DisableQUIC {
-		opts = append(opts,
-			// support QUIC - experimental
-			libp2p.Transport(libp2pquic.NewTransport),
-		)
+	transports := []libp2p.Option{
+		libp2p.Transport(tcp.NewTCPTransport),
 	}
+
+	if !o.DisableWS {
+		transports = append(transports, libp2p.Transport(ws.New))
+	}
+
+	if !o.DisableQUIC {
+		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
+	}
+
+	opts = append(opts, transports...)
 
 	h, err := libp2p.New(ctx, opts...)
 	if err != nil {
@@ -138,10 +146,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	if _, err = autonat.NewAutoNATService(ctx, h,
 		// Support same non default security and transport options as
 		// original host.
-		libp2p.Security(libp2ptls.ID, libp2ptls.New),
-		libp2p.Security(secio.ID, secio.New),
-		libp2p.Transport(libp2pquic.NewTransport),
-		libp2p.DefaultTransports,
+		append(transports, security)...,
 	); err != nil {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
@@ -149,6 +154,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	peerRegistry := newPeerRegistry()
 	s := &Service{
 		host:             h,
+		libp2pPeerstore:  libp2pPeerstore,
 		metrics:          newMetrics(),
 		networkID:        o.NetworkID,
 		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
@@ -358,5 +364,8 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 }
 
 func (s *Service) Close() error {
+	if err := s.libp2pPeerstore.Close(); err != nil {
+		return err
+	}
 	return s.host.Close()
 }
