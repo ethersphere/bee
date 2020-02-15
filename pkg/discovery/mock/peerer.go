@@ -18,7 +18,7 @@ func NewPeerer() *Peerer {
 }
 
 func (p *Peerer) Peers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
-	peers = p.peers[peer.Address.String()][bin]
+	peers = p.peers[peer.Address.ByteString()][bin]
 
 	if limit != 0 {
 		if limit > len(peers) {
@@ -32,11 +32,11 @@ func (p *Peerer) Peers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
 }
 
 func (p *Peerer) Add(peer p2p.Peer, bin int, peers ...p2p.Peer) {
-	peersMap, ok := p.peers[peer.Address.String()]
+	peersMap, ok := p.peers[peer.Address.ByteString()]
 	if !ok {
 		peersMap = make(map[int]peersVal)
 	}
 
 	peersMap[bin] = append(peersMap[bin], peers...)
-	p.peers[peer.Address.String()] = peersMap
+	p.peers[peer.Address.ByteString()] = peersMap
 }
