@@ -6,7 +6,7 @@ package mock
 
 import "bytes"
 
-type StreamMock struct {
+type Stream struct {
 	readBuffer        *bytes.Buffer
 	writeBuffer       *bytes.Buffer
 	writeCounter      int
@@ -17,20 +17,20 @@ type StreamMock struct {
 	writeErrCheckmark int
 }
 
-func NewStream(readBuffer, writeBuffer *bytes.Buffer) *StreamMock {
-	return &StreamMock{readBuffer: readBuffer, writeBuffer: writeBuffer}
+func NewStream(readBuffer, writeBuffer *bytes.Buffer) *Stream {
+	return &Stream{readBuffer: readBuffer, writeBuffer: writeBuffer}
 }
-func (s *StreamMock) SetReadErr(err error, checkmark int) {
+func (s *Stream) SetReadErr(err error, checkmark int) {
 	s.readError = err
 	s.readErrCheckmark = checkmark
 }
 
-func (s *StreamMock) SetWriteErr(err error, checkmark int) {
+func (s *Stream) SetWriteErr(err error, checkmark int) {
 	s.writeError = err
 	s.writeErrCheckmark = checkmark
 }
 
-func (s *StreamMock) Read(p []byte) (n int, err error) {
+func (s *Stream) Read(p []byte) (n int, err error) {
 	if s.readError != nil && s.readErrCheckmark <= s.readCounter {
 		return 0, s.readError
 	}
@@ -39,7 +39,7 @@ func (s *StreamMock) Read(p []byte) (n int, err error) {
 	return s.readBuffer.Read(p)
 }
 
-func (s *StreamMock) Write(p []byte) (n int, err error) {
+func (s *Stream) Write(p []byte) (n int, err error) {
 	if s.writeError != nil && s.writeErrCheckmark <= s.writeCounter {
 		return 0, s.writeError
 	}
@@ -48,6 +48,10 @@ func (s *StreamMock) Write(p []byte) (n int, err error) {
 	return s.writeBuffer.Write(p)
 }
 
-func (s *StreamMock) Close() error {
+func (s *Stream) Close() error {
+	return nil
+}
+
+func (s *Stream) FullClose() error {
 	return nil
 }

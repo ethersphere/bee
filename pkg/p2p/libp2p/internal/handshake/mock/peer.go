@@ -6,14 +6,14 @@ package mock
 
 import "github.com/ethersphere/bee/pkg/swarm"
 
-type PeerFinderMock struct {
+type PeerFinder struct {
 	found bool
 }
 
-func (p *PeerFinderMock) SetFound(found bool) {
+func (p *PeerFinder) SetFound(found bool) {
 	p.found = found
 }
 
-func (p *PeerFinderMock) Exists(overlay swarm.Address) (found bool) {
+func (p *PeerFinder) Exists(overlay swarm.Address) (found bool) {
 	return p.found
 }

@@ -156,6 +156,10 @@ func (s *stream) Close() error {
 	return nil
 }
 
+func (s *stream) FullClose() error {
+	return s.Close()
+}
+
 type record struct {
 	b      []byte
 	c      int
