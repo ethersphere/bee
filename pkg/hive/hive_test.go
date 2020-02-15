@@ -24,8 +24,8 @@ import (
 
 func TestInit(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	connectionManager := &ConnectionManagerMock{}
-	peerSuggester := &PeerSuggesterMock{}
+	connectionManager := &ConnecterMock{}
+	peerSuggester := &DiscoveryPeererMock{}
 	addressBook := inmem.New()
 
 	// this is the receiving side
@@ -169,18 +169,18 @@ func newMultiAddr(address string) ma.Multiaddr {
 	return addr
 }
 
-type ConnectionManagerMock struct {
+type ConnecterMock struct {
 	Err error
 }
 
-func (c *ConnectionManagerMock) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
+func (c *ConnecterMock) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
 	return swarm.Address{}, c.Err
 }
 
-type PeerSuggesterMock struct {
+type DiscoveryPeererMock struct {
 	Peers map[int][]p2p.Peer
 }
 
-func (p *PeerSuggesterMock) DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
+func (p *DiscoveryPeererMock) DiscoveryPeers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
 	return p.Peers[bin]
 }
