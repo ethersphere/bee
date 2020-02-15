@@ -135,7 +135,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 			// skip this peer
 			// this might happen if there is a disconnect of the peer before the call to findAddress
 			// or if there is an inconsistency between the suggested peer and our addresses bookkeeping
-			s.logger.Warningf("Skipping peer in peers response, peer does not exists in address book.", p)
+			s.logger.Warningf("Skipping peer in peers response: peer does not exists in the address book.", p)
 			continue
 		}
 
