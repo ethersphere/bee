@@ -5,14 +5,14 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
-type Stream struct {
+type stream struct {
 	network.Stream
 }
 
-func (s *Stream) FullClose() error {
+func (s *stream) FullClose() error {
 	return helpers.FullClose(s)
 }
 
-func NewStream(stream network.Stream) *Stream {
-	return &Stream{Stream: stream}
+func newStream(s network.Stream) *stream {
+	return &stream{Stream: s}
 }
