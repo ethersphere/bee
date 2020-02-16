@@ -6,6 +6,7 @@ package mock
 
 import "github.com/ethersphere/bee/pkg/swarm"
 
+// todo: implement peer registry mocks, export appropriate interface and move those in libp2p so it can be used in handshake
 type PeerFinder struct {
 	found bool
 }
