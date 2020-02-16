@@ -19,5 +19,6 @@ type Driver interface {
 type Peerer interface {
 	// Peers blocks until there are new suggested peers for the provided peer
 	// and returns up to limit number of suggested peers.
+	// todo: subscribe channel, func or cond instead of blocking method
 	Peers(peer p2p.Peer, limit int) (peers []p2p.Peer)
 }

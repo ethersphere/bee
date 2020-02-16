@@ -72,6 +72,7 @@ func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
 		for {
 			// the assumption is that the peer suggester is taking care of the validity of suggested peers
 			// peers call blocks until there is new peers to send
+			// todo: subscribe channel, func or cond instead of a blocking method
 			peers := s.peerer.Peers(peer, 50)
 			if err := s.sendPeers(ctx, peer, peers); err != nil {
 				// todo: handle different errors differently
