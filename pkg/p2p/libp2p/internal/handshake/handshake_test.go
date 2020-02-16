@@ -28,7 +28,7 @@ func TestHandshake(t *testing.T) {
 		Light:     false,
 	}
 
-	peerFinderMock := &mock.PeerFinderMock{}
+	peerFinderMock := &mock.PeerFinder{}
 	handshakeService := New(peerFinderMock, info.Address, info.NetworkID, logger)
 
 	t.Run("OK", func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestHandshake(t *testing.T) {
 	t.Run("ERROR - Syn write error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write syn message: %w", testErr)
-		stream := &mock.StreamMock{}
+		stream := &mock.Stream{}
 		stream.SetWriteErr(testErr, 0)
 		res, err := handshakeService.Handshake(stream)
 		if err == nil || err.Error() != expectedErr.Error() {
@@ -213,7 +213,7 @@ func TestHandle(t *testing.T) {
 	}
 
 	logger := logging.New(ioutil.Discard, 0)
-	peerFinderMock := &mock.PeerFinderMock{}
+	peerFinderMock := &mock.PeerFinder{}
 	handshakeService := New(peerFinderMock, nodeInfo.Address, nodeInfo.NetworkID, logger)
 
 	t.Run("OK", func(t *testing.T) {
@@ -264,7 +264,7 @@ func TestHandle(t *testing.T) {
 	t.Run("ERROR - read error ", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("read syn message: %w", testErr)
-		stream := &mock.StreamMock{}
+		stream := &mock.Stream{}
 		stream.SetReadErr(testErr, 0)
 		res, err := handshakeService.Handle(stream)
 		if err == nil || err.Error() != expectedErr.Error() {
