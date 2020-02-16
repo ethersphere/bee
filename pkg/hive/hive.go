@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/discovery"
+	"github.com/ethersphere/bee/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
+
+	"github.com/ethersphere/bee/pkg/discovery"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/hive/pb"
@@ -24,7 +26,6 @@ const (
 	protocolName    = "hive"
 	protocolVersion = "1.0.0"
 	peersStreamName = "peers"
-	maxPO           = 16
 	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
 )
 
@@ -71,64 +72,29 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 // Init is called when the new peer is being initialized.
 // This should happen after overlay handshake is finished.
 func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
-	for i := 0; i < maxPO; i++ {
-		// todo: figure out the limit
-		resp, err := s.requestPeers(ctx, peer, i, 10)
-		if err != nil {
-			return err
-		}
-
-		for _, newPeer := range resp {
-			addr, err := ma.NewMultiaddr(newPeer)
-			if err != nil {
-				s.logger.Infof("Connect failed for %s: %w", newPeer, err)
-				continue
-			}
-
-			if _, err := s.connecter.Connect(ctx, addr); err != nil {
-				s.logger.Infof("Connect failed for %s: %w", addr.String(), err)
-				continue
-			}
+	// todo: handle cancel, stop, etc...
+	for {
+		// the assumption is that the peer suggester is taking care of the validity of suggested peers
+		// peers call blocks until there is new peers to send
+		peers := s.peerer.Peers(peer, 50)
+		if err := s.sendPeers(ctx, peer, peers); err != nil {
+			// todo: handle different errors differently
+			s.logger.Error(err)
+			break
 		}
 	}
 
 	return nil
 }
 
-func (s *Service) requestPeers(ctx context.Context, peer p2p.Peer, bin, limit int) ([]string, error) {
+func (s *Service) sendPeers(ctx context.Context, peer p2p.Peer, peers []p2p.Peer) error {
 	stream, err := s.streamer.NewStream(ctx, peer.Address, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
-		return nil, fmt.Errorf("new stream: %w", err)
-	}
-	defer stream.Close()
-
-	w, r := protobuf.NewWriterAndReader(stream)
-	if err := w.WriteMsg(&pb.GetPeers{
-		Bin:   uint32(bin),
-		Limit: uint32(limit),
-	}); err != nil {
-		return nil, fmt.Errorf("write requestPeers message: %w", err)
+		return fmt.Errorf("new stream: %w", err)
 	}
 
-	var peersResponse pb.Peers
-	if err := r.ReadMsgWithTimeout(messageTimeout, &peersResponse); err != nil {
-		return nil, fmt.Errorf("read requestPeers message: %w", err)
-	}
-
-	return peersResponse.Peers, nil
-}
-
-func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
-	w, r := protobuf.NewWriterAndReader(stream)
-	var peersReq pb.GetPeers
-	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
-		return fmt.Errorf("read requestPeers message: %w", err)
-	}
-
-	// the assumption is that the peer suggester is taking care of the validity of suggested peers
-	// todo: should we track peer sent in hive or leave it to the peerer?
-	peers := s.peerer.Peers(peer, int(peersReq.Bin), int(peersReq.Limit))
-	var peersResp pb.Peers
+	w, _ := protobuf.NewWriterAndReader(stream)
+	var peersRequest pb.Peers
 	for _, p := range peers {
 		underlay, exists := s.addressBook.Get(p.Address)
 		if !exists {
@@ -139,12 +105,37 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 			continue
 		}
 
-		peersResp.Peers = append(peersResp.Peers, underlay.String())
+		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
+			Overlay:  p.Address.Bytes(),
+			Underlay: underlay.String(),
+		})
 	}
 
-	if err := w.WriteMsg(&peersResp); err != nil {
+	if err := w.WriteMsg(&peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
 	}
 	// todo: await close from the receiver
+
+	return nil
+}
+
+func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
+	defer stream.Close()
+	_, r := protobuf.NewWriterAndReader(stream)
+	var peersReq pb.Peers
+	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
+		return fmt.Errorf("read requestPeers message: %w", err)
+	}
+
+	for _, newPeer := range peersReq.Peers {
+		addr, err := ma.NewMultiaddr(newPeer.Underlay)
+		if err != nil {
+			s.logger.Infof("Skipping peer in response %s: %w", newPeer, err)
+			continue
+		}
+
+		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
+	}
+
 	return nil
 }
