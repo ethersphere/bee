@@ -22,7 +22,12 @@ func NewPeerer() *Peerer {
 }
 
 func (p *Peerer) Peers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
-	peers = p.peers[peer.Address.ByteString()][bin]
+	pm, ok := p.peers[peer.Address.ByteString()]
+	if !ok {
+		return
+	}
+
+	peers = pm[bin]
 
 	if limit != 0 {
 		if limit > len(peers) {
