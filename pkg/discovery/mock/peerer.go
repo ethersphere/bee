@@ -26,14 +26,9 @@ func (p *Peerer) Peers(peer p2p.Peer, bin, limit int) (peers []p2p.Peer) {
 	if !ok {
 		return
 	}
-
 	peers = pm[bin]
 
-	if limit != 0 {
-		if limit > len(peers) {
-			limit = len(peers)
-		}
-
+	if limit != 0 && limit < len(peers) {
 		peers = peers[0:limit]
 	}
 
