@@ -9,17 +9,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/swarm"
-
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/ethersphere/bee/pkg/discovery"
-
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -69,17 +67,19 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 // Init is called when the new peer is being initialized.
 // This should happen after overlay handshake is finished.
 func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
-	// todo: handle cancel, stop, etc...
-	for {
-		// the assumption is that the peer suggester is taking care of the validity of suggested peers
-		// peers call blocks until there is new peers to send
-		peers := s.peerer.Peers(peer, 50)
-		if err := s.sendPeers(ctx, peer, peers); err != nil {
-			// todo: handle different errors differently
-			s.logger.Error(err)
-			break
+	go func() {
+		// todo: handle cancel, stop, errors, etc...
+		for {
+			// the assumption is that the peer suggester is taking care of the validity of suggested peers
+			// peers call blocks until there is new peers to send
+			peers := s.peerer.Peers(peer, 50)
+			if err := s.sendPeers(ctx, peer, peers); err != nil {
+				// todo: handle different errors differently
+				s.logger.Error(err)
+				continue
+			}
 		}
-	}
+	}()
 
 	return nil
 }
