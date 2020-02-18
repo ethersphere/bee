@@ -146,7 +146,7 @@ func readAndAssertMessages(in []byte, expectedLen int, initMsgFunc func() protob
 	}
 
 	if len(messages) != expectedLen {
-		return nil, fmt.Errorf("got %v messages, want %v", len(messages), 1)
+		return nil, fmt.Errorf("got %v messages, want %v", len(messages), expectedLen)
 	}
 
 	return messages, nil
