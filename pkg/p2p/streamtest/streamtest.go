@@ -9,14 +9,16 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
-	ErrRecordsNotFound    = errors.New("records not found")
-	ErrStreamNotSupported = errors.New("stream not supported")
+	ErrRecordsNotFound        = errors.New("records not found")
+	ErrStreamNotSupported     = errors.New("stream not supported")
+	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
 )
 
 type Recorder struct {
@@ -51,8 +53,10 @@ func New(opts ...Option) *Recorder {
 func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
-	streamOut := newStream(recordIn, recordOut)
-	streamIn := newStream(recordOut, recordIn)
+	cin := make(chan struct{}, 1)
+	cout := make(chan struct{}, 1)
+	streamOut := newStream(recordIn, recordOut, cin, cout)
+	streamIn := newStream(recordOut, recordIn, cout, cin)
 
 	var handler p2p.HandlerFunc
 	for _, p := range r.protocols {
@@ -130,12 +134,14 @@ func (r *Record) setErr(err error) {
 }
 
 type stream struct {
-	in  io.WriteCloser
-	out io.ReadCloser
+	in   io.WriteCloser
+	out  io.ReadCloser
+	cin  chan struct{}
+	cout chan struct{}
 }
 
-func newStream(in io.WriteCloser, out io.ReadCloser) *stream {
-	return &stream{in: in, out: out}
+func newStream(in io.WriteCloser, out io.ReadCloser, cin, cout chan struct{}) *stream {
+	return &stream{in: in, out: out, cin: cin, cout: cout}
 }
 
 func (s *stream) Read(p []byte) (int, error) {
@@ -153,11 +159,27 @@ func (s *stream) Close() error {
 	if err := s.out.Close(); err != nil {
 		return err
 	}
+
+	select {
+	case s.cin <- struct{}{}:
+	default:
+	}
+
 	return nil
 }
 
 func (s *stream) FullClose() error {
-	return s.Close()
+	if err := s.Close(); err != nil {
+		return err
+	}
+
+	select {
+	case <-s.cout:
+	case <-time.After(1 * time.Second):
+		return ErrStreamFullcloseTimeout
+	}
+
+	return nil
 }
 
 type record struct {

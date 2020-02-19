@@ -120,6 +120,114 @@ func TestRecorder_errStreamNotSupported(t *testing.T) {
 	}
 }
 
+func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
+				defer stream.Close()
+				// just try to read the message that it terminated with
+				// a new line character
+				_, err := bufio.NewReader(stream).ReadString('\n')
+				return err
+			}),
+		),
+	)
+
+	request := func(ctx context.Context, s p2p.Streamer, address swarm.Address) (err error) {
+		stream, err := s.NewStream(ctx, address, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			return fmt.Errorf("new stream: %w", err)
+		}
+
+		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+
+		// write a message, but do not write a new line character for handler to
+		// know that it is complete
+		if _, err := rw.WriteString("message"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := rw.Flush(); err != nil {
+			return fmt.Errorf("flush: %w", err)
+		}
+
+		if err := stream.FullClose(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	err := request(context.Background(), recorder, swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRecords(t, records, [][2]string{
+		{
+			"message",
+		},
+	}, nil)
+}
+
+func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
+				// don't close the stream here to initiate timeout
+				// just try to read the message that it terminated with
+				// a new line character
+				_, err := bufio.NewReader(stream).ReadString('\n')
+				return err
+			}),
+		),
+	)
+
+	request := func(ctx context.Context, s p2p.Streamer, address swarm.Address) (err error) {
+		stream, err := s.NewStream(ctx, address, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			return fmt.Errorf("new stream: %w", err)
+		}
+
+		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+
+		// write a message, but do not write a new line character for handler to
+		// know that it is complete
+		if _, err := rw.WriteString("message"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := rw.Flush(); err != nil {
+			return fmt.Errorf("flush: %w", err)
+		}
+
+		if err := stream.FullClose(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	err := request(context.Background(), recorder, swarm.ZeroAddress)
+	if err != streamtest.ErrStreamFullcloseTimeout {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRecords(t, records, [][2]string{
+		{
+			"message",
+		},
+	}, nil)
+}
+
 func TestRecorder_closeAfterPartialWrite(t *testing.T) {
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
