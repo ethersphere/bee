@@ -134,10 +134,12 @@ func (r *Record) setErr(err error) {
 }
 
 type stream struct {
-	in   io.WriteCloser
-	out  io.ReadCloser
-	cin  chan struct{}
-	cout chan struct{}
+	in     io.WriteCloser
+	out    io.ReadCloser
+	cin    chan struct{}
+	cout   chan struct{}
+	closed bool
+	mtx    sync.Mutex // guards close
 }
 
 func newStream(in io.WriteCloser, out io.ReadCloser, cin, cout chan struct{}) *stream {
@@ -153,6 +155,14 @@ func (s *stream) Write(p []byte) (int, error) {
 }
 
 func (s *stream) Close() error {
+	// lock + closed is used to avoid multiple closing or sending on a closed channel
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if s.closed {
+		return nil
+	}
+
 	if err := s.in.Close(); err != nil {
 		return err
 	}
@@ -162,6 +172,8 @@ func (s *stream) Close() error {
 
 	select {
 	case s.cin <- struct{}{}:
+		close(s.cin)
+		s.closed = true
 	default:
 	}
 
@@ -175,7 +187,7 @@ func (s *stream) FullClose() error {
 
 	select {
 	case <-s.cout:
-	case <-time.After(1 * time.Second):
+	case <-time.After(5 * time.Second):
 		return ErrStreamFullcloseTimeout
 	}
 

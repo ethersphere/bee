@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestRecorder(t *testing.T) {
@@ -143,7 +144,7 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 
 		// write a message, but do not write a new line character for handler to
 		// know that it is complete
-		if _, err := rw.WriteString("message"); err != nil {
+		if _, err := rw.WriteString("message\n"); err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
 		if err := rw.Flush(); err != nil {
@@ -169,7 +170,7 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 
 	testRecords(t, records, [][2]string{
 		{
-			"message",
+			"message\n",
 		},
 	}, nil)
 }
@@ -197,7 +198,7 @@ func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
 
 		// write a message, but do not write a new line character for handler to
 		// know that it is complete
-		if _, err := rw.WriteString("message"); err != nil {
+		if _, err := rw.WriteString("message\n"); err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
 		if err := rw.Flush(); err != nil {
@@ -223,7 +224,107 @@ func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
 
 	testRecords(t, records, [][2]string{
 		{
-			"message",
+			"message\n",
+		},
+	}, nil)
+}
+
+func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
+				// just try to read the message that it terminated with
+				// a new line character
+				if _, err := bufio.NewReader(stream).ReadString('\n'); err != nil {
+					return err
+				}
+
+				var g errgroup.Group
+				g.Go(func() error {
+					if err := stream.Close(); err != nil {
+						return err
+					}
+
+					return nil
+				})
+				g.Go(func() error {
+					if err := stream.FullClose(); err != nil {
+						return err
+					}
+
+					return nil
+				})
+
+				if err := g.Wait(); err != nil {
+					return err
+				}
+
+				if err := stream.FullClose(); err != nil {
+					return err
+				}
+
+				return nil
+			}),
+		),
+	)
+
+	request := func(ctx context.Context, s p2p.Streamer, address swarm.Address) (err error) {
+		stream, err := s.NewStream(ctx, address, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			return fmt.Errorf("new stream: %w", err)
+		}
+
+		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+		// write a message, but do not write a new line character for handler to
+		// know that it is complete
+		if _, err := rw.WriteString("message\n"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := rw.Flush(); err != nil {
+			return fmt.Errorf("flush: %w", err)
+		}
+
+		var g errgroup.Group
+		g.Go(func() error {
+			if err := stream.Close(); err != nil {
+				return err
+			}
+
+			return nil
+		})
+
+		g.Go(func() error {
+			if err := stream.FullClose(); err != nil {
+				return err
+			}
+
+			return nil
+		})
+
+		if err := g.Wait(); err != nil {
+			return err
+		}
+
+		if err := stream.FullClose(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	err := request(context.Background(), recorder, swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRecords(t, records, [][2]string{
+		{
+			"message\n",
 		},
 	}, nil)
 }
