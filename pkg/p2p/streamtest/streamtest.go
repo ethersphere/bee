@@ -19,8 +19,8 @@ var (
 	ErrRecordsNotFound        = errors.New("records not found")
 	ErrStreamNotSupported     = errors.New("stream not supported")
 	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
-	fullCLoseTimeoutDefault   = 5 * time.Second // timeout of fullclose, default is 5s
-	FullCloseTimeout          = fullCLoseTimeoutDefault
+	FullCloseTimeout          = fullCLoseTimeoutDefault // timeout of fullclose
+	fullCLoseTimeoutDefault   = 5 * time.Second
 )
 
 type Recorder struct {
