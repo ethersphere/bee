@@ -20,7 +20,7 @@ var (
 	ErrStreamNotSupported     = errors.New("stream not supported")
 	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
 	fullCloseTimeout          = fullCLoseTimeoutDefault // timeout of fullclose
-	fullCLoseTimeoutDefault   = 5 * time.Second
+	fullCLoseTimeoutDefault   = 5 * time.Second         // default timeout used for helper function to reset timeout when changed
 )
 
 type Recorder struct {
