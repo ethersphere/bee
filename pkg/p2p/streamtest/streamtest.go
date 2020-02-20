@@ -187,7 +187,7 @@ func (s *stream) FullClose() error {
 
 	select {
 	case <-s.cout:
-	case <-time.After(5 * time.Second):
+	case <-time.After(1 * time.Second):
 		return ErrStreamFullcloseTimeout
 	}
 
