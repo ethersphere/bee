@@ -126,8 +126,6 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 		streamtest.WithProtocols(
 			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
 				defer stream.Close()
-				// just try to read the message that it terminated with
-				// a new line character
 				_, err := bufio.NewReader(stream).ReadString('\n')
 				return err
 			}),
@@ -141,9 +139,6 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 		}
 
 		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
-
-		// write a message, but do not write a new line character for handler to
-		// know that it is complete
 		if _, err := rw.WriteString("message\n"); err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
@@ -193,9 +188,6 @@ func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
 		}
 
 		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
-
-		// write a message, but do not write a new line character for handler to
-		// know that it is complete
 		if _, err := rw.WriteString("message\n"); err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
@@ -227,8 +219,6 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
-				// just try to read the message that it terminated with
-				// a new line character
 				if _, err := bufio.NewReader(stream).ReadString('\n'); err != nil {
 					return err
 				}
@@ -253,8 +243,6 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 		}
 
 		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
-		// write a message, but do not write a new line character for handler to
-		// know that it is complete
 		if _, err := rw.WriteString("message\n"); err != nil {
 			return fmt.Errorf("write: %w", err)
 		}
