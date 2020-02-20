@@ -11,5 +11,5 @@ func SetFullCloseTimeout(t time.Duration) {
 }
 
 func ResetFullCloseTimeout() {
-	fullCloseTimeout = fullCLoseTimeoutDefault
+	fullCloseTimeout = fullCloseTimeoutDefault
 }
