@@ -19,6 +19,8 @@ var (
 	ErrRecordsNotFound        = errors.New("records not found")
 	ErrStreamNotSupported     = errors.New("stream not supported")
 	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
+	fullCLoseTimeoutDefault   = 5 * time.Second // timeout of fullclose, default is 5s
+	FullCloseTimeout          = fullCLoseTimeoutDefault
 )
 
 type Recorder struct {
@@ -53,10 +55,10 @@ func New(opts ...Option) *Recorder {
 func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
-	cin := make(chan struct{}, 1)
-	cout := make(chan struct{}, 1)
-	streamOut := newStream(recordIn, recordOut, cin, cout)
-	streamIn := newStream(recordOut, recordIn, cout, cin)
+	closedIn := make(chan struct{})
+	closedOut := make(chan struct{})
+	streamOut := newStream(recordIn, recordOut, closedIn, closedOut)
+	streamIn := newStream(recordOut, recordIn, closedOut, closedIn)
 
 	var handler p2p.HandlerFunc
 	for _, p := range r.protocols {
@@ -134,12 +136,11 @@ func (r *Record) setErr(err error) {
 }
 
 type stream struct {
-	in     io.WriteCloser
-	out    io.ReadCloser
-	cin    chan struct{}
-	cout   chan struct{}
-	closed bool
-	mtx    sync.Mutex // guards close
+	in        io.WriteCloser
+	out       io.ReadCloser
+	cin       chan struct{}
+	cout      chan struct{}
+	closeOnce sync.Once
 }
 
 func newStream(in io.WriteCloser, out io.ReadCloser, cin, cout chan struct{}) *stream {
@@ -155,29 +156,21 @@ func (s *stream) Write(p []byte) (int, error) {
 }
 
 func (s *stream) Close() error {
-	// lock + closed is used to avoid multiple closing or sending on a closed channel
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	var e error
+	s.closeOnce.Do(func() {
+		if err := s.in.Close(); err != nil {
+			e = err
+			return
+		}
+		if err := s.out.Close(); err != nil {
+			e = err
+			return
+		}
 
-	if s.closed {
-		return nil
-	}
-
-	if err := s.in.Close(); err != nil {
-		return err
-	}
-	if err := s.out.Close(); err != nil {
-		return err
-	}
-
-	select {
-	case s.cin <- struct{}{}:
 		close(s.cin)
-		s.closed = true
-	default:
-	}
+	})
 
-	return nil
+	return e
 }
 
 func (s *stream) FullClose() error {
@@ -187,7 +180,7 @@ func (s *stream) FullClose() error {
 
 	select {
 	case <-s.cout:
-	case <-time.After(1 * time.Second):
+	case <-time.After(FullCloseTimeout):
 		return ErrStreamFullcloseTimeout
 	}
 

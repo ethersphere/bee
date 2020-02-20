@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -21,7 +22,6 @@ import (
 )
 
 func TestRecorder(t *testing.T) {
-
 	var answers = map[string]string{
 		"What is your name?":                                    "Sir Lancelot of Camelot",
 		"What is your quest?":                                   "To seek the Holy Grail.",
@@ -151,11 +151,7 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 			return fmt.Errorf("flush: %w", err)
 		}
 
-		if err := stream.FullClose(); err != nil {
-			return err
-		}
-
-		return nil
+		return stream.FullClose()
 	}
 
 	err := request(context.Background(), recorder, swarm.ZeroAddress)
@@ -176,6 +172,8 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 }
 
 func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
+	streamtest.SetFullCloseTimeout(500 * time.Millisecond)
+	defer streamtest.ResetFullCloseTimeout()
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
@@ -205,11 +203,7 @@ func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
 			return fmt.Errorf("flush: %w", err)
 		}
 
-		if err := stream.FullClose(); err != nil {
-			return err
-		}
-
-		return nil
+		return stream.FullClose()
 	}
 
 	err := request(context.Background(), recorder, swarm.ZeroAddress)
@@ -240,30 +234,14 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 				}
 
 				var g errgroup.Group
-				g.Go(func() error {
-					if err := stream.Close(); err != nil {
-						return err
-					}
-
-					return nil
-				})
-				g.Go(func() error {
-					if err := stream.FullClose(); err != nil {
-						return err
-					}
-
-					return nil
-				})
+				g.Go(stream.Close)
+				g.Go(stream.FullClose)
 
 				if err := g.Wait(); err != nil {
 					return err
 				}
 
-				if err := stream.FullClose(); err != nil {
-					return err
-				}
-
-				return nil
+				return stream.FullClose()
 			}),
 		),
 	)
@@ -285,29 +263,8 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 		}
 
 		var g errgroup.Group
-		g.Go(func() error {
-			if err := stream.Close(); err != nil {
-				return err
-			}
-
-			return nil
-		})
-
-		g.Go(func() error {
-			if err := stream.FullClose(); err != nil {
-				return err
-			}
-
-			return nil
-		})
-
-		if err := g.Wait(); err != nil {
-			return err
-		}
-
-		if err := stream.FullClose(); err != nil {
-			return err
-		}
+		g.Go(stream.Close)
+		g.Go(stream.FullClose)
 
 		return nil
 	}
