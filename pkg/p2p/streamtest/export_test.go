@@ -7,9 +7,9 @@ package streamtest
 import "time"
 
 func SetFullCloseTimeout(t time.Duration) {
-	FullCloseTimeout = t
+	fullCloseTimeout = t
 }
 
 func ResetFullCloseTimeout() {
-	FullCloseTimeout = fullCLoseTimeoutDefault
+	fullCloseTimeout = fullCLoseTimeoutDefault
 }

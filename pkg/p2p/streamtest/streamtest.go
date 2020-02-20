@@ -19,7 +19,7 @@ var (
 	ErrRecordsNotFound        = errors.New("records not found")
 	ErrStreamNotSupported     = errors.New("stream not supported")
 	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
-	FullCloseTimeout          = fullCLoseTimeoutDefault // timeout of fullclose
+	fullCloseTimeout          = fullCLoseTimeoutDefault // timeout of fullclose
 	fullCLoseTimeoutDefault   = 5 * time.Second
 )
 
@@ -180,7 +180,7 @@ func (s *stream) FullClose() error {
 
 	select {
 	case <-s.cout:
-	case <-time.After(FullCloseTimeout):
+	case <-time.After(fullCloseTimeout):
 		return ErrStreamFullcloseTimeout
 	}
 
