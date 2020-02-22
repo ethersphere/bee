@@ -254,6 +254,10 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 		g.Go(stream.Close)
 		g.Go(stream.FullClose)
 
+		if err := g.Wait(); err != nil {
+			return err
+		}
+
 		return nil
 	}
 
