@@ -45,7 +45,6 @@ type Service struct {
 	peers            *peerRegistry
 	topologyDriver   topology.Driver
 	addressBook      addressbook.Putter
-	protocols        []p2p.ProtocolSpec
 	logger           logging.Logger
 }
 
@@ -250,7 +249,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		})
 	}
 
-	s.protocols = append(s.protocols, p)
 	return nil
 }
 

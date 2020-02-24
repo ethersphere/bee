@@ -29,10 +29,6 @@ type Stream interface {
 	FullClose() error
 }
 
-type Connecter interface {
-	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
-}
-
 type ProtocolSpec struct {
 	Name        string
 	Version     string

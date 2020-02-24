@@ -30,14 +30,12 @@ const (
 
 type Service struct {
 	streamer    p2p.Streamer
-	peerer      discovery.Peerer
 	addressBook addressbook.GetterPutter
 	logger      logging.Logger
 }
 
 type Options struct {
 	Streamer    p2p.Streamer
-	Peerer      discovery.Peerer
 	AddressBook addressbook.GetterPutter
 	Logger      logging.Logger
 }
@@ -46,7 +44,6 @@ func New(o Options) *Service {
 	return &Service{
 		streamer:    o.Streamer,
 		logger:      o.Logger,
-		peerer:      o.Peerer,
 		addressBook: o.AddressBook,
 	}
 }
