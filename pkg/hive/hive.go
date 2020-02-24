@@ -25,6 +25,7 @@ const (
 	protocolVersion = "1.0.0"
 	peersStreamName = "peers"
 	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
+	maxBatchSize    = 50
 )
 
 type Service struct {
@@ -54,7 +55,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
 		Name:    protocolName,
 		Version: protocolVersion,
-		Init:    s.Init,
 		StreamSpecs: []p2p.StreamSpec{
 			{
 				Name:    peersStreamName,
@@ -64,57 +64,47 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// Init is called when the new peer is being initialized.
-// This should happen after overlay handshake is finished.
-func (s *Service) Init(ctx context.Context, peer p2p.Peer) error {
-	go func() {
-		// todo: handle cancel, stop, errors, etc...
-		for {
-			// the assumption is that the peer suggester is taking care of the validity of suggested peers
-			// peers call blocks until there is new peers to send
-			// todo: subscribe channel, func or cond instead of a blocking method
-			peers := s.peerer.Peers(peer, 50)
-			if err := s.sendPeers(ctx, peer, peers); err != nil {
-				// todo: handle different errors differently
-				s.logger.Error(err)
-				continue
-			}
+func (s *Service) BroadcastPeers(addressee swarm.Address, peers ...discovery.BroadcastRecord) error {
+	ctx := context.Background()
+	for len(peers) > maxBatchSize {
+		if err := s.sendPeers(ctx, addressee, peers[0:maxBatchSize]); err != nil {
+			return err
 		}
-	}()
+
+		peers = peers[maxBatchSize:]
+	}
+
+	if len(peers) > 0 {
+		if err := s.sendPeers(ctx, addressee, peers); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-func (s *Service) sendPeers(ctx context.Context, peer p2p.Peer, peers []p2p.Peer) error {
-	stream, err := s.streamer.NewStream(ctx, peer.Address, protocolName, protocolVersion, peersStreamName)
+func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []discovery.BroadcastRecord) error {
+	stream, err := s.streamer.NewStream(ctx, peer, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
 
+	defer stream.Close()
+
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
-		underlay, exists := s.addressBook.Get(p.Address)
-		if !exists {
-			// skip this peer
-			// this might happen if there is a disconnect of the peer before the call to findAddress
-			// or if there is an inconsistency between the suggested peer and our addresses bookkeeping
-			s.logger.Warningf("Skipping peer in peers response: peer does not exists in the address book.", p)
-			continue
-		}
-
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
-			Overlay:  p.Address.Bytes(),
-			Underlay: underlay.String(),
+			Overlay:  p.Overlay.Bytes(),
+			Underlay: p.Addr.String(),
 		})
 	}
 
 	if err := w.WriteMsg(&peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
 	}
-	// todo: await close from the receiver
 
-	return nil
+	return stream.FullClose()
 }
 
 func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
@@ -132,6 +122,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 			continue
 		}
 
+		// todo: this might be changed depending on where do we decide to connect peers
 		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
 	}
 

@@ -304,17 +304,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, fmt.Errorf("topology addpeer: %w", err)
 	}
 
-	for _, protocol := range s.protocols {
-		if protocol.Init == nil {
-			continue
-		}
-
-		if err := protocol.Init(ctx, p2p.Peer{Address: i.Address}); err != nil {
-			_ = s.Disconnect(i.Address)
-			return swarm.Address{}, err
-		}
-	}
-
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil

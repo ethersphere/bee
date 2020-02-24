@@ -37,7 +37,6 @@ type ProtocolSpec struct {
 	Name        string
 	Version     string
 	StreamSpecs []StreamSpec
-	Init        func(ctx context.Context, peer Peer) error
 }
 
 type StreamSpec struct {
