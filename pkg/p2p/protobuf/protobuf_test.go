@@ -363,6 +363,10 @@ func (noopWriteCloser) Close() error {
 	return nil
 }
 
+func (noopWriteCloser) FullClose() error {
+	return nil
+}
+
 type noopReadCloser struct {
 	io.Writer
 }
@@ -376,5 +380,9 @@ func (noopReadCloser) Read(p []byte) (n int, err error) {
 }
 
 func (noopReadCloser) Close() error {
+	return nil
+}
+
+func (noopReadCloser) FullClose() error {
 	return nil
 }

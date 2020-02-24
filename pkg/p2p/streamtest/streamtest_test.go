@@ -13,14 +13,15 @@ import (
 	"io/ioutil"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestRecorder(t *testing.T) {
-
 	var answers = map[string]string{
 		"What is your name?":                                    "Sir Lancelot of Camelot",
 		"What is your quest?":                                   "To seek the Holy Grail.",
@@ -118,6 +119,163 @@ func TestRecorder_errStreamNotSupported(t *testing.T) {
 	if !errors.Is(err, streamtest.ErrStreamNotSupported) {
 		t.Fatalf("got error %v, want %v", err, streamtest.ErrStreamNotSupported)
 	}
+}
+
+func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
+				defer stream.Close()
+				_, err := bufio.NewReader(stream).ReadString('\n')
+				return err
+			}),
+		),
+	)
+
+	request := func(ctx context.Context, s p2p.Streamer, address swarm.Address) (err error) {
+		stream, err := s.NewStream(ctx, address, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			return fmt.Errorf("new stream: %w", err)
+		}
+
+		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+		if _, err := rw.WriteString("message\n"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := rw.Flush(); err != nil {
+			return fmt.Errorf("flush: %w", err)
+		}
+
+		return stream.FullClose()
+	}
+
+	err := request(context.Background(), recorder, swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRecords(t, records, [][2]string{
+		{
+			"message\n",
+		},
+	}, nil)
+}
+
+func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
+	streamtest.SetFullCloseTimeout(500 * time.Millisecond)
+	defer streamtest.ResetFullCloseTimeout()
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
+				// don't close the stream here to initiate timeout
+				// just try to read the message that it terminated with
+				// a new line character
+				_, err := bufio.NewReader(stream).ReadString('\n')
+				return err
+			}),
+		),
+	)
+
+	request := func(ctx context.Context, s p2p.Streamer, address swarm.Address) (err error) {
+		stream, err := s.NewStream(ctx, address, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			return fmt.Errorf("new stream: %w", err)
+		}
+
+		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+		if _, err := rw.WriteString("message\n"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := rw.Flush(); err != nil {
+			return fmt.Errorf("flush: %w", err)
+		}
+
+		return stream.FullClose()
+	}
+
+	err := request(context.Background(), recorder, swarm.ZeroAddress)
+	if err != streamtest.ErrStreamFullcloseTimeout {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRecords(t, records, [][2]string{
+		{
+			"message\n",
+		},
+	}, nil)
+}
+
+func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(peer p2p.Peer, stream p2p.Stream) error {
+				if _, err := bufio.NewReader(stream).ReadString('\n'); err != nil {
+					return err
+				}
+
+				var g errgroup.Group
+				g.Go(stream.Close)
+				g.Go(stream.FullClose)
+
+				if err := g.Wait(); err != nil {
+					return err
+				}
+
+				return stream.FullClose()
+			}),
+		),
+	)
+
+	request := func(ctx context.Context, s p2p.Streamer, address swarm.Address) (err error) {
+		stream, err := s.NewStream(ctx, address, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			return fmt.Errorf("new stream: %w", err)
+		}
+
+		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+		if _, err := rw.WriteString("message\n"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := rw.Flush(); err != nil {
+			return fmt.Errorf("flush: %w", err)
+		}
+
+		var g errgroup.Group
+		g.Go(stream.Close)
+		g.Go(stream.FullClose)
+
+		if err := g.Wait(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	err := request(context.Background(), recorder, swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRecords(t, records, [][2]string{
+		{
+			"message\n",
+		},
+	}, nil)
 }
 
 func TestRecorder_closeAfterPartialWrite(t *testing.T) {

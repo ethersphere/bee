@@ -174,7 +174,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		i, err := s.handshakeService.Handle(stream)
+		i, err := s.handshakeService.Handle(newStream(stream))
 		if err != nil {
 			if err == handshake.ErrNetworkIDIncompatible {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
@@ -238,7 +238,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			}
 
 			s.metrics.HandledStreamCount.Inc()
-			if err := ss.Handler(p2p.Peer{Address: overlay}, stream); err != nil {
+			if err := ss.Handler(p2p.Peer{Address: overlay}, newStream(stream)); err != nil {
 				var e *p2p.DisconnectError
 				if errors.Is(err, e) {
 					// todo: test connection close and refactor
@@ -286,14 +286,13 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	i, err := s.handshakeService.Handshake(stream)
+	i, err := s.handshakeService.Handshake(newStream(stream))
 	if err != nil {
 		_ = s.disconnect(info.ID)
 		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
-		_ = stream.Reset()
 		return swarm.Address{}, err
 	}
 
@@ -347,7 +346,12 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocol
 		return nil, p2p.ErrPeerNotFound
 	}
 
-	return s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
+	stream, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
+	if err != nil {
+		return nil, err
+	}
+
+	return newStream(stream), nil
 }
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
