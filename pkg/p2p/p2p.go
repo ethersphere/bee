@@ -26,6 +26,7 @@ type Streamer interface {
 type Stream interface {
 	io.ReadWriter
 	io.Closer
+	FullClose() error
 }
 
 type ProtocolSpec struct {
