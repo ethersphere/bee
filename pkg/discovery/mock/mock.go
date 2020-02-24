@@ -5,6 +5,7 @@
 package mock
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/discovery"
@@ -31,6 +32,7 @@ func (d *Discovery) BroadcastPeers(addressee swarm.Address, peers ...discovery.B
 		d.ctr++
 		d.records[addressee.String()] = discovery.BroadcastRecord{Overlay: peer.Overlay, Addr: peer.Addr}
 		d.mtx.Unlock()
+		fmt.Println("added peer")
 	}
 
 	return nil

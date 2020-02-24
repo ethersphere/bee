@@ -359,22 +359,39 @@ func TestConnectWithMockDiscovery(t *testing.T) {
 	s2, _, cleanup2 := newService(t, o2)
 	defer cleanup2()
 
+	s3, _, cleanup3 := newService(t, o2)
+	defer cleanup3()
+
+	// connect s1, expect 0 broadcast as this is the first connected node
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}
 	addr := addrs[0]
 
-	overlay, err := s2.Connect(context.Background(), addr)
+	_, err = s2.Connect(context.Background(), addr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if v := disc2.Broadcasts(); v != 1 {
+	if v := disc2.Broadcasts(); v != 0 {
 		t.Fatalf("expected 1 peer broadcasts, got %d", v)
 	}
 
-	if err := s2.Disconnect(overlay); err != nil {
+	// connect s3, expect 2 broadcasts, one to s3 and one to s1
+	addrs, err = s3.Addresses()
+	if err != nil {
 		t.Fatal(err)
 	}
+	addr = addrs[0]
+
+	_, err = s2.Connect(context.Background(), addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if v := disc2.Broadcasts(); v != 2 {
+		t.Fatalf("expected 2 peer broadcasts, got %d", v)
+	}
+
 }

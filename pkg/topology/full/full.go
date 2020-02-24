@@ -5,6 +5,7 @@
 package full
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -41,23 +42,41 @@ func New(disc discovery.Driver, addressBook addressbook.Getter) topology.Driver 
 }
 
 // AddPeer adds a new peer to the topology driver.
-// the peer would be subsequently broadcasted to all connected peers.
+// The peer would be subsequently broadcasted to all connected peers.
+// All conneceted peers are also broadcasted to the new peer.
 func (d *driver) AddPeer(overlay swarm.Address) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	d.connected[overlay.String()] = overlay
 	ma, exists := d.addressBook.Get(overlay)
 	if !exists {
 		return topology.ErrNotFound
 	}
 
+	var connectedNodes []discovery.BroadcastRecord
 	for _, addressee := range d.connected {
-		err := d.discovery.BroadcastPeers(addressee, discovery.BroadcastRecord{Overlay: addressee, Addr: ma})
+		cma, exists := d.addressBook.Get(addressee)
+		if !exists {
+			return topology.ErrNotFound
+		}
+
+		err := d.discovery.BroadcastPeers(addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: ma})
 		if err != nil {
+			fmt.Println(err)
 			return err
 		}
+
+		connectedNodes = append(connectedNodes, discovery.BroadcastRecord{Overlay: addressee, Addr: cma})
 	}
+
+	err := d.discovery.BroadcastPeers(overlay, connectedNodes...)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	// add new node to connected nodes to avoid double broadcasts
+	d.connected[overlay.String()] = overlay
 	return nil
 }
 
