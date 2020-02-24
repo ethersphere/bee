@@ -46,7 +46,6 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	d.connected[overlay.String()] = overlay
 	ma, exists := d.addressBook.Get(overlay)
 	if !exists {
 		return topology.ErrNotFound
@@ -58,6 +57,9 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 			return err
 		}
 	}
+
+	// add peer in the end to avoid broadcast to itself
+	d.connected[overlay.String()] = overlay
 	return nil
 }
 
