@@ -69,6 +69,7 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 		connectedNodes = append(connectedNodes, discovery.BroadcastRecord{Overlay: addressee, Addr: cma})
 	}
 
+<<<<<<< HEAD
 	err := d.discovery.BroadcastPeers(overlay, connectedNodes...)
 	if err != nil {
 		fmt.Println(err)
@@ -76,6 +77,9 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 	}
 
 	// add new node to connected nodes to avoid double broadcasts
+=======
+	// add peer in the end to avoid broadcast to itself
+>>>>>>> master
 	d.connected[overlay.String()] = overlay
 	return nil
 }
