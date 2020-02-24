@@ -52,6 +52,6 @@ func (s *Stream) Close() error {
 	return nil
 }
 
-func (s *StreamMock) FullClose() error {
+func (s *Stream) FullClose() error {
 	return nil
 }
