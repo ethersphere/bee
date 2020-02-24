@@ -62,3 +62,13 @@ func (s *server) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonhttp.OK(w, nil)
 }
+
+type peersResponse struct {
+	Peers []p2p.Peer `json:"peers"`
+}
+
+func (s *server) peersHandler(w http.ResponseWriter, r *http.Request) {
+	jsonhttp.OK(w, peersResponse{
+		Peers: s.P2P.Peers(),
+	})
+}

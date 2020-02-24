@@ -105,3 +105,27 @@ func TestDisconnect(t *testing.T) {
 		})
 	})
 }
+
+func TestPeer(t *testing.T) {
+	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+
+	client, cleanup := newTestServer(t, testServerOptions{
+		P2P: mock.New(mock.WithPeersFunc(func() []p2p.Peer {
+			return []p2p.Peer{{Address: overlay}}
+		})),
+	})
+	defer cleanup()
+
+	t.Run("ok", func(t *testing.T) {
+		jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/peers", nil, http.StatusOK, debugapi.PeersResponse{
+			Peers: []p2p.Peer{{Address: overlay}},
+		})
+	})
+
+	t.Run("get method not allowed", func(t *testing.T) {
+		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/peers", nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
+			Code:    http.StatusMethodNotAllowed,
+			Message: http.StatusText(http.StatusMethodNotAllowed),
+		})
+	})
+}
