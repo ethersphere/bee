@@ -53,7 +53,7 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 	}
 
 	for _, addressee := range d.connected {
-		err := d.discovery.BroadcastPeer(addressee, overlay, ma)
+		err := d.discovery.BroadcastPeers(addressee, discovery.BroadcastRecord{Overlay: addressee, Addr: ma})
 		if err != nil {
 			return err
 		}
