@@ -51,3 +51,7 @@ func (s *Stream) Write(p []byte) (n int, err error) {
 func (s *Stream) Close() error {
 	return nil
 }
+
+func (s *StreamMock) FullClose() error {
+	return nil
+}

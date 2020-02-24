@@ -9,14 +9,18 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
-	ErrRecordsNotFound    = errors.New("records not found")
-	ErrStreamNotSupported = errors.New("stream not supported")
+	ErrRecordsNotFound        = errors.New("records not found")
+	ErrStreamNotSupported     = errors.New("stream not supported")
+	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
+	fullCloseTimeout          = fullCloseTimeoutDefault // timeout of fullclose
+	fullCloseTimeoutDefault   = 5 * time.Second         // default timeout used for helper function to reset timeout when changed
 )
 
 type Recorder struct {
@@ -51,8 +55,10 @@ func New(opts ...Option) *Recorder {
 func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
-	streamOut := newStream(recordIn, recordOut)
-	streamIn := newStream(recordOut, recordIn)
+	closedIn := make(chan struct{})
+	closedOut := make(chan struct{})
+	streamOut := newStream(recordIn, recordOut, closedIn, closedOut)
+	streamIn := newStream(recordOut, recordIn, closedOut, closedIn)
 
 	var handler p2p.HandlerFunc
 	for _, p := range r.protocols {
@@ -130,12 +136,15 @@ func (r *Record) setErr(err error) {
 }
 
 type stream struct {
-	in  io.WriteCloser
-	out io.ReadCloser
+	in        io.WriteCloser
+	out       io.ReadCloser
+	cin       chan struct{}
+	cout      chan struct{}
+	closeOnce sync.Once
 }
 
-func newStream(in io.WriteCloser, out io.ReadCloser) *stream {
-	return &stream{in: in, out: out}
+func newStream(in io.WriteCloser, out io.ReadCloser, cin, cout chan struct{}) *stream {
+	return &stream{in: in, out: out, cin: cin, cout: cout}
 }
 
 func (s *stream) Read(p []byte) (int, error) {
@@ -147,12 +156,34 @@ func (s *stream) Write(p []byte) (int, error) {
 }
 
 func (s *stream) Close() error {
-	if err := s.in.Close(); err != nil {
+	var e error
+	s.closeOnce.Do(func() {
+		if err := s.in.Close(); err != nil {
+			e = err
+			return
+		}
+		if err := s.out.Close(); err != nil {
+			e = err
+			return
+		}
+
+		close(s.cin)
+	})
+
+	return e
+}
+
+func (s *stream) FullClose() error {
+	if err := s.Close(); err != nil {
 		return err
 	}
-	if err := s.out.Close(); err != nil {
-		return err
+
+	select {
+	case <-s.cout:
+	case <-time.After(fullCloseTimeout):
+		return ErrStreamFullcloseTimeout
 	}
+
 	return nil
 }
 
