@@ -5,7 +5,6 @@
 package full
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -62,7 +61,6 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 
 		err := d.discovery.BroadcastPeers(addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: ma})
 		if err != nil {
-			fmt.Println(err)
 			return err
 		}
 
@@ -71,7 +69,6 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 
 	err := d.discovery.BroadcastPeers(overlay, connectedNodes...)
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 
