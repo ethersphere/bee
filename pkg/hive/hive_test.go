@@ -29,6 +29,7 @@ import (
 
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
+	logger := logging.New(ioutil.Discard, 0)
 
 	// populate all expected and needed random resources for maximum number of messages needed for a test case
 	// tests cases that uses fewer resources can use sub-slices of this data
@@ -85,7 +86,6 @@ func TestBroadcastPeers(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		logger := logging.New(ioutil.Discard, 0)
 		addressbook := inmem.New()
 
 		// create a hive server that handles the incoming stream
