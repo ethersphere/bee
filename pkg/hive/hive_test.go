@@ -118,6 +118,7 @@ func TestBroadcastPeers(t *testing.T) {
 			t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
 		}
 
+		// there is a one record per batch (wantMsg)
 		for i, record := range records {
 			messages, err := readAndAssertPeersMsgs(record.In(), 1)
 			if err != nil {
