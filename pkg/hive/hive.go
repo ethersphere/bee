@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	ma "github.com/multiformats/go-multiaddr"
-
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/hive/pb"
@@ -18,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
+
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const (
