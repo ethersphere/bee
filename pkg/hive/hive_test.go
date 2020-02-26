@@ -6,6 +6,7 @@ package hive_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -27,6 +28,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type AddressExporter interface {
+	Overlays() []swarm.Address
+	Multiaddresses() []ma.Multiaddr
+}
+
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	logger := logging.New(ioutil.Discard, 0)
@@ -38,20 +44,20 @@ func TestBroadcastPeers(t *testing.T) {
 	var records []discovery.BroadcastRecord
 	var wantMsgs []pb.Peers
 
-	for i := 0; i < 100; i++ {
-		ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(rand.Intn(1000)+1000))
+	// 2*maxBatchSize is ok to be used in the 2 batches corner-case test
+	for i := 0; i < 2*hive.MaxBatchSize; i++ {
+		ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		multiaddrs = append(multiaddrs, ma)
 		addrs = append(addrs, swarm.NewAddress(createRandomBytes()))
-		// 50 is the max batch size in hive
-		if i%50 == 0 {
+		if i%hive.MaxBatchSize == 0 {
 			wantMsgs = append(wantMsgs, pb.Peers{Peers: []*pb.BzzAddress{}})
 		}
 
-		wantMsgs[i/50].Peers = append(wantMsgs[i/50].Peers, &pb.BzzAddress{Overlay: addrs[i].Bytes(), Underlay: multiaddrs[i].String()})
+		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: addrs[i].Bytes(), Underlay: multiaddrs[i].String()})
 		records = append(records, discovery.BroadcastRecord{Overlay: addrs[i], Addr: multiaddrs[i]})
 	}
 
@@ -87,6 +93,10 @@ func TestBroadcastPeers(t *testing.T) {
 
 	for _, tc := range testCases {
 		addressbook := inmem.New()
+		exporter, ok := addressbook.(AddressExporter)
+		if !ok {
+			t.Fatal("could not type assert AddressExporter")
+		}
 
 		// create a hive server that handles the incoming stream
 		server := hive.New(hive.Options{
@@ -105,7 +115,7 @@ func TestBroadcastPeers(t *testing.T) {
 			Logger:   logger,
 		})
 
-		if err := client.BroadcastPeers(tc.addresee, tc.peers...); err != nil {
+		if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 			t.Fatal(err)
 		}
 
@@ -130,12 +140,12 @@ func TestBroadcastPeers(t *testing.T) {
 			}
 		}
 
-		if !compareKeys(addressbook.Keys(), tc.wantKeys) {
-			t.Errorf("Keys got %v, want %v", addressbook.Keys(), tc.wantKeys)
+		if !compareKeys(exporter.Overlays(), tc.wantKeys) {
+			t.Errorf("Keys got %v, want %v", exporter.Overlays(), tc.wantKeys)
 		}
 
-		if !compareValues(addressbook.Values(), tc.wantValues) {
-			t.Errorf("Values got %v, want %v", addressbook.Values(), tc.wantValues)
+		if !compareValues(exporter.Multiaddresses(), tc.wantValues) {
+			t.Errorf("Values got %v, want %v", exporter.Multiaddresses(), tc.wantValues)
 		}
 	}
 

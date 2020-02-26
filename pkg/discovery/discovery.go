@@ -5,6 +5,8 @@
 package discovery
 
 import (
+	"context"
+
 	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -15,5 +17,5 @@ type BroadcastRecord struct {
 }
 
 type Driver interface {
-	BroadcastPeers(addressee swarm.Address, peers ...BroadcastRecord) error
+	BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...BroadcastRecord) error
 }

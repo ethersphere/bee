@@ -5,6 +5,7 @@
 package full
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"time"
@@ -59,7 +60,7 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 			return topology.ErrNotFound
 		}
 
-		err := d.discovery.BroadcastPeers(addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: ma})
+		err := d.discovery.BroadcastPeers(context.Background(), addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: ma})
 		if err != nil {
 			return err
 		}
@@ -67,7 +68,7 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 		connectedNodes = append(connectedNodes, discovery.BroadcastRecord{Overlay: addressee, Addr: cma})
 	}
 
-	err := d.discovery.BroadcastPeers(overlay, connectedNodes...)
+	err := d.discovery.BroadcastPeers(context.Background(), overlay, connectedNodes...)
 	if err != nil {
 		return err
 	}

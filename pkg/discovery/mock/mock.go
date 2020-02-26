@@ -5,7 +5,7 @@
 package mock
 
 import (
-	"fmt"
+	"context"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/discovery"
@@ -26,13 +26,12 @@ func NewDiscovery() *Discovery {
 	}
 }
 
-func (d *Discovery) BroadcastPeers(addressee swarm.Address, peers ...discovery.BroadcastRecord) error {
+func (d *Discovery) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...discovery.BroadcastRecord) error {
 	for _, peer := range peers {
 		d.mtx.Lock()
 		d.ctr++
 		d.records[addressee.String()] = discovery.BroadcastRecord{Overlay: peer.Overlay, Addr: peer.Addr}
 		d.mtx.Unlock()
-		fmt.Println("added peer")
 	}
 
 	return nil

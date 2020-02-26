@@ -7,6 +7,7 @@ package inmem
 import (
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -22,7 +23,7 @@ type peerEntry struct {
 	multiaddr ma.Multiaddr
 }
 
-func New() *inmem {
+func New() addressbook.GetterPutter {
 	return &inmem{
 		entries: make(map[string]peerEntry),
 	}
@@ -45,7 +46,7 @@ func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	return e
 }
 
-func (i *inmem) Keys() []swarm.Address {
+func (i *inmem) Overlays() []swarm.Address {
 	keys := make([]swarm.Address, 0, len(i.entries))
 	for k := range i.entries {
 		keys = append(keys, swarm.MustParseHexAddress(k))
@@ -54,7 +55,7 @@ func (i *inmem) Keys() []swarm.Address {
 	return keys
 }
 
-func (i *inmem) Values() []ma.Multiaddr {
+func (i *inmem) Multiaddresses() []ma.Multiaddr {
 	values := make([]ma.Multiaddr, 0, len(i.entries))
 	for _, v := range i.entries {
 		values = append(values, v.multiaddr)
