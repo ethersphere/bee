@@ -141,11 +141,11 @@ func TestBroadcastPeers(t *testing.T) {
 		}
 
 		if !compareKeys(exporter.Overlays(), tc.wantKeys) {
-			t.Errorf("Keys got %v, want %v", exporter.Overlays(), tc.wantKeys)
+			t.Errorf("Overlays got %v, want %v", exporter.Overlays(), tc.wantKeys)
 		}
 
 		if !compareValues(exporter.Multiaddresses(), tc.wantValues) {
-			t.Errorf("Values got %v, want %v", exporter.Multiaddresses(), tc.wantValues)
+			t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), tc.wantValues)
 		}
 	}
 
