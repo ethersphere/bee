@@ -62,18 +62,16 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...discovery.BroadcastRecord) error {
-	for len(peers) > maxBatchSize {
-		if err := s.sendPeers(ctx, addressee, peers[0:maxBatchSize]); err != nil {
+	max := maxBatchSize
+	for len(peers) > 0 {
+		if max > len(peers) {
+			max = len(peers)
+		}
+		if err := s.sendPeers(ctx, addressee, peers[:max]); err != nil {
 			return err
 		}
 
-		peers = peers[maxBatchSize:]
-	}
-
-	if len(peers) > 0 {
-		if err := s.sendPeers(ctx, addressee, peers); err != nil {
-			return err
-		}
+		peers = peers[max:]
 	}
 
 	return nil
