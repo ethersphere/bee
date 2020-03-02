@@ -37,12 +37,16 @@ func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	logger := logging.New(ioutil.Discard, 0)
 
-	// populate all expected and needed random resources for maximum number of messages needed for a test case
+	// populate all expected and needed random resources for 2 full batches
 	// tests cases that uses fewer resources can use sub-slices of this data
 	var multiaddrs []ma.Multiaddr
 	var addrs []swarm.Address
 	var records []discovery.BroadcastRecord
 	var wantMsgs []pb.Peers
+
+	for i := 0; i < 2; i++ {
+		wantMsgs = append(wantMsgs, pb.Peers{Peers: []*pb.BzzAddress{}})
+	}
 
 	for i := 0; i < 2*hive.MaxBatchSize; i++ {
 		ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
@@ -52,10 +56,6 @@ func TestBroadcastPeers(t *testing.T) {
 
 		multiaddrs = append(multiaddrs, ma)
 		addrs = append(addrs, swarm.NewAddress(createRandomBytes()))
-		if i%hive.MaxBatchSize == 0 {
-			wantMsgs = append(wantMsgs, pb.Peers{Peers: []*pb.BzzAddress{}})
-		}
-
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: addrs[i].Bytes(), Underlay: multiaddrs[i].String()})
 		records = append(records, discovery.BroadcastRecord{Overlay: addrs[i], Addr: multiaddrs[i]})
 	}
