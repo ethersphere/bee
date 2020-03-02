@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -29,22 +30,25 @@ const (
 )
 
 type Service struct {
-	streamer    p2p.Streamer
-	addressBook addressbook.GetterPutter
-	logger      logging.Logger
+	streamer       p2p.Streamer
+	addressBook    addressbook.Getter
+	topologyDriver topology.Driver
+	logger         logging.Logger
 }
 
 type Options struct {
-	Streamer    p2p.Streamer
-	AddressBook addressbook.GetterPutter
-	Logger      logging.Logger
+	Streamer       p2p.Streamer
+	AddressBook    addressbook.Getter
+	TopologyDriver topology.Driver
+	Logger         logging.Logger
 }
 
 func New(o Options) *Service {
 	return &Service{
-		streamer:    o.Streamer,
-		logger:      o.Logger,
-		addressBook: o.AddressBook,
+		streamer:       o.Streamer,
+		logger:         o.Logger,
+		addressBook:    o.AddressBook,
+		topologyDriver: o.TopologyDriver,
 	}
 }
 
@@ -116,8 +120,10 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 			continue
 		}
 
-		// todo: this might be changed depending on where do we decide to connect peers
-		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
+		err = s.topologyDriver.AddPeer(swarm.NewAddress(newPeer.Overlay), addr)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

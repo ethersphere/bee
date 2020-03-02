@@ -7,6 +7,7 @@ package hive_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -18,7 +19,6 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/hive/pb"
@@ -27,11 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
-
-type AddressExporter interface {
-	Overlays() []swarm.Address
-	Multiaddresses() []ma.Multiaddr
-}
 
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
@@ -105,16 +100,12 @@ func TestBroadcastPeers(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		addressbook := inmem.New()
-		exporter, ok := addressbook.(AddressExporter)
-		if !ok {
-			t.Fatal("could not type assert AddressExporter")
-		}
+		topologyDriver := NewTopologyDriverMock()
 
 		// create a hive server that handles the incoming stream
 		server := hive.New(hive.Options{
-			Logger:      logger,
-			AddressBook: addressbook,
+			Logger:         logger,
+			TopologyDriver: topologyDriver,
 		})
 
 		// setup the stream recorder to record stream data
@@ -153,49 +144,16 @@ func TestBroadcastPeers(t *testing.T) {
 			}
 		}
 
-		if !compareKeys(exporter.Overlays(), tc.wantKeys) {
-			t.Errorf("Overlays got %v, want %v", exporter.Overlays(), tc.wantKeys)
+		if !compareOverlays(topologyDriver.Overlays(), tc.wantKeys) {
+			t.Errorf("Overlays got %v, want %v", topologyDriver.Overlays(), tc.wantKeys)
 		}
 
-		if !compareValues(exporter.Multiaddresses(), tc.wantValues) {
-			t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), tc.wantValues)
+		if !compareMultiaddrses(topologyDriver.Multiaddresses(), tc.wantValues) {
+			t.Errorf("Multiaddresses got %v, want %v", topologyDriver.Multiaddresses(), tc.wantValues)
 		}
+
 	}
 
-}
-
-func compareKeys(keys []swarm.Address, wantKeys []swarm.Address) bool {
-	var stringKeys []string
-	for _, k := range keys {
-		stringKeys = append(stringKeys, k.String())
-	}
-
-	var stringWantKeys []string
-	for _, k := range wantKeys {
-		stringWantKeys = append(stringWantKeys, k.String())
-	}
-
-	sort.Strings(stringKeys)
-	sort.Strings(stringWantKeys)
-
-	return reflect.DeepEqual(stringKeys, stringWantKeys)
-}
-
-func compareValues(values []ma.Multiaddr, wantValues []ma.Multiaddr) bool {
-	var stringVal []string
-	for _, v := range values {
-		stringVal = append(stringVal, v.String())
-	}
-
-	var stringWantVal []string
-	for _, v := range wantValues {
-		stringWantVal = append(stringWantVal, v.String())
-	}
-
-	sort.Strings(stringVal)
-	sort.Strings(stringWantVal)
-
-	return reflect.DeepEqual(stringVal, stringWantVal)
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
@@ -223,8 +181,77 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 	return peers, nil
 }
 
+func compareOverlays(keys []swarm.Address, wantKeys []swarm.Address) bool {
+	var stringKeys []string
+	for _, k := range keys {
+		stringKeys = append(stringKeys, k.String())
+	}
+
+	var stringWantKeys []string
+	for _, k := range wantKeys {
+		stringWantKeys = append(stringWantKeys, k.String())
+	}
+
+	sort.Strings(stringKeys)
+	sort.Strings(stringWantKeys)
+	return reflect.DeepEqual(stringKeys, stringWantKeys)
+}
+
+func compareMultiaddrses(values []ma.Multiaddr, wantValues []ma.Multiaddr) bool {
+	var stringVal []string
+	for _, v := range values {
+		stringVal = append(stringVal, v.String())
+	}
+
+	var stringWantVal []string
+	for _, v := range wantValues {
+		stringWantVal = append(stringWantVal, v.String())
+	}
+
+	sort.Strings(stringVal)
+	sort.Strings(stringWantVal)
+	return reflect.DeepEqual(stringVal, stringWantVal)
+}
+
 func createRandomBytes() []byte {
 	randBytes := make([]byte, 32)
 	rand.Read(randBytes)
 	return randBytes
+}
+
+type TopologyDriverMock struct {
+	peers map[string]ma.Multiaddr
+}
+
+func NewTopologyDriverMock() *TopologyDriverMock {
+	return &TopologyDriverMock{
+		peers: make(map[string]ma.Multiaddr),
+	}
+}
+
+func (t *TopologyDriverMock) AddPeer(overlay swarm.Address, addr ma.Multiaddr) error {
+	t.peers[overlay.String()] = addr
+	return nil
+}
+
+func (t *TopologyDriverMock) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+	return swarm.Address{}, errors.New("not implemented")
+}
+
+func (t *TopologyDriverMock) Overlays() []swarm.Address {
+	addreses := make([]swarm.Address, 0, len(t.peers))
+	for a := range t.peers {
+		addreses = append(addreses, swarm.MustParseHexAddress(a))
+	}
+
+	return addreses
+}
+
+func (t *TopologyDriverMock) Multiaddresses() []ma.Multiaddr {
+	addreses := make([]ma.Multiaddr, 0, len(t.peers))
+	for _, m := range t.peers {
+		addreses = append(addreses, m)
+	}
+
+	return addreses
 }

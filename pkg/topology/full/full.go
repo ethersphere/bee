@@ -14,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func init() {
@@ -31,26 +33,33 @@ type driver struct {
 	connected   map[string]swarm.Address
 	discovery   discovery.Driver
 	addressBook addressbook.Getter
+	connecter   Connecter
 }
 
-func New(disc discovery.Driver, addressBook addressbook.Getter) topology.Driver {
+type Connecter interface {
+	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+}
+
+func New(disc discovery.Driver, addressBook addressbook.Getter, connecter Connecter) topology.Driver {
 	return &driver{
 		connected:   make(map[string]swarm.Address),
 		discovery:   disc,
 		addressBook: addressBook,
+		connecter:   connecter,
 	}
 }
 
 // AddPeer adds a new peer to the topology driver.
+// The connection to this peer will be performed.
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
-func (d *driver) AddPeer(overlay swarm.Address) error {
+func (d *driver) AddPeer(overlay swarm.Address, addr ma.Multiaddr) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	ma, exists := d.addressBook.Get(overlay)
-	if !exists {
-		return topology.ErrNotFound
+	overlay, err := d.connecter.Connect(context.Background(), addr)
+	if err != nil {
+		return err
 	}
 
 	var connectedNodes []discovery.BroadcastRecord
@@ -60,16 +69,14 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 			return topology.ErrNotFound
 		}
 
-		err := d.discovery.BroadcastPeers(context.Background(), addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: ma})
-		if err != nil {
+		if err := d.discovery.BroadcastPeers(context.Background(), addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: cma}); err != nil {
 			return err
 		}
 
 		connectedNodes = append(connectedNodes, discovery.BroadcastRecord{Overlay: addressee, Addr: cma})
 	}
 
-	err := d.discovery.BroadcastPeers(context.Background(), overlay, connectedNodes...)
-	if err != nil {
+	if err := d.discovery.BroadcastPeers(context.Background(), overlay, connectedNodes...); err != nil {
 		return err
 	}
 
