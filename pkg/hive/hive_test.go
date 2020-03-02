@@ -44,7 +44,6 @@ func TestBroadcastPeers(t *testing.T) {
 	var records []discovery.BroadcastRecord
 	var wantMsgs []pb.Peers
 
-	// 2*maxBatchSize is ok to be used in the 2 batches corner-case test
 	for i := 0; i < 2*hive.MaxBatchSize; i++ {
 		ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
 		if err != nil {
@@ -71,23 +70,37 @@ func TestBroadcastPeers(t *testing.T) {
 		"OK - single record": {
 			addresee:   swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
 			peers:      []discovery.BroadcastRecord{{Overlay: addrs[0], Addr: multiaddrs[0]}},
-			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers[0:1]}},
+			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers[:1]}},
 			wantKeys:   []swarm.Address{addrs[0]},
 			wantValues: []ma.Multiaddr{multiaddrs[0]},
 		},
 		"OK - single batch - multiple records": {
 			addresee:   swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:      records[0:15],
-			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers[0:15]}},
-			wantKeys:   addrs[0:15],
-			wantValues: multiaddrs[0:15],
+			peers:      records[:15],
+			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
+			wantKeys:   addrs[:15],
+			wantValues: multiaddrs[:15],
+		},
+		"OK - single batch - max number of records": {
+			addresee:   swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:      records[:hive.MaxBatchSize],
+			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers[:hive.MaxBatchSize]}},
+			wantKeys:   addrs[:hive.MaxBatchSize],
+			wantValues: multiaddrs[:hive.MaxBatchSize],
 		},
 		"OK - multiple batches": {
 			addresee:   swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:      records[0:60],
-			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers[0:10]}},
-			wantKeys:   addrs[0:60],
-			wantValues: multiaddrs[0:60],
+			peers:      records[0 : hive.MaxBatchSize+10],
+			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers[:10]}},
+			wantKeys:   addrs[0 : hive.MaxBatchSize+10],
+			wantValues: multiaddrs[0 : hive.MaxBatchSize+10],
+		},
+		"OK - multiple batches - max number of records": {
+			addresee:   swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:      records[0 : 2*hive.MaxBatchSize],
+			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers}},
+			wantKeys:   addrs[0 : 2*hive.MaxBatchSize],
+			wantValues: multiaddrs[0 : 2*hive.MaxBatchSize],
 		},
 	}
 
