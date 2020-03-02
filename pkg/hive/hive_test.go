@@ -90,17 +90,17 @@ func TestBroadcastPeers(t *testing.T) {
 		},
 		"OK - multiple batches": {
 			addresee:   swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:      records[0 : hive.MaxBatchSize+10],
+			peers:      records[:hive.MaxBatchSize+10],
 			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers[:10]}},
-			wantKeys:   addrs[0 : hive.MaxBatchSize+10],
-			wantValues: multiaddrs[0 : hive.MaxBatchSize+10],
+			wantKeys:   addrs[:hive.MaxBatchSize+10],
+			wantValues: multiaddrs[:hive.MaxBatchSize+10],
 		},
 		"OK - multiple batches - max number of records": {
 			addresee:   swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:      records[0 : 2*hive.MaxBatchSize],
+			peers:      records[:2*hive.MaxBatchSize],
 			wantMsgs:   []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers}},
-			wantKeys:   addrs[0 : 2*hive.MaxBatchSize],
-			wantValues: multiaddrs[0 : 2*hive.MaxBatchSize],
+			wantKeys:   addrs[:2*hive.MaxBatchSize],
+			wantValues: multiaddrs[:2*hive.MaxBatchSize],
 		},
 	}
 

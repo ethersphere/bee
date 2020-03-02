@@ -248,7 +248,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			}
 		})
 	}
-
 	return nil
 }
 
