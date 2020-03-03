@@ -5,6 +5,7 @@
 package full
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"time"
@@ -24,7 +25,7 @@ var _ topology.Driver = (*driver)(nil)
 // driver drives the connectivity between nodes. It is a basic implementation of a connectivity driver.
 // that enabled full connectivity in the sense that:
 // - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address.
-// - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (PeerSuggester interface).
+// - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
 type driver struct {
 	mtx         sync.Mutex
 	connected   map[string]swarm.Address
@@ -41,7 +42,8 @@ func New(disc discovery.Driver, addressBook addressbook.Getter) topology.Driver 
 }
 
 // AddPeer adds a new peer to the topology driver.
-// the peer would be subsequently broadcasted to all connected peers.
+// The peer would be subsequently broadcasted to all connected peers.
+// All conneceted peers are also broadcasted to the new peer.
 func (d *driver) AddPeer(overlay swarm.Address) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -51,14 +53,27 @@ func (d *driver) AddPeer(overlay swarm.Address) error {
 		return topology.ErrNotFound
 	}
 
+	var connectedNodes []discovery.BroadcastRecord
 	for _, addressee := range d.connected {
-		err := d.discovery.BroadcastPeer(addressee, overlay, ma)
+		cma, exists := d.addressBook.Get(addressee)
+		if !exists {
+			return topology.ErrNotFound
+		}
+
+		err := d.discovery.BroadcastPeers(context.Background(), addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: ma})
 		if err != nil {
 			return err
 		}
+
+		connectedNodes = append(connectedNodes, discovery.BroadcastRecord{Overlay: addressee, Addr: cma})
 	}
 
-	// add peer in the end to avoid broadcast to itself
+	err := d.discovery.BroadcastPeers(context.Background(), overlay, connectedNodes...)
+	if err != nil {
+		return err
+	}
+
+	// add new node to connected nodes to avoid double broadcasts
 	d.connected[overlay.String()] = overlay
 	return nil
 }
