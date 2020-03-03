@@ -177,7 +177,6 @@ func compareOverlays(keys []swarm.Address, wantKeys []swarm.Address) bool {
 
 	sort.Strings(stringKeys)
 	sort.Strings(stringWantKeys)
-
 	return reflect.DeepEqual(stringKeys, stringWantKeys)
 }
 
@@ -194,7 +193,6 @@ func compareMultiaddrses(values []ma.Multiaddr, wantValues []ma.Multiaddr) bool 
 
 	sort.Strings(stringVal)
 	sort.Strings(stringWantVal)
-
 	return reflect.DeepEqual(stringVal, stringWantVal)
 }
 
