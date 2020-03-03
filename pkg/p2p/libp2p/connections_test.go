@@ -388,7 +388,7 @@ func TestConnectWithMockDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if v := disc2.Broadcasts(); v != 1 {
-		t.Fatalf("expected 1 peer broadcasts, got %d", v)
+	if v := disc2.Broadcasts(); v != 2 {
+		t.Fatalf("expected 2 peer broadcasts, got %d", v)
 	}
 }

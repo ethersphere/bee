@@ -5,34 +5,35 @@
 package mock
 
 import (
+	"context"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/swarm"
+
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Discovery struct {
 	mtx     sync.Mutex
 	ctr     int //how many ops
-	records map[string]broadcastRecord
-}
-
-type broadcastRecord struct {
-	overlay   swarm.Address
-	multiaddr ma.Multiaddr
+	records map[string]discovery.BroadcastRecord
 }
 
 func NewDiscovery() *Discovery {
 	return &Discovery{
-		records: make(map[string]broadcastRecord),
+		records: make(map[string]discovery.BroadcastRecord),
 	}
 }
 
-func (d *Discovery) BroadcastPeer(addressee swarm.Address, overlay swarm.Address, addr ma.Multiaddr) error {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	d.ctr++
-	d.records[addressee.String()] = broadcastRecord{overlay: overlay, multiaddr: addr}
+func (d *Discovery) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...discovery.BroadcastRecord) error {
+	for _, peer := range peers {
+		d.mtx.Lock()
+		d.ctr++
+		d.records[addressee.String()] = discovery.BroadcastRecord{Overlay: peer.Overlay, Addr: peer.Addr}
+		d.mtx.Unlock()
+	}
+
 	return nil
 }
 
@@ -49,5 +50,5 @@ func (d *Discovery) AddresseeRecord(addressee swarm.Address) (overlay swarm.Addr
 	if !exists {
 		return swarm.Address{}, nil
 	}
-	return rec.overlay, rec.multiaddr
+	return rec.Overlay, rec.Addr
 }

@@ -20,6 +20,7 @@ const (
 	ProtocolName    = "handshake"
 	ProtocolVersion = "1.0.0"
 	StreamName      = "handshake"
+	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
 )
 
 // ErrNetworkIDIncompatible should be returned by handshake handlers if
@@ -29,9 +30,6 @@ var ErrNetworkIDIncompatible = errors.New("incompatible network ID")
 // ErrHandshakeDuplicate should be returned by handshake handlers if
 // the handshake response has been received by an already processed peer.
 var ErrHandshakeDuplicate = errors.New("duplicate handshake")
-
-// messageTimeout is the maximal allowed time for a message to be read or written.
-var messageTimeout = 5 * time.Second
 
 // PeerFinder has the information if the peer already exists in swarm.
 type PeerFinder interface {
