@@ -45,3 +45,21 @@ func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	i.entries[overlay.String()] = peerEntry{overlay: overlay, multiaddr: addr}
 	return e
 }
+
+func (i *inmem) Overlays() []swarm.Address {
+	keys := make([]swarm.Address, 0, len(i.entries))
+	for k := range i.entries {
+		keys = append(keys, swarm.MustParseHexAddress(k))
+	}
+
+	return keys
+}
+
+func (i *inmem) Multiaddresses() []ma.Multiaddr {
+	values := make([]ma.Multiaddr, 0, len(i.entries))
+	for _, v := range i.entries {
+		values = append(values, v.multiaddr)
+	}
+
+	return values
+}

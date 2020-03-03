@@ -8,14 +8,12 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-
-	ma "github.com/multiformats/go-multiaddr"
 )
 
 var ErrNotFound = errors.New("no peer found")
 
 type Driver interface {
-	AddPeer(overlay swarm.Address, addr ma.Multiaddr) error
+	AddPeer(overlay swarm.Address) error
 	ChunkPeerer
 }
 

@@ -14,10 +14,12 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/discovery/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -51,6 +53,11 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 	}
 	if o.AddressBook == nil {
 		o.AddressBook = inmem.New()
+	}
+
+	if o.TopologyDriver == nil {
+		disc := mock.NewDiscovery()
+		o.TopologyDriver = full.New(disc, o.AddressBook)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
