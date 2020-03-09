@@ -281,36 +281,6 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	expectPeers(t, s2)
 }
 
-func TestBootnodes(t *testing.T) {
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
-
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
-
-	addrs1, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addrs2, err := s2.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s3, overlay3, cleanup3 := newService(t, libp2p.Options{
-		NetworkID: 1,
-		Bootnodes: []string{
-			addrs1[0].String(),
-			addrs2[0].String(),
-		},
-	})
-	defer cleanup3()
-
-	expectPeers(t, s3, overlay1, overlay2)
-	expectPeers(t, s1, overlay3)
-	expectPeers(t, s2, overlay3)
-}
-
 func TestConnectWithDisabledQUICAndWSTransports(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

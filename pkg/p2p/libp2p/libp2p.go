@@ -50,7 +50,6 @@ type Options struct {
 	Addr        string
 	DisableWS   bool
 	DisableQUIC bool
-	Bootnodes   []string
 	NetworkID   int32
 	Logger      logging.Logger
 }
@@ -186,19 +185,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Infof("peer %s connected", i.Address)
 	})
-
-	// TODO: be more resilient on connection errors and connect in parallel
-	for _, a := range o.Bootnodes {
-		addr, err := ma.NewMultiaddr(a)
-		if err != nil {
-			return nil, fmt.Errorf("bootnode %s: %w", a, err)
-		}
-
-		overlay, err := s.Connect(ctx, addr)
-		if err != nil {
-			return nil, fmt.Errorf("connect to bootnode %s %s: %w", a, overlay, err)
-		}
-	}
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
 		s.metrics.HandledConnectionCount.Inc()

@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Bee struct {
@@ -42,6 +43,7 @@ type Options struct {
 	APIAddr       string
 	DebugAPIAddr  string
 	LibP2POptions libp2p.Options
+	Bootnodes     []string
 	Logger        logging.Logger
 }
 
@@ -91,6 +93,19 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
+
+	// TODO: be more resilient on connection errors and connect in parallel
+	for _, a := range o.Bootnodes {
+		addr, err := ma.NewMultiaddr(a)
+		if err != nil {
+			return nil, fmt.Errorf("bootnode %s: %w", a, err)
+		}
+
+		overlay, err := p2ps.Connect(p2pCtx, addr)
+		if err != nil {
+			return nil, fmt.Errorf("connect to bootnode %s %s: %w", a, overlay, err)
+		}
+	}
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
