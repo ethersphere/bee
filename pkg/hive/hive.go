@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -30,13 +29,13 @@ const (
 
 type Service struct {
 	streamer    p2p.Streamer
-	addressBook addressbook.GetterPutter
+	addressBook addressbook.GetPutter
 	logger      logging.Logger
 }
 
 type Options struct {
 	Streamer    p2p.Streamer
-	AddressBook addressbook.GetterPutter
+	AddressBook addressbook.GetPutter
 	Logger      logging.Logger
 }
 
@@ -61,7 +60,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...discovery.BroadcastRecord) error {
+func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
 	max := maxBatchSize
 	for len(peers) > 0 {
 		if max > len(peers) {
@@ -77,7 +76,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	return nil
 }
 
-func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []discovery.BroadcastRecord) error {
+func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) error {
 	stream, err := s.streamer.NewStream(ctx, peer, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
@@ -88,9 +87,15 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []dis
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
+		addr, found := s.addressBook.Get(p)
+		if !found {
+			s.logger.Errorf("Peer not found %s", peer, err)
+			continue
+		}
+
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
-			Overlay:  p.Overlay.Bytes(),
-			Underlay: p.Addr.String(),
+			Overlay:  p.Bytes(),
+			Underlay: addr.String(),
 		})
 	}
 
@@ -116,7 +121,6 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 			continue
 		}
 
-		// todo: this might be changed depending on where do we decide to connect peers
 		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
 	}
 

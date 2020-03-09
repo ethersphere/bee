@@ -16,6 +16,7 @@ import (
 type inmem struct {
 	mtx     sync.Mutex
 	entries map[string]peerEntry // key: overlay in string value, value: peerEntry
+	peerers []addressbook.Peerer
 }
 
 type peerEntry struct {
@@ -23,7 +24,7 @@ type peerEntry struct {
 	multiaddr ma.Multiaddr
 }
 
-func New() addressbook.GetterPutter {
+func New() addressbook.GetPutter {
 	return &inmem{
 		entries: make(map[string]peerEntry),
 	}
@@ -39,11 +40,20 @@ func (i *inmem) Get(overlay swarm.Address) (addr ma.Multiaddr, exists bool) {
 
 func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	i.mtx.Lock()
-	defer i.mtx.Unlock()
-
 	_, e := i.entries[overlay.String()]
 	i.entries[overlay.String()] = peerEntry{overlay: overlay, multiaddr: addr}
+	i.mtx.Unlock()
+
+	for _, p := range i.peerers {
+		p.AddPeer(overlay)
+	}
+
 	return e
+}
+
+func (i *inmem) AddPeerer(peerer addressbook.Peerer) error {
+	i.peerers = append(i.peerers, peerer)
+	return nil
 }
 
 func (i *inmem) Overlays() []swarm.Address {

@@ -11,12 +11,10 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
@@ -43,22 +41,18 @@ type Service struct {
 	networkID        int32
 	handshakeService *handshake.Service
 	peers            *peerRegistry
-	topologyDriver   topology.Driver
-	addressBook      addressbook.Putter
 	logger           logging.Logger
 }
 
 type Options struct {
-	PrivateKey     *ecdsa.PrivateKey
-	Overlay        swarm.Address
-	Addr           string
-	DisableWS      bool
-	DisableQUIC    bool
-	Bootnodes      []string
-	NetworkID      int32
-	AddressBook    addressbook.GetterPutter
-	TopologyDriver topology.Driver
-	Logger         logging.Logger
+	PrivateKey  *ecdsa.PrivateKey
+	Overlay     swarm.Address
+	Addr        string
+	DisableWS   bool
+	DisableQUIC bool
+	Bootnodes   []string
+	NetworkID   int32
+	Logger      logging.Logger
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -158,8 +152,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		networkID:        o.NetworkID,
 		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
 		peers:            peerRegistry,
-		addressBook:      o.AddressBook,
-		topologyDriver:   o.TopologyDriver,
 		logger:           o.Logger,
 	}
 
@@ -294,13 +286,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	s.peers.add(stream.Conn(), i.Address)
-	s.addressBook.Put(i.Address, addr)
-
-	err = s.topologyDriver.AddPeer(i.Address)
-	if err != nil {
-		return swarm.Address{}, fmt.Errorf("topology addpeer: %w", err)
-	}
-
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil

@@ -10,9 +10,15 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type GetterPutter interface {
+type GetPutter interface {
 	Getter
 	Putter
+	AddPeerer(peerer Peerer) error
+}
+
+// Peerers method AddPeer is called whenever new peer is added
+type Peerer interface {
+	AddPeer(overlay swarm.Address) error
 }
 
 type Getter interface {
