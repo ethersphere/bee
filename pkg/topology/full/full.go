@@ -12,6 +12,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -31,13 +33,17 @@ type driver struct {
 	connected   map[string]swarm.Address
 	discovery   discovery.Driver
 	addressBook addressbook.Getter
+	connecter   p2p.Connecter
+	logger      logging.Logger
 }
 
-func New(disc discovery.Driver, addressBook addressbook.Getter) topology.Driver {
+func New(disc discovery.Driver, addressBook addressbook.Getter, connecter p2p.Connecter, logger logging.Logger) topology.Driver {
 	return &driver{
 		connected:   make(map[string]swarm.Address),
 		discovery:   disc,
 		addressBook: addressBook,
+		connecter:   connecter,
+		logger:      logger,
 	}
 }
 
@@ -45,36 +51,7 @@ func New(disc discovery.Driver, addressBook addressbook.Getter) topology.Driver 
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
 func (d *driver) AddPeer(overlay swarm.Address) error {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-
-	ma, exists := d.addressBook.Get(overlay)
-	if !exists {
-		return topology.ErrNotFound
-	}
-
-	var connectedNodes []discovery.BroadcastRecord
-	for _, addressee := range d.connected {
-		cma, exists := d.addressBook.Get(addressee)
-		if !exists {
-			return topology.ErrNotFound
-		}
-
-		err := d.discovery.BroadcastPeers(context.Background(), addressee, discovery.BroadcastRecord{Overlay: overlay, Addr: ma})
-		if err != nil {
-			return err
-		}
-
-		connectedNodes = append(connectedNodes, discovery.BroadcastRecord{Overlay: addressee, Addr: cma})
-	}
-
-	err := d.discovery.BroadcastPeers(context.Background(), overlay, connectedNodes...)
-	if err != nil {
-		return err
-	}
-
-	// add new node to connected nodes to avoid double broadcasts
-	d.connected[overlay.String()] = overlay
+	go d.addPeer(overlay)
 	return nil
 }
 
@@ -97,4 +74,36 @@ func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	}
 
 	return swarm.Address{}, topology.ErrNotFound
+}
+
+func (d *driver) addPeer(peer swarm.Address) error {
+	d.mtx.Lock()
+	if _, ok := d.connected[peer.ByteString()]; ok {
+		d.mtx.Unlock()
+		d.logger.Warningf("skipping already connected peer %s", peer)
+		return nil
+	}
+
+	var connectedNodes []swarm.Address
+	for _, addressee := range d.connected {
+		connectedNodes = append(connectedNodes, addressee)
+	}
+
+	d.mtx.Unlock()
+
+	for _, addressee := range connectedNodes {
+		err := d.discovery.BroadcastPeers(context.Background(), addressee, peer)
+		if err != nil {
+			return err
+		}
+	}
+
+	err := d.discovery.BroadcastPeers(context.Background(), peer, connectedNodes...)
+	if err != nil {
+		return err
+	}
+
+	// add new node to connected nodes to avoid double broadcasts
+	d.connected[peer.ByteString()] = peer
+	return nil
 }
