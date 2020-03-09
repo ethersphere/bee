@@ -7,8 +7,9 @@ package full
 import (
 	"context"
 	"math/rand"
-	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery"
@@ -29,17 +30,15 @@ var _ topology.Driver = (*driver)(nil)
 // - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address.
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
 type driver struct {
-	mtx         sync.Mutex
-	connected   map[string]swarm.Address
 	discovery   discovery.Driver
-	addressBook addressbook.Getter
+	addressBook addressbook.GetPutter
 	connecter   p2p.Connecter
 	logger      logging.Logger
+	eg          errgroup.Group
 }
 
-func New(disc discovery.Driver, addressBook addressbook.Getter, connecter p2p.Connecter, logger logging.Logger) topology.Driver {
+func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p.Connecter, logger logging.Logger) topology.Driver {
 	return &driver{
-		connected:   make(map[string]swarm.Address),
 		discovery:   disc,
 		addressBook: addressBook,
 		connecter:   connecter,
@@ -51,24 +50,25 @@ func New(disc discovery.Driver, addressBook addressbook.Getter, connecter p2p.Co
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
 func (d *driver) AddPeer(overlay swarm.Address) error {
-	go d.addPeer(overlay)
+	d.eg.Go(func() error {
+		return d.addPeer(overlay)
+	})
+
 	return nil
 }
 
 // ChunkPeer is used to suggest a peer to ask a certain chunk from.
 func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-
-	if len(d.connected) == 0 {
+	connectedPeers := d.connecter.Peers()
+	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
-	itemIdx := rand.Intn(len(d.connected))
+	itemIdx := rand.Intn(len(connectedPeers))
 	i := 0
-	for _, v := range d.connected {
+	for _, v := range connectedPeers {
 		if i == itemIdx {
-			return v, nil
+			return v.Address, nil
 		}
 		i++
 	}
@@ -77,33 +77,33 @@ func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 }
 
 func (d *driver) addPeer(peer swarm.Address) error {
-	d.mtx.Lock()
-	if _, ok := d.connected[peer.ByteString()]; ok {
-		d.mtx.Unlock()
-		d.logger.Warningf("skipping already connected peer %s", peer)
-		return nil
+	connectedPeers := d.connecter.Peers()
+	ma, exists := d.addressBook.Get(peer)
+	if !exists {
+		return topology.ErrNotFound
 	}
 
-	var connectedNodes []swarm.Address
-	for _, addressee := range d.connected {
-		connectedNodes = append(connectedNodes, addressee)
-	}
-
-	d.mtx.Unlock()
-
-	for _, addressee := range connectedNodes {
-		err := d.discovery.BroadcastPeers(context.Background(), addressee, peer)
-		if err != nil {
-			return err
-		}
-	}
-
-	err := d.discovery.BroadcastPeers(context.Background(), peer, connectedNodes...)
+	peerAddr, err := d.connecter.Connect(context.Background(), ma)
 	if err != nil {
 		return err
 	}
 
-	// add new node to connected nodes to avoid double broadcasts
-	d.connected[peer.ByteString()] = peer
+	if peer.String() != peerAddr.String() {
+		peer = peerAddr
+		d.addressBook.Put(peerAddr, ma)
+	}
+
+	connectedAddrs := []swarm.Address{}
+	for _, addressee := range connectedPeers {
+		connectedAddrs = append(connectedAddrs, addressee.Address)
+		if err := d.discovery.BroadcastPeers(context.Background(), addressee.Address, peer); err != nil {
+			return err
+		}
+	}
+
+	if err := d.discovery.BroadcastPeers(context.Background(), peer, connectedAddrs...); err != nil {
+		return err
+	}
+
 	return nil
 }

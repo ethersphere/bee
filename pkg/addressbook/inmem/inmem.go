@@ -45,7 +45,7 @@ func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	i.mtx.Unlock()
 
 	for _, p := range i.peerers {
-		p.AddPeer(overlay)
+		_ = p.AddPeer(overlay)
 	}
 
 	return e
