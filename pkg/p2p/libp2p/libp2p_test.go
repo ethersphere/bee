@@ -51,6 +51,7 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 	if o.Addr == "" {
 		o.Addr = ":0"
 	}
+
 	if o.AddressBook == nil {
 		o.AddressBook = inmem.New()
 	}

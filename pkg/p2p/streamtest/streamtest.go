@@ -52,7 +52,7 @@ func New(opts ...Option) *Recorder {
 	return r
 }
 
-func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
+func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
 	closedIn := make(chan struct{})
@@ -61,11 +61,13 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 	streamIn := newStream(recordOut, recordIn, closedOut, closedIn)
 
 	var handler p2p.HandlerFunc
+	var headler p2p.HeadlerFunc
 	for _, p := range r.protocols {
 		if p.Name == protocolName && p.Version == protocolVersion {
 			for _, s := range p.StreamSpecs {
 				if s.Name == streamName {
 					handler = s.Handler
+					headler = s.Headler
 				}
 			}
 		}
@@ -76,9 +78,12 @@ func (r *Recorder) NewStream(_ context.Context, addr swarm.Address, protocolName
 	for i := len(r.middlewares) - 1; i >= 0; i-- {
 		handler = r.middlewares[i](handler)
 	}
+	if headler != nil {
+		streamOut.headers = headler(h)
+	}
 	record := &Record{in: recordIn, out: recordOut}
 	go func() {
-		err := handler(p2p.Peer{Address: addr}, streamIn)
+		err := handler(ctx, p2p.Peer{Address: addr}, streamIn)
 		if err != nil && err != io.EOF {
 			record.setErr(err)
 		}
@@ -138,6 +143,7 @@ func (r *Record) setErr(err error) {
 type stream struct {
 	in        io.WriteCloser
 	out       io.ReadCloser
+	headers   p2p.Headers
 	cin       chan struct{}
 	cout      chan struct{}
 	closeOnce sync.Once
@@ -153,6 +159,10 @@ func (s *stream) Read(p []byte) (int, error) {
 
 func (s *stream) Write(p []byte) (int, error) {
 	return s.in.Write(p)
+}
+
+func (s *stream) Headers() p2p.Headers {
+	return s.headers
 }
 
 func (s *stream) Close() error {

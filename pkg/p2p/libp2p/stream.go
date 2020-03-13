@@ -5,18 +5,24 @@
 package libp2p
 
 import (
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
 type stream struct {
 	network.Stream
-}
-
-func (s *stream) FullClose() error {
-	return helpers.FullClose(s)
+	headers map[string][]byte
 }
 
 func newStream(s network.Stream) *stream {
 	return &stream{Stream: s}
+}
+
+func (s *stream) Headers() p2p.Headers {
+	return s.headers
+}
+
+func (s *stream) FullClose() error {
+	return helpers.FullClose(s)
 }

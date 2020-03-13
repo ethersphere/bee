@@ -22,6 +22,9 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	peerID := mux.Vars(r)["peer-id"]
 	ctx := r.Context()
 
+	span, ctx := s.Tracer.StartSpanFromContext(ctx, "pingpong-api")
+	defer span.Finish()
+
 	address, err := swarm.ParseHexAddress(peerID)
 	if err != nil {
 		s.Logger.Debugf("pingpong: parse peer address %s: %v", peerID, err)

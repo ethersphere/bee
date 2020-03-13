@@ -4,7 +4,11 @@
 
 package mock
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/ethersphere/bee/pkg/p2p"
+)
 
 type Stream struct {
 	readBuffer        *bytes.Buffer
@@ -46,6 +50,10 @@ func (s *Stream) Write(p []byte) (n int, err error) {
 
 	s.writeCounter++
 	return s.writeBuffer.Write(p)
+}
+
+func (s *Stream) Headers() p2p.Headers {
+	return nil
 }
 
 func (s *Stream) Close() error {
