@@ -16,9 +16,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
@@ -26,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/topology/full"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -107,16 +110,30 @@ func NewBee(o Options) (*Bee, error) {
 		}
 	}
 
+	addressbook := inmem.New()
+
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
 		Streamer: p2ps,
 		Logger:   logger,
 	})
 
-	// Add protocols to the P2P service.
 	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
+
+	hive := hive.New(hive.Options{
+		Streamer:    p2ps,
+		AddressBook: addressbook,
+		Logger:      logger,
+	})
+
+	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
+		return nil, fmt.Errorf("hive service: %w", err)
+	}
+
+	topologyDriver := full.New(hive, addressbook, p2ps, logger)
+	hive.AddPeerHandler(topologyDriver.AddPeerHandler)
 
 	addrs, err := p2ps.Addresses()
 	if err != nil {
