@@ -39,9 +39,9 @@ func (i *inmem) Get(overlay swarm.Address) (addr ma.Multiaddr, exists bool) {
 
 func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	i.mtx.Lock()
+	defer i.mtx.Unlock()
 	_, e := i.entries[overlay.String()]
 	i.entries[overlay.String()] = peerEntry{overlay: overlay, multiaddr: addr}
-	i.mtx.Unlock()
 	return e
 }
 
