@@ -11,9 +11,11 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/topology/mock"
 	"resenje.org/web"
 )
 
@@ -23,8 +25,10 @@ type testServerOptions struct {
 
 func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
 	s := debugapi.New(debugapi.Options{
-		P2P:    o.P2P,
-		Logger: logging.New(ioutil.Discard, 0),
+		P2P:            o.P2P,
+		Logger:         logging.New(ioutil.Discard, 0),
+		Addressbook:    inmem.New(),
+		TopologyDriver: mock.NewTopologyDriver(),
 	})
 	ts := httptest.NewServer(s)
 	cleanup = ts.Close

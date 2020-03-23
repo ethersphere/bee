@@ -28,18 +28,20 @@ var _ topology.Driver = (*Driver)(nil)
 // - Every peer which is added to the Driver gets broadcasted to every other peer regardless of its address.
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
 type Driver struct {
-	discovery   discovery.Driver
-	addressBook addressbook.GetPutter
-	connecter   p2p.Connecter
-	logger      logging.Logger
+	discovery     discovery.Driver
+	addressBook   addressbook.GetPutter
+	connecter     p2p.Connecter
+	receivedPeers map[string]bool
+	logger        logging.Logger
 }
 
 func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p.Connecter, logger logging.Logger) *Driver {
 	return &Driver{
-		discovery:   disc,
-		addressBook: addressBook,
-		connecter:   connecter,
-		logger:      logger,
+		discovery:     disc,
+		addressBook:   addressBook,
+		connecter:     connecter,
+		receivedPeers: make(map[string]bool),
+		logger:        logger,
 	}
 }
 
@@ -47,6 +49,11 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
 func (d *Driver) AddPeer(addr swarm.Address) error {
+	if d.receivedPeers[addr.ByteString()] {
+		return nil
+	}
+
+	d.receivedPeers[addr.ByteString()] = true
 	connectedPeers := d.connecter.Peers()
 	ma, exists := d.addressBook.Get(addr)
 	if !exists {
@@ -54,6 +61,7 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 	}
 
 	if !isConnected(addr, connectedPeers) {
+		d.logger.Infof("peer not connected, connecting %s", addr)
 		peerAddr, err := d.connecter.Connect(context.Background(), ma)
 		if err != nil {
 			return err
@@ -64,6 +72,8 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 			addr = peerAddr
 			d.addressBook.Put(peerAddr, ma)
 		}
+	} else {
+		d.logger.Infof("peer already connected %s", addr)
 	}
 
 	connectedAddrs := []swarm.Address{}

@@ -134,7 +134,7 @@ func NewBee(o Options) (*Bee, error) {
 
 	topologyDriver := full.New(hive, addressbook, p2ps, logger)
 	hive.AddPeerHandler(topologyDriver.AddPeerHandler)
-
+	p2ps.SetPeerHandler(topologyDriver.AddPeerHandler)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)
@@ -176,8 +176,10 @@ func NewBee(o Options) (*Bee, error) {
 	if o.DebugAPIAddr != "" {
 		// Debug API server
 		debugAPIService := debugapi.New(debugapi.Options{
-			P2P:    p2ps,
-			Logger: logger,
+			P2P:            p2ps,
+			Logger:         logger,
+			Addressbook:    addressbook,
+			TopologyDriver: topologyDriver,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)

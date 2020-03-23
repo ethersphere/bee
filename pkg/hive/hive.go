@@ -30,7 +30,7 @@ const (
 type Service struct {
 	streamer     p2p.Streamer
 	addressBook  addressbook.GetPutter
-	peerHandlers []func(addr swarm.Address)
+	peerHandlers []func(swarm.Address)
 	logger       logging.Logger
 }
 
@@ -104,6 +104,8 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		})
 	}
 
+	s.logger.Infof("sending peer request to peer %s,  req %s", peer, peersRequest)
+
 	if err := w.WriteMsg(&peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
 	}
@@ -113,11 +115,14 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 
 func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	defer stream.Close()
+
 	_, r := protobuf.NewWriterAndReader(stream)
 	var peersReq pb.Peers
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
+
+	s.logger.Infof("received peer request from peer %s,  req %s", peer, peersReq)
 
 	for _, newPeer := range peersReq.Peers {
 		addr, err := ma.NewMultiaddr(newPeer.Underlay)
@@ -127,7 +132,6 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 		}
 
 		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
-
 		for _, h := range s.peerHandlers {
 			h(swarm.NewAddress(newPeer.Overlay))
 		}
