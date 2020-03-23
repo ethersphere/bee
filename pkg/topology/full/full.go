@@ -61,7 +61,6 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 	}
 
 	if !isConnected(addr, connectedPeers) {
-		d.logger.Infof("peer not connected, connecting %s", addr)
 		peerAddr, err := d.connecter.Connect(context.Background(), ma)
 		if err != nil {
 			return err
@@ -72,8 +71,6 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 			addr = peerAddr
 			d.addressBook.Put(peerAddr, ma)
 		}
-	} else {
-		d.logger.Infof("peer already connected %s", addr)
 	}
 
 	connectedAddrs := []swarm.Address{}

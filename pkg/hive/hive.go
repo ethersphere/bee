@@ -88,7 +88,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	}
 
 	defer stream.Close()
-
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
@@ -103,8 +102,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			Underlay: addr.String(),
 		})
 	}
-
-	s.logger.Infof("sending peer request to peer %s,  req %s", peer, peersRequest)
 
 	if err := w.WriteMsg(&peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
@@ -121,8 +118,6 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
-
-	s.logger.Infof("received peer request from peer %s,  req %s", peer, peersReq)
 
 	for _, newPeer := range peersReq.Peers {
 		addr, err := ma.NewMultiaddr(newPeer.Underlay)
