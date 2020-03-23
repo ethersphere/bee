@@ -133,8 +133,8 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	topologyDriver := full.New(hive, addressbook, p2ps, logger)
-	hive.AddPeerHandler(topologyDriver.AddPeerHandler)
-	p2ps.SetPeerHandler(topologyDriver.AddPeerHandler)
+	hive.AddPeerAddedHandler(topologyDriver.PeerAddedHandler)
+	p2ps.SetPeerAddedHandler(topologyDriver.PeerAddedHandler)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)

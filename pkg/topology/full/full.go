@@ -112,7 +112,7 @@ func (d *Driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	return swarm.Address{}, topology.ErrNotFound
 }
 
-func (d *Driver) AddPeerHandler(addr swarm.Address) {
+func (d *Driver) PeerAddedHandler(addr swarm.Address) {
 	// this is a dummy implementation
 	// todo: if needed add cancel, shutdown and limit number of goroutines
 	go func() {

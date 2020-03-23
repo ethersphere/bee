@@ -77,7 +77,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	return nil
 }
 
-func (s *Service) AddPeerHandler(h func(addr swarm.Address)) {
+func (s *Service) AddPeerAddedHandler(h func(addr swarm.Address)) {
 	s.peerHandlers = append(s.peerHandlers, h)
 }
 

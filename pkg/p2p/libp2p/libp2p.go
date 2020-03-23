@@ -302,7 +302,7 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetPeerHandler(h func(addr swarm.Address)) {
+func (s *Service) SetPeerAddedHandler(h func(addr swarm.Address)) {
 	s.peerHandler = h
 }
 

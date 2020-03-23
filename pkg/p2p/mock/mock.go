@@ -14,11 +14,11 @@ import (
 )
 
 type Service struct {
-	addProtocolFunc    func(p2p.ProtocolSpec) error
-	connectFunc        func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
-	disconnectFunc     func(overlay swarm.Address) error
-	peersFunc          func() []p2p.Peer
-	setPeerHandlerFunc func(func(overlay swarm.Address))
+	addProtocolFunc         func(p2p.ProtocolSpec) error
+	connectFunc             func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+	disconnectFunc          func(overlay swarm.Address) error
+	peersFunc               func() []p2p.Peer
+	setPeerAddedHandlerFunc func(func(overlay swarm.Address))
 }
 
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
@@ -45,9 +45,9 @@ func WithPeersFunc(f func() []p2p.Peer) Option {
 	})
 }
 
-func WithSetPeerHandlerFunc(f func(func(overlay swarm.Address))) Option {
+func WithSetPeerAddedHandlerFunc(f func(func(overlay swarm.Address))) Option {
 	return optionFunc(func(s *Service) {
-		s.setPeerHandlerFunc = f
+		s.setPeerAddedHandlerFunc = f
 	})
 }
 
@@ -80,12 +80,12 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return s.disconnectFunc(overlay)
 }
 
-func (s *Service) SetPeerHandler(f func(overlay swarm.Address)) {
-	if s.setPeerHandlerFunc == nil {
+func (s *Service) SetPeerAddedHandler(f func(overlay swarm.Address)) {
+	if s.setPeerAddedHandlerFunc == nil {
 		return
 	}
 
-	s.setPeerHandlerFunc(f)
+	s.setPeerAddedHandlerFunc(f)
 }
 
 func (s *Service) Peers() []p2p.Peer {
