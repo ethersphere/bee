@@ -41,7 +41,7 @@ type Service struct {
 	networkID        int32
 	handshakeService *handshake.Service
 	peers            *peerRegistry
-	peerHandler      func(swarm.Address)
+	peerHandler      func(swarm.Address) error
 	logger           logging.Logger
 }
 
@@ -184,7 +184,9 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 		s.peers.add(stream.Conn(), i.Address)
 		if s.peerHandler != nil {
-			s.peerHandler(i.Address)
+			if err := s.peerHandler(i.Address); err != nil {
+				s.logger.Debugf("peerhandler: %s: %v", peerID, err)
+			}
 
 		}
 		s.metrics.HandledStreamCount.Inc()
@@ -302,7 +304,7 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetPeerAddedHandler(h func(addr swarm.Address)) {
+func (s *Service) SetPeerAddedHandler(h func(addr swarm.Address) error) {
 	s.peerHandler = h
 }
 

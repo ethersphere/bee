@@ -30,12 +30,12 @@ var _ topology.Driver = (*Driver)(nil)
 type Driver struct {
 	discovery     discovery.Driver
 	addressBook   addressbook.GetPutter
-	connecter     p2p.Connecter
+	connecter     p2p.Service
 	receivedPeers map[string]bool
 	logger        logging.Logger
 }
 
-func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p.Connecter, logger logging.Logger) *Driver {
+func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p.Service, logger logging.Logger) *Driver {
 	return &Driver{
 		discovery:     disc,
 		addressBook:   addressBook,
@@ -75,7 +75,7 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 
 	connectedAddrs := []swarm.Address{}
 	for _, addressee := range connectedPeers {
-		// skip curenttly added peer
+		// skip newly added peer
 		if addressee.Address.Equal(addr) {
 			continue
 		}
@@ -110,14 +110,6 @@ func (d *Driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	}
 
 	return swarm.Address{}, topology.ErrNotFound
-}
-
-func (d *Driver) PeerAddedHandler(addr swarm.Address) {
-	// this is a dummy implementation
-	// todo: if needed add cancel, shutdown and limit number of goroutines
-	go func() {
-		_ = d.AddPeer(addr)
-	}()
 }
 
 func isConnected(addr swarm.Address, connectedPeers []p2p.Peer) bool {

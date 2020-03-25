@@ -14,18 +14,14 @@ import (
 
 type Service interface {
 	AddProtocol(ProtocolSpec) error
-	Connecter
+	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+	Disconnect(overlay swarm.Address) error
+	Peers() []Peer
+	SetPeerAddedHandler(func(addr swarm.Address) error)
 }
 
 type Streamer interface {
 	NewStream(ctx context.Context, address swarm.Address, protocol, version, stream string) (Stream, error)
-}
-
-type Connecter interface {
-	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
-	Disconnect(overlay swarm.Address) error
-	Peers() []Peer
-	SetPeerAddedHandler(func(addr swarm.Address))
 }
 
 type Stream interface {
