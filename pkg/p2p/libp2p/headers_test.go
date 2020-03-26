@@ -82,6 +82,7 @@ func TestHeadler(t *testing.T) {
 	defer cleanup2()
 
 	var gotReceivedHeaders p2p.Headers
+	handled := make(chan struct{})
 	if err := s1.AddProtocol(p2p.ProtocolSpec{
 		Name:    testProtocolName,
 		Version: testProtocolVersion,
@@ -92,6 +93,7 @@ func TestHeadler(t *testing.T) {
 					return nil
 				},
 				Headler: func(headers p2p.Headers) p2p.Headers {
+					defer close(handled)
 					gotReceivedHeaders = headers
 					return sentHeaders
 				},
@@ -112,6 +114,12 @@ func TestHeadler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.Close()
+
+	select {
+	case <-handled:
+	case <-time.After(30 * time.Second):
+		t.Fatal("timeout waiting for handler")
+	}
 
 	if fmt.Sprint(gotReceivedHeaders) != fmt.Sprint(receivedHeaders) {
 		t.Errorf("got received headers %+v, want %+v", gotReceivedHeaders, receivedHeaders)
