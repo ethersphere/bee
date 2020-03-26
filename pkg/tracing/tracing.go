@@ -21,9 +21,8 @@ import (
 var (
 	ErrContextNotFound = errors.New("tracing context not found")
 
-	contextKey   = struct{}{}
-	p2pHeaderKey = "tracing-span-context"
-	noopTracer   = &Tracer{tracer: new(opentracing.NoopTracer)}
+	contextKey = struct{}{}
+	noopTracer = &Tracer{tracer: new(opentracing.NoopTracer)}
 )
 
 type Tracer struct {
@@ -96,7 +95,7 @@ func (t *Tracer) AddContextHeader(ctx context.Context, headers p2p.Headers) erro
 		return err
 	}
 
-	headers[p2pHeaderKey] = b.Bytes()
+	headers[p2p.HeaderNameTracingSpanContext] = b.Bytes()
 
 	return nil
 }
@@ -106,7 +105,7 @@ func (t *Tracer) FromHeaders(headers p2p.Headers) (opentracing.SpanContext, erro
 		t = noopTracer
 	}
 
-	v := headers[p2pHeaderKey]
+	v := headers[p2p.HeaderNameTracingSpanContext]
 	if v == nil {
 		return nil, ErrContextNotFound
 	}

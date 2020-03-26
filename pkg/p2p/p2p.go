@@ -54,7 +54,9 @@ type HeadlerFunc func(Headers) Headers
 
 type Headers map[string][]byte
 
-var HeadersContextKey = struct{}{}
+const (
+	HeaderNameTracingSpanContext = "tracing-span-context"
+)
 
 func NewSwarmStreamName(protocol, version, stream string) string {
 	return "/swarm/" + protocol + "/" + version + "/" + stream
