@@ -86,6 +86,10 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 		}
 	}
 
+	if len(connectedAddrs) == 0 {
+		return nil
+	}
+
 	if err := d.discovery.BroadcastPeers(context.Background(), addr, connectedAddrs...); err != nil {
 		return err
 	}

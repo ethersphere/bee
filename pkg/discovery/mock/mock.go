@@ -14,23 +14,23 @@ import (
 type Discovery struct {
 	mtx     sync.Mutex
 	ctr     int //how many ops
-	records map[string]swarm.Address
+	records map[string][]swarm.Address
 }
 
 func NewDiscovery() *Discovery {
 	return &Discovery{
-		records: make(map[string]swarm.Address),
+		records: make(map[string][]swarm.Address),
 	}
 }
 
 func (d *Discovery) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
 	for _, peer := range peers {
 		d.mtx.Lock()
-		d.ctr++
-		d.records[addressee.String()] = peer
+		d.records[addressee.String()] = append(d.records[addressee.String()], peer)
 		d.mtx.Unlock()
 	}
 
+	d.ctr++
 	return nil
 }
 
@@ -40,12 +40,12 @@ func (d *Discovery) Broadcasts() int {
 	return d.ctr
 }
 
-func (d *Discovery) AddresseeRecord(addressee swarm.Address) (overlay swarm.Address, exists bool) {
+func (d *Discovery) AddresseeRecords(addressee swarm.Address) (peers []swarm.Address, exists bool) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	rec, exists := d.records[addressee.String()]
 	if !exists {
-		return swarm.Address{}, false
+		return []swarm.Address{}, false
 	}
 	return rec, true
 }
