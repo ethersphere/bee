@@ -6,6 +6,7 @@ package debugapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -36,6 +37,7 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Addressbook.Put(address, addr)
+	fmt.Printf("DEBUGLOG: debug api connect put address book peer %s, %s\n", address, addr)
 	if err := s.TopologyDriver.AddPeer(address); err != nil {
 		s.Logger.Debugf("debug api: topologyDriver.AddPeer %s: %v", addr, err)
 		s.Logger.Errorf("unable to connect to peer %s", addr)

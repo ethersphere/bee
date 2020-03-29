@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
@@ -40,6 +41,7 @@ type Service struct {
 	metrics          metrics
 	networkID        int32
 	handshakeService *handshake.Service
+	addrssbook       addressbook.Putter
 	peers            *peerRegistry
 	peerHandler      func(swarm.Address) error
 	logger           logging.Logger
@@ -52,6 +54,7 @@ type Options struct {
 	DisableWS   bool
 	DisableQUIC bool
 	NetworkID   int32
+	Addressbook addressbook.Putter
 	Logger      logging.Logger
 }
 
@@ -152,6 +155,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		networkID:        o.NetworkID,
 		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
 		peers:            peerRegistry,
+		addrssbook:       o.Addressbook,
 		logger:           o.Logger,
 	}
 
@@ -183,6 +187,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 
 		s.peers.add(stream.Conn(), i.Address)
+		s.addrssbook.Put(i.Address, stream.Conn().RemoteMultiaddr())
 		if s.peerHandler != nil {
 			if err := s.peerHandler(i.Address); err != nil {
 				s.logger.Debugf("peerhandler: %s: %v", peerID, err)

@@ -52,6 +52,7 @@ type Options struct {
 
 func NewBee(o Options) (*Bee, error) {
 	logger := o.Logger
+	addressbook := inmem.New()
 
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
 
@@ -91,6 +92,7 @@ func NewBee(o Options) (*Bee, error) {
 	libP2POptions := o.LibP2POptions
 	libP2POptions.Overlay = address
 	libP2POptions.PrivateKey = libp2pPrivateKey
+	libP2POptions.Addressbook = addressbook
 	p2ps, err := libp2p.New(p2pCtx, libP2POptions)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -109,8 +111,6 @@ func NewBee(o Options) (*Bee, error) {
 			return nil, fmt.Errorf("connect to bootnode %s %s: %w", a, overlay, err)
 		}
 	}
-
-	addressbook := inmem.New()
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{

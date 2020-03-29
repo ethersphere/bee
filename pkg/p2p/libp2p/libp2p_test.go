@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -47,6 +48,10 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 
 	if o.Addr == "" {
 		o.Addr = ":0"
+	}
+
+	if o.Addressbook == nil {
+		o.Addressbook = inmem.New()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
