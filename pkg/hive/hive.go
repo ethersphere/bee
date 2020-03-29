@@ -82,7 +82,6 @@ func (s *Service) SetPeerAddedHandler(h func(addr swarm.Address) error) {
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) error {
-	fmt.Printf("DEBUGLOG: sendpeers: peers %s, %s\n", peers, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
@@ -104,8 +103,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		})
 	}
 
-	fmt.Printf("DEBUGLOG: sending peers: peers %s, %s\n", peersRequest, peer)
-
 	if err := w.WriteMsg(&peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
 	}
@@ -122,8 +119,6 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	fmt.Printf("DEBUGLOG: Received peersHandler req %s, peer %s\n", peersReq, peer.Address)
-
 	for _, newPeer := range peersReq.Peers {
 		addr, err := ma.NewMultiaddr(newPeer.Underlay)
 		if err != nil {
@@ -131,7 +126,6 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 			continue
 		}
 
-		fmt.Printf("DEBUGLOG: Received peersHandler adding peer to addressbook %s, peer %s\n", newPeer, addr)
 		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
 		if s.peerHandler != nil {
 			if err := s.peerHandler(swarm.NewAddress(newPeer.Overlay)); err != nil {

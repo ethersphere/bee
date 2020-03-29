@@ -6,7 +6,6 @@ package full
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
 
@@ -50,9 +49,7 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
 func (d *Driver) AddPeer(addr swarm.Address) error {
-	fmt.Printf("DEBUGLOG: Received AddPeer %s\n", addr)
 	if d.receivedPeers[addr.ByteString()] {
-		fmt.Printf("DEBUGLOG: Received AddPeer already recived %s\n", addr)
 		return nil
 	}
 
@@ -64,7 +61,6 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 	}
 
 	if !isConnected(addr, connectedPeers) {
-		fmt.Printf("DEBUGLOG: Received AddPeer is not connected %s\n", addr)
 		peerAddr, err := d.connecter.Connect(context.Background(), ma)
 		if err != nil {
 			return err
@@ -72,7 +68,6 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 
 		// update addr if it is wrong or it has been changed
 		if !addr.Equal(peerAddr) {
-			fmt.Printf("DEBUGLOG: Received AddPeer update %s\n", addr)
 			addr = peerAddr
 			d.addressBook.Put(peerAddr, ma)
 		}
@@ -80,10 +75,8 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 
 	connectedAddrs := []swarm.Address{}
 	for _, addressee := range connectedPeers {
-		fmt.Printf("DEBUGLOG: Received AddPeer sending to addressee %s, peer %s\n", addressee, addr)
 		// skip newly added peer
 		if addressee.Address.Equal(addr) {
-			fmt.Printf("DEBUGLOG: Received AddPeer skipping newly added peer %s\n", addr)
 			continue
 		}
 
@@ -94,7 +87,6 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 	}
 
 	if len(connectedAddrs) == 0 {
-		fmt.Printf("DEBUGLOG: Received AddPeer no connected peers, peer %s\n", addr)
 		return nil
 	}
 
