@@ -23,7 +23,7 @@ type peerEntry struct {
 	multiaddr ma.Multiaddr
 }
 
-func New() addressbook.GetterPutter {
+func New() addressbook.GetPutter {
 	return &inmem{
 		entries: make(map[string]peerEntry),
 	}
@@ -40,7 +40,6 @@ func (i *inmem) Get(overlay swarm.Address) (addr ma.Multiaddr, exists bool) {
 func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
-
 	_, e := i.entries[overlay.String()]
 	i.entries[overlay.String()] = peerEntry{overlay: overlay, multiaddr: addr}
 	return e

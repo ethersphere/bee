@@ -25,7 +25,7 @@ func TestConnect(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testErr := errors.New("test error")
 
-	client, cleanup := newTestServer(t, testServerOptions{
+	testServer := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() == errorUnderlay {
 				return swarm.Address{}, testErr
@@ -33,26 +33,62 @@ func TestConnect(t *testing.T) {
 			return overlay, nil
 		})),
 	})
-	defer cleanup()
+	defer testServer.Cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
 			Address: overlay.String(),
 		})
+
+		multia, exists := testServer.Addressbook.Get(overlay)
+		if exists != true && underlay != multia.String() {
+			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
+		}
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/connect"+errorUnderlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+errorUnderlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: testErr.Error(),
 		})
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/connect"+underlay, nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/connect"+underlay, nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
 			Code:    http.StatusMethodNotAllowed,
 			Message: http.StatusText(http.StatusMethodNotAllowed),
 		})
+	})
+
+	t.Run("error - add peer", func(t *testing.T) {
+		disconnectCalled := false
+		testServer := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+				if addr.String() == errorUnderlay {
+					return swarm.Address{}, testErr
+				}
+				return overlay, nil
+			}), mock.WithDisconnectFunc(func(addr swarm.Address) error {
+				disconnectCalled = true
+				return nil
+			})),
+		})
+		defer testServer.Cleanup()
+		testServer.TopologyDriver.SetAddPeerErr(testErr)
+
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
+			Code:    http.StatusInternalServerError,
+			Message: testErr.Error(),
+		})
+
+		multia, exists := testServer.Addressbook.Get(overlay)
+		if exists != true && underlay != multia.String() {
+			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
+		}
+
+		if !disconnectCalled {
+			t.Fatalf("disconnect not called.")
+		}
 	})
 }
 
@@ -62,7 +98,7 @@ func TestDisconnect(t *testing.T) {
 	errorAddress := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
 	testErr := errors.New("test error")
 
-	client, cleanup := newTestServer(t, testServerOptions{
+	testServer := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address) error {
 			if addr.Equal(address) {
 				return nil
@@ -75,31 +111,31 @@ func TestDisconnect(t *testing.T) {
 			return p2p.ErrPeerNotFound
 		})),
 	})
-	defer cleanup()
+	defer testServer.Cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+address.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/"+address.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
 			Code:    http.StatusOK,
 			Message: http.StatusText(http.StatusOK),
 		})
 	})
 
 	t.Run("unknown", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+unknownAdddress.String(), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/"+unknownAdddress.String(), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Code:    http.StatusBadRequest,
 			Message: "peer not found",
 		})
 	})
 
 	t.Run("invalid peer address", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Code:    http.StatusBadRequest,
 			Message: "invalid peer address",
 		})
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/peers/"+errorAddress.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/"+errorAddress.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: testErr.Error(),
 		})
@@ -109,21 +145,21 @@ func TestDisconnect(t *testing.T) {
 func TestPeer(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
-	client, cleanup := newTestServer(t, testServerOptions{
+	testServer := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithPeersFunc(func() []p2p.Peer {
 			return []p2p.Peer{{Address: overlay}}
 		})),
 	})
-	defer cleanup()
+	defer testServer.Cleanup()
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/peers", nil, http.StatusOK, debugapi.PeersResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/peers", nil, http.StatusOK, debugapi.PeersResponse{
 			Peers: []p2p.Peer{{Address: overlay}},
 		})
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/peers", nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/peers", nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
 			Code:    http.StatusMethodNotAllowed,
 			Message: http.StatusText(http.StatusMethodNotAllowed),
 		})
