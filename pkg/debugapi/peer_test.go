@@ -61,8 +61,20 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error - add peer", func(t *testing.T) {
+		disconnectCalled := false
+		testServer := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+				if addr.String() == errorUnderlay {
+					return swarm.Address{}, testErr
+				}
+				return overlay, nil
+			}), mock.WithDisconnectFunc(func(addr swarm.Address) error {
+				disconnectCalled = true
+				return nil
+			})),
+		})
+		defer testServer.Cleanup()
 		testServer.TopologyDriver.SetAddPeerErr(testErr)
-		defer testServer.TopologyDriver.SetAddPeerErr(nil)
 
 		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
@@ -74,6 +86,9 @@ func TestConnect(t *testing.T) {
 			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
 		}
 
+		if !disconnectCalled {
+			t.Fatalf("disconnect not called.")
+		}
 	})
 }
 
