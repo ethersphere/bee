@@ -33,7 +33,7 @@ type Driver struct {
 	addressBook   addressbook.GetPutter
 	p2pService    p2p.Service
 	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
-	mtx           sync.RWMutex        // guards received peers
+	mtx           sync.Mutex          // guards received peers
 	logger        logging.Logger
 }
 

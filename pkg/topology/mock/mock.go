@@ -6,6 +6,7 @@ package mock
 
 import (
 	"context"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -13,6 +14,7 @@ import (
 type TopologyDriver struct {
 	peers      []swarm.Address
 	addPeerErr error
+	mtx        sync.Mutex
 }
 
 func NewTopologyDriver() *TopologyDriver {
@@ -28,7 +30,9 @@ func (d *TopologyDriver) AddPeer(_ context.Context, addr swarm.Address) error {
 		return d.addPeerErr
 	}
 
+	d.mtx.Lock()
 	d.peers = append(d.peers, addr)
+	d.mtx.Unlock()
 	return nil
 }
 
