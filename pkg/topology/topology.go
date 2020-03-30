@@ -14,11 +14,11 @@ import (
 var ErrNotFound = errors.New("no peer found")
 
 type Driver interface {
-	Peerer
+	PeerAdder
 	ChunkPeerer
 }
 
-type Peerer interface {
+type PeerAdder interface {
 	AddPeer(ctx context.Context, addr swarm.Address) error
 }
 

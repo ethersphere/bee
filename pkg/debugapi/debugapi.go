@@ -29,7 +29,7 @@ type server struct {
 type Options struct {
 	P2P            p2p.Service
 	Addressbook    addressbook.GetPutter
-	TopologyDriver topology.Peerer
+	TopologyDriver topology.PeerAdder
 	Logger         logging.Logger
 }
 
