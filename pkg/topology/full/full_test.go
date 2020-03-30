@@ -77,7 +77,7 @@ func TestAddPeer(t *testing.T) {
 		fullDriver := full.New(discovery, addressbook, p2p, logger)
 		err := fullDriver.AddPeer(context.Background(), overlay)
 		if !errors.Is(err, topology.ErrNotFound) {
-			t.Fatalf("full conn driver returned err %s", err.Error())
+			t.Fatalf("full conn driver returned err %v", err)
 		}
 
 		if discovery.Broadcasts() != 0 {
