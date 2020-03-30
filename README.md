@@ -29,7 +29,7 @@ Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
 bee start --api-addr :8082 --p2p-addr :7072 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
-### Debugapi
+### Debug API
 Start `node 2` with debugapi enabled:
 
 ```sh

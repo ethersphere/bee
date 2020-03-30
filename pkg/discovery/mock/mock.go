@@ -43,9 +43,6 @@ func (d *Discovery) Broadcasts() int {
 func (d *Discovery) AddresseeRecords(addressee swarm.Address) (peers []swarm.Address, exists bool) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	rec, exists := d.records[addressee.String()]
-	if !exists {
-		return []swarm.Address{}, false
-	}
-	return rec, true
+	peers, exists = d.records[addressee.String()]
+	return
 }

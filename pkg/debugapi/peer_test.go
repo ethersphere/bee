@@ -60,9 +60,9 @@ func TestConnect(t *testing.T) {
 		})
 	})
 
-	t.Run("error - add peer error", func(t *testing.T) {
-		testServer.TopologyDriver.SetErr(testErr)
-		defer testServer.TopologyDriver.SetErr(nil)
+	t.Run("error - add peer", func(t *testing.T) {
+		testServer.TopologyDriver.SetAddPeerErr(testErr)
+		defer testServer.TopologyDriver.SetAddPeerErr(nil)
 
 		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,

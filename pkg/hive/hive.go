@@ -30,7 +30,7 @@ const (
 type Service struct {
 	streamer    p2p.Streamer
 	addressBook addressbook.GetPutter
-	peerHandler func(swarm.Address) error
+	peerHandler func(context.Context, swarm.Address) error
 	logger      logging.Logger
 }
 
@@ -77,7 +77,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	return nil
 }
 
-func (s *Service) SetPeerAddedHandler(h func(addr swarm.Address) error) {
+func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Address) error) {
 	s.peerHandler = h
 }
 
@@ -128,7 +128,7 @@ func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
 
 		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
 		if s.peerHandler != nil {
-			if err := s.peerHandler(swarm.NewAddress(newPeer.Overlay)); err != nil {
+			if err := s.peerHandler(context.Background(), swarm.NewAddress(newPeer.Overlay)); err != nil {
 				return err
 			}
 		}

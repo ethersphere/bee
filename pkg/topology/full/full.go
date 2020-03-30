@@ -31,7 +31,7 @@ type Driver struct {
 	discovery     discovery.Driver
 	addressBook   addressbook.GetPutter
 	connecter     p2p.Service
-	receivedPeers map[string]bool
+	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
 	logger        logging.Logger
 }
 
@@ -40,7 +40,7 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p
 		discovery:     disc,
 		addressBook:   addressBook,
 		connecter:     connecter,
-		receivedPeers: make(map[string]bool),
+		receivedPeers: make(map[string]struct{}),
 		logger:        logger,
 	}
 }
@@ -48,12 +48,11 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p
 // AddPeer adds a new peer to the topology driver.
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
-func (d *Driver) AddPeer(addr swarm.Address) error {
-	if d.receivedPeers[addr.ByteString()] {
+func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
+	if _, ok := d.receivedPeers[addr.ByteString()]; ok {
 		return nil
 	}
 
-	d.receivedPeers[addr.ByteString()] = true
 	connectedPeers := d.connecter.Peers()
 	ma, exists := d.addressBook.Get(addr)
 	if !exists {
@@ -61,7 +60,7 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 	}
 
 	if !isConnected(addr, connectedPeers) {
-		peerAddr, err := d.connecter.Connect(context.Background(), ma)
+		peerAddr, err := d.connecter.Connect(ctx, ma)
 		if err != nil {
 			return err
 		}
@@ -94,6 +93,7 @@ func (d *Driver) AddPeer(addr swarm.Address) error {
 		return err
 	}
 
+	d.receivedPeers[addr.ByteString()] = struct{}{}
 	return nil
 }
 

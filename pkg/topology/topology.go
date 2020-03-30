@@ -5,6 +5,7 @@
 package topology
 
 import (
+	"context"
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -18,7 +19,7 @@ type Driver interface {
 }
 
 type Peerer interface {
-	AddPeer(addr swarm.Address) error
+	AddPeer(ctx context.Context, addr swarm.Address) error
 }
 
 type ChunkPeerer interface {

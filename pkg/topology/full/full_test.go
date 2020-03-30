@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/full"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -51,11 +52,11 @@ func TestAddPeer(t *testing.T) {
 		fullDriver := full.New(discovery, addressbook, p2p, logger)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
-			t.Fatal("error creating multiaddr")
+			t.Fatal(err)
 		}
 
 		addressbook.Put(overlay, multiaddr)
-		err = fullDriver.AddPeer(overlay)
+		err = fullDriver.AddPeer(context.Background(), overlay)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
 		}
@@ -74,8 +75,8 @@ func TestAddPeer(t *testing.T) {
 		}))
 
 		fullDriver := full.New(discovery, addressbook, p2p, logger)
-		err := fullDriver.AddPeer(overlay)
-		if err.Error() != "no peer found" {
+		err := fullDriver.AddPeer(context.Background(), overlay)
+		if !errors.Is(err, topology.ErrNotFound) {
 			t.Fatalf("full conn driver returned err %s", err.Error())
 		}
 
@@ -103,7 +104,7 @@ func TestAddPeer(t *testing.T) {
 		}
 
 		addressbook.Put(alreadyConnected, multiaddr)
-		err = fullDriver.AddPeer(alreadyConnected)
+		err = fullDriver.AddPeer(context.Background(), alreadyConnected)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
 		}
@@ -141,11 +142,11 @@ func TestAddPeer(t *testing.T) {
 		fullDriver := full.New(discovery, addressbook, p2ps, logger)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
-			t.Fatal("error creating multiaddr")
+			t.Fatal(err)
 		}
 
 		addressbook.Put(overlay, multiaddr)
-		err = fullDriver.AddPeer(overlay)
+		err = fullDriver.AddPeer(context.Background(), overlay)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
 		}

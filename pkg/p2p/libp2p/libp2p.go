@@ -43,7 +43,7 @@ type Service struct {
 	handshakeService *handshake.Service
 	addrssbook       addressbook.Putter
 	peers            *peerRegistry
-	peerHandler      func(swarm.Address) error
+	peerHandler      func(context.Context, swarm.Address) error
 	logger           logging.Logger
 }
 
@@ -189,7 +189,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		s.peers.add(stream.Conn(), i.Address)
 		s.addrssbook.Put(i.Address, stream.Conn().RemoteMultiaddr())
 		if s.peerHandler != nil {
-			if err := s.peerHandler(i.Address); err != nil {
+			if err := s.peerHandler(ctx, i.Address); err != nil {
 				s.logger.Debugf("peerhandler: %s: %v", peerID, err)
 			}
 
@@ -309,7 +309,7 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetPeerAddedHandler(h func(addr swarm.Address) error) {
+func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Address) error) {
 	s.peerHandler = h
 }
 

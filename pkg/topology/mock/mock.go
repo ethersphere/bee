@@ -5,25 +5,27 @@
 package mock
 
 import (
+	"context"
+
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type TopologyDriver struct {
-	peers []swarm.Address
-	err   error
+	peers      []swarm.Address
+	addPeerErr error
 }
 
 func NewTopologyDriver() *TopologyDriver {
 	return &TopologyDriver{}
 }
 
-func (d *TopologyDriver) SetErr(err error) {
-	d.err = err
+func (d *TopologyDriver) SetAddPeerErr(err error) {
+	d.addPeerErr = err
 }
 
-func (d *TopologyDriver) AddPeer(addr swarm.Address) error {
-	if d.err != nil {
-		return d.err
+func (d *TopologyDriver) AddPeer(ctx context.Context, addr swarm.Address) error {
+	if d.addPeerErr != nil {
+		return d.addPeerErr
 	}
 
 	d.peers = append(d.peers, addr)
