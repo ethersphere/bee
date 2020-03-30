@@ -23,7 +23,7 @@ func (d *TopologyDriver) SetAddPeerErr(err error) {
 	d.addPeerErr = err
 }
 
-func (d *TopologyDriver) AddPeer(ctx context.Context, addr swarm.Address) error {
+func (d *TopologyDriver) AddPeer(_ context.Context, addr swarm.Address) error {
 	if d.addPeerErr != nil {
 		return d.addPeerErr
 	}
