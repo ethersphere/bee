@@ -14,10 +14,11 @@ import (
 )
 
 type Service struct {
-	addProtocolFunc func(p2p.ProtocolSpec) error
-	connectFunc     func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
-	disconnectFunc  func(overlay swarm.Address) error
-	peersFunc       func() []p2p.Peer
+	addProtocolFunc         func(p2p.ProtocolSpec) error
+	connectFunc             func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+	disconnectFunc          func(overlay swarm.Address) error
+	peersFunc               func() []p2p.Peer
+	setPeerAddedHandlerFunc func(func(context.Context, swarm.Address) error)
 }
 
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
@@ -41,6 +42,12 @@ func WithDisconnectFunc(f func(overlay swarm.Address) error) Option {
 func WithPeersFunc(f func() []p2p.Peer) Option {
 	return optionFunc(func(s *Service) {
 		s.peersFunc = f
+	})
+}
+
+func WithSetPeerAddedHandlerFunc(f func(func(context.Context, swarm.Address) error)) Option {
+	return optionFunc(func(s *Service) {
+		s.setPeerAddedHandlerFunc = f
 	})
 }
 
@@ -71,6 +78,14 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 		return errors.New("function Disconnect not configured")
 	}
 	return s.disconnectFunc(overlay)
+}
+
+func (s *Service) SetPeerAddedHandler(f func(context.Context, swarm.Address) error) {
+	if s.setPeerAddedHandlerFunc == nil {
+		return
+	}
+
+	s.setPeerAddedHandlerFunc(f)
 }
 
 func (s *Service) Peers() []p2p.Peer {

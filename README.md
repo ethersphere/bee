@@ -22,12 +22,27 @@ Execute the command terminals to start `node 1`:
 bee start --api-addr :8081 --p2p-addr :7071 --data-dir data1
 ```
 
+### Bootnodes 
 Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
 
 ```sh
 bee start --api-addr :8082 --p2p-addr :7072 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
+### Debug API
+Start `node 2` with debugapi enabled:
+
+```sh
+bee start --api-addr :8082 --p2p-addr :7072 --debug-api-addr :6062 --enable-debug-api --data-dir dist/storage2
+```
+
+Use one of the multiaddresses of `node 1` in order to connect them:
+
+```sh
+curl -XPOST localhost:6062/connect/ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+```
+
+### Ping-pong
 Take the address of the connected peer to `node 1` from log line `peer "4932309428148935717" connected` and make an HTTP POST request to `localhost:{PORT1}/pingpong/{ADDRESS}` like:
 
 ```sh

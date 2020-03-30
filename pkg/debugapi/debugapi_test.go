@@ -11,9 +11,12 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/topology/mock"
 	"resenje.org/web"
 )
 
@@ -21,15 +24,27 @@ type testServerOptions struct {
 	P2P p2p.Service
 }
 
-func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
+type testServer struct {
+	Client         *http.Client
+	Addressbook    addressbook.GetPutter
+	TopologyDriver *mock.TopologyDriver
+	Cleanup        func()
+}
+
+func newTestServer(t *testing.T, o testServerOptions) *testServer {
+	addressbook := inmem.New()
+	topologyDriver := mock.NewTopologyDriver()
+
 	s := debugapi.New(debugapi.Options{
-		P2P:    o.P2P,
-		Logger: logging.New(ioutil.Discard, 0),
+		P2P:            o.P2P,
+		Logger:         logging.New(ioutil.Discard, 0),
+		Addressbook:    addressbook,
+		TopologyDriver: topologyDriver,
 	})
 	ts := httptest.NewServer(s)
-	cleanup = ts.Close
+	cleanup := ts.Close
 
-	client = &http.Client{
+	client := &http.Client{
 		Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			u, err := url.Parse(ts.URL + r.URL.String())
 			if err != nil {
@@ -39,5 +54,10 @@ func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, clea
 			return ts.Client().Transport.RoundTrip(r)
 		}),
 	}
-	return client, cleanup
+	return &testServer{
+		Client:         client,
+		Addressbook:    addressbook,
+		TopologyDriver: topologyDriver,
+		Cleanup:        cleanup,
+	}
 }

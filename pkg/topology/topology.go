@@ -5,6 +5,7 @@
 package topology
 
 import (
+	"context"
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -13,8 +14,12 @@ import (
 var ErrNotFound = errors.New("no peer found")
 
 type Driver interface {
-	AddPeer(overlay swarm.Address) error
+	PeerAdder
 	ChunkPeerer
+}
+
+type PeerAdder interface {
+	AddPeer(ctx context.Context, addr swarm.Address) error
 }
 
 type ChunkPeerer interface {

@@ -13,19 +13,19 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	client, cleanup := newTestServer(t, testServerOptions{})
-	defer cleanup()
+	testServer := newTestServer(t, testServerOptions{})
+	defer testServer.Cleanup()
 
-	jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/health", nil, http.StatusOK, debugapi.StatusResponse{
+	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/health", nil, http.StatusOK, debugapi.StatusResponse{
 		Status: "ok",
 	})
 }
 
 func TestReadiness(t *testing.T) {
-	client, cleanup := newTestServer(t, testServerOptions{})
-	defer cleanup()
+	testServer := newTestServer(t, testServerOptions{})
+	defer testServer.Cleanup()
 
-	jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/readiness", nil, http.StatusOK, debugapi.StatusResponse{
+	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/readiness", nil, http.StatusOK, debugapi.StatusResponse{
 		Status: "ok",
 	})
 }

@@ -17,6 +17,7 @@ type Service interface {
 	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
 	Disconnect(overlay swarm.Address) error
 	Peers() []Peer
+	SetPeerAddedHandler(func(context.Context, swarm.Address) error)
 }
 
 type Streamer interface {

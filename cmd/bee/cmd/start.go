@@ -98,11 +98,11 @@ func (c *command) initStartCmd() (err error) {
 					Addr:        c.config.GetString(optionNameP2PAddr),
 					DisableWS:   c.config.GetBool(optionNameP2PDisableWS),
 					DisableQUIC: c.config.GetBool(optionNameP2PDisableQUIC),
-					Bootnodes:   c.config.GetStringSlice(optionNameBootnodes),
 					NetworkID:   c.config.GetInt32(optionNameNetworkID),
 					Logger:      logger,
 				},
-				Logger: logger,
+				Bootnodes: c.config.GetStringSlice(optionNameBootnodes),
+				Logger:    logger,
 			})
 			if err != nil {
 				return err

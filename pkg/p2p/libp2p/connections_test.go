@@ -9,11 +9,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
-	"github.com/ethersphere/bee/pkg/discovery/mock"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
-	"github.com/ethersphere/bee/pkg/topology/full"
 )
 
 func TestAddresses(t *testing.T) {
@@ -284,36 +281,6 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	expectPeers(t, s2)
 }
 
-func TestBootnodes(t *testing.T) {
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
-
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
-
-	addrs1, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addrs2, err := s2.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s3, overlay3, cleanup3 := newService(t, libp2p.Options{
-		NetworkID: 1,
-		Bootnodes: []string{
-			addrs1[0].String(),
-			addrs2[0].String(),
-		},
-	})
-	defer cleanup3()
-
-	expectPeers(t, s3, overlay1, overlay2)
-	expectPeers(t, s1, overlay3)
-	expectPeers(t, s2, overlay3)
-}
-
 func TestConnectWithDisabledQUICAndWSTransports(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -340,55 +307,4 @@ func TestConnectWithDisabledQUICAndWSTransports(t *testing.T) {
 
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
-}
-
-func TestConnectWithMockDiscovery(t *testing.T) {
-	o1 := libp2p.Options{
-		NetworkID: 1,
-	}
-	s1, _, cleanup1 := newService(t, o1)
-	defer cleanup1()
-
-	disc2 := mock.NewDiscovery()
-	ab2 := inmem.New()
-	o2 := libp2p.Options{
-		NetworkID:      1,
-		TopologyDriver: full.New(disc2, ab2),
-		AddressBook:    ab2,
-	}
-	s2, _, cleanup2 := newService(t, o2)
-	defer cleanup2()
-
-	s3, _, cleanup3 := newService(t, o2)
-	defer cleanup3()
-
-	addrs, err := s1.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := addrs[0]
-
-	_, err = s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if v := disc2.Broadcasts(); v != 0 {
-		t.Fatalf("expected 0 peer broadcasts, got %d", v)
-	}
-
-	addrs, err = s3.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr = addrs[0]
-
-	_, err = s2.Connect(context.Background(), addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if v := disc2.Broadcasts(); v != 2 {
-		t.Fatalf("expected 2 peer broadcasts, got %d", v)
-	}
 }
