@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -30,13 +29,14 @@ const (
 
 type Service struct {
 	streamer    p2p.Streamer
-	addressBook addressbook.GetterPutter
+	addressBook addressbook.GetPutter
+	peerHandler func(context.Context, swarm.Address) error
 	logger      logging.Logger
 }
 
 type Options struct {
 	Streamer    p2p.Streamer
-	AddressBook addressbook.GetterPutter
+	AddressBook addressbook.GetPutter
 	Logger      logging.Logger
 }
 
@@ -61,7 +61,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...discovery.BroadcastRecord) error {
+func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
 	max := maxBatchSize
 	for len(peers) > 0 {
 		if max > len(peers) {
@@ -77,20 +77,29 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	return nil
 }
 
-func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []discovery.BroadcastRecord) error {
+func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Address) error) {
+	s.peerHandler = h
+}
+
+func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) error {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
 
 	defer stream.Close()
-
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
+		addr, found := s.addressBook.Get(p)
+		if !found {
+			s.logger.Debugf("Peer not found %s", peer, err)
+			continue
+		}
+
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
-			Overlay:  p.Overlay.Bytes(),
-			Underlay: p.Addr.String(),
+			Overlay:  p.Bytes(),
+			Underlay: addr.String(),
 		})
 	}
 
@@ -103,6 +112,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []dis
 
 func (s *Service) peersHandler(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
 	defer stream.Close()
+
 	_, r := protobuf.NewWriterAndReader(stream)
 	var peersReq pb.Peers
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
@@ -116,8 +126,12 @@ func (s *Service) peersHandler(_ context.Context, peer p2p.Peer, stream p2p.Stre
 			continue
 		}
 
-		// todo: this might be changed depending on where do we decide to connect peers
 		s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
+		if s.peerHandler != nil {
+			if err := s.peerHandler(context.Background(), swarm.NewAddress(newPeer.Overlay)); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

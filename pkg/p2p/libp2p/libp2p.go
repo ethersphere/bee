@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
@@ -44,25 +43,23 @@ type Service struct {
 	metrics          metrics
 	networkID        int32
 	handshakeService *handshake.Service
+	addrssbook       addressbook.Putter
 	peers            *peerRegistry
-	topologyDriver   topology.Driver
-	addressBook      addressbook.Putter
+	peerHandler      func(context.Context, swarm.Address) error
 	logger           logging.Logger
 	tracer           *tracing.Tracer
 }
 
 type Options struct {
-	PrivateKey     *ecdsa.PrivateKey
-	Overlay        swarm.Address
-	Addr           string
-	DisableWS      bool
-	DisableQUIC    bool
-	Bootnodes      []string
-	NetworkID      int32
-	AddressBook    addressbook.GetterPutter
-	TopologyDriver topology.Driver
-	Logger         logging.Logger
-	Tracer         *tracing.Tracer
+	PrivateKey  *ecdsa.PrivateKey
+	Overlay     swarm.Address
+	Addr        string
+	DisableWS   bool
+	DisableQUIC bool
+	NetworkID   int32
+	Addressbook addressbook.Putter
+	Logger      logging.Logger
+	Tracer      *tracing.Tracer
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -163,8 +160,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		networkID:        o.NetworkID,
 		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
 		peers:            peerRegistry,
-		addressBook:      o.AddressBook,
-		topologyDriver:   o.TopologyDriver,
+		addrssbook:       o.Addressbook,
 		logger:           o.Logger,
 		tracer:           o.Tracer,
 	}
@@ -197,22 +193,16 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 
 		s.peers.add(stream.Conn(), i.Address)
+		s.addrssbook.Put(i.Address, stream.Conn().RemoteMultiaddr())
+		if s.peerHandler != nil {
+			if err := s.peerHandler(ctx, i.Address); err != nil {
+				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
+			}
+
+		}
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Infof("peer %s connected", i.Address)
 	})
-
-	// TODO: be more resilient on connection errors and connect in parallel
-	for _, a := range o.Bootnodes {
-		addr, err := ma.NewMultiaddr(a)
-		if err != nil {
-			return nil, fmt.Errorf("bootnode %s: %w", a, err)
-		}
-
-		overlay, err := s.Connect(ctx, addr)
-		if err != nil {
-			return nil, fmt.Errorf("connect to bootnode %s %s: %w", a, overlay, err)
-		}
-	}
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
 		s.metrics.HandledConnectionCount.Inc()
@@ -316,13 +306,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	s.peers.add(stream.Conn(), i.Address)
-	s.addressBook.Put(i.Address, addr)
-
-	err = s.topologyDriver.AddPeer(i.Address)
-	if err != nil {
-		return swarm.Address{}, fmt.Errorf("topology addpeer: %w", err)
-	}
-
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil
@@ -346,6 +329,10 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 
 func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
+}
+
+func (s *Service) SetPeerAddedHandler(h func(context.Context, swarm.Address) error) {
+	s.peerHandler = h
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {

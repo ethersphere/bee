@@ -35,6 +35,15 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.Addressbook.Put(address, addr)
+	if err := s.TopologyDriver.AddPeer(r.Context(), address); err != nil {
+		_ = s.P2P.Disconnect(address)
+		s.Logger.Debugf("debug api: topologyDriver.AddPeer %s: %v", addr, err)
+		s.Logger.Errorf("unable to connect to peer %s", addr)
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
 	jsonhttp.OK(w, peerConnectResponse{
 		Address: address.String(),
 	})

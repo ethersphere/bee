@@ -16,12 +16,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
-	inmemaddressbook "github.com/ethersphere/bee/pkg/addressbook/inmem"
+	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
-	"github.com/ethersphere/bee/pkg/discovery/mock"
-	mockdiscovery "github.com/ethersphere/bee/pkg/discovery/mock"
+	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
@@ -30,8 +29,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/topology/full"
-	fulltopologydriver "github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Bee struct {
@@ -49,6 +48,7 @@ type Options struct {
 	APIAddr            string
 	DebugAPIAddr       string
 	LibP2POptions      libp2p.Options
+	Bootnodes          []string
 	Logger             logging.Logger
 	TracingEnabled     bool
 	TracingEndpoint    string
@@ -57,6 +57,7 @@ type Options struct {
 
 func NewBee(o Options) (*Bee, error) {
 	logger := o.Logger
+	addressbook := inmem.New()
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -103,21 +104,29 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("new libp2p key created")
 	}
 
-	addressbook := inmemaddressbook.New()
-
-	full.New(mock.NewDiscovery(), addressbook)
-
 	libP2POptions := o.LibP2POptions
 	libP2POptions.Overlay = address
 	libP2POptions.PrivateKey = libp2pPrivateKey
-	libP2POptions.AddressBook = addressbook
-	libP2POptions.TopologyDriver = fulltopologydriver.New(mockdiscovery.NewDiscovery(), addressbook)
+	libP2POptions.Addressbook = addressbook
 	libP2POptions.Tracer = tracer
 	p2ps, err := libp2p.New(p2pCtx, libP2POptions)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
+
+	// TODO: be more resilient on connection errors and connect in parallel
+	for _, a := range o.Bootnodes {
+		addr, err := ma.NewMultiaddr(a)
+		if err != nil {
+			return nil, fmt.Errorf("bootnode %s: %w", a, err)
+		}
+
+		overlay, err := p2ps.Connect(p2pCtx, addr)
+		if err != nil {
+			return nil, fmt.Errorf("connect to bootnode %s %s: %w", a, overlay, err)
+		}
+	}
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
@@ -126,11 +135,23 @@ func NewBee(o Options) (*Bee, error) {
 		Tracer:   tracer,
 	})
 
-	// Add protocols to the P2P service.
 	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
+	hive := hive.New(hive.Options{
+		Streamer:    p2ps,
+		AddressBook: addressbook,
+		Logger:      logger,
+	})
+
+	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
+		return nil, fmt.Errorf("hive service: %w", err)
+	}
+
+	topologyDriver := full.New(hive, addressbook, p2ps, logger)
+	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
+	p2ps.SetPeerAddedHandler(topologyDriver.AddPeer)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)
@@ -173,8 +194,10 @@ func NewBee(o Options) (*Bee, error) {
 	if o.DebugAPIAddr != "" {
 		// Debug API server
 		debugAPIService := debugapi.New(debugapi.Options{
-			P2P:    p2ps,
-			Logger: logger,
+			P2P:            p2ps,
+			Logger:         logger,
+			Addressbook:    addressbook,
+			TopologyDriver: topologyDriver,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
