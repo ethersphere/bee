@@ -30,7 +30,9 @@ func (d *Discovery) BroadcastPeers(ctx context.Context, addressee swarm.Address,
 		d.mtx.Unlock()
 	}
 
+	d.mtx.Lock()
 	d.ctr++
+	d.mtx.Unlock()
 	return nil
 }
 

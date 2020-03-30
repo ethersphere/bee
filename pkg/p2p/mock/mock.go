@@ -45,7 +45,7 @@ func WithPeersFunc(f func() []p2p.Peer) Option {
 	})
 }
 
-func WithSetPeerAddedHandlerFunc(f func(func(ctx context.Context, overlay swarm.Address) error)) Option {
+func WithSetPeerAddedHandlerFunc(f func(func(context.Context, swarm.Address) error)) Option {
 	return optionFunc(func(s *Service) {
 		s.setPeerAddedHandlerFunc = f
 	})
@@ -80,7 +80,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return s.disconnectFunc(overlay)
 }
 
-func (s *Service) SetPeerAddedHandler(f func(ctx context.Context, overlay swarm.Address) error) {
+func (s *Service) SetPeerAddedHandler(f func(context.Context, swarm.Address) error) {
 	if s.setPeerAddedHandlerFunc == nil {
 		return
 	}

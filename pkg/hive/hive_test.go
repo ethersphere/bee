@@ -60,46 +60,46 @@ func TestBroadcastPeers(t *testing.T) {
 	}
 
 	testCases := map[string]struct {
-		addresee         swarm.Address
-		peers            []swarm.Address
-		wantMsgs         []pb.Peers
-		wantOverlays     []swarm.Address
-		wantMultiAddrses []ma.Multiaddr
+		addresee           swarm.Address
+		peers              []swarm.Address
+		wantMsgs           []pb.Peers
+		wantOverlays       []swarm.Address
+		wantMultiAddresses []ma.Multiaddr
 	}{
 		"OK - single record": {
-			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:            []swarm.Address{addrs[0]},
-			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers[:1]}},
-			wantOverlays:     []swarm.Address{addrs[0]},
-			wantMultiAddrses: []ma.Multiaddr{multiaddrs[0]},
+			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:              []swarm.Address{addrs[0]},
+			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers[:1]}},
+			wantOverlays:       []swarm.Address{addrs[0]},
+			wantMultiAddresses: []ma.Multiaddr{multiaddrs[0]},
 		},
 		"OK - single batch - multiple records": {
-			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:            addrs[:15],
-			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
-			wantOverlays:     addrs[:15],
-			wantMultiAddrses: multiaddrs[:15],
+			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:              addrs[:15],
+			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
+			wantOverlays:       addrs[:15],
+			wantMultiAddresses: multiaddrs[:15],
 		},
 		"OK - single batch - max number of records": {
-			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:            addrs[:hive.MaxBatchSize],
-			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers[:hive.MaxBatchSize]}},
-			wantOverlays:     addrs[:hive.MaxBatchSize],
-			wantMultiAddrses: multiaddrs[:hive.MaxBatchSize],
+			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:              addrs[:hive.MaxBatchSize],
+			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers[:hive.MaxBatchSize]}},
+			wantOverlays:       addrs[:hive.MaxBatchSize],
+			wantMultiAddresses: multiaddrs[:hive.MaxBatchSize],
 		},
 		"OK - multiple batches": {
-			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:            addrs[:hive.MaxBatchSize+10],
-			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers[:10]}},
-			wantOverlays:     addrs[:hive.MaxBatchSize+10],
-			wantMultiAddrses: multiaddrs[:hive.MaxBatchSize+10],
+			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:              addrs[:hive.MaxBatchSize+10],
+			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers[:10]}},
+			wantOverlays:       addrs[:hive.MaxBatchSize+10],
+			wantMultiAddresses: multiaddrs[:hive.MaxBatchSize+10],
 		},
 		"OK - multiple batches - max number of records": {
-			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:            addrs[:2*hive.MaxBatchSize],
-			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers}},
-			wantOverlays:     addrs[:2*hive.MaxBatchSize],
-			wantMultiAddrses: multiaddrs[:2*hive.MaxBatchSize],
+			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:              addrs[:2*hive.MaxBatchSize],
+			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers}},
+			wantOverlays:       addrs[:2*hive.MaxBatchSize],
+			wantMultiAddresses: multiaddrs[:2*hive.MaxBatchSize],
 		},
 	}
 
@@ -157,8 +157,8 @@ func TestBroadcastPeers(t *testing.T) {
 			t.Errorf("Overlays got %v, want %v", exporter.Overlays(), tc.wantOverlays)
 		}
 
-		if !compareMultiaddrses(exporter.Multiaddresses(), tc.wantMultiAddrses) {
-			t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), tc.wantMultiAddrses)
+		if !compareMultiaddrses(exporter.Multiaddresses(), tc.wantMultiAddresses) {
+			t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), tc.wantMultiAddresses)
 		}
 	}
 

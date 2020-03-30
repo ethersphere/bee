@@ -93,7 +93,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	for _, p := range peers {
 		addr, found := s.addressBook.Get(p)
 		if !found {
-			s.logger.Errorf("Peer not found %s", peer, err)
+			s.logger.Debugf("Peer not found %s", peer, err)
 			continue
 		}
 

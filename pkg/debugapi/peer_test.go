@@ -60,20 +60,18 @@ func TestConnect(t *testing.T) {
 		})
 	})
 
-	t.Run("error - add peer", func(t *testing.T) {
+	t.Run("OK - add peer error", func(t *testing.T) {
 		testServer.TopologyDriver.SetAddPeerErr(testErr)
 		defer testServer.TopologyDriver.SetAddPeerErr(nil)
 
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Code:    http.StatusInternalServerError,
-			Message: testErr.Error(),
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
+			Address: overlay.String(),
 		})
 
 		multia, exists := testServer.Addressbook.Get(overlay)
 		if exists != true && underlay != multia.String() {
 			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
 		}
-
 	})
 }
 

@@ -190,7 +190,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		s.addrssbook.Put(i.Address, stream.Conn().RemoteMultiaddr())
 		if s.peerHandler != nil {
 			if err := s.peerHandler(ctx, i.Address); err != nil {
-				s.logger.Debugf("peerhandler: %s: %v", peerID, err)
+				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
 			}
 
 		}
@@ -198,7 +198,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		s.logger.Infof("peer %s connected", i.Address)
 	})
 
-	h.Network().SetConnHandler(func(c network.Conn) {
+	h.Network().SetConnHandler(func(_ network.Conn) {
 		s.metrics.HandledConnectionCount.Inc()
 	})
 
@@ -309,7 +309,7 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Address) error) {
+func (s *Service) SetPeerAddedHandler(h func(context.Context, swarm.Address) error) {
 	s.peerHandler = h
 }
 

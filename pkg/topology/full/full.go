@@ -7,6 +7,7 @@ package full
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -30,16 +31,17 @@ var _ topology.Driver = (*Driver)(nil)
 type Driver struct {
 	discovery     discovery.Driver
 	addressBook   addressbook.GetPutter
-	connecter     p2p.Service
+	p2pService    p2p.Service
 	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
+	mtx           sync.RWMutex        // guards received peers
 	logger        logging.Logger
 }
 
-func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p.Service, logger logging.Logger) *Driver {
+func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2p.Service, logger logging.Logger) *Driver {
 	return &Driver{
 		discovery:     disc,
 		addressBook:   addressBook,
-		connecter:     connecter,
+		p2pService:    p2pService,
 		receivedPeers: make(map[string]struct{}),
 		logger:        logger,
 	}
@@ -49,18 +51,21 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, connecter p2p
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
 func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
+	d.mtx.Lock()
 	if _, ok := d.receivedPeers[addr.ByteString()]; ok {
+		d.mtx.Unlock()
 		return nil
 	}
+	d.mtx.Unlock()
 
-	connectedPeers := d.connecter.Peers()
+	connectedPeers := d.p2pService.Peers()
 	ma, exists := d.addressBook.Get(addr)
 	if !exists {
 		return topology.ErrNotFound
 	}
 
 	if !isConnected(addr, connectedPeers) {
-		peerAddr, err := d.connecter.Connect(ctx, ma)
+		peerAddr, err := d.p2pService.Connect(ctx, ma)
 		if err != nil {
 			return err
 		}
@@ -93,13 +98,15 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		return err
 	}
 
+	d.mtx.Lock()
 	d.receivedPeers[addr.ByteString()] = struct{}{}
+	d.mtx.Unlock()
 	return nil
 }
 
 // ChunkPeer is used to suggest a peer to ask a certain chunk from.
 func (d *Driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
-	connectedPeers := d.connecter.Peers()
+	connectedPeers := d.p2pService.Peers()
 	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}

@@ -42,7 +42,7 @@ func TestAddPeer(t *testing.T) {
 	t.Run("OK - no connected peers", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		addressbook := inmem.New()
-		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() != underlay {
 				t.Fatalf("expected multiaddr %s, got %s", addr.String(), underlay)
 			}

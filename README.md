@@ -39,17 +39,15 @@ bee start --api-addr :8082 --p2p-addr :7072 --debug-api-addr :6062 --enable-debu
 Use one of the multiaddresses of `node 1` in order to connect them:
 
 ```sh
-curl -XPOST localhost:6063/connect/ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+curl -XPOST localhost:6062/connect/ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
 ```
 
-### Pingpong
+### Ping-pong
 Take the address of the connected peer to `node 1` from log line `peer "4932309428148935717" connected` and make an HTTP POST request to `localhost:{PORT1}/pingpong/{ADDRESS}` like:
 
 ```sh
 curl -XPOST localhost:8502/pingpong/4932309428148935717
 ```
-
-
 
 ## Structure
 
