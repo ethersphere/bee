@@ -68,6 +68,55 @@ func TestHeaders(t *testing.T) {
 	}
 }
 
+func TestHeaders_empty(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, overlay1, cleanup1 := newService(t, libp2p.Options{})
+	defer cleanup1()
+
+	s2, overlay2, cleanup2 := newService(t, libp2p.Options{})
+	defer cleanup2()
+
+	var gotHeaders p2p.Headers
+	handled := make(chan struct{})
+	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+		if ctx == nil {
+			t.Fatal("missing context")
+		}
+		if !p.Address.Equal(overlay2) {
+			t.Fatalf("got peer %v, want %v", p.Address, overlay2)
+		}
+		gotHeaders = stream.Headers()
+		close(handled)
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	select {
+	case <-handled:
+	case <-time.After(30 * time.Second):
+		t.Fatal("timeout waiting for handler")
+	}
+
+	if len(gotHeaders) != 0 {
+		t.Errorf("got headers %+v, want none", gotHeaders)
+	}
+}
+
 func TestHeadler(t *testing.T) {
 	receivedHeaders := p2p.Headers{
 		"test-header-key": []byte("header-value"),
