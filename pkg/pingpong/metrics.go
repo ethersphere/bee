@@ -19,23 +19,32 @@ type metrics struct {
 	PongReceivedCount prometheus.Counter
 }
 
-func newMetrics() (m metrics) {
+func newMetrics() metrics {
+	subsystem := "pingpong"
+
 	return metrics{
 		PingSentCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "pingpong_ping_sent_count",
-			Help: "Number ping requests sent.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "ping_sent_count",
+			Help:      "Number ping requests sent.",
 		}),
 		PongSentCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "pingpong_pong_sent_count",
-			Help: "Number of pong responses sent.",
+			Namespace: m.Namespace,
+			Name:      "pong_sent_count",
+			Help:      "Number of pong responses sent.",
 		}),
 		PingReceivedCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "pingpong_ping_received_count",
-			Help: "Number ping requests received.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "ping_received_count",
+			Help:      "Number ping requests received.",
 		}),
 		PongReceivedCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "pingpong_pong_received_count",
-			Help: "Number of pong responses received.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "pong_received_count",
+			Help:      "Number of pong responses received.",
 		}),
 	}
 }

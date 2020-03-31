@@ -21,27 +21,39 @@ type metrics struct {
 	TraceCount prometheus.Counter
 }
 
-func newMetrics() (m metrics) {
+func newMetrics() metrics {
+	subsystem := "log"
+
 	return metrics{
 		ErrorCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "log_error_count",
-			Help: "Number ERROR log messages.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "error_count",
+			Help:      "Number ERROR log messages.",
 		}),
 		WarnCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "log_warn_count",
-			Help: "Number WARN log messages.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "warn_count",
+			Help:      "Number WARN log messages.",
 		}),
 		InfoCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "log_info_count",
-			Help: "Number INFO log messages.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "info_count",
+			Help:      "Number INFO log messages.",
 		}),
 		DebugCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "log_debug_count",
-			Help: "Number DEBUG log messages.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "debug_count",
+			Help:      "Number DEBUG log messages.",
 		}),
 		TraceCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "log_trace_count",
-			Help: "Number TRACE log messages.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "log_trace_count",
+			Help:      "Number TRACE log messages.",
 		}),
 	}
 }
