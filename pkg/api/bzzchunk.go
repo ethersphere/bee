@@ -70,5 +70,8 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, bytes.NewReader(data))
+	_, err = io.Copy(w, bytes.NewReader(data))
+	if err != nil {
+		s.Logger.Debugf("bzz-chunk: write to http writer: %v", err)
+	}
 }
