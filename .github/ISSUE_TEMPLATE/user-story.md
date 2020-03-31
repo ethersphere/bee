@@ -1,16 +1,16 @@
 ---
 name: User Story
 about: Use this template to create a new user story for in the sprint backlog
-title: "[User story] some keywords"
+title: Write the user story here
 labels: ''
 assignees: ''
 
 ---
 
+# User story
 <!--  
 This is the template to create a user story. A user story should be finished in one sprint and deliver added value to the source code (product increment). A (draft) PR always references the user-story.
 -->
-
 ## Story
 
 <!--  
@@ -27,7 +27,7 @@ Clear and verifiable criteria to verify that a user story is completed. Things s
 ## Background
 
 <!--  
-Mention here the reason of the user story, any technical details, link to meeting notes, architecture diagrams, etc
+Mention here the reason of the user story, any technical details, link to meeting notes, architecture diagrams, etc. 
 -->
 
 ## Tasks
