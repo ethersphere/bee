@@ -27,18 +27,21 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameDataDir        = "data-dir"
-		optionNamePassword       = "password"
-		optionNamePasswordFile   = "password-file"
-		optionNameAPIAddr        = "api-addr"
-		optionNameP2PAddr        = "p2p-addr"
-		optionNameP2PDisableWS   = "p2p-disable-ws"
-		optionNameP2PDisableQUIC = "p2p-disable-quic"
-		optionNameEnableDebugAPI = "enable-debug-api"
-		optionNameDebugAPIAddr   = "debug-api-addr"
-		optionNameBootnodes      = "bootnode"
-		optionNameNetworkID      = "network-id"
-		optionNameVerbosity      = "verbosity"
+		optionNameDataDir            = "data-dir"
+		optionNamePassword           = "password"
+		optionNamePasswordFile       = "password-file"
+		optionNameAPIAddr            = "api-addr"
+		optionNameP2PAddr            = "p2p-addr"
+		optionNameP2PDisableWS       = "p2p-disable-ws"
+		optionNameP2PDisableQUIC     = "p2p-disable-quic"
+		optionNameEnableDebugAPI     = "enable-debug-api"
+		optionNameDebugAPIAddr       = "debug-api-addr"
+		optionNameBootnodes          = "bootnode"
+		optionNameNetworkID          = "network-id"
+		optionNameTracingEnabled     = "tracing"
+		optionNameTracingEndpoint    = "tracing-endpoint"
+		optionNameTracingServiceName = "tracing-service-name"
+		optionNameVerbosity          = "verbosity"
 	)
 
 	cmd := &cobra.Command{
@@ -101,8 +104,11 @@ func (c *command) initStartCmd() (err error) {
 					NetworkID:   c.config.GetInt32(optionNameNetworkID),
 					Logger:      logger,
 				},
-				Bootnodes: c.config.GetStringSlice(optionNameBootnodes),
-				Logger:    logger,
+				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
+				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
+				TracingEndpoint:    c.config.GetString(optionNameTracingEndpoint),
+				TracingServiceName: c.config.GetString(optionNameTracingServiceName),
+				Logger:             logger,
 			})
 			if err != nil {
 				return err
@@ -158,6 +164,9 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameEnableDebugAPI, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
 	cmd.Flags().Int32(optionNameNetworkID, 1, "ID of the Swarm network")
+	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
+	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
+	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	c.root.AddCommand(cmd)

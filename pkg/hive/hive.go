@@ -82,7 +82,7 @@ func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Add
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) error {
-	stream, err := s.streamer.NewStream(ctx, peer, protocolName, protocolVersion, peersStreamName)
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
@@ -110,7 +110,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	return stream.FullClose()
 }
 
-func (s *Service) peersHandler(peer p2p.Peer, stream p2p.Stream) error {
+func (s *Service) peersHandler(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
 	defer stream.Close()
 
 	_, r := protobuf.NewWriterAndReader(stream)

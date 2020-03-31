@@ -24,7 +24,7 @@ func TestNewStream(t *testing.T) {
 	s2, _, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup2()
 
-	if err := s1.AddProtocol(newTestProtocol(func(p p2p.Peer, stream p2p.Stream) error {
+	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
 		return nil
 	})); err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func TestNewStream(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stream, err := s2.NewStream(ctx, overlay1, testProtocolName, testProtocolVersion, testStreamName)
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,22 +63,22 @@ func TestNewStream_errNotSupported(t *testing.T) {
 	}
 
 	// test for missing protocol
-	_, err := s2.NewStream(ctx, overlay1, testProtocolName, testProtocolVersion, testStreamName)
+	_, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
 	expectErrNotSupported(t, err)
 
 	// add protocol
-	if err := s1.AddProtocol(newTestProtocol(func(_ p2p.Peer, _ p2p.Stream) error {
+	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
 		return nil
 	})); err != nil {
 		t.Fatal(err)
 	}
 
 	// test for incorrect protocol name
-	_, err = s2.NewStream(ctx, overlay1, testProtocolName+"invalid", testProtocolVersion, testStreamName)
+	_, err = s2.NewStream(ctx, overlay1, nil, testProtocolName+"invalid", testProtocolVersion, testStreamName)
 	expectErrNotSupported(t, err)
 
 	// test for incorrect stream name
-	_, err = s2.NewStream(ctx, overlay1, testProtocolName, testProtocolVersion, testStreamName+"invalid")
+	_, err = s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName+"invalid")
 	expectErrNotSupported(t, err)
 }
 
@@ -98,7 +98,7 @@ func TestNewStream_semanticVersioning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s1.AddProtocol(newTestProtocol(func(_ p2p.Peer, _ p2p.Stream) error {
+	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
 		return nil
 	})); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestNewStream_semanticVersioning(t *testing.T) {
 		{version: "2.4.0", supported: false},
 		{version: "3.0.0", supported: false},
 	} {
-		_, err := s2.NewStream(ctx, overlay1, testProtocolName, tc.version, testStreamName)
+		_, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, tc.version, testStreamName)
 		if tc.supported {
 			if err != nil {
 				t.Fatal(err)
