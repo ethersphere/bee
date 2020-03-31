@@ -87,6 +87,8 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		return fmt.Errorf("new stream: %w", err)
 	}
 
+	fmt.Printf("Hive send peers  %s, %s\n", peer, peers)
+
 	defer stream.Close()
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
