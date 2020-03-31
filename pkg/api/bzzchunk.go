@@ -5,10 +5,14 @@
 package api
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -40,4 +44,31 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, nil)
+}
+
+func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
+	addr := mux.Vars(r)["addr"]
+	ctx := r.Context()
+
+	address, err := swarm.ParseHexAddress(addr)
+	if err != nil {
+		s.Logger.Debugf("bzz-chunk: parse chunk address %s: %v", addr, err)
+		jsonhttp.BadRequest(w, "invalid chunk address")
+		return
+	}
+
+	data, err := s.Storer.Get(ctx, address)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			jsonhttp.NotFound(w, "chunk not found")
+			return
+
+		}
+		s.Logger.Debugf("chunk read error: %v", err)
+		jsonhttp.InternalServerError(w, "chunk read error")
+		return
+	}
+	w.Header().Set("Content-Type", "binary/octet-stream")
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, bytes.NewReader(data))
 }

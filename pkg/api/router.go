@@ -33,6 +33,7 @@ func (s *server) setupRouting() {
 	})
 
 	router.Handle("/bzz-chunk/{addr}", jsonhttp.MethodHandler{
+		"GET":  http.HandlerFunc(s.chunkGetHandler),
 		"POST": http.HandlerFunc(s.chunkUploadHandler),
 	})
 
