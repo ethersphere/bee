@@ -1,7 +1,7 @@
 ---
 name: Epic
 about: Use this template to create a new epic for the sprint backlog
-title: Describe the epic in a few keywords
+title: Describe the epic in a few key words
 labels: ''
 assignees: ''
 
