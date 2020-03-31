@@ -12,8 +12,10 @@ import (
 	"io"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/opentracing/opentracing-go"
+	"github.com/sirupsen/logrus"
 	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
 )
@@ -28,6 +30,9 @@ var (
 	// noopTracer is the tracer that does nothing to handle a nil Tracer usage.
 	noopTracer = &Tracer{tracer: new(opentracing.NoopTracer)}
 )
+
+// LogField is the key in log message field that holds tracing id value.
+const LogField = "traceid"
 
 // Tracer connect to a tracing server and handles tracing spans and contexts
 // by using opentracing Tracer.
@@ -71,8 +76,9 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 }
 
 // StartSpanFromContext starts a new tracing span that is either a root one or a
-// child of existing one from the provided Context.
-func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, opts ...opentracing.StartSpanOption) (opentracing.Span, context.Context) {
+// child of existing one from the provided Context. If logger is provided, a new
+// log Entry will be returned with "traceid" log field.
+func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, l logging.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, *logrus.Entry, context.Context) {
 	if t == nil {
 		t = noopTracer
 	}
@@ -84,7 +90,8 @@ func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string,
 	} else {
 		span = t.tracer.StartSpan(operationName, opts...)
 	}
-	return span, WithContext(ctx, span.Context())
+	sc := span.Context()
+	return span, loggerWithTraceID(sc, l), WithContext(ctx, sc)
 }
 
 // AddContextHeader adds a tracing span context to provided p2p Headers from
@@ -164,4 +171,25 @@ func FromContext(ctx context.Context) opentracing.SpanContext {
 		return nil
 	}
 	return c
+}
+
+// NewLoggerWithTraceID creates a new log Entry with "traceid" field added if it
+// exists in tracing span context stored from go context.
+func NewLoggerWithTraceID(ctx context.Context, l logging.Logger) *logrus.Entry {
+	return loggerWithTraceID(FromContext(ctx), l)
+}
+
+func loggerWithTraceID(sc opentracing.SpanContext, l logging.Logger) *logrus.Entry {
+	if l == nil {
+		return nil
+	}
+	jsc, ok := sc.(jaeger.SpanContext)
+	if !ok {
+		return l.NewEntry()
+	}
+	traceID := jsc.TraceID()
+	if !traceID.IsValid() {
+		return l.NewEntry()
+	}
+	return l.WithField(LogField, traceID.String())
 }

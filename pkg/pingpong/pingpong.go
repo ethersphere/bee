@@ -64,7 +64,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
-	span, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-ping")
+	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-ping", s.logger)
 	defer span.Finish()
 
 	start := time.Now()
@@ -92,7 +92,7 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 			return 0, fmt.Errorf("read message: %w", err)
 		}
 
-		s.logger.Tracef("got pong: %q", pong.Response)
+		logger.Tracef("got pong: %q", pong.Response)
 		s.metrics.PongReceivedCount.Inc()
 	}
 	return time.Since(start), nil
@@ -102,7 +102,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
-	span, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-handler")
+	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-handler", s.logger)
 	defer span.Finish()
 
 	var ping pb.Ping
@@ -113,7 +113,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 			}
 			return fmt.Errorf("read message: %w", err)
 		}
-		s.logger.Tracef("got ping: %q", ping.Greeting)
+		logger.Tracef("got ping: %q", ping.Greeting)
 		s.metrics.PingReceivedCount.Inc()
 
 		if err := w.WriteMsgWithContext(ctx, &pb.Pong{
