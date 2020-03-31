@@ -21,20 +21,28 @@ type metrics struct {
 	PingRequestCount prometheus.Counter
 }
 
-func newMetrics() (m metrics) {
+func newMetrics() metrics {
+	subsystem := "api"
+
 	return metrics{
 		RequestCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "api_request_count",
-			Help: "Number of API requests.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "request_count",
+			Help:      "Number of API requests.",
 		}),
 		ResponseDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "api_response_duration_seconds",
-			Help:    "Histogram of API response durations.",
-			Buckets: []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "response_duration_seconds",
+			Help:      "Histogram of API response durations.",
+			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
 		PingRequestCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "api_ping_request_count",
-			Help: "Number HTTP API ping requests.",
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "ping_request_count",
+			Help:      "Number HTTP API ping requests.",
 		}),
 	}
 }
