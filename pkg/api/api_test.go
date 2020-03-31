@@ -5,10 +5,10 @@
 package api_test
 
 import (
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -27,7 +27,7 @@ func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, clea
 	s := api.New(api.Options{
 		Pingpong: o.Pingpong,
 		Storer:   o.Storer,
-		Logger:   logging.New(ioutil.Discard, 0),
+		Logger:   logging.New(os.Stdout, 5),
 	})
 	ts := httptest.NewServer(s)
 	cleanup = ts.Close
