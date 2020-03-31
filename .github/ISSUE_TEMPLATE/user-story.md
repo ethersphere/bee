@@ -1,7 +1,7 @@
 ---
 name: User Story
 about: Use this template to create a new user story for in the sprint backlog
-title: Write the user story here
+title: Describe the user-story in a few key words
 labels: ''
 assignees: ''
 
@@ -33,7 +33,7 @@ Mention here the reason of the user story, any technical details, link to meetin
 ## Tasks
 
 <!--  
-Tasks are actionable items, which may contain technical details. A user story is usually broken down in multiple tasks and assigned to a person. 
+Tasks are actionable items, which may contain technical details. A user story is usually broken down in multiple tasks and assigned to a person. If you have many tasks, please consider making this user story an epic
 -->
 
 | Task | Assignee |  Done (1), or 0 |
@@ -44,13 +44,3 @@ Tasks are actionable items, which may contain technical details. A user story is
 new row template below 
 |  task | unassigned | 0 | 
 -->
-
-## Dependencies
-### Devops
-<!-- What is needed from Devops? -->
-
-### Research
-<!-- What is needed from research? -->
-
-### Other 
-<!-- Other dependencies? -->
