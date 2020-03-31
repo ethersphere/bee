@@ -8,17 +8,20 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/uber/jaeger-client-go"
 )
 
 func TestSpanFromHeaders(t *testing.T) {
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
-	span, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation")
+	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
 
 	headers := make(p2p.Headers)
@@ -49,7 +52,7 @@ func TestSpanWithContextFromHeaders(t *testing.T) {
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
-	span, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation")
+	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
 
 	headers := make(p2p.Headers)
@@ -81,7 +84,7 @@ func TestFromContext(t *testing.T) {
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
-	span, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation")
+	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
 
 	wantSpanContext := span.Context()
@@ -103,7 +106,7 @@ func TestWithContext(t *testing.T) {
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
-	span, _ := tracer.StartSpanFromContext(context.Background(), "some-operation")
+	span, _, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
 
 	wantSpanContext := span.Context()
@@ -120,6 +123,82 @@ func TestWithContext(t *testing.T) {
 
 	if fmt.Sprint(gotSpanContext) != fmt.Sprint(wantSpanContext) {
 		t.Errorf("got span context %+v, want %+v", gotSpanContext, wantSpanContext)
+	}
+}
+
+func TestStartSpanFromContext_logger(t *testing.T) {
+	tracer, closer := newTracer(t)
+	defer closer.Close()
+
+	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", logging.New(os.Stdout, 5))
+	defer span.Finish()
+
+	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
+
+	v, ok := logger.Data[tracing.LogField]
+	if !ok {
+		t.Fatalf("log field %q not found", tracing.LogField)
+	}
+
+	gotTraceID, ok := v.(string)
+	if !ok {
+		t.Fatalf("log field %q is not string", tracing.LogField)
+	}
+
+	if gotTraceID != wantTraceID.String() {
+		t.Errorf("got trace id %q, want %q", gotTraceID, wantTraceID.String())
+	}
+}
+
+func TestStartSpanFromContext_nilLogger(t *testing.T) {
+	tracer, closer := newTracer(t)
+	defer closer.Close()
+
+	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
+	defer span.Finish()
+
+	if logger != nil {
+		t.Error("logger is not nil")
+	}
+}
+
+func TestNewLoggerWithTraceID(t *testing.T) {
+	tracer, closer := newTracer(t)
+	defer closer.Close()
+
+	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
+	defer span.Finish()
+
+	logger := tracing.NewLoggerWithTraceID(ctx, logging.New(os.Stdout, 5))
+
+	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
+
+	v, ok := logger.Data[tracing.LogField]
+	if !ok {
+		t.Fatalf("log field %q not found", tracing.LogField)
+	}
+
+	gotTraceID, ok := v.(string)
+	if !ok {
+		t.Fatalf("log field %q is not string", tracing.LogField)
+	}
+
+	if gotTraceID != wantTraceID.String() {
+		t.Errorf("got trace id %q, want %q", gotTraceID, wantTraceID.String())
+	}
+}
+
+func TestNewLoggerWithTraceID_nilLogger(t *testing.T) {
+	tracer, closer := newTracer(t)
+	defer closer.Close()
+
+	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
+	defer span.Finish()
+
+	logger := tracing.NewLoggerWithTraceID(ctx, nil)
+
+	if logger != nil {
+		t.Error("logger is not nil")
 	}
 }
 

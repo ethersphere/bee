@@ -44,7 +44,7 @@ func TestTracing(t *testing.T) {
 	handled := make(chan struct{})
 	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, _ p2p.Peer, _ p2p.Stream) error {
 
-		span, _ := tracer1.StartSpanFromContext(ctx, "test-p2p-handler")
+		span, _, _ := tracer1.StartSpanFromContext(ctx, "test-p2p-handler", nil)
 		defer span.Finish()
 
 		handledTracingSpan = fmt.Sprint(span.Context())
@@ -66,7 +66,7 @@ func TestTracing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	span, ctx := tracer2.StartSpanFromContext(ctx, "test-p2p-client")
+	span, _, ctx := tracer2.StartSpanFromContext(ctx, "test-p2p-client", nil)
 	defer span.Finish()
 
 	if fmt.Sprint(span.Context()) == "" {
