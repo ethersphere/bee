@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 )
 
 // Address represents an address in Swarm metric space of
@@ -83,3 +84,33 @@ func (a Address) MarshalJSON() ([]byte, error) {
 
 // ZeroAddress is the address that has no value.
 var ZeroAddress = NewAddress(nil)
+
+
+// Chunk defines a swarm chunk structure. It contains of the Address and the
+// chunk data.
+type Chunk struct {
+	addr       Address
+	data      []byte
+}
+
+// NewChunk crates a chunk with the given address and data.
+func NewChunk(addr Address, chunkData []byte) (chunk Chunk) {
+	return Chunk{
+		addr:  addr,
+		data: chunkData,
+	}
+}
+
+// Address returns the chunk's address.
+func (c *Chunk) Address() Address {
+	return c.addr
+}
+
+// Data returns the chunk's data.
+func (c *Chunk) Data() []byte {
+	return c.data
+}
+
+func (self *Chunk) String() string {
+	return fmt.Sprintf("Address: %v Chunksize: %v", self.addr.String(), len(self.data))
+}

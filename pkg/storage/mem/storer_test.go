@@ -1,4 +1,4 @@
-package mock_test
+package mem_test
 
 import (
 	"bytes"
@@ -6,13 +6,15 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	memstore "github.com/ethersphere/bee/pkg/storage/mem"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestMockStorer(t *testing.T) {
-	s := mock.NewStorer()
-
+	s, err := memstore.NewMemStorer()
+	if err != nil {
+		t.Fatal(err)
+	}
 	keyFound, err := swarm.ParseHexAddress("aabbcc")
 	if err != nil {
 		t.Fatal(err)
@@ -33,16 +35,25 @@ func TestMockStorer(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 
-	if err := s.Put(ctx, keyFound, valueFound); err != nil {
+	chunk := swarm.NewChunk(keyFound, valueFound)
+	if err := s.Put(ctx, chunk); err != nil {
 		t.Fatalf("expected not error but got: %v", err)
 	}
 
-	if data, err := s.Get(ctx, keyFound); err != nil {
+	if gotChunk, err := s.Get(ctx, keyFound); err != nil {
 		t.Fatalf("expected not error but got: %v", err)
 
 	} else {
-		if !bytes.Equal(data, valueFound) {
-			t.Fatalf("expected value %s but got %s", valueFound, data)
+		if !bytes.Equal(chunk.Data(), valueFound) {
+			t.Fatalf("expected value %s but got %s", valueFound, gotChunk.Data())
 		}
+	}
+
+	if yes, _ := s.Has(ctx, keyNotFound); yes {
+		t.Fatalf("expected false but got true")
+	}
+
+	if yes, _ := s.Has(ctx, keyFound); !yes {
+		t.Fatalf("expected true but got false")
 	}
 }

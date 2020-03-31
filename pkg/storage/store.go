@@ -7,13 +7,16 @@ package storage
 import (
 	"context"
 	"errors"
-
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var ErrNotFound = errors.New("storage: not found")
+var (
+	ErrNotFound = errors.New("storage: not found")
+)
 
 type Storer interface {
-	Get(ctx context.Context, addr swarm.Address) (data []byte, err error)
-	Put(ctx context.Context, addr swarm.Address, data []byte) error
+	Get(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error)
+	Put(ctx context.Context, chunk swarm.Chunk) (err error)
+	Has(ctx context.Context, addr swarm.Address) (yes bool, err error)
+	Close(ctx context.Context) (err error)
 }

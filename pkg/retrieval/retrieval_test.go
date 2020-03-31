@@ -17,7 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
-	storemock "github.com/ethersphere/bee/pkg/storage/mock"
+	storemem "github.com/ethersphere/bee/pkg/storage/mem"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -27,30 +27,38 @@ var testTimeout = 5 * time.Second
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
-	mockStorer := storemock.NewStorer()
+	err, memStorer := storemem.NewMemStorer()
+	if err != nil {
+		t.Fatal(err)
+	}
 	reqAddr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
 		t.Fatal(err)
 	}
 	reqData := []byte("data data data")
 
-	// put testdata in the mock store of the server
-	_ = mockStorer.Put(context.TODO(), reqAddr, reqData)
+
+	reqChunk := swarm.NewChunk(reqAddr, reqData)
+	// put testdata in the mem store of the server
+	_ = memStorer.Put(context.TODO(), reqChunk)
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(retrieval.Options{
-		Storer: mockStorer,
+		Storer: memStorer,
 		Logger: logger,
 	})
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
 
-	// client mock storer does not store any data at this point
+	// client mem storer does not store any data at this point
 	// but should be checked at at the end of the test for the
 	// presence of the reqAddr key and value to ensure delivery
 	// was successful
-	clientMockStorer := storemock.NewStorer()
+	clientMockStorer, err := storemem.NewMemStorer()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ps := mockPeerSuggester{spFunc: func(_ swarm.Address) (swarm.Address, error) {
 		v, err := swarm.ParseHexAddress("9ee7add7")
