@@ -21,7 +21,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 )
 
 func (c *command) initStartCmd() (err error) {
@@ -93,17 +92,14 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			b, err := node.NewBee(node.Options{
-				DataDir:      c.config.GetString(optionNameDataDir),
-				Password:     password,
-				APIAddr:      c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr: debugAPIAddr,
-				LibP2POptions: libp2p.Options{
-					Addr:        c.config.GetString(optionNameP2PAddr),
-					DisableWS:   c.config.GetBool(optionNameP2PDisableWS),
-					DisableQUIC: c.config.GetBool(optionNameP2PDisableQUIC),
-					NetworkID:   c.config.GetInt32(optionNameNetworkID),
-					Logger:      logger,
-				},
+				DataDir:            c.config.GetString(optionNameDataDir),
+				Password:           password,
+				APIAddr:            c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr:       debugAPIAddr,
+				Addr:               c.config.GetString(optionNameP2PAddr),
+				DisableWS:          c.config.GetBool(optionNameP2PDisableWS),
+				DisableQUIC:        c.config.GetBool(optionNameP2PDisableQUIC),
+				NetworkID:          c.config.GetInt32(optionNameNetworkID),
 				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
 				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:    c.config.GetString(optionNameTracingEndpoint),

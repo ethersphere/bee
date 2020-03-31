@@ -47,7 +47,10 @@ type Options struct {
 	Password           string
 	APIAddr            string
 	DebugAPIAddr       string
-	LibP2POptions      libp2p.Options
+	Addr               string
+	DisableWS          bool
+	DisableQUIC        bool
+	NetworkID          int32
 	Bootnodes          []string
 	Logger             logging.Logger
 	TracingEnabled     bool
@@ -104,12 +107,17 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("new libp2p key created")
 	}
 
-	libP2POptions := o.LibP2POptions
-	libP2POptions.Overlay = address
-	libP2POptions.PrivateKey = libp2pPrivateKey
-	libP2POptions.Addressbook = addressbook
-	libP2POptions.Tracer = tracer
-	p2ps, err := libp2p.New(p2pCtx, libP2POptions)
+	p2ps, err := libp2p.New(p2pCtx, libp2p.Options{
+		PrivateKey:  libp2pPrivateKey,
+		Overlay:     address,
+		Addr:        o.Addr,
+		DisableWS:   o.DisableWS,
+		DisableQUIC: o.DisableQUIC,
+		NetworkID:   o.NetworkID,
+		Addressbook: addressbook,
+		Logger:      logger,
+		Tracer:      tracer,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
