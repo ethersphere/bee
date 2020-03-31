@@ -69,14 +69,14 @@ func TestChunkUpload(t *testing.T) {
 	})
 
 	t.Run("invalid hash", func(t *testing.T) {
-		res := request(t, client, http.MethodPost, requestPath+"/"+invalidHash.String(), validContentBuffer, 200)
+		res := request(t, client, http.MethodPost, requestPath+"/"+invalidHash.String(), validContentBuffer, 400)
 		if res == nil {
 			t.Fatal("err nil resposen")
 		}
 	})
 
 	t.Run("invalid content", func(t *testing.T) {
-		res := request(t, client, http.MethodPost, requestPath+"/"+invalidHash.String(), invalidContentBuffer, 200)
+		res := request(t, client, http.MethodPost, requestPath+"/"+invalidHash.String(), invalidContentBuffer, 400)
 		if res == nil {
 			t.Fatal("err nil resposen")
 		}
