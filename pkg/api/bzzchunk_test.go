@@ -17,21 +17,14 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestChunkUpload(t *testing.T) {
-	// define a mock chunk data, i.e. addr abcd chunk data efgh
-	// define some storage service with a validator, the validator is a mock validator
-	// that checks that if the data is efgh and hash is abcd then it is valid
-
-	// upload the chunk, "store" it to the mock storage in case it is valid
-	// return an http error Bad request in case it isn't
-
-	// download the chunk in both cases, in the first one - make sure it is retrievable
-	// in the second - that it isnt
-
-	const resourcePath = "/bzz-chunk/"
-
+// TestChunkUpload uploads a chunk to an API that verifies the chunk according
+// to a given validator, then tries to download the uploaded data.
+// It does not test for the chunk validation logic but
+// rather that the chunk which is Put to the storage is passed through a validator
+// and that respective possible flows are handled correctly.
+func TestChunkUploadDownload(t *testing.T) {
 	resource := func(addr swarm.Address) string {
-		return resourcePath + addr.String()
+		return "/bzz-chunk/" + addr.String()
 	}
 
 	validHash, err := swarm.ParseHexAddress("aabbcc")
