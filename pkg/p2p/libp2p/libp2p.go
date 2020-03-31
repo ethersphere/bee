@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
@@ -36,6 +37,7 @@ import (
 var _ p2p.Service = (*Service)(nil)
 
 type Service struct {
+	ctx              context.Context
 	host             host.Host
 	libp2pPeerstore  peerstore.Peerstore
 	metrics          metrics
@@ -45,6 +47,7 @@ type Service struct {
 	peers            *peerRegistry
 	peerHandler      func(context.Context, swarm.Address) error
 	logger           logging.Logger
+	tracer           *tracing.Tracer
 }
 
 type Options struct {
@@ -56,6 +59,7 @@ type Options struct {
 	NetworkID   int32
 	Addressbook addressbook.Putter
 	Logger      logging.Logger
+	Tracer      *tracing.Tracer
 }
 
 func New(ctx context.Context, o Options) (*Service, error) {
@@ -149,6 +153,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	peerRegistry := newPeerRegistry()
 	s := &Service{
+		ctx:              ctx,
 		host:             h,
 		libp2pPeerstore:  libp2pPeerstore,
 		metrics:          newMetrics(),
@@ -157,6 +162,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peers:            peerRegistry,
 		addrssbook:       o.Addressbook,
 		logger:           o.Logger,
+		tracer:           o.Tracer,
 	}
 
 	// Construct protocols.
@@ -215,8 +221,8 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			return fmt.Errorf("protocol version match %s: %w", id, err)
 		}
 
-		s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
-			peerID := stream.Conn().RemotePeer()
+		s.host.SetStreamHandlerMatch(id, matcher, func(streamlibp2p network.Stream) {
+			peerID := streamlibp2p.Conn().RemotePeer()
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
 				// todo: this should never happen, should we disconnect in this case?
@@ -226,15 +232,31 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
+			stream := newStream(streamlibp2p)
+
+			// exchange headers
+			if err := handleHeaders(ss.Headler, stream); err != nil {
+				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers: %v", p.Name, p.Version, ss.Name, overlay, err)
+				return
+			}
+
+			// tracing: get span tracing context and add it to the context
+			// silently ignore if the peer is not providing tracing
+			ctx, err := s.tracer.WithContextFromHeaders(s.ctx, stream.Headers())
+			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
+				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: get tracing context: %v", p.Name, p.Version, ss.Name, overlay, err)
+				return
+			}
+
 			s.metrics.HandledStreamCount.Inc()
-			if err := ss.Handler(p2p.Peer{Address: overlay}, newStream(stream)); err != nil {
+			if err := ss.Handler(ctx, p2p.Peer{Address: overlay}, stream); err != nil {
 				var e *p2p.DisconnectError
 				if errors.Is(err, e) {
 					// todo: test connection close and refactor
 					_ = s.Disconnect(overlay)
 				}
 
-				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: %w", p.Name, p.Version, ss.Name, overlay, err)
+				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: %v", p.Name, p.Version, ss.Name, overlay, err)
 			}
 		})
 	}
@@ -313,18 +335,33 @@ func (s *Service) SetPeerAddedHandler(h func(context.Context, swarm.Address) err
 	s.peerHandler = h
 }
 
-func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
+func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return nil, p2p.ErrPeerNotFound
 	}
 
-	stream, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
+	streamlibp2p, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, err
 	}
 
-	return newStream(stream), nil
+	stream := newStream(streamlibp2p)
+
+	// tracing: add span context header
+	if headers == nil {
+		headers = make(p2p.Headers)
+	}
+	if err := s.tracer.AddContextHeader(ctx, headers); err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
+		return nil, err
+	}
+
+	// exchange headers
+	if err := sendHeaders(ctx, headers, stream); err != nil {
+		return nil, fmt.Errorf("send headers: %w", err)
+	}
+
+	return stream, nil
 }
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {

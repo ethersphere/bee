@@ -10,6 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/tracing"
 )
 
 type Service interface {
@@ -26,6 +27,7 @@ type server struct {
 type Options struct {
 	Pingpong pingpong.Interface
 	Logger   logging.Logger
+	Tracer   *tracing.Tracer
 }
 
 func New(o Options) Service {

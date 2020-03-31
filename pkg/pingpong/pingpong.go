@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tracing"
 )
 
 const (
@@ -30,18 +31,21 @@ type Interface interface {
 type Service struct {
 	streamer p2p.Streamer
 	logger   logging.Logger
+	tracer   *tracing.Tracer
 	metrics  metrics
 }
 
 type Options struct {
 	Streamer p2p.Streamer
 	Logger   logging.Logger
+	Tracer   *tracing.Tracer
 }
 
 func New(o Options) *Service {
 	return &Service{
 		streamer: o.Streamer,
 		logger:   o.Logger,
+		tracer:   o.Tracer,
 		metrics:  newMetrics(),
 	}
 }
@@ -53,15 +57,18 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 		StreamSpecs: []p2p.StreamSpec{
 			{
 				Name:    streamName,
-				Handler: s.Handler,
+				Handler: s.handler,
 			},
 		},
 	}
 }
 
 func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
+	span, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-ping")
+	defer span.Finish()
+
 	start := time.Now()
-	stream, err := s.streamer.NewStream(ctx, address, protocolName, protocolVersion, streamName)
+	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}
@@ -91,9 +98,12 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 	return time.Since(start), nil
 }
 
-func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
+func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
+
+	span, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-handler")
+	defer span.Finish()
 
 	var ping pb.Ping
 	for {
@@ -106,7 +116,7 @@ func (s *Service) Handler(peer p2p.Peer, stream p2p.Stream) error {
 		s.logger.Tracef("got ping: %q", ping.Greeting)
 		s.metrics.PingReceivedCount.Inc()
 
-		if err := w.WriteMsg(&pb.Pong{
+		if err := w.WriteMsgWithContext(ctx, &pb.Pong{
 			Response: "{" + ping.Greeting + "}",
 		}); err != nil {
 			return fmt.Errorf("write message: %w", err)

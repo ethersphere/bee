@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/topology/full"
+	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -38,27 +39,41 @@ type Bee struct {
 	apiServer      *http.Server
 	debugAPIServer *http.Server
 	errorLogWriter *io.PipeWriter
+	tracerCloser   io.Closer
 }
 
 type Options struct {
-	DataDir       string
-	Password      string
-	APIAddr       string
-	DebugAPIAddr  string
-	LibP2POptions libp2p.Options
-	Bootnodes     []string
-	Logger        logging.Logger
+	DataDir            string
+	Password           string
+	APIAddr            string
+	DebugAPIAddr       string
+	LibP2POptions      libp2p.Options
+	Bootnodes          []string
+	Logger             logging.Logger
+	TracingEnabled     bool
+	TracingEndpoint    string
+	TracingServiceName string
 }
 
 func NewBee(o Options) (*Bee, error) {
 	logger := o.Logger
 	addressbook := inmem.New()
 
+	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
+		Enabled:     o.TracingEnabled,
+		Endpoint:    o.TracingEndpoint,
+		ServiceName: o.TracingServiceName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tracer: %w", err)
+	}
+
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
 
 	b := &Bee{
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
+		tracerCloser:   tracerCloser,
 	}
 
 	var keyStore keystore.Service
@@ -93,6 +108,7 @@ func NewBee(o Options) (*Bee, error) {
 	libP2POptions.Overlay = address
 	libP2POptions.PrivateKey = libp2pPrivateKey
 	libP2POptions.Addressbook = addressbook
+	libP2POptions.Tracer = tracer
 	p2ps, err := libp2p.New(p2pCtx, libP2POptions)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -116,6 +132,7 @@ func NewBee(o Options) (*Bee, error) {
 	pingPong := pingpong.New(pingpong.Options{
 		Streamer: p2ps,
 		Logger:   logger,
+		Tracer:   tracer,
 	})
 
 	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
@@ -150,6 +167,7 @@ func NewBee(o Options) (*Bee, error) {
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
 			Logger:   logger,
+			Tracer:   tracer,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
@@ -241,6 +259,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	b.p2pCancel()
 	if err := b.p2pService.Close(); err != nil {
 		return fmt.Errorf("p2p server: %w", err)
+	}
+
+	if err := b.tracerCloser.Close(); err != nil {
+		return fmt.Errorf("tracer: %w", err)
 	}
 
 	return b.errorLogWriter.Close()

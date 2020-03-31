@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf/internal/pb"
 )
@@ -359,6 +360,10 @@ func (noopWriteCloser) Write(p []byte) (n int, err error) {
 	return 0, nil
 }
 
+func (noopWriteCloser) Headers() p2p.Headers {
+	return nil
+}
+
 func (noopWriteCloser) Close() error {
 	return nil
 }
@@ -377,6 +382,10 @@ func newNoopReadCloser(w io.Writer) noopReadCloser {
 
 func (noopReadCloser) Read(p []byte) (n int, err error) {
 	return 0, nil
+}
+
+func (noopReadCloser) Headers() p2p.Headers {
+	return nil
 }
 
 func (noopReadCloser) Close() error {
