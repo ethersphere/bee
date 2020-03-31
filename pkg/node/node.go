@@ -249,15 +249,12 @@ func NewBee(o Options) (*Bee, error) {
 			}
 
 			addressbook.Put(overlay, addr)
-			fmt.Printf("bootnode connected, added to addresbook %s, %s\n", addr, overlay)
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("topology add peer fail %s %s: %w", aa, overlay, err)
 				logger.Errorf("connect to bootnode %s: %w", aa, err)
 				return
 			}
-
-			fmt.Printf("bootnode connected, added to toplogy driver %s, %s\n", addr, overlay)
 		}(a)
 	}
 

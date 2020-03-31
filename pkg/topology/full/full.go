@@ -6,7 +6,6 @@ package full
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -52,10 +51,8 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
 func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
-	fmt.Printf("Add Peer, start %s\n", addr)
 	d.mtx.Lock()
 	if _, ok := d.receivedPeers[addr.ByteString()]; ok {
-		fmt.Printf("Add Peer, already received %s\n", addr)
 		d.mtx.Unlock()
 		return nil
 	}
@@ -64,22 +61,17 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	d.mtx.Unlock()
 
 	connectedPeers := d.p2pService.Peers()
-	fmt.Printf("Add Peer, connected peers %s, %s\n", addr, connectedPeers)
 	ma, exists := d.addressBook.Get(addr)
 	if !exists {
-		fmt.Printf("Add Peer, addrbook not exists %s\n", addr)
 		return topology.ErrNotFound
 	}
 
 	if !isConnected(addr, connectedPeers) {
-		fmt.Printf("Add Peer, is not already connected %s\n", addr)
 		peerAddr, err := d.p2pService.Connect(ctx, ma)
 		if err != nil {
-			fmt.Printf("Add Peer, connect err %s, %s: %s\n", addr, ma, err.Error())
 			return err
 		}
 
-		fmt.Printf("Add Peer,  connect finished %s\n", addr)
 		// update addr if it is wrong or it has been changed
 		if !addr.Equal(peerAddr) {
 			addr = peerAddr
@@ -91,7 +83,6 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	for _, addressee := range connectedPeers {
 		// skip newly added peer
 		if addressee.Address.Equal(addr) {
-			fmt.Printf("Add Peer, skip newly added %s\n", addr)
 			continue
 		}
 
@@ -99,7 +90,6 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		if err := d.discovery.BroadcastPeers(context.Background(), addressee.Address, addr); err != nil {
 			return err
 		}
-		fmt.Printf("Add Peer, broadcasted to addresee  %s, %s\n", addr, addressee.Address)
 	}
 
 	if len(connectedAddrs) == 0 {
@@ -110,7 +100,6 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		return err
 	}
 
-	fmt.Printf("Add Peer, broadcasted to addr  %s, %s\n", addr, connectedAddrs)
 	return nil
 }
 

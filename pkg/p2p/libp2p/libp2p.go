@@ -175,7 +175,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		fmt.Println("peerID " + peerID)
 		i, err := s.handshakeService.Handle(newStream(stream))
 		if err != nil {
 			if err == handshake.ErrNetworkIDIncompatible {
@@ -203,17 +202,12 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 
 		s.addrssbook.Put(i.Address, remoteMultiaddr)
-		fmt.Printf("handshake finished, added to addresbook %s, %s\n", i.Address, remoteMultiaddr)
 		if s.peerHandler != nil {
-			fmt.Printf("handshake finished, peer handler is not null %s, %s\n", i.Address, remoteMultiaddr)
 			if err := s.peerHandler(ctx, i.Address); err != nil {
 				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
 			}
-
 		}
 
-		fmt.Printf("handshake finished, added to topology %s, %s\n", i.Address, remoteMultiaddr)
-		fmt.Printf("handshake finished, added to topology %s, %s\n", i.Address, remoteMultiaddr)
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Infof("peer %s connected", i.Address)
 	})
@@ -223,7 +217,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	})
 
 	h.Network().Notify(peerRegistry) // update peer registry on network events
-
 	return s, nil
 }
 
