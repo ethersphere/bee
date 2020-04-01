@@ -70,7 +70,7 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 			return
 
 		}
-		s.Logger.Debugf("bzz-chunk: chunk read error: %v", err)
+		s.Logger.Debugf("bzz-chunk: chunk read error: %v ,addr %s", err, address)
 		s.Logger.Error("bzz-chunk: chunk read error")
 		jsonhttp.InternalServerError(w, "chunk read error")
 		return
