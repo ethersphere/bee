@@ -31,7 +31,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: read chunk data error: %v", err)
+		s.Logger.Debugf("bzz-chunk: read chunk data error: %v, addr %s", err, address)
+		s.Logger.Error("bzz-chunk: read chunk data error")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 
@@ -39,7 +40,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.Storer.Put(ctx, address, data)
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: chunk write error: %v", err)
+		s.Logger.Debugf("bzz-chunk: chunk write error: %v, addr %s", err, address)
+		s.Logger.Error("bzz-chunk: chunk write error")
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
 	}
@@ -54,6 +56,7 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: parse chunk address %s: %v", addr, err)
+		s.Logger.Error("bzz-chunk: parse chunk addrss error")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
@@ -62,17 +65,16 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			s.Logger.Trace("bzz-chunk: chunk not found. addr %s", address)
+			s.Logger.Error("bzz-chunk: chunk not found")
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		s.Logger.Debugf("chunk read error: %v", err)
+		s.Logger.Debugf("bzz-chunk: chunk read error: %v", err)
+		s.Logger.Error("bzz-chunk: chunk read error")
 		jsonhttp.InternalServerError(w, "chunk read error")
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
-	_, err = io.Copy(w, bytes.NewReader(data))
-	if err != nil {
-		s.Logger.Debugf("bzz-chunk: write to http writer: %v", err)
-	}
+	_, _ = io.Copy(w, bytes.NewReader(data))
 }
