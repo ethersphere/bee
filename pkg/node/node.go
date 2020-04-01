@@ -227,32 +227,31 @@ func NewBee(o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
+	// Connect bootnodes
 	var wg sync.WaitGroup
-
-	// TODO: be more resilient on connection errors and connect in parallel
 	for _, a := range o.Bootnodes {
 		wg.Add(1)
 		go func(aa string) {
 			defer wg.Done()
 			addr, err := ma.NewMultiaddr(aa)
 			if err != nil {
-				logger.Debugf("multiaddress fail %s: %w", aa, err)
-				logger.Errorf("connect to bootnode %s: %w", aa, err)
+				logger.Debugf("multiaddress fail %s: %v", aa, err)
+				logger.Errorf("connect to bootnode %s", aa)
 				return
 			}
 
 			overlay, err := p2ps.Connect(p2pCtx, addr)
 			if err != nil {
-				logger.Debugf("connect fail %s: %w", aa, err)
-				logger.Errorf("connect to bootnode %s: %w", aa, err)
+				logger.Debugf("connect fail %s: %v", aa, err)
+				logger.Errorf("connect to bootnode %s", aa)
 				return
 			}
 
 			addressbook.Put(overlay, addr)
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				_ = p2ps.Disconnect(overlay)
-				logger.Debugf("topology add peer fail %s %s: %w", aa, overlay, err)
-				logger.Errorf("connect to bootnode %s: %w", aa, err)
+				logger.Debugf("topology add peer fail %s %s: %v", aa, overlay, err)
+				logger.Errorf("connect to bootnode %s", aa)
 				return
 			}
 		}(a)
