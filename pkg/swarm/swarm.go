@@ -12,6 +12,11 @@ import (
 	"fmt"
 )
 
+const (
+	DefaultChunkSize     = 4096
+	DefaultAddressLength = 20
+)
+
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.
 type Address struct {

@@ -6,7 +6,6 @@ package mem
 
 import (
 	"context"
-
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -43,7 +42,33 @@ func (m *memStore) Has(ctx context.Context, addr swarm.Address) (yes bool, err e
 	return false, nil
 }
 
-func (m *memStore) Close() (err error) {
+func (m *memStore) Delete(ctx context.Context,addr swarm.Address) (err error) {
+	_ , has := m.store[addr.String()]
+	if !has {
+		return nil
+	}
+	m.store[addr.String()] = nil
+	return nil
+}
+
+func (m *memStore) Count(ctx context.Context) (count int, err error) {
+	return len(m.store), nil
+}
+
+func (m *memStore) Iterate(fn func(chunk swarm.Chunk) (stop bool, err error)) (err error) {
+	for k, v := range m.store {
+		stop, err := fn(swarm.NewChunk(swarm.NewAddress([]byte(k)), v))
+		if err != nil {
+			return err
+		}
+		if stop {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *memStore) Close(ctx context.Context) (err error) {
 	m.store = nil
 	return nil
 }

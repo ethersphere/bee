@@ -27,7 +27,7 @@ var testTimeout = 5 * time.Second
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
-	err, memStorer := storemem.NewMemStorer()
+	memStorer, err := storemem.NewMemStorer()
 	if err != nil {
 		t.Fatal(err)
 	}

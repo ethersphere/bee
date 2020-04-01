@@ -103,7 +103,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
-		Data: data,
+		Data: data.Data(),
 	}); err != nil {
 		return err
 	}

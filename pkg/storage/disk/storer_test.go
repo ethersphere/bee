@@ -7,6 +7,7 @@ package disk
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"io/ioutil"
@@ -53,12 +54,24 @@ func TestMockStorer(t *testing.T) {
 		}
 	}
 
+	// Check if a non existing key is found or not.
 	if yes, _ := db.Has(ctx, keyNotFound); yes {
 		t.Fatalf("expected false but got true")
 	}
 
+	// Check if an existing key is found.
 	if yes, _ := db.Has(ctx, keyFound); !yes {
 		t.Fatalf("expected true but got false")
+	}
+
+	// Try deleting a non existing key.
+	if err := db.Delete(ctx, keyNotFound); err != nil{
+		t.Fatalf("expected no error but got: %v", err)
+	}
+
+	// Delete a existing key.
+	if err := db.Delete(ctx, keyFound); err != nil{
+		t.Fatalf("expected no error but got: %v", err)
 	}
 }
 
@@ -79,7 +92,60 @@ func newTestDB(t *testing.T) (db *diskStore, cleanupFunc func()) {
 		t.Fatal(err)
 	}
 	return db, func() {
-		db.Close()
+		db.Close(context.Background())
 		os.RemoveAll(dir)
 	}
+}
+
+func TestCountAndIterator(t *testing.T) {
+	db, clean := newTestDB(t)
+	defer clean()
+
+	expectedMap := make(map[string][]byte)
+
+	ctx := context.Background()
+	for i := 0; i < 100; i++ {
+		ch := GenerateRandomChunk()
+		expectedMap[ch.Address().String()] = ch.Data()
+		err := db.Put(ctx, ch)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+	}
+
+	count, err := db.Count(ctx)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// check count match.
+	if count != 100 {
+		t.Fatalf("expected %v but got: %v", 100, count)
+	}
+
+	// check for iteration correctness.
+	err = db.Iterate(func(chunk swarm.Chunk) (stop bool, err error) {
+		data, ok := expectedMap[chunk.Address().String()]
+		if !ok {
+			t.Fatalf("key %v not present", chunk.Address().String())
+		}
+
+		if !bytes.Equal(data, chunk.Data()) {
+			t.Fatalf("data mismatch for key %v", chunk.Address().ByteString())
+			return true, nil
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		t.Fatalf("error in iteration")
+	}
+}
+
+func GenerateRandomChunk() swarm.Chunk {
+	data := make([]byte, swarm.DefaultChunkSize)
+	rand.Read(data)
+	key := make([]byte, swarm.DefaultAddressLength)
+	rand.Read(key)
+	return swarm.NewChunk(swarm.NewAddress(key), data)
 }

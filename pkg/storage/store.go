@@ -18,5 +18,8 @@ type Storer interface {
 	Get(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error)
 	Put(ctx context.Context, chunk swarm.Chunk) (err error)
 	Has(ctx context.Context, addr swarm.Address) (yes bool, err error)
+	Delete(ctx context.Context,addr swarm.Address) (err error)
+	Count(ctx context.Context) (count int, err error)
+	Iterate(func(ch swarm.Chunk) (stop bool, err error)) (err error)
 	Close(ctx context.Context) (err error)
 }

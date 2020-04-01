@@ -9,6 +9,7 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type diskStore struct {
@@ -72,6 +73,63 @@ func (d *diskStore) Has(ctx context.Context, addr swarm.Address) (yes bool, err 
 	return yes, err
 }
 
-func (d *diskStore) Close() (err error) {
+func (d *diskStore) Delete(ctx context.Context,addr swarm.Address) (err error) {
+	return d.db.Update(func(txn *badger.Txn) (err error) {
+		return txn.Delete(addr.Bytes())
+	})
+}
+
+func (d *diskStore) Count(ctx context.Context) (count int, err error) {
+	err = d.db.View(func(txn *badger.Txn) (err error) {
+		o := badger.DefaultIteratorOptions
+		o.PrefetchValues = false
+		i := txn.NewIterator(o)
+		defer i.Close()
+		for i.Rewind(); i.Valid(); i.Next() {
+			item := i.Item()
+			k := item.KeySize()
+			if k < 1 {
+				continue
+			}
+			count++
+		}
+		return nil
+	})
+	return count, err
+}
+
+func (d *diskStore) Iterate(fn func(chunk swarm.Chunk) (stop bool, err error)) (err error) {
+	return d.db.View(func(txn *badger.Txn) (err error) {
+		o := badger.DefaultIteratorOptions
+		o.PrefetchValues = true
+		o.PrefetchSize = 1024
+		i := txn.NewIterator(o)
+		defer i.Close()
+		for i.Rewind(); i.Valid(); i.Next() {
+			item := i.Item()
+			k := item.Key()
+			if len(k) < 1 {
+				continue
+			}
+			v, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			if len(v) == 0 {
+				continue
+			}
+			stop, err := fn(swarm.NewChunk(swarm.NewAddress(k), v))
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+func (d *diskStore) Close(ctx context.Context) (err error) {
 	return d.db.Close()
 }
