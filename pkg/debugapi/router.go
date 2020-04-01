@@ -40,6 +40,9 @@ func (s *server) setupRouting() {
 	router.HandleFunc("/health", s.statusHandler)
 	router.HandleFunc("/readiness", s.statusHandler)
 
+	router.Handle("/addresses", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.addressesHandler),
+	})
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})

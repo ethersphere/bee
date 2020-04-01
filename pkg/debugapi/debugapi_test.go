@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
 )
 
@@ -60,4 +61,14 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		TopologyDriver: topologyDriver,
 		Cleanup:        cleanup,
 	}
+}
+
+func mustMultiaddr(t *testing.T, s string) multiaddr.Multiaddr {
+	t.Helper()
+
+	a, err := multiaddr.NewMultiaddr(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
 }

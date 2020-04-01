@@ -19,6 +19,7 @@ type Service struct {
 	disconnectFunc          func(overlay swarm.Address) error
 	peersFunc               func() []p2p.Peer
 	setPeerAddedHandlerFunc func(func(context.Context, swarm.Address) error)
+	addressesFunc           func() ([]ma.Multiaddr, error)
 }
 
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
@@ -48,6 +49,12 @@ func WithPeersFunc(f func() []p2p.Peer) Option {
 func WithSetPeerAddedHandlerFunc(f func(func(context.Context, swarm.Address) error)) Option {
 	return optionFunc(func(s *Service) {
 		s.setPeerAddedHandlerFunc = f
+	})
+}
+
+func WithAddressesFunc(f func() ([]ma.Multiaddr, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.addressesFunc = f
 	})
 }
 
@@ -86,6 +93,13 @@ func (s *Service) SetPeerAddedHandler(f func(context.Context, swarm.Address) err
 	}
 
 	s.setPeerAddedHandlerFunc(f)
+}
+
+func (s *Service) Addresses() ([]ma.Multiaddr, error) {
+	if s.addressesFunc == nil {
+		return nil, errors.New("function Addresses not configured")
+	}
+	return s.addressesFunc()
 }
 
 func (s *Service) Peers() []p2p.Peer {
