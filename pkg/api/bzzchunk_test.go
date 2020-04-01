@@ -63,7 +63,7 @@ func TestChunkUploadDownload(t *testing.T) {
 			Code:    http.StatusBadRequest,
 		})
 
-		// make sure chunk not retrievable
+		// make sure chunk is not retrievable
 		_ = request(t, client, http.MethodGet, resource(invalidHash), nil, http.StatusNotFound)
 	})
 
