@@ -56,7 +56,7 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: parse chunk address %s: %v", addr, err)
-		s.Logger.Error("bzz-chunk: parse chunk addrss error")
+		s.Logger.Error("bzz-chunk: parse chunk address error")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
