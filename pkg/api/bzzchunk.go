@@ -24,6 +24,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: parse chunk address %s: %v", addr, err)
+		s.Logger.Error("bzz-chunk: error uploading chunk")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
@@ -60,6 +61,7 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	data, err := s.Storer.Get(ctx, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
+			s.Logger.Trace("bzz-chunk: chunk not found. addr %s", address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
@@ -69,7 +71,6 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
-	w.WriteHeader(http.StatusOK)
 	_, err = io.Copy(w, bytes.NewReader(data))
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: write to http writer: %v", err)

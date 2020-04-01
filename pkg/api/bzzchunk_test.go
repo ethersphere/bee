@@ -55,8 +55,8 @@ func TestChunkUploadDownload(t *testing.T) {
 	client, cleanup := newTestServer(t, testServerOptions{
 		Storer: mockValidatingStorer,
 	})
-
 	defer cleanup()
+
 	t.Run("invalid hash", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(invalidHash), bytes.NewReader(validContent), http.StatusBadRequest, jsonhttp.StatusResponse{
 			Message: "chunk write error",

@@ -17,20 +17,16 @@ type mockStorer struct {
 }
 
 func NewStorer() storage.Storer {
-	s := &mockStorer{
+	return &mockStorer{
 		store: make(map[string][]byte),
 	}
-
-	return s
 }
 
 func NewValidatingStorer(f storage.ChunkValidatorFunc) storage.Storer {
-	s := &mockStorer{
+	return &mockStorer{
 		store:     make(map[string][]byte),
 		validator: f,
 	}
-
-	return s
 }
 
 func (m *mockStorer) Get(ctx context.Context, addr swarm.Address) (data []byte, err error) {
