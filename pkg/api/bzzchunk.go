@@ -65,7 +65,6 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			s.Logger.Trace("bzz-chunk: chunk not found. addr %s", address)
-			s.Logger.Error("bzz-chunk: chunk not found")
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
