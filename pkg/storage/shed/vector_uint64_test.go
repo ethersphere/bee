@@ -1,0 +1,322 @@
+// Copyright 2018 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
+package shed
+
+import (
+	"context"
+	"testing"
+)
+
+// TestUint64Vector validates put and get operations
+// of the Uint64Vector.
+func TestUint64Vector(t *testing.T) {
+	db, cleanupFunc := newTestDiskDB(t)
+	defer cleanupFunc()
+	ctx := context.Background()
+	bins, err := db.NewUint64Vector(ctx, "bins")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("get empty", func(t *testing.T) {
+		got, err := bins.Get(ctx, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var want uint64
+		if got != want {
+			t.Errorf("got uint64 %v, want %v", got, want)
+		}
+	})
+
+	t.Run("put", func(t *testing.T) {
+		for _, index := range []uint64{0, 1, 2, 5, 100} {
+			var want uint64 = 42 + index
+			err = bins.Put(ctx, index, want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := bins.Get(ctx, index)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != want {
+				t.Errorf("got %v uint64 %v, want %v", index, got, want)
+			}
+
+			t.Run("overwrite", func(t *testing.T) {
+				var want uint64 = 84 + index
+				err = bins.Put(ctx, index, want)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := bins.Get(ctx, index)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != want {
+					t.Errorf("got %v uint64 %v, want %v", index, got, want)
+				}
+			})
+		}
+	})
+
+	t.Run("put in batch", func(t *testing.T) {
+		for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
+			batch := db.Store.GetBatch(true)
+			var want uint64 = 43 + index
+			err = bins.PutInBatch(batch, index, want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = db.Store.WriteBatch(batch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := bins.Get(ctx, index)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != want {
+				t.Errorf("got %v uint64 %v, want %v", index, got, want)
+			}
+
+			t.Run("overwrite", func(t *testing.T) {
+				batch := db.Store.GetBatch(true)
+				var want uint64 = 85 + index
+				err = bins.PutInBatch(batch, index, want)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = db.Store.WriteBatch(batch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := bins.Get(ctx, index)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != want {
+					t.Errorf("got %v uint64 %v, want %v", index, got, want)
+				}
+			})
+		}
+	})
+}
+
+// TestUint64Vector_Inc validates Inc operation
+// of the Uint64Vector.
+func TestUint64Vector_Inc(t *testing.T) {
+	db, cleanupFunc := newTestDiskDB(t)
+	defer cleanupFunc()
+	ctx := context.Background()
+
+	bins, err := db.NewUint64Vector(ctx, "bins")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
+		var want uint64 = 1
+		got, err := bins.Inc(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+
+		want = 2
+		got, err = bins.Inc(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+	}
+}
+
+// TestUint64Vector_IncInBatch validates IncInBatch operation
+// of the Uint64Vector.
+func TestUint64Vector_IncInBatch(t *testing.T) {
+	db, cleanupFunc := newTestDiskDB(t)
+	defer cleanupFunc()
+	ctx := context.Background()
+	bins, err := db.NewUint64Vector(ctx, "bins")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
+		batch := db.Store.GetBatch(true)
+		var want uint64 = 1
+		got, err := bins.IncInBatch(ctx, batch, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+		err = db.Store.WriteBatch(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err = bins.Get(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+
+		batch2 := db.Store.GetBatch(true)
+		want = 2
+		got, err = bins.IncInBatch(ctx, batch2, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+		err = db.Store.WriteBatch(batch2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err = bins.Get(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+	}
+}
+
+// TestUint64Vector_Dec validates Dec operation
+// of the Uint64Vector.
+func TestUint64Vector_Dec(t *testing.T) {
+	db, cleanupFunc := newTestDiskDB(t)
+	defer cleanupFunc()
+
+	ctx := context.Background()
+	bins, err := db.NewUint64Vector(ctx, "bins")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
+		// test overflow protection
+		var want uint64
+		got, err := bins.Dec(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+
+		want = 32 + index
+		err = bins.Put(ctx, index, want)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want = 31 + index
+		got, err = bins.Dec(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+	}
+}
+
+// TestUint64Vector_DecInBatch validates DecInBatch operation
+// of the Uint64Vector.
+func TestUint64Vector_DecInBatch(t *testing.T) {
+	db, cleanupFunc := newTestDiskDB(t)
+	defer cleanupFunc()
+	ctx := context.Background()
+	bins, err := db.NewUint64Vector(ctx, "bins")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
+		batch := db.Store.GetBatch(true)
+		var want uint64
+		got, err := bins.DecInBatch(ctx, batch, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+		err = db.Store.WriteBatch(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err = bins.Get(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+
+		batch2 := db.Store.GetBatch(true)
+		want = 42 + index
+		err = bins.PutInBatch(batch2, index, want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Store.WriteBatch(batch2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err = bins.Get(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+
+		batch3 := db.Store.GetBatch(true)
+		want = 41 + index
+		got, err = bins.DecInBatch(ctx, batch3, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+		err = db.Store.WriteBatch(batch3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err = bins.Get(ctx, index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got %v uint64 %v, want %v", index, got, want)
+		}
+	}
+}

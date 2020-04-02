@@ -7,19 +7,27 @@ package storage
 import (
 	"context"
 	"errors"
-	"github.com/ethersphere/bee/pkg/swarm"
+
+	"github.com/dgraph-io/badger"
 )
 
 var (
-	ErrNotFound = errors.New("storage: not found")
+	ErrNotFound       = errors.New("storage: not found")
+	ErrNotImplemented = errors.New("storage: not implemented")
 )
 
 type Storer interface {
-	Get(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error)
-	Put(ctx context.Context, chunk swarm.Chunk) (err error)
-	Has(ctx context.Context, addr swarm.Address) (yes bool, err error)
-	Delete(ctx context.Context,addr swarm.Address) (err error)
+	Get(ctx context.Context, key []byte) (value []byte, err error)
+	Put(ctx context.Context, key []byte, value []byte) (err error)
+	Has(ctx context.Context, key []byte) (yes bool, err error)
+	Delete(ctx context.Context, key []byte) (err error)
 	Count(ctx context.Context) (count int, err error)
-	Iterate(func(ch swarm.Chunk) (stop bool, err error)) (err error)
+	CountPrefix(prefix []byte) (count int, err error)
+	CountFrom(prefix []byte) (count int, err error)
+	Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, value []byte) (stop bool, err error)) (err error)
+	First(prefix []byte) (key []byte, value []byte, err error)
+	Last(prefix []byte) (key []byte, value []byte, err error)
+	GetBatch(update bool) (txn *badger.Txn)
+	WriteBatch(txn *badger.Txn) (err error)
 	Close(ctx context.Context) (err error)
 }

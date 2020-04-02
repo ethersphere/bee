@@ -5,35 +5,40 @@
 package disk
 
 import (
+	"bytes"
 	"context"
+
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-type diskStore struct {
+// DiskStorer stores the handle for badger DB.
+type DiskStore struct {
 	db *badger.DB
 }
 
-func NewDiskStorer(path string) (store *diskStore, err error) {
+//NewDiskStorer opens the badger DB with options that make the DB useful for
+// Chunk, State as well as Index stores
+func NewDiskStorer(path string) (store *DiskStore, err error) {
 	o := badger.DefaultOptions(path)
-	o.SyncWrites = false
-	o.ValueLogMaxEntries = 50000
-	o.NumMemtables = 10
-	o.Logger = nil
+	o.SyncWrites = false         // Dont sync the writes to disk, instead delay it as a batch
+	o.ValueThreshold = 1024      // Anything less than 1K value will be store with the key
+	o.ValueLogMaxEntries = 50000 // Max number of entries in a value log
+	o.Logger = nil               // DOnt enable the badger logs
 	_db, err := badger.Open(o)
 	if err != nil {
 		return nil, err
 	}
-	return &diskStore{
-		db: _db,
-	}, nil
+
+	ds := &DiskStore{db: _db}
+	return ds, nil
 }
 
-func (d *diskStore) Get(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
+// Get retrieves the value given the key.
+// if the key is not present a storage.ErrNotFound is returned.
+func (d *DiskStore) Get(ctx context.Context, key []byte) (value []byte, err error) {
 	err = d.db.View(func(txn *badger.Txn) (err error) {
-		item, err := txn.Get(addr.Bytes())
+		item, err := txn.Get(key)
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
 				return storage.ErrNotFound
@@ -41,24 +46,27 @@ func (d *diskStore) Get(ctx context.Context, addr swarm.Address) (chunk swarm.Ch
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			chunk = swarm.NewChunk(addr, val)
+			value = val
 			return nil
 		})
 	})
-	return chunk, err
+	return value, err
 }
 
-func (d *diskStore) Put(ctx context.Context, chunk swarm.Chunk) error {
+// Put inserts the given key and value in to badger.
+func (d *DiskStore) Put(ctx context.Context, key []byte, value []byte) (err error) {
 	return d.db.Update(func(txn *badger.Txn) (err error) {
-		err = txn.Set(chunk.Address().Bytes(), chunk.Data())
+		err = txn.Set(key, value)
 		return err
 	})
 }
 
-func (d *diskStore) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
+// Has checks if the given key is present in the database.
+// it returns a bool indicating true or false OR error if it encounters one during the operation.
+func (d *DiskStore) Has(ctx context.Context, key []byte) (yes bool, err error) {
 	yes = false
 	err = d.db.View(func(txn *badger.Txn) (err error) {
-		item, err := txn.Get(addr.Bytes())
+		item, err := txn.Get(key)
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
 				return storage.ErrNotFound
@@ -70,16 +78,18 @@ func (d *diskStore) Has(ctx context.Context, addr swarm.Address) (yes bool, err 
 			return nil
 		})
 	})
-	return yes, err
+	return yes, nil
 }
 
-func (d *diskStore) Delete(ctx context.Context,addr swarm.Address) (err error) {
+// Delete removed the key and value if a given key is present in the DB.
+func (d *DiskStore) Delete(ctx context.Context, key []byte) (err error) {
 	return d.db.Update(func(txn *badger.Txn) (err error) {
-		return txn.Delete(addr.Bytes())
+		return txn.Delete(key)
 	})
 }
 
-func (d *diskStore) Count(ctx context.Context) (count int, err error) {
+// Count gives a count of all the keys present in the DB.
+func (d *DiskStore) Count(ctx context.Context) (count int, err error) {
 	err = d.db.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
 		o.PrefetchValues = false
@@ -98,27 +108,77 @@ func (d *diskStore) Count(ctx context.Context) (count int, err error) {
 	return count, err
 }
 
-func (d *diskStore) Iterate(fn func(chunk swarm.Chunk) (stop bool, err error)) (err error) {
+// CountPrefix gives a count of all the keys that starts with a given key prefix.
+func (d *DiskStore) CountPrefix(prefix []byte) (count int, err error) {
+	err = d.db.View(func(txn *badger.Txn) (err error) {
+		o := badger.DefaultIteratorOptions
+		o.PrefetchValues = false
+		o.PrefetchSize = 1024
+		i := txn.NewIterator(o)
+		defer i.Close()
+
+		// if prefix is nil, it is equivalent to counting from beginning
+		for i.Seek(prefix); i.ValidForPrefix(prefix); i.Next() {
+			item := i.Item()
+			k := item.Key()
+			if prefix != nil {
+				if !bytes.HasPrefix(k, prefix) {
+					break
+				}
+			}
+			count++
+		}
+		return nil
+	})
+	return count, err
+}
+
+// CountFrom gives a count of all the keys that start from a given prefix till the end of the DB.
+func (d *DiskStore) CountFrom(prefix []byte) (count int, err error) {
+	err = d.db.View(func(txn *badger.Txn) (err error) {
+		o := badger.DefaultIteratorOptions
+		o.PrefetchValues = false
+		o.PrefetchSize = 1024
+		i := txn.NewIterator(o)
+		defer i.Close()
+
+		// if prefix is nil, it is equivalent to counting from beginning
+		for i.Seek(prefix); i.Valid(); i.Next() {
+			count++
+		}
+		return nil
+	})
+	return count, err
+}
+
+// Iterate goes through the entries in the DB starting from the startKey and executing a
+// given function to see if it needs to stop the iteration or not. The skipStartKey indicates
+// weather to skip the first key or not.
+func (d *DiskStore) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, value []byte) (stop bool, err error)) (err error) {
 	return d.db.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
 		o.PrefetchValues = true
 		o.PrefetchSize = 1024
 		i := txn.NewIterator(o)
 		defer i.Close()
-		for i.Rewind(); i.Valid(); i.Next() {
+
+		i.Seek(startKey)
+		if !i.Valid() {
+			return nil
+		}
+
+		if skipStartKey && bytes.Equal(startKey, i.Item().Key()) {
+			i.Next()
+		}
+
+		for ; i.Valid(); i.Next() {
 			item := i.Item()
 			k := item.Key()
-			if len(k) < 1 {
-				continue
-			}
 			v, err := item.ValueCopy(nil)
 			if err != nil {
 				return err
 			}
-			if len(v) == 0 {
-				continue
-			}
-			stop, err := fn(swarm.NewChunk(swarm.NewAddress(k), v))
+			stop, err := fn(k,v)
 			if err != nil {
 				return err
 			}
@@ -130,6 +190,77 @@ func (d *diskStore) Iterate(fn func(chunk swarm.Chunk) (stop bool, err error)) (
 	})
 }
 
-func (d *diskStore) Close(ctx context.Context) (err error) {
+// First returns the first key which matches the given prefix.
+func (d *DiskStore) First(prefix []byte) (key []byte, value []byte, err error) {
+	err = d.db.View(func(txn *badger.Txn) (err error) {
+		o := badger.DefaultIteratorOptions
+		o.PrefetchValues = true
+		o.PrefetchSize = 1
+
+		i := txn.NewIterator(o)
+		defer i.Close()
+
+		i.Seek(prefix)
+		key = i.Item().Key()
+		if !bytes.HasPrefix(key, prefix) {
+			return storage.ErrNotFound
+		}
+		value, err = i.Item().ValueCopy(value)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	return key, value, err
+}
+
+// Last retuns the last key matching the given prefix.
+func (d *DiskStore) Last(prefix []byte) (key []byte, value []byte, err error) {
+	err = d.db.View(func(txn *badger.Txn) (err error) {
+		o := badger.DefaultIteratorOptions
+		o.PrefetchValues = true
+		o.PrefetchSize = 1024
+
+		i := txn.NewIterator(o)
+		defer i.Close()
+
+		for i.Seek(prefix); i.ValidForPrefix(prefix); i.Next() {
+			key = i.Item().Key()
+			value, err = i.Item().ValueCopy(value)
+			if err != nil {
+				return err
+			}
+		}
+
+		if key == nil {
+			return storage.ErrNotFound
+		}
+
+		if !bytes.HasPrefix(key, prefix) {
+			return storage.ErrNotFound
+		}
+		return nil
+	})
+	return key, value, err
+}
+
+// GetBatch get a new badger transaction to be used for multiple atomic operations.
+func (d *DiskStore) GetBatch(update bool) (txn *badger.Txn) {
+	// set update to true indicating that data will be added/changed in this transaction.
+	return d.db.NewTransaction(true)
+}
+
+// WriteBatch commits the badger transaction after all the operations are over.
+func (d *DiskStore) WriteBatch(txn *badger.Txn) (err error) {
+	err = txn.Commit()
+	if err != nil {
+		return err
+	}
+	txn.Discard()
+	return nil
+}
+
+// Close shut's down the badger DB.
+func (d *DiskStore) Close(ctx context.Context) (err error) {
 	return d.db.Close()
 }

@@ -5,70 +5,134 @@
 package mem
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
+
+	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type memStore struct {
+type MemStore struct {
 	store map[string][]byte
 }
 
-func NewMemStorer() (store *memStore, err error) {
-	s := &memStore{
+func NewMemStorer() (store *MemStore, err error) {
+	s := &MemStore{
 		store: make(map[string][]byte),
 	}
 	return s, nil
 }
 
-func (m *memStore) Get(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
-	v, has := m.store[addr.String()]
+func (m *MemStore) Get(ctx context.Context, key []byte) (value []byte, err error) {
+	value , has := m.store[hex.EncodeToString(key)]
 	if !has {
-		return chunk, storage.ErrNotFound
+		return nil , storage.ErrNotFound
 	}
-	chunk = swarm.NewChunk(addr, v)
-	return chunk, nil
+	return value , nil
 }
 
-func (m *memStore) Put(ctx context.Context, chunk swarm.Chunk) error {
-	m.store[chunk.Address().String()] = chunk.Data()
+func (m *MemStore) Put(ctx context.Context, key []byte, value []byte) (err error) {
+	m.store[hex.EncodeToString(key)] = value
 	return nil
 }
 
-func (m *memStore) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
-	if m.store[addr.String()] != nil {
+func (m *MemStore) Has(ctx context.Context, key []byte) (yes bool, err error) {
+	if m.store[hex.EncodeToString(key)] != nil {
 		return true, nil
 	}
 	return false, nil
 }
 
-func (m *memStore) Delete(ctx context.Context,addr swarm.Address) (err error) {
-	_ , has := m.store[addr.String()]
+func (m *MemStore) Delete(ctx context.Context, key []byte) (err error) {
+	_, has := m.store[hex.EncodeToString(key)]
 	if !has {
 		return nil
 	}
-	m.store[addr.String()] = nil
+	m.store[hex.EncodeToString(key)] = nil
 	return nil
 }
 
-func (m *memStore) Count(ctx context.Context) (count int, err error) {
+func (m *MemStore) Count(ctx context.Context) (count int, err error) {
 	return len(m.store), nil
 }
 
-func (m *memStore) Iterate(fn func(chunk swarm.Chunk) (stop bool, err error)) (err error) {
-	for k, v := range m.store {
-		stop, err := fn(swarm.NewChunk(swarm.NewAddress([]byte(k)), v))
-		if err != nil {
-			return err
+func (m *MemStore) CountPrefix(prefix []byte) (count int, err error) {
+	for k, _ := range m.store {
+		if bytes.HasPrefix([]byte(k), prefix) {
+			count++
 		}
-		if stop {
-			return nil
+	}
+	return count, nil
+}
+
+func (m *MemStore) CountFrom(prefix []byte) (count int, err error) {
+	var foundPrefix bool
+	for k, _ := range m.store {
+		if bytes.HasPrefix([]byte(k), prefix) {
+			foundPrefix = true
+		}
+		if foundPrefix {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (m *MemStore) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, value []byte) (stop bool, err error)) (err error) {
+	var startIterating bool
+	for k, v := range m.store {
+		if bytes.Equal([]byte(k), startKey) {
+			startIterating = true
+			if skipStartKey {
+				continue
+			}
+		}
+		if startIterating {
+			stop, err := fn([]byte(k), v)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
 		}
 	}
 	return nil
 }
 
-func (m *memStore) Close(ctx context.Context) (err error) {
+func (m *MemStore) First(prefix []byte) (key []byte, value []byte, err error) {
+	for k, v := range m.store {
+		if bytes.HasPrefix([]byte(k), prefix) {
+			return []byte(k), v, nil
+		}
+	}
+	return nil, nil, storage.ErrNotFound
+}
+
+func (m *MemStore) Last(prefix []byte) (key []byte, value []byte, err error) {
+	var found bool
+	for k, v := range m.store {
+		if bytes.HasPrefix([]byte(k), prefix) {
+			found = true
+		}
+
+		if found && !bytes.HasPrefix([]byte(k), prefix) {
+			return []byte(k), v, nil
+		}
+	}
+	return nil, nil, storage.ErrNotFound
+}
+
+func (m *MemStore) GetBatch(update bool) (txn *badger.Txn) {
+	return nil
+}
+
+func (m *MemStore) WriteBatch(txn *badger.Txn) (err error) {
+	return storage.ErrNotImplemented
+}
+
+func (m *MemStore) Close(ctx context.Context) (err error) {
 	m.store = nil
 	return nil
 }
