@@ -11,7 +11,13 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var ErrNotFound = errors.New("storage: not found")
+var (
+	ErrNotFound     = errors.New("storage: not found")
+	ErrInvalidChunk = errors.New("storage: invalid chunk")
+)
+
+// ChunkValidatorFunc validates Swarm chunk address and chunk data
+type ChunkValidatorFunc func(swarm.Address, []byte) bool
 
 type Storer interface {
 	Get(ctx context.Context, addr swarm.Address) (data []byte, err error)

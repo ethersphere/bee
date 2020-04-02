@@ -267,6 +267,10 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
+			logger := tracing.NewLoggerWithTraceID(ctx, s.logger)
+
+			logger.Tracef("handle protocol %s/%s: stream %s: peer %s", p.Name, p.Version, ss.Name, overlay)
+
 			s.metrics.HandledStreamCount.Inc()
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay}, stream); err != nil {
 				var e *p2p.DisconnectError
@@ -275,7 +279,8 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					_ = s.Disconnect(overlay)
 				}
 
-				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: %v", p.Name, p.Version, ss.Name, overlay, err)
+				logger.Debugf("handle protocol %s/%s: stream %s: peer %s: %v", p.Name, p.Version, ss.Name, overlay, err)
+				return
 			}
 		})
 	}

@@ -14,16 +14,19 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/storage"
 	"resenje.org/web"
 )
 
 type testServerOptions struct {
 	Pingpong pingpong.Interface
+	Storer   storage.Storer
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
 	s := api.New(api.Options{
 		Pingpong: o.Pingpong,
+		Storer:   o.Storer,
 		Logger:   logging.New(ioutil.Discard, 0),
 	})
 	ts := httptest.NewServer(s)
