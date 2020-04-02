@@ -56,6 +56,8 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		d.mtx.Unlock()
 		return nil
 	}
+
+	d.receivedPeers[addr.ByteString()] = struct{}{}
 	d.mtx.Unlock()
 
 	connectedPeers := d.p2pService.Peers()
@@ -98,9 +100,6 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		return err
 	}
 
-	d.mtx.Lock()
-	d.receivedPeers[addr.ByteString()] = struct{}{}
-	d.mtx.Unlock()
 	return nil
 }
 
