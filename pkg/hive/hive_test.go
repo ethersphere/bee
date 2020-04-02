@@ -153,18 +153,19 @@ func TestBroadcastPeers(t *testing.T) {
 			}
 		}
 
-		if !compareOverlays(exporter.Overlays(), tc.wantOverlays) {
+		if !compareOverlaysEventually(exporter.Overlays(), tc.wantOverlays) {
 			t.Errorf("Overlays got %v, want %v", exporter.Overlays(), tc.wantOverlays)
 		}
 
-		if !compareMultiaddrses(exporter.Multiaddresses(), tc.wantMultiAddresses) {
+		if !compareMultiaddrsesEventually(exporter.Multiaddresses(), tc.wantMultiAddresses) {
 			t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), tc.wantMultiAddresses)
 		}
 	}
 
 }
 
-func compareOverlays(keys []swarm.Address, wantKeys []swarm.Address) bool {
+func compareOverlaysEventually(keys []swarm.Address, wantKeys []swarm.Address) bool {
+	time.Sleep(50 * time.Millisecond)
 	var stringKeys []string
 	for _, k := range keys {
 		stringKeys = append(stringKeys, k.String())
@@ -180,7 +181,7 @@ func compareOverlays(keys []swarm.Address, wantKeys []swarm.Address) bool {
 	return reflect.DeepEqual(stringKeys, stringWantKeys)
 }
 
-func compareMultiaddrses(values []ma.Multiaddr, wantValues []ma.Multiaddr) bool {
+func compareMultiaddrsesEventually(values []ma.Multiaddr, wantValues []ma.Multiaddr) bool {
 	var stringVal []string
 	for _, v := range values {
 		stringVal = append(stringVal, v.String())
