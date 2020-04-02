@@ -30,14 +30,14 @@ var _ topology.Driver = (*Driver)(nil)
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
 type Driver struct {
 	discovery     discovery.Driver
-	addressBook   addressbook.GetPutter
+	addressBook   addressbook.GetPutRemover
 	p2pService    p2p.Service
 	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
 	mtx           sync.Mutex          // guards received peers
 	logger        logging.Logger
 }
 
-func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2p.Service, logger logging.Logger) *Driver {
+func New(disc discovery.Driver, addressBook addressbook.GetPutRemover, p2pService p2p.Service, logger logging.Logger) *Driver {
 	return &Driver{
 		discovery:     disc,
 		addressBook:   addressBook,
@@ -69,6 +69,12 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	if !isConnected(addr, connectedPeers) {
 		peerAddr, err := d.p2pService.Connect(ctx, ma)
 		if err != nil {
+			// allow this peer to be added again if connection was not succesuful
+			d.mtx.Lock()
+			delete(d.receivedPeers, addr.ByteString())
+			d.mtx.Unlock()
+			// remove peer from the addressbook as connection is not trusted anymore
+			d.addressBook.Remove(addr)
 			return err
 		}
 

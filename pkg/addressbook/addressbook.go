@@ -15,10 +15,19 @@ type GetPutter interface {
 	Putter
 }
 
+type GetPutRemover interface {
+	GetPutter
+	Remover
+}
+
 type Getter interface {
 	Get(overlay swarm.Address) (addr ma.Multiaddr, exists bool)
 }
 
 type Putter interface {
 	Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool)
+}
+
+type Remover interface {
+	Remove(overlay swarm.Address) (exists bool)
 }

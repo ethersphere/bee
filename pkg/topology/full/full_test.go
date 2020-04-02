@@ -27,6 +27,7 @@ func TestAddPeer(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	underlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS"
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
+	testError := errors.New("test error")
 	connectedPeers := []p2p.Peer{
 		{
 			Address: swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b"),
@@ -165,6 +166,37 @@ func TestAddPeer(t *testing.T) {
 			if err := checkAddreseeRecords(discovery, p.Address, []p2p.Peer{{Address: overlay}}); err != nil {
 				t.Fatal(err)
 			}
+		}
+	})
+
+	t.Run("ERROR - connect fails", func(t *testing.T) {
+		discovery := mock.NewDiscovery()
+		addressbook := inmem.New()
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+			if addr.String() != underlay {
+				t.Fatalf("expected multiaddr %s, got %s", addr.String(), underlay)
+			}
+			return swarm.Address{}, testError
+		}))
+
+		fullDriver := full.New(discovery, addressbook, p2p, logger)
+		multiaddr, err := ma.NewMultiaddr(underlay)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addressbook.Put(overlay, multiaddr)
+		err = fullDriver.AddPeer(context.Background(), overlay)
+		if !errors.Is(err, testError) {
+			t.Fatalf("expected %s, got %s", testError, err.Error())
+		}
+
+		if discovery.Broadcasts() != 0 {
+			t.Fatalf("broadcasts expected %v, got %v ", 0, discovery.Broadcasts())
+		}
+
+		if _, exists := addressbook.Get(overlay); exists != false {
+			t.Fatalf("%s found in addressbook", overlay)
 		}
 	})
 }

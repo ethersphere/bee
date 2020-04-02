@@ -20,7 +20,7 @@ const (
 	ProtocolName    = "handshake"
 	ProtocolVersion = "1.0.0"
 	StreamName      = "handshake"
-	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
+	messageTimeout  = 30 * time.Second // maximum allowed time for a message to be read or written.
 )
 
 // ErrNetworkIDIncompatible should be returned by handshake handlers if

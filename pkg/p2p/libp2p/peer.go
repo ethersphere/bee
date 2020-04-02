@@ -6,6 +6,7 @@ package libp2p
 
 import (
 	"bytes"
+	"errors"
 	"sort"
 	"sync"
 
@@ -15,12 +16,13 @@ import (
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-type peerRegistry struct {
-	underlays   map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
-	overlays    map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
-	connections map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
-	mu          sync.RWMutex
+var notConnectedError = errors.New("not connected")
 
+type peerRegistry struct {
+	underlays        map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
+	overlays         map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
+	connections      map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
+	mu               sync.RWMutex
 	network.Notifiee // peerRegistry can be the receiver for network.Notify
 }
 
@@ -77,17 +79,35 @@ func (r *peerRegistry) peers() []p2p.Peer {
 	return peers
 }
 
-func (r *peerRegistry) add(c network.Conn, overlay swarm.Address) {
-	peerID := c.RemotePeer()
-
+func (r *peerRegistry) addConnectionIfNotExists(c network.Conn, peerID libp2ppeer.ID) (exists bool) {
 	r.mu.Lock()
-	r.underlays[overlay.ByteString()] = peerID
-	r.overlays[peerID] = overlay
+	defer r.mu.Unlock()
 	if _, ok := r.connections[peerID]; !ok {
 		r.connections[peerID] = make(map[network.Conn]struct{})
 	}
+
+	if _, exists := r.connections[peerID][c]; exists {
+		return true
+	}
+
 	r.connections[peerID][c] = struct{}{}
-	r.mu.Unlock()
+	return false
+}
+
+func (r *peerRegistry) add(c network.Conn, overlay swarm.Address) error {
+	peerID := c.RemotePeer()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.connections[peerID]; !exists {
+		return notConnectedError
+	}
+
+	if _, exists := r.connections[peerID][c]; !exists {
+		return notConnectedError
+	}
+	r.underlays[overlay.ByteString()] = peerID
+	r.overlays[peerID] = overlay
+	return nil
 }
 
 func (r *peerRegistry) peerID(overlay swarm.Address) (peerID libp2ppeer.ID, found bool) {

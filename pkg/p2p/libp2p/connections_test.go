@@ -73,12 +73,12 @@ func TestDoubleConnect(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if _, err := s2.Connect(ctx, addr); err == nil {
-		t.Fatal("second connect attempt should result with an error")
+	if _, err := s2.Connect(ctx, addr); err != libp2p.AlreadyConnectedError {
+		t.Fatalf("expected %s, got %s", libp2p.AlreadyConnectedError, err)
 	}
 
-	expectPeers(t, s2)
-	expectPeersEventually(t, s1)
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
 }
 
 func TestDoubleDisconnect(t *testing.T) {
@@ -114,45 +114,6 @@ func TestDoubleDisconnect(t *testing.T) {
 
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
-}
-
-func TestReconnectAfterDoubleConnect(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
-
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
-
-	addr := serviceUnderlayAddress(t, s1)
-
-	overlay, err := s2.Connect(ctx, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectPeers(t, s2, overlay1)
-	expectPeersEventually(t, s1, overlay2)
-
-	if _, err := s2.Connect(ctx, addr); err == nil {
-		t.Fatal("second connect attempt should result with an error")
-	}
-
-	expectPeers(t, s2)
-	expectPeersEventually(t, s1)
-
-	overlay, err = s2.Connect(ctx, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !overlay.Equal(overlay1) {
-		t.Errorf("got overlay %s, want %s", overlay, overlay1)
-	}
-
-	expectPeers(t, s2, overlay1)
-	expectPeersEventually(t, s1, overlay2)
 }
 
 func TestMultipleConnectDisconnect(t *testing.T) {
@@ -245,19 +206,21 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
-		if _, err := s2.Connect(ctx, addr); err != nil {
+		overlay, err := s2.Connect(ctx, addr)
+		if err != nil {
 			t.Fatal(err)
 		}
 
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		if _, err := s2.Connect(ctx, addr); err == nil {
+		if _, err := s2.Connect(ctx, addr); err != libp2p.AlreadyConnectedError {
 			t.Fatal("second connect attempt should result with an error")
 		}
 
-		expectPeers(t, s2)
-		expectPeersEventually(t, s1)
+		expectPeers(t, s2, overlay1)
+		expectPeersEventually(t, s1, overlay2)
+		_ = s2.Disconnect(overlay)
 	}
 }
 

@@ -35,6 +35,7 @@ import (
 )
 
 var _ p2p.Service = (*Service)(nil)
+var AlreadyConnectedError = errors.New("already connected")
 
 type Service struct {
 	ctx              context.Context
@@ -175,6 +176,11 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
+		if s.peers.addConnectionIfNotExists(stream.Conn(), peerID) {
+			s.logger.Tracef("peer %s skipping double connection stream", peerID)
+			return
+		}
+
 		i, err := s.handshakeService.Handle(newStream(stream))
 		if err != nil {
 			if err == handshake.ErrNetworkIDIncompatible {
@@ -192,7 +198,13 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
-		s.peers.add(stream.Conn(), i.Address)
+		if err := s.peers.add(stream.Conn(), i.Address); err != nil {
+			s.logger.Debugf("peers add: %s: %v", peerID, err)
+			s.logger.Errorf("unable to connect with peer %v: internal server error", peerID)
+			_ = s.disconnect(peerID)
+			return
+		}
+
 		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
 		if err != nil {
 			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
@@ -302,6 +314,12 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
+	defer stream.Close()
+
+	if s.peers.addConnectionIfNotExists(stream.Conn(), info.ID) {
+		return swarm.Address{}, AlreadyConnectedError
+	}
+
 	i, err := s.handshakeService.Handshake(newStream(stream))
 	if err != nil {
 		_ = s.disconnect(info.ID)
@@ -312,7 +330,11 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	s.peers.add(stream.Conn(), i.Address)
+	if err := s.peers.add(stream.Conn(), i.Address); err != nil {
+		_ = s.disconnect(info.ID)
+		return swarm.Address{}, err
+	}
+
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil
