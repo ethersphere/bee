@@ -66,7 +66,6 @@ func TestMockValidatingStorer(t *testing.T) {
 	validatorF := func(addr swarm.Address, data []byte) bool {
 		if !addr.Equal(keyValid) {
 			return false
-
 		}
 		if !bytes.Equal(data, validContent) {
 			return false

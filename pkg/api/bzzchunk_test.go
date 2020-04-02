@@ -19,9 +19,6 @@ import (
 
 // TestChunkUpload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
-// It does not test for the chunk validation logic but
-// rather that the chunk which is Put to the storage is passed through a validator
-// and that respective possible flows are handled correctly.
 func TestChunkUploadDownload(t *testing.T) {
 	resource := func(addr swarm.Address) string {
 		return "/bzz-chunk/" + addr.String()
