@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -157,11 +158,15 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("p2p address: %s", addr)
 	}
 
+	// for now, storer is an in-memory store.
+	storer := mock.NewStorer()
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
+			Storer:   storer,
 			Logger:   logger,
 			Tracer:   tracer,
 		})
