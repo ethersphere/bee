@@ -90,18 +90,32 @@ func (a Address) MarshalJSON() ([]byte, error) {
 // ZeroAddress is the address that has no value.
 var ZeroAddress = NewAddress(nil)
 
+// Data represents swarm's chunk data which is of 4K in length
+type Data struct {
+	d []byte
+}
+
+// NewData constructs data from a byte slice.
+func NewData(b []byte) Data {
+	return Data{d: b}
+}
+
+// Bytes returns bytes representation of the Data.
+func (d Data) Bytes() []byte {
+	return d.d
+}
 
 // Chunk defines a swarm chunk structure. It contains of the Address and the
 // chunk data.
 type Chunk struct {
-	addr       Address
-	data      []byte
+	addr Address
+	data Data
 }
 
 // NewChunk crates a chunk with the given address and data.
-func NewChunk(addr Address, chunkData []byte) (chunk Chunk) {
+func NewChunk(addr Address, chunkData Data) (chunk Chunk) {
 	return Chunk{
-		addr:  addr,
+		addr: addr,
 		data: chunkData,
 	}
 }
@@ -112,10 +126,10 @@ func (c *Chunk) Address() Address {
 }
 
 // Data returns the chunk's data.
-func (c *Chunk) Data() []byte {
+func (c *Chunk) Data() Data {
 	return c.data
 }
 
 func (self *Chunk) String() string {
-	return fmt.Sprintf("Address: %v Chunksize: %v", self.addr.String(), len(self.data))
+	return fmt.Sprintf("Address: %v Chunksize: %v", self.addr.String(), len(self.data.Bytes()))
 }

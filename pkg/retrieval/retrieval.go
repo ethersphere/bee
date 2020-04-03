@@ -97,13 +97,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		return err
 	}
 
-	data, err := s.storer.Get(context.TODO(), swarm.NewAddress(req.Addr))
+	data, err := s.storer.Get(context.TODO(), req.Addr)
 	if err != nil {
 		return err
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
-		Data: data.Data(),
+		Data: data,
 	}); err != nil {
 		return err
 	}

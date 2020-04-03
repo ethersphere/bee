@@ -37,10 +37,8 @@ func TestDelivery(t *testing.T) {
 	}
 	reqData := []byte("data data data")
 
-
-	reqChunk := swarm.NewChunk(reqAddr, reqData)
 	// put testdata in the mem store of the server
-	_ = memStorer.Put(context.TODO(), reqChunk)
+	_ = memStorer.Put(context.TODO(), reqAddr.Bytes(), reqData)
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(retrieval.Options{

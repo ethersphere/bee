@@ -60,7 +60,7 @@ func (f Uint64Vector) Get(ctx context.Context, i uint64) (val uint64, err error)
 
 // Put encodes uin64 value and stores it in the database.
 func (f Uint64Vector) Put(ctx context.Context, i, val uint64) (err error) {
-	return f.db.Store.Put(ctx, f.indexKey(i),encodeUint64(val) )
+	return f.db.Store.Put(ctx, f.indexKey(i), encodeUint64(val))
 }
 
 // PutInBatch stores a uint64 value at index i in a batch

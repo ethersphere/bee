@@ -7,7 +7,6 @@ package disk
 import (
 	"bytes"
 	"context"
-
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/storage"
 )
@@ -167,7 +166,7 @@ func (d *DiskStore) Iterate(startKey []byte, skipStartKey bool, fn func(key []by
 			return nil
 		}
 
-		if skipStartKey && bytes.Equal(startKey, i.Item().Key()) {
+		if skipStartKey {
 			i.Next()
 		}
 
@@ -178,7 +177,7 @@ func (d *DiskStore) Iterate(startKey []byte, skipStartKey bool, fn func(key []by
 			if err != nil {
 				return err
 			}
-			stop, err := fn(k,v)
+			stop, err := fn(k, v)
 			if err != nil {
 				return err
 			}

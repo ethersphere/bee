@@ -7,49 +7,50 @@ package mem
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
-
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
 type MemStore struct {
 	store map[string][]byte
+	order []string
 }
 
 func NewMemStorer() (store *MemStore, err error) {
 	s := &MemStore{
 		store: make(map[string][]byte),
+		order: make([]string, 0),
 	}
 	return s, nil
 }
 
 func (m *MemStore) Get(ctx context.Context, key []byte) (value []byte, err error) {
-	value , has := m.store[hex.EncodeToString(key)]
+	val, has := m.store[string(key)]
 	if !has {
-		return nil , storage.ErrNotFound
+		return nil, storage.ErrNotFound
 	}
-	return value , nil
+	return val, nil
 }
 
 func (m *MemStore) Put(ctx context.Context, key []byte, value []byte) (err error) {
-	m.store[hex.EncodeToString(key)] = value
+	m.store[string(key)] = value
+	m.order = append(m.order, string(key))
 	return nil
 }
 
 func (m *MemStore) Has(ctx context.Context, key []byte) (yes bool, err error) {
-	if m.store[hex.EncodeToString(key)] != nil {
+	if _, yes := m.store[(string(key))]; yes {
 		return true, nil
 	}
 	return false, nil
 }
 
 func (m *MemStore) Delete(ctx context.Context, key []byte) (err error) {
-	_, has := m.store[hex.EncodeToString(key)]
+	_, has := m.store[string(key)]
 	if !has {
 		return nil
 	}
-	m.store[hex.EncodeToString(key)] = nil
+	m.store[string(key)] = nil
 	return nil
 }
 
@@ -58,7 +59,7 @@ func (m *MemStore) Count(ctx context.Context) (count int, err error) {
 }
 
 func (m *MemStore) CountPrefix(prefix []byte) (count int, err error) {
-	for k, _ := range m.store {
+	for _, k := range m.order {
 		if bytes.HasPrefix([]byte(k), prefix) {
 			count++
 		}
@@ -68,7 +69,7 @@ func (m *MemStore) CountPrefix(prefix []byte) (count int, err error) {
 
 func (m *MemStore) CountFrom(prefix []byte) (count int, err error) {
 	var foundPrefix bool
-	for k, _ := range m.store {
+	for _, k := range m.order {
 		if bytes.HasPrefix([]byte(k), prefix) {
 			foundPrefix = true
 		}
@@ -80,15 +81,23 @@ func (m *MemStore) CountFrom(prefix []byte) (count int, err error) {
 }
 
 func (m *MemStore) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, value []byte) (stop bool, err error)) (err error) {
-	var startIterating bool
-	for k, v := range m.store {
-		if bytes.Equal([]byte(k), startKey) {
-			startIterating = true
-			if skipStartKey {
-				continue
-			}
+	var startCounting bool
+	var skipped bool
+	for _, k := range m.order {
+
+		if bytes.Equal(startKey, []byte{0}) {
+			startCounting = true
+		} else if bytes.HasPrefix([]byte(k), startKey) {
+			startCounting = true
 		}
-		if startIterating {
+
+		if startCounting && skipStartKey && !skipped {
+			skipped = true
+			continue
+		}
+
+		if startCounting {
+			v := m.store[k]
 			stop, err := fn([]byte(k), v)
 			if err != nil {
 				return err
@@ -102,8 +111,9 @@ func (m *MemStore) Iterate(startKey []byte, skipStartKey bool, fn func(key []byt
 }
 
 func (m *MemStore) First(prefix []byte) (key []byte, value []byte, err error) {
-	for k, v := range m.store {
+	for _, k := range m.order {
 		if bytes.HasPrefix([]byte(k), prefix) {
+			v := m.store[k]
 			return []byte(k), v, nil
 		}
 	}
@@ -111,16 +121,19 @@ func (m *MemStore) First(prefix []byte) (key []byte, value []byte, err error) {
 }
 
 func (m *MemStore) Last(prefix []byte) (key []byte, value []byte, err error) {
-	var found bool
-	for k, v := range m.store {
-		if bytes.HasPrefix([]byte(k), prefix) {
-			found = true
+	for _, k := range m.order {
+		if prefix == nil {
+			value = m.store[k]
 		}
-
-		if found && !bytes.HasPrefix([]byte(k), prefix) {
-			return []byte(k), v, nil
+		if bytes.HasPrefix([]byte(k), prefix) {
+			value = m.store[k]
 		}
 	}
+
+	if value != nil {
+		return key, value, nil
+	}
+
 	return nil, nil, storage.ErrNotFound
 }
 
