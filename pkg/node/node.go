@@ -44,6 +44,7 @@ type Bee struct {
 	debugAPIServer *http.Server
 	errorLogWriter *io.PipeWriter
 	tracerCloser   io.Closer
+	chunkStore     storage.Storer
 }
 
 type Options struct {
@@ -77,10 +78,26 @@ func NewBee(o Options) (*Bee, error) {
 
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
 
+	// if Datadir is empty, use memStore, otherwise use diskStore for storing chunks.
+	var chunkStore storage.Storer
+	if o.DataDir == "" {
+		chunkStore, err = mem.NewMemStorer(storage.ValidateContentChunk)
+		if err != nil {
+			logger.Error("could not create memstore")
+		}
+		logger.Warning("data directory not provided, data will not be persisted")
+	} else {
+		chunkStore, err = disk.NewDiskStorer(filepath.Join(o.DataDir, "chunk"), storage.ValidateContentChunk)
+		if err != nil {
+			logger.Error("could not create diskstore")
+		}
+	}
+
 	b := &Bee{
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
+		chunkStore:     chunkStore,
 	}
 
 	var keyStore keystore.Service
@@ -160,27 +177,12 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("p2p address: %s", addr)
 	}
 
-	// if Datadir is empty, use memstore, otherwise use diskstore.
-	var storer storage.Storer
-	if o.DataDir == "" {
-		storer, err = mem.NewMemStorer(storage.ValidateContentChunk)
-		if err != nil {
-			logger.Error("could not create memstore")
-		}
-		logger.Warning("data directory not provided, keys are not persisted")
-	} else {
-		storer, err = disk.NewDiskStorer(filepath.Join(o.DataDir, "chunk"), storage.ValidateContentChunk)
-		if err != nil {
-			logger.Error("could not create diskstore")
-		}
-	}
-
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
-			Storer:   storer,
+			Storer:   chunkStore,
 			Logger:   logger,
 			Tracer:   tracer,
 		})
@@ -303,6 +305,12 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	b.p2pCancel()
+
+	err := b.chunkStore.Close(ctx)
+	if err != nil {
+		return fmt.Errorf("chunk store: %w", err)
+	}
+
 	if err := b.p2pService.Close(); err != nil {
 		return fmt.Errorf("p2p server: %w", err)
 	}
