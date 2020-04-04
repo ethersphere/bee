@@ -14,7 +14,7 @@ import (
 
 // DiskStorer stores the handle for badger DB.
 type DiskStore struct {
-	db *badger.DB
+	db        *badger.DB
 	validator storage.ChunkValidatorFunc
 }
 

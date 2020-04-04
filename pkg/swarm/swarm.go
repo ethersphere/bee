@@ -12,7 +12,6 @@ import (
 	"fmt"
 )
 
-
 const (
 	DefaultChunkSize     = 4096
 	DefaultAddressLength = 20

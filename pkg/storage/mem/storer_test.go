@@ -7,6 +7,9 @@ package mem_test
 import (
 	"bytes"
 	"context"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -14,32 +17,36 @@ import (
 )
 
 var allItems = map[string]string{
-	"aaaa": "data80",
-	"abbb": "data81",
-	"abcc": "data82",
-	"daaa": "data83",
-	"dbaa": "data84",
-	"dbba": "data85",
-	"xxxx": "data90",
-	"zzzz": "data91",
+	"0xaaaac30623a1a20c48c473e55c8456944772b477": "data80",
+	"0xabbbc30623a1a20c48c473e55c8456944772b477": "data81",
+	"0xabccc30623a1a20c48c473e55c8456944772b477": "data82",
+	"0xdaaac30623a1a20c48c473e55c8456944772b477": "data83",
+	"0xdbaac30623a1a20c48c473e55c8456944772b477": "data84",
+	"0xdbbac30623a1a20c48c473e55c8456944772b477": "data85",
+	"0xeeeee30623a1a20c48c473e55c8456944772b477": "data90",
+	"0xfffff30623a1a20c48c473e55c8456944772b477": "data91",
 }
 
 var allKeys = []string{
-	"aaaa",
-	"abbb",
-	"abcc",
-	"daaa",
-	"dbaa",
-	"dbba",
-	"xxxx",
-	"zzzz",
+	"0xaaaac30623a1a20c48c473e55c8456944772b477",
+	"0xabbbc30623a1a20c48c473e55c8456944772b477",
+	"0xabccc30623a1a20c48c473e55c8456944772b477",
+	"0xdaaac30623a1a20c48c473e55c8456944772b477",
+	"0xdbaac30623a1a20c48c473e55c8456944772b477",
+	"0xdbbac30623a1a20c48c473e55c8456944772b477",
+	"0xeeeee30623a1a20c48c473e55c8456944772b477",
+	"0xfffff30623a1a20c48c473e55c8456944772b477",
 }
 
 func addItemsToDB(t *testing.T, ctx context.Context, db *mem.MemStore) {
 	t.Helper()
 	for _, k := range allKeys {
-		v := allItems[string(k)]
-		err := db.Put(ctx, []byte(k), []byte(v))
+		v := allItems[k]
+		hexBytes, err := hexutil.Decode(k)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		err = db.Put(ctx, hexBytes, []byte(v))
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
@@ -66,34 +73,36 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 	db, clean := newTestDB(t)
 	defer clean()
 	ctx := context.Background()
+	ch := GenerateRandomChunk()
 
 	t.Run("put", func(t *testing.T) {
-		if _, err := db.Get(ctx, []byte("aaaa")); err != storage.ErrNotFound {
+
+		if _, err := db.Get(ctx, ch.Address().Bytes()); err != storage.ErrNotFound {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 
-		if err := db.Put(ctx, []byte("aaaa"), []byte(allItems["aaaa"])); err != nil {
+		if err := db.Put(ctx, ch.Address().Bytes(), ch.Data().Bytes()); err != nil {
 			t.Fatalf("expected not error but got: %v", err)
 		}
 
-		gotVal, err := db.Get(ctx, []byte("aaaa"))
+		gotVal, err := db.Get(ctx, ch.Address().Bytes())
 		if err != nil {
 			t.Fatalf("expected success, got %v", err)
 		}
 
-		if !bytes.Equal([]byte(allItems["aaaa"]), gotVal) {
+		if !bytes.Equal(ch.Data().Bytes(), gotVal) {
 			t.Fatalf("expected %v, got %v", allItems["aaaa"], string(gotVal))
 		}
 
 	})
 
 	t.Run("get", func(t *testing.T) {
-		if gotValue, err := db.Get(ctx, []byte("aaaa")); err != nil {
+		if gotValue, err := db.Get(ctx, ch.Address().Bytes()); err != nil {
 			t.Fatalf("expected not error but got: %v", err)
 
 		} else {
-			if !bytes.Equal(gotValue, []byte(allItems["aaaa"])) {
-				t.Fatalf("expected value %s but got %s", allItems["aaaa"], string(gotValue))
+			if !bytes.Equal(gotValue, ch.Data().Bytes()) {
+				t.Fatalf("expected value len %d but got len %d", len(ch.Data().Bytes()), len(gotValue))
 			}
 		}
 	})
@@ -105,7 +114,7 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 		}
 
 		// Check if an existing key is found.
-		if yes, _ := db.Has(ctx, []byte("aaaa")); !yes {
+		if yes, _ := db.Has(ctx, ch.Address().Bytes()); !yes {
 			t.Fatalf("expected true but got false")
 		}
 	})
@@ -117,7 +126,7 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 		}
 
 		// Delete a existing key.
-		if err := db.Delete(ctx, []byte("aaaa")); err != nil {
+		if err := db.Delete(ctx, ch.Address().Bytes()); err != nil {
 			t.Fatalf("expected no error but got: %v", err)
 		}
 	})
@@ -144,7 +153,11 @@ func TestCount(t *testing.T) {
 
 	t.Run("countPrefix", func(t *testing.T) {
 		// Check CountPrefix.
-		count, err := db.CountPrefix([]byte("db"))
+		hexBytes, err := hexutil.Decode("0xdb")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		count, err := db.CountPrefix(hexBytes)
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
@@ -166,7 +179,11 @@ func TestCount(t *testing.T) {
 
 	t.Run("countFrom", func(t *testing.T) {
 		// Check the CountFrom.
-		count, err := db.CountFrom([]byte("db"))
+		hexBytes, err := hexutil.Decode("0xdb")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		count, err := db.CountFrom(hexBytes)
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
@@ -188,7 +205,7 @@ func TestIterator(t *testing.T) {
 		var count int
 		// check for iteration correctness.
 		err := db.Iterate([]byte{0}, false, func(key []byte, value []byte) (stop bool, err error) {
-			data, ok := allItems[string(key)]
+			data, ok := allItems[hexutil.Encode(key)]
 			if !ok {
 				t.Fatalf("key %v not present", string(key))
 			}
@@ -213,8 +230,12 @@ func TestIterator(t *testing.T) {
 	t.Run("iterateFromPrefix", func(t *testing.T) {
 		var count int
 		// check for iteration correctness.
-		err := db.Iterate([]byte("d"), false, func(key []byte, value []byte) (stop bool, err error) {
-			data, ok := allItems[string(key)]
+		hexBytes, err := hexutil.Decode("0xdb")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		err = db.Iterate(hexBytes, false, func(key []byte, value []byte) (stop bool, err error) {
+			data, ok := allItems[hexutil.Encode(key)]
 			if !ok {
 				t.Fatalf("key %v not present", string(key))
 			}
@@ -231,7 +252,7 @@ func TestIterator(t *testing.T) {
 			t.Fatalf("error in iteration")
 		}
 
-		if count != 5 {
+		if count != 4 {
 			t.Fatalf("iterated %v expected %v", count, 5)
 		}
 	})
@@ -239,8 +260,12 @@ func TestIterator(t *testing.T) {
 	t.Run("iterateFromPrefixSkipStartKey", func(t *testing.T) {
 		var count int
 		// check for iteration correctness.
-		err := db.Iterate([]byte("ab"), true, func(key []byte, value []byte) (stop bool, err error) {
-			data, ok := allItems[string(key)]
+		hexBytes, err := hexutil.Decode("0xab")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		err = db.Iterate(hexBytes, true, func(key []byte, value []byte) (stop bool, err error) {
+			data, ok := allItems[hexutil.Encode(key)]
 			if !ok {
 				t.Fatalf("key %v not present", string(key))
 			}
@@ -275,18 +300,22 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["aaaa"]), v) {
-			t.Fatalf("expected %v got %v", allItems["aaaa"], string(v))
+		if !bytes.Equal([]byte(allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
 	t.Run("firstWithPrefix", func(t *testing.T) {
-		_, v, err := db.First([]byte("da"))
+		hexBytes, err := hexutil.Decode("0xda")
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["daaa"]), v) {
-			t.Fatalf("expected %v got %v", allItems["daaa"], string(v))
+		_, v, err := db.First(hexBytes)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if !bytes.Equal([]byte(allItems["0xdaaac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xdaaac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
@@ -295,18 +324,22 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["zzzz"]), v) {
-			t.Fatalf("expected %v got %v", allItems["zzzz"], string(v))
+		if !bytes.Equal([]byte(allItems["0xfffff30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xfffff30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
 	t.Run("lastWithPrefix", func(t *testing.T) {
-		_, v, err := db.Last([]byte("db"))
+		hexBytes, err := hexutil.Decode("0xdb")
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["dbba"]), v) {
-			t.Fatalf("expected %v got %v", allItems["dbba"], string(v))
+		_, v, err := db.Last(hexBytes)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if !bytes.Equal([]byte(allItems["0xdbbac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xdbbac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 }
@@ -331,3 +364,10 @@ func TestBatch(t *testing.T) {
 	})
 }
 
+func GenerateRandomChunk() swarm.Chunk {
+	data := make([]byte, swarm.DefaultChunkSize)
+	rand.Read(data)
+	key := make([]byte, swarm.DefaultAddressLength)
+	rand.Read(key)
+	return swarm.NewChunk(swarm.NewAddress(key), swarm.NewData(data))
+}

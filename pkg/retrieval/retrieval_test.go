@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"github.com/ethersphere/bee/pkg/storage"
 	"io/ioutil"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ var testTimeout = 5 * time.Second
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
-	memStorer, err := storemem.NewMemStorer()
+	memStorer, err := storemem.NewMemStorer(storage.ValidateContentChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestDelivery(t *testing.T) {
 	// but should be checked at at the end of the test for the
 	// presence of the reqAddr key and value to ensure delivery
 	// was successful
-	clientMockStorer, err := storemem.NewMemStorer()
+	clientMockStorer, err := storemem.NewMemStorer(storage.ValidateContentChunk)
 	if err != nil {
 		t.Fatal(err)
 	}

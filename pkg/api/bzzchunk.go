@@ -38,7 +38,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	err = s.Storer.Put(ctx, address, data)
+	err = s.Storer.Put(ctx, address.Bytes(), data)
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: chunk write error: %v, addr %s", err, address)
 		s.Logger.Error("bzz-chunk: chunk write error")
@@ -61,7 +61,7 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := s.Storer.Get(ctx, address)
+	data, err := s.Storer.Get(ctx, address.Bytes())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			s.Logger.Trace("bzz-chunk: chunk not found. addr %s", address)

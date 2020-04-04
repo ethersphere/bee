@@ -7,6 +7,7 @@ package disk
 import (
 	"bytes"
 	"context"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -15,60 +16,67 @@ import (
 )
 
 var allItems = map[string]string{
-	"aaaac30623a1a20c48c473e55c8456944772b477": "data80",
-	"abbbc30623a1a20c48c473e55c8456944772b477": "data81",
-	"abccc30623a1a20c48c473e55c8456944772b477": "data82",
-	"daaac30623a1a20c48c473e55c8456944772b477": "data83",
-	"dbaac30623a1a20c48c473e55c8456944772b477": "data84",
-	"dbbac30623a1a20c48c473e55c8456944772b477": "data85",
-	"xxxxc30623a1a20c48c473e55c8456944772b477": "data90",
-	"zzzzc30623a1a20c48c473e55c8456944772b477": "data91",
+	"0xaaaac30623a1a20c48c473e55c8456944772b477": "data80",
+	"0xabbbc30623a1a20c48c473e55c8456944772b477": "data81",
+	"0xabccc30623a1a20c48c473e55c8456944772b477": "data82",
+	"0xdaaac30623a1a20c48c473e55c8456944772b477": "data83",
+	"0xdbaac30623a1a20c48c473e55c8456944772b477": "data84",
+	"0xdbbac30623a1a20c48c473e55c8456944772b477": "data85",
+	"0xeeeee30623a1a20c48c473e55c8456944772b477": "data90",
+	"0xfffff30623a1a20c48c473e55c8456944772b477": "data91",
 }
 
 func addItemsToDB(t *testing.T, ctx context.Context, db *DiskStore) {
 	t.Helper()
 	for k, v := range allItems {
-		err := db.Put(ctx, []byte(k), []byte(v))
+		hexBytes, err := hexutil.Decode(k)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		err = db.Put(ctx, hexBytes, []byte(v))
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
 	}
 }
 
-
 // TestDiskStorerGetHasDelete tests Get , Put, Has and Delete functions of the DB.
 func TestDiskStorerGetPutHasDelete(t *testing.T) {
 	db, clean := newTestDB(t)
 	defer clean()
 	ctx := context.Background()
+	hexBytes, err := hexutil.Decode("0xaaaac30623a1a20c48c473e55c8456944772b477")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
 
 	t.Run("put", func(t *testing.T) {
-		if _, err := db.Get(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); err != storage.ErrNotFound {
+		if _, err := db.Get(ctx, []byte("0xaaaac30623a1a20c48c473e55c8456944772b477")); err != storage.ErrNotFound {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 
-		if err := db.Put(ctx, []byte("0xaaaac30623a1a20c48c473e55c8456944772b477"), []byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"])); err != nil {
+		if err := db.Put(ctx, hexBytes, []byte(allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"])); err != nil {
 			t.Fatalf("expected not error but got: %v", err)
 		}
 
-		gotVal, err := db.Get(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477"))
+		gotVal, err := db.Get(ctx, hexBytes)
 		if err != nil {
 			t.Fatalf("expected success, got %v", err)
 		}
 
-		if !bytes.Equal([]byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"]), gotVal) {
-			t.Fatalf("expected %v, got %v", allItems["aaaac30623a1a20c48c473e55c8456944772b477"], string(gotVal))
+		if !bytes.Equal([]byte(allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"]), gotVal) {
+			t.Fatalf("expected %v, got %v", allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"], string(gotVal))
 		}
 
 	})
 
 	t.Run("get", func(t *testing.T) {
-		if gotValue, err := db.Get(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); err != nil {
+		if gotValue, err := db.Get(ctx, hexBytes); err != nil {
 			t.Fatalf("expected not error but got: %v", err)
 
 		} else {
-			if !bytes.Equal(gotValue, []byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"])) {
-				t.Fatalf("expected value %s but got %s", allItems["aaaac30623a1a20c48c473e55c8456944772b477"], string(gotValue))
+			if !bytes.Equal(gotValue, []byte(allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"])) {
+				t.Fatalf("expected value %s but got %s", allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"], string(gotValue))
 			}
 		}
 	})
@@ -80,7 +88,7 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 		}
 
 		// Check if an existing key is found.
-		if yes, _ := db.Has(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); !yes {
+		if yes, _ := db.Has(ctx, hexBytes); !yes {
 			t.Fatalf("expected true but got false")
 		}
 	})
@@ -92,7 +100,7 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 		}
 
 		// Delete a existing key.
-		if err := db.Delete(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); err != nil {
+		if err := db.Delete(ctx, hexBytes); err != nil {
 			t.Fatalf("expected no error but got: %v", err)
 		}
 	})
@@ -141,7 +149,11 @@ func TestCount(t *testing.T) {
 
 	t.Run("countPrefix", func(t *testing.T) {
 		// Check CountPrefix.
-		count, err := db.CountPrefix([]byte("db"))
+		hexBytes, err := hexutil.Decode("0xdb")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		count, err := db.CountPrefix(hexBytes)
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
@@ -163,7 +175,11 @@ func TestCount(t *testing.T) {
 
 	t.Run("countFrom", func(t *testing.T) {
 		// Check the CountFrom.
-		count, err := db.CountFrom([]byte("db"))
+		hexBytes, err := hexutil.Decode("0xdb")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		count, err := db.CountFrom(hexBytes)
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
@@ -185,7 +201,7 @@ func TestIterator(t *testing.T) {
 		var count int
 		// check for iteration correctness.
 		err := db.Iterate([]byte{0}, false, func(key []byte, value []byte) (stop bool, err error) {
-			data, ok := allItems[string(key)]
+			data, ok := allItems[hexutil.Encode(key)]
 			if !ok {
 				t.Fatalf("key %v not present", string(key))
 			}
@@ -210,8 +226,12 @@ func TestIterator(t *testing.T) {
 	t.Run("iterateFromPrefix", func(t *testing.T) {
 		var count int
 		// check for iteration correctness.
-		err := db.Iterate([]byte("d"), false, func(key []byte, value []byte) (stop bool, err error) {
-			data, ok := allItems[string(key)]
+		hexBytes, err := hexutil.Decode("0xdb")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		err = db.Iterate(hexBytes, false, func(key []byte, value []byte) (stop bool, err error) {
+			data, ok := allItems[hexutil.Encode(key)]
 			if !ok {
 				t.Fatalf("key %v not present", string(key))
 			}
@@ -228,7 +248,7 @@ func TestIterator(t *testing.T) {
 			t.Fatalf("error in iteration")
 		}
 
-		if count != 5 {
+		if count != 4 {
 			t.Fatalf("iterated %v expected %v", count, 5)
 		}
 	})
@@ -236,8 +256,12 @@ func TestIterator(t *testing.T) {
 	t.Run("iterateFromPrefixSkipStartKey", func(t *testing.T) {
 		var count int
 		// check for iteration correctness.
-		err := db.Iterate([]byte("ab"), true, func(key []byte, value []byte) (stop bool, err error) {
-			data, ok := allItems[string(key)]
+		hexBytes, err := hexutil.Decode("0xab")
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		err = db.Iterate(hexBytes, true, func(key []byte, value []byte) (stop bool, err error) {
+			data, ok := allItems[hexutil.Encode(key)]
 			if !ok {
 				t.Fatalf("key %v not present", string(key))
 			}
@@ -272,18 +296,22 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"]), v) {
-			t.Fatalf("expected %v got %v", allItems["aaaa"], string(v))
+		if !bytes.Equal([]byte(allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xaaaac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
 	t.Run("firstWithPrefix", func(t *testing.T) {
-		_, v, err := db.First([]byte("da"))
+		hexBytes, err := hexutil.Decode("0xda")
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["daaac30623a1a20c48c473e55c8456944772b477"]), v) {
-			t.Fatalf("expected %v got %v", allItems["daaac30623a1a20c48c473e55c8456944772b477"], string(v))
+		_, v, err := db.First(hexBytes)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if !bytes.Equal([]byte(allItems["0xdaaac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xdaaac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
@@ -292,18 +320,22 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["zzzzc30623a1a20c48c473e55c8456944772b477"]), v) {
-			t.Fatalf("expected %v got %v", allItems["zzzzc30623a1a20c48c473e55c8456944772b477"], string(v))
+		if !bytes.Equal([]byte(allItems["0xfffff30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xfffff30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
 	t.Run("lastWithPrefix", func(t *testing.T) {
-		_, v, err := db.Last([]byte("db"))
+		hexBytes, err := hexutil.Decode("0xdb")
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["dbbac30623a1a20c48c473e55c8456944772b477"]), v) {
-			t.Fatalf("expected %v got %v", allItems["dbbac30623a1a20c48c473e55c8456944772b477"], string(v))
+		_, v, err := db.Last(hexBytes)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if !bytes.Equal([]byte(allItems["0xdbbac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["0xdbbac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 }
@@ -316,16 +348,15 @@ func TestBatch(t *testing.T) {
 	addItemsToDB(t, ctx, db)
 
 	t.Run("readWriteBatch", func(t *testing.T) {
-		batch := db.GetBatch(true)
+		batch := db.GetBatch(false)
 
-		err := batch.Set([]byte("yyyyc30623a1a20c48c473e55c8456944772b477"), []byte("XXXXc30623a1a20c48c473e55c8456944772b477"))
+		err := batch.Set([]byte("0xeeeee30623a1a20c48c473e55c8456944772b477"), []byte("XXXXc30623a1a20c48c473e55c8456944772b477"))
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
 
-
 		// Check if the value is not reflected before the WriteBatch
-		val, err := db.Get(ctx, []byte("yyyyc30623a1a20c48c473e55c8456944772b477"))
+		_, err = db.Get(ctx, []byte("0xeeeee30623a1a20c48c473e55c8456944772b477"))
 		if err != storage.ErrNotFound {
 			t.Fatalf("%v", err)
 		}
@@ -336,12 +367,12 @@ func TestBatch(t *testing.T) {
 		}
 
 		// Check if the values reflected after the WriteBatch
-		val, err = db.Get(ctx, []byte("yyyyc30623a1a20c48c473e55c8456944772b477"))
+		value, err := db.Get(ctx, []byte("0xeeeee30623a1a20c48c473e55c8456944772b477"))
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte("XXXXc30623a1a20c48c473e55c8456944772b477"), val) {
-			t.Fatalf("expected %v got %v", "XXXX", string(val))
+		if !bytes.Equal([]byte("XXXXc30623a1a20c48c473e55c8456944772b477"), value) {
+			t.Fatalf("expected %v got %v", "XXXX", string(value))
 		}
 	})
 }
@@ -384,7 +415,11 @@ func TestPersistenceAfterDBClose(t *testing.T) {
 
 	// Check if all the items are still intact.
 	for k, v := range allItems {
-		gotVal, err := db.Get(ctx, []byte(k))
+		hexBytes, err := hexutil.Decode(k)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		gotVal, err := db.Get(ctx, hexBytes)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -404,4 +439,3 @@ func TestPersistenceAfterDBClose(t *testing.T) {
 	}
 
 }
-

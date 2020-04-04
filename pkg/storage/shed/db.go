@@ -18,7 +18,7 @@ type DB struct {
 
 func NewDB(path string) (db *DB, err error) {
 	if path == "" {
-		ms, err := mem.NewMemStorer(storage.ValidateContentChunk)
+		ms, err := mem.NewMemStorer(nil)
 		if err != nil {
 			return nil, err
 		}
@@ -26,7 +26,7 @@ func NewDB(path string) (db *DB, err error) {
 			Store: ms,
 		}, nil
 	} else {
-		ds, err := disk.NewDiskStorer(path, storage.ValidateContentChunk)
+		ds, err := disk.NewDiskStorer(path, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -53,4 +53,3 @@ func NewDB(path string) (db *DB, err error) {
 		return db, nil
 	}
 }
-

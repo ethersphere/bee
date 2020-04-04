@@ -14,7 +14,7 @@ import (
 var (
 	ErrNotFound       = errors.New("storage: not found")
 	ErrNotImplemented = errors.New("storage: not implemented")
-	ErrInvalidChunk = errors.New("storage: invalid chunk")
+	ErrInvalidChunk   = errors.New("storage: invalid chunk")
 )
 
 type Storer interface {

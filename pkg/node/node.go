@@ -7,6 +7,9 @@ package node
 import (
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/disk"
+	"github.com/ethersphere/bee/pkg/storage/mem"
 	"io"
 	"log"
 	"net"
@@ -29,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -158,8 +160,20 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("p2p address: %s", addr)
 	}
 
-	// for now, storer is an in-memory store.
-	storer := mock.NewStorer()
+	// if Datadir is empty, use memstore, otherwise use diskstore.
+	var storer storage.Storer
+	if o.DataDir == "" {
+		storer, err = mem.NewMemStorer(storage.ValidateContentChunk)
+		if err != nil {
+			logger.Error("could not create memstore")
+		}
+		logger.Warning("data directory not provided, keys are not persisted")
+	} else {
+		storer, err = disk.NewDiskStorer(filepath.Join(o.DataDir, "chunk"), storage.ValidateContentChunk)
+		if err != nil {
+			logger.Error("could not create diskstore")
+		}
+	}
 
 	var apiService api.Service
 	if o.APIAddr != "" {

@@ -13,15 +13,15 @@ import (
 )
 
 type MemStore struct {
-	store map[string][]byte
-	order []string
+	store     map[string][]byte
+	order     []string
 	validator storage.ChunkValidatorFunc
 }
 
 func NewMemStorer(v storage.ChunkValidatorFunc) (store *MemStore, err error) {
 	s := &MemStore{
-		store: make(map[string][]byte),
-		order: make([]string, 0),
+		store:     make(map[string][]byte),
+		order:     make([]string, 0),
 		validator: v,
 	}
 	return s, nil

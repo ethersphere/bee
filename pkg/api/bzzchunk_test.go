@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storage/mem"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -37,18 +37,21 @@ func TestChunkUploadDownload(t *testing.T) {
 	validContent := []byte("bbaatt")
 	invalidContent := []byte("bbaattss")
 
-	validatorF := func(addr swarm.Address, data []byte) bool {
-		if !addr.Equal(validHash) {
+	validatorF := func(ch swarm.Chunk) bool {
+		if !ch.Address().Equal(validHash) {
 			return false
 
 		}
-		if !bytes.Equal(data, validContent) {
+		if !bytes.Equal(ch.Data().Bytes(), validContent) {
 			return false
 		}
 		return true
 	}
 
-	mockValidatingStorer := mock.NewValidatingStorer(validatorF)
+	mockValidatingStorer, err := mem.NewMemStorer(validatorF)
+	if err != nil {
+		t.Fatal(err)
+	}
 	client, cleanup := newTestServer(t, testServerOptions{
 		Storer: mockValidatingStorer,
 	})
