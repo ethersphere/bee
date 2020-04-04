@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -28,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -123,19 +125,6 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.p2pService = p2ps
 
-	// TODO: be more resilient on connection errors and connect in parallel
-	for _, a := range o.Bootnodes {
-		addr, err := ma.NewMultiaddr(a)
-		if err != nil {
-			return nil, fmt.Errorf("bootnode %s: %w", a, err)
-		}
-
-		overlay, err := p2ps.Connect(p2pCtx, addr)
-		if err != nil {
-			return nil, fmt.Errorf("connect to bootnode %s %s: %w", a, overlay, err)
-		}
-	}
-
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
 		Streamer: p2ps,
@@ -169,11 +158,15 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("p2p address: %s", addr)
 	}
 
+	// for now, storer is an in-memory store.
+	storer := mock.NewStorer()
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
+			Storer:   storer,
 			Logger:   logger,
 			Tracer:   tracer,
 		})
@@ -239,6 +232,37 @@ func NewBee(o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
+	// Connect bootnodes
+	var wg sync.WaitGroup
+	for _, a := range o.Bootnodes {
+		wg.Add(1)
+		go func(aa string) {
+			defer wg.Done()
+			addr, err := ma.NewMultiaddr(aa)
+			if err != nil {
+				logger.Debugf("multiaddress fail %s: %v", aa, err)
+				logger.Errorf("connect to bootnode %s", aa)
+				return
+			}
+
+			overlay, err := p2ps.Connect(p2pCtx, addr)
+			if err != nil {
+				logger.Debugf("connect fail %s: %v", aa, err)
+				logger.Errorf("connect to bootnode %s", aa)
+				return
+			}
+
+			addressbook.Put(overlay, addr)
+			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
+				_ = p2ps.Disconnect(overlay)
+				logger.Debugf("topology add peer fail %s %s: %v", aa, overlay, err)
+				logger.Errorf("connect to bootnode %s", aa)
+				return
+			}
+		}(a)
+	}
+
+	wg.Wait()
 	return b, nil
 }
 

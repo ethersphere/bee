@@ -12,6 +12,7 @@ import (
 	"fmt"
 )
 
+
 const (
 	DefaultChunkSize     = 4096
 	DefaultAddressLength = 20
@@ -130,6 +131,6 @@ func (c *Chunk) Data() Data {
 	return c.data
 }
 
-func (self *Chunk) String() string {
-	return fmt.Sprintf("Address: %v Chunksize: %v", self.addr.String(), len(self.data.Bytes()))
+func (c *Chunk) String() string {
+	return fmt.Sprintf("Address: %v Chunksize: %v", c.addr.String(), len(c.data.Bytes()))
 }

@@ -41,19 +41,26 @@ type service struct {
 }
 
 func newService() *service {
+	subsystem := "api"
 	return &service{
 		RequestCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "api_request_count",
-			Help: "Number of API requests.",
+			Namespace: metrics.Namespace,
+			Subsystem: subsystem,
+			Name:      "request_count",
+			Help:      "Number of API requests.",
 		}),
 		ResponseDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "api_response_duration_seconds",
-			Help:    "Histogram of API response durations.",
-			Buckets: []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			Namespace: metrics.Namespace,
+			Subsystem: subsystem,
+			Name:      "response_duration_seconds",
+			Help:      "Histogram of API response durations.",
+			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
 		unexportedCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "api_unexported_count",
-			Help: "This metrics should not be discoverable by metrics.PrometheusCollectorsFromFields.",
+			Namespace: metrics.Namespace,
+			Subsystem: subsystem,
+			Name:      "unexported_count",
+			Help:      "This metrics should not be discoverable by metrics.PrometheusCollectorsFromFields.",
 		}),
 	}
 }

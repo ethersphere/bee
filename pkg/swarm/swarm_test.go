@@ -81,3 +81,4 @@ func TestAddress_jsonMarshalling(t *testing.T) {
 		t.Error("unmarshalled address is not equal to the original")
 	}
 }
+

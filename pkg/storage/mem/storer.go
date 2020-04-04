@@ -9,17 +9,20 @@ import (
 	"context"
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type MemStore struct {
 	store map[string][]byte
 	order []string
+	validator storage.ChunkValidatorFunc
 }
 
-func NewMemStorer() (store *MemStore, err error) {
+func NewMemStorer(v storage.ChunkValidatorFunc) (store *MemStore, err error) {
 	s := &MemStore{
 		store: make(map[string][]byte),
 		order: make([]string, 0),
+		validator: v,
 	}
 	return s, nil
 }
@@ -33,6 +36,12 @@ func (m *MemStore) Get(ctx context.Context, key []byte) (value []byte, err error
 }
 
 func (m *MemStore) Put(ctx context.Context, key []byte, value []byte) (err error) {
+	if m.validator != nil {
+		ch := swarm.NewChunk(swarm.NewAddress(key), swarm.NewData(value))
+		if !m.validator(ch) {
+			return storage.ErrInvalidChunk
+		}
+	}
 	m.store[string(key)] = value
 	m.order = append(m.order, string(key))
 	return nil

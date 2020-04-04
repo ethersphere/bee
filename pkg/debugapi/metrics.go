@@ -6,6 +6,7 @@ package debugapi
 
 import (
 	"github.com/ethersphere/bee"
+	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -14,11 +15,14 @@ func newMetricsRegistry() (r *prometheus.Registry) {
 
 	// register standard metrics
 	r.MustRegister(
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{
+			Namespace: metrics.Namespace,
+		}),
 		prometheus.NewGoCollector(),
 		prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "bee_info",
-			Help: "Bee information.",
+			Namespace: metrics.Namespace,
+			Name:      "info",
+			Help:      "Bee information.",
 			ConstLabels: prometheus.Labels{
 				"version": bee.Version,
 			},

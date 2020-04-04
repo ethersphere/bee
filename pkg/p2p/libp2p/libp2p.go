@@ -193,13 +193,21 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 
 		s.peers.add(stream.Conn(), i.Address)
-		s.addrssbook.Put(i.Address, stream.Conn().RemoteMultiaddr())
+		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
+		if err != nil {
+			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
+			s.logger.Errorf("unable to connect with peer %v", peerID)
+			_ = s.disconnect(peerID)
+			return
+		}
+
+		s.addrssbook.Put(i.Address, remoteMultiaddr)
 		if s.peerHandler != nil {
 			if err := s.peerHandler(ctx, i.Address); err != nil {
 				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
 			}
-
 		}
+
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Infof("peer %s connected", i.Address)
 	})
@@ -209,7 +217,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	})
 
 	h.Network().Notify(peerRegistry) // update peer registry on network events
-
 	return s, nil
 }
 
@@ -248,6 +255,10 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
+			logger := tracing.NewLoggerWithTraceID(ctx, s.logger)
+
+			logger.Tracef("handle protocol %s/%s: stream %s: peer %s", p.Name, p.Version, ss.Name, overlay)
+
 			s.metrics.HandledStreamCount.Inc()
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay}, stream); err != nil {
 				var e *p2p.DisconnectError
@@ -256,7 +267,8 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					_ = s.Disconnect(overlay)
 				}
 
-				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: %v", p.Name, p.Version, ss.Name, overlay, err)
+				logger.Debugf("handle protocol %s/%s: stream %s: peer %s: %v", p.Name, p.Version, ss.Name, overlay, err)
+				return
 			}
 		})
 	}

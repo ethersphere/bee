@@ -51,7 +51,8 @@ func addItemsToDB(t *testing.T, ctx context.Context, db *mem.MemStore) {
 // be called to remove the data.
 func newTestDB(t *testing.T) (db *mem.MemStore, cleanupFunc func()) {
 	t.Helper()
-	db, err := mem.NewMemStorer()
+
+	db, err := mem.NewMemStorer(storage.ValidateContentChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,3 +330,4 @@ func TestBatch(t *testing.T) {
 		}
 	})
 }
+

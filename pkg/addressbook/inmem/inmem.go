@@ -46,6 +46,8 @@ func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
 }
 
 func (i *inmem) Overlays() []swarm.Address {
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
 	keys := make([]swarm.Address, 0, len(i.entries))
 	for k := range i.entries {
 		keys = append(keys, swarm.MustParseHexAddress(k))
@@ -55,6 +57,8 @@ func (i *inmem) Overlays() []swarm.Address {
 }
 
 func (i *inmem) Multiaddresses() []ma.Multiaddr {
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
 	values := make([]ma.Multiaddr, 0, len(i.entries))
 	for _, v := range i.entries {
 		values = append(values, v.multiaddr)

@@ -15,14 +15,14 @@ import (
 )
 
 var allItems = map[string]string{
-	"aaaa": "data80",
-	"abbb": "data81",
-	"abcc": "data82",
-	"daaa": "data83",
-	"dbaa": "data84",
-	"dbba": "data85",
-	"xxxx": "data90",
-	"zzzz": "data91",
+	"aaaac30623a1a20c48c473e55c8456944772b477": "data80",
+	"abbbc30623a1a20c48c473e55c8456944772b477": "data81",
+	"abccc30623a1a20c48c473e55c8456944772b477": "data82",
+	"daaac30623a1a20c48c473e55c8456944772b477": "data83",
+	"dbaac30623a1a20c48c473e55c8456944772b477": "data84",
+	"dbbac30623a1a20c48c473e55c8456944772b477": "data85",
+	"xxxxc30623a1a20c48c473e55c8456944772b477": "data90",
+	"zzzzc30623a1a20c48c473e55c8456944772b477": "data91",
 }
 
 func addItemsToDB(t *testing.T, ctx context.Context, db *DiskStore) {
@@ -35,6 +35,7 @@ func addItemsToDB(t *testing.T, ctx context.Context, db *DiskStore) {
 	}
 }
 
+
 // TestDiskStorerGetHasDelete tests Get , Put, Has and Delete functions of the DB.
 func TestDiskStorerGetPutHasDelete(t *testing.T) {
 	db, clean := newTestDB(t)
@@ -42,32 +43,32 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("put", func(t *testing.T) {
-		if _, err := db.Get(ctx, []byte("aaaa")); err != storage.ErrNotFound {
+		if _, err := db.Get(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); err != storage.ErrNotFound {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 
-		if err := db.Put(ctx, []byte("aaaa"), []byte(allItems["aaaa"])); err != nil {
+		if err := db.Put(ctx, []byte("0xaaaac30623a1a20c48c473e55c8456944772b477"), []byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"])); err != nil {
 			t.Fatalf("expected not error but got: %v", err)
 		}
 
-		gotVal, err := db.Get(ctx, []byte("aaaa"))
+		gotVal, err := db.Get(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477"))
 		if err != nil {
 			t.Fatalf("expected success, got %v", err)
 		}
 
-		if !bytes.Equal([]byte(allItems["aaaa"]), gotVal) {
-			t.Fatalf("expected %v, got %v", allItems["aaaa"], string(gotVal))
+		if !bytes.Equal([]byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"]), gotVal) {
+			t.Fatalf("expected %v, got %v", allItems["aaaac30623a1a20c48c473e55c8456944772b477"], string(gotVal))
 		}
 
 	})
 
 	t.Run("get", func(t *testing.T) {
-		if gotValue, err := db.Get(ctx, []byte("aaaa")); err != nil {
+		if gotValue, err := db.Get(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); err != nil {
 			t.Fatalf("expected not error but got: %v", err)
 
 		} else {
-			if !bytes.Equal(gotValue, []byte(allItems["aaaa"])) {
-				t.Fatalf("expected value %s but got %s", allItems["aaaa"], string(gotValue))
+			if !bytes.Equal(gotValue, []byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"])) {
+				t.Fatalf("expected value %s but got %s", allItems["aaaac30623a1a20c48c473e55c8456944772b477"], string(gotValue))
 			}
 		}
 	})
@@ -79,7 +80,7 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 		}
 
 		// Check if an existing key is found.
-		if yes, _ := db.Has(ctx, []byte("aaaa")); !yes {
+		if yes, _ := db.Has(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); !yes {
 			t.Fatalf("expected true but got false")
 		}
 	})
@@ -91,7 +92,7 @@ func TestDiskStorerGetPutHasDelete(t *testing.T) {
 		}
 
 		// Delete a existing key.
-		if err := db.Delete(ctx, []byte("aaaa")); err != nil {
+		if err := db.Delete(ctx, []byte("aaaac30623a1a20c48c473e55c8456944772b477")); err != nil {
 			t.Fatalf("expected no error but got: %v", err)
 		}
 	})
@@ -107,7 +108,8 @@ func newTestDB(t *testing.T) (db *DiskStore, cleanupFunc func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err = NewDiskStorer(dir)
+
+	db, err = NewDiskStorer(dir, storage.ValidateContentChunk)
 	if err != nil {
 		os.RemoveAll(dir)
 		t.Fatal(err)
@@ -270,7 +272,7 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["aaaa"]), v) {
+		if !bytes.Equal([]byte(allItems["aaaac30623a1a20c48c473e55c8456944772b477"]), v) {
 			t.Fatalf("expected %v got %v", allItems["aaaa"], string(v))
 		}
 	})
@@ -280,8 +282,8 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["daaa"]), v) {
-			t.Fatalf("expected %v got %v", allItems["daaa"], string(v))
+		if !bytes.Equal([]byte(allItems["daaac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["daaac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
@@ -290,8 +292,8 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["zzzz"]), v) {
-			t.Fatalf("expected %v got %v", allItems["zzzz"], string(v))
+		if !bytes.Equal([]byte(allItems["zzzzc30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["zzzzc30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 
@@ -300,8 +302,8 @@ func TestFirstAndLast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte(allItems["dbba"]), v) {
-			t.Fatalf("expected %v got %v", allItems["dbba"], string(v))
+		if !bytes.Equal([]byte(allItems["dbbac30623a1a20c48c473e55c8456944772b477"]), v) {
+			t.Fatalf("expected %v got %v", allItems["dbbac30623a1a20c48c473e55c8456944772b477"], string(v))
 		}
 	})
 }
@@ -316,13 +318,14 @@ func TestBatch(t *testing.T) {
 	t.Run("readWriteBatch", func(t *testing.T) {
 		batch := db.GetBatch(true)
 
-		err := batch.Set([]byte("yyyy"), []byte("XXXX"))
+		err := batch.Set([]byte("yyyyc30623a1a20c48c473e55c8456944772b477"), []byte("XXXXc30623a1a20c48c473e55c8456944772b477"))
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
 
+
 		// Check if the value is not reflected before the WriteBatch
-		val, err := db.Get(ctx, []byte("yyyy"))
+		val, err := db.Get(ctx, []byte("yyyyc30623a1a20c48c473e55c8456944772b477"))
 		if err != storage.ErrNotFound {
 			t.Fatalf("%v", err)
 		}
@@ -333,11 +336,11 @@ func TestBatch(t *testing.T) {
 		}
 
 		// Check if the values reflected after the WriteBatch
-		val, err = db.Get(ctx, []byte("yyyy"))
+		val, err = db.Get(ctx, []byte("yyyyc30623a1a20c48c473e55c8456944772b477"))
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		if !bytes.Equal([]byte("XXXX"), val) {
+		if !bytes.Equal([]byte("XXXXc30623a1a20c48c473e55c8456944772b477"), val) {
 			t.Fatalf("expected %v got %v", "XXXX", string(val))
 		}
 	})
@@ -350,7 +353,7 @@ func TestPersistenceAfterDBClose(t *testing.T) {
 	}
 
 	// Open a new DB.
-	db, err := NewDiskStorer(dir)
+	db, err := NewDiskStorer(dir, storage.ValidateContentChunk)
 	if err != nil {
 		err = os.RemoveAll(dir)
 		if err != nil {
@@ -370,7 +373,7 @@ func TestPersistenceAfterDBClose(t *testing.T) {
 	}
 
 	// Open the DB again.
-	db, err = NewDiskStorer(dir)
+	db, err = NewDiskStorer(dir, storage.ValidateContentChunk)
 	if err != nil {
 		err = os.RemoveAll(dir)
 		if err != nil {
@@ -401,3 +404,4 @@ func TestPersistenceAfterDBClose(t *testing.T) {
 	}
 
 }
+

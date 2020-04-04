@@ -9,16 +9,18 @@ import (
 	"context"
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // DiskStorer stores the handle for badger DB.
 type DiskStore struct {
 	db *badger.DB
+	validator storage.ChunkValidatorFunc
 }
 
 //NewDiskStorer opens the badger DB with options that make the DB useful for
 // Chunk, State as well as Index stores
-func NewDiskStorer(path string) (store *DiskStore, err error) {
+func NewDiskStorer(path string, v storage.ChunkValidatorFunc) (store *DiskStore, err error) {
 	o := badger.DefaultOptions(path)
 	o.SyncWrites = false         // Dont sync the writes to disk, instead delay it as a batch
 	o.ValueThreshold = 1024      // Anything less than 1K value will be store with the key
@@ -29,7 +31,7 @@ func NewDiskStorer(path string) (store *DiskStore, err error) {
 		return nil, err
 	}
 
-	ds := &DiskStore{db: _db}
+	ds := &DiskStore{db: _db, validator: v}
 	return ds, nil
 }
 
@@ -54,6 +56,12 @@ func (d *DiskStore) Get(ctx context.Context, key []byte) (value []byte, err erro
 
 // Put inserts the given key and value in to badger.
 func (d *DiskStore) Put(ctx context.Context, key []byte, value []byte) (err error) {
+	if d.validator != nil {
+		ch := swarm.NewChunk(swarm.NewAddress(key), swarm.NewData(value))
+		if !d.validator(ch) {
+			return storage.ErrInvalidChunk
+		}
+	}
 	return d.db.Update(func(txn *badger.Txn) (err error) {
 		err = txn.Set(key, value)
 		return err
