@@ -2,6 +2,8 @@ package shed
 
 import (
 	"context"
+	"github.com/ethersphere/bee/pkg/logging"
+	"io/ioutil"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/disk"
@@ -17,8 +19,9 @@ type DB struct {
 }
 
 func NewDB(path string) (db *DB, err error) {
+	logger := logging.New(ioutil.Discard, 0)
 	if path == "" {
-		ms, err := mem.NewMemStorer(nil)
+		ms, err := mem.NewMemStorer(nil, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -26,7 +29,7 @@ func NewDB(path string) (db *DB, err error) {
 			Store: ms,
 		}, nil
 	} else {
-		ds, err := disk.NewDiskStorer(path, nil)
+		ds, err := disk.NewDiskStorer(path, nil, logger)
 		if err != nil {
 			return nil, err
 		}

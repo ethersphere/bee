@@ -7,11 +7,14 @@ package disk
 import (
 	"bytes"
 	"context"
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/dgraph-io/badger"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
@@ -117,7 +120,9 @@ func newTestDB(t *testing.T) (db *DiskStore, cleanupFunc func()) {
 		t.Fatal(err)
 	}
 
-	db, err = NewDiskStorer(dir, storage.ValidateContentChunk)
+	logger := logging.New(os.Stdout, logrus.ErrorLevel)
+
+	db, err = NewDiskStorer(dir, storage.ValidateContentChunk, logger)
 	if err != nil {
 		os.RemoveAll(dir)
 		t.Fatal(err)
@@ -348,7 +353,7 @@ func TestBatch(t *testing.T) {
 	addItemsToDB(t, ctx, db)
 
 	t.Run("readWriteBatch", func(t *testing.T) {
-		batch := db.GetBatch(false)
+		batch := db.GetBatch(true)
 
 		err := batch.Set([]byte("0xeeeee30623a1a20c48c473e55c8456944772b477"), []byte("XXXXc30623a1a20c48c473e55c8456944772b477"))
 		if err != nil {
@@ -375,6 +380,14 @@ func TestBatch(t *testing.T) {
 			t.Fatalf("expected %v got %v", "XXXX", string(value))
 		}
 	})
+
+	t.Run("readOnlyBatch", func(t *testing.T) {
+		batch := db.GetBatch(false)
+		err := batch.Set([]byte("0xeeeee30623a1a20c48c473e55c8456944772b477"), []byte("XXXXc30623a1a20c48c473e55c8456944772b477"))
+		if err != badger.ErrReadOnlyTxn {
+			t.Fatalf("%v", err)
+		}
+	})
 }
 
 func TestPersistenceAfterDBClose(t *testing.T) {
@@ -383,8 +396,10 @@ func TestPersistenceAfterDBClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	logger := logging.New(os.Stdout, logrus.ErrorLevel)
+
 	// Open a new DB.
-	db, err := NewDiskStorer(dir, storage.ValidateContentChunk)
+	db, err := NewDiskStorer(dir, storage.ValidateContentChunk, logger)
 	if err != nil {
 		err = os.RemoveAll(dir)
 		if err != nil {
@@ -404,7 +419,7 @@ func TestPersistenceAfterDBClose(t *testing.T) {
 	}
 
 	// Open the DB again.
-	db, err = NewDiskStorer(dir, storage.ValidateContentChunk)
+	db, err = NewDiskStorer(dir, storage.ValidateContentChunk, logger)
 	if err != nil {
 		err = os.RemoveAll(dir)
 		if err != nil {

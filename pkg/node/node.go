@@ -81,13 +81,13 @@ func NewBee(o Options) (*Bee, error) {
 	// if Datadir is empty, use memStore, otherwise use diskStore for storing chunks.
 	var chunkStore storage.Storer
 	if o.DataDir == "" {
-		chunkStore, err = mem.NewMemStorer(storage.ValidateContentChunk)
+		chunkStore, err = mem.NewMemStorer(storage.ValidateContentChunk, logger)
 		if err != nil {
 			logger.Error("could not create memstore")
 		}
 		logger.Warning("data directory not provided, data will not be persisted")
 	} else {
-		chunkStore, err = disk.NewDiskStorer(filepath.Join(o.DataDir, "chunk"), storage.ValidateContentChunk)
+		chunkStore, err = disk.NewDiskStorer(filepath.Join(o.DataDir, "chunk"), storage.ValidateContentChunk, logger)
 		if err != nil {
 			logger.Error("could not create diskstore")
 		}

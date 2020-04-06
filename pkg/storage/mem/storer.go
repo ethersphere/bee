@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"github.com/dgraph-io/badger"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -16,13 +17,15 @@ type MemStore struct {
 	store     map[string][]byte
 	order     []string
 	validator storage.ChunkValidatorFunc
+	logger    logging.Logger
 }
 
-func NewMemStorer(v storage.ChunkValidatorFunc) (store *MemStore, err error) {
+func NewMemStorer(v storage.ChunkValidatorFunc, logger logging.Logger) (store *MemStore, err error) {
 	s := &MemStore{
 		store:     make(map[string][]byte),
 		order:     make([]string, 0),
 		validator: v,
+		logger:    logger,
 	}
 	return s, nil
 }

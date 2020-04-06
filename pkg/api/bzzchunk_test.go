@@ -8,12 +8,15 @@ import (
 	"bytes"
 	"context"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/disk"
+	"github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -53,7 +56,8 @@ func TestChunkUploadDownload(t *testing.T) {
 		return true
 	}
 
-	mockValidatingStorer, err := mem.NewMemStorer(validatorF)
+	logger := logging.New(os.Stdout, logrus.ErrorLevel)
+	mockValidatingStorer, err := mem.NewMemStorer(validatorF, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +105,6 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 }
 
-
 // TestChunkUploadDownloadWithPersistance uploads a chunk to an API that verifies the chunk according
 // to the chunk validator, restarts the DB and then tries to download and check for correctness.
 func TestChunkUploadDownloadWithPersistance(t *testing.T) {
@@ -130,7 +133,8 @@ func TestChunkUploadDownloadWithPersistance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	diskValidatingStorer, err := disk.NewDiskStorer(dir, storage.ValidateContentChunk)
+	logger := logging.New(os.Stdout, logrus.ErrorLevel)
+	diskValidatingStorer, err := disk.NewDiskStorer(dir, storage.ValidateContentChunk, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,8 +176,10 @@ func TestChunkUploadDownloadWithPersistance(t *testing.T) {
 		}
 		cleanup()
 
+		logger := logging.New(os.Stdout, logrus.ErrorLevel)
+
 		// Open the diskstore and create a new server to retrieve the contents
-		diskValidatingStorer, err := disk.NewDiskStorer(dir, storage.ValidateContentChunk)
+		diskValidatingStorer, err := disk.NewDiskStorer(dir, storage.ValidateContentChunk, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
