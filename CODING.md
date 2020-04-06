@@ -36,7 +36,7 @@ Explicit `error` values that are constructed with `errors.New` may have a messag
 
 Log messages are categorized in five different severities: error, warning, info, debug and trace, with semantic meaning associated with each of them.
 
-Two types of application users are identified: regular users and developers. Regular users should not be presented with confusing technical implementation details in log messages, but only with meaningful information related to application operability in a form of meaningful statements. Developers are users that are aware of implementation details and they will benefit from technical details to help them debug the application problematic state.
+Two types of application users are identified: regular users and developers. Regular users should not be presented with confusing technical implementation details in log messages, but only with meaningful information related to application operability in a form of meaningful statements. Developers are users that are aware of implementation details and they will benefit from technical details to help them debug the problematic application state.
 
 This means that the same problematic event may have two log lines but with different severities. This is the case with Error/Debug or Warning/Debug combo where Error or Warning is meant for the regular user and the Debug for developers to help them investigate the issue. Info and Trace log levels are informative about the expected state changes, but Info, with operable information, for regular user, and Trace, with technical details, for developer.
 
