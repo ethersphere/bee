@@ -121,7 +121,7 @@ func TestChunkUploadDownloadWithPersistance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invalidContent := make([]byte, swarm.DefaultChunkSize + 1)
+	invalidContent := make([]byte, swarm.DefaultChunkSize+1)
 	rand.Read(invalidContent)
 
 	// create the disk store with the chunk validator.
@@ -137,7 +137,6 @@ func TestChunkUploadDownloadWithPersistance(t *testing.T) {
 	client, cleanup := newTestServer(t, testServerOptions{
 		Storer: diskValidatingStorer,
 	})
-
 
 	t.Run("invalid hash", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(invalidHash), bytes.NewReader(validContent), http.StatusBadRequest, jsonhttp.StatusResponse{
@@ -172,7 +171,6 @@ func TestChunkUploadDownloadWithPersistance(t *testing.T) {
 			t.Fatal(err)
 		}
 		cleanup()
-
 
 		// Open the diskstore and create a new server to retrieve the contents
 		diskValidatingStorer, err := disk.NewDiskStorer(dir, storage.ValidateContentChunk)
