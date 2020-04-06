@@ -39,7 +39,7 @@ func NewDiskStorer(path string, v storage.ChunkValidatorFunc, logger logging.Log
 	o.Logger = nil // Dont enable the badger logs
 	_db, err := badger.Open(o)
 	if err != nil {
-		fmt.Errorf("Could not open database. Error: %v", err.Error())
+		fmt.Printf("could not open database. Error: %v", err.Error())
 		return nil, err
 	}
 	ds := &DiskStore{
