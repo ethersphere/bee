@@ -27,28 +27,22 @@ const (
 // response from the other peer does not have valid networkID.
 var ErrNetworkIDIncompatible = errors.New("incompatible network ID")
 
-// ErrHandshakeDuplicate should be returned by handshake handlers if
-// the handshake response has been received by an already processed peer.
-var ErrHandshakeDuplicate = errors.New("duplicate handshake")
-
 // PeerFinder has the information if the peer already exists in swarm.
 type PeerFinder interface {
 	Exists(overlay swarm.Address) (found bool)
 }
 
 type Service struct {
-	peerFinder PeerFinder
-	overlay    swarm.Address
-	networkID  int32
-	logger     logging.Logger
+	overlay   swarm.Address
+	networkID int32
+	logger    logging.Logger
 }
 
-func New(peerFinder PeerFinder, overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
+func New(overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
 	return &Service{
-		peerFinder: peerFinder,
-		overlay:    overlay,
-		networkID:  networkID,
-		logger:     logger,
+		overlay:   overlay,
+		networkID: networkID,
+		logger:    logger,
 	}
 }
 
@@ -68,10 +62,6 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	}
 
 	address := swarm.NewAddress(resp.Syn.Address)
-	if s.peerFinder.Exists(address) {
-		return nil, ErrHandshakeDuplicate
-	}
-
 	if resp.Syn.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
 	}
@@ -101,10 +91,6 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 	}
 
 	address := swarm.NewAddress(req.Address)
-	if s.peerFinder.Exists(address) {
-		return nil, ErrHandshakeDuplicate
-	}
-
 	if req.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
 	}

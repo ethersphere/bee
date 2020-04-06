@@ -73,12 +73,12 @@ func TestDoubleConnect(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if _, err := s2.Connect(ctx, addr); err == nil {
-		t.Fatal("second connect attempt should result with an error")
+	if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
+		t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
 	}
 
-	expectPeers(t, s2)
-	expectPeersEventually(t, s1)
+	expectPeers(t, s2, overlay1)
+	expectPeers(t, s1, overlay2)
 }
 
 func TestDoubleDisconnect(t *testing.T) {
@@ -114,45 +114,6 @@ func TestDoubleDisconnect(t *testing.T) {
 
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
-}
-
-func TestReconnectAfterDoubleConnect(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
-
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
-
-	addr := serviceUnderlayAddress(t, s1)
-
-	overlay, err := s2.Connect(ctx, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectPeers(t, s2, overlay1)
-	expectPeersEventually(t, s1, overlay2)
-
-	if _, err := s2.Connect(ctx, addr); err == nil {
-		t.Fatal("second connect attempt should result with an error")
-	}
-
-	expectPeers(t, s2)
-	expectPeersEventually(t, s1)
-
-	overlay, err = s2.Connect(ctx, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !overlay.Equal(overlay1) {
-		t.Errorf("got overlay %s, want %s", overlay, overlay1)
-	}
-
-	expectPeers(t, s2, overlay1)
-	expectPeersEventually(t, s1, overlay2)
 }
 
 func TestMultipleConnectDisconnect(t *testing.T) {
@@ -252,8 +213,15 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		if _, err := s2.Connect(ctx, addr); err == nil {
-			t.Fatal("second connect attempt should result with an error")
+		if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
+			t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
+		}
+
+		expectPeers(t, s2, overlay1)
+		expectPeers(t, s1, overlay2)
+
+		if err := s2.Disconnect(overlay1); err != nil {
+			t.Fatal(err)
 		}
 
 		expectPeers(t, s2)

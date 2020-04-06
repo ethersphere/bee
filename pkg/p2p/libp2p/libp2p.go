@@ -37,17 +37,18 @@ import (
 var _ p2p.Service = (*Service)(nil)
 
 type Service struct {
-	ctx              context.Context
-	host             host.Host
-	libp2pPeerstore  peerstore.Peerstore
-	metrics          metrics
-	networkID        int32
-	handshakeService *handshake.Service
-	addrssbook       addressbook.Putter
-	peers            *peerRegistry
-	peerHandler      func(context.Context, swarm.Address) error
-	logger           logging.Logger
-	tracer           *tracing.Tracer
+	ctx               context.Context
+	host              host.Host
+	libp2pPeerstore   peerstore.Peerstore
+	metrics           metrics
+	networkID         int32
+	handshakeService  *handshake.Service
+	incomingHandshake map[libp2ppeer.ID]struct{}
+	addrssbook        addressbook.Putter
+	peers             *peerRegistry
+	peerHandler       func(context.Context, swarm.Address) error
+	logger            logging.Logger
+	tracer            *tracing.Tracer
 }
 
 type Options struct {
@@ -153,16 +154,17 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	peerRegistry := newPeerRegistry()
 	s := &Service{
-		ctx:              ctx,
-		host:             h,
-		libp2pPeerstore:  libp2pPeerstore,
-		metrics:          newMetrics(),
-		networkID:        o.NetworkID,
-		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
-		peers:            peerRegistry,
-		addrssbook:       o.Addressbook,
-		logger:           o.Logger,
-		tracer:           o.Tracer,
+		ctx:               ctx,
+		host:              h,
+		libp2pPeerstore:   libp2pPeerstore,
+		metrics:           newMetrics(),
+		networkID:         o.NetworkID,
+		handshakeService:  handshake.New(o.Overlay, o.NetworkID, o.Logger),
+		incomingHandshake: make(map[libp2ppeer.ID]struct{}),
+		peers:             peerRegistry,
+		addrssbook:        o.Addressbook,
+		logger:            o.Logger,
+		tracer:            o.Tracer,
 	}
 
 	// Construct protocols.
@@ -173,26 +175,32 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
+	// handshake
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
+		if _, found := s.incomingHandshake[peerID]; found {
+			s.logger.Warningf("recived duplicate handshake from peer %s", peerID)
+			_ = s.disconnect(peerID)
+			return
+		}
+
 		i, err := s.handshakeService.Handle(newStream(stream))
 		if err != nil {
 			if err == handshake.ErrNetworkIDIncompatible {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
 			}
 
-			if err == handshake.ErrHandshakeDuplicate {
-				s.logger.Warningf("handshake happened for already connected peer %s", peerID)
-			}
-
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
-			// todo: test connection close and refactor
 			_ = s.disconnect(peerID)
 			return
 		}
 
-		s.peers.add(stream.Conn(), i.Address)
+		if s.peers.addIfNotExists(stream.Conn(), i.Address) {
+			s.logger.Trace("skipped double connect")
+			return
+		}
+
 		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
 		if err != nil {
 			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
@@ -297,6 +305,10 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
+	if _, found := s.peers.overlay(info.ID); found {
+		return swarm.Address{}, p2p.ErrAlreadyConnected
+	}
+
 	if err := s.host.Connect(ctx, *info); err != nil {
 		return swarm.Address{}, err
 	}
@@ -317,7 +329,11 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	s.peers.add(stream.Conn(), i.Address)
+	if s.peers.addIfNotExists(stream.Conn(), i.Address) {
+		s.logger.Trace("skipped double connect")
+		return i.Address, nil
+	}
+
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil

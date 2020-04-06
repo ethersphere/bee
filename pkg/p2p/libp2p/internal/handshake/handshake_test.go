@@ -28,8 +28,7 @@ func TestHandshake(t *testing.T) {
 		Light:     false,
 	}
 
-	peerFinderMock := &mock.PeerFinder{}
-	handshakeService := New(peerFinderMock, info.Address, info.NetworkID, logger)
+	handshakeService := New(info.Address, info.NetworkID, logger)
 
 	t.Run("OK", func(t *testing.T) {
 		expectedInfo := Info{
@@ -166,41 +165,6 @@ func TestHandshake(t *testing.T) {
 			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
 		}
 	})
-
-	t.Run("ERROR - duplicate handshake ", func(t *testing.T) {
-		node2Info := Info{
-			Address:   node2Addr,
-			NetworkID: 0,
-			Light:     false,
-		}
-
-		peerFinderMock.SetFound(true)
-		var buffer1 bytes.Buffer
-		var buffer2 bytes.Buffer
-		stream1 := mock.NewStream(&buffer1, &buffer2)
-		stream2 := mock.NewStream(&buffer2, &buffer1)
-
-		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.SynAck{
-			Syn: &pb.Syn{
-				Address:   node2Info.Address.Bytes(),
-				NetworkID: node2Info.NetworkID,
-				Light:     node2Info.Light,
-			},
-			Ack: &pb.Ack{Address: info.Address.Bytes()},
-		}); err != nil {
-			t.Fatal(err)
-		}
-
-		res, err := handshakeService.Handshake(stream1)
-		if res != nil {
-			t.Fatal("res should be nil")
-		}
-
-		if err != ErrHandshakeDuplicate {
-			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
-		}
-	})
 }
 
 func TestHandle(t *testing.T) {
@@ -213,8 +177,7 @@ func TestHandle(t *testing.T) {
 	}
 
 	logger := logging.New(ioutil.Discard, 0)
-	peerFinderMock := &mock.PeerFinder{}
-	handshakeService := New(peerFinderMock, nodeInfo.Address, nodeInfo.NetworkID, logger)
+	handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
 
 	t.Run("OK", func(t *testing.T) {
 		node2Info := Info{
@@ -361,38 +324,6 @@ func TestHandle(t *testing.T) {
 		}
 
 		if err != ErrNetworkIDIncompatible {
-			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
-		}
-	})
-
-	t.Run("ERROR - duplicate handshake msg", func(t *testing.T) {
-		node2Info := Info{
-			Address:   node2Addr,
-			NetworkID: 0,
-			Light:     false,
-		}
-
-		peerFinderMock.SetFound(true)
-		var buffer1 bytes.Buffer
-		var buffer2 bytes.Buffer
-		stream1 := mock.NewStream(&buffer1, &buffer2)
-		stream2 := mock.NewStream(&buffer2, &buffer1)
-
-		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			Address:   node2Info.Address.Bytes(),
-			NetworkID: node2Info.NetworkID,
-			Light:     node2Info.Light,
-		}); err != nil {
-			t.Fatal(err)
-		}
-
-		res, err := handshakeService.Handle(stream1)
-		if res != nil {
-			t.Fatal("res should be nil")
-		}
-
-		if err != ErrHandshakeDuplicate {
 			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
 		}
 	})
