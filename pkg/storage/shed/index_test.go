@@ -252,7 +252,7 @@ func TestIndex(t *testing.T) {
 		}
 
 		wantErr := storage.ErrNotFound
-		got, err = index.Get(ctx, Item{
+		_, err = index.Get(ctx, Item{
 			Address: want.Address,
 		})
 		if err != wantErr {
@@ -292,7 +292,7 @@ func TestIndex(t *testing.T) {
 		}
 
 		wantErr := storage.ErrNotFound
-		got, err = index.Get(ctx, Item{
+		_, err = index.Get(ctx, Item{
 			Address: want.Address,
 		})
 		if err != wantErr {

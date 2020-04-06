@@ -91,7 +91,6 @@ func (d *DiskStore) Has(ctx context.Context, key []byte) (yes bool, err error) {
 	err = d.db.View(func(txn *badger.Txn) (err error) {
 		item, err := txn.Get(key)
 		if err != nil {
-			d.metrics.DiskHasFailCount.Inc()
 			if err == badger.ErrKeyNotFound {
 				return storage.ErrNotFound
 			}
@@ -103,6 +102,9 @@ func (d *DiskStore) Has(ctx context.Context, key []byte) (yes bool, err error) {
 			return nil
 		})
 	})
+	if err != nil {
+		d.metrics.DiskHasFailCount.Inc()
+	}
 	return yes, nil
 }
 

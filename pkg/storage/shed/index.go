@@ -225,7 +225,7 @@ func (f Index) HasMulti(items ...Item) ([]bool, error) {
 			continue
 		}
 
-		if bytes.Compare(key, it.Item().Key()) == 0 {
+		if bytes.Equal(key, it.Item().Key()) {
 			have[i] = true
 		}
 	}
