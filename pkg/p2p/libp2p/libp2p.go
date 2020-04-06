@@ -179,7 +179,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
 		if _, found := s.incomingHandshake[peerID]; found {
-			s.logger.Warningf("recived duplicate handshake from peer %s", peerID)
+			s.logger.Warningf("received duplicate handshake from peer %s", peerID)
 			_ = s.disconnect(peerID)
 			return
 		}
