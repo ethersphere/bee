@@ -1,6 +1,6 @@
 # Coding guide
 
-This project is written in Go programming language and follows a community accepted coding styles and practices defined in https://golang.org/doc/effective_go.html and https://github.com/golang/go/wiki/CodeReviewComments. This document defines additional guidelines specific to the Bee project.
+This project is written in Go programming language and follows a community accepted coding styles and practices defined in [Effective Go](https://golang.org/doc/effective_go.html) and [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments). This document defines additional guidelines specific to the Bee project.
 
 Developers should keep their Go tooling up to date with the latest stable versions.
 
@@ -10,7 +10,7 @@ Linting is done by using https://github.com/golangci/golangci-lint with configur
 
 ## Testing
 
-It is preferred to use separate test package to write tests. This allows explicit testing on exported behaviour of the package, not the internal implementation. In need to export only to testing package, export_test.go file should be used. Testing internal implementations discouraged, but not forbidden. Executing `make test` should pass without any warnings or errors.
+It is preferred to use a separate test package to write tests. This allows explicit testing on exported behaviour of the package, not the internal implementation. In need to export only to testing package, `export_test.go` file should be used. Testing internal implementations is discouraged, but not forbidden. Executing `make test` should pass without any warnings or errors.
 
 ## Packages
 
@@ -28,15 +28,19 @@ Every channel must have an owning goroutine. That goroutine is the only one that
 
 Errors must be propagated by the caller function. Error should not be logged and passed at the same time. It is up to the next caller function to decide what should be done in case of an error.
 
-If a function has multiple returns with, any returned error should be annotated either with fmt.Errorf using `%w` verb or with custom error type that has Unwrap method.
+If a function has multiple returns with, any returned error should be annotated either with `fmt.Errorf` using `%w` verb or with custom error type that has `Unwrap() error` method.
+
+Explicit `error` values that are constructed with `errors.New` may have a message prefixed with the package name and a colon character, if it would improve the message clarity.
 
 ## Logging
 
 Log messages are categorized in five different severities: error, warning, info, debug and trace, with semantic meaning associated with each of them.
 
-Two types of application users are identified: regular user and developer. Regular user should not be presented with confusing technical implementation details in log messages, but only with meaningful information related to application operability in a form of meaningful statements. Developers are users that are aware of implementation details and they will benefit from technical details to help them debug the application problematic state.
+Two types of application users are identified: regular users and developers. Regular users should not be presented with confusing technical implementation details in log messages, but only with meaningful information related to application operability in a form of meaningful statements. Developers are users that are aware of implementation details and they will benefit from technical details to help them debug the application problematic state.
 
 This means that the same problematic event may have two log lines but with different severities. This is the case with Error/Debug or Warning/Debug combo where Error or Warning is meant for the regular user and the Debug for developers to help them investigate the issue. Info and Trace log levels are informative about the expected state changes, but Info, with operable information, for regular user, and Trace, with technical details, for developer.
+
+Error and warning log messages should provide enough information to identify a problem in the codebase without the need to log the filename and line number alongside, even if that information is possible to be added by the logging library.
 
 ### Error
 
@@ -48,7 +52,7 @@ Warning log messages are also meant for regular users, as Error log messages, bu
 
 ### Info
 
-Info log messages are informing users about the changes that are changing the application state in the expected manner, or presenting the user the information that can be used to operate the application, such as *node address: 12345*.
+Info log messages are informing users about the changes that are affecting the application state in the expected manner, or presenting the user the information that can be used to operate the application, such as *node address: 12345*.
 
 ### Debug
 
