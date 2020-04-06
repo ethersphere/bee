@@ -8,7 +8,10 @@ import (
 	"bytes"
 	"context"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/sirupsen/logrus"
+	"io/ioutil"
 	"math/rand"
 	"testing"
 
@@ -59,7 +62,9 @@ func addItemsToDB(t *testing.T, ctx context.Context, db *mem.MemStore) {
 func newTestDB(t *testing.T) (db *mem.MemStore, cleanupFunc func()) {
 	t.Helper()
 
-	db, err := mem.NewMemStorer(storage.ValidateContentChunk)
+	logger := logging.New(ioutil.Discard, logrus.ErrorLevel)
+
+	db, err := mem.NewMemStorer(storage.ValidateContentChunk, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
