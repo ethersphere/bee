@@ -153,47 +153,58 @@ func TestBroadcastPeers(t *testing.T) {
 			}
 		}
 
-		if !compareOverlays(exporter.Overlays(), tc.wantOverlays) {
-			t.Errorf("Overlays got %v, want %v", exporter.Overlays(), tc.wantOverlays)
-		}
-
-		if !compareMultiaddrses(exporter.Multiaddresses(), tc.wantMultiAddresses) {
-			t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), tc.wantMultiAddresses)
-		}
+		expectOverlaysEventually(t, exporter, tc.wantOverlays)
+		expectMultiaddresessEventually(t, exporter, tc.wantMultiAddresses)
 	}
-
 }
 
-func compareOverlays(keys []swarm.Address, wantKeys []swarm.Address) bool {
-	var stringKeys []string
-	for _, k := range keys {
-		stringKeys = append(stringKeys, k.String())
+func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverlays []swarm.Address) {
+	for i := 0; i < 100; i++ {
+		var stringOverlays []string
+		var stringWantOverlays []string
+
+		for _, k := range exporter.Overlays() {
+			stringOverlays = append(stringOverlays, k.String())
+		}
+
+		for _, k := range wantOverlays {
+			stringWantOverlays = append(stringWantOverlays, k.String())
+		}
+
+		sort.Strings(stringOverlays)
+		sort.Strings(stringWantOverlays)
+		if reflect.DeepEqual(stringOverlays, stringWantOverlays) {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	var stringWantKeys []string
-	for _, k := range wantKeys {
-		stringWantKeys = append(stringWantKeys, k.String())
-	}
-
-	sort.Strings(stringKeys)
-	sort.Strings(stringWantKeys)
-	return reflect.DeepEqual(stringKeys, stringWantKeys)
+	t.Errorf("Overlays got %v, want %v", exporter.Overlays(), wantOverlays)
 }
 
-func compareMultiaddrses(values []ma.Multiaddr, wantValues []ma.Multiaddr) bool {
-	var stringVal []string
-	for _, v := range values {
-		stringVal = append(stringVal, v.String())
+func expectMultiaddresessEventually(t *testing.T, exporter AddressExporter, wantMultiaddresses []ma.Multiaddr) {
+	for i := 0; i < 100; i++ {
+		var stringMultiaddresses []string
+		for _, v := range exporter.Multiaddresses() {
+			stringMultiaddresses = append(stringMultiaddresses, v.String())
+		}
+
+		var stringWantMultiAddresses []string
+		for _, v := range wantMultiaddresses {
+			stringWantMultiAddresses = append(stringWantMultiAddresses, v.String())
+		}
+
+		sort.Strings(stringMultiaddresses)
+		sort.Strings(stringWantMultiAddresses)
+		if reflect.DeepEqual(stringMultiaddresses, stringWantMultiAddresses) {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	var stringWantVal []string
-	for _, v := range wantValues {
-		stringWantVal = append(stringWantVal, v.String())
-	}
-
-	sort.Strings(stringVal)
-	sort.Strings(stringWantVal)
-	return reflect.DeepEqual(stringVal, stringWantVal)
+	t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), wantMultiaddresses)
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
