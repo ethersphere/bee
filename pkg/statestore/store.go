@@ -7,15 +7,11 @@ package statestore
 import (
 	"encoding"
 	"encoding/json"
-	"errors"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
-
-// ErrNotFound is returned when no results are returned from the database
-var ErrNotFound = errors.New("ErrorNotFound")
 
 // Store uses LevelDB to store values.
 type Store struct {

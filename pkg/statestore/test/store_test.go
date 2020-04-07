@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.package storage
+
 package test
 
 import (
@@ -94,6 +98,10 @@ func testPersistedValues(t *testing.T, store storage.StateStorer, key1, key2 str
 	err := store.Get(key1, v)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if !v.unmarshalCalled {
+		t.Fatal("unmarshaler not called")
 	}
 
 	if v.value != value1.value {
