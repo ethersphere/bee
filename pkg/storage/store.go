@@ -23,3 +23,16 @@ type Storer interface {
 	Get(ctx context.Context, addr swarm.Address) (data []byte, err error)
 	Put(ctx context.Context, addr swarm.Address, data []byte) error
 }
+
+// StateStorer defines methods required to get, set, delete values for different keys
+// and close the underlying resources.
+type StateStorer interface {
+	Get(key string, i interface{}) (err error)
+	Put(key string, i interface{}) (err error)
+	Delete(key string) (err error)
+	Iterate(prefix string, iterFunc StateIterFunc) (err error)
+	Close() error
+}
+
+// StateIterFunc is used when iterating through StateStorer key/value pairs
+type StateIterFunc func(key, value []byte) (stop bool, err error)
