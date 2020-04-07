@@ -103,97 +103,110 @@ func TestBroadcastPeers(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		addressbookclean := inmem.New()
-		exporter, ok := addressbookclean.(AddressExporter)
-		if !ok {
-			t.Fatal("could not type assert AddressExporter")
-		}
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			addressbookclean := inmem.New()
+			exporter, ok := addressbookclean.(AddressExporter)
+			if !ok {
+				t.Fatal("could not type assert AddressExporter")
+			}
 
-		// create a hive server that handles the incoming stream
-		server := hive.New(hive.Options{
-			Logger:      logger,
-			AddressBook: addressbookclean,
-		})
+			// create a hive server that handles the incoming stream
+			server := hive.New(hive.Options{
+				Logger:      logger,
+				AddressBook: addressbookclean,
+			})
 
-		// setup the stream recorder to record stream data
-		recorder := streamtest.New(
-			streamtest.WithProtocols(server.Protocol()),
-		)
+			// setup the stream recorder to record stream data
+			recorder := streamtest.New(
+				streamtest.WithProtocols(server.Protocol()),
+			)
 
-		// create a hive client that will do broadcast
-		client := hive.New(hive.Options{
-			Streamer:    recorder,
-			Logger:      logger,
-			AddressBook: addressbook,
-		})
+			// create a hive client that will do broadcast
+			client := hive.New(hive.Options{
+				Streamer:    recorder,
+				Logger:      logger,
+				AddressBook: addressbook,
+			})
 
-		if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
-			t.Fatal(err)
-		}
-
-		// get a record for this stream
-		records, err := recorder.Records(tc.addresee, "hive", "1.0.0", "peers")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if l := len(records); l != len(tc.wantMsgs) {
-			t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
-		}
-
-		// there is a one record per batch (wantMsg)
-		for i, record := range records {
-			messages, err := readAndAssertPeersMsgs(record.In(), 1)
-			if err != nil {
+			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
 			}
 
-			if fmt.Sprint(messages[0]) != fmt.Sprint(tc.wantMsgs[i]) {
-				t.Errorf("Messages got %v, want %v", messages, tc.wantMsgs)
+			// get a record for this stream
+			records, err := recorder.Records(tc.addresee, "hive", "1.0.0", "peers")
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
+			if l := len(records); l != len(tc.wantMsgs) {
+				t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
+			}
 
-		if !compareOverlays(exporter.Overlays(), tc.wantOverlays) {
-			t.Errorf("Overlays got %v, want %v", exporter.Overlays(), tc.wantOverlays)
-		}
+			// there is a one record per batch (wantMsg)
+			for i, record := range records {
+				messages, err := readAndAssertPeersMsgs(record.In(), 1)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-		if !compareMultiaddrses(exporter.Multiaddresses(), tc.wantMultiAddresses) {
-			t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), tc.wantMultiAddresses)
-		}
+				if fmt.Sprint(messages[0]) != fmt.Sprint(tc.wantMsgs[i]) {
+					t.Errorf("Messages got %v, want %v", messages, tc.wantMsgs)
+				}
+			}
+
+			expectOverlaysEventually(t, exporter, tc.wantOverlays)
+			expectMultiaddresessEventually(t, exporter, tc.wantMultiAddresses)
+		})
 	}
-
 }
 
-func compareOverlays(keys []swarm.Address, wantKeys []swarm.Address) bool {
-	var stringKeys []string
-	for _, k := range keys {
-		stringKeys = append(stringKeys, k.String())
+func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverlays []swarm.Address) {
+	for i := 0; i < 100; i++ {
+		var stringOverlays []string
+		var stringWantOverlays []string
+
+		for _, k := range exporter.Overlays() {
+			stringOverlays = append(stringOverlays, k.String())
+		}
+
+		for _, k := range wantOverlays {
+			stringWantOverlays = append(stringWantOverlays, k.String())
+		}
+
+		sort.Strings(stringOverlays)
+		sort.Strings(stringWantOverlays)
+		if reflect.DeepEqual(stringOverlays, stringWantOverlays) {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	var stringWantKeys []string
-	for _, k := range wantKeys {
-		stringWantKeys = append(stringWantKeys, k.String())
-	}
-
-	sort.Strings(stringKeys)
-	sort.Strings(stringWantKeys)
-	return reflect.DeepEqual(stringKeys, stringWantKeys)
+	t.Errorf("Overlays got %v, want %v", exporter.Overlays(), wantOverlays)
 }
 
-func compareMultiaddrses(values []ma.Multiaddr, wantValues []ma.Multiaddr) bool {
-	var stringVal []string
-	for _, v := range values {
-		stringVal = append(stringVal, v.String())
+func expectMultiaddresessEventually(t *testing.T, exporter AddressExporter, wantMultiaddresses []ma.Multiaddr) {
+	for i := 0; i < 100; i++ {
+		var stringMultiaddresses []string
+		for _, v := range exporter.Multiaddresses() {
+			stringMultiaddresses = append(stringMultiaddresses, v.String())
+		}
+
+		var stringWantMultiAddresses []string
+		for _, v := range wantMultiaddresses {
+			stringWantMultiAddresses = append(stringWantMultiAddresses, v.String())
+		}
+
+		sort.Strings(stringMultiaddresses)
+		sort.Strings(stringWantMultiAddresses)
+		if reflect.DeepEqual(stringMultiaddresses, stringWantMultiAddresses) {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	var stringWantVal []string
-	for _, v := range wantValues {
-		stringWantVal = append(stringWantVal, v.String())
-	}
-
-	sort.Strings(stringVal)
-	sort.Strings(stringWantVal)
-	return reflect.DeepEqual(stringVal, stringWantVal)
+	t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), wantMultiaddresses)
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
