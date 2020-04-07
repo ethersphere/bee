@@ -37,18 +37,17 @@ import (
 var _ p2p.Service = (*Service)(nil)
 
 type Service struct {
-	ctx               context.Context
-	host              host.Host
-	libp2pPeerstore   peerstore.Peerstore
-	metrics           metrics
-	networkID         int32
-	handshakeService  *handshake.Service
-	incomingHandshake map[libp2ppeer.ID]struct{}
-	addrssbook        addressbook.Putter
-	peers             *peerRegistry
-	peerHandler       func(context.Context, swarm.Address) error
-	logger            logging.Logger
-	tracer            *tracing.Tracer
+	ctx              context.Context
+	host             host.Host
+	libp2pPeerstore  peerstore.Peerstore
+	metrics          metrics
+	networkID        int32
+	handshakeService *handshake.Service
+	addrssbook       addressbook.Putter
+	peers            *peerRegistry
+	peerHandler      func(context.Context, swarm.Address) error
+	logger           logging.Logger
+	tracer           *tracing.Tracer
 }
 
 type Options struct {
@@ -154,17 +153,16 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 	peerRegistry := newPeerRegistry()
 	s := &Service{
-		ctx:               ctx,
-		host:              h,
-		libp2pPeerstore:   libp2pPeerstore,
-		metrics:           newMetrics(),
-		networkID:         o.NetworkID,
-		handshakeService:  handshake.New(o.Overlay, o.NetworkID, o.Logger),
-		incomingHandshake: make(map[libp2ppeer.ID]struct{}),
-		peers:             peerRegistry,
-		addrssbook:        o.Addressbook,
-		logger:            o.Logger,
-		tracer:            o.Tracer,
+		ctx:              ctx,
+		host:             h,
+		libp2pPeerstore:  libp2pPeerstore,
+		metrics:          newMetrics(),
+		networkID:        o.NetworkID,
+		handshakeService: handshake.New(o.Overlay, o.NetworkID, o.Logger),
+		peers:            peerRegistry,
+		addrssbook:       o.Addressbook,
+		logger:           o.Logger,
+		tracer:           o.Tracer,
 	}
 
 	// Construct protocols.
@@ -178,13 +176,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	// handshake
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		if _, found := s.incomingHandshake[peerID]; found {
-			s.logger.Warningf("received duplicate handshake from peer %s", peerID)
-			_ = s.disconnect(peerID)
-			return
-		}
-
-		i, err := s.handshakeService.Handle(newStream(stream))
+		i, err := s.handshakeService.Handle(NewStream(stream))
 		if err != nil {
 			if err == handshake.ErrNetworkIDIncompatible {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
@@ -196,6 +188,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
+		s.incomingHandshake[peerID] = struct{}{}
 		if s.peers.addIfNotExists(stream.Conn(), i.Address) {
 			s.logger.Trace("skipped double connect")
 			return
@@ -319,7 +312,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	i, err := s.handshakeService.Handshake(newStream(stream))
+	i, err := s.handshakeService.Handshake(NewStream(stream))
 	if err != nil {
 		_ = s.disconnect(info.ID)
 		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
@@ -344,6 +337,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	if !found {
 		return p2p.ErrPeerNotFound
 	}
+
 	return s.disconnect(peerID)
 }
 
@@ -351,6 +345,8 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 	if err := s.host.Network().ClosePeer(peerID); err != nil {
 		return err
 	}
+
+	delete(s.incomingHandshake, peerID)
 	s.peers.remove(peerID)
 	return nil
 }

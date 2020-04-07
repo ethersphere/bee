@@ -14,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
+
+	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 const (
@@ -33,16 +35,18 @@ type PeerFinder interface {
 }
 
 type Service struct {
-	overlay   swarm.Address
-	networkID int32
-	logger    logging.Logger
+	overlay           swarm.Address
+	networkID         int32
+	incomingHandshake map[libp2ppeer.ID]struct{}
+	logger            logging.Logger
 }
 
 func New(overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
 	return &Service{
-		overlay:   overlay,
-		networkID: networkID,
-		logger:    logger,
+		overlay:           overlay,
+		networkID:         networkID,
+		incomingHandshake: make(map[libp2ppeer.ID]struct{}),
+		logger:            logger,
 	}
 }
 
