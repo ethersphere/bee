@@ -16,6 +16,9 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/libp2p/go-libp2p-core/peer"
+
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func TestHandshake(t *testing.T) {
@@ -65,7 +68,7 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("ERROR - Syn write error ", func(t *testing.T) {
+	t.Run("ERROR - Syn write error", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write syn message: %w", testErr)
 		stream := &mock.Stream{}
@@ -80,7 +83,7 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("ERROR - Syn read error ", func(t *testing.T) {
+	t.Run("ERROR - Syn read error", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("read synack message: %w", testErr)
 		stream := mock.NewStream(nil, &bytes.Buffer{})
@@ -95,7 +98,7 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("ERROR - ack write error ", func(t *testing.T) {
+	t.Run("ERROR - ack write error", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write ack message: %w", testErr)
 		expectedInfo := Info{
@@ -132,7 +135,7 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("ERROR - networkID mismatch ", func(t *testing.T) {
+	t.Run("ERROR - networkID mismatch", func(t *testing.T) {
 		node2Info := Info{
 			Address:   node2Addr,
 			NetworkID: 2,
@@ -170,6 +173,15 @@ func TestHandshake(t *testing.T) {
 func TestHandle(t *testing.T) {
 	node1Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	node2Addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59b")
+	multiaddress, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := peer.AddrInfoFromP2pAddr(multiaddress)
+	if err != nil {
+		t.Fatal(err)
+	}
 	nodeInfo := Info{
 		Address:   node1Addr,
 		NetworkID: 0,
@@ -177,9 +189,8 @@ func TestHandle(t *testing.T) {
 	}
 
 	logger := logging.New(ioutil.Discard, 0)
-	handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
-
 	t.Run("OK", func(t *testing.T) {
+		handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
 		node2Info := Info{
 			Address:   node2Addr,
 			NetworkID: 0,
@@ -204,7 +215,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handle(stream1)
+		res, err := handshakeService.Handle(stream1, info.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -225,11 +236,12 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
+		handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("read syn message: %w", testErr)
 		stream := &mock.Stream{}
 		stream.SetReadErr(testErr, 0)
-		res, err := handshakeService.Handle(stream)
+		res, err := handshakeService.Handle(stream, info.ID)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -240,6 +252,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - write error ", func(t *testing.T) {
+		handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write synack message: %w", testErr)
 		var buffer bytes.Buffer
@@ -254,7 +267,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handle(stream)
+		res, err := handshakeService.Handle(stream, info.ID)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -265,6 +278,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
+		handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("read ack message: %w", testErr)
 		node2Info := Info{
@@ -287,7 +301,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handle(stream1)
+		res, err := handshakeService.Handle(stream1, info.ID)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -298,6 +312,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - networkID mismatch ", func(t *testing.T) {
+		handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
 		node2Info := Info{
 			Address:   node2Addr,
 			NetworkID: 2,
@@ -318,13 +333,64 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handle(stream1)
+		res, err := handshakeService.Handle(stream1, info.ID)
 		if res != nil {
 			t.Fatal("res should be nil")
 		}
 
 		if err != ErrNetworkIDIncompatible {
 			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
+		}
+	})
+
+	t.Run("ERROR - duplicate handshake", func(t *testing.T) {
+		handshakeService := New(nodeInfo.Address, nodeInfo.NetworkID, logger)
+		node2Info := Info{
+			Address:   node2Addr,
+			NetworkID: 0,
+			Light:     false,
+		}
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w, _ := protobuf.NewWriterAndReader(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			Address:   node2Info.Address.Bytes(),
+			NetworkID: node2Info.NetworkID,
+			Light:     node2Info.Light,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := w.WriteMsg(&pb.Ack{Address: node2Info.Address.Bytes()}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handle(stream1, info.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testInfo(t, *res, node2Info)
+
+		_, r := protobuf.NewWriterAndReader(stream2)
+		var got pb.SynAck
+		if err := r.ReadMsg(&got); err != nil {
+			t.Fatal(err)
+		}
+
+		testInfo(t, nodeInfo, Info{
+			Address:   swarm.NewAddress(got.Syn.Address),
+			NetworkID: got.Syn.NetworkID,
+			Light:     got.Syn.Light,
+		})
+
+		_, err = handshakeService.Handle(stream1, info.ID)
+		if err != ErrHandshakeDuplicate {
+			t.Fatalf("expected %s err, got %s err", ErrHandshakeDuplicate, err)
 		}
 	})
 }

@@ -7,6 +7,7 @@ package handshake
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -15,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
 
+	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -29,30 +31,37 @@ const (
 // response from the other peer does not have valid networkID.
 var ErrNetworkIDIncompatible = errors.New("incompatible network ID")
 
+// ErrHandshakeDuplicate should be returned by handshake handlers if
+// the handshake response has been received by an already processed peer.
+var ErrHandshakeDuplicate = errors.New("duplicate handshake")
+
 // PeerFinder has the information if the peer already exists in swarm.
 type PeerFinder interface {
 	Exists(overlay swarm.Address) (found bool)
 }
 
 type Service struct {
-	overlay           swarm.Address
-	networkID         int32
-	incomingHandshake map[libp2ppeer.ID]struct{}
-	logger            logging.Logger
+	overlay            swarm.Address
+	networkID          int32
+	receivedHandshakes map[libp2ppeer.ID]struct{}
+	mtx                sync.Mutex // guards received handshakes
+	logger             logging.Logger
+
+	network.Notifiee // handhsake service can be the receiver for network.Notify
 }
 
 func New(overlay swarm.Address, networkID int32, logger logging.Logger) *Service {
 	return &Service{
-		overlay:           overlay,
-		networkID:         networkID,
-		incomingHandshake: make(map[libp2ppeer.ID]struct{}),
-		logger:            logger,
+		overlay:            overlay,
+		networkID:          networkID,
+		receivedHandshakes: make(map[libp2ppeer.ID]struct{}),
+		logger:             logger,
+		Notifiee:           new(network.NoopNotifiee),
 	}
 }
 
 func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Syn{
 		Address:   s.overlay.Bytes(),
 		NetworkID: s.networkID,
@@ -85,9 +94,17 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	}, nil
 }
 
-func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
-	w, r := protobuf.NewWriterAndReader(stream)
+func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err error) {
 	defer stream.Close()
+	s.mtx.Lock()
+	if _, exists := s.receivedHandshakes[peerID]; exists {
+		s.mtx.Unlock()
+		return nil, ErrHandshakeDuplicate
+	}
+
+	s.receivedHandshakes[peerID] = struct{}{}
+	s.mtx.Unlock()
+	w, r := protobuf.NewWriterAndReader(stream)
 
 	var req pb.Syn
 	if err := r.ReadMsgWithTimeout(messageTimeout, &req); err != nil {
@@ -120,6 +137,12 @@ func (s *Service) Handle(stream p2p.Stream) (i *Info, err error) {
 		NetworkID: req.NetworkID,
 		Light:     req.Light,
 	}, nil
+}
+
+func (s *Service) Disconnected(_ network.Network, c network.Conn) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	delete(s.receivedHandshakes, c.RemotePeer())
 }
 
 type Info struct {

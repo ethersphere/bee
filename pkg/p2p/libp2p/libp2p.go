@@ -176,10 +176,14 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	// handshake
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		i, err := s.handshakeService.Handle(NewStream(stream))
+		i, err := s.handshakeService.Handle(NewStream(stream), peerID)
 		if err != nil {
 			if err == handshake.ErrNetworkIDIncompatible {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
+			}
+
+			if err == handshake.ErrHandshakeDuplicate {
+				s.logger.Warningf("handshake happened for already connected peer %s", peerID)
 			}
 
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
@@ -188,7 +192,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
-		s.incomingHandshake[peerID] = struct{}{}
 		if s.peers.addIfNotExists(stream.Conn(), i.Address) {
 			s.logger.Trace("skipped double connect")
 			return
@@ -217,7 +220,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		s.metrics.HandledConnectionCount.Inc()
 	})
 
-	h.Network().Notify(peerRegistry) // update peer registry on network events
+	h.Network().Notify(peerRegistry)       // update peer registry on network events
+	h.Network().Notify(s.handshakeService) // update handshaker service on network events
 	return s, nil
 }
 
@@ -346,7 +350,6 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 		return err
 	}
 
-	delete(s.incomingHandshake, peerID)
 	s.peers.remove(peerID)
 	return nil
 }
