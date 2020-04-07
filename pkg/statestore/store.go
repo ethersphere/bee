@@ -18,7 +18,7 @@ type Store struct {
 	db *leveldb.DB
 }
 
-// New creates a new persistent state storage
+// New creates a new persistent state storage.
 func New(path string) (s storage.StateStorer, err error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
@@ -30,7 +30,7 @@ func New(path string) (s storage.StateStorer, err error) {
 }
 
 // Get retrieves a value of the requested key. If not results are found,
-// storage.ErrNotFound will be returned
+// storage.ErrNotFound will be returned.
 func (s *Store) Get(key string, i interface{}) (err error) {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
@@ -49,7 +49,7 @@ func (s *Store) Get(key string, i interface{}) (err error) {
 
 // Put stores a value for an arbitrary key. BinaryMarshaler
 // interface method will be called on the provided value
-// with fallback to JSON serialization
+// with fallback to JSON serialization.
 func (s *Store) Put(key string, i interface{}) (err error) {
 	var bytes []byte
 	if marshaler, ok := i.(encoding.BinaryMarshaler); ok {
@@ -69,7 +69,7 @@ func (s *Store) Delete(key string) (err error) {
 	return s.db.Delete([]byte(key), nil)
 }
 
-// Iterate entries that match the supplied prefix
+// Iterate entries that match the supplied prefix.
 func (s *Store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
 	iter := s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
 	defer iter.Release()
@@ -85,7 +85,7 @@ func (s *Store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 	return iter.Error()
 }
 
-// Close releases the resources used by the store
+// Close releases the resources used by the store.
 func (s *Store) Close() error {
 	return s.db.Close()
 }
