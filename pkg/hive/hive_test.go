@@ -103,58 +103,60 @@ func TestBroadcastPeers(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		addressbookclean := inmem.New()
-		exporter, ok := addressbookclean.(AddressExporter)
-		if !ok {
-			t.Fatal("could not type assert AddressExporter")
-		}
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			addressbookclean := inmem.New()
+			exporter, ok := addressbookclean.(AddressExporter)
+			if !ok {
+				t.Fatal("could not type assert AddressExporter")
+			}
 
-		// create a hive server that handles the incoming stream
-		server := hive.New(hive.Options{
-			Logger:      logger,
-			AddressBook: addressbookclean,
-		})
+			// create a hive server that handles the incoming stream
+			server := hive.New(hive.Options{
+				Logger:      logger,
+				AddressBook: addressbookclean,
+			})
 
-		// setup the stream recorder to record stream data
-		recorder := streamtest.New(
-			streamtest.WithProtocols(server.Protocol()),
-		)
+			// setup the stream recorder to record stream data
+			recorder := streamtest.New(
+				streamtest.WithProtocols(server.Protocol()),
+			)
 
-		// create a hive client that will do broadcast
-		client := hive.New(hive.Options{
-			Streamer:    recorder,
-			Logger:      logger,
-			AddressBook: addressbook,
-		})
+			// create a hive client that will do broadcast
+			client := hive.New(hive.Options{
+				Streamer:    recorder,
+				Logger:      logger,
+				AddressBook: addressbook,
+			})
 
-		if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
-			t.Fatal(err)
-		}
-
-		// get a record for this stream
-		records, err := recorder.Records(tc.addresee, "hive", "1.0.0", "peers")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if l := len(records); l != len(tc.wantMsgs) {
-			t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
-		}
-
-		// there is a one record per batch (wantMsg)
-		for i, record := range records {
-			messages, err := readAndAssertPeersMsgs(record.In(), 1)
-			if err != nil {
+			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
 			}
 
-			if fmt.Sprint(messages[0]) != fmt.Sprint(tc.wantMsgs[i]) {
-				t.Errorf("Messages got %v, want %v", messages, tc.wantMsgs)
+			// get a record for this stream
+			records, err := recorder.Records(tc.addresee, "hive", "1.0.0", "peers")
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
+			if l := len(records); l != len(tc.wantMsgs) {
+				t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
+			}
 
-		expectOverlaysEventually(t, exporter, tc.wantOverlays)
-		expectMultiaddresessEventually(t, exporter, tc.wantMultiAddresses)
+			// there is a one record per batch (wantMsg)
+			for i, record := range records {
+				messages, err := readAndAssertPeersMsgs(record.In(), 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if fmt.Sprint(messages[0]) != fmt.Sprint(tc.wantMsgs[i]) {
+					t.Errorf("Messages got %v, want %v", messages, tc.wantMsgs)
+				}
+			}
+
+			expectOverlaysEventually(t, exporter, tc.wantOverlays)
+			expectMultiaddresessEventually(t, exporter, tc.wantMultiAddresses)
+		})
 	}
 }
 
