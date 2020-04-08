@@ -13,6 +13,9 @@ import (
 // peer is not found.
 var ErrPeerNotFound = errors.New("peer not found")
 
+// ErrAlreadyConnected is returned if connect was called for already connected node
+var ErrAlreadyConnected = errors.New("already connected")
+
 // DisconnectError is an error that is specifically handled inside p2p. If returned by specific protocol
 // handler it causes peer disconnect.
 type DisconnectError struct {

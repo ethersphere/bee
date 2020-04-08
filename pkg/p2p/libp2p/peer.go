@@ -63,31 +63,37 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 }
 
 func (r *peerRegistry) peers() []p2p.Peer {
-	r.mu.Lock()
+	r.mu.RLock()
 	peers := make([]p2p.Peer, 0, len(r.overlays))
 	for _, a := range r.overlays {
 		peers = append(peers, p2p.Peer{
 			Address: a,
 		})
 	}
-	r.mu.Unlock()
+	r.mu.RUnlock()
 	sort.Slice(peers, func(i, j int) bool {
 		return bytes.Compare(peers[i].Address.Bytes(), peers[j].Address.Bytes()) == -1
 	})
 	return peers
 }
 
-func (r *peerRegistry) add(c network.Conn, overlay swarm.Address) {
+func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address) (exists bool) {
 	peerID := c.RemotePeer()
-
 	r.mu.Lock()
-	r.underlays[overlay.ByteString()] = peerID
-	r.overlays[peerID] = overlay
+	defer r.mu.Unlock()
+
 	if _, ok := r.connections[peerID]; !ok {
 		r.connections[peerID] = make(map[network.Conn]struct{})
 	}
 	r.connections[peerID][c] = struct{}{}
-	r.mu.Unlock()
+
+	if _, exists := r.underlays[overlay.ByteString()]; !exists {
+		r.underlays[overlay.ByteString()] = peerID
+		r.overlays[peerID] = overlay
+		return false
+	}
+
+	return true
 }
 
 func (r *peerRegistry) peerID(overlay swarm.Address) (peerID libp2ppeer.ID, found bool) {

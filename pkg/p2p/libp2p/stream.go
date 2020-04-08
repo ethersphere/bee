@@ -10,15 +10,20 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
+var _ p2p.Stream = (*stream)(nil)
+
 type stream struct {
 	network.Stream
 	headers map[string][]byte
 }
 
-func newStream(s network.Stream) *stream {
+func NewStream(s network.Stream) p2p.Stream {
 	return &stream{Stream: s}
 }
 
+func newStream(s network.Stream) *stream {
+	return &stream{Stream: s}
+}
 func (s *stream) Headers() p2p.Headers {
 	return s.headers
 }
