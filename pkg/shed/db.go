@@ -52,7 +52,6 @@ var (
 type DB struct {
 	path      string
 	bdb       *badger.DB
-	validator storage.ChunkValidatorFunc
 	metrics   metrics
 	logger    logging.Logger
 }
