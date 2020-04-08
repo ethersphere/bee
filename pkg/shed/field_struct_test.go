@@ -90,7 +90,10 @@ func TestStructField(t *testing.T) {
 		want := complexStructure{
 			A: "simple string batch value",
 		}
-		complexField.PutInBatch(batch, want)
+		err = complexField.PutInBatch(batch, want)
+		if err != nil {
+			t.Fatal(err)
+		}
 		err = db.WriteBatch(batch)
 		if err != nil {
 			t.Fatal(err)
@@ -109,7 +112,10 @@ func TestStructField(t *testing.T) {
 			want := complexStructure{
 				A: "overwritten string batch value",
 			}
-			complexField.PutInBatch(batch, want)
+			err = complexField.PutInBatch(batch, want)
+			if err != nil {
+				t.Fatal(err)
+			}
 			err = db.WriteBatch(batch)
 			if err != nil {
 				t.Fatal(err)

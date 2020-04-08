@@ -23,8 +23,6 @@
 package shed
 
 import (
-	"time"
-
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -32,7 +30,6 @@ import (
 
 const (
 	openFileLimit              = 128 // The limit for LevelDB OpenFilesCacheCapacity.
-	writePauseWarningThrottler = 1 * time.Minute
 )
 
 // DB provides abstractions over LevelDB in order to
@@ -91,9 +88,6 @@ func (db *DB) Put(key []byte, value []byte) (err error) {
 func (db *DB) Get(key []byte) (value []byte, err error) {
 	value, err = db.ldb.Get(key, nil)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
-		} else {
-		}
 		return nil, err
 	}
 	return value, nil
