@@ -7,6 +7,8 @@ package statestore
 import (
 	"encoding"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -36,7 +38,8 @@ func New(path string) (storage.StateStorer, error) {
 func (s *Store) Get(key string, i interface{}) error {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		fmt.Println(err)
+		if errors.Is(err, leveldb.ErrNotFound) {
 			return storage.ErrNotFound
 		}
 		return err
@@ -61,6 +64,7 @@ func (s *Store) Put(key string, i interface{}) (err error) {
 	} else if bytes, err = json.Marshal(i); err != nil {
 		return err
 	}
+
 	return s.db.Put([]byte(key), bytes, nil)
 }
 

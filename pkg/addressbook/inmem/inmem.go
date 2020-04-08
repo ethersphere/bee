@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -29,20 +30,23 @@ func New() addressbook.GetPutter {
 	}
 }
 
-func (i *inmem) Get(overlay swarm.Address) (addr ma.Multiaddr, exists bool) {
+func (i *inmem) Get(overlay swarm.Address) (addr ma.Multiaddr, err error) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
 	val, exists := i.entries[overlay.String()]
-	return val.multiaddr, exists
+	if !exists {
+		return nil, storage.ErrNotFound
+	}
+	return val.multiaddr, nil
 }
 
-func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool) {
+func (i *inmem) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool, err error) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 	_, e := i.entries[overlay.String()]
 	i.entries[overlay.String()] = peerEntry{overlay: overlay, multiaddr: addr}
-	return e
+	return e, nil
 }
 
 func (i *inmem) Overlays() []swarm.Address {
