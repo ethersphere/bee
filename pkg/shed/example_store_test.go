@@ -27,10 +27,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/swarm/storage"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Store holds fields and indexes (including their encoding functions)
@@ -160,16 +158,13 @@ func (s *Store) Put(_ context.Context, ch storage.Chunk) (err error) {
 // items from them and adding new items as keys of index entries
 // are changed.
 func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, err error) {
-	batch := new(leveldb.Batch)
+	batch := s.db.GetBatch(true)
 
 	// Get the chunk data and storage timestamp.
 	item, err := s.retrievalIndex.Get(shed.Item{
 		Address: addr,
 	})
 	if err != nil {
-		if err == leveldb.ErrNotFound {
-			return nil, storage.ErrChunkNotFound
-		}
 		return nil, err
 	}
 
@@ -188,7 +183,7 @@ func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, e
 		if err != nil {
 			return nil, err
 		}
-	case leveldb.ErrNotFound:
+	case shed.ErrNotFound:
 	// Access timestamp is not found. Do not do anything.
 	// This is the firs get request.
 	default:
@@ -244,7 +239,7 @@ func (s *Store) CollectGarbage() (err error) {
 	for roundCount := 0; roundCount < maxRounds; roundCount++ {
 		var garbageCount int
 		// New batch for a new cg round.
-		trash := new(leveldb.Batch)
+		trash := s.db.GetBatch(true)
 		// Iterate through all index items and break when needed.
 		err = s.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 			// Remove the chunk.
@@ -286,7 +281,7 @@ func (s *Store) CollectGarbage() (err error) {
 // string from a database field.
 func (s *Store) GetSchema() (name string, err error) {
 	name, err = s.schemaName.Get()
-	if err == leveldb.ErrNotFound {
+	if err == shed.ErrNotFound {
 		return "", nil
 	}
 	return name, err
@@ -299,8 +294,8 @@ func (s *Store) PutSchema(name string) (err error) {
 }
 
 // Close closes the underlying database.
-func (s *Store) Close() error {
-	return s.db.Close()
+func (s *Store) Close(ctx context.Context) error {
+	return s.db.Close(ctx)
 }
 
 // Example_store constructs a simple storage implementation using shed package.
@@ -315,7 +310,8 @@ func Example_store() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer s.Close()
+	ctx := context.Background()
+	defer s.Close(ctx)
 
 	ch := storage.GenerateRandomChunk(1024)
 	err = s.Put(context.Background(), ch)

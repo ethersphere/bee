@@ -19,9 +19,8 @@ package shed
 import (
 	"bytes"
 
+	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/iterator"
 )
 
 // Item holds fields relevant to Swarm Chunk data and metadata.
@@ -79,7 +78,7 @@ func (i Item) Merge(i2 Item) (new Item) {
 // to provide transparent actions on saved data which inclide:
 // - getting a particular Item
 // - saving a particular Item
-// - iterating over a sorted LevelDB keys
+// - iterating over a sorted BadgerDB keys
 // It implements IndexIteratorInterface interface.
 type Index struct {
 	db              *DB
@@ -162,14 +161,9 @@ func (f Index) Get(keyFields Item) (out Item, err error) {
 // fields. Every item must have all fields needed for encoding the
 // key set. The passed slice items will be changed so that they
 // contain data from the index values. No new slice is allocated.
-// This function uses a single leveldb snapshot.
 func (f Index) Fill(items []Item) (err error) {
-	snapshot, err := f.db.ldb.GetSnapshot()
-	if err != nil {
-		f.logger.Debugf("error getting snapshot in Fill. Error: %s", err.Error())
-		return err
-	}
-	defer snapshot.Release()
+	txn := f.db.GetBatch(false)
+	defer txn.Discard()
 
 	for i, item := range items {
 		key, err := f.encodeKeyFunc(item)
@@ -177,17 +171,28 @@ func (f Index) Fill(items []Item) (err error) {
 			f.logger.Debugf("keyfields encoding error in Fill. Error: %s", err.Error())
 			return err
 		}
-		value, err := snapshot.Get(key, nil)
+		badgerItem, err := txn.Get(key)
 		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				f.logger.Debugf("error could not find key in fill. Error: %s", err.Error())
+				return ErrNotFound
+			}
 			f.logger.Debugf("error getting key %s in Fill. Error: %s", string(key), err.Error())
 			return err
 		}
-		v, err := f.decodeValueFunc(item, value)
+		var decodedItem Item
+		err = badgerItem.Value(func(val []byte) error {
+			decodedItem, err = f.decodeValueFunc(item, val)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
 			f.logger.Debugf("error decofing keyfields in Fill . Error: %s", err.Error())
 			return err
 		}
-		items[i] = v.Merge(item)
+		items[i] = decodedItem.Merge(item)
 	}
 	return nil
 }
@@ -208,22 +213,30 @@ func (f Index) Has(keyFields Item) (bool, error) {
 // there this Item's encoded key is stored in the index for each of them.
 func (f Index) HasMulti(items ...Item) ([]bool, error) {
 	have := make([]bool, len(items))
-	snapshot, err := f.db.ldb.GetSnapshot()
-	if err != nil {
-		f.logger.Debugf("error getting snapshot in HasMulti. Error: %s", err.Error())
-		return nil, err
-	}
-	defer snapshot.Release()
+
+	txn := f.db.GetBatch(false)
+	defer txn.Discard()
+
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchValues = false
+	it := txn.NewIterator(opts)
+	defer it.Close()
+
 	for i, keyFields := range items {
 		key, err := f.encodeKeyFunc(keyFields)
 		if err != nil {
 			f.logger.Debugf("keyfields encoding error in HasMulti. Error: %s", err.Error())
 			return nil, err
 		}
-		have[i], err = snapshot.Has(key, nil)
-		if err != nil {
-			f.logger.Debugf("snaoshot Has error in HasMulti. Error: %s", err.Error())
-			return nil, err
+		it.Seek(key)
+
+		if !it.Valid() {
+			have[i] = false
+			continue
+		}
+
+		if bytes.Equal(key, it.Item().Key()) {
+			have[i] = true
 		}
 	}
 	return have, nil
@@ -248,7 +261,7 @@ func (f Index) Put(i Item) (err error) {
 // PutInBatch is the same as Put method, but it just
 // saves the key/value pair to the batch instead
 // directly to the database.
-func (f Index) PutInBatch(batch *leveldb.Batch, i Item) (err error) {
+func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 	key, err := f.encodeKeyFunc(i)
 	if err != nil {
 		f.logger.Debugf("keyfields encoding error in PutInBatch. Error: %s", err.Error())
@@ -259,7 +272,11 @@ func (f Index) PutInBatch(batch *leveldb.Batch, i Item) (err error) {
 		f.logger.Debugf("keyfields encoding error in PutInBatch. Error: %s", err.Error())
 		return err
 	}
-	batch.Put(key, value)
+	err = batch.Set(key, value)
+	if err != nil {
+		f.logger.Debugf("could not set values in batch. Error : %s", err.Error())
+	}
+
 	return nil
 }
 
@@ -276,13 +293,16 @@ func (f Index) Delete(keyFields Item) (err error) {
 
 // DeleteInBatch is the same as Delete just the operation
 // is performed on the batch instead on the database.
-func (f Index) DeleteInBatch(batch *leveldb.Batch, keyFields Item) (err error) {
+func (f Index) DeleteInBatch(batch *badger.Txn, keyFields Item) (err error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
 		f.logger.Debugf("keyfields encoding error in DeleteInBatch. Error: %s", err.Error())
 		return err
 	}
-	batch.Delete(key)
+	err = batch.Delete(key)
+	if err != nil {
+		f.logger.Debugf("could not delete items in batch. Error: %s", err.Error())
+	}
 	return nil
 }
 
@@ -322,102 +342,64 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 			return err
 		}
 	}
-	it := f.db.NewIterator()
-	defer it.Release()
 
-	// move the cursor to the start key
-	ok := it.Seek(startKey)
-	if !ok {
-		f.logger.Debugf("seek error in Iterate. Error: %s", it.Error())
-		// stop iterator if seek has failed
-		return it.Error()
-	}
-	if options.SkipStartFromItem && bytes.Equal(startKey, it.Key()) {
-		// skip the start from Item if it is the first key
-		// and it is explicitly configured to skip it
-		ok = it.Next()
-	}
-	for ; ok; ok = it.Next() {
-		item, err := f.itemFromIterator(it, prefix)
+	err = f.db.Iterate(startKey, options.SkipStartFromItem, func(key []byte, value []byte) (stop bool, err error) {
+		item, err := f.itemFromKeyValue(key, value, prefix)
 		if err != nil {
-			if err == leveldb.ErrNotFound {
-				break
+			if err == badger.ErrKeyNotFound {
+				return true, nil
 			}
-			return err
+			return false, err
 		}
-		stop, err := fn(item)
-		if err != nil {
-			f.logger.Debugf("error executing callback function in Iterate. Error: %s", err.Error())
-			return err
-		}
-		if stop {
-			break
-		}
-	}
-	return it.Error()
+		stop, err = fn(item)
+		return stop, err
+	})
+	return err
 }
 
 // First returns the first item in the Index which encoded key starts with a prefix.
 // If the prefix is nil, the first element of the whole index is returned.
-// If Index has no elements, a leveldb.ErrNotFound error is returned.
+// If Index has no elements, a ErrNotFound error is returned.
 func (f Index) First(prefix []byte) (i Item, err error) {
-	it := f.db.NewIterator()
-	defer it.Release()
-
 	totalPrefix := append(f.prefix, prefix...)
-	it.Seek(totalPrefix)
-
-	return f.itemFromIterator(it, totalPrefix)
+	k, v, err := f.db.First(totalPrefix)
+	if err != nil {
+		return i, err
+	}
+	return f.itemFromKeyValue(k, v, totalPrefix)
 }
 
-// itemFromIterator returns the Item from the current iterator position.
+// itemFromKeyValue returns the Item from the current iterator position.
 // If the complete encoded key does not start with totalPrefix,
-// leveldb.ErrNotFound is returned. Value for totalPrefix must start with
+// ErrNotFound is returned. Value for totalPrefix must start with
 // Index prefix.
-func (f Index) itemFromIterator(it iterator.Iterator, totalPrefix []byte) (i Item, err error) {
-	key := it.Key()
+func (f Index) itemFromKeyValue(key []byte, value []byte, totalPrefix []byte) (i Item, err error) {
 	if !bytes.HasPrefix(key, totalPrefix) {
-		return i, leveldb.ErrNotFound
+		return i, badger.ErrKeyNotFound
 	}
-	// create a copy of key byte slice not to share leveldb underlaying slice array
+	// create a copy of key byte slice not to share badger underlaying slice array
 	keyItem, err := f.decodeKeyFunc(append([]byte(nil), key...))
 	if err != nil {
-		f.logger.Debugf("error decoding key in itemFromIterator. Error: %s", err.Error())
 		return i, err
 	}
-	// create a copy of value byte slice not to share leveldb underlaying slice array
-	valueItem, err := f.decodeValueFunc(keyItem, append([]byte(nil), it.Value()...))
+	// create a copy of value byte slice not to share badger underlaying slice array
+	valueItem, err := f.decodeValueFunc(keyItem, append([]byte(nil), value...))
 	if err != nil {
-		f.logger.Debugf("error decoding value in itemFromIterator. Error: %s", err.Error())
 		return i, err
 	}
-	return keyItem.Merge(valueItem), it.Error()
+	return keyItem.Merge(valueItem), nil
 }
 
 // Last returns the last item in the Index which encoded key starts with a prefix.
 // If the prefix is nil, the last element of the whole index is returned.
-// If Index has no elements, a leveldb.ErrNotFound error is returned.
+// If Index has no elements, a ErrNotFound error is returned.
 func (f Index) Last(prefix []byte) (i Item, err error) {
-	it := f.db.NewIterator()
-	defer it.Release()
-
-	// get the next prefix in line
-	// since leveldb iterator Seek seeks to the
-	// next key if the key that it seeks to is not found
-	// and by getting the previous key, the last one for the
-	// actual prefix is found
-	nextPrefix := incByteSlice(prefix)
-	l := len(prefix)
-
-	if l > 0 && nextPrefix != nil {
-		it.Seek(append(f.prefix, nextPrefix...))
-		it.Prev()
-	} else {
-		it.Last()
-	}
-
 	totalPrefix := append(f.prefix, prefix...)
-	return f.itemFromIterator(it, totalPrefix)
+	k, v, err := f.db.Last(totalPrefix)
+	if err != nil {
+		return i, err
+	}
+	return f.itemFromKeyValue(k, v, totalPrefix)
 }
 
 // incByteSlice returns the byte slice of the same size
@@ -442,17 +424,7 @@ func incByteSlice(b []byte) (next []byte) {
 
 // Count returns the number of items in index.
 func (f Index) Count() (count int, err error) {
-	it := f.db.NewIterator()
-	defer it.Release()
-
-	for ok := it.Seek(f.prefix); ok; ok = it.Next() {
-		key := it.Key()
-		if key[0] != f.prefix[0] {
-			break
-		}
-		count++
-	}
-	return count, it.Error()
+	return f.db.CountPrefix(f.prefix)
 }
 
 // CountFrom returns the number of items in index keys
@@ -460,18 +432,7 @@ func (f Index) Count() (count int, err error) {
 func (f Index) CountFrom(start Item) (count int, err error) {
 	startKey, err := f.encodeKeyFunc(start)
 	if err != nil {
-		f.logger.Debugf("error encoding item in CountFrom. Error: %s", err.Error())
 		return 0, err
 	}
-	it := f.db.NewIterator()
-	defer it.Release()
-
-	for ok := it.Seek(startKey); ok; ok = it.Next() {
-		key := it.Key()
-		if key[0] != f.prefix[0] {
-			break
-		}
-		count++
-	}
-	return count, it.Error()
+	return f.db.CountFrom(startKey)
 }
