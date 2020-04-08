@@ -21,7 +21,7 @@ type Store struct {
 }
 
 // New creates a new persistent state storage.
-func New(path string) (s storage.StateStorer, err error) {
+func New(path string) (storage.StateStorer, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
 		return nil, err
@@ -31,9 +31,9 @@ func New(path string) (s storage.StateStorer, err error) {
 	}, nil
 }
 
-// Get retrieves a value of the requested key. If not results are found,
+// Get retrieves a value of the requested key. If no results are found,
 // storage.ErrNotFound will be returned.
-func (s *Store) Get(key string, i interface{}) (err error) {
+func (s *Store) Get(key string, i interface{}) error {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
@@ -58,10 +58,8 @@ func (s *Store) Put(key string, i interface{}) (err error) {
 		if bytes, err = marshaler.MarshalBinary(); err != nil {
 			return err
 		}
-	} else {
-		if bytes, err = json.Marshal(i); err != nil {
-			return err
-		}
+	} else if bytes, err = json.Marshal(i); err != nil {
+		return err
 	}
 	return s.db.Put([]byte(key), bytes, nil)
 }
