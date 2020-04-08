@@ -43,6 +43,9 @@ func (s *server) setupRouting() {
 	router.Handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
+	router.Handle("/overlay-address", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.overlayAddressHandler),
+	})
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
