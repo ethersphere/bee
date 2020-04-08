@@ -13,6 +13,8 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
+var _ storage.StateStorer = (*Store)(nil)
+
 // Store uses LevelDB to store values.
 type Store struct {
 	db *leveldb.DB

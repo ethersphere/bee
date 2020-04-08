@@ -17,11 +17,11 @@ var (
 )
 
 // ChunkValidatorFunc validates Swarm chunk address and chunk data
-type ChunkValidatorFunc func(swarm.Address, []byte) bool
+type ChunkValidatorFunc func(swarm.Address, []byte) (valid bool)
 
 type Storer interface {
 	Get(ctx context.Context, addr swarm.Address) (data []byte, err error)
-	Put(ctx context.Context, addr swarm.Address, data []byte) error
+	Put(ctx context.Context, addr swarm.Address, data []byte) (err error)
 }
 
 // StateStorer defines methods required to get, set, delete values for different keys
@@ -31,7 +31,7 @@ type StateStorer interface {
 	Put(key string, i interface{}) (err error)
 	Delete(key string) (err error)
 	Iterate(prefix string, iterFunc StateIterFunc) (err error)
-	Close() error
+	Close() (err error)
 }
 
 // StateIterFunc is used when iterating through StateStorer key/value pairs
