@@ -19,26 +19,29 @@ package shed
 import (
 	"encoding/binary"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Uint64Field provides a way to have a simple counter in the database.
 // It transparently encodes uint64 type value to bytes.
 type Uint64Field struct {
-	db  *DB
-	key []byte
+	db     *DB
+	key    []byte
+	logger logging.Logger
 }
 
 // NewUint64Field returns a new Uint64Field.
 // It validates its name and type against the database schema.
-func (db *DB) NewUint64Field(name string) (f Uint64Field, err error) {
+func (db *DB) NewUint64Field(name string, logger logging.Logger) (f Uint64Field, err error) {
 	key, err := db.schemaFieldKey(name, "uint64")
 	if err != nil {
 		return f, err
 	}
 	return Uint64Field{
-		db:  db,
-		key: key,
+		db:     db,
+		key:    key,
+		logger: logger,
 	}, nil
 }
 
@@ -49,6 +52,7 @@ func (f Uint64Field) Get() (val uint64, err error) {
 	b, err := f.db.Get(f.key)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
+			f.logger.Errorf("key %s not found", string(f.key))
 			return 0, nil
 		}
 		return 0, err
@@ -73,8 +77,10 @@ func (f Uint64Field) Inc() (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
 		if err == leveldb.ErrNotFound {
+			f.logger.Debugf("key %s not found", string(f.key))
 			val = 0
 		} else {
+			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
 			return 0, err
 		}
 	}
@@ -89,8 +95,10 @@ func (f Uint64Field) IncInBatch(batch *leveldb.Batch) (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
 		if err == leveldb.ErrNotFound {
+			f.logger.Debugf("key %s not found", string(f.key))
 			val = 0
 		} else {
+			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
 			return 0, err
 		}
 	}
@@ -106,8 +114,10 @@ func (f Uint64Field) Dec() (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
 		if err == leveldb.ErrNotFound {
+			f.logger.Debugf("key %s not found", string(f.key))
 			val = 0
 		} else {
+			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
 			return 0, err
 		}
 	}
@@ -125,8 +135,10 @@ func (f Uint64Field) DecInBatch(batch *leveldb.Batch) (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
 		if err == leveldb.ErrNotFound {
+			f.logger.Debugf("key %s not found", string(f.key))
 			val = 0
 		} else {
+			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
 			return 0, err
 		}
 	}

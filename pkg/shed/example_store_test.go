@@ -26,7 +26,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/ethersphere/swarm/shed"
+	"github.com/ethersphere/bee/pkg/logging"
+
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/swarm/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -51,7 +53,8 @@ type Store struct {
 // and possible conflicts with schema from existing database is checked
 // automatically.
 func New(path string) (s *Store, err error) {
-	db, err := shed.NewDB(path, "")
+	logger := logging.New(ioutil.Discard, 0)
+	db, err := shed.NewDB(path, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -59,12 +62,12 @@ func New(path string) (s *Store, err error) {
 		db: db,
 	}
 	// Identify current storage schema by arbitrary name.
-	s.schemaName, err = db.NewStringField("schema-name")
+	s.schemaName, err = db.NewStringField("schema-name", logger)
 	if err != nil {
 		return nil, err
 	}
 	// Global ever incrementing index of chunk accesses.
-	s.accessCounter, err = db.NewUint64Field("access-counter")
+	s.accessCounter, err = db.NewUint64Field("access-counter", logger)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +91,7 @@ func New(path string) (s *Store, err error) {
 			e.Data = value[8:]
 			return e, nil
 		},
-	})
+	}, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +114,7 @@ func New(path string) (s *Store, err error) {
 			e.AccessTimestamp = int64(binary.BigEndian.Uint64(value))
 			return e, nil
 		},
-	})
+	}, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +139,7 @@ func New(path string) (s *Store, err error) {
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			return e, nil
 		},
-	})
+	}, logger)
 	if err != nil {
 		return nil, err
 	}
