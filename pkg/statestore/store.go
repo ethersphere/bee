@@ -19,7 +19,7 @@ type Store struct {
 }
 
 // New creates a new persistent state storage.
-func New(path string) (s storage.StateStorer, err error) {
+func New(path string) (storage.StateStorer, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
 		return nil, err
