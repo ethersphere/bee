@@ -56,10 +56,8 @@ func (s *Store) Put(key string, i interface{}) (err error) {
 		if bytes, err = marshaler.MarshalBinary(); err != nil {
 			return err
 		}
-	} else {
-		if bytes, err = json.Marshal(i); err != nil {
-			return err
-		}
+	} else if bytes, err = json.Marshal(i); err != nil {
+		return err
 	}
 	return s.db.Put([]byte(key), bytes, nil)
 }
