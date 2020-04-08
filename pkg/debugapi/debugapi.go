@@ -10,6 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -27,6 +28,7 @@ type server struct {
 }
 
 type Options struct {
+	Overlay        swarm.Address
 	P2P            p2p.Service
 	Addressbook    addressbook.GetPutter
 	TopologyDriver topology.PeerAdder

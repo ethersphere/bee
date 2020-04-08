@@ -16,13 +16,15 @@ import (
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
 )
 
 type testServerOptions struct {
-	P2P p2p.Service
+	Overlay swarm.Address
+	P2P     p2p.Service
 }
 
 type testServer struct {
@@ -37,6 +39,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	topologyDriver := mock.NewTopologyDriver()
 
 	s := debugapi.New(debugapi.Options{
+		Overlay:        o.Overlay,
 		P2P:            o.P2P,
 		Logger:         logging.New(ioutil.Discard, 0),
 		Addressbook:    addressbook,

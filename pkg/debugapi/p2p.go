@@ -8,21 +8,24 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/multiformats/go-multiaddr"
 )
 
 type addressesResponse struct {
-	Addresses []multiaddr.Multiaddr `json:"addresses"`
+	Overlay  swarm.Address         `json:"overlay"`
+	Underlay []multiaddr.Multiaddr `json:"underlay"`
 }
 
 func (s *server) addressesHandler(w http.ResponseWriter, r *http.Request) {
-	addresses, err := s.P2P.Addresses()
+	underlay, err := s.P2P.Addresses()
 	if err != nil {
 		s.Logger.Debugf("debug api: p2p addresses: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
 	jsonhttp.OK(w, addressesResponse{
-		Addresses: addresses,
+		Overlay:  s.Overlay,
+		Underlay: underlay,
 	})
 }
