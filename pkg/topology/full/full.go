@@ -6,7 +6,6 @@ package full
 
 import (
 	"context"
-	"errors"
 	"math/rand"
 	"sync"
 	"time"
@@ -70,13 +69,11 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	if !isConnected(addr, connectedPeers) {
 		peerAddr, err := d.p2pService.Connect(ctx, ma)
 		if err != nil {
-			if !errors.Is(err, p2p.ErrAlreadyConnected) {
-				return err
-			}
+			return err
 		}
 
 		// update addr if it is wrong or it has been changed
-		if !addr.Equal(peerAddr) && !peerAddr.IsZero() {
+		if !addr.Equal(peerAddr) {
 			addr = peerAddr
 			d.addressBook.Put(peerAddr, ma)
 		}

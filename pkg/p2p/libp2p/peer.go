@@ -63,14 +63,14 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 }
 
 func (r *peerRegistry) peers() []p2p.Peer {
-	r.mu.Lock()
+	r.mu.RLock()
 	peers := make([]p2p.Peer, 0, len(r.overlays))
 	for _, a := range r.overlays {
 		peers = append(peers, p2p.Peer{
 			Address: a,
 		})
 	}
-	r.mu.Unlock()
+	r.mu.RUnlock()
 	sort.Slice(peers, func(i, j int) bool {
 		return bytes.Compare(peers[i].Address.Bytes(), peers[j].Address.Bytes()) == -1
 	})

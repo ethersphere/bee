@@ -192,7 +192,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
-		if s.peers.addIfNotExists(stream.Conn(), i.Address) {
+		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
 			s.logger.Trace("skipped double connect")
 			return
 		}
@@ -221,7 +221,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	})
 
 	h.Network().Notify(peerRegistry)       // update peer registry on network events
-	h.Network().Notify(s.handshakeService) // update handshaker service on network events
+	h.Network().Notify(s.handshakeService) // update handshake service on network events
 	return s, nil
 }
 
@@ -326,7 +326,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	if s.peers.addIfNotExists(stream.Conn(), i.Address) {
+	if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
 		s.logger.Trace("skipped double connect")
 		return i.Address, nil
 	}

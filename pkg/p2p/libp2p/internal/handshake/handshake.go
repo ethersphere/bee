@@ -41,11 +41,11 @@ type PeerFinder interface {
 }
 
 type Service struct {
-	overlay            swarm.Address
-	networkID          int32
-	receivedHandshakes map[libp2ppeer.ID]struct{}
-	mtx                sync.Mutex // guards received handshakes
-	logger             logging.Logger
+	overlay              swarm.Address
+	networkID            int32
+	receivedHandshakes   map[libp2ppeer.ID]struct{}
+	receivedHandshakesMu sync.Mutex
+	logger               logging.Logger
 
 	network.Notifiee // handhsake service can be the receiver for network.Notify
 }
@@ -96,14 +96,14 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 
 func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err error) {
 	defer stream.Close()
-	s.mtx.Lock()
+	s.receivedHandshakesMu.Lock()
 	if _, exists := s.receivedHandshakes[peerID]; exists {
-		s.mtx.Unlock()
+		s.receivedHandshakesMu.Unlock()
 		return nil, ErrHandshakeDuplicate
 	}
 
 	s.receivedHandshakes[peerID] = struct{}{}
-	s.mtx.Unlock()
+	s.receivedHandshakesMu.Unlock()
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	var req pb.Syn
@@ -140,8 +140,8 @@ func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err 
 }
 
 func (s *Service) Disconnected(_ network.Network, c network.Conn) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	s.receivedHandshakesMu.Lock()
+	defer s.receivedHandshakesMu.Unlock()
 	delete(s.receivedHandshakes, c.RemotePeer())
 }
 

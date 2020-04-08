@@ -279,6 +279,7 @@ func TestConnectWithDisabledQUICAndWSTransports(t *testing.T) {
 	expectPeersEventually(t, s1, overlay2)
 }
 
+// TestConnectRepeatHandshake tests if handshake was attempted more then once by the same peer
 func TestConnectRepeatHandshake(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
