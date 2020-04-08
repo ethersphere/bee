@@ -5,9 +5,8 @@
 package debugapi
 
 type (
-	StatusResponse         = statusResponse
-	PeerConnectResponse    = peerConnectResponse
-	PeersResponse          = peersResponse
-	AddressesResponse      = addressesResponse
-	OverlayAddressResponse = overlayAddressResponse
+	StatusResponse      = statusResponse
+	PeerConnectResponse = peerConnectResponse
+	PeersResponse       = peersResponse
+	AddressesResponse   = addressesResponse
 )
