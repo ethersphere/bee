@@ -158,7 +158,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		libp2pPeerstore:  libp2pPeerstore,
 		metrics:          newMetrics(),
 		networkID:        o.NetworkID,
-		handshakeService: handshake.New(peerRegistry, o.Overlay, o.NetworkID, o.Logger),
+		handshakeService: handshake.New(o.Overlay, o.NetworkID, o.Logger),
 		peers:            peerRegistry,
 		addrssbook:       o.Addressbook,
 		logger:           o.Logger,
@@ -173,9 +173,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
+	// handshake
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		i, err := s.handshakeService.Handle(newStream(stream))
+		i, err := s.handshakeService.Handle(NewStream(stream), peerID)
 		if err != nil {
 			if err == handshake.ErrNetworkIDIncompatible {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
@@ -187,12 +188,14 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
-			// todo: test connection close and refactor
 			_ = s.disconnect(peerID)
 			return
 		}
 
-		s.peers.add(stream.Conn(), i.Address)
+		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
+			return
+		}
+
 		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
 		if err != nil {
 			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
@@ -216,7 +219,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		s.metrics.HandledConnectionCount.Inc()
 	})
 
-	h.Network().Notify(peerRegistry) // update peer registry on network events
+	h.Network().Notify(peerRegistry)       // update peer registry on network events
+	h.Network().Notify(s.handshakeService) // update handshake service on network events
 	return s, nil
 }
 
@@ -297,6 +301,10 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
+	if _, found := s.peers.overlay(info.ID); found {
+		return swarm.Address{}, p2p.ErrAlreadyConnected
+	}
+
 	if err := s.host.Connect(ctx, *info); err != nil {
 		return swarm.Address{}, err
 	}
@@ -307,7 +315,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	i, err := s.handshakeService.Handshake(newStream(stream))
+	i, err := s.handshakeService.Handshake(NewStream(stream))
 	if err != nil {
 		_ = s.disconnect(info.ID)
 		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
@@ -317,7 +325,10 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	s.peers.add(stream.Conn(), i.Address)
+	if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
+		return i.Address, nil
+	}
+
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.Address)
 	return i.Address, nil
@@ -328,6 +339,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	if !found {
 		return p2p.ErrPeerNotFound
 	}
+
 	return s.disconnect(peerID)
 }
 
@@ -335,6 +347,7 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 	if err := s.host.Network().ClosePeer(peerID); err != nil {
 		return err
 	}
+
 	s.peers.remove(peerID)
 	return nil
 }
