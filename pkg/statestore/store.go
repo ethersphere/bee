@@ -31,7 +31,7 @@ func New(path string) (s storage.StateStorer, err error) {
 
 // Get retrieves a value of the requested key. If no results are found,
 // storage.ErrNotFound will be returned.
-func (s *Store) Get(key string, i interface{}) (err error) {
+func (s *Store) Get(key string, i interface{}) error {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
