@@ -279,9 +279,12 @@ func TestIndex(t *testing.T) {
 		checkItem(t, got, want)
 
 		batch := new(leveldb.Batch)
-		index.DeleteInBatch(batch, Item{
+		err = index.DeleteInBatch(batch, Item{
 			Address: want.Address,
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		err = db.WriteBatch(batch)
 		if err != nil {
 			t.Fatal(err)
@@ -394,7 +397,10 @@ func TestIndex_Iterate(t *testing.T) {
 	}
 	batch := new(leveldb.Batch)
 	for _, i := range items {
-		index.PutInBatch(batch, i)
+		err = index.PutInBatch(batch, i)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = db.WriteBatch(batch)
 	if err != nil {
@@ -565,7 +571,11 @@ func TestIndex_Iterate_withPrefix(t *testing.T) {
 	}
 	batch := new(leveldb.Batch)
 	for _, i := range allItems {
-		index.PutInBatch(batch, i)
+		err = index.PutInBatch(batch, i)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 	}
 	err = db.WriteBatch(batch)
 	if err != nil {
@@ -757,7 +767,10 @@ func TestIndex_count(t *testing.T) {
 	}
 	batch := new(leveldb.Batch)
 	for _, i := range items {
-		index.PutInBatch(batch, i)
+		err = index.PutInBatch(batch, i)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = db.WriteBatch(batch)
 	if err != nil {
@@ -927,9 +940,12 @@ func TestIndex_firstAndLast(t *testing.T) {
 
 	batch := new(leveldb.Batch)
 	for _, addr := range addrs {
-		index.PutInBatch(batch, Item{
+		err = index.PutInBatch(batch, Item{
 			Address: addr,
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = db.WriteBatch(batch)
 	if err != nil {
@@ -1075,7 +1091,10 @@ func TestIndex_HasMulti(t *testing.T) {
 
 	batch := new(leveldb.Batch)
 	for _, i := range items {
-		index.PutInBatch(batch, i)
+		err = index.PutInBatch(batch, i)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = db.WriteBatch(batch)
 	if err != nil {
