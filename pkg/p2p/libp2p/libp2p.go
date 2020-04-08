@@ -193,7 +193,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
-			s.logger.Trace("skipped double connect")
 			return
 		}
 
@@ -327,7 +326,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
-		s.logger.Trace("skipped double connect")
 		return i.Address, nil
 	}
 
