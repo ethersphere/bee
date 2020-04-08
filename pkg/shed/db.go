@@ -38,6 +38,7 @@ const (
 // information about naming and types.
 type DB struct {
 	ldb  *leveldb.DB
+	metrics metrics
 	quit chan struct{} // Quit channel to stop the metrics collection before closing the database
 }
 
@@ -53,6 +54,7 @@ func NewDB(path string, metricsPrefix string) (db *DB, err error) {
 	}
 	db = &DB{
 		ldb: ldb,
+		metrics: newMetrics(),
 	}
 
 	if _, err = db.getSchema(); err != nil {
@@ -79,17 +81,23 @@ func NewDB(path string, metricsPrefix string) (db *DB, err error) {
 func (db *DB) Put(key []byte, value []byte) (err error) {
 	err = db.ldb.Put(key, value, nil)
 	if err != nil {
+		db.metrics.PutFailCounter.Inc()
 		return err
 	}
+	db.metrics.PutCounter.Inc()
 	return nil
 }
 
 // Get wraps LevelDB Get method to increment metrics counter.
 func (db *DB) Get(key []byte) (value []byte, err error) {
 	value, err = db.ldb.Get(key, nil)
-	if err != nil {
+	if err == leveldb.ErrNotFound {
+		db.metrics.GetNotFoundCounter.Inc()
 		return nil, err
+	} else {
+		db.metrics.GetFailCounter.Inc()
 	}
+	db.metrics.GetCounter.Inc()
 	return value, nil
 }
 
@@ -97,8 +105,10 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 func (db *DB) Has(key []byte) (yes bool, err error) {
 	yes, err = db.ldb.Has(key, nil)
 	if err != nil {
+		db.metrics.HasFailCounter.Inc()
 		return false, err
 	}
+	db.metrics.HasCounter.Inc()
 	return yes, nil
 }
 
@@ -106,13 +116,16 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 func (db *DB) Delete(key []byte) (err error) {
 	err = db.ldb.Delete(key, nil)
 	if err != nil {
+		db.metrics.DeleteFailCounter.Inc()
 		return err
 	}
+	db.metrics.DeleteCounter.Inc()
 	return nil
 }
 
 // NewIterator wraps LevelDB NewIterator method to increment metrics counter.
 func (db *DB) NewIterator() iterator.Iterator {
+	db.metrics.IteratorCounter.Inc()
 	return db.ldb.NewIterator(nil, nil)
 }
 
@@ -120,8 +133,10 @@ func (db *DB) NewIterator() iterator.Iterator {
 func (db *DB) WriteBatch(batch *leveldb.Batch) (err error) {
 	err = db.ldb.Write(batch, nil)
 	if err != nil {
+		db.metrics.WriteBatchFailCounter.Inc()
 		return err
 	}
+	db.metrics.WriteBatchCounter.Inc()
 	return nil
 }
 
