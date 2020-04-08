@@ -30,7 +30,6 @@ import (
 
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/storage"
 )
 
 const (
