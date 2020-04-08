@@ -31,6 +31,7 @@ func newMetrics() metrics {
 		}),
 		PongSentCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
+			Subsystem: subsystem,
 			Name:      "pong_sent_count",
 			Help:      "Number of pong responses sent.",
 		}),

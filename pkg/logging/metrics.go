@@ -52,7 +52,7 @@ func newMetrics() metrics {
 		TraceCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "log_trace_count",
+			Name:      "trace_count",
 			Help:      "Number TRACE log messages.",
 		}),
 	}
