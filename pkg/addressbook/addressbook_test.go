@@ -2,12 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package test
+package addressbook_test
 
 import (
+	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/statestore/persistent"
 	"github.com/ethersphere/bee/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -15,7 +19,36 @@ import (
 
 type bookFunc func(t *testing.T) (book addressbook.GetPutter, cleanup func())
 
-func Run(t *testing.T, f bookFunc) {
+func TestInMem(t *testing.T) {
+	run(t, func(t *testing.T) (addressbook.GetPutter, func()) {
+		store := mock.NewStateStore()
+		book := addressbook.New(store)
+
+		return book, func() {}
+	})
+}
+
+func TestPersistent(t *testing.T) {
+	run(t, func(t *testing.T) (addressbook.GetPutter, func()) {
+		dir, err := ioutil.TempDir("", "statestore_test")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		store, err := persistent.NewStateStore(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		book := addressbook.New(store)
+
+		return book, func() {
+			os.RemoveAll(dir)
+		}
+	})
+}
+
+func run(t *testing.T, f bookFunc) {
 	testGetPut(t, f)
 }
 
@@ -39,7 +72,7 @@ func testGetPut(t *testing.T, f bookFunc) {
 		t.Fatal("object exists in store but shouldnt")
 	}
 
-	v, err = store.Get(addr1)
+	v, err := store.Get(addr1)
 	if err != nil {
 		t.Fatal(err)
 	}
