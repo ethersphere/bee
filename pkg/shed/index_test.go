@@ -20,10 +20,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -53,8 +55,8 @@ var retrievalIndexFuncs = IndexFuncs{
 func TestIndex(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-
-	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	logger := logging.New(ioutil.Discard, 0)
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,8 +369,8 @@ func TestIndex(t *testing.T) {
 func TestIndex_Iterate(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-
-	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	logger := logging.New(ioutil.Discard, 0)
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +504,8 @@ func TestIndex_Iterate(t *testing.T) {
 	})
 
 	t.Run("no overflow", func(t *testing.T) {
-		secondIndex, err := db.NewIndex("second-index", retrievalIndexFuncs)
+		logger := logging.New(ioutil.Discard, 0)
+		secondIndex, err := db.NewIndex("second-index", retrievalIndexFuncs, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -550,8 +553,8 @@ func TestIndex_Iterate(t *testing.T) {
 func TestIndex_Iterate_withPrefix(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-
-	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	logger := logging.New(ioutil.Discard, 0)
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,7 +700,8 @@ func TestIndex_Iterate_withPrefix(t *testing.T) {
 	})
 
 	t.Run("no overflow", func(t *testing.T) {
-		secondIndex, err := db.NewIndex("second-index", retrievalIndexFuncs)
+		logger := logging.New(ioutil.Discard, 0)
+		secondIndex, err := db.NewIndex("second-index", retrievalIndexFuncs, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -737,8 +741,8 @@ func TestIndex_Iterate_withPrefix(t *testing.T) {
 func TestIndex_count(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-
-	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	logger := logging.New(ioutil.Discard, 0)
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -907,8 +911,8 @@ func checkItem(t *testing.T, got, want Item) {
 func TestIndex_firstAndLast(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-
-	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	logger := logging.New(ioutil.Discard, 0)
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1056,8 +1060,8 @@ func TestIncByteSlice(t *testing.T) {
 func TestIndex_HasMulti(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-
-	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	logger := logging.New(ioutil.Discard, 0)
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,26 +17,29 @@
 package shed
 
 import (
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // StringField is the most simple field implementation
 // that stores an arbitrary string under a specific LevelDB key.
 type StringField struct {
-	db  *DB
-	key []byte
+	db     *DB
+	key    []byte
+	logger logging.Logger
 }
 
 // NewStringField retruns a new Instance of StringField.
 // It validates its name and type against the database schema.
-func (db *DB) NewStringField(name string) (f StringField, err error) {
+func (db *DB) NewStringField(name string, logger logging.Logger) (f StringField, err error) {
 	key, err := db.schemaFieldKey(name, "string")
 	if err != nil {
 		return f, err
 	}
 	return StringField{
-		db:  db,
-		key: key,
+		db:     db,
+		key:    key,
+		logger: logger,
 	}, nil
 }
 
@@ -47,6 +50,7 @@ func (f StringField) Get() (val string, err error) {
 	b, err := f.db.Get(f.key)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
+			f.logger.Errorf("key %s not found", string(f.key))
 			return "", nil
 		}
 		return "", err
