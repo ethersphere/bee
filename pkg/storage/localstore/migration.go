@@ -74,10 +74,6 @@ func (db *DB) migrate(schemaName string) error {
 	return nil
 }
 
-// migrationFn is a function that takes a localstore.DB and
-// returns an error if a migration has failed
-type migrationFn func(db *DB) error
-
 // getMigrations returns an ordered list of migrations that need be executed
 // with no errors in order to bring the localstore to the most up-to-date
 // schema definition
@@ -159,6 +155,9 @@ func migrateSanctuary(db *DB) error {
 			return e, nil
 		},
 	})
+	if err != nil {
+		return err
+	}
 
 	err = db.pushIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 		tag, err := db.tags.Get(item.Tag)
@@ -171,7 +170,10 @@ func migrateSanctuary(db *DB) error {
 
 		// anonymous tags should no longer appear in pushIndex
 		if tag != nil && tag.Anonymous {
-			db.pushIndex.DeleteInBatch(batch, item)
+			err = db.pushIndex.DeleteInBatch(batch, item)
+			if err != nil {
+				return true, nil
+			}
 		}
 		return false, nil
 	}, nil)

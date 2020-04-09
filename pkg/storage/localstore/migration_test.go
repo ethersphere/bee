@@ -239,7 +239,7 @@ func TestMigrationFailFrom(t *testing.T) {
 	DbSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil)
+	_, err = New(dir, baseKey, nil)
 	if !strings.Contains(err.Error(), errMissingCurrentSchema.Error()) {
 		t.Fatalf("expected errCannotFindSchema but got %v", err)
 	}
@@ -298,7 +298,7 @@ func TestMigrationFailTo(t *testing.T) {
 	DbSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil)
+	_, err = New(dir, baseKey, nil)
 	if !strings.Contains(err.Error(), errMissingTargetSchema.Error()) {
 		t.Fatalf("expected errMissingTargetSchema but got %v", err)
 	}

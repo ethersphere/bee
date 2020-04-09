@@ -455,7 +455,11 @@ func (db *DB) Close() (err error) {
 		log.Error("localstore closed with still active goroutines")
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
-		pprof.Lookup("goroutine").WriteTo(os.Stdout, 2)
+		prof := pprof.Lookup("goroutine")
+		err = prof.WriteTo(os.Stdout, 2)
+		if err != nil {
+			return err
+		}
 	}
 	return db.shed.Close()
 }

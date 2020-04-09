@@ -118,10 +118,22 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		metrics.GetOrRegisterGauge(metricName+"/accessts", nil).Update(item.AccessTimestamp)
 
 		// delete from retrieve, pull, gc
-		db.retrievalDataIndex.DeleteInBatch(batch, item)
-		db.retrievalAccessIndex.DeleteInBatch(batch, item)
-		db.pullIndex.DeleteInBatch(batch, item)
-		db.gcIndex.DeleteInBatch(batch, item)
+		err = db.retrievalDataIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
+		err = db.retrievalAccessIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
+		err = db.pullIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
+		err = db.gcIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
 		collectedCount++
 		if collectedCount >= gcBatchSize {
 			// bach size limit reached,
@@ -177,13 +189,22 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 
 		// Check if this item is in gcIndex and remove it
 		ok, err := db.gcIndex.Has(item)
+		if err != nil {
+			return false, nil
+		}
 		if ok {
-			db.gcIndex.DeleteInBatch(batch, item)
+			err = db.gcIndex.DeleteInBatch(batch, item)
+			if err != nil {
+				return false, nil
+			}
 			if _, err := db.gcIndex.Get(item); err == nil {
 				gcSizeChange--
 			}
 			excludedCount++
-			db.gcExcludeIndex.DeleteInBatch(batch, item)
+			err = db.gcExcludeIndex.DeleteInBatch(batch, item)
+			if err != nil {
+				return false, nil
+			}
 		}
 
 		return false, nil

@@ -579,6 +579,7 @@ func readPullSubscriptionBin(ctx context.Context, db *DB, bin uint8, ch <-chan c
 							err = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got, want)
 						}
 					}
+
 				}
 			}
 			addrsMu.Unlock()

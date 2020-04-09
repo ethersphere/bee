@@ -188,7 +188,10 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		return false, 0, err
 	}
 
-	db.retrievalDataIndex.PutInBatch(batch, item)
+	err = db.retrievalDataIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 
 	return exists, gcSizeChange, nil
 }
@@ -209,8 +212,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 				return false, 0, err
 			}
 		}
-
-		return true, 0, nil
+		return true, gcSizeChange, nil
 	}
 	anonymous := false
 	if db.tags != nil && item.Tag != 0 {
@@ -226,10 +228,19 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if err != nil {
 		return false, 0, err
 	}
-	db.retrievalDataIndex.PutInBatch(batch, item)
-	db.pullIndex.PutInBatch(batch, item)
+	err = db.retrievalDataIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0 , err
+	}
+	err = db.pullIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0 , err
+	}
 	if !anonymous {
-		db.pushIndex.PutInBatch(batch, item)
+		err = db.pushIndex.PutInBatch(batch, item)
+		if err != nil {
+			return false, 0 , err
+		}
 	}
 
 	if db.putToGCCheck(item.Address) {
@@ -272,8 +283,14 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-	db.retrievalDataIndex.PutInBatch(batch, item)
-	db.pullIndex.PutInBatch(batch, item)
+	err = db.retrievalDataIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0 , err
+	}
+	err = db.pullIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0 , err
+	}
 
 	if db.putToGCCheck(item.Address) {
 		// TODO: this might result in an edge case where a node
@@ -307,7 +324,10 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 	switch err {
 	case nil:
 		item.AccessTimestamp = i.AccessTimestamp
-		db.gcIndex.DeleteInBatch(batch, item)
+		err = db.gcIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return  0 , err
+		}
 		gcSizeChange--
 	case leveldb.ErrNotFound:
 		// the chunk is not accessed before
@@ -315,7 +335,10 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 		return 0, err
 	}
 	item.AccessTimestamp = now()
-	db.retrievalAccessIndex.PutInBatch(batch, item)
+	err = db.retrievalAccessIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
 
 	db.gcIndex.PutInBatch(batch, item)
 	gcSizeChange++

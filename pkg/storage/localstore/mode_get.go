@@ -148,14 +148,22 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 		return nil
 	}
 	// delete current entry from the gc index
-	db.gcIndex.DeleteInBatch(batch, item)
+	err = db.gcIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return err
+	}
 	// update access timestamp
 	item.AccessTimestamp = now()
 	// update retrieve access index
-	db.retrievalAccessIndex.PutInBatch(batch, item)
+	err = db.retrievalAccessIndex.PutInBatch(batch, item)
+	if err != nil {
+		return err
+	}
 	// add new entry to gc index
-	db.gcIndex.PutInBatch(batch, item)
-
+	err = db.gcIndex.PutInBatch(batch, item)
+	if err != nil {
+		return err
+	}
 	return db.shed.WriteBatch(batch)
 }
 

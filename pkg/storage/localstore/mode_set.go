@@ -147,7 +147,10 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr chun
 		item.StoreTimestamp = i.StoreTimestamp
 		item.BinID = i.BinID
 	case leveldb.ErrNotFound:
-		db.pushIndex.DeleteInBatch(batch, item)
+		err = db.pushIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return 0 , err
+		}
 		item.StoreTimestamp = now()
 		item.BinID, err = db.incBinID(binIDs, po)
 		if err != nil {
@@ -161,7 +164,10 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr chun
 	switch err {
 	case nil:
 		item.AccessTimestamp = i.AccessTimestamp
-		db.gcIndex.DeleteInBatch(batch, item)
+		err = db.gcIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return 0 , err
+		}
 		gcSizeChange--
 	case leveldb.ErrNotFound:
 		// the chunk is not accessed before
@@ -169,9 +175,18 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr chun
 		return 0, err
 	}
 	item.AccessTimestamp = now()
-	db.retrievalAccessIndex.PutInBatch(batch, item)
-	db.pullIndex.PutInBatch(batch, item)
-	db.gcIndex.PutInBatch(batch, item)
+	err = db.retrievalAccessIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
+	err = db.pullIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
+	err = db.gcIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
 	gcSizeChange++
 
 	return gcSizeChange, nil
@@ -198,7 +213,10 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 			// no need to update gc index
 			// just delete from the push index
 			// if it is there
-			db.pushIndex.DeleteInBatch(batch, item)
+			err = db.pushIndex.DeleteInBatch(batch, item)
+			if err != nil {
+				return 0 , err
+			}
 			return 0, nil
 		}
 		return 0, err
@@ -273,14 +291,20 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 			}
 		}
 
-		db.pushIndex.DeleteInBatch(batch, item)
+		err = db.pushIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return 0 , err
+		}
 	}
 
 	i, err = db.retrievalAccessIndex.Get(item)
 	switch err {
 	case nil:
 		item.AccessTimestamp = i.AccessTimestamp
-		db.gcIndex.DeleteInBatch(batch, item)
+		err = db.gcIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return 0 , err
+		}
 		gcSizeChange--
 	case leveldb.ErrNotFound:
 		// the chunk is not accessed before
@@ -288,7 +312,10 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 		return 0, err
 	}
 	item.AccessTimestamp = now()
-	db.retrievalAccessIndex.PutInBatch(batch, item)
+	err = db.retrievalAccessIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
 
 	// Add in gcIndex only if this chunk is not pinned
 	ok, err := db.pinIndex.Has(item)
@@ -296,7 +323,10 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 		return 0, err
 	}
 	if !ok {
-		db.gcIndex.PutInBatch(batch, item)
+		err = db.gcIndex.PutInBatch(batch, item)
+		if err != nil {
+			return 0 , err
+		}
 		gcSizeChange++
 	}
 
@@ -327,10 +357,22 @@ func (db *DB) setRemove(batch *leveldb.Batch, addr chunk.Address) (gcSizeChange 
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 
-	db.retrievalDataIndex.DeleteInBatch(batch, item)
-	db.retrievalAccessIndex.DeleteInBatch(batch, item)
-	db.pullIndex.DeleteInBatch(batch, item)
-	db.gcIndex.DeleteInBatch(batch, item)
+	err = db.retrievalDataIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
+	err = db.retrievalAccessIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
+	err = db.pullIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
+	err = db.gcIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0 , err
+	}
 	// a check is needed for decrementing gcSize
 	// as delete is not reporting if the key/value pair
 	// is deleted or not
@@ -356,7 +398,10 @@ func (db *DB) setPin(batch *leveldb.Batch, addr chunk.Address) (err error) {
 			existingPinCounter = 0
 
 			// Add in gcExcludeIndex of the chunk is not pinned already
-			db.gcExcludeIndex.PutInBatch(batch, item)
+			err = db.gcExcludeIndex.PutInBatch(batch, item)
+			if err != nil {
+				return err
+			}
 		} else {
 			return err
 		}
@@ -366,7 +411,10 @@ func (db *DB) setPin(batch *leveldb.Batch, addr chunk.Address) (err error) {
 
 	// Otherwise increase the existing counter by 1
 	item.PinCounter = existingPinCounter + 1
-	db.pinIndex.PutInBatch(batch, item)
+	err = db.pinIndex.PutInBatch(batch, item)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -386,9 +434,15 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr chunk.Address) (err error) {
 	// delete it from pin index if the pin counter has reached 0
 	if pinnedChunk.PinCounter > 1 {
 		item.PinCounter = pinnedChunk.PinCounter - 1
-		db.pinIndex.PutInBatch(batch, item)
+		err = db.pinIndex.PutInBatch(batch, item)
+		if err != nil {
+			return err
+		}
 	} else {
-		db.pinIndex.DeleteInBatch(batch, item)
+		err = db.pinIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
