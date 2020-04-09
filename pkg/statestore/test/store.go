@@ -43,8 +43,8 @@ func (st *Serializing) UnmarshalBinary(data []byte) (err error) {
 	return nil
 }
 
-// RunPersist runs a specific test case for a persisting state store to check that values
-// persist across instances bootstrapped on the same path.
+// RunPersist is a specific test case for the persistent state store.
+// It tests that values persist across sessions.
 func RunPersist(t *testing.T, f func(t *testing.T, dir string) storage.StateStorer) {
 	dir, err := ioutil.TempDir("", "statestore_test")
 	if err != nil {
