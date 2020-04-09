@@ -13,20 +13,20 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
-var _ storage.StateStorer = (*mockKVStore)(nil)
+var _ storage.StateStorer = (*store)(nil)
 
-type mockKVStore struct {
+type store struct {
 	store map[string][]byte
 	mtx   sync.Mutex
 }
 
 func NewStateStore() storage.StateStorer {
-	return &mockKVStore{
+	return &store{
 		store: make(map[string][]byte),
 	}
 }
 
-func (s *mockKVStore) Get(key string, i interface{}) (err error) {
+func (s *store) Get(key string, i interface{}) (err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -42,7 +42,7 @@ func (s *mockKVStore) Get(key string, i interface{}) (err error) {
 	return json.Unmarshal(data, i)
 }
 
-func (s *mockKVStore) Put(key string, i interface{}) (err error) {
+func (s *store) Put(key string, i interface{}) (err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -59,7 +59,7 @@ func (s *mockKVStore) Put(key string, i interface{}) (err error) {
 	return nil
 }
 
-func (s *mockKVStore) Delete(key string) (err error) {
+func (s *store) Delete(key string) (err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -67,7 +67,7 @@ func (s *mockKVStore) Delete(key string) (err error) {
 	return nil
 }
 
-func (s *mockKVStore) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
+func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -90,6 +90,6 @@ func (s *mockKVStore) Iterate(prefix string, iterFunc storage.StateIterFunc) (er
 	return nil
 }
 
-func (s *mockKVStore) Close() (err error) {
+func (s *store) Close() (err error) {
 	return nil
 }

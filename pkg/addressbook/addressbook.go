@@ -87,9 +87,9 @@ func (s *store) Overlays() (overlays []swarm.Address, err error) {
 func (s *store) Multiaddresses() (multis []ma.Multiaddr, err error) {
 	err = s.store.Iterate(keyPrefix, func(_, value []byte) (stop bool, err error) {
 		entry := &PeerEntry{}
-		errM := entry.UnmarshalJSON(value)
-		if errM != nil {
-			return true, errM
+		err = entry.UnmarshalJSON(value)
+		if err != nil {
+			return true, err
 		}
 
 		multis = append(multis, entry.Multiaddr)

@@ -49,10 +49,6 @@ func TestPersistent(t *testing.T) {
 }
 
 func run(t *testing.T, f bookFunc) {
-	testGetPut(t, f)
-}
-
-func testGetPut(t *testing.T, f bookFunc) {
 	store, cleanup := f(t)
 	defer cleanup()
 
