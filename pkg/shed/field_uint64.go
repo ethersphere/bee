@@ -18,8 +18,8 @@ package shed
 
 import (
 	"encoding/binary"
-	"github.com/dgraph-io/badger"
 
+	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/logging"
 )
 

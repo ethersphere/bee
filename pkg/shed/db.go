@@ -39,7 +39,7 @@ const (
 )
 
 var (
-	ErrNotFound       = errors.New("storage: not found")
+	ErrNotFound = errors.New("storage: not found")
 )
 
 // DB provides abstractions over badgerDB in order to
@@ -47,10 +47,10 @@ var (
 // It provides a schema functionality to store fields and indexes
 // information about naming and types.
 type DB struct {
-	path      string
-	bdb       *badger.DB
-	metrics   metrics
-	logger    logging.Logger
+	path    string
+	bdb     *badger.DB
+	metrics metrics
+	logger  logging.Logger
 }
 
 // NewDB opens the badger DB with options that make the DB useful for
@@ -108,6 +108,7 @@ func (db *DB) Put(key []byte, value []byte) (err error) {
 		db.logger.Tracef(" put success with key %s and value len %d", string(key), len(value))
 		return nil
 	})
+
 }
 
 // Get retrieves the value given the key.

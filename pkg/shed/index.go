@@ -164,7 +164,6 @@ func (f Index) Get(keyFields Item) (out Item, err error) {
 func (f Index) Fill(items []Item) (err error) {
 	txn := f.db.GetBatch(false)
 	defer txn.Discard()
-
 	for i, item := range items {
 		key, err := f.encodeKeyFunc(item)
 		if err != nil {
@@ -380,11 +379,13 @@ func (f Index) itemFromKeyValue(key []byte, value []byte, totalPrefix []byte) (i
 	// create a copy of key byte slice not to share badger underlaying slice array
 	keyItem, err := f.decodeKeyFunc(append([]byte(nil), key...))
 	if err != nil {
+		f.logger.Debugf("error decoding key in itemFromIterator. Error: %s", err.Error())
 		return i, err
 	}
 	// create a copy of value byte slice not to share badger underlaying slice array
 	valueItem, err := f.decodeValueFunc(keyItem, append([]byte(nil), value...))
 	if err != nil {
+		f.logger.Debugf("error decoding value in itemFromIterator. Error: %s", err.Error())
 		return i, err
 	}
 	return keyItem.Merge(valueItem), nil
@@ -432,6 +433,7 @@ func (f Index) Count() (count int, err error) {
 func (f Index) CountFrom(start Item) (count int, err error) {
 	startKey, err := f.encodeKeyFunc(start)
 	if err != nil {
+		f.logger.Debugf("error encoding item in CountFrom. Error: %s", err.Error())
 		return 0, err
 	}
 	return f.db.CountFrom(startKey)
