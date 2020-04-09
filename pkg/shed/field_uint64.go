@@ -108,7 +108,10 @@ func (f Uint64Field) IncInBatch(batch *badger.Txn) (val uint64, err error) {
 		}
 	}
 	val++
-	f.PutInBatch(batch, val)
+	err = f.PutInBatch(batch, val)
+	if err != nil {
+		return 0, err
+	}
 	return val, nil
 }
 
@@ -150,7 +153,10 @@ func (f Uint64Field) DecInBatch(batch *badger.Txn) (val uint64, err error) {
 	if val != 0 {
 		val--
 	}
-	f.PutInBatch(batch, val)
+	err = f.PutInBatch(batch, val)
+	if err != nil {
+		return 0, err
+	}
 	return val, nil
 }
 
