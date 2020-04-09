@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/swarm/storage"
 	"github.com/syndtr/goleveldb/leveldb"
