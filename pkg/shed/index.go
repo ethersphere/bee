@@ -173,7 +173,6 @@ func (f Index) Fill(items []Item) (err error) {
 		badgerItem, err := txn.Get(key)
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
-				f.logger.Debugf("error could not find key in fill. Error: %s", err.Error())
 				return ErrNotFound
 			}
 			f.logger.Debugf("error getting key %s in Fill. Error: %s", string(key), err.Error())
@@ -188,7 +187,6 @@ func (f Index) Fill(items []Item) (err error) {
 			return nil
 		})
 		if err != nil {
-			f.logger.Debugf("error decofing keyfields in Fill . Error: %s", err.Error())
 			return err
 		}
 		items[i] = decodedItem.Merge(item)
@@ -224,7 +222,6 @@ func (f Index) HasMulti(items ...Item) ([]bool, error) {
 	for i, keyFields := range items {
 		key, err := f.encodeKeyFunc(keyFields)
 		if err != nil {
-			f.logger.Debugf("keyfields encoding error in HasMulti. Error: %s", err.Error())
 			return nil, err
 		}
 		it.Seek(key)
@@ -275,8 +272,7 @@ func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 	if err != nil {
 		f.logger.Debugf("could not set values in batch. Error : %s", err.Error())
 	}
-
-	return nil
+	return err
 }
 
 // Delete accepts Item to remove a key/value pair
@@ -302,7 +298,7 @@ func (f Index) DeleteInBatch(batch *badger.Txn, keyFields Item) (err error) {
 	if err != nil {
 		f.logger.Debugf("could not delete items in batch. Error: %s", err.Error())
 	}
-	return nil
+	return err
 }
 
 // IndexIterFunc is a callback on every Item that is decoded
@@ -370,7 +366,7 @@ func (f Index) First(prefix []byte) (i Item, err error) {
 
 // itemFromKeyValue returns the Item from the current iterator position.
 // If the complete encoded key does not start with totalPrefix,
-// ErrNotFound is returned. Value for totalPrefix must start with
+// badger.ErrNotFound is returned. Value for totalPrefix must start with
 // Index prefix.
 func (f Index) itemFromKeyValue(key []byte, value []byte, totalPrefix []byte) (i Item, err error) {
 	if !bytes.HasPrefix(key, totalPrefix) {

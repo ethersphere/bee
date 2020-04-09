@@ -26,8 +26,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
-
 	"github.com/dgraph-io/badger"
 	"github.com/ethersphere/bee/pkg/logging"
 )
@@ -61,14 +59,15 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	o.ValueThreshold = DefaultValueThreshold
 	o.ValueLogMaxEntries = DefaultValueLogMaxEntries
 	o.Logger = nil // Dont enable the badger logs
-	_db, err := badger.Open(o)
+	database, err := badger.Open(o)
 	if err != nil {
-		fmt.Printf("could not open database. Error: %v", err.Error())
+		logger.Error("could not open database.")
+		logger.Debugf("could ot open DB. Error : %s", err.Error())
 		return nil, err
 	}
 
 	db = &DB{
-		bdb:     _db,
+		bdb:     database,
 		metrics: newMetrics(),
 		logger:  logger,
 		path:    path,
@@ -386,23 +385,44 @@ func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
 		o := badger.DefaultIteratorOptions
 		o.PrefetchValues = true
 		o.PrefetchSize = 1024
+		o.Reverse = true   // iterate backwards
 
 		i := txn.NewIterator(o)
 		defer i.Close()
 
-		for i.Seek(prefix); i.ValidForPrefix(prefix); i.Next() {
-			key = i.Item().Key()
-			value, err = i.Item().ValueCopy(value)
-			if err != nil {
-				return err
+		// get the next prefix in line
+		// since leveldb iterator Seek seeks to the
+		// next key if the key that it seeks to is not found
+		// and by getting the previous key, the last one for the
+		// actual prefix is found
+		nextPrefix := incByteSlice(prefix)
+		l := len(prefix)
+
+		if l > 0 && nextPrefix != nil {
+			// If there is a no key which starts which nextPrefix, badger moves the
+			// cursor to the previous key (which should be our key).
+			i.Seek(nextPrefix)
+			if bytes.HasPrefix(i.Item().Key(),prefix) {
+				key = i.Item().Key()
+				value, err = i.Item().ValueCopy(nil)
+				if err != nil {
+					return err
+				}
+			} else {
+				// If there is a key which starts with nextPrefix, we do reverse Next() to
+				// reach our key and pick that up.
+				i.Next()
+				if bytes.HasPrefix(i.Item().Key(),prefix) {
+					key = i.Item().Key()
+					value, err = i.Item().ValueCopy(nil)
+					if err != nil {
+						return err
+					}
+				}
 			}
 		}
 
 		if key == nil {
-			return ErrNotFound
-		}
-
-		if !bytes.HasPrefix(key, prefix) {
 			return ErrNotFound
 		}
 		return nil
@@ -435,12 +455,11 @@ func (db *DB) WriteBatch(txn *badger.Txn) (err error) {
 		db.metrics.WriteBatchFailCount.Inc()
 		return err
 	}
-	txn.Discard()
 	db.logger.Tracef("transaction committed successfully")
 	return nil
 }
 
-// Close shut's down the badger DB.
+// Close shuts down the badger DB.
 func (db *DB) Close(ctx context.Context) (err error) {
 	db.logger.Tracef("database closed with path %s", db.path)
 	db.metrics.DBCloseCount.Inc()

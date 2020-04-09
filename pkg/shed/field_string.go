@@ -65,9 +65,11 @@ func (f StringField) Put(val string) (err error) {
 
 // PutInBatch stores a string in a batch that can be
 // saved later in database.
-func (f StringField) PutInBatch(batch *badger.Txn, val string) {
-	err := batch.Set(f.key, []byte(val))
+func (f StringField) PutInBatch(batch *badger.Txn, val string) (err error) {
+	err = batch.Set(f.key, []byte(val))
 	if err != nil {
-		f.logger.Debugf("could not set values in PutInBatch")
+		f.logger.Debugf("could not set values in PutInBatch. Error : %s", err.Error())
+		return err
 	}
+	return nil
 }

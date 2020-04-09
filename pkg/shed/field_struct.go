@@ -76,6 +76,7 @@ func (f StructField) PutInBatch(batch *badger.Txn, val interface{}) (err error) 
 	err = batch.Set(f.key, b)
 	if err != nil {
 		f.logger.Debugf("could not put values in batch. Error: %s", err.Error())
+		return err
 	}
 	return nil
 }
