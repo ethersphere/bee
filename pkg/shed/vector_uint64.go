@@ -104,7 +104,10 @@ func (f Uint64Vector) IncInBatch(batch *badger.Txn, i uint64) (val uint64, err e
 		}
 	}
 	val++
-	f.PutInBatch(batch, i, val)
+	err = f.PutInBatch(batch, i, val)
+	if err != nil {
+		return 0, err
+	}
 	return val, nil
 }
 
@@ -144,7 +147,10 @@ func (f Uint64Vector) DecInBatch(batch *badger.Txn, i uint64) (val uint64, err e
 	if val != 0 {
 		val--
 	}
-	f.PutInBatch(batch, i, val)
+	err = f.PutInBatch(batch, i, val)
+	if err != nil {
+		return 0, err
+	}
 	return val, nil
 }
 
