@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/swarm/chunk"
-	"github.com/ethersphere/swarm/log"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -232,7 +231,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 				// if we return the error here - it means that for example, in stream protocol peers which we sync
 				// to would be dropped. this is possible when the chunk is put with ModePutRequest and ModeSetSyncPull is
 				// called on the same chunk (which should not happen)
-				log.Error("chunk not found in pull index", "addr", addr)
+				db.logger.Debugf("chunk not found in pull index. addr: %s", addr.String())
 				break
 			}
 			return 0, err
@@ -266,7 +265,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 				// we handle this error internally, since this is an internal inconsistency of the indices
 				// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 				// but this function is called with ModeSetSyncPush
-				log.Error("chunk not found in push index", "addr", addr)
+				db.logger.Debugf("chunk not found in push index. addr : %s", addr.String())
 				break
 			}
 			return 0, err
@@ -276,7 +275,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 			if err != nil {
 				// we cannot break or return here since the function needs to
 				// run to end from db.pushIndex.DeleteInBatch
-				log.Error("error getting tags on push sync set", "uid", i.Tag)
+				db.logger.Debugf("error getting tags on push sync set. uid : %d", i.Tag)
 			} else {
 				// setting a chunk for push sync assumes the tag is not anonymous
 				if t.Anonymous {

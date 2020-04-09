@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -136,7 +135,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 						return
 					}
 					db.metrics.SubscribePullIterationFailure.Inc()
-					log.Error("localstore pull subscription iteration", "bin", bin, "since", since, "until", until, "err", err)
+					db.logger.Debugf("localstore pull subscription iteration. bin: %d, since: %d, until: %d. Error : %s", bin, since, until, err.Error())
 					return
 				}
 				if count > 0 {
@@ -153,7 +152,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 			case <-ctx.Done():
 				err := ctx.Err()
 				if err != nil {
-					log.Error("localstore pull subscription", "bin", bin, "since", since, "until", until, "err", err)
+					db.logger.Debugf("localstore pull subscription. bin: %d, since: %d, until: %d. Error : %s", bin, since, until, err.Error())
 				}
 				return
 			}

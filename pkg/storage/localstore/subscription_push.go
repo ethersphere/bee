@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 )
@@ -81,7 +80,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 						// set next iteration start item
 						// when its chunk is successfully sent to channel
 						sinceItem = &item
-						log.Trace("subscribe.push", "ref", fmt.Sprintf("%x", sinceItem.Address), "binid", sinceItem.BinID)
+						db.logger.Trace("subscribe.push. ref : %s, binId : %d", fmt.Sprintf("%x", sinceItem.Address), sinceItem.BinID)
 						return false, nil
 					case <-stopChan:
 						// gracefully stop the iteration
@@ -105,7 +104,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 
 				if err != nil {
 					db.metrics.SubscribePushIterationFailure.Inc()
-					log.Error("localstore push subscription iteration", "err", err)
+					db.logger.Debugf("localstore push subscription iteration. Error : %s", err.Error())
 					return
 				}
 			case <-stopChan:
@@ -119,7 +118,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 			case <-ctx.Done():
 				err := ctx.Err()
 				if err != nil {
-					log.Error("localstore push subscription", "err", err)
+					db.logger.Debug("localstore push subscription. Error : %s", err.Error())
 				}
 				return
 			}

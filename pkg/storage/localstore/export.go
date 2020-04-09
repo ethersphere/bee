@@ -26,7 +26,6 @@ import (
 	"sync"
 
 	"github.com/ethersphere/swarm/chunk"
-	"github.com/ethersphere/swarm/log"
 	"github.com/ethersphere/swarm/shed"
 )
 
@@ -126,13 +125,13 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 			}
 
 			if len(hdr.Name) != 64 {
-				log.Warn("ignoring non-chunk file", "name", hdr.Name)
+				db.logger.Warningf("ignoring non-chunk file, name : %s", hdr.Name)
 				continue
 			}
 
 			keybytes, err := hex.DecodeString(hdr.Name)
 			if err != nil {
-				log.Warn("ignoring invalid chunk file", "name", hdr.Name, "err", err)
+				db.logger.Warningf("ignoring invalid chunk file. name : %s , Error : %s", hdr.Name,  err)
 				continue
 			}
 

@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/swarm/chunk"
-	"github.com/ethersphere/swarm/log"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -45,7 +44,7 @@ var schemaMigrations = []migration{
 }
 
 func (db *DB) migrate(schemaName string) error {
-	migrations, err := getMigrations(schemaName, DbSchemaCurrent, schemaMigrations)
+	migrations, err := getMigrations(schemaName, DbSchemaCurrent, schemaMigrations, db)
 	if err != nil {
 		return fmt.Errorf("error getting migrations for current schema (%s): %v", schemaName, err)
 	}
@@ -55,7 +54,7 @@ func (db *DB) migrate(schemaName string) error {
 		return nil
 	}
 
-	log.Info("need to run data migrations on localstore", "numMigrations", len(migrations), "schemaName", schemaName)
+	db.logger.Infof("need to run data migrations on localstore. numMigrations : %s, schemaName : %s ", len(migrations), schemaName)
 	for i := 0; i < len(migrations); i++ {
 		err := migrations[i].fn(db)
 		if err != nil {
@@ -69,7 +68,7 @@ func (db *DB) migrate(schemaName string) error {
 		if err != nil {
 			return err
 		}
-		log.Info("successfully ran migration", "migrationId", i, "currentSchema", schemaName)
+		db.logger.Infof("successfully ran migration. migrationId : %s, currentSchema : %s", i, schemaName)
 	}
 	return nil
 }
@@ -77,7 +76,7 @@ func (db *DB) migrate(schemaName string) error {
 // getMigrations returns an ordered list of migrations that need be executed
 // with no errors in order to bring the localstore to the most up-to-date
 // schema definition
-func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []migration) (migrations []migration, err error) {
+func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []migration, db *DB) (migrations []migration, err error) {
 	foundCurrent := false
 	foundTarget := false
 	if currentSchema == DbSchemaCurrent {
@@ -90,7 +89,7 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 				return nil, errors.New("found schema name for the second time when looking for migrations")
 			}
 			foundCurrent = true
-			log.Info("found current localstore schema", "currentSchema", currentSchema, "migrateTo", DbSchemaCurrent, "total migrations", len(allSchemeMigrations)-i)
+			db.logger.Infof("found current localstore schema. currentSchema : %s , migrateTo : %s, total migrations : %d" , currentSchema,  DbSchemaCurrent, len(allSchemeMigrations)-i)
 			continue // current schema migration should not be executed (already has been when schema was migrated to)
 		case targetSchema:
 			foundTarget = true

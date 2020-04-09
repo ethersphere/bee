@@ -19,7 +19,6 @@ package localstore
 import (
 	"time"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -54,7 +53,7 @@ func (db *DB) collectGarbageWorker() {
 			// another collect garbage run is needed
 			collectedCount, done, err := db.collectGarbage()
 			if err != nil {
-				log.Error("localstore collect garbage", "err", err)
+				db.logger.Debugf("localstore collect garbage. Error : %s", err.Error())
 			}
 			// check if another gc run is needed
 			if !done {
@@ -96,7 +95,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	// remove them from the gcIndex before iterating through gcIndex
 	err = db.removeChunksInExcludeIndexFromGC()
 	if err != nil {
-		log.Error("localstore exclude pinned chunks", "err", err)
+		db.logger.Debugf("localstore exclude pinned chunks. Error : %s", err)
 		return 0, true, err
 	}
 

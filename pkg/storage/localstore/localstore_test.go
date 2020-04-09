@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/swarm/chunk"
 	chunktesting "github.com/ethersphere/swarm/chunk/testing"
 	"github.com/ethersphere/swarm/shed"
@@ -151,7 +152,8 @@ func newTestDB(t testing.TB, o *Options) (db *DB, cleanupFunc func()) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	db, err = New(dir, baseKey, o)
+	logger := logging.New(ioutil.Discard, 0)
+	db, err = New(dir, baseKey, o, logger)
 	if err != nil {
 		cleanupFunc()
 		t.Fatal(err)

@@ -20,7 +20,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -106,7 +105,7 @@ func (db *DB) updateGCItems(items ...shed.Item) {
 			err := db.updateGC(item)
 			if err != nil {
 				db.metrics.GCUpdateError.Inc()
-				log.Error("localstore update gc", "err", err)
+				db.logger.Debugf("localstore update gc. Error : %s", err.Error())
 			}
 		}
 		// if gc update hook is defined, call it
