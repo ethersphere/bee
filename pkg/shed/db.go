@@ -84,7 +84,7 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 func (db *DB) Put(key []byte, value []byte) (err error) {
 	err = db.ldb.Put(key, value, nil)
 	if err != nil {
-		db.logger.Debugf("failed to insert in to DB", "err", err)
+		db.logger.Debugf("failed to insert in to DB. Error : ",  err.Error())
 		db.metrics.PutFailCounter.Inc()
 		return err
 	}
