@@ -8,7 +8,6 @@ import (
 	"encoding"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -38,7 +37,6 @@ func New(path string) (storage.StateStorer, error) {
 func (s *Store) Get(key string, i interface{}) error {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
-		fmt.Println(err)
 		if errors.Is(err, leveldb.ErrNotFound) {
 			return storage.ErrNotFound
 		}
