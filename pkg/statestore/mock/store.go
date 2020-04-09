@@ -1,0 +1,82 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.package storage
+
+package mock
+
+import (
+	"encoding"
+	"encoding/json"
+	"strings"
+
+	"github.com/ethersphere/bee/pkg/storage"
+)
+
+var _ storage.StateStorer = (*mockKVStore)(nil)
+
+type mockKVStore struct {
+	store map[string][]byte
+}
+
+func NewStateStore() storage.StateStorer {
+	return &mockKVStore{
+		store: make(map[string][]byte),
+	}
+}
+
+func (s *mockKVStore) Get(key string, i interface{}) (err error) {
+	data, ok := s.store[key]
+	if !ok {
+		return storage.ErrNotFound
+	}
+
+	if unmarshaler, ok := i.(encoding.BinaryUnmarshaler); ok {
+		return unmarshaler.UnmarshalBinary(data)
+	}
+
+	return json.Unmarshal(data, i)
+
+}
+
+func (s *mockKVStore) Put(key string, i interface{}) (err error) {
+	var bytes []byte
+	if marshaler, ok := i.(encoding.BinaryMarshaler); ok {
+		if bytes, err = marshaler.MarshalBinary(); err != nil {
+			return err
+		}
+	} else if bytes, err = json.Marshal(i); err != nil {
+		return err
+	}
+
+	s.store[key] = bytes
+	return nil
+}
+
+func (s *mockKVStore) Delete(key string) (err error) {
+	delete(s.store, key)
+	return nil
+}
+
+func (s *mockKVStore) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
+	for k, v := range s.store {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+
+		val := make([]byte, len(v))
+		copy(val, v)
+		stop, err := iterFunc([]byte(k), val)
+		if err != nil {
+			return err
+		}
+
+		if stop {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *mockKVStore) Close() (err error) {
+	return nil
+}
