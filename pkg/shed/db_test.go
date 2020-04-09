@@ -20,6 +20,8 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // TestNewDB constructs a new DB
@@ -54,12 +56,13 @@ func TestDB_persistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
+	logger := logging.New(ioutil.Discard, 0)
 
-	db, err := NewDB(dir, "")
+	db, err := NewDB(dir, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stringField, err := db.NewStringField("preserve-me")
+	stringField, err := db.NewStringField("preserve-me", logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +76,11 @@ func TestDB_persistence(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db2, err := NewDB(dir, "")
+	db2, err := NewDB(dir, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stringField2, err := db2.NewStringField("preserve-me")
+	stringField2, err := db2.NewStringField("preserve-me", logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +103,8 @@ func newTestDB(t *testing.T) (db *DB, cleanupFunc func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err = NewDB(dir, "")
+	logger := logging.New(ioutil.Discard, 0)
+	db, err = NewDB(dir, logger)
 	if err != nil {
 		os.RemoveAll(dir)
 		t.Fatal(err)
