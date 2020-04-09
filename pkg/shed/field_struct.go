@@ -17,7 +17,7 @@
 package shed
 
 import (
-	"github.com/ethereum/go-ethereum/rlp"
+	"encoding/json"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -48,12 +48,12 @@ func (f StructField) Get(val interface{}) (err error) {
 	if err != nil {
 		return err
 	}
-	return rlp.DecodeBytes(b, val)
+	return json.Unmarshal(b, val)
 }
 
 // Put marshals provided val and saves it to the database.
 func (f StructField) Put(val interface{}) (err error) {
-	b, err := rlp.EncodeToBytes(val)
+	b, err := json.Marshal(val)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (f StructField) Put(val interface{}) (err error) {
 
 // PutInBatch marshals provided val and puts it into the batch.
 func (f StructField) PutInBatch(batch *leveldb.Batch, val interface{}) (err error) {
-	b, err := rlp.EncodeToBytes(val)
+	b, err := json.Marshal(val)
 	if err != nil {
 		return err
 	}
