@@ -11,15 +11,15 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
+	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/full"
-
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -41,7 +41,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("OK - no connected peers", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		addressbook := inmem.New()
+		inmem := mockstate.NewStateStore()
+		addressbook := addressbook.New(inmem)
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() != underlay {
 				t.Fatalf("expected multiaddr %s, got %s", addr.String(), underlay)
@@ -68,7 +69,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("ERROR - peer not added", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		addressbook := inmem.New()
+		inmem := mockstate.NewStateStore()
+		addressbook := addressbook.New(inmem)
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			t.Fatal("should not be called")
 			return swarm.Address{}, nil
@@ -87,7 +89,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("OK - connected peers - peer already connected", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		addressbook := inmem.New()
+		inmem := mockstate.NewStateStore()
+		addressbook := addressbook.New(inmem)
 		alreadyConnected := connectedPeers[0].Address
 
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
@@ -128,7 +131,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("OK - connected peers - peer not already connected", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		addressbook := inmem.New()
+		inmem := mockstate.NewStateStore()
+		addressbook := addressbook.New(inmem)
 
 		p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() != underlay {

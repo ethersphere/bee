@@ -18,12 +18,13 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+	book "github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -35,7 +36,8 @@ type AddressExporter interface {
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	logger := logging.New(ioutil.Discard, 0)
-	addressbook := inmem.New()
+	inmem := mock.NewStateStore()
+	addressbook := book.New(inmem)
 
 	// populate all expected and needed random resources for 2 full batches
 	// tests cases that uses fewer resources can use sub-slices of this data
@@ -105,7 +107,9 @@ func TestBroadcastPeers(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			addressbookclean := inmem.New()
+			inmem := mock.NewStateStore()
+			addressbookclean := book.New(inmem)
+
 			exporter, ok := addressbookclean.(AddressExporter)
 			if !ok {
 				t.Fatal("could not type assert AddressExporter")

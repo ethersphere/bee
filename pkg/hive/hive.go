@@ -6,6 +6,7 @@ package hive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -91,10 +93,13 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
-		addr, found := s.addressBook.Get(p)
-		if !found {
-			s.logger.Debugf("Peer not found %s", peer, err)
-			continue
+		addr, err := s.addressBook.Get(p)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				s.logger.Debugf("Peer not found %s", peer, err)
+				continue
+			}
+			return err
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{

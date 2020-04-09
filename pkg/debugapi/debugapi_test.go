@@ -12,10 +12,10 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	mockstore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/multiformats/go-multiaddr"
@@ -35,7 +35,8 @@ type testServer struct {
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *testServer {
-	addressbook := inmem.New()
+	inmem := mockstore.NewStateStore()
+	addressbook := addressbook.New(inmem)
 	topologyDriver := mock.NewTopologyDriver()
 
 	s := debugapi.New(debugapi.Options{
