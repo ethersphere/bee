@@ -5,13 +5,10 @@
 package addressbook_test
 
 import (
-	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/statestore/persistent"
 	"github.com/ethersphere/bee/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -25,26 +22,6 @@ func TestInMem(t *testing.T) {
 		book := addressbook.New(store)
 
 		return book, func() {}
-	})
-}
-
-func TestPersistent(t *testing.T) {
-	run(t, func(t *testing.T) (addressbook.GetPutter, func()) {
-		dir, err := ioutil.TempDir("", "statestore_test")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		store, err := persistent.NewStateStore(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		book := addressbook.New(store)
-
-		return book, func() {
-			os.RemoveAll(dir)
-		}
 	})
 }
 
