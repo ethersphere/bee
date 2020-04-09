@@ -63,8 +63,14 @@ func testDelete(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())
 	// check that the persisted values match
 	testPersistedValues(t, store, key1, key2, value1, value2)
 
-	store.Delete(key1)
-	store.Delete(key2)
+	err := store.Delete(key1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.Delete(key2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// check that the store is empty
 	testEmpty(t, store)

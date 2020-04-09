@@ -42,7 +42,8 @@ func TestAddPeer(t *testing.T) {
 	t.Run("OK - no connected peers", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		inmem := mockstate.NewStateStore()
-		addressbook := addressbook.New(inmem)
+		ab := addressbook.New(inmem)
+
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() != underlay {
 				t.Fatalf("expected multiaddr %s, got %s", addr.String(), underlay)
@@ -50,13 +51,13 @@ func TestAddPeer(t *testing.T) {
 			return overlay, nil
 		}))
 
-		fullDriver := full.New(discovery, addressbook, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		addressbook.Put(overlay, multiaddr)
+		ab.Put(overlay, multiaddr)
 		err = fullDriver.AddPeer(context.Background(), overlay)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
@@ -70,13 +71,13 @@ func TestAddPeer(t *testing.T) {
 	t.Run("ERROR - peer not added", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		inmem := mockstate.NewStateStore()
-		addressbook := addressbook.New(inmem)
+		ab := addressbook.New(inmem)
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			t.Fatal("should not be called")
 			return swarm.Address{}, nil
 		}))
 
-		fullDriver := full.New(discovery, addressbook, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger)
 		err := fullDriver.AddPeer(context.Background(), overlay)
 		if !errors.Is(err, topology.ErrNotFound) {
 			t.Fatalf("full conn driver returned err %v", err)
@@ -90,7 +91,7 @@ func TestAddPeer(t *testing.T) {
 	t.Run("OK - connected peers - peer already connected", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		inmem := mockstate.NewStateStore()
-		addressbook := addressbook.New(inmem)
+		ab := addressbook.New(inmem)
 		alreadyConnected := connectedPeers[0].Address
 
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
@@ -100,13 +101,13 @@ func TestAddPeer(t *testing.T) {
 			return connectedPeers
 		}))
 
-		fullDriver := full.New(discovery, addressbook, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal("error creating multiaddr")
 		}
 
-		addressbook.Put(alreadyConnected, multiaddr)
+		ab.Put(alreadyConnected, multiaddr)
 		err = fullDriver.AddPeer(context.Background(), alreadyConnected)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
@@ -132,7 +133,7 @@ func TestAddPeer(t *testing.T) {
 	t.Run("OK - connected peers - peer not already connected", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		inmem := mockstate.NewStateStore()
-		addressbook := addressbook.New(inmem)
+		ab := addressbook.New(inmem)
 
 		p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() != underlay {
@@ -143,13 +144,13 @@ func TestAddPeer(t *testing.T) {
 			return connectedPeers
 		}))
 
-		fullDriver := full.New(discovery, addressbook, p2ps, logger)
+		fullDriver := full.New(discovery, ab, p2ps, logger)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		addressbook.Put(overlay, multiaddr)
+		ab.Put(overlay, multiaddr)
 		err = fullDriver.AddPeer(context.Background(), overlay)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
