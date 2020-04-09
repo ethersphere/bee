@@ -39,7 +39,7 @@ func testGetPut(t *testing.T, f bookFunc) {
 		t.Fatal("object exists in store but shouldnt")
 	}
 
-	_, err = store.Get(addr1)
+	v, err = store.Get(addr1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func testGetPut(t *testing.T, f bookFunc) {
 		t.Fatal("value found in store but should not have been")
 	}
 
-	//if multiaddr.String() != v.String() {
-	//t.Fatalf("value retrieved from store not equal to original stored address: %v, want %v", v, multiaddr)
-	//}
+	if multiaddr.String() != v.String() {
+		t.Fatalf("value retrieved from store not equal to original stored address: %v, want %v", v, multiaddr)
+	}
 }
