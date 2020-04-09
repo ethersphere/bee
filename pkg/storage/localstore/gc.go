@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -78,12 +77,11 @@ func (db *DB) collectGarbageWorker() {
 // the rest of the garbage as the batch size limit is reached.
 // This function is called in collectGarbageWorker.
 func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
-	metricName := "localstore/gc"
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-	defer totalTimeMetric(metricName, time.Now())
+	db.metrics.GCCounter.Inc()
+	defer totalTimeMetric(db.metrics.TotalTimeCollectGarbage, time.Now())
 	defer func() {
 		if err != nil {
-			metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+			db.metrics.GCErrorCounter.Inc()
 		}
 	}()
 
@@ -106,7 +104,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	if err != nil {
 		return 0, true, err
 	}
-	metrics.GetOrRegisterGauge(metricName+"/gcsize", nil).Update(int64(gcSize))
+	db.metrics.GCSize.Inc()
 
 	done = true
 	err = db.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
@@ -114,8 +112,8 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 			return true, nil
 		}
 
-		metrics.GetOrRegisterGauge(metricName+"/storets", nil).Update(item.StoreTimestamp)
-		metrics.GetOrRegisterGauge(metricName+"/accessts", nil).Update(item.AccessTimestamp)
+		db.metrics.GCStoreTimeStamps.Add(float64(item.StoreTimestamp))
+		db.metrics.GCStoreAccessTimeStamps.Add(float64(item.AccessTimestamp))
 
 		// delete from retrieve, pull, gc
 		err = db.retrievalDataIndex.DeleteInBatch(batch, item)
@@ -146,13 +144,13 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	if err != nil {
 		return 0, false, err
 	}
-	metrics.GetOrRegisterCounter(metricName+"/collected-count", nil).Inc(int64(collectedCount))
+	db.metrics.GCCollectedCounter.Inc()
 
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
-		metrics.GetOrRegisterCounter(metricName+"/writebatch/err", nil).Inc(1)
+		db.metrics.GCExcludeWriteBatchError.Inc()
 		return 0, false, err
 	}
 	return collectedCount, done, nil
@@ -160,12 +158,11 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 
 // removeChunksInExcludeIndexFromGC removed any recently chunks in the exclude Index, from the gcIndex.
 func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
-	metricName := "localstore/gc/exclude"
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-	defer totalTimeMetric(metricName, time.Now())
+	db.metrics.GCExcludeCounter.Inc()
+	defer totalTimeMetric(db.metrics.TotalTimeGCExclude, time.Now())
 	defer func() {
 		if err != nil {
-			metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+			db.metrics.GCExcludeError.Inc()
 		}
 	}()
 
@@ -219,10 +216,10 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 		return err
 	}
 
-	metrics.GetOrRegisterCounter(metricName+"/excluded-count", nil).Inc(int64(excludedCount))
+	db.metrics.GCExcludeCounter.Inc()
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
-		metrics.GetOrRegisterCounter(metricName+"/writebatch/err", nil).Inc(1)
+		db.metrics.GCExcludeWriteBatchError.Inc()
 		return err
 	}
 

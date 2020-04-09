@@ -18,11 +18,9 @@ package localstore
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -34,14 +32,12 @@ import (
 // Getter Mode. Get is required to implement chunk.Store
 // interface.
 func (db *DB) Get(ctx context.Context, mode chunk.ModeGet, addr chunk.Address) (ch chunk.Chunk, err error) {
-	metricName := fmt.Sprintf("localstore/Get/%s", mode)
-
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-	defer totalTimeMetric(metricName, time.Now())
+	db.metrics.ModeGet.Inc()
+	defer totalTimeMetric(db.metrics.TotalTimeGet, time.Now())
 
 	defer func() {
 		if err != nil {
-			metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+			db.metrics.ModeGetFailure.Inc()
 		}
 	}()
 
@@ -103,14 +99,13 @@ func (db *DB) updateGCItems(items ...shed.Item) {
 			defer func() { <-db.updateGCSem }()
 		}
 
-		metricName := "localstore/updateGC"
-		metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-		defer totalTimeMetric(metricName, time.Now())
+		db.metrics.GCUpdate.Inc()
+		defer totalTimeMetric(db.metrics.TotalTimeUpdateGC, time.Now())
 
 		for _, item := range items {
 			err := db.updateGC(item)
 			if err != nil {
-				metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+				db.metrics.GCUpdateError.Inc()
 				log.Error("localstore update gc", "err", err)
 			}
 		}

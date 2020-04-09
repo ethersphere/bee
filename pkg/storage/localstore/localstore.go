@@ -19,13 +19,13 @@ package localstore
 import (
 	"encoding/binary"
 	"errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"os"
 	"runtime/pprof"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/ethersphere/swarm/storage/mock"
@@ -126,6 +126,8 @@ type DB struct {
 	// underlaying LevelDB to prevent possible panics from
 	// iterators
 	subscritionsWG sync.WaitGroup
+
+	metrics metrics
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -175,6 +177,7 @@ func New(path string, baseKey []byte, o *Options) (db *DB, err error) {
 		close:                    make(chan struct{}),
 		collectGarbageWorkerDone: make(chan struct{}),
 		putToGCCheck:             o.PutToGCCheck,
+		metrics:                  newMetrics(),
 	}
 	if db.capacity == 0 {
 		db.capacity = defaultCapacity
@@ -542,7 +545,8 @@ func init() {
 // totalTimeMetric logs a message about time between provided start time
 // and the time when the function is called and sends a resetting timer metric
 // with provided name appended with ".total-time".
-func totalTimeMetric(name string, start time.Time) {
+func totalTimeMetric(metric prometheus.Counter, start time.Time) {
 	totalTime := time.Since(start)
-	metrics.GetOrRegisterResettingTimer(name+"/total-time", nil).Update(totalTime)
+	metric.Add(float64(totalTime))
+
 }
