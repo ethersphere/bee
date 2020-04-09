@@ -6,6 +6,8 @@ package test
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -39,6 +41,40 @@ func (st *Serializing) UnmarshalBinary(data []byte) (err error) {
 	st.value = string(data)
 	st.unmarshalCalled = true
 	return nil
+}
+
+// RunPersist runs a specific test case for a persisting state store to check that values
+// persist across instances bootstrapped on the same path
+func RunPersist(t *testing.T, f func(t *testing.T, dir string) storage.StateStorer) {
+	dir, err := ioutil.TempDir("", "statestore_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	store := f(t, dir)
+
+	// insert some values
+	insert(t, store, "some_prefix", 1000)
+
+	// test that the iterator works
+	testStoreIterator(t, store, "some_prefix", 1000)
+
+	// close the store
+	store.Close()
+
+	// bootstrap with the same old dir
+	persistedStore := f(t, dir)
+	defer persistedStore.Close()
+
+	// test that the iterator works
+	testStoreIterator(t, persistedStore, "some_prefix", 1000)
+
+	// insert some more random entries
+	insert(t, persistedStore, "some_other_prefix", 1000)
+
+	// check again
+	testStoreIterator(t, persistedStore, "some_other_prefix", 1000)
 }
 
 func Run(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
@@ -100,7 +136,7 @@ func testIterator(t *testing.T, f func(t *testing.T) (storage.StateStorer, func(
 	defer cleanup()
 
 	// insert some values
-	insertRandom(t, store, "some_prefix", 1000)
+	insert(t, store, "some_prefix", 1000)
 
 	// test that the iterator works
 	testStoreIterator(t, store, "some_prefix", 1000)
@@ -124,7 +160,7 @@ func insertValues(t *testing.T, store storage.StateStorer, key1, key2 string, va
 	}
 }
 
-func insertRandom(t *testing.T, store storage.StateStorer, prefix string, count int) {
+func insert(t *testing.T, store storage.StateStorer, prefix string, count int) {
 	t.Helper()
 
 	for i := 0; i < count; i++ {

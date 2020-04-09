@@ -28,4 +28,14 @@ func TestPersistentStateStore(t *testing.T) {
 
 		return store, func() { os.RemoveAll(dir) }
 	})
+
+	test.RunPersist(t, func(t *testing.T, dir string) storage.StateStorer {
+
+		store, err := persistent.NewStateStore(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return store
+	})
 }
