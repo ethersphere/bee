@@ -8,6 +8,7 @@ import (
 	"encoding"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
 )
@@ -16,6 +17,7 @@ var _ storage.StateStorer = (*mockKVStore)(nil)
 
 type mockKVStore struct {
 	store map[string][]byte
+	mtx   sync.Mutex
 }
 
 func NewStateStore() storage.StateStorer {
@@ -25,6 +27,9 @@ func NewStateStore() storage.StateStorer {
 }
 
 func (s *mockKVStore) Get(key string, i interface{}) (err error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	data, ok := s.store[key]
 	if !ok {
 		return storage.ErrNotFound
@@ -39,6 +44,9 @@ func (s *mockKVStore) Get(key string, i interface{}) (err error) {
 }
 
 func (s *mockKVStore) Put(key string, i interface{}) (err error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	var bytes []byte
 	if marshaler, ok := i.(encoding.BinaryMarshaler); ok {
 		if bytes, err = marshaler.MarshalBinary(); err != nil {
@@ -53,11 +61,17 @@ func (s *mockKVStore) Put(key string, i interface{}) (err error) {
 }
 
 func (s *mockKVStore) Delete(key string) (err error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	delete(s.store, key)
 	return nil
 }
 
 func (s *mockKVStore) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	for k, v := range s.store {
 		if !strings.HasPrefix(k, prefix) {
 			continue
