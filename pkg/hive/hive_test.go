@@ -29,8 +29,8 @@ import (
 )
 
 type AddressExporter interface {
-	Overlays() []swarm.Address
-	Multiaddresses() []ma.Multiaddr
+	Overlays() ([]swarm.Address, error)
+	Multiaddresses() ([]ma.Multiaddr, error)
 }
 
 func TestBroadcastPeers(t *testing.T) {
@@ -107,8 +107,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			inmem := mock.NewStateStore()
-			addressbookclean := book.New(inmem)
+			addressbookclean := book.New(mock.NewStateStore())
 
 			exporter, ok := addressbookclean.(AddressExporter)
 			if !ok {
@@ -168,8 +167,11 @@ func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverla
 	for i := 0; i < 100; i++ {
 		var stringOverlays []string
 		var stringWantOverlays []string
-
-		for _, k := range exporter.Overlays() {
+		o, err := exporter.Overlays()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range o {
 			stringOverlays = append(stringOverlays, k.String())
 		}
 
@@ -186,13 +188,22 @@ func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverla
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	t.Errorf("Overlays got %v, want %v", exporter.Overlays(), wantOverlays)
+	o, err := exporter.Overlays()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Errorf("Overlays got %v, want %v", o, wantOverlays)
 }
 
 func expectMultiaddresessEventually(t *testing.T, exporter AddressExporter, wantMultiaddresses []ma.Multiaddr) {
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		var stringMultiaddresses []string
-		for _, v := range exporter.Multiaddresses() {
+		m, err := exporter.Multiaddresses()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range m {
 			stringMultiaddresses = append(stringMultiaddresses, v.String())
 		}
 
@@ -210,7 +221,12 @@ func expectMultiaddresessEventually(t *testing.T, exporter AddressExporter, want
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), wantMultiaddresses)
+	m, err := exporter.Multiaddresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Errorf("Multiaddresses got %v, want %v", m, wantMultiaddresses)
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {

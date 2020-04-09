@@ -65,8 +65,8 @@ func (s *store) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool, err 
 	return false, err
 }
 
-func (s *store) Overlays() (overlays []swarm.Address) {
-	_ = s.store.Iterate(keyPrefix, func(key, value []byte) (stop bool, err error) {
+func (s *store) Overlays() (overlays []swarm.Address, err error) {
+	err = s.store.Iterate(keyPrefix, func(key, _ []byte) (stop bool, err error) {
 		k := string(key)
 		if !strings.HasPrefix(k, keyPrefix) {
 			return true, nil
@@ -82,17 +82,29 @@ func (s *store) Overlays() (overlays []swarm.Address) {
 		overlays = append(overlays, addr)
 		return false, nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return overlays
+	return overlays, nil
 }
 
-func (s *store) Multiaddresses() (multis []ma.Multiaddr) {
-	_ = s.store.Iterate(keyPrefix, func(key, value []byte) (stop bool, err error) {
-		_ = string(value)
+func (s *store) Multiaddresses() (multis []ma.Multiaddr, err error) {
+	err = s.store.Iterate(keyPrefix, func(_, value []byte) (stop bool, err error) {
+		entry := &PeerEntry{}
+		errM := entry.UnmarshalJSON(value)
+		if errM != nil {
+			return true, errM
+		}
+
+		multis = append(multis, entry.Multiaddr)
 		return false, nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return []ma.Multiaddr{}
+	return multis, nil
 }
 
 type PeerEntry struct {
