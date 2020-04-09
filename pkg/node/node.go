@@ -255,7 +255,15 @@ func NewBee(o Options) (*Bee, error) {
 				return
 			}
 
-			addressbook.Put(overlay, addr)
+			_, err = addressbook.Put(overlay, addr)
+			if err != nil {
+				_ = p2ps.Disconnect(overlay)
+				logger.Debugf("addressboook error persisting %s %s: %v", aa, overlay, err)
+				logger.Errorf("error persisting node %s", aa)
+				return
+
+			}
+
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("topology add peer fail %s %s: %v", aa, overlay, err)
