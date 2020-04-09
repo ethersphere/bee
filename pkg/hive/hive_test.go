@@ -57,7 +57,10 @@ func TestBroadcastPeers(t *testing.T) {
 
 		multiaddrs = append(multiaddrs, ma)
 		addrs = append(addrs, swarm.NewAddress(createRandomBytes()))
-		addressbook.Put(addrs[i], multiaddrs[i])
+		_, err = addressbook.Put(addrs[i], multiaddrs[i])
+		if err != nil {
+			t.Fatal(err)
+		}
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: addrs[i].Bytes(), Underlay: multiaddrs[i].String()})
 	}
 

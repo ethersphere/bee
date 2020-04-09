@@ -57,7 +57,11 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		ab.Put(overlay, multiaddr)
+		_, err = ab.Put(overlay, multiaddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		err = fullDriver.AddPeer(context.Background(), overlay)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
@@ -107,7 +111,11 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal("error creating multiaddr")
 		}
 
-		ab.Put(alreadyConnected, multiaddr)
+		_, err = ab.Put(alreadyConnected, multiaddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		err = fullDriver.AddPeer(context.Background(), alreadyConnected)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
@@ -150,7 +158,11 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		ab.Put(overlay, multiaddr)
+		_, err = ab.Put(overlay, multiaddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		err = fullDriver.AddPeer(context.Background(), overlay)
 		if err != nil {
 			t.Fatalf("full conn driver returned err %s", err.Error())
