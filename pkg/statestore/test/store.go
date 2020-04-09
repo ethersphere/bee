@@ -5,8 +5,8 @@
 package test
 
 import (
-	"encoding/json"
-	"reflect"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -67,10 +67,13 @@ func testIterator(t *testing.T, f func(t *testing.T) (storage.StateStorer, func(
 	defer cleanup()
 
 	// insert some values
-	insertValues(t, store, key1, key2, value1, value2)
+	insertRandom(t, store, "some_prefix", 1000)
 
 	// test that the iterator works
-	testStoreIterator(t, store)
+	testStoreIterator(t, store, "some_prefix", 1000)
+
+	testStoreIterator(t, store, "no_prefix", 0)
+
 }
 
 func insertValues(t *testing.T, store storage.StateStorer, key1, key2 string, value1 *Serializing, value2 []string) {
@@ -86,6 +89,17 @@ func insertValues(t *testing.T, store storage.StateStorer, key1, key2 string, va
 	err = store.Put(key2, value2)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func insertRandom(t *testing.T, store storage.StateStorer, prefix string, count int) {
+	for i := 0; i < count; i++ {
+		k := prefix + string(i)
+
+		err := store.Put(k, i)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -117,44 +131,23 @@ func testPersistedValues(t *testing.T, store storage.StateStorer, key1, key2 str
 	}
 }
 
-func testStoreIterator(t *testing.T, store storage.StateStorer) {
-	storePrefix := "test_"
-	err := store.Put(storePrefix+"key1", "value1")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// do not include prefix in one of the entries
-	err = store.Put("key2", "value2")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = store.Put(storePrefix+"key3", "value3")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	entries := make(map[string]string)
-
+func testStoreIterator(t *testing.T, store storage.StateStorer, prefix string, size int) {
+	matching := 0
 	entriesIterFunction := func(key []byte, value []byte) (stop bool, err error) {
-		var entry string
-		err = json.Unmarshal(value, &entry)
-		if err != nil {
-			t.Fatal(err)
+		k := string(key)
+		if !strings.HasPrefix(k, prefix) {
+			return true, fmt.Errorf("iterator called callback with wrong key prefix. key: %s expected prefix: %s", k, prefix)
 		}
-		entries[string(key)] = entry
-		return stop, err
+		matching++
+		return false, nil
 	}
 
-	err = store.Iterate(storePrefix, entriesIterFunction)
+	err := store.Iterate(prefix, entriesIterFunction)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expectedEntries := map[string]string{"test_key1": "value1", "test_key3": "value3"}
-
-	if !reflect.DeepEqual(entries, expectedEntries) {
-		t.Fatalf("expected store entries to be %v, are %v instead", expectedEntries, entries)
+	if matching != size {
+		t.Fatalf("entry number mismatch. want %d got %d", size, matching)
 	}
 }
