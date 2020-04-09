@@ -40,8 +40,6 @@ const (
 
 var (
 	ErrNotFound       = errors.New("storage: not found")
-	ErrNotImplemented = errors.New("storage: not implemented")
-	ErrInvalidChunk   = errors.New("storage: invalid chunk")
 )
 
 // DB provides abstractions over badgerDB in order to
