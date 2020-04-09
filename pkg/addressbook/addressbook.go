@@ -27,7 +27,7 @@ type Getter interface {
 }
 
 type Putter interface {
-	Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool, err error)
+	Put(overlay swarm.Address, addr ma.Multiaddr) (err error)
 }
 
 var _ GetPutter = (*store)(nil)
@@ -42,27 +42,22 @@ func New(storer storage.StateStorer) GetPutter {
 	}
 }
 
-func (s *store) Get(overlay swarm.Address) (addr ma.Multiaddr, err error) {
+func (s *store) Get(overlay swarm.Address) (ma.Multiaddr, error) {
 	key := keyPrefix + overlay.String()
 	v := PeerEntry{}
 
-	err = s.store.Get(key, &v)
+	err := s.store.Get(key, &v)
 	if err != nil {
 		return nil, err
 	}
 	return v.Multiaddr, nil
 }
 
-func (s *store) Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool, err error) {
-	if _, err = s.Get(overlay); err == nil {
-		return true, nil
-	}
-
+func (s *store) Put(overlay swarm.Address, addr ma.Multiaddr) (err error) {
 	key := keyPrefix + overlay.String()
 	pe := &PeerEntry{Overlay: overlay, Multiaddr: addr}
 
-	err = s.store.Put(key, pe)
-	return false, err
+	return s.store.Put(key, pe)
 }
 
 func (s *store) Overlays() (overlays []swarm.Address, err error) {

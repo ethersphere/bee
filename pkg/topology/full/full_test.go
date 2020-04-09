@@ -57,7 +57,7 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = ab.Put(overlay, multiaddr)
+		err = ab.Put(overlay, multiaddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,7 +111,7 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal("error creating multiaddr")
 		}
 
-		_, err = ab.Put(alreadyConnected, multiaddr)
+		err = ab.Put(alreadyConnected, multiaddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,7 +158,7 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = ab.Put(overlay, multiaddr)
+		err = ab.Put(overlay, multiaddr)
 		if err != nil {
 			t.Fatal(err)
 		}

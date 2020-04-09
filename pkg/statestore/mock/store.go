@@ -40,7 +40,6 @@ func (s *mockKVStore) Get(key string, i interface{}) (err error) {
 	}
 
 	return json.Unmarshal(data, i)
-
 }
 
 func (s *mockKVStore) Put(key string, i interface{}) (err error) {

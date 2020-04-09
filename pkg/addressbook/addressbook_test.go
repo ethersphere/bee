@@ -63,13 +63,9 @@ func testGetPut(t *testing.T, f bookFunc) {
 		t.Fatal(err)
 	}
 
-	exists, err := store.Put(addr1, multiaddr)
+	err = store.Put(addr1, multiaddr)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	if exists {
-		t.Fatal("object exists in store but shouldnt")
 	}
 
 	v, err := store.Get(addr1)

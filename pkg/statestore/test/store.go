@@ -78,6 +78,7 @@ func testDelete(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())
 
 func testPutGet(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
 	t.Helper()
+
 	// create a store
 	store, cleanup := f(t)
 	defer store.Close()
@@ -92,6 +93,7 @@ func testPutGet(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())
 
 func testIterator(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
 	t.Helper()
+
 	// create a store
 	store, cleanup := f(t)
 	defer store.Close()
@@ -102,9 +104,7 @@ func testIterator(t *testing.T, f func(t *testing.T) (storage.StateStorer, func(
 
 	// test that the iterator works
 	testStoreIterator(t, store, "some_prefix", 1000)
-
 	testStoreIterator(t, store, "no_prefix", 0)
-
 }
 
 func insertValues(t *testing.T, store storage.StateStorer, key1, key2 string, value1 *Serializing, value2 []string) {
@@ -126,6 +126,7 @@ func insertValues(t *testing.T, store storage.StateStorer, key1, key2 string, va
 
 func insertRandom(t *testing.T, store storage.StateStorer, prefix string, count int) {
 	t.Helper()
+
 	for i := 0; i < count; i++ {
 		k := prefix + string(i)
 
@@ -138,6 +139,7 @@ func insertRandom(t *testing.T, store storage.StateStorer, prefix string, count 
 
 func testPersistedValues(t *testing.T, store storage.StateStorer, key1, key2 string, value1 *Serializing, value2 []string) {
 	t.Helper()
+
 	v := &Serializing{}
 	err := store.Get(key1, v)
 	if err != nil {
@@ -167,6 +169,7 @@ func testPersistedValues(t *testing.T, store storage.StateStorer, key1, key2 str
 
 func testStoreIterator(t *testing.T, store storage.StateStorer, prefix string, size int) {
 	t.Helper()
+
 	matching := 0
 	entriesIterFunction := func(key []byte, value []byte) (stop bool, err error) {
 		k := string(key)
@@ -189,5 +192,6 @@ func testStoreIterator(t *testing.T, store storage.StateStorer, prefix string, s
 
 func testEmpty(t *testing.T, store storage.StateStorer) {
 	t.Helper()
+
 	testStoreIterator(t, store, "", 0)
 }

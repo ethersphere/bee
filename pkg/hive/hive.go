@@ -131,7 +131,7 @@ func (s *Service) peersHandler(_ context.Context, peer p2p.Peer, stream p2p.Stre
 			continue
 		}
 
-		_, err = s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
+		err = s.addressBook.Put(swarm.NewAddress(newPeer.Overlay), addr)
 		if err != nil {
 			return err
 		}

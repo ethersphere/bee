@@ -204,7 +204,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
-		_, err = s.addrssbook.Put(i.Address, remoteMultiaddr)
+		err = s.addrssbook.Put(i.Address, remoteMultiaddr)
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
 			s.logger.Errorf("unable to persist peer %v", peerID)

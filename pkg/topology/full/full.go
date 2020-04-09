@@ -80,7 +80,7 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		// update addr if it is wrong or it has been changed
 		if !addr.Equal(peerAddr) {
 			addr = peerAddr
-			_, err := d.addressBook.Put(peerAddr, ma)
+			err := d.addressBook.Put(peerAddr, ma)
 			if err != nil {
 				return err
 			}

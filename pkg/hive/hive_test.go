@@ -57,7 +57,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 		multiaddrs = append(multiaddrs, ma)
 		addrs = append(addrs, swarm.NewAddress(createRandomBytes()))
-		_, err = addressbook.Put(addrs[i], multiaddrs[i])
+		err = addressbook.Put(addrs[i], multiaddrs[i])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +167,7 @@ func TestBroadcastPeers(t *testing.T) {
 }
 
 func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverlays []swarm.Address) {
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		var stringOverlays []string
 		var stringWantOverlays []string
 		o, err := exporter.Overlays()

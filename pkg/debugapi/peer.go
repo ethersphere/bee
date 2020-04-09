@@ -35,7 +35,7 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.Addressbook.Put(address, addr)
+	err = s.Addressbook.Put(address, addr)
 	if err != nil {
 		s.Logger.Debugf("debug api: addressbook.put %s: %v", addr, err)
 		s.Logger.Errorf("unable to persist peer %s", addr)

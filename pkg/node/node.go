@@ -255,7 +255,7 @@ func NewBee(o Options) (*Bee, error) {
 				return
 			}
 
-			_, err = addressbook.Put(overlay, addr)
+			err = addressbook.Put(overlay, addr)
 			if err != nil {
 				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("addressboook error persisting %s %s: %v", aa, overlay, err)
