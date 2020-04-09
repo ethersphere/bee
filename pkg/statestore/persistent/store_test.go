@@ -5,15 +5,27 @@
 package persistent_test
 
 import (
+	"io/ioutil"
+	"os"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/statestore/persistent"
 	"github.com/ethersphere/bee/pkg/statestore/test"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
 func TestPersistentStateStore(t *testing.T) {
 	test.Run(t, func(t *testing.T) (storage.StateStorer, func()) {
-		return mock.NewStateStore(), func() {}
+		dir, err := ioutil.TempDir("", "statestore_test")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		store, err := persistent.NewStateStore(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return store, func() { os.RemoveAll(dir) }
 	})
 }

@@ -15,6 +15,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+const keyPrefix = "addressbook_entry_"
+
 type GetPutter interface {
 	Getter
 	Putter
@@ -28,7 +30,7 @@ type Putter interface {
 	Put(overlay swarm.Address, addr ma.Multiaddr) (exists bool, err error)
 }
 
-const keyPrefix = "addressbook_entry_"
+var _ GetPutter = (*store)(nil)
 
 type store struct {
 	store storage.StateStorer
