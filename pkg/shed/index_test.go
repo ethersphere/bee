@@ -217,7 +217,7 @@ func TestIndex(t *testing.T) {
 		}
 
 		has, err = index.Has(dontWant)
-		if err != nil {
+		if err != nil && err != ErrNotFound{
 			t.Fatal(err)
 		}
 		if has {
