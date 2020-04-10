@@ -124,7 +124,7 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	b.stateStoreCloser = stateStore
-	addressbook := addressbook.New(statestore)
+	addressbook := addressbook.New(stateStore)
 
 	p2ps, err := libp2p.New(p2pCtx, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
