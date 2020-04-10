@@ -122,7 +122,6 @@ func NewBee(o Options) (*Bee, error) {
 			return nil, fmt.Errorf("statestore: %w", err)
 		}
 	}
-
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
 
