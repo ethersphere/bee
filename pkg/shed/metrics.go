@@ -13,7 +13,6 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	DBOpenCount          prometheus.Counter
 	GetCount             prometheus.Counter
 	GetFailCount         prometheus.Counter
 	GetNotFoundCount     prometheus.Counter
@@ -38,19 +37,12 @@ type metrics struct {
 	GetBatchCount        prometheus.Counter
 	WriteBatchCount      prometheus.Counter
 	WriteBatchFailCount  prometheus.Counter
-	DBCloseCount         prometheus.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "shed"
 
 	return metrics{
-		DBOpenCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "open_count",
-			Help:      "Number of times the badger DB is opened.",
-		}),
 		GetCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -194,12 +186,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "write_batch_failure_count",
 			Help:      "Number of times a WRITE_BATCH operation failed.",
-		}),
-		DBCloseCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "close_count",
-			Help:      "Number of times a CLOSE operation is performed.",
 		}),
 	}
 }

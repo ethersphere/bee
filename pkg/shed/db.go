@@ -62,7 +62,6 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	o.Logger = nil // Dont enable the badger logs
 	database, err := badger.Open(o)
 	if err != nil {
-		logger.Error("could not open database.")
 		return nil, err
 	}
 
@@ -86,16 +85,11 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 			return nil, err
 		}
 	}
-
-	db.metrics.DBOpenCount.Inc()
-	logger.Debugf("Opened DB with path : %s, valueThreshold : %d, valueLogMaxEntries : %d",
-		path, DefaultValueThreshold, DefaultValueLogMaxEntries)
 	return db, nil
 }
 
 // Put inserts the given key and value in to badger.
 func (db *DB) Put(key []byte, value []byte) (err error) {
-	db.logger.Tracef("Put value len : %d for key %s", len(value), string(key))
 	return db.bdb.Update(func(txn *badger.Txn) (err error) {
 		db.metrics.PutCount.Inc()
 		err = txn.Set(key, value)
@@ -103,7 +97,6 @@ func (db *DB) Put(key []byte, value []byte) (err error) {
 			db.metrics.PutFailCount.Inc()
 			return err
 		}
-		db.logger.Tracef(" put success with key %s and value len %d", string(key), len(value))
 		return nil
 	})
 
@@ -112,7 +105,6 @@ func (db *DB) Put(key []byte, value []byte) (err error) {
 // Get retrieves the value given the key.
 // if the key is not present a ErrNotFound is returned.
 func (db *DB) Get(key []byte) (value []byte, err error) {
-	db.logger.Tracef("Get value for key %s", string(key))
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		item, err := txn.Get(key)
 		if err != nil {
@@ -130,7 +122,6 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 		})
 	})
 	if err == nil {
-		db.logger.Tracef("got value with len : %d for key : %s", len(value), string(key))
 		db.metrics.GetCount.Inc()
 	}
 	return value, err
@@ -139,7 +130,6 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 // Has checks if the given key is present in the database.
 // it returns a bool indicating true or false OR error if it encounters one during the operation.
 func (db *DB) Has(key []byte) (yes bool, err error) {
-	db.logger.Tracef("Has value with key %s", string(key))
 	yes = false
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		item, err := txn.Get(key)
@@ -160,25 +150,16 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 		return false, err
 	}
 
-	if yes {
-		db.logger.Tracef("found key %s", string(key))
-	} else {
-		db.logger.Tracef("could not found key %s", string(key))
-	}
-
 	return yes, nil
 }
 
 // Delete removed the key and value if a given key is present in the DB.
 func (db *DB) Delete(key []byte) (err error) {
-	db.logger.Tracef("deleting key %s along with value", string(key))
 	return db.bdb.Update(func(txn *badger.Txn) (err error) {
 		db.metrics.DeleteCount.Inc()
 		err = txn.Delete(key)
 		if err != nil {
 			db.metrics.DeleteFailCount.Inc()
-		} else {
-			db.logger.Tracef("deleted key %s", string(key))
 		}
 		return err
 	})
@@ -186,7 +167,6 @@ func (db *DB) Delete(key []byte) (err error) {
 
 // Count gives a count of all the keys present in the DB.
 func (db *DB) Count(ctx context.Context) (count int, err error) {
-	db.logger.Tracef("counting all keys")
 	db.metrics.TotalCount.Inc()
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
@@ -203,20 +183,12 @@ func (db *DB) Count(ctx context.Context) (count int, err error) {
 		}
 		return nil
 	})
-	if err != nil {
-		db.metrics.TotalFailCount.Inc()
-	} else {
-		db.logger.Tracef("Total count is %d", count)
-	}
 	return count, err
 }
 
 // CountPrefix gives a count of all the keys that starts with a given key prefix.
 // a nil prefix acts like the total count of the DB
 func (db *DB) CountPrefix(prefix []byte) (count int, err error) {
-	if prefix != nil {
-		db.logger.Tracef("counting all keys with prefix %s", string(prefix))
-	}
 	db.metrics.CountPrefixCount.Inc()
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
@@ -240,19 +212,12 @@ func (db *DB) CountPrefix(prefix []byte) (count int, err error) {
 	})
 	if err != nil {
 		db.metrics.CountPrefixFailCount.Inc()
-	} else {
-		db.logger.Tracef("Total count for prefix %s is %d", string(prefix), count)
 	}
-
 	return count, err
 }
 
 // CountFrom gives a count of all the keys that start from a given prefix till the end of the DB.
 func (db *DB) CountFrom(prefix []byte) (count int, err error) {
-	if prefix != nil {
-		db.logger.Tracef("counting all keys from prefix %s", string(prefix))
-	}
-
 	db.metrics.CountFromCount.Inc()
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
@@ -270,7 +235,6 @@ func (db *DB) CountFrom(prefix []byte) (count int, err error) {
 	if err != nil {
 		db.metrics.CountPrefixFailCount.Inc()
 	}
-	db.logger.Tracef("Total count from prefix %s is %d", string(prefix), count)
 	return count, err
 }
 
@@ -278,10 +242,6 @@ func (db *DB) CountFrom(prefix []byte) (count int, err error) {
 // given function to see if it needs to stop the iteration or not. The skipStartKey indicates
 // weather to skip the first key or not.
 func (db *DB) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, value []byte) (stop bool, err error)) (err error) {
-	if startKey != nil {
-		db.logger.Tracef("Iterating with startKey %s and skipping key is %t", string(startKey), skipStartKey)
-	}
-
 	db.metrics.IterationCount.Inc()
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
@@ -325,9 +285,6 @@ func (db *DB) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, va
 
 // First returns the first key which matches the given prefix.
 func (db *DB) First(prefix []byte) (key []byte, value []byte, err error) {
-	if prefix != nil {
-		db.logger.Tracef("Finding first key with prefix %s", string(prefix))
-	}
 	db.metrics.FirstCount.Inc()
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
@@ -350,18 +307,12 @@ func (db *DB) First(prefix []byte) (key []byte, value []byte, err error) {
 	})
 	if err != nil {
 		db.metrics.FirstFailCount.Inc()
-	} else {
-		db.logger.Tracef("first value with prefix %s, key %s, value len %d", string(prefix), string(key), len(value))
 	}
-
 	return key, value, err
 }
 
 // Last retuns the last key matching the given prefix.
 func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
-	if prefix != nil {
-		db.logger.Tracef("Finding last key with prefix %s", string(prefix))
-	}
 	db.metrics.LastCount.Inc()
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
@@ -411,15 +362,12 @@ func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
 	})
 	if err != nil {
 		db.metrics.LastFailCount.Inc()
-	} else {
-		db.logger.Tracef("last value with prefix %s, key %s, value len %d", string(prefix), string(key), len(value))
 	}
 	return key, value, err
 }
 
 // GetBatch get a new badger transaction to be used for multiple atomic operations.
 func (db *DB) GetBatch(update bool) (txn *badger.Txn) {
-	db.logger.Tracef("getting a transaction with update %t", update)
 	db.metrics.GetBatchCount.Inc()
 	// set update to true indicating that data will be added/changed in this transaction.
 	return db.bdb.NewTransaction(update)
@@ -433,13 +381,11 @@ func (db *DB) WriteBatch(txn *badger.Txn) (err error) {
 		db.metrics.WriteBatchFailCount.Inc()
 		return err
 	}
-	db.logger.Tracef("transaction committed successfully")
 	return nil
 }
 
 // Close shuts down the badger DB.
 func (db *DB) Close() (err error) {
 	db.logger.Tracef("database closed with path %s", db.path)
-	db.metrics.DBCloseCount.Inc()
 	return db.bdb.Close()
 }
