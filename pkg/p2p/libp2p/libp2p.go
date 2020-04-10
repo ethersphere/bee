@@ -341,12 +341,16 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
 	}
 
-	if err := helpers.FullClose(stream); err != nil {
-		return swarm.Address{}, err
+	if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
+		if err := helpers.FullClose(stream); err != nil {
+			return swarm.Address{}, err
+		}
+
+		return i.Address, nil
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
-		return i.Address, nil
+	if err := helpers.FullClose(stream); err != nil {
+		return swarm.Address{}, err
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
