@@ -193,12 +193,16 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
-		if err := stream.Close(); err != nil {
-			_ = stream.Reset()
+		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
+			if err := stream.Close(); err != nil {
+				_ = stream.Reset()
+			}
+
+			return
 		}
 
-		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
-			return
+		if err := stream.Close(); err != nil {
+			_ = stream.Reset()
 		}
 
 		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
