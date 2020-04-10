@@ -29,7 +29,9 @@ import (
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -63,8 +65,6 @@ type Options struct {
 
 func NewBee(o Options) (*Bee, error) {
 	logger := o.Logger
-	statestore := mockinmem.NewStateStore()
-	addressbook := addressbook.New(statestore)
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -110,6 +110,19 @@ func NewBee(o Options) (*Bee, error) {
 	if created {
 		logger.Infof("new libp2p key created")
 	}
+
+	var stateStore storage.StateStorer
+	if o.DataDir == "" {
+		stateStore = mockinmem.NewStateStore()
+		logger.Warning("using in-mem state store. no node state will be persisted")
+	} else {
+		stateStore, err = leveldb.NewStateStore(filepath.Join(o.DataDir, "statestore.db"))
+		if err != nil {
+			return nil, fmt.Errorf("statestore: %w", err)
+		}
+	}
+
+	addressbook := addressbook.New(statestore)
 
 	p2ps, err := libp2p.New(p2pCtx, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
