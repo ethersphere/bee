@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestStructField validates put and get operations
@@ -42,8 +41,8 @@ func TestStructField(t *testing.T) {
 	t.Run("get empty", func(t *testing.T) {
 		var s complexStructure
 		err := complexField.Get(&s)
-		if err != leveldb.ErrNotFound {
-			t.Fatalf("got error %v, want %v", err, leveldb.ErrNotFound)
+		if err != ErrNotFound {
+			t.Fatalf("got error %v, want %v", err, ErrNotFound)
 		}
 		want := ""
 		if s.A != want {
@@ -88,7 +87,7 @@ func TestStructField(t *testing.T) {
 	})
 
 	t.Run("put in batch", func(t *testing.T) {
-		batch := new(leveldb.Batch)
+		batch := db.GetBatch(true)
 		want := complexStructure{
 			A: "simple string batch value",
 		}
@@ -110,7 +109,7 @@ func TestStructField(t *testing.T) {
 		}
 
 		t.Run("overwrite", func(t *testing.T) {
-			batch := new(leveldb.Batch)
+			batch := db.GetBatch(true)
 			want := complexStructure{
 				A: "overwritten string batch value",
 			}
