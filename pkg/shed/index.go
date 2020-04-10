@@ -140,17 +140,14 @@ func (db *DB) NewIndex(name string, funcs IndexFuncs, logger logging.Logger) (f 
 func (f Index) Get(keyFields Item) (out Item, err error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in Get")
 		return out, err
 	}
 	value, err := f.db.Get(key)
 	if err != nil {
-		f.logger.Debugf("error getting key %s in Get", string(key))
 		return out, err
 	}
 	out, err = f.decodeValueFunc(keyFields, value)
 	if err != nil {
-		f.logger.Debugf("error decofing keyfields in Get")
 		return out, err
 	}
 	return out.Merge(keyFields), nil
@@ -197,7 +194,6 @@ func (f Index) Fill(items []Item) (err error) {
 func (f Index) Has(keyFields Item) (bool, error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in Has.")
 		return false, err
 	}
 	return f.db.Has(key)
@@ -240,12 +236,10 @@ func (f Index) HasMulti(items ...Item) ([]bool, error) {
 func (f Index) Put(i Item) (err error) {
 	key, err := f.encodeKeyFunc(i)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in Put")
 		return err
 	}
 	value, err := f.encodeValueFunc(i)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in Put")
 		return err
 	}
 	return f.db.Put(key, value)
@@ -257,17 +251,14 @@ func (f Index) Put(i Item) (err error) {
 func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 	key, err := f.encodeKeyFunc(i)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in PutInBatch")
 		return err
 	}
 	value, err := f.encodeValueFunc(i)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in PutInBatch")
 		return err
 	}
 	err = batch.Set(key, value)
 	if err != nil {
-		f.logger.Debugf("could not set values in batch")
 		return err
 	}
 	return err
@@ -278,7 +269,6 @@ func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 func (f Index) Delete(keyFields Item) (err error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in Delete",)
 		return err
 	}
 	return f.db.Delete(key)
@@ -289,12 +279,10 @@ func (f Index) Delete(keyFields Item) (err error) {
 func (f Index) DeleteInBatch(batch *badger.Txn, keyFields Item) (err error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		f.logger.Debugf("keyfields encoding error in DeleteInBatch")
 		return err
 	}
 	err = batch.Delete(key)
 	if err != nil {
-		f.logger.Debugf("could not delete items in batch")
 		return err
 	}
 	return err

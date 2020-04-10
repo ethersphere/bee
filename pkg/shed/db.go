@@ -100,7 +100,6 @@ func (db *DB) Put(key []byte, value []byte) (err error) {
 		db.metrics.PutCount.Inc()
 		err = txn.Set(key, value)
 		if err != nil {
-			db.logger.Errorf("Could not insert chunk with key %s in DB", string(key))
 			db.metrics.PutFailCount.Inc()
 			return err
 		}
@@ -127,13 +126,10 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 		}
 		return item.Value(func(val []byte) error {
 			value = val
-			db.logger.Tracef("got valeu for key %s with length %d", string(key), len(val))
 			return nil
 		})
 	})
-	if err != nil {
-		db.logger.Errorf("key %s not found in DB", string(key))
-	} else {
+	if err == nil {
 		db.logger.Tracef("got value with len : %d for key : %s", len(value), string(key))
 		db.metrics.GetCount.Inc()
 	}
@@ -160,7 +156,6 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 		})
 	})
 	if err != nil {
-		db.logger.Errorf("key %s not found in DB", string(key))
 		db.metrics.HasFailCount.Inc()
 	}
 
@@ -180,7 +175,6 @@ func (db *DB) Delete(key []byte) (err error) {
 		db.metrics.DeleteCount.Inc()
 		err = txn.Delete(key)
 		if err != nil {
-			db.logger.Errorf("could not delete key %s from DB", string(key))
 			db.metrics.DeleteFailCount.Inc()
 		} else {
 			db.logger.Tracef("deleted key %s", string(key))
@@ -209,7 +203,6 @@ func (db *DB) Count(ctx context.Context) (count int, err error) {
 		return nil
 	})
 	if err != nil {
-		db.logger.Errorf("error while counting keys in DB")
 		db.metrics.TotalFailCount.Inc()
 	} else {
 		db.logger.Tracef("Total count is %d", count)
@@ -245,7 +238,6 @@ func (db *DB) CountPrefix(prefix []byte) (count int, err error) {
 		return nil
 	})
 	if err != nil {
-		db.logger.Errorf("error while doing count. prefix : %v,", string(prefix))
 		db.metrics.CountPrefixFailCount.Inc()
 	} else {
 		db.logger.Tracef("Total count for prefix %s is %d", string(prefix), count)
@@ -275,7 +267,6 @@ func (db *DB) CountFrom(prefix []byte) (count int, err error) {
 		return nil
 	})
 	if err != nil {
-		db.logger.Errorf("error doing count from. prefix : %v", string(prefix))
 		db.metrics.CountPrefixFailCount.Inc()
 	}
 	db.logger.Tracef("Total count from prefix %s is %d", string(prefix), count)
@@ -326,8 +317,6 @@ func (db *DB) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, va
 		return nil
 	})
 	if err != nil {
-		db.logger.Errorf("error while doing iteration. startKey : %v, skipStartKey: %t",
-			string(startKey), skipStartKey)
 		db.metrics.IterationFailCount.Inc()
 	}
 	return err
@@ -359,7 +348,6 @@ func (db *DB) First(prefix []byte) (key []byte, value []byte, err error) {
 		return nil
 	})
 	if err != nil {
-		db.logger.Errorf("error while finding first key with prefix : %v", string(prefix))
 		db.metrics.FirstFailCount.Inc()
 	} else {
 		db.logger.Tracef("first value with prefix %s, key %s, value len %d", string(prefix), string(key), len(value))
@@ -442,7 +430,6 @@ func (db *DB) WriteBatch(txn *badger.Txn) (err error) {
 	db.metrics.WriteBatchCount.Inc()
 	err = txn.Commit()
 	if err != nil {
-		db.logger.Errorf("error while committing transaction",)
 		db.metrics.WriteBatchFailCount.Inc()
 		return err
 	}

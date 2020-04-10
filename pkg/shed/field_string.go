@@ -68,7 +68,6 @@ func (f StringField) Put(val string) (err error) {
 func (f StringField) PutInBatch(batch *badger.Txn, val string) (err error) {
 	err = batch.Set(f.key, []byte(val))
 	if err != nil {
-		f.logger.Debugf("could not set values in PutInBatch. Error : %s", err.Error())
 		return err
 	}
 	return nil
