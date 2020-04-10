@@ -569,7 +569,9 @@ func readPullSubscriptionBin(ctx context.Context, db *DB, bin uint8, ch <-chan c
 				if !bytes.Equal(got.Address, addr) {
 					err = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got.Address.Hex(), addr.Hex())
 				} else {
-					want, err := db.retrievalDataIndex.Get(shed.Item{
+					var want shed.Item
+					var err error
+					want, err = db.retrievalDataIndex.Get(shed.Item{
 						Address: addr,
 					})
 					if err != nil {
