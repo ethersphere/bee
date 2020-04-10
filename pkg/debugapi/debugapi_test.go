@@ -35,8 +35,8 @@ type testServer struct {
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *testServer {
-	inmem := mockstore.NewStateStore()
-	addressbook := addressbook.New(inmem)
+	statestore := mockstore.NewStateStore()
+	addressbook := addressbook.New(statestore)
 	topologyDriver := mock.NewTopologyDriver()
 
 	s := debugapi.New(debugapi.Options{

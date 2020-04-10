@@ -41,8 +41,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("OK - no connected peers", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		inmem := mockstate.NewStateStore()
-		ab := addressbook.New(inmem)
+		statestore := mockstate.NewStateStore()
+		ab := addressbook.New(statestore)
 
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() != underlay {
@@ -74,8 +74,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("ERROR - peer not added", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		inmem := mockstate.NewStateStore()
-		ab := addressbook.New(inmem)
+		statestore := mockstate.NewStateStore()
+		ab := addressbook.New(statestore)
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			t.Fatal("should not be called")
 			return swarm.Address{}, nil
@@ -94,8 +94,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("OK - connected peers - peer already connected", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		inmem := mockstate.NewStateStore()
-		ab := addressbook.New(inmem)
+		statestore := mockstate.NewStateStore()
+		ab := addressbook.New(statestore)
 		alreadyConnected := connectedPeers[0].Address
 
 		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
@@ -140,8 +140,8 @@ func TestAddPeer(t *testing.T) {
 
 	t.Run("OK - connected peers - peer not already connected", func(t *testing.T) {
 		discovery := mock.NewDiscovery()
-		inmem := mockstate.NewStateStore()
-		ab := addressbook.New(inmem)
+		statestore := mockstate.NewStateStore()
+		ab := addressbook.New(statestore)
 
 		p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
 			if addr.String() != underlay {

@@ -52,8 +52,8 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 	}
 
 	if o.Addressbook == nil {
-		inmem := mock.NewStateStore()
-		o.Addressbook = addressbook.New(inmem)
+		statestore := mock.NewStateStore()
+		o.Addressbook = addressbook.New(statestore)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

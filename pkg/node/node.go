@@ -63,8 +63,8 @@ type Options struct {
 
 func NewBee(o Options) (*Bee, error) {
 	logger := o.Logger
-	inmem := mockinmem.NewStateStore()
-	addressbook := addressbook.New(inmem)
+	statestore := mockinmem.NewStateStore()
+	addressbook := addressbook.New(statestore)
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,

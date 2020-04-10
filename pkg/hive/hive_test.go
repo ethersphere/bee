@@ -36,8 +36,8 @@ type AddressExporter interface {
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	logger := logging.New(ioutil.Discard, 0)
-	inmem := mock.NewStateStore()
-	addressbook := book.New(inmem)
+	statestore := mock.NewStateStore()
+	addressbook := book.New(statestore)
 
 	// populate all expected and needed random resources for 2 full batches
 	// tests cases that uses fewer resources can use sub-slices of this data
