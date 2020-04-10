@@ -69,7 +69,8 @@ func (f Uint64Vector) Put(i, val uint64) (err error) {
 func (f Uint64Vector) PutInBatch(batch *badger.Txn, i, val uint64) (err error){
 	err = batch.Set(f.indexKey(i), encodeUint64(val))
 	if err != nil {
-		f.logger.Debugf("could not put uint64 value in batch. Error : ", err.Error())
+		f.logger.Debugf("could not put uint64 value in batch")
+		return err
 	}
 	return err
 }

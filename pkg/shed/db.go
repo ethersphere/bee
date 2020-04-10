@@ -63,7 +63,6 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	database, err := badger.Open(o)
 	if err != nil {
 		logger.Error("could not open database.")
-		logger.Debugf("could ot open DB. Error : %s", err.Error())
 		return nil, err
 	}
 
@@ -134,12 +133,10 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 	})
 	if err != nil {
 		db.logger.Errorf("key %s not found in DB", string(key))
-		db.logger.Debug("key %s not found in DB. Error : %v", string(key), err.Error())
 	} else {
 		db.logger.Tracef("got value with len : %d for key : %s", len(value), string(key))
 		db.metrics.GetCount.Inc()
 	}
-
 	return value, err
 }
 
@@ -164,7 +161,6 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 	})
 	if err != nil {
 		db.logger.Errorf("key %s not found in DB", string(key))
-		db.logger.Debugf("key %s not found in DB. Error: %v", string(key), err.Error())
 		db.metrics.HasFailCount.Inc()
 	}
 
@@ -185,7 +181,6 @@ func (db *DB) Delete(key []byte) (err error) {
 		err = txn.Delete(key)
 		if err != nil {
 			db.logger.Errorf("could not delete key %s from DB", string(key))
-			db.logger.Debugf("could not delete key %s from DB. Error: %v", string(key), err.Error())
 			db.metrics.DeleteFailCount.Inc()
 		} else {
 			db.logger.Tracef("deleted key %s", string(key))
@@ -215,10 +210,10 @@ func (db *DB) Count(ctx context.Context) (count int, err error) {
 	})
 	if err != nil {
 		db.logger.Errorf("error while counting keys in DB")
-		db.logger.Debugf("error while doing count. Error : %w", err.Error())
 		db.metrics.TotalFailCount.Inc()
+	} else {
+		db.logger.Tracef("Total count is %d", count)
 	}
-	db.logger.Tracef("Total count is %d", count)
 	return count, err
 }
 
@@ -251,10 +246,11 @@ func (db *DB) CountPrefix(prefix []byte) (count int, err error) {
 	})
 	if err != nil {
 		db.logger.Errorf("error while doing count. prefix : %v,", string(prefix))
-		db.logger.Debugf("error while doing count for prefix : %v, Error : %w", string(prefix), err.Error())
 		db.metrics.CountPrefixFailCount.Inc()
+	} else {
+		db.logger.Tracef("Total count for prefix %s is %d", string(prefix), count)
 	}
-	db.logger.Tracef("Total count for prefix %s is %d", string(prefix), count)
+
 	return count, err
 }
 
@@ -280,7 +276,6 @@ func (db *DB) CountFrom(prefix []byte) (count int, err error) {
 	})
 	if err != nil {
 		db.logger.Errorf("error doing count from. prefix : %v", string(prefix))
-		db.logger.Debugf("error while doing count from. prefix : %v, Error : %w", string(prefix), err.Error())
 		db.metrics.CountPrefixFailCount.Inc()
 	}
 	db.logger.Tracef("Total count from prefix %s is %d", string(prefix), count)
@@ -333,8 +328,6 @@ func (db *DB) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, va
 	if err != nil {
 		db.logger.Errorf("error while doing iteration. startKey : %v, skipStartKey: %t",
 			string(startKey), skipStartKey)
-		db.logger.Debugf("error while doing iteration. startKey : %v, skipStartKey: %t, Error : %w",
-			string(startKey), skipStartKey, err.Error())
 		db.metrics.IterationFailCount.Inc()
 	}
 	return err
@@ -366,8 +359,7 @@ func (db *DB) First(prefix []byte) (key []byte, value []byte, err error) {
 		return nil
 	})
 	if err != nil {
-		db.logger.Errorf("error while finding first key with prefix : %v, Error : %w", string(prefix), err.Error())
-		db.logger.Debugf("error while doing first. prefix : %v, Error : %w", string(prefix), err.Error())
+		db.logger.Errorf("error while finding first key with prefix : %v", string(prefix))
 		db.metrics.FirstFailCount.Inc()
 	} else {
 		db.logger.Tracef("first value with prefix %s, key %s, value len %d", string(prefix), string(key), len(value))
@@ -430,7 +422,6 @@ func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
 	})
 	if err != nil {
 		db.logger.Errorf("error while finding last value for prefix : %v", string(prefix))
-		db.logger.Debugf("error while doing last. prefix : %v, Error : %w", string(prefix), err.Error())
 		db.metrics.LastFailCount.Inc()
 	} else {
 		db.logger.Tracef("last value with prefix %s, key %s, value len %d", string(prefix), string(key), len(value))
@@ -451,8 +442,7 @@ func (db *DB) WriteBatch(txn *badger.Txn) (err error) {
 	db.metrics.WriteBatchCount.Inc()
 	err = txn.Commit()
 	if err != nil {
-		db.logger.Errorf("error while committing transaction. Error : %w", err.Error())
-		db.logger.Debugf("error while committing batch. Error : %w", err.Error())
+		db.logger.Errorf("error while committing transaction",)
 		db.metrics.WriteBatchFailCount.Inc()
 		return err
 	}
@@ -461,7 +451,7 @@ func (db *DB) WriteBatch(txn *badger.Txn) (err error) {
 }
 
 // Close shuts down the badger DB.
-func (db *DB) Close(ctx context.Context) (err error) {
+func (db *DB) Close() (err error) {
 	db.logger.Tracef("database closed with path %s", db.path)
 	db.metrics.DBCloseCount.Inc()
 	return db.bdb.Close()

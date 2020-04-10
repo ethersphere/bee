@@ -17,7 +17,6 @@
 package shed
 
 import (
-	"context"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -72,8 +71,7 @@ func TestDB_persistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
-	err = db.Close(ctx)
+	err = db.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,8 +110,7 @@ func newTestDB(t *testing.T) (db *DB, cleanupFunc func()) {
 		t.Fatal(err)
 	}
 	return db, func() {
-		ctx := context.Background()
-		db.Close(ctx)
+		db.Close()
 		os.RemoveAll(dir)
 	}
 }

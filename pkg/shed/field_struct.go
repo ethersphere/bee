@@ -70,12 +70,12 @@ func (f StructField) Put(val interface{}) (err error) {
 func (f StructField) PutInBatch(batch *badger.Txn, val interface{}) (err error) {
 	b, err := json.Marshal(val)
 	if err != nil {
-		f.logger.Debugf("could not marshall while doing putiInBatch. Error: %s", err.Error())
+		f.logger.Debugf("could not marshall while doing putiInBatch")
 		return err
 	}
 	err = batch.Set(f.key, b)
 	if err != nil {
-		f.logger.Debugf("could not put values in batch. Error: %s", err.Error())
+		f.logger.Debugf("could not put values in batch.")
 		return err
 	}
 	return nil

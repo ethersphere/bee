@@ -70,7 +70,7 @@ func (f Uint64Field) Put(val uint64) (err error) {
 func (f Uint64Field) PutInBatch(batch *badger.Txn, val uint64) (err error){
 	err = batch.Set(f.key, encodeUint64(val))
 	if err != nil {
-		f.logger.Debugf("could not set uint64 value in PutInBatch. Error : %s", err.Error())
+		f.logger.Debugf("could not set uint64 value in PutInBatch",)
 		return err
 	}
 	return nil
@@ -85,7 +85,7 @@ func (f Uint64Field) Inc() (val uint64, err error) {
 			f.logger.Debugf("key %s not found", string(f.key))
 			val = 0
 		} else {
-			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
+			f.logger.Errorf("key %s not found", string(f.key))
 			return 0, err
 		}
 	}
