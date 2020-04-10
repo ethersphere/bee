@@ -570,21 +570,16 @@ func readPullSubscriptionBin(ctx context.Context, db *DB, bin uint8, ch <-chan c
 					err = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got.Address.Hex(), addr.Hex())
 				} else {
 					var want shed.Item
-					var err1 error
-					want, err1 = db.retrievalDataIndex.Get(shed.Item{
+					want, err = db.retrievalDataIndex.Get(shed.Item{
 						Address: addr,
 					})
-					if err1 != nil {
-						err1 = fmt.Errorf("got chunk (bin id %v in bin %v) from retrieval index %s: %v", i, bin, addrs[bin][i].Hex(), err1)
+					if err != nil {
+						err = fmt.Errorf("got chunk (bin id %v in bin %v) from retrieval index %s: %v", i, bin, addrs[bin][i].Hex(), err1)
 					} else {
 						if got.BinID != want.BinID {
-							err1 = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got, want)
+							err = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got, want)
 						}
 					}
-					if err1 != nil {
-						err = err1
-					}
-
 				}
 			}
 			addrsMu.Unlock()
