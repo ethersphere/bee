@@ -95,7 +95,6 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 }
 
 func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err error) {
-	defer stream.Close()
 	s.receivedHandshakesMu.Lock()
 	if _, exists := s.receivedHandshakes[peerID]; exists {
 		s.receivedHandshakesMu.Unlock()

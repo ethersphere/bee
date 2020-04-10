@@ -178,6 +178,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peerID := stream.Conn().RemotePeer()
 		i, err := s.handshakeService.Handle(NewStream(stream), peerID)
 		if err != nil {
+			_ = stream.Reset()
 			if err == handshake.ErrNetworkIDIncompatible {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
 			}
@@ -190,6 +191,10 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			_ = s.disconnect(peerID)
 			return
+		}
+
+		if err := stream.Close(); err != nil {
+			_ = stream.Reset()
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
