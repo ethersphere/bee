@@ -12,11 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -51,7 +52,8 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 	}
 
 	if o.Addressbook == nil {
-		o.Addressbook = inmem.New()
+		statestore := mock.NewStateStore()
+		o.Addressbook = addressbook.New(statestore)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
