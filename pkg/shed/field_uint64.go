@@ -76,12 +76,7 @@ func (f Uint64Field) PutInBatch(batch *badger.Txn, val uint64) (err error){
 func (f Uint64Field) Inc() (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
-		if err == ErrNotFound {
-			f.logger.Debugf("key %s not found", string(f.key))
-			val = 0
-		} else {
-			return 0, err
-		}
+		return 0, err
 	}
 	val++
 	return val, f.Put(val)
@@ -93,13 +88,7 @@ func (f Uint64Field) Inc() (val uint64, err error) {
 func (f Uint64Field) IncInBatch(batch *badger.Txn) (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
-		if err == ErrNotFound {
-			f.logger.Debugf("key %s not found", string(f.key))
-			val = 0
-		} else {
-			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
-			return 0, err
-		}
+		return 0, err
 	}
 	val++
 	err = f.PutInBatch(batch, val)
@@ -115,13 +104,7 @@ func (f Uint64Field) IncInBatch(batch *badger.Txn) (val uint64, err error) {
 func (f Uint64Field) Dec() (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
-		if err == ErrNotFound {
-			f.logger.Debugf("key %s not found", string(f.key))
-			val = 0
-		} else {
-			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
-			return 0, err
-		}
+		return 0, err
 	}
 	if val != 0 {
 		val--
@@ -136,13 +119,7 @@ func (f Uint64Field) Dec() (val uint64, err error) {
 func (f Uint64Field) DecInBatch(batch *badger.Txn) (val uint64, err error) {
 	val, err = f.Get()
 	if err != nil {
-		if err == ErrNotFound {
-			f.logger.Debugf("key %s not found", string(f.key))
-			val = 0
-		} else {
-			f.logger.Errorf("key %s not found. Error: %s", string(f.key), err.Error())
-			return 0, err
-		}
+		return 0, err
 	}
 	if val != 0 {
 		val--

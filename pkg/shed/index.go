@@ -172,7 +172,6 @@ func (f Index) Fill(items []Item) (err error) {
 			if err == badger.ErrKeyNotFound {
 				return ErrNotFound
 			}
-			f.logger.Debugf("error getting key %s in Fill.", string(key))
 			return err
 		}
 		var decodedItem Item
@@ -354,13 +353,11 @@ func (f Index) itemFromKeyValue(key []byte, value []byte, totalPrefix []byte) (i
 	// create a copy of key byte slice not to share badger underlaying slice array
 	keyItem, err := f.decodeKeyFunc(append([]byte(nil), key...))
 	if err != nil {
-		f.logger.Debugf("error decoding key in itemFromIterator. Error: %s", err.Error())
 		return i, err
 	}
 	// create a copy of value byte slice not to share badger underlaying slice array
 	valueItem, err := f.decodeValueFunc(keyItem, append([]byte(nil), value...))
 	if err != nil {
-		f.logger.Debugf("error decoding value in itemFromIterator. Error: %s", err.Error())
 		return i, err
 	}
 	return keyItem.Merge(valueItem), nil
