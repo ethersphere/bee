@@ -117,7 +117,7 @@ func NewBee(o Options) (*Bee, error) {
 		stateStore = mockinmem.NewStateStore()
 		logger.Warning("using in-mem state store. no node state will be persisted")
 	} else {
-		stateStore, err = leveldb.NewStateStore(filepath.Join(o.DataDir, "statestore.db"))
+		stateStore, err = leveldb.NewStateStore(filepath.Join(o.DataDir, "statestore"))
 		if err != nil {
 			return nil, fmt.Errorf("statestore: %w", err)
 		}
