@@ -6,6 +6,7 @@ package full
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -61,9 +63,12 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	d.mtx.Unlock()
 
 	connectedPeers := d.p2pService.Peers()
-	ma, exists := d.addressBook.Get(addr)
-	if !exists {
-		return topology.ErrNotFound
+	ma, err := d.addressBook.Get(addr)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return topology.ErrNotFound
+		}
+		return err
 	}
 
 	if !isConnected(addr, connectedPeers) {
@@ -75,7 +80,10 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		// update addr if it is wrong or it has been changed
 		if !addr.Equal(peerAddr) {
 			addr = peerAddr
-			d.addressBook.Put(peerAddr, ma)
+			err := d.addressBook.Put(peerAddr, ma)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

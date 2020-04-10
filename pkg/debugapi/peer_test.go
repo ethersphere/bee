@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -40,8 +41,8 @@ func TestConnect(t *testing.T) {
 			Address: overlay.String(),
 		})
 
-		multia, exists := testServer.Addressbook.Get(overlay)
-		if exists != true && underlay != multia.String() {
+		multia, err := testServer.Addressbook.Get(overlay)
+		if err != nil && errors.Is(err, storage.ErrNotFound) && underlay != multia.String() {
 			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
 		}
 	})
@@ -81,8 +82,8 @@ func TestConnect(t *testing.T) {
 			Message: testErr.Error(),
 		})
 
-		multia, exists := testServer.Addressbook.Get(overlay)
-		if exists != true && underlay != multia.String() {
+		multia, err := testServer.Addressbook.Get(overlay)
+		if err != nil && errors.Is(err, storage.ErrNotFound) && underlay != multia.String() {
 			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
 		}
 
