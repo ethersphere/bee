@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 )
 
-// todo: fix
 func TestHeaders(t *testing.T) {
 	headers := p2p.Headers{
 		"test-header-key": []byte("header-value"),
