@@ -267,9 +267,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers: %v", p.Name, p.Version, ss.Name, overlay, err)
 				return
 			}
-			if err := stream.Close(); err != nil {
-				_ = stream.Reset()
-			}
 
 			// tracing: get span tracing context and add it to the context
 			// silently ignore if the peer is not providing tracing
@@ -409,10 +406,6 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	if err := sendHeaders(ctx, headers, stream); err != nil {
 		_ = stream.Reset()
 		return nil, fmt.Errorf("send headers: %w", err)
-	}
-
-	if err := stream.Close(); err != nil {
-		_ = stream.Reset()
 	}
 
 	return stream, nil
