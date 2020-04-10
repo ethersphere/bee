@@ -157,6 +157,7 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 	})
 	if err != nil {
 		db.metrics.HasFailCount.Inc()
+		return false, err
 	}
 
 	if yes {
@@ -409,7 +410,6 @@ func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
 		return nil
 	})
 	if err != nil {
-		db.logger.Errorf("error while finding last value for prefix : %v", string(prefix))
 		db.metrics.LastFailCount.Inc()
 	} else {
 		db.logger.Tracef("last value with prefix %s, key %s, value len %d", string(prefix), string(key), len(value))

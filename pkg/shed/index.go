@@ -257,11 +257,7 @@ func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 	if err != nil {
 		return err
 	}
-	err = batch.Set(key, value)
-	if err != nil {
-		return err
-	}
-	return err
+	return  batch.Set(key, value)
 }
 
 // Delete accepts Item to remove a key/value pair
@@ -281,11 +277,7 @@ func (f Index) DeleteInBatch(batch *badger.Txn, keyFields Item) (err error) {
 	if err != nil {
 		return err
 	}
-	err = batch.Delete(key)
-	if err != nil {
-		return err
-	}
-	return err
+	return batch.Delete(key)
 }
 
 // IndexIterFunc is a callback on every Item that is decoded

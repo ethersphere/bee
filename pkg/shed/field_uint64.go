@@ -68,11 +68,7 @@ func (f Uint64Field) Put(val uint64) (err error) {
 // PutInBatch stores a uint64 value in a batch
 // that can be saved later in the database.
 func (f Uint64Field) PutInBatch(batch *badger.Txn, val uint64) (err error){
-	err = batch.Set(f.key, encodeUint64(val))
-	if err != nil {
-		return err
-	}
-	return nil
+	return batch.Set(f.key, encodeUint64(val))
 }
 
 // Inc increments a uint64 value in the database.
