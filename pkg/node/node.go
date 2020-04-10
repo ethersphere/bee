@@ -39,12 +39,13 @@ import (
 )
 
 type Bee struct {
-	p2pService     io.Closer
-	p2pCancel      context.CancelFunc
-	apiServer      *http.Server
-	debugAPIServer *http.Server
-	errorLogWriter *io.PipeWriter
-	tracerCloser   io.Closer
+	p2pService       io.Closer
+	p2pCancel        context.CancelFunc
+	apiServer        *http.Server
+	debugAPIServer   *http.Server
+	errorLogWriter   *io.PipeWriter
+	tracerCloser     io.Closer
+	stateStoreCloser io.Closer
 }
 
 type Options struct {
@@ -122,6 +123,7 @@ func NewBee(o Options) (*Bee, error) {
 		}
 	}
 
+	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(statestore)
 
 	p2ps, err := libp2p.New(p2pCtx, libp2p.Options{
@@ -319,6 +321,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.tracerCloser.Close(); err != nil {
 		return fmt.Errorf("tracer: %w", err)
+	}
+
+	if err := b.stateStoreCloser.Close(); err != nil {
+		return fmt.Errorf("statestore: %w", err)
 	}
 
 	return b.errorLogWriter.Close()
