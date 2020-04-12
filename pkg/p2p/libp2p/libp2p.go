@@ -178,7 +178,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peerID := stream.Conn().RemotePeer()
 		i, err := s.handshakeService.Handle(NewStream(stream), peerID)
 		if err != nil {
-			_ = stream.Reset()
+			_ = stream.Close()
 			if err == handshake.ErrNetworkIDIncompatible {
 				s.logger.Warningf("peer %s has a different network id.", peerID)
 			}
@@ -194,17 +194,11 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
-			if err := stream.Close(); err != nil {
-				_ = stream.Reset()
-			}
-
+			_ = stream.Close()
 			return
 		}
 
-		if err := stream.Close(); err != nil {
-			_ = stream.Reset()
-		}
-
+		_ = stream.Close()
 		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
 		if err != nil {
 			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
@@ -263,7 +257,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 			// exchange headers
 			if err := handleHeaders(ss.Headler, stream); err != nil {
-				_ = stream.Reset()
+				_ = stream.Close()
 				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers: %v", p.Name, p.Version, ss.Name, overlay, err)
 				return
 			}
@@ -404,7 +398,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 	// exchange headers
 	if err := sendHeaders(ctx, headers, stream); err != nil {
-		_ = stream.Reset()
+		_ = stream.Close()
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
 
