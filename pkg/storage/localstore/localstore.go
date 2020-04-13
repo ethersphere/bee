@@ -213,43 +213,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	if err != nil {
 		return nil, err
 	}
-	// Functions for retrieval data index.
-	var (
-		encodeValueFunc func(fields shed.Item) (value []byte, err error)
-		decodeValueFunc func(keyItem shed.Item, value []byte) (e shed.Item, err error)
-	)
-	if o.MockStore != nil {
-		encodeValueFunc = func(fields shed.Item) (value []byte, err error) {
-			b := make([]byte, 16)
-			binary.BigEndian.PutUint64(b[:8], fields.BinID)
-			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
-			err = o.MockStore.Put(fields.Address, fields.Data)
-			if err != nil {
-				return nil, err
-			}
-			return b, nil
-		}
-		decodeValueFunc = func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
-			e.BinID = binary.BigEndian.Uint64(value[:8])
-			e.Data, err = o.MockStore.Get(keyItem.Address)
-			return e, err
-		}
-	} else {
-		encodeValueFunc = func(fields shed.Item) (value []byte, err error) {
-			b := make([]byte, 16)
-			binary.BigEndian.PutUint64(b[:8], fields.BinID)
-			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
-			value = append(b, fields.Data...)
-			return value, nil
-		}
-		decodeValueFunc = func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
-			e.BinID = binary.BigEndian.Uint64(value[:8])
-			e.Data = value[16:]
-			return e, nil
-		}
-	}
+
 	// Index storing actual chunk address, data and bin id.
 	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|Data", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
@@ -259,8 +223,19 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			e.Address = key
 			return e, nil
 		},
-		EncodeValue: encodeValueFunc,
-		DecodeValue: decodeValueFunc,
+		EncodeValue: func(fields shed.Item) (value []byte, err error) {
+			b := make([]byte, 16)
+			binary.BigEndian.PutUint64(b[:8], fields.BinID)
+			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
+			value = append(b, fields.Data...)
+			return value, nil
+		},
+		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
+			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
+			e.BinID = binary.BigEndian.Uint64(value[:8])
+			e.Data = value[16:]
+			return e, nil
+		},
 	})
 	if err != nil {
 		return nil, err
