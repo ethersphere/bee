@@ -176,7 +176,7 @@ func New(path string, baseKey []byte, o *Options) (db *DB, err error) {
 		collectGarbageWorkerDone: make(chan struct{}),
 		putToGCCheck:             o.PutToGCCheck,
 	}
-	if db.capacity <= 0 {
+	if db.capacity == 0 {
 		db.capacity = defaultCapacity
 	}
 	if maxParallelUpdateGC > 0 {

@@ -494,7 +494,7 @@ func TestDB_SubscribePull_rangeOnRemovedChunks(t *testing.T) {
 		// subscribe until the first available chunk in bin,
 		// but not for it
 		until := chunks[bin][0].BinID - 1
-		if until <= 0 {
+		if until == 0 {
 			// ignore this bin if it has only one chunk left
 			continue
 		}
