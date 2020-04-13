@@ -6,7 +6,6 @@ require (
 	github.com/btcsuite/btcd v0.20.1-beta
 	github.com/coreos/go-semver v0.3.0
 	github.com/dgraph-io/badger/v2 v2.0.3
-	github.com/ethereum/go-ethereum v1.9.2
 	github.com/ethersphere/swarm v0.5.7
 	github.com/gogo/protobuf v1.3.1
 	github.com/gorilla/handlers v1.4.2
