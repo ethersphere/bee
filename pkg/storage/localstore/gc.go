@@ -112,8 +112,8 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 			return true, nil
 		}
 
-		db.metrics.GCStoreTimeStamps.Add(float64(item.StoreTimestamp))
-		db.metrics.GCStoreAccessTimeStamps.Add(float64(item.AccessTimestamp))
+		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
+		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
 
 		// delete from retrieve, pull, gc
 		err = db.retrievalDataIndex.DeleteInBatch(batch, item)
