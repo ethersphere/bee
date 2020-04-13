@@ -16,52 +16,12 @@
 
 package localstore
 
-import (
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/opt"
-)
-
 // The DB schema we want to use. The actual/current DB schema might differ
 // until migrations are run.
-var DbSchemaCurrent = DbSchemaDiwali
+var DbSchemaCurrent = DbSchemaCode
 
 // There was a time when we had no schema at all.
 const DbSchemaNone = ""
 
-// "purity" is the first formal schema of LevelDB we release together with Swarm 0.3.5
-const DbSchemaPurity = "purity"
-
-// "halloween" is here because we had a screw in the garbage collector index.
-// Because of that we had to rebuild the GC index to get rid of erroneous
-// entries and that takes a long time. This schema is used for bookkeeping,
-// so rebuild index will run just once.
-const DbSchemaHalloween = "halloween"
-
-const DbSchemaSanctuary = "sanctuary"
-
-// the "diwali" migration simply renames the pullIndex in localstore
-const DbSchemaDiwali = "diwali"
-
-// returns true if legacy database is in the datadir
-func IsLegacyDatabase(datadir string) bool {
-
-	var (
-		legacyDbSchemaKey = []byte{8}
-	)
-
-	db, err := leveldb.OpenFile(datadir, &opt.Options{OpenFilesCacheCapacity: 128})
-	if err != nil {
-		return false
-	}
-	defer db.Close()
-
-	data, err := db.Get(legacyDbSchemaKey, nil)
-	if err != nil {
-		if err == leveldb.ErrNotFound {
-			// if we haven't found anything under the legacy db schema key- we are not on legacy
-			return false
-		}
-
-	}
-	return string(data) == DbSchemaHalloween || string(data) == DbSchemaPurity
-}
+// DbSchemaCode is the first bee schema identifier
+const DbSchemaCode = "code"
