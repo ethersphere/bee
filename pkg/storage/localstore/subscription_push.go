@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/swarm/shed"
 )
 
 // SubscribePush returns a channel that provides storage chunks with ordering from push syncing index.

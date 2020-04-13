@@ -60,12 +60,12 @@ func New(path string) (s *Store, err error) {
 		db: db,
 	}
 	// Identify current storage schema by arbitrary name.
-	s.schemaName, err = db.NewStringField("schema-name", logger)
+	s.schemaName, err = db.NewStringField("schema-name")
 	if err != nil {
 		return nil, err
 	}
 	// Global ever incrementing index of chunk accesses.
-	s.accessCounter, err = db.NewUint64Field("access-counter", logger)
+	s.accessCounter, err = db.NewUint64Field("access-counter")
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func New(path string) (s *Store, err error) {
 			e.Data = value[8:]
 			return e, nil
 		},
-	}, logger)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func New(path string) (s *Store, err error) {
 			e.AccessTimestamp = int64(binary.BigEndian.Uint64(value))
 			return e, nil
 		},
-	}, logger)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func New(path string) (s *Store, err error) {
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			return e, nil
 		},
-	}, logger)
+	})
 	if err != nil {
 		return nil, err
 	}

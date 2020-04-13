@@ -20,10 +20,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/swarm/shed"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // GetMulti returns chunks from the database. If one of the chunks is not found
@@ -42,7 +41,7 @@ func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm
 
 	out, err := db.getMulti(mode, addrs...)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if err == shed.ErrNotFound {
 			return nil, storage.ErrNotFound
 		}
 		return nil, err

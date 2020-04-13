@@ -16,8 +16,7 @@
 
 /*
 Package localstore provides disk storage layer for Swarm Chunk persistence.
-It uses swarm/shed abstractions on top of github.com/syndtr/goleveldb LevelDB
-implementation.
+It uses swarm/shed abstractions.
 
 The main type is DB which manages the storage by providing methods to
 access and add Chunks and to manage their status.

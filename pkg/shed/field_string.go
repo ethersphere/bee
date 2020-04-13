@@ -31,7 +31,7 @@ type StringField struct {
 
 // NewStringField retruns a new Instance of StringField.
 // It validates its name and type against the database schema.
-func (db *DB) NewStringField(name string, logger logging.Logger) (f StringField, err error) {
+func (db *DB) NewStringField(name string) (f StringField, err error) {
 	key, err := db.schemaFieldKey(name, "string")
 	if err != nil {
 		return f, err
@@ -39,7 +39,7 @@ func (db *DB) NewStringField(name string, logger logging.Logger) (f StringField,
 	return StringField{
 		db:     db,
 		key:    key,
-		logger: logger,
+		logger: db.logger,
 	}, nil
 }
 
