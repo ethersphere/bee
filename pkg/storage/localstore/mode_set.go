@@ -19,10 +19,8 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/log"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -33,13 +31,11 @@ import (
 // Set is required to implement chunk.Store
 // interface.
 func (db *DB) Set(ctx context.Context, mode chunk.ModeSet, addrs ...chunk.Address) (err error) {
-	metricName := fmt.Sprintf("localstore/Set/%s", mode)
-
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-	defer totalTimeMetric(metricName, time.Now())
+	db.metrics.ModePut.Inc()
+	defer totalTimeMetric(db.metrics.TotalTimeSet, time.Now())
 	err = db.set(mode, addrs...)
 	if err != nil {
-		metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+		db.metrics.ModePutFailure.Inc()
 	}
 	return err
 }

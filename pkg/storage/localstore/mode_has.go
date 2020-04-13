@@ -20,20 +20,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethersphere/swarm/chunk"
 )
 
 // Has returns true if the chunk is stored in database.
 func (db *DB) Has(ctx context.Context, addr chunk.Address) (bool, error) {
-	metricName := "localstore/Has"
 
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-	defer totalTimeMetric(metricName, time.Now())
+	db.metrics.ModeHas.Inc()
+	defer totalTimeMetric(db.metrics.TotalTimeHas, time.Now())
 
 	has, err := db.retrievalDataIndex.Has(addressToItem(addr))
 	if err != nil {
-		metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+		db.metrics.ModeHasFailure.Inc()
 	}
 	return has, err
 }
@@ -41,14 +39,13 @@ func (db *DB) Has(ctx context.Context, addr chunk.Address) (bool, error) {
 // HasMulti returns a slice of booleans which represent if the provided chunks
 // are stored in database.
 func (db *DB) HasMulti(ctx context.Context, addrs ...chunk.Address) ([]bool, error) {
-	metricName := "localstore/HasMulti"
 
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-	defer totalTimeMetric(metricName, time.Now())
+	db.metrics.ModeHasMulti.Inc()
+	defer totalTimeMetric(db.metrics.TotalTimeHasMulti, time.Now())
 
 	have, err := db.retrievalDataIndex.HasMulti(addressesToItems(addrs...)...)
 	if err != nil {
-		metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+		db.metrics.ModeHasMultiFailure.Inc()
 	}
 	return have, err
 }

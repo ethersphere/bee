@@ -18,10 +18,8 @@ package localstore
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -32,14 +30,12 @@ import (
 // required by the Getter Mode. GetMulti is required to implement chunk.Store
 // interface.
 func (db *DB) GetMulti(ctx context.Context, mode chunk.ModeGet, addrs ...chunk.Address) (chunks []chunk.Chunk, err error) {
-	metricName := fmt.Sprintf("localstore/GetMulti/%s", mode)
-
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
-	defer totalTimeMetric(metricName, time.Now())
+	db.metrics.ModeGetMulti.Inc()
+	defer totalTimeMetric(db.metrics.TotalTimeGetMulti, time.Now())
 
 	defer func() {
 		if err != nil {
-			metrics.GetOrRegisterCounter(metricName+"/error", nil).Inc(1)
+			db.metrics.ModeGetMultiFailure.Inc()
 		}
 	}()
 
