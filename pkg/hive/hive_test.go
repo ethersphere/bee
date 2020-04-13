@@ -167,7 +167,7 @@ func TestBroadcastPeers(t *testing.T) {
 }
 
 func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverlays []swarm.Address) {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		var stringOverlays []string
 		var stringWantOverlays []string
 		o, err := exporter.Overlays()
@@ -188,7 +188,7 @@ func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverla
 			return
 		}
 
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	o, err := exporter.Overlays()
