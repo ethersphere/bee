@@ -19,7 +19,6 @@ package shed_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -312,7 +312,7 @@ func Example_store() {
 	}
 	defer s.Close()
 
-	ch := GenerateTestRandomChunk(1024)
+	ch := testing.GenerateTestRandomChunk()
 	err = s.Put(context.Background(), ch)
 	if err != nil {
 		log.Fatal(err)
@@ -326,12 +326,4 @@ func Example_store() {
 	fmt.Println(bytes.Equal(got.Data(), ch.Data()))
 
 	//Output: true
-}
-
-func GenerateTestRandomChunk(size int) swarm.Chunk {
-	data := make([]byte, size)
-	_, _ = rand.Read(data)
-	key := make([]byte, 32)
-	_, _ = rand.Read(key)
-	return swarm.NewChunk(swarm.NewAddress(key), data)
 }

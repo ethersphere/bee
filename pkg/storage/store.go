@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -142,7 +143,7 @@ type Store interface {
 	Set(ctx context.Context, mode ModeSet, addrs ...swarm.Address) (err error)
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, stop func())
-	Close() (err error)
+	io.Closer
 }
 
 // StateStorer defines methods required to get, set, delete values for different keys
