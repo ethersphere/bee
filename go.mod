@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee
 
-go 1.13
+go 1.14
 
 require (
 	github.com/btcsuite/btcd v0.20.1-beta
@@ -10,18 +10,18 @@ require (
 	github.com/ethersphere/swarm v0.5.7
 	github.com/gogo/protobuf v1.3.1
 	github.com/gorilla/handlers v1.4.2
-	github.com/gorilla/mux v1.7.4
-	github.com/libp2p/go-libp2p v0.7.4
+	github.com/gorilla/mux v1.7.3
+	github.com/libp2p/go-libp2p v0.5.1
 	github.com/libp2p/go-libp2p-autonat-svc v0.1.0
-	github.com/libp2p/go-libp2p-core v0.5.1
-	github.com/libp2p/go-libp2p-peerstore v0.2.2
+	github.com/libp2p/go-libp2p-core v0.3.0
+	github.com/libp2p/go-libp2p-peerstore v0.1.4
 	github.com/libp2p/go-libp2p-quic-transport v0.2.2
-	github.com/libp2p/go-tcp-transport v0.2.0
-	github.com/libp2p/go-ws-transport v0.3.0
-	github.com/multiformats/go-multiaddr v0.2.1
-	github.com/multiformats/go-multistream v0.1.1
+	github.com/libp2p/go-tcp-transport v0.1.1
+	github.com/libp2p/go-ws-transport v0.2.0
+	github.com/multiformats/go-multiaddr v0.2.0
+	github.com/multiformats/go-multistream v0.1.0
 	github.com/opentracing/opentracing-go v1.1.0
-	github.com/prometheus/client_golang v1.5.1
+	github.com/prometheus/client_golang v1.3.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/viper v1.6.2
