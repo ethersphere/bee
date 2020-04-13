@@ -26,8 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/swarm/sctx"
 )
 
 var (

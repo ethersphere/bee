@@ -29,7 +29,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/swarm/shed"
-	"github.com/ethersphere/swarm/storage/mock"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -132,12 +131,6 @@ type DB struct {
 
 // Options struct holds optional parameters for configuring DB.
 type Options struct {
-	// MockStore is a mock node store that is used to store
-	// chunk data in a central store. It can be used to reduce
-	// total storage space requirements in testing large number
-	// of swarm nodes with chunk data deduplication provided by
-	// the mock global store.
-	MockStore *mock.NodeStore
 	// Capacity is a limit that triggers garbage collection when
 	// number of items in gcIndex equals or exceeds it.
 	Capacity uint64
