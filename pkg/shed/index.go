@@ -256,7 +256,7 @@ func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 	if err != nil {
 		return err
 	}
-	return  batch.Set(key, value)
+	return batch.Set(key, value)
 }
 
 // Delete accepts Item to remove a key/value pair

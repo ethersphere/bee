@@ -227,16 +227,16 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0 , err
+		return false, 0, err
 	}
 	err = db.pullIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0 , err
+		return false, 0, err
 	}
 	if !anonymous {
 		err = db.pushIndex.PutInBatch(batch, item)
 		if err != nil {
-			return false, 0 , err
+			return false, 0, err
 		}
 	}
 
@@ -282,11 +282,11 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0 , err
+		return false, 0, err
 	}
 	err = db.pullIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0 , err
+		return false, 0, err
 	}
 
 	if db.putToGCCheck(item.Address) {
@@ -323,7 +323,7 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 		item.AccessTimestamp = i.AccessTimestamp
 		err = db.gcIndex.DeleteInBatch(batch, item)
 		if err != nil {
-			return  0 , err
+			return 0, err
 		}
 		gcSizeChange--
 	case leveldb.ErrNotFound:
@@ -334,12 +334,12 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 
 	err = db.gcIndex.PutInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 
 	gcSizeChange++

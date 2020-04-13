@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/swarm/chunk"
-	"github.com/ethersphere/swarm/log"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -145,7 +144,7 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr chun
 	case leveldb.ErrNotFound:
 		err = db.pushIndex.DeleteInBatch(batch, item)
 		if err != nil {
-			return 0 , err
+			return 0, err
 		}
 		item.StoreTimestamp = now()
 		item.BinID, err = db.incBinID(binIDs, po)
@@ -162,7 +161,7 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr chun
 		item.AccessTimestamp = i.AccessTimestamp
 		err = db.gcIndex.DeleteInBatch(batch, item)
 		if err != nil {
-			return 0 , err
+			return 0, err
 		}
 		gcSizeChange--
 	case leveldb.ErrNotFound:
@@ -173,15 +172,15 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr chun
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 	err = db.pullIndex.PutInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 	err = db.gcIndex.PutInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 	gcSizeChange++
 
@@ -211,7 +210,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 			// if it is there
 			err = db.pushIndex.DeleteInBatch(batch, item)
 			if err != nil {
-				return 0 , err
+				return 0, err
 			}
 			return 0, nil
 		}
@@ -232,7 +231,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 				// if we return the error here - it means that for example, in stream protocol peers which we sync
 				// to would be dropped. this is possible when the chunk is put with ModePutRequest and ModeSetSyncPull is
 				// called on the same chunk (which should not happen)
-				log.Error("chunk not found in pull index", "addr", addr)
+				db.logger.Errorf("chunk not found in pull index. addr: %s", addr.String())
 				break
 			}
 			return 0, err
@@ -266,7 +265,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 				// we handle this error internally, since this is an internal inconsistency of the indices
 				// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 				// but this function is called with ModeSetSyncPush
-				log.Error("chunk not found in push index", "addr", addr)
+				db.logger.Errorf("chunk not found in push index. addr : %s", addr.String())
 				break
 			}
 			return 0, err
@@ -276,7 +275,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 			if err != nil {
 				// we cannot break or return here since the function needs to
 				// run to end from db.pushIndex.DeleteInBatch
-				log.Error("error getting tags on push sync set", "uid", i.Tag)
+				db.logger.Errorf("error getting tags on push sync set. uid : %d", i.Tag)
 			} else {
 				// setting a chunk for push sync assumes the tag is not anonymous
 				if t.Anonymous {
@@ -289,7 +288,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 
 		err = db.pushIndex.DeleteInBatch(batch, item)
 		if err != nil {
-			return 0 , err
+			return 0, err
 		}
 	}
 
@@ -299,7 +298,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 		item.AccessTimestamp = i.AccessTimestamp
 		err = db.gcIndex.DeleteInBatch(batch, item)
 		if err != nil {
-			return 0 , err
+			return 0, err
 		}
 		gcSizeChange--
 	case leveldb.ErrNotFound:
@@ -310,7 +309,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 
 	// Add in gcIndex only if this chunk is not pinned
@@ -321,7 +320,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr chunk.Address, mode chunk.ModeS
 	if !ok {
 		err = db.gcIndex.PutInBatch(batch, item)
 		if err != nil {
-			return 0 , err
+			return 0, err
 		}
 		gcSizeChange++
 	}
@@ -355,19 +354,19 @@ func (db *DB) setRemove(batch *leveldb.Batch, addr chunk.Address) (gcSizeChange 
 
 	err = db.retrievalDataIndex.DeleteInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 	err = db.retrievalAccessIndex.DeleteInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 	err = db.pullIndex.DeleteInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 	err = db.gcIndex.DeleteInBatch(batch, item)
 	if err != nil {
-		return 0 , err
+		return 0, err
 	}
 	// a check is needed for decrementing gcSize
 	// as delete is not reporting if the key/value pair

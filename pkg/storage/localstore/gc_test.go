@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 )
@@ -433,7 +434,8 @@ func TestDB_gcSize(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	db, err := New(dir, baseKey, nil)
+	logger := logging.New(ioutil.Discard, 0)
+	db, err := New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,8 +459,7 @@ func TestDB_gcSize(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-
-	db, err = New(dir, baseKey, nil)
+	db, err = New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

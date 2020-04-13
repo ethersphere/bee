@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/swarm/chunk"
 )
 
@@ -60,8 +61,10 @@ func TestOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	logger := logging.New(ioutil.Discard, 0)
+
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil)
+	db, err := New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +77,7 @@ func TestOneMigration(t *testing.T) {
 	DbSchemaCurrent = DbSchemaDiwali
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil)
+	db, err = New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,9 +148,10 @@ func TestManyMigrations(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
+	logger := logging.New(ioutil.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil)
+	db, err := New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +164,7 @@ func TestManyMigrations(t *testing.T) {
 	DbSchemaCurrent = "salvation"
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil)
+	db, err = New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,9 +228,10 @@ func TestMigrationFailFrom(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
+	logger := logging.New(ioutil.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil)
+	db, err := New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +244,7 @@ func TestMigrationFailFrom(t *testing.T) {
 	DbSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil)
+	_, err = New(dir, baseKey, nil, logger)
 	if !strings.Contains(err.Error(), errMissingCurrentSchema.Error()) {
 		t.Fatalf("expected errCannotFindSchema but got %v", err)
 	}
@@ -284,8 +289,10 @@ func TestMigrationFailTo(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	logger := logging.New(ioutil.Discard, 0)
+
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil)
+	db, err := New(dir, baseKey, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +305,7 @@ func TestMigrationFailTo(t *testing.T) {
 	DbSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil)
+	_, err = New(dir, baseKey, nil, logger)
 	if !strings.Contains(err.Error(), errMissingTargetSchema.Error()) {
 		t.Fatalf("expected errMissingTargetSchema but got %v", err)
 	}
@@ -339,9 +346,10 @@ func TestMigrateSanctuaryFixture(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
+	logger := logging.New(ioutil.Discard, 0)
 
 	// start localstore with the copied fixture
-	db, err := New(tmpdir, baseKey, &Options{Tags: chunk.NewTags()})
+	db, err := New(tmpdir, baseKey, &Options{Tags: chunk.NewTags()}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

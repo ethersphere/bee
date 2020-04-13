@@ -66,7 +66,7 @@ func (f Uint64Vector) Put(i, val uint64) (err error) {
 
 // PutInBatch stores a uint64 value at index i in a batch
 // that can be saved later in the database.
-func (f Uint64Vector) PutInBatch(batch *badger.Txn, i, val uint64) (err error){
+func (f Uint64Vector) PutInBatch(batch *badger.Txn, i, val uint64) (err error) {
 	return batch.Set(f.indexKey(i), encodeUint64(val))
 }
 
