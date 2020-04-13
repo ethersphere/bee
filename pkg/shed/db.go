@@ -386,6 +386,5 @@ func (db *DB) WriteBatch(txn *badger.Txn) (err error) {
 
 // Close shuts down the badger DB.
 func (db *DB) Close() (err error) {
-	db.logger.Tracef("database closed with path %s", db.path)
 	return db.bdb.Close()
 }

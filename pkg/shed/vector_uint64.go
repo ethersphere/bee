@@ -75,12 +75,7 @@ func (f Uint64Vector) PutInBatch(batch *badger.Txn, i, val uint64) (err error){
 func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == ErrNotFound {
-			val = 0
-		} else {
-			f.logger.Debugf("error getiing value while doing Inc. Error: %s", err.Error())
-			return 0, err
-		}
+		return 0, err
 	}
 	val++
 	return val, f.Put(i, val)
@@ -92,12 +87,7 @@ func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 func (f Uint64Vector) IncInBatch(batch *badger.Txn, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == ErrNotFound {
-			val = 0
-		} else {
-			f.logger.Debugf("error getiing value while doing IncInBatch. Error: %s", err.Error())
-			return 0, err
-		}
+		return 0, err
 	}
 	val++
 	err = f.PutInBatch(batch, i, val)
@@ -133,12 +123,7 @@ func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 func (f Uint64Vector) DecInBatch(batch *badger.Txn, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == ErrNotFound {
-			val = 0
-		} else {
-			f.logger.Debugf("error getiing value while doing DecInBatch. Error: %s", err.Error())
-			return 0, err
-		}
+		return 0, err
 	}
 	if val != 0 {
 		val--

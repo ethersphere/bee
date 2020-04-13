@@ -18,24 +18,26 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+	book "github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type AddressExporter interface {
-	Overlays() []swarm.Address
-	Multiaddresses() []ma.Multiaddr
+	Overlays() ([]swarm.Address, error)
+	Multiaddresses() ([]ma.Multiaddr, error)
 }
 
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	logger := logging.New(ioutil.Discard, 0)
-	addressbook := inmem.New()
+	statestore := mock.NewStateStore()
+	addressbook := book.New(statestore)
 
 	// populate all expected and needed random resources for 2 full batches
 	// tests cases that uses fewer resources can use sub-slices of this data
@@ -55,7 +57,10 @@ func TestBroadcastPeers(t *testing.T) {
 
 		multiaddrs = append(multiaddrs, ma)
 		addrs = append(addrs, swarm.NewAddress(createRandomBytes()))
-		addressbook.Put(addrs[i], multiaddrs[i])
+		err = addressbook.Put(addrs[i], multiaddrs[i])
+		if err != nil {
+			t.Fatal(err)
+		}
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: addrs[i].Bytes(), Underlay: multiaddrs[i].String()})
 	}
 
@@ -105,7 +110,8 @@ func TestBroadcastPeers(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			addressbookclean := inmem.New()
+			addressbookclean := book.New(mock.NewStateStore())
+
 			exporter, ok := addressbookclean.(AddressExporter)
 			if !ok {
 				t.Fatal("could not type assert AddressExporter")
@@ -161,11 +167,14 @@ func TestBroadcastPeers(t *testing.T) {
 }
 
 func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverlays []swarm.Address) {
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		var stringOverlays []string
 		var stringWantOverlays []string
-
-		for _, k := range exporter.Overlays() {
+		o, err := exporter.Overlays()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range o {
 			stringOverlays = append(stringOverlays, k.String())
 		}
 
@@ -182,13 +191,22 @@ func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverla
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	t.Errorf("Overlays got %v, want %v", exporter.Overlays(), wantOverlays)
+	o, err := exporter.Overlays()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Errorf("Overlays got %v, want %v", o, wantOverlays)
 }
 
 func expectMultiaddresessEventually(t *testing.T, exporter AddressExporter, wantMultiaddresses []ma.Multiaddr) {
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		var stringMultiaddresses []string
-		for _, v := range exporter.Multiaddresses() {
+		m, err := exporter.Multiaddresses()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range m {
 			stringMultiaddresses = append(stringMultiaddresses, v.String())
 		}
 
@@ -206,7 +224,12 @@ func expectMultiaddresessEventually(t *testing.T, exporter AddressExporter, want
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	t.Errorf("Multiaddresses got %v, want %v", exporter.Multiaddresses(), wantMultiaddresses)
+	m, err := exporter.Multiaddresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Errorf("Multiaddresses got %v, want %v", m, wantMultiaddresses)
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {

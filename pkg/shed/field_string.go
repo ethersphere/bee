@@ -49,10 +49,6 @@ func (db *DB) NewStringField(name string, logger logging.Logger) (f StringField,
 func (f StringField) Get() (val string, err error) {
 	b, err := f.db.Get(f.key)
 	if err != nil {
-		if err == ErrNotFound {
-			f.logger.Errorf("key %s not found", string(f.key))
-			return "", nil
-		}
 		return "", err
 	}
 	return string(b), nil

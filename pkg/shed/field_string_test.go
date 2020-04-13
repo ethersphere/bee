@@ -37,7 +37,7 @@ func TestStringField(t *testing.T) {
 
 	t.Run("get empty", func(t *testing.T) {
 		got, err := simpleString.Get()
-		if err != nil {
+		if err == nil {
 			t.Fatal(err)
 		}
 		want := ""

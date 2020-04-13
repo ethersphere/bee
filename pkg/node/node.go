@@ -17,7 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ethersphere/bee/pkg/addressbook/inmem"
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -29,6 +29,9 @@ import (
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -36,12 +39,13 @@ import (
 )
 
 type Bee struct {
-	p2pService     io.Closer
-	p2pCancel      context.CancelFunc
-	apiServer      *http.Server
-	debugAPIServer *http.Server
-	errorLogWriter *io.PipeWriter
-	tracerCloser   io.Closer
+	p2pService       io.Closer
+	p2pCancel        context.CancelFunc
+	apiServer        *http.Server
+	debugAPIServer   *http.Server
+	errorLogWriter   *io.PipeWriter
+	tracerCloser     io.Closer
+	stateStoreCloser io.Closer
 }
 
 type Options struct {
@@ -62,7 +66,6 @@ type Options struct {
 
 func NewBee(o Options) (*Bee, error) {
 	logger := o.Logger
-	addressbook := inmem.New()
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -108,6 +111,19 @@ func NewBee(o Options) (*Bee, error) {
 	if created {
 		logger.Infof("new libp2p key created")
 	}
+
+	var stateStore storage.StateStorer
+	if o.DataDir == "" {
+		stateStore = mockinmem.NewStateStore()
+		logger.Warning("using in-mem state store. no node state will be persisted")
+	} else {
+		stateStore, err = leveldb.NewStateStore(filepath.Join(o.DataDir, "statestore"))
+		if err != nil {
+			return nil, fmt.Errorf("statestore: %w", err)
+		}
+	}
+	b.stateStoreCloser = stateStore
+	addressbook := addressbook.New(stateStore)
 
 	p2ps, err := libp2p.New(p2pCtx, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
@@ -253,7 +269,15 @@ func NewBee(o Options) (*Bee, error) {
 				return
 			}
 
-			addressbook.Put(overlay, addr)
+			err = addressbook.Put(overlay, addr)
+			if err != nil {
+				_ = p2ps.Disconnect(overlay)
+				logger.Debugf("addressboook error persisting %s %s: %v", aa, overlay, err)
+				logger.Errorf("persisting node %s", aa)
+				return
+
+			}
+
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("topology add peer fail %s %s: %v", aa, overlay, err)
@@ -296,6 +320,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.tracerCloser.Close(); err != nil {
 		return fmt.Errorf("tracer: %w", err)
+	}
+
+	if err := b.stateStoreCloser.Close(); err != nil {
+		return fmt.Errorf("statestore: %w", err)
 	}
 
 	return b.errorLogWriter.Close()
