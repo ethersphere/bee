@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 )
@@ -33,8 +32,7 @@ import (
 // the returned channel without any errors. Make sure that you check the second returned parameter
 // from the channel to stop iteration when its value is false.
 func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop func()) {
-	metricName := "localstore/SubscribePush"
-	metrics.GetOrRegisterCounter(metricName, nil).Inc(1)
+	db.metrics.SubscribePush.Inc()
 
 	chunks := make(chan chunk.Chunk)
 	trigger := make(chan struct{}, 1)
@@ -52,7 +50,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 	db.subscritionsWG.Add(1)
 	go func() {
 		defer db.subscritionsWG.Done()
-		defer metrics.GetOrRegisterCounter(metricName+"/done", nil).Inc(1)
+		db.metrics.SubscribePushIterationDone.Inc()
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
@@ -65,8 +63,8 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 				// iterate until:
 				// - last index Item is reached
 				// - subscription stop is called
-				// - context is done
-				metrics.GetOrRegisterCounter(metricName+"/iter", nil).Inc(1)
+				// - context is done.met
+				db.metrics.SubscribePushIteration.Inc()
 
 				iterStart := time.Now()
 				var count int
@@ -103,10 +101,10 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 					SkipStartFromItem: true,
 				})
 
-				totalTimeMetric(metricName+"/iter", iterStart)
+				totalTimeMetric(db.metrics.TotalTimeSubscribePushIteration, iterStart)
 
 				if err != nil {
-					metrics.GetOrRegisterCounter(metricName+"/iter/error", nil).Inc(1)
+					db.metrics.SubscribePushIterationFailure.Inc()
 					log.Error("localstore push subscription iteration", "err", err)
 					return
 				}
