@@ -131,7 +131,7 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 
 			keybytes, err := hex.DecodeString(hdr.Name)
 			if err != nil {
-				db.logger.Warningf("ignoring invalid chunk file. name : %s , Error : %s", hdr.Name,  err)
+				db.logger.Warningf("ignoring invalid chunk file. name : %s , Error : %s", hdr.Name, err)
 				continue
 			}
 
