@@ -17,20 +17,20 @@
 package localstore
 
 import (
-	"bytes"
 	"context"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Put stores Chunks to database and depending
 // on the Putter mode, it updates required indexes.
-// Put is required to implement chunk.Store
+// Put is required to implement storage.Store
 // interface.
-func (db *DB) Put(ctx context.Context, mode chunk.ModePut, chs ...chunk.Chunk) (exist []bool, err error) {
+func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 
 	db.metrics.ModePut.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimePut, time.Now())
@@ -50,7 +50,7 @@ func (db *DB) Put(ctx context.Context, mode chunk.ModePut, chs ...chunk.Chunk) (
 // and following ones will have exist set to true for their index in exist
 // slice. This is the same behaviour as if the same chunks are passed one by one
 // in multiple put method calls.
-func (db *DB) put(mode chunk.ModePut, chs ...chunk.Chunk) (exist []bool, err error) {
+func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	// protect parallel updates
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
@@ -72,7 +72,7 @@ func (db *DB) put(mode chunk.ModePut, chs ...chunk.Chunk) (exist []bool, err err
 	binIDs := make(map[uint8]uint64)
 
 	switch mode {
-	case chunk.ModePutRequest:
+	case storage.ModePutRequest:
 		for i, ch := range chs {
 			if containsChunk(ch.Address(), chs[:i]...) {
 				exist[i] = true
@@ -86,7 +86,7 @@ func (db *DB) put(mode chunk.ModePut, chs ...chunk.Chunk) (exist []bool, err err
 			gcSizeChange += c
 		}
 
-	case chunk.ModePutUpload:
+	case storage.ModePutUpload:
 		for i, ch := range chs {
 			if containsChunk(ch.Address(), chs[:i]...) {
 				exist[i] = true
@@ -106,7 +106,7 @@ func (db *DB) put(mode chunk.ModePut, chs ...chunk.Chunk) (exist []bool, err err
 			gcSizeChange += c
 		}
 
-	case chunk.ModePutSync:
+	case storage.ModePutSync:
 		for i, ch := range chs {
 			if containsChunk(ch.Address(), chs[:i]...) {
 				exist[i] = true
@@ -174,7 +174,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		item.StoreTimestamp = now()
 	}
 	if item.BinID == 0 {
-		item.BinID, err = db.incBinID(binIDs, db.po(item.Address))
+		item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 		if err != nil {
 			return false, 0, err
 		}
@@ -221,7 +221,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	}
 
 	item.StoreTimestamp = now()
-	item.BinID, err = db.incBinID(binIDs, db.po(item.Address))
+	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
 		return false, 0, err
 	}
@@ -276,7 +276,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	}
 
 	item.StoreTimestamp = now()
-	item.BinID, err = db.incBinID(binIDs, db.po(item.Address))
+	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
 		return false, 0, err
 	}
@@ -363,9 +363,9 @@ func (db *DB) incBinID(binIDs map[uint8]uint64, po uint8) (id uint64, err error)
 
 // containsChunk returns true if the chunk with a specific address
 // is present in the provided chunk slice.
-func containsChunk(addr chunk.Address, chs ...chunk.Chunk) bool {
+func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
 	for _, c := range chs {
-		if bytes.Equal(addr, c.Address()) {
+		if addr.Equal(c.Address()) {
 			return true
 		}
 	}

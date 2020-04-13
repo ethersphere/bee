@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/swarm/shed"
 )
 
@@ -30,10 +30,10 @@ import (
 // Returned stop function will terminate current and further iterations, and also it will close
 // the returned channel without any errors. Make sure that you check the second returned parameter
 // from the channel to stop iteration when its value is false.
-func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop func()) {
+func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
 	db.metrics.SubscribePush.Inc()
 
-	chunks := make(chan chunk.Chunk)
+	chunks := make(chan swarm.Chunk)
 	trigger := make(chan struct{}, 1)
 
 	db.pushTriggersMu.Lock()
@@ -75,7 +75,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 					}
 
 					select {
-					case chunks <- chunk.NewChunk(dataItem.Address, dataItem.Data).WithTagID(item.Tag):
+					case chunks <- swarm.NewChunk(swarm.NewAddress(dataItem.Address), dataItem.Data).WithTagID(item.Tag):
 						count++
 						// set next iteration start item
 						// when its chunk is successfully sent to channel

@@ -25,7 +25,8 @@ import (
 	"io/ioutil"
 	"sync"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/swarm/shed"
 )
 
@@ -141,12 +142,12 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 				case <-ctx.Done():
 				}
 			}
-			key := chunk.Address(keybytes)
+			key := swarm.NewAddress(keybytes)
 
-			var ch chunk.Chunk
+			var ch swarm.Chunk
 			switch version {
 			case currentExportVersion:
-				ch = chunk.NewChunk(key, data)
+				ch = swarm.NewChunk(key, data)
 			default:
 				select {
 				case errC <- fmt.Errorf("unsupported export data version %q", version):
@@ -157,14 +158,14 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 			wg.Add(1)
 
 			go func() {
-				_, err := db.Put(ctx, chunk.ModePutUpload, ch)
+				_, err := db.Put(ctx, storage.ModePutUpload, ch)
 				select {
 				case errC <- err:
 				case <-ctx.Done():
 					wg.Done()
 					<-tokenPool
 				default:
-					_, err := db.Put(ctx, chunk.ModePutUpload, ch)
+					_, err := db.Put(ctx, storage.ModePutUpload, ch)
 					if err != nil {
 						errC <- err
 					}

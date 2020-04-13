@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 // TestModeGetRequest validates ModeGetRequest index values on the provided DB.
@@ -37,7 +37,7 @@ func TestModeGetRequest(t *testing.T) {
 
 	ch := generateTestRandomChunk()
 
-	_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,14 +53,14 @@ func TestModeGetRequest(t *testing.T) {
 	})()
 
 	t.Run("get unsynced", func(t *testing.T) {
-		got, err := db.Get(context.Background(), chunk.ModeGetRequest, ch.Address())
+		got, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 		// wait for update gc goroutine to be done
 		<-testHookUpdateGCChan
 
-		if !bytes.Equal(got.Address(), ch.Address()) {
+		if !got.Address().Equal(ch.Address()) {
 			t.Errorf("got chunk address %x, want %x", got.Address(), ch.Address())
 		}
 
@@ -76,20 +76,20 @@ func TestModeGetRequest(t *testing.T) {
 	})
 
 	// set chunk to synced state
-	err = db.Set(context.Background(), chunk.ModeSetSyncPull, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("first get", func(t *testing.T) {
-		got, err := db.Get(context.Background(), chunk.ModeGetRequest, ch.Address())
+		got, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 		// wait for update gc goroutine to be done
 		<-testHookUpdateGCChan
 
-		if !bytes.Equal(got.Address(), ch.Address()) {
+		if !got.Address().Equal(ch.Address()) {
 			t.Errorf("got chunk address %x, want %x", got.Address(), ch.Address())
 		}
 
@@ -112,14 +112,14 @@ func TestModeGetRequest(t *testing.T) {
 			return accessTimestamp
 		})()
 
-		got, err := db.Get(context.Background(), chunk.ModeGetRequest, ch.Address())
+		got, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 		// wait for update gc goroutine to be done
 		<-testHookUpdateGCChan
 
-		if !bytes.Equal(got.Address(), ch.Address()) {
+		if !got.Address().Equal(ch.Address()) {
 			t.Errorf("got chunk address %x, want %x", got.Address(), ch.Address())
 		}
 
@@ -137,14 +137,14 @@ func TestModeGetRequest(t *testing.T) {
 	})
 
 	t.Run("multi", func(t *testing.T) {
-		got, err := db.GetMulti(context.Background(), chunk.ModeGetRequest, ch.Address())
+		got, err := db.GetMulti(context.Background(), storage.ModeGetRequest, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 		// wait for update gc goroutine to be done
 		<-testHookUpdateGCChan
 
-		if !bytes.Equal(got[0].Address(), ch.Address()) {
+		if !got[0].Address().Equal(ch.Address()) {
 			t.Errorf("got chunk address %x, want %x", got[0].Address(), ch.Address())
 		}
 
@@ -174,17 +174,17 @@ func TestModeGetSync(t *testing.T) {
 
 	ch := generateTestRandomChunk()
 
-	_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := db.Get(context.Background(), chunk.ModeGetSync, ch.Address())
+	got, err := db.Get(context.Background(), storage.ModeGetSync, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(got.Address(), ch.Address()) {
+	if !got.Address().Equal(ch.Address()) {
 		t.Errorf("got chunk address %x, want %x", got.Address(), ch.Address())
 	}
 
@@ -199,12 +199,12 @@ func TestModeGetSync(t *testing.T) {
 	t.Run("gc size", newIndexGCSizeTest(db))
 
 	t.Run("multi", func(t *testing.T) {
-		got, err := db.GetMulti(context.Background(), chunk.ModeGetSync, ch.Address())
+		got, err := db.GetMulti(context.Background(), storage.ModeGetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(got[0].Address(), ch.Address()) {
+		if !got[0].Address().Equal(ch.Address()) {
 			t.Errorf("got chunk address %x, want %x", got[0].Address(), ch.Address())
 		}
 

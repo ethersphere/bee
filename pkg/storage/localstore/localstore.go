@@ -25,14 +25,16 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/ethersphere/swarm/storage/mock"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 // DB implements chunk.Store.
-var _ chunk.Store = &DB{}
+var _ storage.Store = &DB{}
 
 var (
 	// ErrInvalidMode is retuned when an unknown Mode
@@ -52,7 +54,7 @@ var (
 // database related objects.
 type DB struct {
 	shed *shed.DB
-	tags *chunk.Tags
+	tags *tags.Tags
 
 	// schema name of loaded data
 	schemaName shed.StringField
@@ -141,7 +143,7 @@ type Options struct {
 	Capacity uint64
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
-	Tags          *chunk.Tags
+	Tags          *tags.Tags
 	// PutSetCheckFunc is a function called after a Put of a chunk
 	// to verify whether that chunk needs to be Set and added to
 	// garbage collection index too
@@ -297,7 +299,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	db.pullIndex, err = db.shed.NewIndex("PO|BinID->Hash|Tag", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 41)
-			key[0] = db.po(fields.Address)
+			key[0] = db.po(swarm.NewAddress(fields.Address))
 			binary.BigEndian.PutUint64(key[1:9], fields.BinID)
 			return key, nil
 		},
@@ -468,8 +470,8 @@ func (db *DB) Close() (err error) {
 
 // po computes the proximity order between the address
 // and database base key.
-func (db *DB) po(addr chunk.Address) (bin uint8) {
-	return uint8(chunk.Proximity(db.baseKey, addr))
+func (db *DB) po(addr swarm.Address) (bin uint8) {
+	return uint8(swarm.Proximity(db.baseKey, addr.Bytes()))
 }
 
 // DebugIndices returns the index sizes for all indexes in localstore
@@ -501,28 +503,28 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 }
 
 // chunkToItem creates new Item with data provided by the Chunk.
-func chunkToItem(ch chunk.Chunk) shed.Item {
+func chunkToItem(ch swarm.Chunk) shed.Item {
 	return shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		Data:    ch.Data(),
 		Tag:     ch.TagID(),
 	}
 }
 
 // addressToItem creates new Item with a provided address.
-func addressToItem(addr chunk.Address) shed.Item {
+func addressToItem(addr swarm.Address) shed.Item {
 	return shed.Item{
-		Address: addr,
+		Address: addr.Bytes(),
 	}
 }
 
 // addressesToItems constructs a slice of Items with only
 // addresses set on them.
-func addressesToItems(addrs ...chunk.Address) []shed.Item {
+func addressesToItems(addrs ...swarm.Address) []shed.Item {
 	items := make([]shed.Item, len(addrs))
 	for i, addr := range addrs {
 		items[i] = shed.Item{
-			Address: addr,
+			Address: addr.Bytes(),
 		}
 	}
 	return items

@@ -20,16 +20,17 @@ import (
 	"context"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // GetMulti returns chunks from the database. If one of the chunks is not found
-// chunk.ErrChunkNotFound will be returned. All required indexes will be updated
+// storage.ErrNotFound will be returned. All required indexes will be updated
 // required by the Getter Mode. GetMulti is required to implement chunk.Store
 // interface.
-func (db *DB) GetMulti(ctx context.Context, mode chunk.ModeGet, addrs ...chunk.Address) (chunks []chunk.Chunk, err error) {
+func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) (chunks []swarm.Chunk, err error) {
 	db.metrics.ModeGetMulti.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeGetMulti, time.Now())
 
@@ -42,23 +43,23 @@ func (db *DB) GetMulti(ctx context.Context, mode chunk.ModeGet, addrs ...chunk.A
 	out, err := db.getMulti(mode, addrs...)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
-			return nil, chunk.ErrChunkNotFound
+			return nil, storage.ErrNotFound
 		}
 		return nil, err
 	}
-	chunks = make([]chunk.Chunk, len(out))
+	chunks = make([]swarm.Chunk, len(out))
 	for i, ch := range out {
-		chunks[i] = chunk.NewChunk(ch.Address, ch.Data).WithPinCounter(ch.PinCounter)
+		chunks[i] = swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithPinCounter(ch.PinCounter)
 	}
 	return chunks, nil
 }
 
 // getMulti returns Items from the retrieval index
 // and updates other indexes.
-func (db *DB) getMulti(mode chunk.ModeGet, addrs ...chunk.Address) (out []shed.Item, err error) {
+func (db *DB) getMulti(mode storage.ModeGet, addrs ...swarm.Address) (out []shed.Item, err error) {
 	out = make([]shed.Item, len(addrs))
 	for i, addr := range addrs {
-		out[i].Address = addr
+		out[i].Address = addr.Bytes()
 	}
 
 	err = db.retrievalDataIndex.Fill(out)
@@ -68,18 +69,18 @@ func (db *DB) getMulti(mode chunk.ModeGet, addrs ...chunk.Address) (out []shed.I
 
 	switch mode {
 	// update the access timestamp and gc index
-	case chunk.ModeGetRequest:
+	case storage.ModeGetRequest:
 		db.updateGCItems(out...)
 
-	case chunk.ModeGetPin:
+	case storage.ModeGetPin:
 		err := db.pinIndex.Fill(out)
 		if err != nil {
 			return nil, err
 		}
 
 	// no updates to indexes
-	case chunk.ModeGetSync:
-	case chunk.ModeGetLookup:
+	case storage.ModeGetSync:
+	case storage.ModeGetLookup:
 	default:
 		return out, ErrInvalidMode
 	}

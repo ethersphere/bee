@@ -21,8 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
-	tagtesting "github.com/ethersphere/swarm/chunk/testing"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/tags"
+	tagtesting "github.com/ethersphere/bee/pkg/tags/testing"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -41,7 +42,7 @@ func TestModeSetAccess(t *testing.T) {
 				return wantTimestamp
 			})()
 
-			err := db.Set(context.Background(), chunk.ModeSetAccess, chunkAddresses(chunks)...)
+			err := db.Set(context.Background(), storage.ModeSetAccess, chunkAddresses(chunks)...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -69,7 +70,7 @@ func TestModeSetAccess(t *testing.T) {
 // as a result we should expect the tag value to remain in the pull index
 // and we expect that the tag should not be incremented by pull sync set
 func TestModeSetSyncPullNormalTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: chunk.NewTags()})
+	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
 	defer cleanupFunc()
 
 	tag, err := db.tags.Create("test", 1, false)
@@ -78,15 +79,15 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 	}
 
 	ch := generateTestRandomChunk().WithTagID(tag.Uid)
-	_, err = db.Put(context.Background(), chunk.ModePutUpload, ch)
+	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tag.Inc(chunk.StateStored) // so we don't get an error on tag.Status later on
+	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
 
 	item, err := db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -97,13 +98,13 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
 	}
 
-	err = db.Set(context.Background(), chunk.ModeSetSyncPull, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -123,7 +124,7 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 // TestModeSetSyncPullAnonymousTag checks that pull sync correcly increments
 // counters on an anonymous tag which is expected to be handled only by pull sync
 func TestModeSetSyncPullAnonymousTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: chunk.NewTags()})
+	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
 	defer cleanupFunc()
 
 	tag, err := db.tags.Create("test", 1, true)
@@ -132,14 +133,14 @@ func TestModeSetSyncPullAnonymousTag(t *testing.T) {
 	}
 
 	ch := generateTestRandomChunk().WithTagID(tag.Uid)
-	_, err = db.Put(context.Background(), chunk.ModePutUpload, ch)
+	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tag.Inc(chunk.StateStored) // so we don't get an error on tag.Status later on
+	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
 
 	item, err := db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -150,13 +151,13 @@ func TestModeSetSyncPullAnonymousTag(t *testing.T) {
 		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
 	}
 
-	err = db.Set(context.Background(), chunk.ModeSetSyncPull, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -175,7 +176,7 @@ func TestModeSetSyncPullAnonymousTag(t *testing.T) {
 // then tries to Set both with push and pull Sync modes, but asserts that only the pull sync
 // increments were done to the tag
 func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: chunk.NewTags()})
+	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
 	defer cleanupFunc()
 
 	tag, err := db.tags.Create("test", 1, true)
@@ -184,14 +185,14 @@ func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
 	}
 
 	ch := generateTestRandomChunk().WithTagID(tag.Uid)
-	_, err = db.Put(context.Background(), chunk.ModePutUpload, ch)
+	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tag.Inc(chunk.StateStored) // so we don't get an error on tag.Status later on
+	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
 	item, err := db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -202,21 +203,21 @@ func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
 		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
 	}
 
-	err = db.Set(context.Background(), chunk.ModeSetSyncPull, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// expect no error here. if the item cannot be found in pushsync the rest of the
 	// setSync logic should be executed
-	err = db.Set(context.Background(), chunk.ModeSetSyncPush, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSyncPush, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// check that the tag has been incremented
 	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -232,7 +233,7 @@ func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
 
 	// verify that the item does not exist in the push index
 	item, err = db.pushIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err == nil {
@@ -244,7 +245,7 @@ func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
 // correctly on a normal tag (that is, a tag that is expected to show progress bars
 // according to push sync progress)
 func TestModeSetSyncPushNormalTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: chunk.NewTags()})
+	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
 	defer cleanupFunc()
 
 	tag, err := db.tags.Create("test", 1, false)
@@ -253,14 +254,14 @@ func TestModeSetSyncPushNormalTag(t *testing.T) {
 	}
 
 	ch := generateTestRandomChunk().WithTagID(tag.Uid)
-	_, err = db.Put(context.Background(), chunk.ModePutUpload, ch)
+	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tag.Inc(chunk.StateStored) // so we don't get an error on tag.Status later on
+	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
 	item, err := db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -272,13 +273,13 @@ func TestModeSetSyncPushNormalTag(t *testing.T) {
 
 	tagtesting.CheckTag(t, tag, 0, 1, 0, 0, 0, 1)
 
-	err = db.Set(context.Background(), chunk.ModeSetSyncPush, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSyncPush, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -292,13 +293,13 @@ func TestModeSetSyncPushNormalTag(t *testing.T) {
 	tagtesting.CheckTag(t, tag, 0, 1, 0, 0, 1, 1)
 
 	// call pull sync set, expect no changes
-	err = db.Set(context.Background(), chunk.ModeSetSyncPull, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address(),
+		Address: ch.Address().Bytes(),
 		BinID:   1,
 	})
 	if err != nil {
@@ -321,12 +322,12 @@ func TestModeSetRemove(t *testing.T) {
 
 			chunks := generateTestRandomChunks(tc.count)
 
-			_, err := db.Put(context.Background(), chunk.ModePutUpload, chunks...)
+			_, err := db.Put(context.Background(), storage.ModePutUpload, chunks...)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			err = db.Set(context.Background(), chunk.ModeSetRemove, chunkAddresses(chunks)...)
+			err = db.Set(context.Background(), storage.ModeSetRemove, chunkAddresses(chunks)...)
 			if err != nil {
 				t.Fatal(err)
 			}

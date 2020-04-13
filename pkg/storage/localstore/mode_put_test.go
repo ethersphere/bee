@@ -24,7 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -48,7 +49,7 @@ func TestModePutRequest(t *testing.T) {
 
 				storeTimestamp = wantTimestamp
 
-				_, err := db.Put(context.Background(), chunk.ModePutRequest, chunks...)
+				_, err := db.Put(context.Background(), storage.ModePutRequest, chunks...)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -67,7 +68,7 @@ func TestModePutRequest(t *testing.T) {
 					return wantTimestamp
 				})()
 
-				_, err := db.Put(context.Background(), chunk.ModePutRequest, chunks...)
+				_, err := db.Put(context.Background(), storage.ModePutRequest, chunks...)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -97,7 +98,7 @@ func TestModePutSync(t *testing.T) {
 
 			chunks := generateTestRandomChunks(tc.count)
 
-			_, err := db.Put(context.Background(), chunk.ModePutSync, chunks...)
+			_, err := db.Put(context.Background(), storage.ModePutSync, chunks...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,7 +130,7 @@ func TestModePutUpload(t *testing.T) {
 
 			chunks := generateTestRandomChunks(tc.count)
 
-			_, err := db.Put(context.Background(), chunk.ModePutUpload, chunks...)
+			_, err := db.Put(context.Background(), storage.ModePutUpload, chunks...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -175,7 +176,7 @@ func TestModePutUpload_parallel(t *testing.T) {
 			uploadsCount := 100
 			workerCount := 100
 
-			chunksChan := make(chan []chunk.Chunk)
+			chunksChan := make(chan []swarm.Chunk)
 			errChan := make(chan error)
 			doneChan := make(chan struct{})
 			defer close(doneChan)
@@ -189,7 +190,7 @@ func TestModePutUpload_parallel(t *testing.T) {
 							if !ok {
 								return
 							}
-							_, err := db.Put(context.Background(), chunk.ModePutUpload, chunks...)
+							_, err := db.Put(context.Background(), storage.ModePutUpload, chunks...)
 							select {
 							case errChan <- err:
 							case <-doneChan:
@@ -201,7 +202,7 @@ func TestModePutUpload_parallel(t *testing.T) {
 				}(i)
 			}
 
-			chunks := make([]chunk.Chunk, 0)
+			chunks := make([]swarm.Chunk, 0)
 			var chunksMu sync.Mutex
 
 			// send chunks to workers
@@ -233,12 +234,12 @@ func TestModePutUpload_parallel(t *testing.T) {
 			chunksMu.Lock()
 			defer chunksMu.Unlock()
 			for _, ch := range chunks {
-				got, err := db.Get(context.Background(), chunk.ModeGetRequest, ch.Address())
+				got, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
 				if !bytes.Equal(got.Data(), ch.Data()) {
-					t.Fatalf("got chunk %s data %x, want %x", ch.Address().Hex(), got.Data(), ch.Data())
+					t.Fatalf("got chunk %s data %x, want %x", ch.Address(), got.Data(), ch.Data())
 				}
 			}
 		})
@@ -255,25 +256,25 @@ func TestModePut_sameChunk(t *testing.T) {
 
 			for _, tcn := range []struct {
 				name      string
-				mode      chunk.ModePut
+				mode      storage.ModePut
 				pullIndex bool
 				pushIndex bool
 			}{
 				{
 					name:      "ModePutRequest",
-					mode:      chunk.ModePutRequest,
+					mode:      storage.ModePutRequest,
 					pullIndex: false,
 					pushIndex: false,
 				},
 				{
 					name:      "ModePutUpload",
-					mode:      chunk.ModePutUpload,
+					mode:      storage.ModePutUpload,
 					pullIndex: true,
 					pushIndex: true,
 				},
 				{
 					name:      "ModePutSync",
-					mode:      chunk.ModePutSync,
+					mode:      storage.ModePutSync,
 					pullIndex: true,
 					pushIndex: false,
 				},
@@ -327,14 +328,14 @@ func TestModePut_addToGc(t *testing.T) {
 	opts := &Options{PutToGCCheck: func(_ []byte) bool { return retVal }}
 
 	for _, m := range []struct {
-		mode    chunk.ModePut
+		mode    storage.ModePut
 		putToGc bool
 	}{
-		{mode: chunk.ModePutSync, putToGc: true},
-		{mode: chunk.ModePutSync, putToGc: false},
-		{mode: chunk.ModePutUpload, putToGc: true},
-		{mode: chunk.ModePutUpload, putToGc: false},
-		{mode: chunk.ModePutRequest, putToGc: true}, // in ModePutRequest we always insert to GC, so putToGc=false not needed
+		{mode: storage.ModePutSync, putToGc: true},
+		{mode: storage.ModePutSync, putToGc: false},
+		{mode: storage.ModePutUpload, putToGc: true},
+		{mode: storage.ModePutUpload, putToGc: false},
+		{mode: storage.ModePutRequest, putToGc: true}, // in ModePutRequest we always insert to GC, so putToGc=false not needed
 	} {
 		for _, tc := range multiChunkTestCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -380,14 +381,14 @@ func TestModePut_addToGcExisting(t *testing.T) {
 	opts := &Options{PutToGCCheck: func(_ []byte) bool { return retVal }}
 
 	for _, m := range []struct {
-		mode    chunk.ModePut
+		mode    storage.ModePut
 		putToGc bool
 	}{
-		{mode: chunk.ModePutSync, putToGc: true},
-		{mode: chunk.ModePutSync, putToGc: false},
-		{mode: chunk.ModePutUpload, putToGc: true},
-		{mode: chunk.ModePutUpload, putToGc: false},
-		{mode: chunk.ModePutRequest, putToGc: true}, // in ModePutRequest we always insert to GC, so putToGc=false not needed
+		{mode: storage.ModePutSync, putToGc: true},
+		{mode: storage.ModePutSync, putToGc: false},
+		{mode: storage.ModePutUpload, putToGc: true},
+		{mode: storage.ModePutUpload, putToGc: false},
+		{mode: storage.ModePutRequest, putToGc: true}, // in ModePutRequest we always insert to GC, so putToGc=false not needed
 	} {
 		for _, tc := range multiChunkTestCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -442,10 +443,10 @@ func TestModePut_addToGcExisting(t *testing.T) {
 // TestPutDuplicateChunks validates the expected behaviour for
 // passing duplicate chunks to the Put method.
 func TestPutDuplicateChunks(t *testing.T) {
-	for _, mode := range []chunk.ModePut{
-		chunk.ModePutUpload,
-		chunk.ModePutRequest,
-		chunk.ModePutSync,
+	for _, mode := range []storage.ModePut{
+		storage.ModePutUpload,
+		storage.ModePutRequest,
+		storage.ModePutSync,
 	} {
 		t.Run(mode.String(), func(t *testing.T) {
 			db, cleanupFunc := newTestDB(t, nil)
@@ -466,12 +467,12 @@ func TestPutDuplicateChunks(t *testing.T) {
 
 			newItemsCountTest(db.retrievalDataIndex, 1)(t)
 
-			got, err := db.Get(context.Background(), chunk.ModeGetLookup, ch.Address())
+			got, err := db.Get(context.Background(), storage.ModeGetLookup, ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(got.Address(), ch.Address()) {
-				t.Errorf("got chunk address %s, want %s", got.Address().Hex(), ch.Address().Hex())
+			if !got.Address().Equal(ch.Address()) {
+				t.Errorf("got chunk address %s, want %s", got.Address(), ch.Address())
 			}
 		})
 	}
@@ -544,7 +545,7 @@ func benchmarkPutUpload(b *testing.B, o *Options, count, maxParallelUploads int)
 	db, cleanupFunc := newTestDB(b, o)
 	defer cleanupFunc()
 
-	chunks := make([]chunk.Chunk, count)
+	chunks := make([]swarm.Chunk, count)
 	for i := 0; i < count; i++ {
 		chunks[i] = generateTestRandomChunk()
 	}
@@ -559,7 +560,7 @@ func benchmarkPutUpload(b *testing.B, o *Options, count, maxParallelUploads int)
 			go func(i int) {
 				defer func() { <-sem }()
 
-				_, err := db.Put(context.Background(), chunk.ModePutUpload, chunks[i])
+				_, err := db.Put(context.Background(), storage.ModePutUpload, chunks[i])
 				errs <- err
 			}(i)
 		}

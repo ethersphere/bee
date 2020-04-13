@@ -24,7 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // TestDB_SubscribePush uploads some chunks before and after
@@ -34,7 +35,7 @@ func TestDB_SubscribePush(t *testing.T) {
 	db, cleanupFunc := newTestDB(t, nil)
 	defer cleanupFunc()
 
-	chunks := make([]chunk.Chunk, 0)
+	chunks := make([]swarm.Chunk, 0)
 	var chunksMu sync.Mutex
 
 	uploadRandomChunks := func(count int) {
@@ -44,7 +45,7 @@ func TestDB_SubscribePush(t *testing.T) {
 		for i := 0; i < count; i++ {
 			ch := generateTestRandomChunk()
 
-			_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+			_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,8 +85,8 @@ func TestDB_SubscribePush(t *testing.T) {
 				if !bytes.Equal(got.Data(), want.Data()) {
 					err = fmt.Errorf("got chunk %v data %x, want %x", i, got.Data(), want.Data())
 				}
-				if !bytes.Equal(got.Address(), want.Address()) {
-					err = fmt.Errorf("got chunk %v address %s, want %s", i, got.Address().Hex(), want.Address().Hex())
+				if !got.Address().Equal(want.Address()) {
+					err = fmt.Errorf("got chunk %v address %s, want %s", i, got.Address(), want.Address())
 				}
 				i++
 				// send one and only one error per received address
@@ -120,7 +121,7 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 	db, cleanupFunc := newTestDB(t, nil)
 	defer cleanupFunc()
 
-	addrs := make([]chunk.Address, 0)
+	addrs := make([]swarm.Address, 0)
 	var addrsMu sync.Mutex
 
 	uploadRandomChunks := func(count int) {
@@ -130,7 +131,7 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 		for i := 0; i < count; i++ {
 			ch := generateTestRandomChunk()
 
-			_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+			_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,7 +173,7 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 					want := addrs[i]
 					addrsMu.Unlock()
 					var err error
-					if !bytes.Equal(got.Address(), want) {
+					if !got.Address().Equal(want) {
 						err = fmt.Errorf("got chunk %v address on subscription %v %s, want %s", i, j, got, want)
 					}
 					i++

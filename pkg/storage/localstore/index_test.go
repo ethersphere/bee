@@ -22,7 +22,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // TestDB_pullIndex validates the ordering of keys in pull index.
@@ -44,7 +45,7 @@ func TestDB_pullIndex(t *testing.T) {
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
 
-		_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,8 +57,8 @@ func TestDB_pullIndex(t *testing.T) {
 	}
 
 	testItemsOrder(t, db.pullIndex, chunks, func(i, j int) (less bool) {
-		poi := chunk.Proximity(db.baseKey, chunks[i].Address())
-		poj := chunk.Proximity(db.baseKey, chunks[j].Address())
+		poi := swarm.Proximity(db.baseKey, chunks[i].Address().Bytes())
+		poj := swarm.Proximity(db.baseKey, chunks[j].Address().Bytes())
 		if poi < poj {
 			return true
 		}
@@ -70,7 +71,7 @@ func TestDB_pullIndex(t *testing.T) {
 		if chunks[i].binID > chunks[j].binID {
 			return false
 		}
-		return bytes.Compare(chunks[i].Address(), chunks[j].Address()) == -1
+		return bytes.Compare(chunks[i].Address().Bytes(), chunks[j].Address().Bytes()) == -1
 	})
 }
 
@@ -89,7 +90,7 @@ func TestDB_gcIndex(t *testing.T) {
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
 
-		_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -117,7 +118,7 @@ func TestDB_gcIndex(t *testing.T) {
 	t.Run("request unsynced", func(t *testing.T) {
 		ch := chunks[1]
 
-		_, err := db.Get(context.Background(), chunk.ModeGetRequest, ch.Address())
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -134,7 +135,7 @@ func TestDB_gcIndex(t *testing.T) {
 	t.Run("sync one chunk", func(t *testing.T) {
 		ch := chunks[0]
 
-		err := db.Set(context.Background(), chunk.ModeSetSyncPull, ch.Address())
+		err := db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +148,7 @@ func TestDB_gcIndex(t *testing.T) {
 
 	t.Run("sync all chunks", func(t *testing.T) {
 		for i := range chunks {
-			err := db.Set(context.Background(), chunk.ModeSetSyncPull, chunks[i].Address())
+			err := db.Set(context.Background(), storage.ModeSetSyncPull, chunks[i].Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -161,7 +162,7 @@ func TestDB_gcIndex(t *testing.T) {
 	t.Run("request one chunk", func(t *testing.T) {
 		i := 6
 
-		_, err := db.Get(context.Background(), chunk.ModeGetRequest, chunks[i].Address())
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, chunks[i].Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +186,7 @@ func TestDB_gcIndex(t *testing.T) {
 		})
 
 		for _, ch := range chunks {
-			_, err := db.Get(context.Background(), chunk.ModeGetRequest, ch.Address())
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +202,7 @@ func TestDB_gcIndex(t *testing.T) {
 	t.Run("remove one chunk", func(t *testing.T) {
 		i := 3
 
-		err := db.Set(context.Background(), chunk.ModeSetRemove, chunks[i].Address())
+		err := db.Set(context.Background(), storage.ModeSetRemove, chunks[i].Address())
 		if err != nil {
 			t.Fatal(err)
 		}

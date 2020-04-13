@@ -20,17 +20,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Get returns a chunk from the database. If the chunk is
-// not found chunk.ErrChunkNotFound will be returned.
+// not found storage.ErrNotFound will be returned.
 // All required indexes will be updated required by the
 // Getter Mode. Get is required to implement chunk.Store
 // interface.
-func (db *DB) Get(ctx context.Context, mode chunk.ModeGet, addr chunk.Address) (ch chunk.Chunk, err error) {
+func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	db.metrics.ModeGet.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeGet, time.Now())
 
@@ -43,16 +44,16 @@ func (db *DB) Get(ctx context.Context, mode chunk.ModeGet, addr chunk.Address) (
 	out, err := db.get(mode, addr)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
-			return nil, chunk.ErrChunkNotFound
+			return nil, storage.ErrNotFound
 		}
 		return nil, err
 	}
-	return chunk.NewChunk(out.Address, out.Data).WithPinCounter(out.PinCounter), nil
+	return swarm.NewChunk(swarm.NewAddress(out.Address), out.Data).WithPinCounter(out.PinCounter), nil
 }
 
 // get returns Item from the retrieval index
 // and updates other indexes.
-func (db *DB) get(mode chunk.ModeGet, addr chunk.Address) (out shed.Item, err error) {
+func (db *DB) get(mode storage.ModeGet, addr swarm.Address) (out shed.Item, err error) {
 	item := addressToItem(addr)
 
 	out, err = db.retrievalDataIndex.Get(item)
@@ -61,10 +62,10 @@ func (db *DB) get(mode chunk.ModeGet, addr chunk.Address) (out shed.Item, err er
 	}
 	switch mode {
 	// update the access timestamp and gc index
-	case chunk.ModeGetRequest:
+	case storage.ModeGetRequest:
 		db.updateGCItems(out)
 
-	case chunk.ModeGetPin:
+	case storage.ModeGetPin:
 		pinnedItem, err := db.pinIndex.Get(item)
 		if err != nil {
 			return out, err
@@ -72,8 +73,8 @@ func (db *DB) get(mode chunk.ModeGet, addr chunk.Address) (out shed.Item, err er
 		return pinnedItem, nil
 
 	// no updates to indexes
-	case chunk.ModeGetSync:
-	case chunk.ModeGetLookup:
+	case storage.ModeGetSync:
+	case storage.ModeGetLookup:
 	default:
 		return out, ErrInvalidMode
 	}
