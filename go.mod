@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/btcsuite/btcd v0.20.1-beta
+	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/coreos/go-semver v0.3.0
 	github.com/dgraph-io/badger/v2 v2.0.3
 	github.com/gogo/protobuf v1.3.1
