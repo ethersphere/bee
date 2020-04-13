@@ -33,10 +33,8 @@ const (
 	// filename in tar archive that holds the information
 	// about exported data format version
 	exportVersionFilename = ".swarm-export-version"
-	// legacy version for previous LDBStore
-	legacyExportVersion = "1"
 	// current export format version
-	currentExportVersion = "2"
+	currentExportVersion = "1"
 )
 
 // Export writes a tar structured data to the writer of
@@ -94,9 +92,10 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 	go func() {
 		var (
 			firstFile = true
+
 			// if exportVersionFilename file is not present
-			// assume legacy version
-			version = legacyExportVersion
+			// assume current version
+			version = currentExportVersion
 		)
 		for {
 			hdr, err := tr.Next()
@@ -146,11 +145,6 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 
 			var ch chunk.Chunk
 			switch version {
-			case legacyExportVersion:
-				// LDBStore Export exported chunk data prefixed with the chunk key.
-				// That is not necessary, as the key is in the chunk filename,
-				// but backward compatibility needs to be preserved.
-				ch = chunk.NewChunk(key, data[32:])
 			case currentExportVersion:
 				ch = chunk.NewChunk(key, data)
 			default:

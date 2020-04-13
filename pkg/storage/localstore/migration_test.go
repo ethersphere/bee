@@ -19,15 +19,12 @@ package localstore
 import (
 	"io"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
-	"path"
 	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/swarm/chunk"
 )
 
 func TestOneMigration(t *testing.T) {
@@ -36,16 +33,17 @@ func TestOneMigration(t *testing.T) {
 		DbSchemaCurrent = s
 	}(schemaMigrations, DbSchemaCurrent)
 
-	DbSchemaCurrent = DbSchemaSanctuary
+	DbSchemaCurrent = DbSchemaCode
+	dbSchemaNext := "dbSchemaNext"
 
 	ran := false
 	shouldNotRun := false
 	schemaMigrations = []migration{
-		{name: DbSchemaSanctuary, fn: func(db *DB) error {
+		{name: DbSchemaCode, fn: func(db *DB) error {
 			shouldNotRun = true // this should not be executed
 			return nil
 		}},
-		{name: DbSchemaDiwali, fn: func(db *DB) error {
+		{name: dbSchemaNext, fn: func(db *DB) error {
 			ran = true
 			return nil
 		}},
@@ -74,7 +72,7 @@ func TestOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	DbSchemaCurrent = DbSchemaDiwali
+	DbSchemaCurrent = dbSchemaNext
 
 	// start the existing localstore and expect the migration to run
 	db, err = New(dir, baseKey, nil, logger)
@@ -87,8 +85,8 @@ func TestOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if schemaName != DbSchemaDiwali {
-		t.Errorf("schema name mismatch. got '%s', want '%s'", schemaName, DbSchemaDiwali)
+	if schemaName != dbSchemaNext {
+		t.Errorf("schema name mismatch. got '%s', want '%s'", schemaName, dbSchemaNext)
 	}
 
 	if !ran {
@@ -111,17 +109,17 @@ func TestManyMigrations(t *testing.T) {
 		DbSchemaCurrent = s
 	}(schemaMigrations, DbSchemaCurrent)
 
-	DbSchemaCurrent = DbSchemaSanctuary
+	DbSchemaCurrent = DbSchemaCode
 
 	shouldNotRun := false
 	executionOrder := []int{-1, -1, -1, -1}
 
 	schemaMigrations = []migration{
-		{name: DbSchemaSanctuary, fn: func(db *DB) error {
+		{name: DbSchemaCode, fn: func(db *DB) error {
 			shouldNotRun = true // this should not be executed
 			return nil
 		}},
-		{name: DbSchemaDiwali, fn: func(db *DB) error {
+		{name: "keju", fn: func(db *DB) error {
 			executionOrder[0] = 0
 			return nil
 		}},
@@ -315,59 +313,7 @@ func TestMigrationFailTo(t *testing.T) {
 	}
 }
 
-// TestMigrateSanctuaryFixture migrates an actual Sanctuary localstore
-// to the most recent schema.
-func TestMigrateSanctuaryFixture(t *testing.T) {
-
-	tmpdir, err := ioutil.TempDir("", "localstore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpdir)
-
-	dir := path.Join(".", "testdata", "sanctuary")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, f := range files {
-		err = copyFileContents(path.Join(dir, f.Name()), path.Join(tmpdir, f.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	baseKey := make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
-	}
-	logger := logging.New(ioutil.Discard, 0)
-
-	// start localstore with the copied fixture
-	db, err := New(tmpdir, baseKey, &Options{Tags: chunk.NewTags()}, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
-	schemaName, err := db.schemaName.Get()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if schemaName != DbSchemaCurrent {
-		t.Fatalf("schema name mismatch, want '%s' got '%s'", DbSchemaCurrent, schemaName)
-	}
-
-	err = db.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
+// used for fixture tests to copy the fixture data into a temporary directory
 func copyFileContents(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
