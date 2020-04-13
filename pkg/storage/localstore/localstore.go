@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/ethersphere/swarm/storage/mock"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // DB implements chunk.Store.
@@ -454,7 +454,7 @@ func (db *DB) Close() (err error) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		db.logger.Debugf("localstore closed with still active goroutines")
+		db.logger.Errorf("localstore closed with still active goroutines")
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
 		prof := pprof.Lookup("goroutine")

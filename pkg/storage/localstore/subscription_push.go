@@ -80,7 +80,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 						// set next iteration start item
 						// when its chunk is successfully sent to channel
 						sinceItem = &item
-						db.logger.Trace("subscribe.push. ref : %s, binId : %d", fmt.Sprintf("%x", sinceItem.Address), sinceItem.BinID)
+						db.logger.Tracef("subscribe.push. ref : %s, binId : %d", fmt.Sprintf("%x", sinceItem.Address), sinceItem.BinID)
 						return false, nil
 					case <-stopChan:
 						// gracefully stop the iteration
@@ -104,7 +104,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 
 				if err != nil {
 					db.metrics.SubscribePushIterationFailure.Inc()
-					db.logger.Debugf("localstore push subscription iteration. Error : %s", err.Error())
+					db.logger.Errorf("localstore push subscription iteration. Error : %s", err.Error())
 					return
 				}
 			case <-stopChan:
@@ -118,7 +118,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan chunk.Chunk, stop fun
 			case <-ctx.Done():
 				err := ctx.Err()
 				if err != nil {
-					db.logger.Debug("localstore push subscription. Error : %s", err.Error())
+					db.logger.Errorf("localstore push subscription. Error : %s", err.Error())
 				}
 				return
 			}

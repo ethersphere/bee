@@ -16,6 +16,11 @@
 
 package localstore
 
+import (
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+)
+
 // The DB schema we want to use. The actual/current DB schema might differ
 // until migrations are run.
 var DbSchemaCurrent = DbSchemaDiwali
@@ -36,3 +41,27 @@ const DbSchemaSanctuary = "sanctuary"
 
 // the "diwali" migration simply renames the pullIndex in localstore
 const DbSchemaDiwali = "diwali"
+
+// returns true if legacy database is in the datadir
+func IsLegacyDatabase(datadir string) bool {
+
+	var (
+		legacyDbSchemaKey = []byte{8}
+	)
+
+	db, err := leveldb.OpenFile(datadir, &opt.Options{OpenFilesCacheCapacity: 128})
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+
+	data, err := db.Get(legacyDbSchemaKey, nil)
+	if err != nil {
+		if err == leveldb.ErrNotFound {
+			// if we haven't found anything under the legacy db schema key- we are not on legacy
+			return false
+		}
+
+	}
+	return string(data) == DbSchemaHalloween || string(data) == DbSchemaPurity
+}
