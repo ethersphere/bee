@@ -26,8 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/swarm/sctx"
 )
 
 var (
@@ -50,7 +50,7 @@ func NewTags() *Tags {
 // Create creates a new tag, stores it by the name and returns it
 // it returns an error if the tag with this name already exists
 func (ts *Tags) Create(s string, total int64, anon bool) (*Tag, error) {
-	t := NewTag(TagUidFunc(), s, total, anon)
+	t := NewTag(context.Background(), TagUidFunc(), s, total, anon, nil)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
 		return nil, errExists
