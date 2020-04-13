@@ -33,7 +33,7 @@ type Uint64Vector struct {
 
 // NewUint64Vector returns a new Uint64Vector.
 // It validates its name and type against the database schema.
-func (db *DB) NewUint64Vector(name string, logger logging.Logger) (f Uint64Vector, err error) {
+func (db *DB) NewUint64Vector(name string) (f Uint64Vector, err error) {
 	key, err := db.schemaFieldKey(name, "vector-uint64")
 	if err != nil {
 		return f, err
@@ -41,7 +41,7 @@ func (db *DB) NewUint64Vector(name string, logger logging.Logger) (f Uint64Vecto
 	return Uint64Vector{
 		db:     db,
 		key:    key,
-		logger: logger,
+		logger: db.logger,
 	}, nil
 }
 

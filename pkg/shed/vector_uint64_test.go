@@ -17,10 +17,7 @@
 package shed
 
 import (
-	"io/ioutil"
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // TestUint64Vector validates put and get operations
@@ -28,8 +25,8 @@ import (
 func TestUint64Vector(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	bins, err := db.NewUint64Vector("bins", logger)
+
+	bins, err := db.NewUint64Vector("bins")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +122,8 @@ func TestUint64Vector(t *testing.T) {
 func TestUint64Vector_Inc(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	bins, err := db.NewUint64Vector("bins", logger)
+
+	bins, err := db.NewUint64Vector("bins")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +154,8 @@ func TestUint64Vector_Inc(t *testing.T) {
 func TestUint64Vector_IncInBatch(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	bins, err := db.NewUint64Vector("bins", logger)
+
+	bins, err := db.NewUint64Vector("bins")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,8 +210,8 @@ func TestUint64Vector_IncInBatch(t *testing.T) {
 func TestUint64Vector_Dec(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	bins, err := db.NewUint64Vector("bins", logger)
+
+	bins, err := db.NewUint64Vector("bins")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,8 +249,8 @@ func TestUint64Vector_Dec(t *testing.T) {
 func TestUint64Vector_DecInBatch(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	bins, err := db.NewUint64Vector("bins", logger)
+
+	bins, err := db.NewUint64Vector("bins")
 	if err != nil {
 		t.Fatal(err)
 	}

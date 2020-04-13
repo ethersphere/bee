@@ -33,7 +33,7 @@ type StructField struct {
 
 // NewStructField returns a new StructField.
 // It validates its name and type against the database schema.
-func (db *DB) NewStructField(name string, logger logging.Logger) (f StructField, err error) {
+func (db *DB) NewStructField(name string) (f StructField, err error) {
 	key, err := db.schemaFieldKey(name, "struct-rlp")
 	if err != nil {
 		return f, err
@@ -41,7 +41,7 @@ func (db *DB) NewStructField(name string, logger logging.Logger) (f StructField,
 	return StructField{
 		db:     db,
 		key:    key,
-		logger: logger,
+		logger: db.logger,
 	}, nil
 }
 

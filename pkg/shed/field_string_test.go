@@ -17,10 +17,7 @@
 package shed
 
 import (
-	"io/ioutil"
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // TestStringField validates put and get operations
@@ -29,8 +26,7 @@ func TestStringField(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
 
-	logger := logging.New(ioutil.Discard, 0)
-	simpleString, err := db.NewStringField("simple-string", logger)
+	simpleString, err := db.NewStringField("simple-string")
 	if err != nil {
 		t.Fatal(err)
 	}
