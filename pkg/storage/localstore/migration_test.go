@@ -17,7 +17,6 @@
 package localstore
 
 import (
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -311,22 +310,4 @@ func TestMigrationFailTo(t *testing.T) {
 	if shouldNotRun {
 		t.Errorf("migration ran but shouldnt have")
 	}
-}
-
-// used for fixture tests to copy the fixture data into a temporary directory
-func copyFileContents(src, dst string) (err error) {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	if _, err = io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Sync()
 }
