@@ -21,11 +21,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	tagtesting "github.com/ethersphere/bee/pkg/tags/testing"
-	"github.com/ethersphere/swarm/shed"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestModeSetAccess validates ModeSetAccess index values on the provided DB.
@@ -334,7 +333,7 @@ func TestModeSetRemove(t *testing.T) {
 
 			t.Run("retrieve indexes", func(t *testing.T) {
 				for _, ch := range chunks {
-					wantErr := leveldb.ErrNotFound
+					wantErr := shed.ErrNotFound
 					_, err := db.retrievalDataIndex.Get(addressToItem(ch.Address()))
 					if err != wantErr {
 						t.Errorf("got error %v, want %v", err, wantErr)
@@ -353,7 +352,7 @@ func TestModeSetRemove(t *testing.T) {
 			})
 
 			for _, ch := range chunks {
-				newPullIndexTest(db, ch, 0, leveldb.ErrNotFound)(t)
+				newPullIndexTest(db, ch, 0, shed.ErrNotFound)(t)
 			}
 
 			t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))

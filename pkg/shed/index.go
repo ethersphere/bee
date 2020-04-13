@@ -102,7 +102,7 @@ type IndexFuncs struct {
 // NewIndex returns a new Index instance with defined name and
 // encoding functions. The name must be unique and will be validated
 // on database schema for a key prefix byte.
-func (db *DB) NewIndex(name string, funcs IndexFuncs, logger logging.Logger) (f Index, err error) {
+func (db *DB) NewIndex(name string, funcs IndexFuncs) (f Index, err error) {
 	id, err := db.schemaIndexPrefix(name)
 	if err != nil {
 		return f, err
@@ -110,7 +110,7 @@ func (db *DB) NewIndex(name string, funcs IndexFuncs, logger logging.Logger) (f 
 	prefix := []byte{id}
 	return Index{
 		db:     db,
-		logger: logger,
+		logger: db.logger,
 		prefix: prefix,
 		// This function adjusts Index LevelDB key
 		// by appending the provided index id byte.

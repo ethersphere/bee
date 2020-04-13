@@ -17,10 +17,7 @@
 package shed
 
 import (
-	"io/ioutil"
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // TestUint64Field validates put and get operations
@@ -28,8 +25,8 @@ import (
 func TestUint64Field(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	counter, err := db.NewUint64Field("counter", logger)
+
+	counter, err := db.NewUint64Field("counter")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +118,8 @@ func TestUint64Field(t *testing.T) {
 func TestUint64Field_Inc(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	counter, err := db.NewUint64Field("counter", logger)
+
+	counter, err := db.NewUint64Field("counter")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,8 +148,8 @@ func TestUint64Field_Inc(t *testing.T) {
 func TestUint64Field_IncInBatch(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	counter, err := db.NewUint64Field("counter", logger)
+
+	counter, err := db.NewUint64Field("counter")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,8 +202,8 @@ func TestUint64Field_IncInBatch(t *testing.T) {
 func TestUint64Field_Dec(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	counter, err := db.NewUint64Field("counter", logger)
+
+	counter, err := db.NewUint64Field("counter")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,8 +239,8 @@ func TestUint64Field_Dec(t *testing.T) {
 func TestUint64Field_DecInBatch(t *testing.T) {
 	db, cleanupFunc := newTestDB(t)
 	defer cleanupFunc()
-	logger := logging.New(ioutil.Discard, 0)
-	counter, err := db.NewUint64Field("counter", logger)
+
+	counter, err := db.NewUint64Field("counter")
 	if err != nil {
 		t.Fatal(err)
 	}

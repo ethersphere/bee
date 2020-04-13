@@ -17,10 +17,11 @@
 package localstore
 
 import (
+	"errors"
 	"time"
 
-	"github.com/ethersphere/swarm/shed"
-	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/dgraph-io/badger/v2"
+	"github.com/ethersphere/bee/pkg/shed"
 )
 
 var (
@@ -34,7 +35,7 @@ var (
 	// garbage collection runs.
 	gcTargetRatio = 0.9
 	// gcBatchSize limits the number of chunks in a single
-	// leveldb batch on garbage collection.
+	// badger transaction on garbage collection.
 	gcBatchSize uint64 = 200
 )
 
@@ -84,7 +85,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		}
 	}()
 
-	batch := new(leveldb.Batch)
+	batch := db.shed.GetBatch(true)
 	target := db.gcTarget()
 
 	// protect database from changing idexes and gcSize
@@ -145,7 +146,9 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	}
 	db.metrics.GCCollectedCounter.Inc()
 
-	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
+	if err := db.gcSize.PutInBatch(batch, gcSize-collectedCount); err != nil {
+		return 0, false, err
+	}
 
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
@@ -165,7 +168,7 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 		}
 	}()
 
-	batch := new(leveldb.Batch)
+	batch := db.shed.GetBatch(true)
 	excludedCount := 0
 	var gcSizeChange int64
 	err = db.gcExcludeIndex.Iterate(func(item shed.Item) (stop bool, err error) {
@@ -244,12 +247,12 @@ func (db *DB) triggerGarbageCollection() {
 // incGCSizeInBatch changes gcSize field value
 // by change which can be negative. This function
 // must be called under batchMu lock.
-func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
+func (db *DB) incGCSizeInBatch(batch *badger.Txn, change int64) (err error) {
 	if change == 0 {
 		return nil
 	}
 	gcSize, err := db.gcSize.Get()
-	if err != nil {
+	if err != nil && !errors.Is(err, shed.ErrNotFound) {
 		return err
 	}
 
@@ -266,7 +269,9 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 		}
 		new = gcSize - c
 	}
-	db.gcSize.PutInBatch(batch, new)
+	if err := db.gcSize.PutInBatch(batch, new); err != nil {
+		return err
+	}
 
 	// trigger garbage collection if we reached the capacity
 	if new >= db.capacity {

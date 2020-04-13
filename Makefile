@@ -31,7 +31,7 @@ test:
 	$(GO) test -v -race ./...
 
 .PHONY: build
-build: export CGO_ENABLED=1 # set to 0 when go-ethereum/metrics dependecy is removed
+build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
 

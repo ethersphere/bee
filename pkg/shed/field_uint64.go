@@ -33,7 +33,7 @@ type Uint64Field struct {
 
 // NewUint64Field returns a new Uint64Field.
 // It validates its name and type against the database schema.
-func (db *DB) NewUint64Field(name string, logger logging.Logger) (f Uint64Field, err error) {
+func (db *DB) NewUint64Field(name string) (f Uint64Field, err error) {
 	key, err := db.schemaFieldKey(name, "uint64")
 	if err != nil {
 		return f, err
@@ -41,7 +41,7 @@ func (db *DB) NewUint64Field(name string, logger logging.Logger) (f Uint64Field,
 	return Uint64Field{
 		db:     db,
 		key:    key,
-		logger: logger,
+		logger: db.logger,
 	}, nil
 }
 

@@ -38,7 +38,7 @@ const (
 )
 
 var (
-	ErrNotFound = errors.New("storage: not found")
+	ErrNotFound = errors.New("shed: not found")
 )
 
 // DB provides abstractions over badgerDB in order to
@@ -135,7 +135,7 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 		item, err := txn.Get(key)
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
-				return ErrNotFound
+				return nil
 			}
 			return err
 		}
