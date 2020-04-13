@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 // TestModeGetMulti stores chunks and validates that GetMulti
@@ -29,11 +29,11 @@ import (
 func TestModeGetMulti(t *testing.T) {
 	const chunkCount = 10
 
-	for _, mode := range []chunk.ModeGet{
-		chunk.ModeGetRequest,
-		chunk.ModeGetSync,
-		chunk.ModeGetLookup,
-		chunk.ModeGetPin,
+	for _, mode := range []storage.ModeGet{
+		storage.ModeGetRequest,
+		storage.ModeGetSync,
+		storage.ModeGetLookup,
+		storage.ModeGetPin,
 	} {
 		t.Run(mode.String(), func(t *testing.T) {
 			db, cleanupFunc := newTestDB(t, nil)
@@ -41,15 +41,15 @@ func TestModeGetMulti(t *testing.T) {
 
 			chunks := generateTestRandomChunks(chunkCount)
 
-			_, err := db.Put(context.Background(), chunk.ModePutUpload, chunks...)
+			_, err := db.Put(context.Background(), storage.ModePutUpload, chunks...)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if mode == chunk.ModeGetPin {
+			if mode == storage.ModeGetPin {
 				// pin chunks so that it is not returned as not found by pinIndex
 				for i, ch := range chunks {
-					err := db.Set(context.Background(), chunk.ModeSetPin, ch.Address())
+					err := db.Set(context.Background(), storage.ModeSetPin, ch.Address())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -72,7 +72,7 @@ func TestModeGetMulti(t *testing.T) {
 
 			missingChunk := generateTestRandomChunk()
 
-			want := chunk.ErrChunkNotFound
+			want := storage.ErrNotFound
 			_, err = db.GetMulti(context.Background(), mode, append(addrs, missingChunk.Address())...)
 			if err != want {
 				t.Errorf("got error %v, want %v", err, want)
