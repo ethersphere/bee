@@ -26,8 +26,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
-
-	//"github.com/ethersphere/swarm/spancontext"
 	"github.com/opentracing/opentracing-go"
 )
 
