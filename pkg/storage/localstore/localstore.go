@@ -19,16 +19,16 @@ package localstore
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"os"
 	"runtime/pprof"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/swarm/chunk"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/ethersphere/swarm/storage/mock"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // DB implements chunk.Store.
@@ -38,10 +38,6 @@ var (
 	// ErrInvalidMode is retuned when an unknown Mode
 	// is provided to the function.
 	ErrInvalidMode = errors.New("invalid mode")
-	// ErrAddressLockTimeout is returned when the same chunk
-	// is updated in parallel and one of the updates
-	// takes longer then the configured timeout duration.
-	ErrAddressLockTimeout = errors.New("address lock timeout")
 )
 
 var (
@@ -128,6 +124,8 @@ type DB struct {
 	subscritionsWG sync.WaitGroup
 
 	metrics metrics
+
+	logger logging.Logger
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -153,7 +151,7 @@ type Options struct {
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
-func New(path string, baseKey []byte, o *Options) (db *DB, err error) {
+func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB, err error) {
 	if o == nil {
 		// default options
 		o = &Options{
@@ -178,6 +176,7 @@ func New(path string, baseKey []byte, o *Options) (db *DB, err error) {
 		collectGarbageWorkerDone: make(chan struct{}),
 		putToGCCheck:             o.PutToGCCheck,
 		metrics:                  newMetrics(),
+		logger:                   logger,
 	}
 	if db.capacity == 0 {
 		db.capacity = defaultCapacity
@@ -455,7 +454,7 @@ func (db *DB) Close() (err error) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		log.Error("localstore closed with still active goroutines")
+		db.logger.Errorf("localstore closed with still active goroutines")
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
 		prof := pprof.Lookup("goroutine")

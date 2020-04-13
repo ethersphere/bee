@@ -318,7 +318,7 @@ func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
 		o := badger.DefaultIteratorOptions
 		o.PrefetchValues = true
 		o.PrefetchSize = 1024
-		o.Reverse = true   // iterate backwards
+		o.Reverse = true // iterate backwards
 
 		i := txn.NewIterator(o)
 		defer i.Close()
@@ -335,7 +335,7 @@ func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
 			// If there is a no key which starts which nextPrefix, badger moves the
 			// cursor to the previous key (which should be our key).
 			i.Seek(nextPrefix)
-			if bytes.HasPrefix(i.Item().Key(),prefix) {
+			if bytes.HasPrefix(i.Item().Key(), prefix) {
 				key = i.Item().Key()
 				value, err = i.Item().ValueCopy(nil)
 				if err != nil {
@@ -345,7 +345,7 @@ func (db *DB) Last(prefix []byte) (key []byte, value []byte, err error) {
 				// If there is a key which starts with nextPrefix, we do reverse Next() to
 				// reach our key and pick that up.
 				i.Next()
-				if bytes.HasPrefix(i.Item().Key(),prefix) {
+				if bytes.HasPrefix(i.Item().Key(), prefix) {
 					key = i.Item().Key()
 					value, err = i.Item().ValueCopy(nil)
 					if err != nil {

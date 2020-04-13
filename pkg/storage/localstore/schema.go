@@ -17,7 +17,6 @@
 package localstore
 
 import (
-	"github.com/ethersphere/swarm/log"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
@@ -52,7 +51,6 @@ func IsLegacyDatabase(datadir string) bool {
 
 	db, err := leveldb.OpenFile(datadir, &opt.Options{OpenFilesCacheCapacity: 128})
 	if err != nil {
-		log.Error("got an error while trying to open leveldb path", "path", datadir, "err", err)
 		return false
 	}
 	defer db.Close()
@@ -64,8 +62,6 @@ func IsLegacyDatabase(datadir string) bool {
 			return false
 		}
 
-		log.Error("got an unexpected error fetching legacy name from the database", "err", err)
 	}
-	log.Trace("checking if database scheme is legacy", "schema name", string(data))
 	return string(data) == DbSchemaHalloween || string(data) == DbSchemaPurity
 }
