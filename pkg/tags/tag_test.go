@@ -17,6 +17,7 @@
 package tags
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -184,7 +185,7 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 // TestMarshallingWithAddr tests that marshalling and unmarshalling is done correctly when the
 // tag Address (byte slice) contains some arbitrary value
 func TestMarshallingWithAddr(t *testing.T) {
-	tg := NewTag(111, "test/tag", 10, false)
+	tg := NewTag(context.Background(), 111, "test/tag", 10, false, nil)
 	tg.Address = swarm.NewAddress([]byte{0, 1, 2, 3, 4, 5, 6})
 
 	for _, f := range allStates {
@@ -235,7 +236,7 @@ func TestMarshallingWithAddr(t *testing.T) {
 
 // TestMarshallingNoAddress tests that marshalling and unmarshalling is done correctly
 func TestMarshallingNoAddr(t *testing.T) {
-	tg := NewTag(111, "test/tag", 10, false)
+	tg := NewTag(context.Background(), 111, "test/tag", 10, false, nil)
 	for _, f := range allStates {
 		tg.Inc(f)
 	}

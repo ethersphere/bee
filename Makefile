@@ -10,7 +10,7 @@ endif
 all: build lint vet test binary
 
 .PHONY: binary
-binary: export CGO_ENABLED=1 # set to 0 when go-ethereum/metrics dependecy is removed
+binary: export CGO_ENABLED=0
 binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee

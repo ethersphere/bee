@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/swarm/spancontext"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
 )
 
@@ -69,7 +69,7 @@ type Tag struct {
 }
 
 // NewTag creates a new tag, and returns it
-func NewTag(uid uint32, s string, total int64, anon bool) *Tag {
+func NewTag(ctx context.Context, uid uint32, s string, total int64, anon bool, tracer *tracing.Tracer) *Tag {
 	t := &Tag{
 		Uid:       uid,
 		Anonymous: anon,
@@ -80,7 +80,7 @@ func NewTag(uid uint32, s string, total int64, anon bool) *Tag {
 
 	// context here is used only to store the root span `new.upload.tag` within Tag,
 	// we don't need any type of ctx Deadline or cancellation for this particular ctx
-	t.ctx, t.span = spancontext.StartSpan(context.Background(), "new.upload.tag")
+	t.span, _, t.ctx = tracer.StartSpanFromContext(ctx, "new.upload.tag", nil)
 	return t
 }
 
