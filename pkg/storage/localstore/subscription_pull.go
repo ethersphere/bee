@@ -22,7 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/swarm/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -35,10 +36,10 @@ import (
 // function will terminate current and further iterations without errors, and also close the returned channel.
 // Make sure that you check the second returned parameter from the channel to stop iteration when its value
 // is false.
-func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan chunk.Descriptor, stop func()) {
+func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan storage.Descriptor, stop func()) {
 	db.metrics.SubscribePull.Inc()
 
-	chunkDescriptors := make(chan chunk.Descriptor)
+	chunkDescriptors := make(chan storage.Descriptor)
 	trigger := make(chan struct{}, 1)
 
 	db.pullTriggersMu.Lock()
@@ -62,7 +63,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 	go func() {
 		defer db.subscritionsWG.Done()
 		db.metrics.SubscribePullStop.Inc()
-		// close the returned chunk.Descriptor channel at the end to
+		// close the returned store.Descriptor channel at the end to
 		// signal that the subscription is done
 		defer close(chunkDescriptors)
 		// sinceItem is the Item from which the next iteration
@@ -70,7 +71,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 		var sinceItem *shed.Item
 		if since > 0 {
 			sinceItem = &shed.Item{
-				Address: db.addressInBin(bin),
+				Address: db.addressInBin(bin).Bytes(),
 				BinID:   since,
 			}
 		}
@@ -93,8 +94,8 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 						return true, errStopSubscription
 					}
 					select {
-					case chunkDescriptors <- chunk.Descriptor{
-						Address: item.Address,
+					case chunkDescriptors <- storage.Descriptor{
+						Address: swarm.NewAddress(item.Address),
 						BinID:   item.BinID,
 					}:
 						if until > 0 && item.BinID == until {
@@ -216,9 +217,9 @@ func (db *DB) triggerPullSubscriptions(bin uint8) {
 
 // addressInBin returns an address that is in a specific
 // proximity order bin from database base key.
-func (db *DB) addressInBin(bin uint8) (addr chunk.Address) {
-	addr = append([]byte(nil), db.baseKey...)
+func (db *DB) addressInBin(bin uint8) swarm.Address {
+	addr := append([]byte(nil), db.baseKey...)
 	b := bin / 8
 	addr[b] = addr[b] ^ (1 << (7 - bin%8))
-	return addr
+	return swarm.NewAddress(addr)
 }

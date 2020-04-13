@@ -21,7 +21,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // TestExportImport constructs two databases, one to put and export
@@ -37,11 +38,11 @@ func TestExportImport(t *testing.T) {
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
 
-		_, err := db1.Put(context.Background(), chunk.ModePutUpload, ch)
+		_, err := db1.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
-		chunks[string(ch.Address())] = ch.Data()
+		chunks[ch.Address().String()] = ch.Data()
 	}
 
 	var buf bytes.Buffer
@@ -67,14 +68,14 @@ func TestExportImport(t *testing.T) {
 	}
 
 	for a, want := range chunks {
-		addr := chunk.Address([]byte(a))
-		ch, err := db2.Get(context.Background(), chunk.ModeGetRequest, addr)
+		addr := swarm.MustParseHexAddress(a)
+		ch, err := db2.Get(context.Background(), storage.ModeGetRequest, addr)
 		if err != nil {
 			t.Fatal(err)
 		}
 		got := ch.Data()
 		if !bytes.Equal(got, want) {
-			t.Fatalf("chunk %s: got data %x, want %x", addr.Hex(), got, want)
+			t.Fatalf("chunk %s: got data %s, want %x", addr, got, want)
 		}
 	}
 }

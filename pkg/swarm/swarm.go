@@ -9,6 +9,12 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+)
+
+const (
+	ChunkSize = 4096
+	MaxPO     = 16
 )
 
 // Address represents an address in Swarm metric space of
@@ -83,3 +89,86 @@ func (a Address) MarshalJSON() ([]byte, error) {
 
 // ZeroAddress is the address that has no value.
 var ZeroAddress = NewAddress(nil)
+
+type Chunk interface {
+	Address() Address
+	Data() []byte
+	PinCounter() uint64
+	WithPinCounter(p uint64) Chunk
+	TagID() uint32
+	WithTagID(t uint32) Chunk
+}
+
+type chunk struct {
+	addr       Address
+	sdata      []byte
+	pinCounter uint64
+	tagID      uint32
+}
+
+func NewChunk(addr Address, data []byte) Chunk {
+	return &chunk{
+		addr:  addr,
+		sdata: data,
+	}
+}
+
+func (c *chunk) WithPinCounter(p uint64) Chunk {
+	c.pinCounter = p
+	return c
+}
+
+func (c *chunk) WithTagID(t uint32) Chunk {
+	c.tagID = t
+	return c
+}
+
+func (c *chunk) Address() Address {
+	return c.addr
+}
+
+func (c *chunk) Data() []byte {
+	return c.sdata
+}
+
+func (c *chunk) PinCounter() uint64 {
+	return c.pinCounter
+}
+
+func (c *chunk) TagID() uint32 {
+	return c.tagID
+}
+
+func (self *chunk) String() string {
+	return fmt.Sprintf("Address: %v Chunksize: %v", self.addr.String(), len(self.sdata))
+}
+
+// Proximity returns the proximity order of the MSB distance between x and y
+//
+// The distance metric MSB(x, y) of two equal length byte sequences x an y is the
+// value of the binary integer cast of the x^y, ie., x and y bitwise xor-ed.
+// the binary cast is big endian: most significant bit first (=MSB).
+//
+// Proximity(x, y) is a discrete logarithmic scaling of the MSB distance.
+// It is defined as the reverse rank of the integer part of the base 2
+// logarithm of the distance.
+// It is calculated by counting the number of common leading zeros in the (MSB)
+// binary representation of the x^y.
+//
+// (0 farthest, 255 closest, 256 self)
+func Proximity(one, other []byte) (ret int) {
+	b := (MaxPO-1)/8 + 1
+	if b > len(one) {
+		b = len(one)
+	}
+	m := 8
+	for i := 0; i < b; i++ {
+		oxo := one[i] ^ other[i]
+		for j := 0; j < m; j++ {
+			if (oxo>>uint8(7-j))&0x01 != 0 {
+				return i*8 + j
+			}
+		}
+	}
+	return MaxPO
+}

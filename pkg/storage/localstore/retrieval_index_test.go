@@ -21,7 +21,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // BenchmarkRetrievalIndexes uploads a number of chunks in order to measure
@@ -62,10 +63,10 @@ func benchmarkRetrievalIndexes(b *testing.B, o *Options, count int) {
 	b.StopTimer()
 	db, cleanupFunc := newTestDB(b, o)
 	defer cleanupFunc()
-	addrs := make([]chunk.Address, count)
+	addrs := make([]swarm.Address, count)
 	for i := 0; i < count; i++ {
 		ch := generateTestRandomChunk()
-		_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -83,12 +84,12 @@ func benchmarkRetrievalIndexes(b *testing.B, o *Options, count int) {
 	b.StartTimer()
 
 	for i := 0; i < count; i++ {
-		err := db.Set(context.Background(), chunk.ModeSetSyncPull, addrs[i])
+		err := db.Set(context.Background(), storage.ModeSetSyncPull, addrs[i])
 		if err != nil {
 			b.Fatal(err)
 		}
 
-		_, err = db.Get(context.Background(), chunk.ModeGetRequest, addrs[i])
+		_, err = db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -131,7 +132,7 @@ func benchmarkUpload(b *testing.B, o *Options, count int) {
 	b.StopTimer()
 	db, cleanupFunc := newTestDB(b, o)
 	defer cleanupFunc()
-	chunks := make([]chunk.Chunk, count)
+	chunks := make([]swarm.Chunk, count)
 	for i := 0; i < count; i++ {
 		chunk := generateTestRandomChunk()
 		chunks[i] = chunk
@@ -139,7 +140,7 @@ func benchmarkUpload(b *testing.B, o *Options, count int) {
 	b.StartTimer()
 
 	for i := 0; i < count; i++ {
-		_, err := db.Put(context.Background(), chunk.ModePutUpload, chunks[i])
+		_, err := db.Put(context.Background(), storage.ModePutUpload, chunks[i])
 		if err != nil {
 			b.Fatal(err)
 		}

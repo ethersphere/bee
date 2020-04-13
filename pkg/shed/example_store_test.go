@@ -19,6 +19,7 @@ package shed_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
@@ -28,12 +29,11 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
-	"github.com/ethersphere/swarm/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // Store holds fields and indexes (including their encoding functions)
 // and defines operations on them by composing data from them.
-// It implements storage.ChunkStore interface.
 // It is just an example without any support for parallel operations
 // or real world implementation.
 type Store struct {
@@ -145,9 +145,9 @@ func New(path string) (s *Store, err error) {
 }
 
 // Put stores the chunk and sets it store timestamp.
-func (s *Store) Put(_ context.Context, ch storage.Chunk) (err error) {
+func (s *Store) Put(_ context.Context, ch swarm.Chunk) (err error) {
 	return s.retrievalIndex.Put(shed.Item{
-		Address:        ch.Address(),
+		Address:        ch.Address().Bytes(),
 		Data:           ch.Data(),
 		StoreTimestamp: time.Now().UTC().UnixNano(),
 	})
@@ -157,12 +157,12 @@ func (s *Store) Put(_ context.Context, ch storage.Chunk) (err error) {
 // It updates access and gc indexes by removing the previous
 // items from them and adding new items as keys of index entries
 // are changed.
-func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, err error) {
+func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err error) {
 	batch := s.db.GetBatch(true)
 
 	// Get the chunk data and storage timestamp.
 	item, err := s.retrievalIndex.Get(shed.Item{
-		Address: addr,
+		Address: addr.Bytes(),
 	})
 	if err != nil {
 		return nil, err
@@ -170,7 +170,7 @@ func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, e
 
 	// Get the chunk access timestamp.
 	accessItem, err := s.accessIndex.Get(shed.Item{
-		Address: addr,
+		Address: addr.Bytes(),
 	})
 	switch err {
 	case nil:
@@ -195,7 +195,7 @@ func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, e
 
 	// Put new access timestamp in access index.
 	err = s.accessIndex.PutInBatch(batch, shed.Item{
-		Address:         addr,
+		Address:         addr.Bytes(),
 		AccessTimestamp: accessTimestamp,
 	})
 	if err != nil {
@@ -226,7 +226,7 @@ func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, e
 	}
 
 	// Return the chunk.
-	return storage.NewChunk(item.Address, item.Data), nil
+	return swarm.NewChunk(swarm.NewAddress(item.Address), item.Data), nil
 }
 
 // CollectGarbage is an example of index iteration.
@@ -312,7 +312,7 @@ func Example_store() {
 	}
 	defer s.Close()
 
-	ch := storage.GenerateRandomChunk(1024)
+	ch := GenerateTestRandomChunk(1024)
 	err = s.Put(context.Background(), ch)
 	if err != nil {
 		log.Fatal(err)
@@ -326,4 +326,12 @@ func Example_store() {
 	fmt.Println(bytes.Equal(got.Data(), ch.Data()))
 
 	//Output: true
+}
+
+func GenerateTestRandomChunk(size int) swarm.Chunk {
+	data := make([]byte, size)
+	_, _ = rand.Read(data)
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	return swarm.NewChunk(swarm.NewAddress(key), data)
 }

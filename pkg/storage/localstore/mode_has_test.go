@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 // TestHas validates that Has method is returning true for
@@ -34,7 +34,7 @@ func TestHas(t *testing.T) {
 
 	ch := generateTestRandomChunk()
 
-	_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestHasMulti(t *testing.T) {
 					// randomly exclude half of the chunks
 					continue
 				}
-				_, err := db.Put(context.Background(), chunk.ModePutUpload, ch)
+				_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 				if err != nil {
 					t.Fatal(err)
 				}
