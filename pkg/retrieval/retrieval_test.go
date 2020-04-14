@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
+	"github.com/ethersphere/bee/pkg/storage"
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -35,7 +36,10 @@ func TestDelivery(t *testing.T) {
 	reqData := []byte("data data data")
 
 	// put testdata in the mock store of the server
-	_ = mockStorer.Put(context.TODO(), reqAddr, reqData)
+	_, err = mockStorer.Put(context.Background(), storage.ModePutUpload, swarm.NewChunk(reqAddr, reqData))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(retrieval.Options{

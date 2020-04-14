@@ -32,8 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// DB implements chunk.Store.
-var _ storage.Store = &DB{}
+var _ storage.Storer = &DB{}
 
 var (
 	// ErrInvalidMode is retuned when an unknown Mode
@@ -104,6 +103,7 @@ type DB struct {
 	// are done before closing the database
 	updateGCWG sync.WaitGroup
 
+	// baseKey is the overlay address
 	baseKey []byte
 
 	batchMu sync.Mutex
