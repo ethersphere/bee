@@ -75,7 +75,7 @@ func TestReader_timeout(t *testing.T) {
 		{
 			name: "NewReader",
 			readerFunc: func() protobuf.Reader {
-				return protobuf.NewReader(newMessageReader(messages, 400*time.Millisecond))
+				return protobuf.NewReader(newMessageReader(messages, 100*time.Millisecond))
 			},
 		},
 		{
@@ -83,7 +83,7 @@ func TestReader_timeout(t *testing.T) {
 			readerFunc: func() protobuf.Reader {
 				_, r := protobuf.NewWriterAndReader(
 					newNoopWriteCloser(
-						newMessageReader(messages, 400*time.Millisecond),
+						newMessageReader(messages, 100*time.Millisecond),
 					),
 				)
 				return r
@@ -99,7 +99,7 @@ func TestReader_timeout(t *testing.T) {
 					if i == 0 {
 						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 200 * time.Millisecond
+						timeout = 10 * time.Millisecond
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), timeout)
 					defer cancel()
@@ -129,7 +129,7 @@ func TestReader_timeout(t *testing.T) {
 					if i == 0 {
 						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 200 * time.Millisecond
+						timeout = 10 * time.Millisecond
 					}
 					err := r.ReadMsgWithTimeout(timeout, &msg)
 					if i == 0 {
@@ -204,14 +204,14 @@ func TestWriter_timeout(t *testing.T) {
 		{
 			name: "NewWriter",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(400 * time.Millisecond)
+				w, msgs := newMessageWriter(100 * time.Millisecond)
 				return protobuf.NewWriter(w), msgs
 			},
 		},
 		{
 			name: "NewWriterAndReader",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(400 * time.Millisecond)
+				w, msgs := newMessageWriter(100 * time.Millisecond)
 				writer, _ := protobuf.NewWriterAndReader(newNoopReadCloser(w))
 				return writer, msgs
 			},
@@ -226,7 +226,7 @@ func TestWriter_timeout(t *testing.T) {
 					if i == 0 {
 						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 200 * time.Millisecond
+						timeout = 10 * time.Millisecond
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), timeout)
 					defer cancel()
@@ -256,7 +256,7 @@ func TestWriter_timeout(t *testing.T) {
 					if i == 0 {
 						timeout = 600 * time.Millisecond
 					} else {
-						timeout = 200 * time.Millisecond
+						timeout = 10 * time.Millisecond
 					}
 					err := w.WriteMsgWithTimeout(timeout, &pb.Message{
 						Text: m,
@@ -302,12 +302,10 @@ func TestReadMessages(t *testing.T) {
 
 func newMessageReader(messages []string, delay time.Duration) io.Reader {
 	r, pipe := io.Pipe()
-
 	w := protobuf.NewWriter(pipe)
 
 	go func() {
 		for _, m := range messages {
-			time.Sleep(delay)
 			if err := w.WriteMsg(&pb.Message{
 				Text: m,
 			}); err != nil {
@@ -319,14 +317,12 @@ func newMessageReader(messages []string, delay time.Duration) io.Reader {
 		}
 	}()
 
-	return r
+	return delayedReader{r: r, delay: delay}
 }
 
 func newMessageWriter(delay time.Duration) (w io.Writer, messages <-chan string) {
 	pipe, w := io.Pipe()
-
 	r := protobuf.NewReader(pipe)
-
 	msgs := make(chan string)
 
 	go func() {
@@ -334,7 +330,6 @@ func newMessageWriter(delay time.Duration) (w io.Writer, messages <-chan string)
 
 		var msg pb.Message
 		for {
-			time.Sleep(delay)
 			err := r.ReadMsg(&msg)
 			if err != nil {
 				if err == io.EOF {
@@ -345,7 +340,27 @@ func newMessageWriter(delay time.Duration) (w io.Writer, messages <-chan string)
 			msgs <- msg.Text
 		}
 	}()
-	return w, msgs
+	return delayedWriter{w: w, delay: delay}, msgs
+}
+
+type delayedWriter struct {
+	w     io.Writer
+	delay time.Duration
+}
+
+func (d delayedWriter) Write(p []byte) (n int, err error) {
+	time.Sleep(d.delay)
+	return d.w.Write(p)
+}
+
+type delayedReader struct {
+	r     io.Reader
+	delay time.Duration
+}
+
+func (d delayedReader) Read(p []byte) (n int, err error) {
+	time.Sleep(d.delay)
+	return d.r.Read(p)
 }
 
 type noopWriteCloser struct {
