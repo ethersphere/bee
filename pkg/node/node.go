@@ -32,7 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storage/localstore"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -46,6 +46,7 @@ type Bee struct {
 	errorLogWriter   *io.PipeWriter
 	tracerCloser     io.Closer
 	stateStoreCloser io.Closer
+	localstoreCloser io.Closer
 }
 
 type Options struct {
@@ -174,8 +175,15 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("p2p address: %s", addr)
 	}
 
-	// for now, storer is an in-memory store.
-	storer := mock.NewStorer()
+	var storer *localstore.DB
+	if o.DataDir == "" {
+		// TODO: this needs to support in-mem localstore implementation somehow
+	} else {
+		storer, err = localstore.New(filepath.Join(o.DataDir, "localstore"))
+		if err != nil {
+			return nil, fmt.Errorf("localstore: %w", err)
+		}
+	}
 
 	var apiService api.Service
 	if o.APIAddr != "" {
