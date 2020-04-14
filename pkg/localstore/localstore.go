@@ -103,6 +103,7 @@ type DB struct {
 	// are done before closing the database
 	updateGCWG sync.WaitGroup
 
+	// baseKey is the overlay address
 	baseKey []byte
 
 	batchMu sync.Mutex
