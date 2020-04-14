@@ -130,11 +130,6 @@ func (d *Descriptor) String() string {
 }
 
 type Storer interface {
-	Get(ctx context.Context, addr swarm.Address) (data []byte, err error)
-	Put(ctx context.Context, addr swarm.Address, data []byte) (err error)
-}
-
-type Store interface {
 	Get(ctx context.Context, mode ModeGet, addr swarm.Address) (ch swarm.Chunk, err error)
 	GetMulti(ctx context.Context, mode ModeGet, addrs ...swarm.Address) (ch []swarm.Chunk, err error)
 	Put(ctx context.Context, mode ModePut, chs ...swarm.Chunk) (exist []bool, err error)
@@ -153,7 +148,7 @@ type StateStorer interface {
 	Put(key string, i interface{}) (err error)
 	Delete(key string) (err error)
 	Iterate(prefix string, iterFunc StateIterFunc) (err error)
-	Close() (err error)
+	io.Closer
 }
 
 // StateIterFunc is used when iterating through StateStorer key/value pairs
