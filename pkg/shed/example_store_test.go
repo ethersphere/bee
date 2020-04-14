@@ -52,7 +52,7 @@ type Store struct {
 // automatically.
 func New(path string) (s *Store, err error) {
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := shed.NewDB(path, logger)
+	db, err := shed.NewDB(path, logger, true)
 	if err != nil {
 		return nil, err
 	}

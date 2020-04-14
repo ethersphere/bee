@@ -54,12 +54,18 @@ type DB struct {
 
 // NewDB opens the badger DB with options that make the DB useful for
 // Chunk, State as well as Index stores
-func NewDB(path string, logger logging.Logger) (db *DB, err error) {
-	o := badger.DefaultOptions(path)
+func NewDB(path string, logger logging.Logger, inMemory bool) (db *DB, err error) {
+	var o badger.Options
+	if inMemory {
+		o = badger.DefaultOptions("").WithInMemory(true)
+	} else {
+		o = badger.DefaultOptions(path)
+	}
 	o.SyncWrites = DefaultSyncWrites
 	o.ValueThreshold = DefaultValueThreshold
 	o.ValueLogMaxEntries = DefaultValueLogMaxEntries
 	o.Logger = nil // Dont enable the badger logs
+
 	database, err := badger.Open(o)
 	if err != nil {
 		return nil, err
