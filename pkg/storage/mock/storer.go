@@ -28,21 +28,50 @@ func NewValidatingStorer(f storage.ChunkValidatorFunc) storage.Storer {
 		validator: f,
 	}
 }
-
-func (m *mockStorer) Get(ctx context.Context, addr swarm.Address) (data []byte, err error) {
+func (m *mockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	v, has := m.store[addr.String()]
 	if !has {
 		return nil, storage.ErrNotFound
 	}
-	return v, nil
+	return swarm.NewChunk(addr, v), nil
 }
 
-func (m *mockStorer) Put(ctx context.Context, addr swarm.Address, data []byte) error {
-	if m.validator != nil {
-		if !m.validator(addr, data) {
-			return storage.ErrInvalidChunk
+func (m *mockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	for _, ch := range chs {
+		if m.validator != nil {
+			if !m.validator(ch.Address(), ch.Data()) {
+				return nil, storage.ErrInvalidChunk
+			}
 		}
+		m.store[ch.Address().String()] = ch.Data()
 	}
-	m.store[addr.String()] = data
-	return nil
+	return nil, nil
+}
+
+func (m *mockStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) (ch []swarm.Chunk, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) SubscribePull(ctx context.Context, bin uint8, since uint64, until uint64) (c <-chan storage.Descriptor, stop func()) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) Close() error {
+	panic("not implemented") // TODO: Implement
 }
