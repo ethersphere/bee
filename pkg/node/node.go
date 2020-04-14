@@ -175,7 +175,7 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("p2p address: %s", addr)
 	}
 
-	var storer *localstore.DB
+	var storer storage.Storer
 	if o.DataDir == "" {
 		// TODO: this needs to support in-mem localstore implementation somehow
 	} else {
@@ -184,6 +184,7 @@ func NewBee(o Options) (*Bee, error) {
 			return nil, fmt.Errorf("localstore: %w", err)
 		}
 	}
+	b.localstoreCloser = storer
 
 	var apiService api.Service
 	if o.APIAddr != "" {
@@ -332,6 +333,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.stateStoreCloser.Close(); err != nil {
 		return fmt.Errorf("statestore: %w", err)
+	}
+
+	if err := b.localstoreCloser.Close(); err != nil {
+		return fmt.Errorf("localstore: %w", err)
 	}
 
 	return b.errorLogWriter.Close()
