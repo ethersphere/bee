@@ -18,7 +18,7 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 
-	book "github.com/ethersphere/bee/pkg/addressbook"
+	ab "github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -28,16 +28,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type AddressExporter interface {
-	Overlays() ([]swarm.Address, error)
-	Multiaddresses() ([]ma.Multiaddr, error)
-}
-
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	logger := logging.New(ioutil.Discard, 0)
 	statestore := mock.NewStateStore()
-	addressbook := book.New(statestore)
+	addressbook := ab.New(statestore)
 
 	// populate all expected and needed random resources for 2 full batches
 	// tests cases that uses fewer resources can use sub-slices of this data
@@ -110,12 +105,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			addressbookclean := book.New(mock.NewStateStore())
-
-			exporter, ok := addressbookclean.(AddressExporter)
-			if !ok {
-				t.Fatal("could not type assert AddressExporter")
-			}
+			addressbookclean := ab.New(mock.NewStateStore())
 
 			// create a hive server that handles the incoming stream
 			server := hive.New(hive.Options{
@@ -160,13 +150,13 @@ func TestBroadcastPeers(t *testing.T) {
 				}
 			}
 
-			expectOverlaysEventually(t, exporter, tc.wantOverlays)
-			expectMultiaddresessEventually(t, exporter, tc.wantMultiAddresses)
+			expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
+			expectMultiaddresessEventually(t, addressbookclean, tc.wantMultiAddresses)
 		})
 	}
 }
 
-func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverlays []swarm.Address) {
+func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays []swarm.Address) {
 	for i := 0; i < 100; i++ {
 		var stringOverlays []string
 		var stringWantOverlays []string
@@ -199,7 +189,7 @@ func expectOverlaysEventually(t *testing.T, exporter AddressExporter, wantOverla
 	t.Errorf("Overlays got %v, want %v", o, wantOverlays)
 }
 
-func expectMultiaddresessEventually(t *testing.T, exporter AddressExporter, wantMultiaddresses []ma.Multiaddr) {
+func expectMultiaddresessEventually(t *testing.T, exporter ab.Interface, wantMultiaddresses []ma.Multiaddr) {
 	for i := 0; i < 10; i++ {
 		var stringMultiaddresses []string
 		m, err := exporter.Multiaddresses()
