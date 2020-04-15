@@ -51,7 +51,7 @@ func TestAddPeer(t *testing.T) {
 			return overlay, nil
 		}))
 
-		fullDriver := full.New(discovery, ab, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal(err)
@@ -81,7 +81,7 @@ func TestAddPeer(t *testing.T) {
 			return swarm.Address{}, nil
 		}))
 
-		fullDriver := full.New(discovery, ab, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
 		err := fullDriver.AddPeer(context.Background(), overlay)
 		if !errors.Is(err, topology.ErrNotFound) {
 			t.Fatalf("full conn driver returned err %v", err)
@@ -105,7 +105,7 @@ func TestAddPeer(t *testing.T) {
 			return connectedPeers
 		}))
 
-		fullDriver := full.New(discovery, ab, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal("error creating multiaddr")
@@ -152,7 +152,7 @@ func TestAddPeer(t *testing.T) {
 			return connectedPeers
 		}))
 
-		fullDriver := full.New(discovery, ab, p2ps, logger)
+		fullDriver := full.New(discovery, ab, p2ps, logger, overlay)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal(err)
@@ -205,16 +205,16 @@ func TestSyncPeer(t *testing.T) {
 	*/
 
 	logger := logging.New(ioutil.Discard, 0)
-	baseOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	baseOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 	connectedPeers := []p2p.Peer{
 		{
-			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000000 -> po 0
+			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000 -> po 0
 		},
 		{
-			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100000 -> po 1
+			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100 -> po 1
 		},
 		{
-			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110000 -> po 1
+			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110 -> po 1
 		},
 	}
 
@@ -228,11 +228,12 @@ func TestSyncPeer(t *testing.T) {
 		return connectedPeers
 	}))
 
-	fullDriver := full.New(discovery, ab, p2ps, logger)
+	fullDriver := full.New(discovery, ab, p2ps, logger, baseOverlay)
 
 	for _, tc := range []struct {
 		chunkAddress swarm.Address // chunk address to test
-		expectedPeer int           // points to the index of the connectedPeers slice
+		expectedPeer int           // points to the index of the connectedPeers slice. -1 means self (baseOverlay)
+		//expectedSelf bool          // should the peer expect itself to be closest to the chunk
 	}{
 		{
 			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111
@@ -258,13 +259,21 @@ func TestSyncPeer(t *testing.T) {
 			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101
 			expectedPeer: 1,
 		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // want self
+			expectedPeer: -1,
+		},
 	} {
 		peer, err := fullDriver.SyncPeer(tc.chunkAddress)
 		if err != nil {
-			t.Fatal(err)
+			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
+				t.Fatalf("wanted ErrNodeWantSelf but got %v", err)
+			}
+			continue
 		}
 
 		expected := connectedPeers[tc.expectedPeer].Address
+
 		if !peer.Equal(expected) {
 			t.Fatalf("peers not equal. got %s expected %s", peer, expected)
 		}

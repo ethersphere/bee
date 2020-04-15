@@ -12,6 +12,7 @@ import (
 )
 
 var ErrNotFound = errors.New("no peer found")
+var ErrWantSelf = errors.New("node wants self")
 
 type Driver interface {
 	PeerAdder
