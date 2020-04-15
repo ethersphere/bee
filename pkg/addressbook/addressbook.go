@@ -17,7 +17,13 @@ import (
 
 const keyPrefix = "addressbook_entry_"
 
-var _ GetPutter = (*store)(nil)
+var _ Interface = (*store)(nil)
+
+type Interface interface {
+	GetPutter
+	Overlays() ([]swarm.Address, error)
+	Multiaddresses() ([]ma.Multiaddr, error)
+}
 
 type GetPutter interface {
 	Getter
@@ -36,7 +42,7 @@ type store struct {
 	store storage.StateStorer
 }
 
-func New(storer storage.StateStorer) GetPutter {
+func New(storer storage.StateStorer) Interface {
 	return &store{
 		store: storer,
 	}
