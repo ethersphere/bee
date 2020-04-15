@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"os"
 	"runtime"
 	"sort"
 	"sync"
@@ -143,17 +142,12 @@ func TestDB_updateGCSem(t *testing.T) {
 func newTestDB(t testing.TB, o *Options) (db *DB, cleanupFunc func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "localstore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cleanupFunc = func() { os.RemoveAll(dir) }
 	baseKey := make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
 	logger := logging.New(ioutil.Discard, 0)
-	db, err = New(dir, baseKey, o, logger)
+	db, err := New("", baseKey, o, logger)
 	if err != nil {
 		cleanupFunc()
 		t.Fatal(err)
@@ -163,7 +157,6 @@ func newTestDB(t testing.TB, o *Options) (db *DB, cleanupFunc func()) {
 		if err != nil {
 			t.Error(err)
 		}
-		os.RemoveAll(dir)
 	}
 	return db, cleanupFunc
 }
