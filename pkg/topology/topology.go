@@ -16,6 +16,7 @@ var ErrNotFound = errors.New("no peer found")
 type Driver interface {
 	PeerAdder
 	ChunkPeerer
+	SyncPeerer
 }
 
 type PeerAdder interface {
@@ -24,4 +25,8 @@ type PeerAdder interface {
 
 type ChunkPeerer interface {
 	ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
+}
+
+type SyncPeerer interface {
+	SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
 }
