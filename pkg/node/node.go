@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -297,6 +298,26 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	wg.Wait()
+
+	overlays, err := addressbook.Overlays()
+	if err != nil {
+		return nil, fmt.Errorf("addressbook: %w", err)
+	}
+	for _, o := range overlays {
+		wg.Add(1)
+		go func(overlay swarm.Address) {
+			defer wg.Done()
+			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
+				_ = p2ps.Disconnect(overlay)
+				logger.Debugf("topology add peer fail %s: %v", overlay, err)
+				logger.Errorf("topology add peer %s", overlay)
+				return
+			}
+		}(o)
+	}
+
+	wg.Wait()
+
 	return b, nil
 }
 
