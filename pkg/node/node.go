@@ -301,11 +301,18 @@ func NewBee(o Options) (*Bee, error) {
 
 	overlays, err := addressbook.Overlays()
 	if err != nil {
-		return nil, fmt.Errorf("addressbook: %w", err)
+		return nil, fmt.Errorf("addressbook overlays: %w", err)
 	}
+
+	jobsC := make(chan struct{}, 16)
 	for _, o := range overlays {
+		jobsC <- struct{}{}
 		wg.Add(1)
 		go func(overlay swarm.Address) {
+			defer func() {
+				<-jobsC
+			}()
+
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				_ = p2ps.Disconnect(overlay)
