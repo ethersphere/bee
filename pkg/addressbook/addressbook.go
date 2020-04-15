@@ -22,6 +22,7 @@ var _ Interface = (*store)(nil)
 type Interface interface {
 	GetPutter
 	Overlays() ([]swarm.Address, error)
+	Multiaddresses() ([]ma.Multiaddr, error)
 }
 
 type GetPutter interface {
