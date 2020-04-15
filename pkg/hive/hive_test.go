@@ -107,11 +107,6 @@ func TestBroadcastPeers(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			addressbookclean := ab.New(mock.NewStateStore())
 
-			exporter, ok := addressbookclean.(ab.Interface)
-			if !ok {
-				t.Fatal("could not type assert AddressExporter")
-			}
-
 			// create a hive server that handles the incoming stream
 			server := hive.New(hive.Options{
 				Logger:      logger,
@@ -155,8 +150,8 @@ func TestBroadcastPeers(t *testing.T) {
 				}
 			}
 
-			expectOverlaysEventually(t, exporter, tc.wantOverlays)
-			expectMultiaddresessEventually(t, exporter, tc.wantMultiAddresses)
+			expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
+			expectMultiaddresessEventually(t, addressbookclean, tc.wantMultiAddresses)
 		})
 	}
 }
