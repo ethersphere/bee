@@ -198,10 +198,8 @@ func TestSyncPeer(t *testing.T) {
 		chunk starts with
 		- 0111 -> node selected is 0110
 		- 1100/1110/1010 -> 1000
-		- 0100 -> to which node? undefined behaviour. introduce distance metric for this?
+		- 0100 -> to which node? undefined behaviour. introduce distance metric for this? should go to node id 0
 		- 0101 -> node 0100
-
-		one more important case - when base is closest to chunk!
 	*/
 
 	logger := logging.New(ioutil.Discard, 0)
