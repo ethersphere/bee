@@ -23,7 +23,6 @@ func hashFunc() hash.Hash {
 // is the content address of its contents
 type ContentAddressValidator struct {
 	hasher bmt.Hash
-	span   []byte
 }
 
 // New constructs a new ContentAddressValidator
@@ -31,7 +30,6 @@ func NewContentAddressValidator() *ContentAddressValidator {
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.SectionSize, bmtlegacy.PoolSize)
 	return &ContentAddressValidator{
 		hasher: bmtlegacy.New(p),
-		span:   make([]byte, 8),
 	}
 }
 
