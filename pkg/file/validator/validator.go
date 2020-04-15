@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bmt"
+	"github.com/ethersphere/bee/pkg/logging"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
 )
@@ -25,6 +26,7 @@ func hashFunc() hash.Hash {
 // is the content address of its contents
 type ContentAddressValidator struct {
 	hasher bmt.Hash
+	logger logging.Logger
 }
 
 // New constructs a new ContentAddressValidator
@@ -44,10 +46,18 @@ func (v *ContentAddressValidator) Validate(ch swarm.Chunk) (valid bool) {
 	address := ch.Address()
 	span := binary.LittleEndian.Uint64(data[:8])
 
-	// execute hash and return
+	// execute hash, compare and return result
 	v.hasher.Reset()
-	v.hasher.SetSpan(int64(span))
-	v.hasher.Write(data[8:])
+	err := v.hasher.SetSpan(int64(span))
+	if err != nil {
+		v.logger.Debugf("SetSpan on bmt legacy hasher gave error: %v", err)
+		return false
+	}
+	_, err = v.hasher.Write(data[8:])
+	if err != nil {
+		v.logger.Debugf("Write on bmt legacy hasher gave error: %v", err)
+		return false
+	}
 	s := v.hasher.Sum(nil)
 
 	return address.Equal(swarm.NewAddress(s))
