@@ -186,6 +186,90 @@ func TestAddPeer(t *testing.T) {
 	})
 }
 
+// TestSyncPeer tests that SyncPeer method returns closest connected peer
+func TestSyncPeer(t *testing.T) {
+	/*
+		base = 0000
+		connected:
+		- 0100
+		- 0110
+		- 1000 -> po 0
+
+		chunk starts with
+		- 0111 -> node selected is 0110
+		- 1100/1110/1010 -> 1000
+		- 0100 -> to which node? undefined behaviour. introduce distance metric for this?
+		- 0101 -> node 0100
+	*/
+
+	logger := logging.New(ioutil.Discard, 0)
+	baseOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	connectedPeers := []p2p.Peer{
+		{
+			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000000 -> po 0
+		},
+		{
+			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100000 -> po 1
+		},
+		{
+			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110000 -> po 1
+		},
+	}
+
+	discovery := mock.NewDiscovery()
+	statestore := mockstate.NewStateStore()
+	ab := addressbook.New(statestore)
+
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		return baseOverlay, nil
+	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
+		return connectedPeers
+	}))
+
+	fullDriver := full.New(discovery, ab, p2ps, logger)
+
+	for _, tc := range []struct {
+		chunkAddress swarm.Address // chunk address to test
+		expectedPeer int           // points to the index of the connectedPeers slice
+	}{
+		{
+			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111
+			expectedPeer: 2,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("c000000000000000000000000000000000000000000000000000000000000000"), // 1100
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("e000000000000000000000000000000000000000000000000000000000000000"), // 1110
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("a000000000000000000000000000000000000000000000000000000000000000"), // 1010
+			expectedPeer: 0,
+		},
+		//{
+		//chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100 - ambiguous with proximity function (po)
+		//expectedPeer: 2,
+		//},
+		{
+			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101
+			expectedPeer: 1,
+		},
+	} {
+		peer, err := fullDriver.SyncPeer(tc.chunkAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expected := connectedPeers[tc.expectedPeer].Address
+		if !peer.Equal(expected) {
+			t.Fatalf("peers not equal. got %s expected %s", peer, expected)
+		}
+
+	}
+}
+
 func checkAddreseeRecords(discovery *mock.Discovery, addr swarm.Address, expected []p2p.Peer) error {
 	got, exists := discovery.AddresseeRecords(addr)
 	if exists != true {
