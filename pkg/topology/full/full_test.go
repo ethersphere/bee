@@ -251,10 +251,10 @@ func TestSyncPeer(t *testing.T) {
 			chunkAddress: swarm.MustParseHexAddress("a000000000000000000000000000000000000000000000000000000000000000"), // 1010
 			expectedPeer: 0,
 		},
-		//{
-		//chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100 - ambiguous with proximity function (po)
-		//expectedPeer: 2,
-		//},
+		{
+			chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100 - ambiguous with proximity function (po)
+			expectedPeer: 2,
+		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101
 			expectedPeer: 1,
