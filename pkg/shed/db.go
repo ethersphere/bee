@@ -56,11 +56,14 @@ type DB struct {
 // Chunk, State as well as Index stores
 func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	var o badger.Options
+
+	// an empty path is used for implicit in-memory badgerdb
 	if path == "" {
 		o = badger.DefaultOptions("").WithInMemory(true)
 	} else {
 		o = badger.DefaultOptions(path)
 	}
+
 	o.SyncWrites = DefaultSyncWrites
 	o.ValueThreshold = DefaultValueThreshold
 	o.ValueLogMaxEntries = DefaultValueLogMaxEntries

@@ -280,10 +280,7 @@ func TestModePut_sameChunk(t *testing.T) {
 				},
 			} {
 				t.Run(tcn.name, func(t *testing.T) {
-					t.Parallel()
-
 					db, cleanupFunc := newTestDB(t, nil)
-					defer cleanupFunc()
 
 					for i := 0; i < 10; i++ {
 						exist, err := db.Put(context.Background(), tcn.mode, chunks...)
@@ -314,6 +311,8 @@ func TestModePut_sameChunk(t *testing.T) {
 						newItemsCountTest(db.pullIndex, count(tcn.pullIndex))(t)
 						newItemsCountTest(db.pushIndex, count(tcn.pushIndex))(t)
 					}
+
+					cleanupFunc()
 				})
 			}
 		})
