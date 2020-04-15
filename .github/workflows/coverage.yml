@@ -16,7 +16,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Report results to DeepSource
         run: |
-          go test -coverprofile=cover.out
+          go test -coverprofile=cover.out ./...
           curl https://deepsource.io/cli | sh
           ./bin/deepsource report --analyzer test-coverage --key go --value-file ./cover.out
         env:
