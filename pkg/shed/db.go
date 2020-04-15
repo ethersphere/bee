@@ -54,9 +54,9 @@ type DB struct {
 
 // NewDB opens the badger DB with options that make the DB useful for
 // Chunk, State as well as Index stores
-func NewDB(path string, logger logging.Logger, inMemory bool) (db *DB, err error) {
+func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	var o badger.Options
-	if inMemory {
+	if path == "" {
 		o = badger.DefaultOptions("").WithInMemory(true)
 	} else {
 		o = badger.DefaultOptions(path)
