@@ -28,7 +28,6 @@ import (
 	"errors"
 
 	"github.com/dgraph-io/badger/v2"
-	"github.com/dgraph-io/badger/v2/options"
 	"github.com/ethersphere/bee/pkg/logging"
 )
 
@@ -68,7 +67,6 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	o.SyncWrites = DefaultSyncWrites
 	o.ValueThreshold = DefaultValueThreshold
 	o.ValueLogMaxEntries = DefaultValueLogMaxEntries
-	o.TableLoadingMode = options.FileIO
 	o.Logger = nil // Dont enable the badger logs
 
 	database, err := badger.Open(o)
