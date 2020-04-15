@@ -130,6 +130,10 @@ func (d *Driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	return swarm.Address{}, topology.ErrNotFound
 }
 
+func (d *Driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
 func isConnected(addr swarm.Address, connectedPeers []p2p.Peer) bool {
 	for _, p := range connectedPeers {
 		if p.Address.Equal(addr) {
