@@ -131,7 +131,32 @@ func (d *Driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 }
 
 func (d *Driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
-	panic("not implemented") // TODO: Implement
+	connectedPeers := d.p2pService.Peers()
+	if len(connectedPeers) == 0 {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	var (
+		found bool
+		cpo   uint8         //closest po
+		cpeer swarm.Address //closest peer
+	)
+	for _, peer := range connectedPeers {
+		peer := peer
+		po := uint8(swarm.Proximity(addr.Bytes(), peer.Address.Bytes()))
+		if po > cpo {
+			// peer is closer to the chunk
+			cpo = po
+			cpeer = peer.Address
+			found = true
+		}
+	}
+
+	if !found {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	return cpeer, nil
 }
 
 func isConnected(addr swarm.Address, connectedPeers []p2p.Peer) bool {
