@@ -31,6 +31,8 @@ var _ topology.Driver = (*Driver)(nil)
 // - Every peer which is added to the Driver gets broadcasted to every other peer regardless of its address.
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
 type Driver struct {
+	base swarm.Address // the base address for this node
+
 	discovery     discovery.Driver
 	addressBook   addressbook.GetPutter
 	p2pService    p2p.Service
@@ -39,8 +41,9 @@ type Driver struct {
 	logger        logging.Logger
 }
 
-func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2p.Service, logger logging.Logger) *Driver {
+func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) *Driver {
 	return &Driver{
+		base:          baseAddress,
 		discovery:     disc,
 		addressBook:   addressBook,
 		p2pService:    p2pService,
@@ -150,6 +153,11 @@ func (d *Driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error
 			cpeer = peer.Address
 			found = true
 		}
+	}
+
+	// check if node is actually the closest one to the chunk
+	if npo := uint8(swarm.Proximity(addr.Bytes(), d.base.Bytes())); npo > cpo {
+		return swarm.Address{}, topology.ErrWantSelf
 	}
 
 	if !found {
