@@ -61,7 +61,9 @@ func RunPersist(t *testing.T, f func(t *testing.T, dir string) storage.StateStor
 	testStoreIterator(t, store, "some_prefix", 1000)
 
 	// close the store
-	store.Close()
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// bootstrap with the same old dir
 	persistedStore := f(t, dir)

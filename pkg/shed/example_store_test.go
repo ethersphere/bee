@@ -308,12 +308,14 @@ func Example_store() {
 	ch := testing.GenerateTestRandomChunk()
 	err = s.Put(context.Background(), ch)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		return
 	}
 
 	got, err := s.Get(context.Background(), ch.Address())
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		return
 	}
 
 	fmt.Println(bytes.Equal(got.Data(), ch.Data()))

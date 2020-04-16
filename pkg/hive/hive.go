@@ -119,11 +119,13 @@ func (s *Service) peersHandler(_ context.Context, peer p2p.Peer, stream p2p.Stre
 	_, r := protobuf.NewWriterAndReader(stream)
 	var peersReq pb.Peers
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
-		stream.Close()
+		_ = stream.Close()
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	stream.Close()
+	if err := stream.Close(); err != nil {
+		return fmt.Errorf("close stream: %w", err)
+	}
 	for _, newPeer := range peersReq.Peers {
 		addr, err := ma.NewMultiaddr(newPeer.Underlay)
 		if err != nil {
