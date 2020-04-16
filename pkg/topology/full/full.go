@@ -141,7 +141,11 @@ func (d *Driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error
 
 	cpeer := d.base // start checking closest from _self_
 	for _, peer := range connectedPeers {
-		switch d := swarm.ProxCmp(addr.Bytes(), cpeer.Bytes(), peer.Address.Bytes()); d {
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), cpeer.Bytes(), peer.Address.Bytes())
+		if err != nil {
+			return swarm.Address{}, err
+		}
+		switch dcmp {
 		case 0:
 			// do nothing
 		case -1:
