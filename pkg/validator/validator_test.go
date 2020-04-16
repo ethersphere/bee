@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file/validator"
+	"github.com/ethersphere/bee/pkg/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
