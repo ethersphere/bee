@@ -231,7 +231,6 @@ func TestSyncPeer(t *testing.T) {
 	for _, tc := range []struct {
 		chunkAddress swarm.Address // chunk address to test
 		expectedPeer int           // points to the index of the connectedPeers slice. -1 means self (baseOverlay)
-		//expectedSelf bool          // should the peer expect itself to be closest to the chunk
 	}{
 		{
 			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111
@@ -250,8 +249,8 @@ func TestSyncPeer(t *testing.T) {
 			expectedPeer: 0,
 		},
 		{
-			chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100 - ambiguous with proximity function (po)
-			expectedPeer: 2,
+			chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100
+			expectedPeer: 1,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101
@@ -265,7 +264,7 @@ func TestSyncPeer(t *testing.T) {
 		peer, err := fullDriver.SyncPeer(tc.chunkAddress)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
-				t.Fatalf("wanted ErrNodeWantSelf but got %v", err)
+				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
 			}
 			continue
 		}
@@ -275,7 +274,6 @@ func TestSyncPeer(t *testing.T) {
 		if !peer.Equal(expected) {
 			t.Fatalf("peers not equal. got %s expected %s", peer, expected)
 		}
-
 	}
 }
 
@@ -290,6 +288,5 @@ func checkAddreseeRecords(discovery *mock.Discovery, addr swarm.Address, expecte
 			return fmt.Errorf("addressee record expected %s, got %s ", e.Address.String(), got[i].String())
 		}
 	}
-
 	return nil
 }

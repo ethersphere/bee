@@ -140,28 +140,45 @@ func (d *Driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error
 	}
 
 	var (
-		found bool
-		cpo   uint8         //closest po
+		//found bool
+		//cd    []byte        //closest distance
 		cpeer swarm.Address //closest peer
 	)
+
+	// set cd to the distance between base and chunk
+	// if anything gets a smaller value - use that instead
+	//cd, err = swarm.DistanceRaw(addr.Bytes(), d.base)
+	//if err != nil {
+	//return swarm.Address{}, err
+	//}
+
+	cpeer = d.base
+
 	for _, peer := range connectedPeers {
 		peer := peer
-		po := uint8(swarm.Proximity(addr.Bytes(), peer.Address.Bytes()))
-		if po > cpo {
-			// peer is closer to the chunk
-			cpo = po
+		switch d := swarm.ProxCmp(addr.Bytes(), cpeer.Bytes(), peer.Address.Bytes()); d {
+		case 0:
+			// do nothing
+		case -1:
+			// cpeer is closer to chunk
+			// do nothing
+		case 1:
+			// current peer is closer
 			cpeer = peer.Address
-			found = true
 		}
+
+		//po := uint8(swarm.Proximity(addr.Bytes(), peer.Address.Bytes()))
+		//if po > cpo {
+		//// peer is closer to the chunk
+		//cpo = po
+		//cpeer = peer.Address
+		//found = true
+		//}
 	}
 
 	// check if node is actually the closest one to the chunk
-	if npo := uint8(swarm.Proximity(addr.Bytes(), d.base.Bytes())); npo > cpo {
+	if cpeer.Equal(d.base) {
 		return swarm.Address{}, topology.ErrWantSelf
-	}
-
-	if !found {
-		return swarm.Address{}, topology.ErrNotFound
 	}
 
 	return cpeer, nil
