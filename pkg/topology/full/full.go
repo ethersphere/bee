@@ -24,13 +24,13 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-var _ topology.Driver = (*Driver)(nil)
+var _ topology.Driver = (*driver)(nil)
 
-// Driver drives the connectivity between nodes. It is a basic implementation of a connectivity Driver.
+// driver drives the connectivity between nodes. It is a basic implementation of a connectivity driver.
 // that enabled full connectivity in the sense that:
-// - Every peer which is added to the Driver gets broadcasted to every other peer regardless of its address.
+// - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address.
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
-type Driver struct {
+type driver struct {
 	base swarm.Address // the base address for this node
 
 	discovery     discovery.Driver
@@ -42,7 +42,7 @@ type Driver struct {
 }
 
 func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) topology.Driver {
-	return &Driver{
+	return &driver{
 		base:          baseAddress,
 		discovery:     disc,
 		addressBook:   addressBook,
@@ -55,7 +55,7 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2
 // AddPeer adds a new peer to the topology driver.
 // The peer would be subsequently broadcasted to all connected peers.
 // All conneceted peers are also broadcasted to the new peer.
-func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
+func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	d.mtx.Lock()
 	if _, ok := d.receivedPeers[addr.ByteString()]; ok {
 		d.mtx.Unlock()
@@ -115,7 +115,7 @@ func (d *Driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 }
 
 // ChunkPeer is used to suggest a peer to ask a certain chunk from.
-func (d *Driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
 	connectedPeers := d.p2pService.Peers()
 	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
@@ -133,7 +133,8 @@ func (d *Driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	return swarm.Address{}, topology.ErrNotFound
 }
 
-func (d *Driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+// SyncPeer returns a peer to which
+func (d *driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
 	connectedPeers := d.p2pService.Peers()
 	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
@@ -149,11 +150,11 @@ func (d *Driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error
 		case 0:
 			// do nothing
 		case -1:
-			// cpeer is closer to chunk
-			// do nothing
-		case 1:
 			// current peer is closer
 			cpeer = peer.Address
+		case 1:
+			// cpeer is closer to chunk
+			// do nothing
 		}
 	}
 
