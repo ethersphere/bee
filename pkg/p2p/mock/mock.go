@@ -109,6 +109,8 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peersFunc()
 }
 
+
+
 type Option interface {
 	apply(*Service)
 }

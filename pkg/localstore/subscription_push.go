@@ -1,3 +1,4 @@
+
 // Copyright 2019 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
@@ -39,6 +40,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 	db.pushTriggersMu.Lock()
 	db.pushTriggers = append(db.pushTriggers, trigger)
 	db.pushTriggersMu.Unlock()
+
 
 	// send signal for the initial iteration
 	trigger <- struct{}{}
