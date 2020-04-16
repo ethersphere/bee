@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -300,13 +299,7 @@ func (s *Store) Close() error {
 
 // Example_store constructs a simple storage implementation using shed package.
 func Example_store() {
-	dir, err := ioutil.TempDir("", "ephemeral")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-
-	s, err := New(dir)
+	s, err := New("")
 	if err != nil {
 		log.Fatal(err)
 	}
