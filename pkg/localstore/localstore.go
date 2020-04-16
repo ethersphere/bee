@@ -308,7 +308,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 40)
 			binary.BigEndian.PutUint64(key[:8], uint64(fields.StoreTimestamp))
-			copy(key[8:], fields.Address[:])
+			copy(key[8:], fields.Address)
 			return key, nil
 		},
 		DecodeKey: func(key []byte) (e shed.Item, err error) {

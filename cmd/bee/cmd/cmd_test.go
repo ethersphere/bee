@@ -21,11 +21,14 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
 
 	homeDir = dir
 
-	os.Exit(m.Run())
+	code := m.Run()
+	if err := os.RemoveAll(dir); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	os.Exit(code)
 }
 
 func newCommand(t *testing.T, opts ...cmd.Option) (c *cmd.Command) {
