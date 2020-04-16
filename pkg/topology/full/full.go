@@ -133,16 +133,27 @@ func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	return swarm.Address{}, topology.ErrNotFound
 }
 
-// SyncPeer returns a peer to which
-func (d *driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+// SyncPeer returns a peer to which we would like to sync an arbitrary
+// chunk address. Returns the closest peer in relation to the chunk.
+func (d *driver) SyncPeer(addr swarm.Address) (swarm.Address, error) {
 	connectedPeers := d.p2pService.Peers()
 	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
-	cpeer := d.base // start checking closest from _self_
-	for _, peer := range connectedPeers {
-		dcmp, err := swarm.DistanceCmp(addr.Bytes(), cpeer.Bytes(), peer.Address.Bytes())
+	overlays := make([]swarm.Address, len(connectedPeers))
+	for i, v := range connectedPeers {
+		overlays[i] = v.Address
+	}
+
+	return closestPeer(addr, d.base, overlays)
+}
+
+func closestPeer(addr, self swarm.Address, peers []swarm.Address) (swarm.Address, error) {
+	// start checking closest from _self_
+	closest := self
+	for _, peer := range peers {
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
 		if err != nil {
 			return swarm.Address{}, err
 		}
@@ -151,19 +162,19 @@ func (d *driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error
 			// do nothing
 		case -1:
 			// current peer is closer
-			cpeer = peer.Address
+			closest = peer
 		case 1:
-			// cpeer is closer to chunk
+			// closest is already closer to chunk
 			// do nothing
 		}
 	}
 
 	// check if self
-	if cpeer.Equal(d.base) {
+	if closest.Equal(self) {
 		return swarm.Address{}, topology.ErrWantSelf
 	}
 
-	return cpeer, nil
+	return closest, nil
 }
 
 func isConnected(addr swarm.Address, connectedPeers []p2p.Peer) bool {
