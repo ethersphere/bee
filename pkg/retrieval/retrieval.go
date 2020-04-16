@@ -23,6 +23,12 @@ const (
 	streamName      = "retrieval"
 )
 
+var _ Interface = (*Service)(nil)
+
+type Interface interface {
+	RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error)
+}
+
 type Service struct {
 	streamer      p2p.Streamer
 	peerSuggester topology.ChunkPeerer
@@ -35,9 +41,6 @@ type Options struct {
 	ChunkPeerer topology.ChunkPeerer
 	Storer      storage.Storer
 	Logger      logging.Logger
-}
-
-type Storer interface {
 }
 
 func New(o Options) *Service {

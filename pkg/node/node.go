@@ -28,14 +28,17 @@ import (
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -190,12 +193,21 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.localstoreCloser = storer
 
+	retrieve := retrieval.New(retrieval.Options{
+		Streamer:    p2ps,
+		ChunkPeerer: topologyDriver,
+		Storer:      storer,
+		Logger:      logger,
+	})
+
+	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
-			Storer:   storer,
+			Storer:   ns,
 			Logger:   logger,
 			Tracer:   tracer,
 		})
