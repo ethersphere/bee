@@ -50,7 +50,7 @@ func DistanceCmp(a, x, y []byte) (int, error) {
 		dy := y[i] ^ a[i]
 		if dx == dy {
 			continue
-		} else if dx > dy {
+		} else if dx < dy {
 			return 1, nil
 		}
 		return -1, nil

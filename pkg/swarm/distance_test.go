@@ -15,9 +15,9 @@ type distanceTest struct {
 }
 
 type distanceCmpTest struct {
+	a      []byte
 	x      []byte
 	y      []byte
-	z      []byte
 	result int
 }
 
@@ -32,21 +32,21 @@ var (
 
 	distanceCmpTests = []distanceCmpTest{
 		{
-			x:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			y:      MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			z:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			a:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(), // 10010001
+			x:      MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000").Bytes(), // 10000010 xor(91,82) =	9
+			y:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(), // 00010010 xor(91,12) = 87
 			result: 1,
 		},
 		{
-			x:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			y:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			z:      MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			a:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			x:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			y:      MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000").Bytes(),
 			result: -1,
 		},
 		{
-			x:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			a:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			x:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
 			y:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			z:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
 			result: 0,
 		},
 	}
@@ -68,12 +68,12 @@ func TestDistance(t *testing.T) {
 // TestDistanceCmp tests the distance comparison method.
 func TestDistanceCmp(t *testing.T) {
 	for _, dt := range distanceCmpTests {
-		direction, err := DistanceCmp(dt.x, dt.y, dt.z)
+		direction, err := DistanceCmp(dt.a, dt.x, dt.y)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if direction != dt.result {
-			t.Fatalf("incorrect distance compare, expected %d, got %d (x: %x, y: %x, z: %x)", dt.result, direction, dt.x, dt.y, dt.z)
+			t.Fatalf("incorrect distance compare, expected %d, got %d (a: %x, x: %x, y: %x)", dt.result, direction, dt.a, dt.x, dt.y)
 		}
 	}
 }
