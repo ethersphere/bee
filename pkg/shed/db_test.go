@@ -98,19 +98,12 @@ func TestDB_persistence(t *testing.T) {
 // be called to remove the data.
 func newTestDB(t *testing.T) (db *DB, cleanupFunc func()) {
 	t.Helper()
-
-	dir, err := ioutil.TempDir("", "shed-test")
-	if err != nil {
-		t.Fatal(err)
-	}
 	logger := logging.New(ioutil.Discard, 0)
-	db, err = NewDB(dir, logger)
+	db, err := NewDB("", logger)
 	if err != nil {
-		os.RemoveAll(dir)
 		t.Fatal(err)
 	}
 	return db, func() {
 		db.Close()
-		os.RemoveAll(dir)
 	}
 }

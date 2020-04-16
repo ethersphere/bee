@@ -28,7 +28,7 @@ vet:
 
 .PHONY: test
 test:
-	$(GO) test -v -race ./...
+	$(GO) test -v ./...
 
 .PHONY: build
 build: export CGO_ENABLED=0

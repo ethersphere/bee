@@ -178,7 +178,10 @@ func NewBee(o Options) (*Bee, error) {
 
 	var storer storage.Storer
 	if o.DataDir == "" {
-		// TODO: this needs to support in-mem localstore implementation somehow
+		storer, err = localstore.New("", address.Bytes(), nil, logger)
+		if err != nil {
+			return nil, fmt.Errorf("localstore: %w", err)
+		}
 	} else {
 		storer, err = localstore.New(filepath.Join(o.DataDir, "localstore"), address.Bytes(), nil, logger)
 		if err != nil {
