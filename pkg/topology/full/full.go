@@ -158,7 +158,7 @@ func (d *driver) SyncPeer(addr swarm.Address) (peerAddr swarm.Address, err error
 		}
 	}
 
-	// check if node is actually the closest one to the chunk
+	// check if self
 	if cpeer.Equal(d.base) {
 		return swarm.Address{}, topology.ErrWantSelf
 	}
