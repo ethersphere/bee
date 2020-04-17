@@ -18,9 +18,6 @@ var (
 	ErrInvalidChunk = errors.New("storage: invalid chunk")
 )
 
-// ChunkValidatorFunc validates Swarm chunk address and chunk data
-type ChunkValidatorFunc func(swarm.Address, []byte) (valid bool)
-
 // ModeGet enumerates different Getter modes.
 type ModeGet int
 
