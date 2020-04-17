@@ -10,18 +10,19 @@ import (
 	"fmt"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery/mock"
+	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
-	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	ma "github.com/multiformats/go-multiaddr"
 	"io/ioutil"
+	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -61,13 +62,7 @@ func TestAddChunkToLocalStore(t *testing.T) {
 	statestore := mockstate.NewStateStore()
 	ab := addressbook.New(statestore)
 	fullDriver := full.New(discovery, ab, p2ps, logger, pivotNode)
-	peer, err := fullDriver.SyncPeer(chunkAddress)
-	if err != nil {
-		if !errors.Is(err, topology.ErrWantSelf) {
-			t.Fatalf("wanted ErrNodeWantSelf but got %v", err)
-		}
-		t.Fatal(err)
-	}
+
 
 	// get the closest peer from the connected peers
 	ps := mockPeerSuggester{spFunc: func(_ swarm.Address) (swarm.Address, error) {
@@ -80,11 +75,24 @@ func TestAddChunkToLocalStore(t *testing.T) {
 		return peer, nil
 	}}
 
+	// create a localstore
+	dir, err := ioutil.TempDir("", "localstore-stored-gc-size")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	//TODO: need to use memdb after merge with master
+	storer , err :=  localstore.New(dir, pivotNode.Bytes(), nil, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// instantiate a pushsync protocol
 	server := New(Options{
 		Logger:     logger,
 		SyncPeerer: ps,
-		Storer:     storemock.NewStorer(),
+		Storer:     storer,
 	})
 
 	// setup the stream recorder to record stream data
