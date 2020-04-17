@@ -186,7 +186,7 @@ func TestAddPeer(t *testing.T) {
 	})
 }
 
-// TestSyncPeer tests that SyncPeer method returns closest connected peer to a given chunk
+// TestSyncPeer tests that SyncPeer method returns closest connected peer to a given chunk.
 func TestSyncPeer(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	baseOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000

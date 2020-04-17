@@ -149,6 +149,8 @@ func (d *driver) SyncPeer(addr swarm.Address) (swarm.Address, error) {
 	return closestPeer(addr, d.base, overlays)
 }
 
+// closestPeer returns the closest peer from the supplied peers slice.
+// returns topology.ErrWantSelf if the base address is the closest
 func closestPeer(addr, self swarm.Address, peers []swarm.Address) (swarm.Address, error) {
 	// start checking closest from _self_
 	closest := self
