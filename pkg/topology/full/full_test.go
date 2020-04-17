@@ -51,7 +51,7 @@ func TestAddPeer(t *testing.T) {
 			return overlay, nil
 		}))
 
-		fullDriver := full.New(discovery, ab, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal(err)
@@ -81,7 +81,7 @@ func TestAddPeer(t *testing.T) {
 			return swarm.Address{}, nil
 		}))
 
-		fullDriver := full.New(discovery, ab, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
 		err := fullDriver.AddPeer(context.Background(), overlay)
 		if !errors.Is(err, topology.ErrNotFound) {
 			t.Fatalf("full conn driver returned err %v", err)
@@ -105,7 +105,7 @@ func TestAddPeer(t *testing.T) {
 			return connectedPeers
 		}))
 
-		fullDriver := full.New(discovery, ab, p2p, logger)
+		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal("error creating multiaddr")
@@ -152,7 +152,7 @@ func TestAddPeer(t *testing.T) {
 			return connectedPeers
 		}))
 
-		fullDriver := full.New(discovery, ab, p2ps, logger)
+		fullDriver := full.New(discovery, ab, p2ps, logger, overlay)
 		multiaddr, err := ma.NewMultiaddr(underlay)
 		if err != nil {
 			t.Fatal(err)
@@ -186,6 +186,83 @@ func TestAddPeer(t *testing.T) {
 	})
 }
 
+// TestSyncPeer tests that SyncPeer method returns closest connected peer to a given chunk.
+func TestSyncPeer(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	baseOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+	connectedPeers := []p2p.Peer{
+		{
+			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000 -> po 0 to base
+		},
+		{
+			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100 -> po 1 to base
+		},
+		{
+			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110 -> po 1 to base
+		},
+	}
+
+	discovery := mock.NewDiscovery()
+	statestore := mockstate.NewStateStore()
+	ab := addressbook.New(statestore)
+
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		return baseOverlay, nil
+	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
+		return connectedPeers
+	}))
+
+	fullDriver := full.New(discovery, ab, p2ps, logger, baseOverlay)
+
+	for _, tc := range []struct {
+		chunkAddress swarm.Address // chunk address to test
+		expectedPeer int           // points to the index of the connectedPeers slice. -1 means self (baseOverlay)
+	}{
+		{
+			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111, wants peer 2
+			expectedPeer: 2,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("c000000000000000000000000000000000000000000000000000000000000000"), // 1100, want peer 0
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("e000000000000000000000000000000000000000000000000000000000000000"), // 1110, want peer 0
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("a000000000000000000000000000000000000000000000000000000000000000"), // 1010, want peer 0
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100, want peer 1
+			expectedPeer: 1,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101, want peer 1
+			expectedPeer: 1,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // want self
+			expectedPeer: -1,
+		},
+	} {
+		peer, err := fullDriver.SyncPeer(tc.chunkAddress)
+		if err != nil {
+			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
+				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
+			}
+			continue
+		}
+
+		expected := connectedPeers[tc.expectedPeer].Address
+
+		if !peer.Equal(expected) {
+			t.Fatalf("peers not equal. got %s expected %s", peer, expected)
+		}
+	}
+}
+
 func checkAddreseeRecords(discovery *mock.Discovery, addr swarm.Address, expected []p2p.Peer) error {
 	got, exists := discovery.AddresseeRecords(addr)
 	if exists != true {
@@ -197,6 +274,5 @@ func checkAddreseeRecords(discovery *mock.Discovery, addr swarm.Address, expecte
 			return fmt.Errorf("addressee record expected %s, got %s ", e.Address.String(), got[i].String())
 		}
 	}
-
 	return nil
 }
