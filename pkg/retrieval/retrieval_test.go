@@ -75,7 +75,7 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(v, reqData) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
 	}
-	peerID, _ := ps.ChunkPeer(swarm.ZeroAddress)
+	peerID, _ := ps.ClosestPeer(swarm.ZeroAddress)
 	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
@@ -124,6 +124,6 @@ type mockPeerSuggester struct {
 	spFunc func(swarm.Address) (swarm.Address, error)
 }
 
-func (v mockPeerSuggester) ChunkPeer(addr swarm.Address) (swarm.Address, error) {
+func (v mockPeerSuggester) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	return v.spFunc(addr)
 }
