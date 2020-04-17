@@ -13,7 +13,7 @@ import (
 
 type mockStorer struct {
 	store     map[string][]byte
-	validator storage.ChunkValidatorFunc
+	validator swarm.ChunkValidator
 }
 
 func NewStorer() storage.Storer {
@@ -22,10 +22,10 @@ func NewStorer() storage.Storer {
 	}
 }
 
-func NewValidatingStorer(f storage.ChunkValidatorFunc) storage.Storer {
+func NewValidatingStorer(v swarm.ChunkValidator) storage.Storer {
 	return &mockStorer{
 		store:     make(map[string][]byte),
-		validator: f,
+		validator: v,
 	}
 }
 func (m *mockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
@@ -39,7 +39,7 @@ func (m *mockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.A
 func (m *mockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
 		if m.validator != nil {
-			if !m.validator(ch.Address(), ch.Data()) {
+			if !m.validator.Validate(ch) {
 				return nil, storage.ErrInvalidChunk
 			}
 		}
