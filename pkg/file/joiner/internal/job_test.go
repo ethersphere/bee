@@ -18,9 +18,16 @@ func TestSimpleJoinerJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	firstChunk := filetest.GenerateTestRandomFileChunk(swarm.ChunkSize*2)
+	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+
+	firstAddress := swarm.NewAddress(rootChunk.Data()[:swarm.SectionSize])
+	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
 	store.Put(ctx, storage.ModePutUpload, firstChunk)
 
-	j := internal.NewSimpleJoinerJob(ctx, store, 4096, []byte{})
+	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize:])
+	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
+	store.Put(ctx, storage.ModePutUpload, secondChunk)
+
+	j := internal.NewSimpleJoinerJob(ctx, store, swarm.ChunkSize*2, rootChunk.Data()[8:])
 	_ = j
 }

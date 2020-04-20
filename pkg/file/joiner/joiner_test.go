@@ -7,12 +7,12 @@ package joiner_test
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -73,42 +73,25 @@ func TestJoinerWithReference(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for %x", swarm.ZeroAddress)
 	}
 
-	rootAddrHex := fmt.Sprintf("%064s", "2a")
-	rootAddr := swarm.MustParseHexAddress(rootAddrHex)
-	firstAddrHex := fmt.Sprintf("%064s", "01a6")
-	firstAddr := swarm.MustParseHexAddress(firstAddrHex)
-	secondAddrHex := fmt.Sprintf("%064s", "029a")
-	secondAddr := swarm.MustParseHexAddress(secondAddrHex)
+	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
 
-	firstData := make([]byte, swarm.ChunkSize)
-	copy(firstData, []byte("foo"))
-	secondData := []byte("bar")
-
-	firstLength := len(firstData)
-	firstLengthBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(firstLengthBytes, uint64(firstLength))
-
-	secondLength := len(secondData)
-	secondLengthBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(secondLengthBytes, uint64(secondLength))
-
-	totalLength := firstLength + secondLength
-	totalLengthBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(totalLengthBytes, uint64(totalLength))
-
-	rootData := append(firstAddr.Bytes(), secondAddr.Bytes()...)
-	rootChunk := swarm.NewChunk(rootAddr, append(totalLengthBytes, rootData...))
-	_, err = store.Put(ctx, storage.ModePutUpload, rootChunk)
-
-	firstChunk := swarm.NewChunk(firstAddr, append(firstLengthBytes, firstData...))
+	firstAddress := swarm.NewAddress(rootChunk.Data()[:swarm.SectionSize])
+	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
 	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	secondChunk := swarm.NewChunk(secondAddr, append(secondLengthBytes, secondData...))
+	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize:])
+	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
 	_, err = store.Put(ctx, storage.ModePutUpload, secondChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	joinReader, l, err := joiner.Join(ctx, rootAddr)
-	if l != int64(len(firstData) + len(secondData)) {
-		t.Fatalf("expected join data length %d, got %d", len(firstData) + len(secondData), l)
+	joinReader, l, err := joiner.Join(ctx, rootChunk.Address())
+	if l != int64(len(firstChunk.Data()) + len(secondChunk.Data())) {
+		t.Fatalf("expected join data length %d, got %d", len(firstChunk.Data()) + len(secondChunk.Data()), l)
 	}
 
 	resultBuffer := make([]byte, 3)
@@ -119,7 +102,7 @@ func TestJoinerWithReference(t *testing.T) {
 	if n != len(resultBuffer) {
 		t.Fatalf("expected read count %d, got %d", len(resultBuffer), n)
 	}
-	if !bytes.Equal(resultBuffer, firstData[:len(resultBuffer)]) {
-		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, firstData[:len(resultBuffer)])
+	if !bytes.Equal(resultBuffer, firstChunk.Data()[:len(resultBuffer)]) {
+		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, firstChunk.Data()[:len(resultBuffer)])
 	}
 }
