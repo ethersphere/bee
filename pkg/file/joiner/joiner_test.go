@@ -40,7 +40,7 @@ func TestJoiner(t *testing.T) {
 	mockDataLengthBytes := make([]byte, 8)
 	mockDataLengthBytes[0] = 0x03;
 	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
-	_, err = store.Put(ctx, storage.ModePutRequest, mockChunk)
+	_, err = store.Put(ctx, storage.ModePutUpload, mockChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,13 +98,13 @@ func TestJoinerWithReference(t *testing.T) {
 
 	rootData := append(firstAddr.Bytes(), secondAddr.Bytes()...)
 	rootChunk := swarm.NewChunk(rootAddr, append(totalLengthBytes, rootData...))
-	_, err = store.Put(ctx, storage.ModePutRequest, rootChunk)
+	_, err = store.Put(ctx, storage.ModePutUpload, rootChunk)
 
 	firstChunk := swarm.NewChunk(firstAddr, append(firstLengthBytes, firstData...))
-	_, err = store.Put(ctx, storage.ModePutRequest, firstChunk)
+	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
 
 	secondChunk := swarm.NewChunk(secondAddr, append(secondLengthBytes, secondData...))
-	_, err = store.Put(ctx, storage.ModePutRequest, secondChunk)
+	_, err = store.Put(ctx, storage.ModePutUpload, secondChunk)
 
 	joinReader, l, err := joiner.Join(ctx, rootAddr)
 	if l != int64(len(firstData) + len(secondData)) {

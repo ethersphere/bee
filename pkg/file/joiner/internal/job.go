@@ -31,7 +31,6 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, spanLength in
 	return j
 }
 
-
 func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	return 0, nil
 }
