@@ -11,7 +11,6 @@ import (
 )
 
 func TestMockValidator(t *testing.T) {
-
 	validAddr := swarm.NewAddress([]byte("foo"))
 	invalidAddr := swarm.NewAddress([]byte("bar"))
 
