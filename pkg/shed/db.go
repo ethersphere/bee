@@ -27,6 +27,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/storage"
 )
 
 var (
@@ -48,14 +49,19 @@ type DB struct {
 // if it exists in database on the given path.
 // metricsPrefix is used for metrics collection for the given DB.
 func NewDB(path string, logger logging.Logger) (db *DB, err error) {
-
-	ldb, err := leveldb.OpenFile(path, &opt.Options{
-		OpenFilesCacheCapacity: openFileLimit,
-	})
+	var ldb *leveldb.DB
+	if path == "" {
+		ldb, err = leveldb.Open(storage.NewMemStorage(), nil)
+	} else {
+		ldb, err = leveldb.OpenFile(path, &opt.Options{
+			OpenFilesCacheCapacity: openFileLimit,
+		})
+	}
 
 	if err != nil {
 		return nil, err
 	}
+
 	db = &DB{
 		ldb:     ldb,
 		metrics: newMetrics(),

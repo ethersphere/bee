@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 func init() {
@@ -245,7 +246,7 @@ func newRetrieveIndexesTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTim
 		validateItem(t, item, chunk.Address().Bytes(), chunk.Data(), storeTimestamp, 0)
 
 		// access index should not be set
-		wantErr := shed.ErrNotFound
+		wantErr := leveldb.ErrNotFound
 		_, err = db.retrievalAccessIndex.Get(addressToItem(chunk.Address()))
 		if err != wantErr {
 			t.Errorf("got error %v, want %v", err, wantErr)

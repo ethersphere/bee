@@ -27,9 +27,9 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/swarm/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -158,7 +158,7 @@ func (s *Store) Put(_ context.Context, ch swarm.Chunk) (err error) {
 // It updates access and gc indexes by removing the previous
 // items from them and adding new items as keys of index entries
 // are changed.
-func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, err error) {
+func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err error) {
 	batch := new(leveldb.Batch)
 
 	// Get the chunk data and storage timestamp.
@@ -167,7 +167,7 @@ func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, e
 	})
 	if err != nil {
 		if err == leveldb.ErrNotFound {
-			return nil, storage.ErrChunkNotFound
+			return nil, storage.ErrNotFound
 		}
 		return nil, err
 	}
