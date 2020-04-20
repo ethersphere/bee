@@ -26,7 +26,10 @@ func TestHasChunk(t *testing.T) {
 	key := swarm.MustParseHexAddress("aabbcc")
 	value := []byte("data data data")
 
-	mockStorer.Put(context.Background(), storage.ModePutUpload, swarm.NewChunk(key, value))
+	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, swarm.NewChunk(key, value))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunk/"+key.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
