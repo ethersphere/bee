@@ -8,6 +8,7 @@ package joiner
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"io"
 	"io/ioutil"
 
@@ -17,19 +18,30 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type simpleJoinerReader struct {
+}
+
+func (r *simpleJoinerReader) Read(b []byte) (n int, err error) {
+	return 0, nil
+}
+
 type simpleJoiner struct {
 	store storage.Storer
 	logger logging.Logger
 }
 
 func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.Reader, dataSize int64, err error) {
-	s.logger.Warning("foo")
-	ch, err := s.store.Get(ctx, storage.ModeGetRequest, address)
+	rootChunk, err := s.store.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
+		s.logger.Debugf("unable to find root chunk for '%s'", address)
 		return nil, 0, err
 	}
-	r := bytes.NewReader(ch.Data())
-	return r, int64(len(ch.Data())), nil
+	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
+	if spanLength < swarm.ChunkSize {
+		return bytes.NewReader(rootChunk.Data()[8:]), int64(spanLength), nil
+	}
+
+	return &simpleJoinerReader{}, int64(spanLength), nil
 }
 
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
