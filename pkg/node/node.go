@@ -176,17 +176,18 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Infof("p2p address: %s", addr)
 	}
 
-	var storer storage.Storer
-	if o.DataDir == "" {
-		storer, err = localstore.New("", address.Bytes(), nil, logger)
-		if err != nil {
-			return nil, fmt.Errorf("localstore: %w", err)
-		}
-	} else {
-		storer, err = localstore.New(filepath.Join(o.DataDir, "localstore"), address.Bytes(), nil, logger)
-		if err != nil {
-			return nil, fmt.Errorf("localstore: %w", err)
-		}
+	var (
+		storer storage.Storer
+		path   = ""
+	)
+
+	if o.DataDir != "" {
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+
+	storer, err = localstore.New(path, address.Bytes(), nil, logger)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
 
@@ -229,6 +230,7 @@ func NewBee(o Options) (*Bee, error) {
 			Logger:         logger,
 			Addressbook:    addressbook,
 			TopologyDriver: topologyDriver,
+			Storer:         storer,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)

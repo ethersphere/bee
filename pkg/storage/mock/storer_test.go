@@ -39,12 +39,18 @@ func TestMockStorer(t *testing.T) {
 	}
 
 	if chunk, err := s.Get(ctx, storage.ModeGetRequest, keyFound); err != nil {
-		t.Fatalf("expected not error but got: %v", err)
-
+		t.Fatalf("expected no error but got: %v", err)
 	} else {
 		if !bytes.Equal(chunk.Data(), valueFound) {
 			t.Fatalf("expected value %s but got %s", valueFound, chunk.Data())
 		}
+	}
+	has, err := s.Has(ctx, keyFound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected mock store to have key")
 	}
 }
 
