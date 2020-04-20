@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/logging"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -40,7 +40,7 @@ func TestJoiner(t *testing.T) {
 	mockAddr := swarm.MustParseHexAddress(mockAddrHex)
 	mockData := []byte("foo")
 	mockDataLengthBytes := make([]byte, 8)
-	mockDataLengthBytes[0] = 0x03;
+	mockDataLengthBytes[0] = 0x03
 	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
 	_, err = store.Put(ctx, storage.ModePutUpload, mockChunk)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestJoinerWithReference(t *testing.T) {
 
 	logger := logging.New(os.Stderr, 6)
 	logger.Debugf("root chunk data %x", rootChunk.Data())
-	firstAddress := swarm.NewAddress(rootChunk.Data()[8:swarm.SectionSize+8])
+	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
 	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestJoinerWithReference(t *testing.T) {
 
 	joinReader, l, err := joiner.Join(ctx, rootChunk.Address())
 	if l != int64(swarm.ChunkSize*2) {
-		t.Fatalf("expected join data length %d, got %d", swarm.ChunkSize * 2, l)
+		t.Fatalf("expected join data length %d, got %d", swarm.ChunkSize*2, l)
 	}
 
 	resultBuffer := make([]byte, swarm.ChunkSize)

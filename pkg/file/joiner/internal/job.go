@@ -13,27 +13,27 @@ import (
 )
 
 type SimpleJoinerJob struct {
-	ctx context.Context
-	store storage.Storer
+	ctx        context.Context
+	store      storage.Storer
 	spanLength int64
 	levelCount int
-	readCount int64
-	cursors [9]int
-	data [9][]byte
-	dataC chan []byte
-	logger logging.Logger
+	readCount  int64
+	cursors    [9]int
+	data       [9][]byte
+	dataC      chan []byte
+	logger     logging.Logger
 }
 
 func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swarm.Chunk) *SimpleJoinerJob {
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
 	levelCount := getLevelsFromLength(int64(spanLength), swarm.SectionSize, swarm.Branches)
 	j := &SimpleJoinerJob{
-		ctx: ctx,
-		store: store,
+		ctx:        ctx,
+		store:      store,
 		spanLength: int64(spanLength),
 		levelCount: levelCount,
-		dataC: make(chan []byte),
-		logger: logging.New(os.Stderr, 5),
+		dataC:      make(chan []byte),
+		logger:     logging.New(os.Stderr, 5),
 	}
 
 	// keeping the data level as 0 index matches the file hasher solution
@@ -51,10 +51,10 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 }
 
 func (j *SimpleJoinerJob) start() error {
-	level := j.levelCount-1 // is first level after root chunk
-	for ;j.cursors[level] < len(j.data[level]); {
+	level := j.levelCount - 1 // is first level after root chunk
+	for j.cursors[level] < len(j.data[level]) {
 		cursor := j.cursors[level]
-		addressBytes := j.data[level][cursor:cursor+swarm.SectionSize]
+		addressBytes := j.data[level][cursor : cursor+swarm.SectionSize]
 		chunkAddress := swarm.NewAddress(addressBytes)
 		err := j.descend(level-1, chunkAddress)
 		if err != nil {
@@ -73,13 +73,13 @@ func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 	}
 
 	if level > 0 {
-		if len(j.data[level]) == j.cursors[level]  {
+		if len(j.data[level]) == j.cursors[level] {
 			j.data[level] = ch.Data()[8:]
 			j.cursors[level] = 0
 		}
 		cursor := j.cursors[level]
-		nextAddress := swarm.NewAddress(j.data[level][cursor:cursor+swarm.SectionSize])
-		err := j.descend(level - 1, nextAddress)
+		nextAddress := swarm.NewAddress(j.data[level][cursor : cursor+swarm.SectionSize])
+		err := j.descend(level-1, nextAddress)
 		if err != nil {
 			return err
 		}

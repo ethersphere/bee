@@ -6,17 +6,15 @@
 package file
 
 import (
-	"io"
-	"hash"
 	"context"
+	"hash"
+	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-
 // SwarmHash represents the hasher used to operate on files.
 type SwarmHash hash.Hash
-
 
 // Joiner returns file data referenced by the given Swarm Address to the given io.Reader.
 //

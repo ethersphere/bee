@@ -26,7 +26,7 @@ func TestSimpleJoinerJobRead(t *testing.T) {
 	store.Put(ctx, storage.ModePutUpload, rootChunk)
 	logger.Debugf("put rootchunk %v", rootChunk)
 
-	firstAddress := swarm.NewAddress(rootChunk.Data()[8:swarm.SectionSize+8])
+	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
 	_, err := store.Put(ctx, storage.ModePutUpload, firstChunk)
 	if err != nil {

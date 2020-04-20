@@ -19,9 +19,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-
 type simpleJoiner struct {
-	store storage.Storer
+	store  storage.Storer
 	logger logging.Logger
 }
 
@@ -39,7 +38,6 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 		return bytes.NewReader(rootChunk.Data()[8:]), int64(spanLength), nil
 	}
 
-
 	s.logger.Tracef("joining root chunk %v", rootChunk)
 	r := internal.NewSimpleJoinerJob(ctx, s.store, rootChunk)
 	return r, int64(spanLength), nil
@@ -47,7 +45,7 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
 	return &simpleJoiner{
-		store: store,
+		store:  store,
 		logger: logging.New(os.Stderr, 6),
 	}
 }
