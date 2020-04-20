@@ -7,7 +7,6 @@ package pushsync
 import (
 	"context"
 	"fmt"
-	"github.com/opentracing/opentracing-go"
 	"io"
 	"time"
 
@@ -18,44 +17,32 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/tracing"
-	"sync"
-
 )
 
 const (
-	protocolName    = "pushsync"
-	protocolVersion = "1.0.0"
-	streamName      = "puhsync"
+	ProtocolName    = "pushsync"
+	ProtocolVersion = "1.0.0"
+	StreamName      = "puhsync"
 )
 
 type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Storer
 	peerSuggester topology.SyncPeerer
-	pushed         map[string]*pushedItem
-	closedChunks   chan struct{}          // channel to signal sync loop terminated
 	quit           chan struct{}
 
-	pushedMu       sync.Mutex
-
 	logger        logging.Logger
-	tracer        *tracing.Tracer
 	metrics       metrics
 }
 
-// pushedItem captures the info needed for the pusher about a chunk to be pushed
-type pushedItem struct {
-	sentAt   time.Time        // first sent at time
-	synced   bool             // set when chunk got synced
-}
 
 type Options struct {
 	Streamer    p2p.Streamer
-	SyncPeerer 	topology.SyncPeerer
 	Storer      storage.Storer
+	SyncPeerer 	topology.SyncPeerer
+
 	Logger      logging.Logger
-	Tracer   *tracing.Tracer
+	metrics     metrics
 }
 
 var retryInterval = 10 * time.Second // time interval between retries
@@ -63,27 +50,25 @@ var retryInterval = 10 * time.Second // time interval between retries
 func New(o Options) *PushSync {
 	ps := &PushSync{
 		streamer:      o.Streamer,
-		peerSuggester: o.SyncPeerer,
-		pushed:         make(map[string]*pushedItem),
 		storer:        o.Storer,
+		peerSuggester: o.SyncPeerer,
 		logger:        o.Logger,
-		tracer:        o.Tracer,
 		metrics:       newMetrics(),
 	}
 
 	ctx := context.Background()
-	go ps.pushChunksToClosestNode(ctx)
+	go ps.chunksWorker(ctx)
 
 	return ps
 }
 
 func (s *PushSync) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
-		Name:    protocolName,
-		Version: protocolVersion,
+		Name:    ProtocolName,
+		Version: ProtocolVersion,
 		StreamSpecs: []p2p.StreamSpec{
 			{
-				Name:    streamName,
+				Name:    StreamName,
 				Handler: s.handler,
 			},
 		},
@@ -113,37 +98,24 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		ps.logger.Debugf("Error reading  message: %s", err.Error())
 	}
 
-
-
-
-
+	// create chunk and store it in the local store
+	chunk := swarm.NewChunk(swarm.NewAddress(ch.Data[:20]), ch.Data[20:])
+	_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
+	if err != nil {
+		return err
+	}
 
 	// push this to your closest node too
+	if err := ps.sendChunkMsg(ctx, chunk); err != nil {
+		ps.metrics.SendChunkErrorCounter.Inc()
+		ps.logger.Errorf("error sending chunk", "addr", chunk.Address().String(), "err", err)
+	}
 
-
-	//w, r := protobuf.NewWriterAndReader(stream)
-	//defer stream.Close()
-	//var req pb.Request
-	//if err := r.ReadMsg(&req); err != nil {
-	//	return err
-	//}
-	//
-	//chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
-	//	Data: chunk.Data(),
-	//}); err != nil {
-	//	return err
-	//}
-	//
 	return nil
 }
 
 
-func (ps *PushSync) pushChunksToClosestNode(ctx context.Context) {
+func (ps *PushSync) chunksWorker(ctx context.Context) {
 	var chunks <-chan swarm.Chunk
 	var unsubscribe func()
 
@@ -183,7 +155,6 @@ func (ps *PushSync) pushChunksToClosestNode(ctx context.Context) {
 			// retry interval timer triggers starting from new
 		case <-timer.C:
 			// initially timer is set to go off as well as every time we hit the end of push index
-			// so no wait for retryInterval needed to set  items synced
 			func() {
 				startTime := time.Now()
 
@@ -195,6 +166,8 @@ func (ps *PushSync) pushChunksToClosestNode(ctx context.Context) {
 				// and start iterating on Push index from the beginning
 				chunks, unsubscribe = ps.storer.SubscribePush(ctx)
 
+				// reset timer to go off after retryInterval
+				timer.Reset(retryInterval)
 
 				timeSpent := float64(time.Since(startTime))
 				ps.metrics.MarkAndSweepTimer.Add(timeSpent)
@@ -217,8 +190,9 @@ func (ps *PushSync) sendChunkMsg(ctx context.Context, ch swarm.Chunk) error {
 	closestPeer, err := ps.peerSuggester.SyncPeer(ch.Address())
 	if err != nil {
 		ps.logger.Error("could not find peer to send chunks", "addr", ch.Address().String() , "err", err)
+		return err
 	}
-	streamer, err := ps.streamer.NewStream(ctx , closestPeer, nil, protocolName, protocolVersion, streamName)
+	streamer, err := ps.streamer.NewStream(ctx , closestPeer, nil, ProtocolName, ProtocolVersion, StreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
