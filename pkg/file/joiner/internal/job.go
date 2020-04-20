@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"encoding/binary"
 	"math"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -19,20 +20,29 @@ type SimpleJoinerJob struct {
 	chunkC chan []byte
 }
 
-func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, spanLength int64, rootData []byte) *SimpleJoinerJob {
-	levelCount := getLevelsFromLength(spanLength, swarm.SectionSize, swarm.Branches)
+func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swarm.Chunk) *SimpleJoinerJob {
+	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
+	levelCount := getLevelsFromLength(int64(spanLength), swarm.SectionSize, swarm.Branches)
 	j := &SimpleJoinerJob{
 		ctx: ctx,
 		store: store,
-		spanLength: spanLength,
+		spanLength: int64(spanLength),
 		levelCount: levelCount,
+		chunkC: make(chan []byte),
 	}
-	j.data[levelCount-1] = rootData
+
+	// keeping the data level as 0 index matches the file hasher solution
+	j.data[levelCount-1] = rootChunk.Data()[8:]
 	return j
 }
 
 func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
-	return 0, nil
+	select {
+	case b := <-j.chunkC:
+		return len(b), nil
+	case <-j.ctx.Done():
+		return 0, j.ctx.Err()
+	}
 }
 
 // calculate the last level index which a particular data section count will result in. The returned level will be the level of the root hash

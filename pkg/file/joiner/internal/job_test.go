@@ -3,6 +3,7 @@ package internal_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file/joiner/internal"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
@@ -15,7 +16,7 @@ import (
 func TestSimpleJoinerJob(t *testing.T) {
 	store := mock.NewStorer()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
@@ -28,6 +29,15 @@ func TestSimpleJoinerJob(t *testing.T) {
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
 	store.Put(ctx, storage.ModePutUpload, secondChunk)
 
-	j := internal.NewSimpleJoinerJob(ctx, store, swarm.ChunkSize*2, rootChunk.Data()[8:])
-	_ = j
+	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+
+	outBuffer := make([]byte, 42) // arbitrary non power of 2 number
+
+	c, err := j.Read(outBuffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c != 42 {
+		t.Fatalf("expected read count %d, got %d", 42, c)
+	}
 }
