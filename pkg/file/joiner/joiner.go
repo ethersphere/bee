@@ -6,7 +6,10 @@
 package joiner
 
 import (
+	"bytes"
+	"context"
 	"io"
+	"io/ioutil"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -19,13 +22,20 @@ type simpleJoiner struct {
 	logger logging.Logger
 }
 
-func (s *simpleJoiner) Join(address swarm.Address, dataReader io.Reader) (dataSize int64, err error) {
-	s.logger.Warning("Join method is noop")
-	return 0, nil
+func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.Reader, dataSize int64, err error) {
+	s.logger.Warning("foo")
+	ch, err := s.store.Get(ctx, storage.ModeGetRequest, address)
+	if err != nil {
+		return nil, 0, err
+	}
+	r := bytes.NewReader(ch.Data())
+	return r, int64(len(ch.Data())), nil
 }
 
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
 	return &simpleJoiner{
 		store: store,
+		logger: logging.New(ioutil.Discard, 0),
+
 	}
 }
