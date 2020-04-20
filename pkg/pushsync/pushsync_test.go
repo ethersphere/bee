@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package pushsync
+package pushsync_test
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -23,11 +22,10 @@ import (
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	"github.com/ethersphere/bee/pkg/pingpong/pb"
+	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -81,7 +79,7 @@ func TestAddChunkToLocalStore(t *testing.T) {
 	}
 
 	// instantiate a pushsync protocol
-	server := New(Options{
+	server := pushsync.New(Options{
 		Logger:     logger,
 		SyncPeerer: fullDriver,
 		Storer:     storer,
@@ -180,16 +178,21 @@ func TestReceiveChunkFromClosestPeer(t *testing.T) {
 	stream, err := recorder.NewStream(context.Background(), receivingNode, nil, protocolName, protocolVersion, streamName )
 	defer stream.Close()
 
-
 	w, r := protobuf.NewWriterAndReader(stream)
-	w.WriteMsg(&pb.D{
-		Greeting: msg,
+	w.WriteMsg(&pb.Delivery{
+		Data: msg,
 	});
 
-	messages, err = protobuf.ReadMessages(
-		bytes.NewReader(record.Out()),
-		func() protobuf.Message { return new(pb.Pong) },
-	)
+
+	records, err := recorder.Records(connectedPeers[2].Address, "pushsync", "1.0.0", "pushsync")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := len(records); l != 1 {
+		t.Fatalf("got %v records, want %v", l, 1)
+	}
+	record := records[0]
+
 
 }
 

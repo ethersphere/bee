@@ -138,6 +138,7 @@ type Storer interface {
 	Set(ctx context.Context, mode ModeSet, addrs ...swarm.Address) (err error)
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, stop func())
+    SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
 	io.Closer
 }
 
