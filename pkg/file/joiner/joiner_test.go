@@ -81,8 +81,9 @@ func TestJoinerWithReference(t *testing.T) {
 	secondAddrHex := fmt.Sprintf("%064s", "029a")
 	secondAddr := swarm.MustParseHexAddress(secondAddrHex)
 
-	firstData := make([]byte, 4096)
-	secondData := []byte("foo")
+	firstData := make([]byte, swarm.ChunkSize)
+	copy(firstData, []byte("foo"))
+	secondData := []byte("bar")
 
 	firstLength := len(firstData)
 	firstLengthBytes := make([]byte, 8)
@@ -110,5 +111,16 @@ func TestJoinerWithReference(t *testing.T) {
 	if l != int64(len(firstData) + len(secondData)) {
 		t.Fatalf("expected join data length %d, got %d", len(firstData) + len(secondData), l)
 	}
-	_ = joinReader
+
+	resultBuffer := make([]byte, 3)
+	n, err := joinReader.Read(resultBuffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(resultBuffer) {
+		t.Fatalf("expected read count %d, got %d", len(resultBuffer), n)
+	}
+	if !bytes.Equal(resultBuffer, firstData[:len(resultBuffer)]) {
+		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, firstData[:len(resultBuffer)])
+	}
 }

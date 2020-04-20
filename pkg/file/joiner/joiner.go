@@ -13,17 +13,12 @@ import (
 	"io/ioutil"
 
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/joiner/internal"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type simpleJoinerReader struct {
-}
-
-func (r *simpleJoinerReader) Read(b []byte) (n int, err error) {
-	return 0, nil
-}
 
 type simpleJoiner struct {
 	store storage.Storer
@@ -41,7 +36,9 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 		return bytes.NewReader(rootChunk.Data()[8:]), int64(spanLength), nil
 	}
 
-	return &simpleJoinerReader{}, int64(spanLength), nil
+
+	r := internal.NewSimpleJoinerJob(s.store, int64(spanLength), rootChunk.Data()[8:])
+	return r, int64(spanLength), nil
 }
 
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
