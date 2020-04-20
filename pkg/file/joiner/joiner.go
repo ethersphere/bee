@@ -10,7 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"io/ioutil"
+	"os"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner/internal"
@@ -32,11 +32,15 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 		return nil, 0, err
 	}
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
+
+	// if this is a single chunk, short circuit to returning just that chunk
 	if spanLength < swarm.ChunkSize {
+		s.logger.Tracef("root chunk %v is single chunk, short circuit", rootChunk)
 		return bytes.NewReader(rootChunk.Data()[8:]), int64(spanLength), nil
 	}
 
 
+	s.logger.Tracef("joining root chunk %v", rootChunk)
 	r := internal.NewSimpleJoinerJob(ctx, s.store, rootChunk)
 	return r, int64(spanLength), nil
 }
@@ -44,7 +48,6 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
 	return &simpleJoiner{
 		store: store,
-		logger: logging.New(ioutil.Discard, 0),
-
+		logger: logging.New(os.Stderr, 6),
 	}
 }

@@ -9,9 +9,11 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/logging"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -67,22 +69,22 @@ func TestJoinerWithReference(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var err error
-	_, _, err = joiner.Join(ctx, swarm.ZeroAddress)
-	if err != storage.ErrNotFound {
-		t.Fatalf("expected ErrNotFound for %x", swarm.ZeroAddress)
+	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-
-	firstAddress := swarm.NewAddress(rootChunk.Data()[:swarm.SectionSize])
+	logger := logging.New(os.Stderr, 6)
+	logger.Debugf("root chunk data %x", rootChunk.Data())
+	firstAddress := swarm.NewAddress(rootChunk.Data()[8:swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
 	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize:])
+	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
 	_, err = store.Put(ctx, storage.ModePutUpload, secondChunk)
 	if err != nil {
@@ -90,11 +92,11 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 
 	joinReader, l, err := joiner.Join(ctx, rootChunk.Address())
-	if l != int64(len(firstChunk.Data()) + len(secondChunk.Data())) {
-		t.Fatalf("expected join data length %d, got %d", len(firstChunk.Data()) + len(secondChunk.Data()), l)
+	if l != int64(swarm.ChunkSize*2) {
+		t.Fatalf("expected join data length %d, got %d", swarm.ChunkSize * 2, l)
 	}
 
-	resultBuffer := make([]byte, 3)
+	resultBuffer := make([]byte, swarm.ChunkSize)
 	n, err := joinReader.Read(resultBuffer)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +104,7 @@ func TestJoinerWithReference(t *testing.T) {
 	if n != len(resultBuffer) {
 		t.Fatalf("expected read count %d, got %d", len(resultBuffer), n)
 	}
-	if !bytes.Equal(resultBuffer, firstChunk.Data()[:len(resultBuffer)]) {
+	if !bytes.Equal(resultBuffer, firstChunk.Data()[8:]) {
 		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, firstChunk.Data()[:len(resultBuffer)])
 	}
 }

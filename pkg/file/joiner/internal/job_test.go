@@ -1,6 +1,7 @@
 package internal_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"testing"
@@ -43,13 +44,27 @@ func TestSimpleJoinerJobRead(t *testing.T) {
 
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 
-	outBuffer := make([]byte, 42) // arbitrary non power of 2 number
+	outBuffer := make([]byte, 4096) // arbitrary non power of 2 number
 
 	c, err := j.Read(outBuffer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c != 42 {
-		t.Fatalf("expected read count %d, got %d", 42, c)
+	if c != 4096 {
+		t.Fatalf("expected firstchunk read count %d, got %d", 4096, c)
+	}
+	if !bytes.Equal(outBuffer, firstChunk.Data()[8:]) {
+		t.Fatalf("firstchunk data mismatch, expected %x, got %x", outBuffer, firstChunk.Data()[8:])
+	}
+
+	c, err = j.Read(outBuffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c != 4096 {
+		t.Fatalf("expected secondchunk read count %d, got %d", 4096, c)
+	}
+	if !bytes.Equal(outBuffer, secondChunk.Data()[8:]) {
+		t.Fatalf("secondchunk data mismatch, expected %x, got %x", outBuffer, secondChunk.Data()[8:])
 	}
 }
