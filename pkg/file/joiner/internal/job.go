@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"math"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -8,23 +9,30 @@ import (
 )
 
 type SimpleJoinerJob struct {
+	ctx context.Context
 	store storage.Storer
+	spanLength int64
 	levelCount int
+	readCount int64
 	cursors [9]int
 	data [9][]byte
+	chunkC chan []byte
 }
 
-func NewSimpleJoinerJob(store storage.Storer, spanLength int64, rootData []byte) *SimpleJoinerJob {
-	levelCount := getLevelsFromLength(spanLength, swarm.SectionSize, swarm.Branches),
+func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, spanLength int64, rootData []byte) *SimpleJoinerJob {
+	levelCount := getLevelsFromLength(spanLength, swarm.SectionSize, swarm.Branches)
 	j := &SimpleJoinerJob{
+		ctx: ctx,
 		store: store,
+		spanLength: spanLength,
 		levelCount: levelCount,
 	}
-	data[levelCount-1] = rootData
+	j.data[levelCount-1] = rootData
+	return j
 }
 
 
-func (r *SimpleJoinerJob) Read(b []byte) (n int, err error) {
+func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	return 0, nil
 }
 

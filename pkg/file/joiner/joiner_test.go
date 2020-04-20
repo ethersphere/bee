@@ -14,7 +14,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/storage"
-	//"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )

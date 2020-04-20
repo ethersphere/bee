@@ -37,7 +37,7 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 	}
 
 
-	r := internal.NewSimpleJoinerJob(s.store, int64(spanLength), rootChunk.Data()[8:])
+	r := internal.NewSimpleJoinerJob(ctx, s.store, int64(spanLength), rootChunk.Data()[8:])
 	return r, int64(spanLength), nil
 }
 
