@@ -18,6 +18,8 @@ package shed
 
 import (
 	"testing"
+
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestUint64Field validates put and get operations
@@ -73,12 +75,9 @@ func TestUint64Field(t *testing.T) {
 	})
 
 	t.Run("put in batch", func(t *testing.T) {
-		batch := db.GetBatch(true)
+		batch := new(leveldb.Batch)
 		var want uint64 = 42
-		err = counter.PutInBatch(batch, want)
-		if err != nil {
-			t.Fatal(err)
-		}
+		counter.PutInBatch(batch, want)
 		err = db.WriteBatch(batch)
 		if err != nil {
 			t.Fatal(err)
@@ -92,12 +91,9 @@ func TestUint64Field(t *testing.T) {
 		}
 
 		t.Run("overwrite", func(t *testing.T) {
-			batch := db.GetBatch(true)
+			batch := new(leveldb.Batch)
 			var want uint64 = 84
-			err = counter.PutInBatch(batch, want)
-			if err != nil {
-				t.Fatal(err)
-			}
+			counter.PutInBatch(batch, want)
 			err = db.WriteBatch(batch)
 			if err != nil {
 				t.Fatal(err)
@@ -154,7 +150,7 @@ func TestUint64Field_IncInBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	batch := db.GetBatch(true)
+	batch := new(leveldb.Batch)
 	var want uint64 = 1
 	got, err := counter.IncInBatch(batch)
 	if err != nil {
@@ -175,7 +171,7 @@ func TestUint64Field_IncInBatch(t *testing.T) {
 		t.Errorf("got uint64 %v, want %v", got, want)
 	}
 
-	batch2 := db.GetBatch(true)
+	batch2 := new(leveldb.Batch)
 	want = 2
 	got, err = counter.IncInBatch(batch2)
 	if err != nil {
@@ -245,7 +241,7 @@ func TestUint64Field_DecInBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	batch := db.GetBatch(true)
+	batch := new(leveldb.Batch)
 	var want uint64
 	got, err := counter.DecInBatch(batch)
 	if err != nil {
@@ -266,12 +262,9 @@ func TestUint64Field_DecInBatch(t *testing.T) {
 		t.Errorf("got uint64 %v, want %v", got, want)
 	}
 
-	batch2 := db.GetBatch(true)
+	batch2 := new(leveldb.Batch)
 	want = 42
-	err = counter.PutInBatch(batch2, want)
-	if err != nil {
-		t.Fatal(err)
-	}
+	counter.PutInBatch(batch2, want)
 	err = db.WriteBatch(batch2)
 	if err != nil {
 		t.Fatal(err)
@@ -284,7 +277,7 @@ func TestUint64Field_DecInBatch(t *testing.T) {
 		t.Errorf("got uint64 %v, want %v", got, want)
 	}
 
-	batch3 := db.GetBatch(true)
+	batch3 := new(leveldb.Batch)
 	want = 41
 	got, err = counter.DecInBatch(batch3)
 	if err != nil {

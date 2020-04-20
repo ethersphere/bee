@@ -18,6 +18,8 @@ package shed
 
 import (
 	"testing"
+
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestUint64Vector validates put and get operations
@@ -76,12 +78,9 @@ func TestUint64Vector(t *testing.T) {
 
 	t.Run("put in batch", func(t *testing.T) {
 		for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
-			batch := db.GetBatch(true)
+			batch := new(leveldb.Batch)
 			var want uint64 = 43 + index
-			err = bins.PutInBatch(batch, index, want)
-			if err != nil {
-				t.Fatal(err)
-			}
+			bins.PutInBatch(batch, index, want)
 			err = db.WriteBatch(batch)
 			if err != nil {
 				t.Fatal(err)
@@ -95,12 +94,9 @@ func TestUint64Vector(t *testing.T) {
 			}
 
 			t.Run("overwrite", func(t *testing.T) {
-				batch := db.GetBatch(true)
+				batch := new(leveldb.Batch)
 				var want uint64 = 85 + index
-				err = bins.PutInBatch(batch, index, want)
-				if err != nil {
-					t.Fatal(err)
-				}
+				bins.PutInBatch(batch, index, want)
 				err = db.WriteBatch(batch)
 				if err != nil {
 					t.Fatal(err)
@@ -161,7 +157,7 @@ func TestUint64Vector_IncInBatch(t *testing.T) {
 	}
 
 	for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
-		batch := db.GetBatch(true)
+		batch := new(leveldb.Batch)
 		var want uint64 = 1
 		got, err := bins.IncInBatch(batch, index)
 		if err != nil {
@@ -182,7 +178,7 @@ func TestUint64Vector_IncInBatch(t *testing.T) {
 			t.Errorf("got %v uint64 %v, want %v", index, got, want)
 		}
 
-		batch2 := db.GetBatch(true)
+		batch2 := new(leveldb.Batch)
 		want = 2
 		got, err = bins.IncInBatch(batch2, index)
 		if err != nil {
@@ -256,7 +252,7 @@ func TestUint64Vector_DecInBatch(t *testing.T) {
 	}
 
 	for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
-		batch := db.GetBatch(true)
+		batch := new(leveldb.Batch)
 		var want uint64
 		got, err := bins.DecInBatch(batch, index)
 		if err != nil {
@@ -277,12 +273,9 @@ func TestUint64Vector_DecInBatch(t *testing.T) {
 			t.Errorf("got %v uint64 %v, want %v", index, got, want)
 		}
 
-		batch2 := db.GetBatch(true)
+		batch2 := new(leveldb.Batch)
 		want = 42 + index
-		err = bins.PutInBatch(batch2, index, want)
-		if err != nil {
-			t.Fatal(err)
-		}
+		bins.PutInBatch(batch2, index, want)
 		err = db.WriteBatch(batch2)
 		if err != nil {
 			t.Fatal(err)
@@ -295,7 +288,7 @@ func TestUint64Vector_DecInBatch(t *testing.T) {
 			t.Errorf("got %v uint64 %v, want %v", index, got, want)
 		}
 
-		batch3 := db.GetBatch(true)
+		batch3 := new(leveldb.Batch)
 		want = 41 + index
 		got, err = bins.DecInBatch(batch3, index)
 		if err != nil {
