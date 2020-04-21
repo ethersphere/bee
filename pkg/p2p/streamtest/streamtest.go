@@ -52,6 +52,10 @@ func New(opts ...Option) *Recorder {
 	return r
 }
 
+func (r *Recorder) SetProtocols(protocols ...p2p.ProtocolSpec) {
+	r.protocols = append(r.protocols, protocols...)
+}
+
 func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
