@@ -54,13 +54,15 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		levelCount: levelCount,
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),
-		logger:     logging.New(os.Stderr, 5),
+		logger:     logging.New(os.Stderr, 6),
 	}
 
 	// startLevelIndex is the root chunk level
 	// data level has index 0
 	startLevelIndex := levelCount - 1
+	//startLevelIndex := levelCount
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
+	j.logger.Tracef("startindex %d", startLevelIndex)
 
 	// retrieval must be asynchronous to the io.Reader()
 	go func() {
@@ -71,7 +73,7 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 			if err != io.EOF {
 				j.logger.Errorf("error in process: %v", err)
 			} else {
-				j.logger.Debugf("top eof")
+				j.logger.Tracef("top eof")
 			}
 		}
 		close(j.dataC)
@@ -120,15 +122,18 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 
 	// attempt to retrieve the chunk
-	j.logger.Debugf("next chunk get: %v", address)
+	j.logger.Tracef("next chunk level %d get: %v", level, address)
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return err
 	}
+	j.cursors[level] = 0
+	j.data[level] = ch.Data()[8:]
 
 	// any level higher than 0 means the chunk contains references
 	// which must be recursively processed
 	if level > 0 {
+		j.logger.Tracef("cursor %d datalen %d", j.cursors[level], len(j.data[level]))
 		for j.cursors[level] < len(j.data[level]) {
 			if len(j.data[level]) == j.cursors[level] {
 				j.data[level] = ch.Data()[8:]
@@ -144,14 +149,14 @@ func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 		data := ch.Data()[8:]
 		select {
 		case <-j.ctx.Done():
-			j.logger.Debugf("context done %v", j.ctx.Err())
+			j.logger.Tracef("context done %v", j.ctx.Err())
 			j.readCount = j.spanLength
 			return j.ctx.Err()
 		case j.dataC <- data:
 			j.readCount += int64(len(data))
 		}
 		if j.readCount == j.spanLength {
-			j.logger.Debug("read all")
+			j.logger.Trace("read all")
 			return io.EOF
 		}
 	}
@@ -169,9 +174,9 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 		<-j.doneC
 		return 0, j.err
 	}
-	j.logger.Debugf("Read %x", data[:16])
+	j.logger.Tracef("Read %d %x", len(data), data[:16])
 	copy(b, data)
-	return len(b), nil
+	return len(data), nil
 }
 
 // getLevelsFromLength calculates the last level index which a particular data section count will result in.
