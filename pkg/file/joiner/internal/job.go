@@ -31,13 +31,14 @@ import (
 type SimpleJoinerJob struct {
 	ctx        context.Context
 	store      storage.Storer
-	spanLength int64 // the total length of data represented by the root chunk the job was initialized with.
-	levelCount int // recursion level of the chunk tree. 
-	readCount  int64 // running count of chunks read by the io.Reader consumer.
-	cursors    [9]int // per-level read cursor of data.
-	data       [9][]byte // data of currently loaded chunk.
-	dataC      chan []byte // channel to pass data chunks to the io.Reader method.
-	err	error // error state of job
+	spanLength int64         // the total length of data represented by the root chunk the job was initialized with.
+	levelCount int           // recursion level of the chunk tree.
+	readCount  int64         // running count of chunks read by the io.Reader consumer.
+	cursors    [9]int        // per-level read cursor of data.
+	data       [9][]byte     // data of currently loaded chunk.
+	dataC      chan []byte   // channel to pass data chunks to the io.Reader method.
+	doneC      chan struct{} // channel to signal termination of join loop
+	err        error         // read by the main thread to capture error state of the job
 	logger     logging.Logger
 }
 
@@ -52,12 +53,13 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		spanLength: int64(spanLength),
 		levelCount: levelCount,
 		dataC:      make(chan []byte),
+		doneC:      make(chan struct{}),
 		logger:     logging.New(os.Stderr, 5),
 	}
 
 	// startLevelIndex is the root chunk level
 	// data level has index 0
-	startLevelIndex := levelCount-1
+	startLevelIndex := levelCount - 1
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
 
 	// retrieval must be asynchronous to the io.Reader()
@@ -66,9 +68,15 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		if err != nil {
 			// this will only already be closed if all the chunk data has been fully read
 			// in this case the error will always be nil and this will not be executed
-			j.logger.Errorf("error in process: %v", err)
+			if err != io.EOF {
+				j.logger.Errorf("error in process: %v", err)
+			} else {
+				j.logger.Debugf("top eof")
+			}
 		}
 		close(j.dataC)
+		j.err = err
+		close(j.doneC)
 	}()
 
 	return j
@@ -128,30 +136,26 @@ func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 			}
 			err = j.nextReference(level)
 			if err != nil {
-				j.err = err
-				break
+				return err
 			}
 		}
 	} else {
 		// close the channel if we have read all data
 		data := ch.Data()[8:]
 		select {
-		case <- j.ctx.Done():
-			j.logger.Debug("context done")
+		case <-j.ctx.Done():
+			j.logger.Debugf("context done %v", j.ctx.Err())
 			j.readCount = j.spanLength
-			err := j.ctx.Err()
-			if err != nil {
-				j.err = err
-			}
-			return j.err
+			return j.ctx.Err()
 		case j.dataC <- data:
 			j.readCount += int64(len(data))
 		}
 		if j.readCount == j.spanLength {
-			j.err = io.EOF
+			j.logger.Debug("read all")
+			return io.EOF
 		}
 	}
-	return j.err
+	return err
 }
 
 // Read is called by the consumer to retrieve the joined data.
@@ -162,8 +166,10 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	}
 	data, ok := <-j.dataC
 	if !ok {
+		<-j.doneC
 		return 0, j.err
 	}
+	j.logger.Debugf("Read %x", data[:16])
 	copy(b, data)
 	return len(b), nil
 }
