@@ -25,7 +25,10 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 	defer cancel()
 
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize, swarm.SectionSize)
-	store.Put(ctx, storage.ModePutUpload, rootChunk)
+	err := store.Put(ctx, storage.ModePutUpload, rootChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
@@ -64,7 +67,10 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 
 	logger := logging.New(os.Stderr, 5)
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	store.Put(ctx, storage.ModePutUpload, rootChunk)
+	err := store.Put(ctx, storage.ModePutUpload, rootChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
 	logger.Debugf("put rootchunk %v", rootChunk)
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
@@ -109,12 +115,12 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 		t.Fatalf("secondchunk data mismatch, expected %x, got %x", outBuffer, secondChunk.Data()[8:])
 	}
 
-	c, err = j.Read(outBuffer)
+	_, err = j.Read(outBuffer)
 	if err != io.EOF {
 		t.Fatalf("expected io.EOF")
 	}
 
-	c, err = j.Read(outBuffer)
+	_, err = j.Read(outBuffer)
 	if err != io.EOF {
 		t.Fatalf("expected io.EOF")
 	}

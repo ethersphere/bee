@@ -48,6 +48,9 @@ func TestJoiner(t *testing.T) {
 	}
 
 	joinReader, l, err := joiner.Join(ctx, mockAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if l != int64(len(mockData)) {
 		t.Fatalf("expected join data length %d, got %d", len(mockData), l)
 	}
@@ -92,6 +95,9 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 
 	joinReader, l, err := joiner.Join(ctx, rootChunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if l != int64(swarm.ChunkSize*2) {
 		t.Fatalf("expected join data length %d, got %d", swarm.ChunkSize*2, l)
 	}
