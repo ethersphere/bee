@@ -187,7 +187,7 @@ func TestAddPeer(t *testing.T) {
 }
 
 // TestSyncPeer tests that SyncPeer method returns closest connected peer to a given chunk.
-func TestSyncPeer(t *testing.T) {
+func TestClosestPeer(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	baseOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 	connectedPeers := []p2p.Peer{
@@ -247,7 +247,7 @@ func TestSyncPeer(t *testing.T) {
 			expectedPeer: -1,
 		},
 	} {
-		peer, err := fullDriver.SyncPeer(tc.chunkAddress)
+		peer, err := fullDriver.ClosestPeer(tc.chunkAddress)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)

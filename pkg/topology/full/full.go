@@ -114,48 +114,18 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	return nil
 }
 
-// ChunkPeer is used to suggest a peer to ask a certain chunk from.
-func (d *driver) ChunkPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+// ClosestPeer returns the closest connected peer we have in relation to a
+// given chunk address. Returns topology.ErrWantSelf in case base is the closest to the chunk.
+func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	connectedPeers := d.p2pService.Peers()
 	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
-	itemIdx := rand.Intn(len(connectedPeers))
-	i := 0
-	for _, v := range connectedPeers {
-		if i == itemIdx {
-			return v.Address, nil
-		}
-		i++
-	}
-
-	return swarm.Address{}, topology.ErrNotFound
-}
-
-// SyncPeer returns a peer to which we would like to sync an arbitrary
-// chunk address. Returns the closest peer in relation to the chunk.
-func (d *driver) SyncPeer(addr swarm.Address) (swarm.Address, error) {
-	connectedPeers := d.p2pService.Peers()
-	if len(connectedPeers) == 0 {
-		return swarm.Address{}, topology.ErrNotFound
-	}
-
-	overlays := make([]swarm.Address, len(connectedPeers))
-	for i, v := range connectedPeers {
-		overlays[i] = v.Address
-	}
-
-	return closestPeer(addr, d.base, overlays)
-}
-
-// closestPeer returns the closest peer from the supplied peers slice.
-// returns topology.ErrWantSelf if the base address is the closest
-func closestPeer(addr, self swarm.Address, peers []swarm.Address) (swarm.Address, error) {
 	// start checking closest from _self_
-	closest := self
-	for _, peer := range peers {
-		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
+	closest := d.base
+	for _, peer := range connectedPeers {
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Address.Bytes())
 		if err != nil {
 			return swarm.Address{}, err
 		}
@@ -164,7 +134,7 @@ func closestPeer(addr, self swarm.Address, peers []swarm.Address) (swarm.Address
 			// do nothing
 		case -1:
 			// current peer is closer
-			closest = peer
+			closest = peer.Address
 		case 1:
 			// closest is already closer to chunk
 			// do nothing
@@ -172,7 +142,7 @@ func closestPeer(addr, self swarm.Address, peers []swarm.Address) (swarm.Address
 	}
 
 	// check if self
-	if closest.Equal(self) {
+	if closest.Equal(d.base) {
 		return swarm.Address{}, topology.ErrWantSelf
 	}
 
