@@ -6,7 +6,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -22,7 +21,6 @@ type SimpleJoinerJob struct {
 	cursors    [9]int
 	data       [9][]byte
 	dataC      chan []byte
-	wg	   sync.WaitGroup
 	logger     logging.Logger
 }
 
@@ -43,8 +41,6 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 	// we keep the data level as index 0, which matches the file hasher solution in Swarm
 	startLevelIndex := levelCount-1
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
-
-	j.wg.Add(1)
 
 	go func() {
 		err := j.start(startLevelIndex)
@@ -92,9 +88,7 @@ func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 		j.cursors[level] += swarm.SectionSize
 	} else {
 		data := ch.Data()[8:]
-		j.wg.Done()
 		j.dataC <- data
-		j.wg.Add(1)
 		j.readCount += int64(len(data))
 		if j.readCount == j.spanLength {
 			close(j.dataC)
@@ -109,7 +103,6 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 		if !ok {
 			return 0, io.EOF
 		}
-		j.wg.Wait()
 		copy(b, data)
 		return len(b), nil
 	case <-j.ctx.Done():
