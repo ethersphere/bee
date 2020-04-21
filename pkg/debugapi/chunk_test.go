@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestHasChunk(t *testing.T) {
+func TestHasChunkHandler(t *testing.T) {
 	mockStorer := mock.NewStorer()
 	testServer := newTestServer(t, testServerOptions{
 		Storer: mockStorer,
