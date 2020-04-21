@@ -191,8 +191,8 @@ func TestManyMigrations(t *testing.T) {
 	}
 }
 
-// TestMigrationFailFrom checks that local store boot should fail when the schema we're migrating from cannot be found
-func TestMigrationFailFrom(t *testing.T) {
+// TestMigrationErrorFrom checks that local store boot should fail when the schema we're migrating from cannot be found
+func TestMigrationErrorFrom(t *testing.T) {
 	defer func(v []migration, s string) {
 		schemaMigrations = v
 		DbSchemaCurrent = s
@@ -251,8 +251,8 @@ func TestMigrationFailFrom(t *testing.T) {
 	}
 }
 
-// TestMigrationFailTo checks that local store boot should fail when the schema we're migrating to cannot be found
-func TestMigrationFailTo(t *testing.T) {
+// TestMigrationErrorTo checks that local store boot should fail when the schema we're migrating to cannot be found
+func TestMigrationErrorTo(t *testing.T) {
 	defer func(v []migration, s string) {
 		schemaMigrations = v
 		DbSchemaCurrent = s
