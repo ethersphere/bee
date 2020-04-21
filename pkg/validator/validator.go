@@ -9,9 +9,9 @@ import (
 	"encoding/binary"
 	"hash"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bmt"
-	"github.com/ethersphere/bee/pkg/logging"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
 )
@@ -30,7 +30,7 @@ type ContentAddressValidator struct {
 }
 
 // New constructs a new ContentAddressValidator
-func NewContentAddressValidator() *ContentAddressValidator {
+func NewContentAddressValidator() swarm.ChunkValidator {
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.SectionSize, bmtlegacy.PoolSize)
 
 	return &ContentAddressValidator{
