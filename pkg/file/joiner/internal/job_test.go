@@ -3,6 +3,7 @@ package internal_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestSimpleJoinerJobRead(t *testing.T) {
+func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -66,5 +67,15 @@ func TestSimpleJoinerJobRead(t *testing.T) {
 	}
 	if !bytes.Equal(outBuffer, secondChunk.Data()[8:]) {
 		t.Fatalf("secondchunk data mismatch, expected %x, got %x", outBuffer, secondChunk.Data()[8:])
+	}
+
+	c, err = j.Read(outBuffer)
+	if err != io.EOF {
+		t.Fatalf("expected io.EOF")
+	}
+
+	c, err = j.Read(outBuffer)
+	if err != io.EOF {
+		t.Fatalf("expected io.EOF")
 	}
 }
