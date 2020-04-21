@@ -38,14 +38,16 @@ func NewSimpleJoiner(store storage.Storer) file.Joiner {
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
 func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.Reader, dataSize int64, err error) {
+
+	// retrieve the root chunk to read the total data length the be retrieved
 	rootChunk, err := s.store.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		s.logger.Debugf("unable to find root chunk for '%s'", address)
 		return nil, 0, err
 	}
-	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
 
 	// if this is a single chunk, short circuit to returning just that chunk
+	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
 	if spanLength < swarm.ChunkSize {
 		s.logger.Tracef("root chunk %v is single chunk, short circuit", rootChunk)
 		return bytes.NewReader(rootChunk.Data()[8:]), int64(spanLength), nil

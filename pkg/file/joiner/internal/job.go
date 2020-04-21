@@ -31,7 +31,7 @@ type SimpleJoinerJob struct {
 	logger     logging.Logger
 }
 
-// NewSimpleJoinerJob creates a new simpleJoinerJob
+// NewSimpleJoinerJob creates a new simpleJoinerJob.
 func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swarm.Chunk) *SimpleJoinerJob {
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
 	levelCount := getLevelsFromLength(int64(spanLength), swarm.SectionSize, swarm.Branches)
@@ -64,24 +64,32 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 	return j
 }
 
-// start processes all chunk references of the root chunk
+// start processes all chunk references of the root chunk that already has been retrieved.
 func (j *SimpleJoinerJob) start(level int) error {
-	for j.cursors[level] < len(j.data[level]) {
 
+	for j.cursors[level] < len(j.data[level]) {
 		// consume the reference at the current cursor position of the chunk level data
 		// and start recursive retrieval down to the underlying data chunks
-		data := j.data[level]
-		cursor := j.cursors[level]
-		addressBytes := data[cursor : cursor+swarm.SectionSize]
-		chunkAddress := swarm.NewAddress(addressBytes)
-		err := j.descend(level-1, chunkAddress)
+		err := j.nextReference(level)
 		if err != nil {
 			return err
 		}
-
-		// move the cursor to the next reference
-		j.cursors[level] += swarm.SectionSize
 	}
+	return nil
+}
+
+// nextReference gets the next chunk reference from the currently loaded chunk in a level
+func (j *SimpleJoinerJob) nextReference(level int) error {
+	data := j.data[level]
+	cursor := j.cursors[level]
+	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
+	err := j.descend(level-1, chunkAddress)
+	if err != nil {
+		return err
+	}
+
+	// move the cursor to the next reference
+	j.cursors[level] += swarm.SectionSize
 	return nil
 }
 
@@ -90,11 +98,11 @@ func (j *SimpleJoinerJob) start(level int) error {
 // When a data chunk is found it is passed on the dataC channel to be consumed by the
 // io.Reader consumer.
 // 
-// TODO: goroutine leaks if context is cancelled 
+// TODO: goroutine leaks if context is cancelled.
 func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 
 	// attempt to retrieve the chunk
-	j.logger.Debugf("next get: %v", address)
+	j.logger.Debugf("next chunk get: %v", address)
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return err
@@ -103,18 +111,18 @@ func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 	// any level higher than 0 means the chunk contains references
 	// which must be recursively processed
 	if level > 0 {
-		if len(j.data[level]) == j.cursors[level] {
-			j.data[level] = ch.Data()[8:]
-			j.cursors[level] = 0
+		for j.cursors[level] < len(j.data[level]) {
+			if len(j.data[level]) == j.cursors[level] {
+				j.data[level] = ch.Data()[8:]
+				j.cursors[level] = 0
+			}
+			err := j.nextReference(level)
+			if err != nil {
+				return err
+			}
 		}
-		cursor := j.cursors[level]
-		nextAddress := swarm.NewAddress(j.data[level][cursor : cursor+swarm.SectionSize])
-		err := j.descend(level-1, nextAddress)
-		if err != nil {
-			return err
-		}
-		j.cursors[level] += swarm.SectionSize
 	} else {
+		// close the channel if we have read all data
 		data := ch.Data()[8:]
 		j.dataC <- data
 		j.readCount += int64(len(data))
@@ -126,7 +134,7 @@ func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 }
 
 // Read is called by the consumer to retrieve the joined data.
-// It must be called with a buffer equal to the maximum chunk size
+// It must be called with a buffer equal to the maximum chunk size.
 func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	if cap(b) != swarm.ChunkSize {
 		return 0, fmt.Errorf("Read must be called with a buffer of %d bytes", swarm.ChunkSize)
@@ -143,7 +151,8 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	}
 }
 
-// getLevelsFromLength calculates the last level index which a particular data section count will result in. The returned level will be the level of the root hash
+// getLevelsFromLength calculates the last level index which a particular data section count will result in.
+// The returned level will be the level of the root hash.
 func getLevelsFromLength(l int64, sectionSize int, branches int) int {
 	s := int64(sectionSize)
 	b := int64(branches)
