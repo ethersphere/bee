@@ -60,7 +60,6 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b = make([]byte, swarm.ChunkSize)
 }
 
 // TestSimpleJoinerJobOneLevel tests the retrieval of data chunks immediately
