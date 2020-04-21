@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package joiner provides implemenations of the file.Joiner interface
+// Package joiner provides implementations of the file.Joiner interface
 package joiner
 
 import (
@@ -19,11 +19,24 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// simpleJoiner wraps a non-optimized implementation of file.Joiner.
 type simpleJoiner struct {
 	store  storage.Storer
 	logger logging.Logger
 }
 
+// NewSimpleJoiner creates a new simpleJoiner.
+func NewSimpleJoiner(store storage.Storer) file.Joiner {
+	return &simpleJoiner{
+		store:  store,
+		logger: logging.New(os.Stderr, 6),
+	}
+}
+
+// Join implements the file.Joiner interface
+//
+// It uses a non-optimized internal component that only retrieves a data chunk
+// after the previous has been read.
 func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.Reader, dataSize int64, err error) {
 	rootChunk, err := s.store.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
@@ -43,9 +56,3 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 	return r, int64(spanLength), nil
 }
 
-func NewSimpleJoiner(store storage.Storer) file.Joiner {
-	return &simpleJoiner{
-		store:  store,
-		logger: logging.New(os.Stderr, 6),
-	}
-}

@@ -16,6 +16,34 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// TestSimpleJoinerJobBlocksize checks that only Read() calls with exact
+// chunk size buffer capacity is allowed.
+func TestSimpleJoinerJobBlocksize(t *testing.T) {
+	store := mock.NewStorer()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+	store.Put(ctx, storage.ModePutUpload, rootChunk)
+
+	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+	b := make([]byte, swarm.SectionSize)
+	_, err := j.Read(b)
+	if err == nil {
+		t.Fatal("expected error on Read with too small buffer")
+	}
+
+	b = make([]byte, swarm.ChunkSize+swarm.SectionSize)
+	_, err = j.Read(b)
+	if err == nil {
+		t.Fatal("expected error on Read with too big buffer")
+	}
+
+}
+
+// TestSimpleJoinerJobOneLevel tests the retrieval of data chunks immediately
+// below the root chunk level.
 func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	store := mock.NewStorer()
 
