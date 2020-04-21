@@ -25,7 +25,7 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 	defer cancel()
 
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize, swarm.SectionSize)
-	err := store.Put(ctx, storage.ModePutUpload, rootChunk)
+	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 
 	logger := logging.New(os.Stderr, 5)
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	err := store.Put(ctx, storage.ModePutUpload, rootChunk)
+	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
