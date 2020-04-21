@@ -53,7 +53,8 @@ func (m *mockStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs .
 }
 
 func (m *mockStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
-	panic("not implemented") // TODO: Implement
+	_, has := m.store[addr.String()]
+	return has, nil
 }
 
 func (m *mockStorer) HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error) {

@@ -52,6 +52,9 @@ func (s *server) setupRouting() {
 	router.Handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
+	router.Handle("/chunks/{address}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.hasChunkHandler),
+	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
