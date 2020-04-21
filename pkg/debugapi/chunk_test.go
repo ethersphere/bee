@@ -32,21 +32,21 @@ func TestHasChunk(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunk/"+key.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunks/"+key.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		})
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunk/abbbbb", nil, http.StatusNotFound, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunks/abbbbb", nil, http.StatusNotFound, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusNotFound),
 			Code:    http.StatusNotFound,
 		})
 	})
 
 	t.Run("bad address", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunk/abcd1100zz", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunks/abcd1100zz", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Message: "bad address",
 			Code:    http.StatusBadRequest,
 		})

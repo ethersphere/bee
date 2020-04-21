@@ -27,10 +27,10 @@ func (s *server) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if has {
-		jsonhttp.OK(w, nil)
+	if !has {
+		jsonhttp.NotFound(w, nil)
 		return
 	}
+	jsonhttp.OK(w, nil)
 
-	jsonhttp.NotFound(w, nil)
 }

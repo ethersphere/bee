@@ -52,7 +52,7 @@ func (s *server) setupRouting() {
 	router.Handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
-	router.Handle("/chunk/{address}", jsonhttp.MethodHandler{
+	router.Handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.hasChunkHandler),
 	})
 
