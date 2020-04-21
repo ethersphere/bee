@@ -32,7 +32,7 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err := store.Put(ctx, storage.ModePutUpload, firstChunk)
+	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err := store.Put(ctx, storage.ModePutUpload, firstChunk)
+	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
