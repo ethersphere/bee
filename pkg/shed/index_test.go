@@ -23,6 +23,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Index functions for the index that is used in tests in this file.
@@ -104,7 +106,7 @@ func TestIndex(t *testing.T) {
 			StoreTimestamp: time.Now().UTC().UnixNano(),
 		}
 
-		batch := db.GetBatch(true)
+		batch := new(leveldb.Batch)
 		err = index.PutInBatch(batch, want)
 		if err != nil {
 			t.Fatal(err)
@@ -128,7 +130,7 @@ func TestIndex(t *testing.T) {
 				StoreTimestamp: time.Now().UTC().UnixNano(),
 			}
 
-			batch := db.GetBatch(true)
+			batch := new(leveldb.Batch)
 			err = index.PutInBatch(batch, want)
 			if err != nil {
 				t.Fatal(err)
@@ -150,7 +152,7 @@ func TestIndex(t *testing.T) {
 	t.Run("put in batch twice", func(t *testing.T) {
 		// ensure that the last item of items with the same db keys
 		// is actually saved
-		batch := db.GetBatch(true)
+		batch := new(leveldb.Batch)
 		address := []byte("put-in-batch-twice-hash")
 
 		// put the first item
@@ -214,7 +216,7 @@ func TestIndex(t *testing.T) {
 		}
 
 		has, err = index.Has(dontWant)
-		if err != nil && err != ErrNotFound {
+		if err != nil {
 			t.Fatal(err)
 		}
 		if has {
@@ -248,7 +250,7 @@ func TestIndex(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		wantErr := ErrNotFound
+		wantErr := leveldb.ErrNotFound
 		_, err = index.Get(Item{
 			Address: want.Address,
 		})
@@ -276,7 +278,7 @@ func TestIndex(t *testing.T) {
 		}
 		checkItem(t, got, want)
 
-		batch := db.GetBatch(true)
+		batch := new(leveldb.Batch)
 		err = index.DeleteInBatch(batch, Item{
 			Address: want.Address,
 		})
@@ -288,7 +290,7 @@ func TestIndex(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		wantErr := ErrNotFound
+		wantErr := leveldb.ErrNotFound
 		_, err = index.Get(Item{
 			Address: want.Address,
 		})
@@ -351,7 +353,7 @@ func TestIndex(t *testing.T) {
 			items = append(items, Item{
 				Address: []byte("put-hash-missing"),
 			})
-			want := ErrNotFound
+			want := leveldb.ErrNotFound
 			err := index.Fill(items)
 			if err != want {
 				t.Errorf("got error %v, want %v", err, want)
@@ -393,7 +395,7 @@ func TestIndex_Iterate(t *testing.T) {
 			Data:    []byte("data1"),
 		},
 	}
-	batch := db.GetBatch(true)
+	batch := new(leveldb.Batch)
 	for _, i := range items {
 		err = index.PutInBatch(batch, i)
 		if err != nil {
@@ -567,7 +569,7 @@ func TestIndex_Iterate_withPrefix(t *testing.T) {
 		{Address: []byte("want-hash-09"), Data: []byte("data89")},
 		{Address: []byte("skip-hash-10"), Data: []byte("data90")},
 	}
-	batch := db.GetBatch(true)
+	batch := new(leveldb.Batch)
 	for _, i := range allItems {
 		err = index.PutInBatch(batch, i)
 		if err != nil {
@@ -763,7 +765,7 @@ func TestIndex_count(t *testing.T) {
 			Data:    []byte("data1"),
 		},
 	}
-	batch := db.GetBatch(true)
+	batch := new(leveldb.Batch)
 	for _, i := range items {
 		err = index.PutInBatch(batch, i)
 		if err != nil {
@@ -936,7 +938,7 @@ func TestIndex_firstAndLast(t *testing.T) {
 		return bytes.Compare(addrs[i], addrs[j]) == -1
 	})
 
-	batch := db.GetBatch(true)
+	batch := new(leveldb.Batch)
 	for _, addr := range addrs {
 		err = index.PutInBatch(batch, Item{
 			Address: addr,
@@ -998,11 +1000,11 @@ func TestIndex_firstAndLast(t *testing.T) {
 		},
 		{
 			prefix: []byte{0, 3},
-			err:    ErrNotFound,
+			err:    leveldb.ErrNotFound,
 		},
 		{
 			prefix: []byte{222},
-			err:    ErrNotFound,
+			err:    leveldb.ErrNotFound,
 		},
 	} {
 		got, err := index.Last(tc.prefix)
@@ -1087,7 +1089,7 @@ func TestIndex_HasMulti(t *testing.T) {
 		Data:    []byte("data0"),
 	}
 
-	batch := db.GetBatch(true)
+	batch := new(leveldb.Batch)
 	for _, i := range items {
 		err = index.PutInBatch(batch, i)
 		if err != nil {

@@ -20,8 +20,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/dgraph-io/badger/v2"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var (
@@ -85,7 +85,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		}
 	}()
 
-	batch := db.shed.GetBatch(true)
+	batch := new(leveldb.Batch)
 	target := db.gcTarget()
 
 	// protect database from changing idexes and gcSize
@@ -146,10 +146,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	}
 	db.metrics.GCCollectedCounter.Inc()
 
-	if err := db.gcSize.PutInBatch(batch, gcSize-collectedCount); err != nil {
-		return 0, false, err
-	}
-
+	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
 		db.metrics.GCExcludeWriteBatchError.Inc()
@@ -168,7 +165,7 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 		}
 	}()
 
-	batch := db.shed.GetBatch(true)
+	batch := new(leveldb.Batch)
 	excludedCount := 0
 	var gcSizeChange int64
 	err = db.gcExcludeIndex.Iterate(func(item shed.Item) (stop bool, err error) {
@@ -247,18 +244,18 @@ func (db *DB) triggerGarbageCollection() {
 // incGCSizeInBatch changes gcSize field value
 // by change which can be negative. This function
 // must be called under batchMu lock.
-func (db *DB) incGCSizeInBatch(batch *badger.Txn, change int64) (err error) {
+func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 	if change == 0 {
 		return nil
 	}
 	gcSize, err := db.gcSize.Get()
-	if err != nil && !errors.Is(err, shed.ErrNotFound) {
+	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
 		return err
 	}
 
-	var new uint64
+	var newSize uint64
 	if change > 0 {
-		new = gcSize + uint64(change)
+		newSize = gcSize + uint64(change)
 	} else {
 		// 'change' is an int64 and is negative
 		// a conversion is needed with correct sign
@@ -267,14 +264,12 @@ func (db *DB) incGCSizeInBatch(batch *badger.Txn, change int64) (err error) {
 			// protect uint64 undeflow
 			return nil
 		}
-		new = gcSize - c
+		newSize = gcSize - c
 	}
-	if err := db.gcSize.PutInBatch(batch, new); err != nil {
-		return err
-	}
+	db.gcSize.PutInBatch(batch, newSize)
 
 	// trigger garbage collection if we reached the capacity
-	if new >= db.capacity {
+	if newSize >= db.capacity {
 		db.triggerGarbageCollection()
 	}
 	return nil

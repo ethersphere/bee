@@ -13,179 +13,95 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	GetCount             prometheus.Counter
-	GetFailCount         prometheus.Counter
-	GetNotFoundCount     prometheus.Counter
-	PutCount             prometheus.Counter
-	PutFailCount         prometheus.Counter
-	HasCount             prometheus.Counter
-	HasFailCount         prometheus.Counter
-	DeleteCount          prometheus.Counter
-	DeleteFailCount      prometheus.Counter
-	TotalCount           prometheus.Counter
-	TotalFailCount       prometheus.Counter
-	CountPrefixCount     prometheus.Counter
-	CountPrefixFailCount prometheus.Counter
-	CountFromCount       prometheus.Counter
-	CountFromFailCount   prometheus.Counter
-	IterationCount       prometheus.Counter
-	IterationFailCount   prometheus.Counter
-	FirstCount           prometheus.Counter
-	FirstFailCount       prometheus.Counter
-	LastCount            prometheus.Counter
-	LastFailCount        prometheus.Counter
-	GetBatchCount        prometheus.Counter
-	WriteBatchCount      prometheus.Counter
-	WriteBatchFailCount  prometheus.Counter
+	PutCounter            prometheus.Counter
+	PutFailCounter        prometheus.Counter
+	GetCounter            prometheus.Counter
+	GetFailCounter        prometheus.Counter
+	GetNotFoundCounter    prometheus.Counter
+	HasCounter            prometheus.Counter
+	HasFailCounter        prometheus.Counter
+	DeleteCounter         prometheus.Counter
+	DeleteFailCounter     prometheus.Counter
+	IteratorCounter       prometheus.Counter
+	WriteBatchCounter     prometheus.Counter
+	WriteBatchFailCounter prometheus.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "shed"
 
 	return metrics{
-		GetCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "get_count",
-			Help:      "Number of times a GET operation is performed.",
-		}),
-		GetFailCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "get_failure_count",
-			Help:      "Number of times a GET operation failed.",
-		}),
-		GetNotFoundCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "get_not_found_count",
-			Help:      "Number of times a GET operation failed.",
-		}),
-		PutCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PutCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "put_count",
-			Help:      "Number of times a PUT operation is performed.",
+			Help:      "Number of times the PUT operation is done.",
 		}),
-		PutFailCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PutFailCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "put_failure_count",
-			Help:      "Number of times a PUT operation failed.",
+			Name:      "put_fail_count",
+			Help:      "Number of times the PUT operation failed.",
 		}),
-		HasCount: prometheus.NewCounter(prometheus.CounterOpts{
+		GetCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "get_count",
+			Help:      "Number of times the GET operation is done.",
+		}),
+		GetNotFoundCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "get_not_found_count",
+			Help:      "Number of times the GET operation could not find key.",
+		}),
+		GetFailCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "get_fail_count",
+			Help:      "Number of times the GET operation is failed.",
+		}),
+		HasCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "has_count",
-			Help:      "Number of times a HAS operation is performed.",
+			Help:      "Number of times the HAS operation is done.",
 		}),
-		HasFailCount: prometheus.NewCounter(prometheus.CounterOpts{
+		HasFailCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "has_failure_count",
-			Help:      "Number of times a HAS operation failed.",
+			Name:      "has_fail_count",
+			Help:      "Number of times the HAS operation failed.",
 		}),
-		DeleteCount: prometheus.NewCounter(prometheus.CounterOpts{
+		DeleteCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "delete_count",
-			Help:      "Number of times a DELETE operation is performed.",
+			Help:      "Number of times the DELETE operation is done.",
 		}),
-		DeleteFailCount: prometheus.NewCounter(prometheus.CounterOpts{
+		DeleteFailCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "delete_failure_count",
-			Help:      "Number of times a DELETE operation failed.",
+			Name:      "delete_fail_count",
+			Help:      "Number of times the DELETE operation failed.",
 		}),
-		TotalCount: prometheus.NewCounter(prometheus.CounterOpts{
+		IteratorCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_count",
-			Help:      "Number of times a COUNT operation is performed.",
+			Name:      "iterator_count",
+			Help:      "Number of times the ITERATOR operation is done.",
 		}),
-		TotalFailCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_failure_count",
-			Help:      "Number of times a COUNT operation failed.",
-		}),
-		CountPrefixCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "count_prefix_count",
-			Help:      "Number of times a COUNT_PREFIX operation is performed.",
-		}),
-		CountFromFailCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "count_from_failure_count",
-			Help:      "Number of times a COUNT_FROM operation failed.",
-		}),
-		CountFromCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "count_from_count",
-			Help:      "Number of times a COUNT_FROM operation is performed.",
-		}),
-		CountPrefixFailCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "count_prefix_failure_count",
-			Help:      "Number of times a COUNT_PREFIX operation failed.",
-		}),
-		IterationCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "iteration_count",
-			Help:      "Number of times a ITERATION operation is performed.",
-		}),
-		IterationFailCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "iteration_failure_count",
-			Help:      "Number of times a ITERATION operation failed.",
-		}),
-		FirstCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "first_count",
-			Help:      "Number of times a FIRST operation is performed.",
-		}),
-		FirstFailCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "first_failure_count",
-			Help:      "Number of times a FIRST operation failed.",
-		}),
-		LastCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "last_count",
-			Help:      "Number of times a LAST operation is performed.",
-		}),
-		LastFailCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "last_failure_count",
-			Help:      "Number of times a LAST operation failed.",
-		}),
-		GetBatchCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "getbatch_count",
-			Help:      "Number of times a GET_BATCH operation is performed.",
-		}),
-		WriteBatchCount: prometheus.NewCounter(prometheus.CounterOpts{
+		WriteBatchCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "write_batch_count",
-			Help:      "Number of times a WRITE_BATCH operation is performed.",
+			Help:      "Number of times the WRITE_BATCH operation is done.",
 		}),
-		WriteBatchFailCount: prometheus.NewCounter(prometheus.CounterOpts{
+		WriteBatchFailCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "write_batch_failure_count",
-			Help:      "Number of times a WRITE_BATCH operation failed.",
+			Name:      "write_batch_fail_count",
+			Help:      "Number of times the WRITE_BATCH operation failed.",
 		}),
 	}
 }
