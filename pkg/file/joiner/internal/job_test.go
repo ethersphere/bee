@@ -24,12 +24,19 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize, swarm.SectionSize)
 	store.Put(ctx, storage.ModePutUpload, rootChunk)
+
+	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
+	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
+	_, err := store.Put(ctx, storage.ModePutUpload, firstChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 	b := make([]byte, swarm.SectionSize)
-	_, err := j.Read(b)
+	_, err = j.Read(b)
 	if err == nil {
 		t.Fatal("expected error on Read with too small buffer")
 	}
@@ -40,6 +47,57 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 		t.Fatal("expected error on Read with too big buffer")
 	}
 
+	b = make([]byte, swarm.ChunkSize)
+	_, err = j.Read(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+
+// TestSimpleJoinerJobOneLevel tests the retrieval of data chunks immediately
+// below the root chunk level.
+func TestSimpleJoinerJobNoEOFOnCancel(t *testing.T) {
+	store := mock.NewStorer()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	logger := logging.New(os.Stderr, 5)
+	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+	store.Put(ctx, storage.ModePutUpload, rootChunk)
+	logger.Debugf("put root chunk %v", rootChunk)
+
+	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
+	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
+	_, err := store.Put(ctx, storage.ModePutUpload, firstChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger.Debugf("put first chunk %v", firstChunk)
+
+	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
+	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
+	_, err = store.Put(ctx, storage.ModePutUpload, secondChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger.Debugf("put second chunk %v", secondChunk)
+
+	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+
+	outBuffer := make([]byte, 4096) // arbitrary non power of 2 number
+
+	_, err = j.Read(outBuffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	_, err = j.Read(outBuffer)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	logger.Debugf("error is %v", err)
 }
 
 // TestSimpleJoinerJobOneLevel tests the retrieval of data chunks immediately
