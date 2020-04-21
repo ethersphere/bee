@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	mockstore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/multiformats/go-multiaddr"
@@ -25,6 +26,7 @@ import (
 type testServerOptions struct {
 	Overlay swarm.Address
 	P2P     p2p.Service
+	Storer  storage.Storer
 }
 
 type testServer struct {
@@ -45,6 +47,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		Logger:         logging.New(ioutil.Discard, 0),
 		Addressbook:    addressbook,
 		TopologyDriver: topologyDriver,
+		Storer:         o.Storer,
 	})
 	ts := httptest.NewServer(s)
 	cleanup := ts.Close
