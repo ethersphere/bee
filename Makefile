@@ -26,6 +26,10 @@ lint:
 vet:
 	$(GO) vet ./...
 
+.PHONY: test-race
+test-race:
+	$(GO) test -race -v ./...
+
 .PHONY: test
 test:
 	$(GO) test -v ./...
