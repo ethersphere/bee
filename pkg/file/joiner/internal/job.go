@@ -3,11 +3,13 @@ package internal
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
 
+	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -32,7 +34,6 @@ type SimpleJoinerJob struct {
 	ctx        context.Context
 	store      storage.Storer
 	spanLength int64         // the total length of data represented by the root chunk the job was initialized with.
-	levelCount int           // recursion level of the chunk tree.
 	readCount  int64         // running count of chunks read by the io.Reader consumer.
 	cursors    [9]int        // per-level read cursor of data.
 	data       [9][]byte     // data of currently loaded chunk.
@@ -51,16 +52,14 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		ctx:        ctx,
 		store:      store,
 		spanLength: int64(spanLength),
-		levelCount: levelCount,
 		dataC:      make(chan []byte),
-		doneC:      make(chan struct{}),
+		doneC:      make(chan struct{}, 1),
 		logger:     logging.New(os.Stderr, 6),
 	}
 
 	// startLevelIndex is the root chunk level
 	// data level has index 0
 	startLevelIndex := levelCount - 1
-	//startLevelIndex := levelCount
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
 	j.logger.Tracef("startindex %d", startLevelIndex)
 
@@ -104,7 +103,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 	data := j.data[level]
 	cursor := j.cursors[level]
 	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
-	err := j.descend(level-1, chunkAddress)
+	err := j.nextChunk(level-1, chunkAddress)
 	if err != nil {
 		return err
 	}
@@ -114,12 +113,12 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 	return nil
 }
 
-// descend retrieves data chunks by resolving references in intermediate chunks.
+// nextChunk retrieves data chunks by resolving references in intermediate chunks.
 // The method will be called recursively via the nextReference method when
 // the current chunk is an intermediate chunk.
 // When a data chunk is found it is passed on the dataC channel to be consumed by the
 // io.Reader consumer.
-func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
+func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 
 	// attempt to retrieve the chunk
 	j.logger.Tracef("next chunk level %d get: %v", level, address)
@@ -145,16 +144,23 @@ func (j *SimpleJoinerJob) descend(level int, address swarm.Address) error {
 			}
 		}
 	} else {
-		// close the channel if we have read all data
+		// read data and pass to reader only if session is still active
+		// * context cancelled when client has disappeared, timeout etc
+		// * doneC receive when gracefully terminated through Close
 		data := ch.Data()[8:]
 		select {
 		case <-j.ctx.Done():
 			j.logger.Tracef("context done %v", j.ctx.Err())
 			j.readCount = j.spanLength
 			return j.ctx.Err()
+		case <-j.doneC:
+			return file.NewErrAbort(errors.New("chunk read aborted"))
 		case j.dataC <- data:
 			j.readCount += int64(len(data))
 		}
+		// when we reach the end of data to be read
+		// bubble io.EOF error to the gofunc in the 
+		// constructor that called start()
 		if j.readCount == j.spanLength {
 			j.logger.Trace("read all")
 			return io.EOF
@@ -177,6 +183,12 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	j.logger.Tracef("Read %d %x", len(data), data[:16])
 	copy(b, data)
 	return len(data), nil
+}
+
+// Close is called by the consumer to gracefully abort the data retrieval
+func (j *SimpleJoinerJob) Close() error {
+	j.doneC <- struct{}{}
+	return nil
 }
 
 // getLevelsFromLength calculates the last level index which a particular data section count will result in.

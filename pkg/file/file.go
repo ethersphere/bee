@@ -22,7 +22,7 @@ type SwarmHash hash.Hash
 // returning the length of the data which will be returned.
 // The called can then read the data on the io.Reader that was provided.
 type Joiner interface {
-	Join(ctx context.Context, address swarm.Address) (dataOut io.Reader, dataLength int64, err error)
+	Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataLength int64, err error)
 }
 
 // Splitter starts a new file splitting job.
@@ -31,5 +31,5 @@ type Joiner interface {
 // If the dataLength parameter is 0, data is read until io.EOF is encountered.
 // When EOF is received and splitting is done, the resulting Swarm Address is returned.
 type Splitter interface {
-	Split(ctx context.Context, data io.Reader, dataLength int64) (addr swarm.Address, err error)
+	Split(ctx context.Context, data io.ReadCloser, dataLength int64) (addr swarm.Address, err error)
 }

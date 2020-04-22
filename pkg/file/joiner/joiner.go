@@ -6,7 +6,6 @@
 package joiner
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"io"
@@ -25,6 +24,27 @@ type simpleJoiner struct {
 	logger logging.Logger
 }
 
+// simpleJoinerReadCloser wraps a byte slice in a io.ReadCloser implementation
+type simpleReadCloser struct {
+	buffer []byte
+	cursor int
+}
+
+// Read implements io.Reader
+func (s *simpleReadCloser) Read(b []byte) (int, error) {
+	if s.cursor == len(s.buffer) {
+		return 0, io.EOF
+	}
+	copy(b, s.buffer)
+	s.cursor += len(s.buffer)
+	return len(s.buffer), nil
+}
+
+// Close implements io.Closer
+func (s *simpleReadCloser) Close() error {
+	return nil
+}
+
 // NewSimpleJoiner creates a new simpleJoiner.
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
 	return &simpleJoiner{
@@ -37,7 +57,7 @@ func NewSimpleJoiner(store storage.Storer) file.Joiner {
 //
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
-func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.Reader, dataSize int64, err error) {
+func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataSize int64, err error) {
 
 	// retrieve the root chunk to read the total data length the be retrieved
 	rootChunk, err := s.store.Get(ctx, storage.ModeGetRequest, address)
@@ -50,7 +70,9 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
 	if spanLength < swarm.ChunkSize {
 		s.logger.Tracef("root chunk %v is single chunk, short circuit", rootChunk)
-		return bytes.NewReader(rootChunk.Data()[8:]), int64(spanLength), nil
+		return &simpleReadCloser{
+			buffer: (rootChunk.Data()[8:]),
+		}, int64(spanLength), nil
 	}
 
 	s.logger.Tracef("joining root chunk %v", rootChunk)
