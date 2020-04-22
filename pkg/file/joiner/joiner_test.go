@@ -9,20 +9,18 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestJoiner verifies that a newly created joiner
-// returns the data stored in the store for a given reference
-func TestJoiner(t *testing.T) {
+// TestJoiner verifies that a newly created joiner returns the data stored
+// in the store when the reference is one single chunk.
+func TestJoinerSingleChunk(t *testing.T) {
 	store := mock.NewStorer()
 
 	joiner := joiner.NewSimpleJoiner(store)
@@ -36,6 +34,7 @@ func TestJoiner(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for %x", swarm.ZeroAddress)
 	}
 
+	// create the chunk to 
 	mockAddrHex := fmt.Sprintf("%064s", "2a")
 	mockAddr := swarm.MustParseHexAddress(mockAddrHex)
 	mockData := []byte("foo")
@@ -47,6 +46,7 @@ func TestJoiner(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// read back data and compare
 	joinReader, l, err := joiner.Join(ctx, mockAddr)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestJoiner(t *testing.T) {
 }
 
 // TestJoinerWithReference verifies that a chunk reference is correctly resolved
-// and the underlying data is returned
+// and the underlying data is returned.
 func TestJoinerWithReference(t *testing.T) {
 	store := mock.NewStorer()
 	joiner := joiner.NewSimpleJoiner(store)
@@ -72,14 +72,13 @@ func TestJoinerWithReference(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// create root chunk and two data chunks referenced in the root chunk
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
 	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	logger := logging.New(os.Stderr, 6)
-	logger.Debugf("root chunk data %x", rootChunk.Data())
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
 	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
@@ -94,6 +93,7 @@ func TestJoinerWithReference(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// read back data and compare
 	joinReader, l, err := joiner.Join(ctx, rootChunk.Address())
 	if err != nil {
 		t.Fatal(err)

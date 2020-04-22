@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package internal
 
 import (
@@ -61,7 +65,7 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 	// data level has index 0
 	startLevelIndex := levelCount - 1
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
-	j.logger.Tracef("startindex %d", startLevelIndex)
+	j.logger.Tracef("simple joiner start index %d for address %x", startLevelIndex, rootChunk.Address())
 
 	// retrieval must be asynchronous to the io.Reader()
 	go func() {
@@ -70,13 +74,13 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 			// this will only already be closed if all the chunk data has been fully read
 			// in this case the error will always be nil and this will not be executed
 			if err != io.EOF {
-				j.logger.Errorf("error in process: %v", err)
+				j.logger.Errorf("chunk join job fail: %v", err)
 			} else {
-				j.logger.Tracef("top eof")
+				j.logger.Tracef("chunk join job eof")
 			}
 		}
-		close(j.dataC)
 		j.err = err
+		close(j.dataC)
 		close(j.doneC)
 	}()
 
@@ -86,9 +90,9 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 // start processes all chunk references of the root chunk that already has been retrieved.
 func (j *SimpleJoinerJob) start(level int) error {
 
+	// consume the reference at the current cursor position of the chunk level data
+	// and start recursive retrieval down to the underlying data chunks
 	for j.cursors[level] < len(j.data[level]) {
-		// consume the reference at the current cursor position of the chunk level data
-		// and start recursive retrieval down to the underlying data chunks
 		err := j.nextReference(level)
 		if err != nil {
 			return err
@@ -185,7 +189,7 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	return len(data), nil
 }
 
-// Close is called by the consumer to gracefully abort the data retrieval
+// Close is called by the consumer to gracefully abort the data retrieval.
 func (j *SimpleJoinerJob) Close() error {
 	j.doneC <- struct{}{}
 	return nil

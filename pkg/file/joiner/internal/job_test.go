@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package internal_test
 
 import (
@@ -22,6 +26,7 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
+	// create root chunk with 2 references and the referenced data chunks
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
 	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
 	if err != nil {
@@ -42,6 +47,7 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// this buffer is too small
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 	b := make([]byte, swarm.SectionSize)
 	_, err = j.Read(b)
@@ -49,12 +55,14 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 		t.Fatal("expected error on Read with too small buffer")
 	}
 
+	// this buffer is too big
 	b = make([]byte, swarm.ChunkSize+swarm.SectionSize)
 	_, err = j.Read(b)
 	if err == nil {
 		t.Fatal("expected error on Read with too big buffer")
 	}
 
+	// this buffer is juuuuuust right
 	b = make([]byte, swarm.ChunkSize)
 	_, err = j.Read(b)
 	if err != nil {
@@ -62,7 +70,7 @@ func TestSimpleJoinerJobBlocksize(t *testing.T) {
 	}
 }
 
-// TestSimpleJoinerJobOneLevel tests the retrieval of data chunks immediately
+// TestSimpleJoinerJobOneLevel tests the retrieval of two data chunks immediately
 // below the root chunk level.
 func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	store := mock.NewStorer()
@@ -70,6 +78,7 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
+	// create root chunk with 2 references and the referenced data chunks
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
 	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
 	if err != nil {
@@ -92,8 +101,8 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 
-	outBuffer := make([]byte, 4096) // arbitrary non power of 2 number
-
+	// verify first chunk content
+	outBuffer := make([]byte, 4096)
 	c, err := j.Read(outBuffer)
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +114,7 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 		t.Fatalf("firstchunk data mismatch, expected %x, got %x", outBuffer, firstChunk.Data()[8:])
 	}
 
+	// verify second chunk content
 	c, err = j.Read(outBuffer)
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +126,7 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 		t.Fatalf("secondchunk data mismatch, expected %x, got %x", outBuffer, secondChunk.Data()[8:])
 	}
 
+	// verify EOF is returned also after first time it is returned
 	_, err = j.Read(outBuffer)
 	if err != io.EOF {
 		t.Fatalf("expected io.EOF")
@@ -127,12 +138,16 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	}
 }
 
+// TestSimpleJoinerJobTwoLevelsAcrossChunk tests the retrieval of data chunks below
+// first intermediate level across two intermediate chunks.
+// Last chunk has sub-chunk length.
 func TestSimpleJoinerJobTwoLevelsAcrossChunk(t *testing.T) {
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
+	// create root chunk with 2 references and two intermediate chunks with references
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*swarm.Branches+42, swarm.SectionSize*2)
 	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
 	if err != nil {
@@ -153,6 +168,7 @@ func TestSimpleJoinerJobTwoLevelsAcrossChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// create 128+1 chunks for all references in the intermediate chunks
 	cursor := 8
 	for i := 0; i < swarm.Branches; i++ {
 		chunkAddressBytes := firstChunk.Data()[cursor : cursor+swarm.SectionSize]
@@ -174,6 +190,7 @@ func TestSimpleJoinerJobTwoLevelsAcrossChunk(t *testing.T) {
 
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 
+	// read back all the chunks and verify
 	b := make([]byte, swarm.ChunkSize)
 	for i := 0; i < swarm.Branches; i++ {
 		c, err := j.Read(b)
