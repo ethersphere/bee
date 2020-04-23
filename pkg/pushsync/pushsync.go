@@ -31,7 +31,6 @@ type PushSync struct {
 	storer        storage.Storer
 	peerSuggester topology.ClosestPeerer
 	quit          chan struct{}
-
 	logger  logging.Logger
 	metrics metrics
 }
@@ -40,7 +39,6 @@ type Options struct {
 	Streamer      p2p.Streamer
 	Storer        storage.Storer
 	ClosestPeerer topology.ClosestPeerer
-
 	Logger logging.Logger
 }
 
@@ -80,8 +78,10 @@ func (ps *PushSync) Close() error {
 	return nil
 }
 
+// handler handles chunk delivery from other node and inserts it in to the locastopre.
+// it also sends this chunk to the closest peer
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
-	// handle chunk delivery from other node
+
 	_, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
@@ -119,6 +119,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	return ps.storer.Set(ctx, storage.ModeSetSyncPush, chunk.Address())
 }
 
+//chunksWorker is a loop that keep looking for chunks that come pushIndex and
+// pushes them to the closest peer.
 func (ps *PushSync) chunksWorker(ctx context.Context) {
 	var chunks <-chan swarm.Chunk
 	var unsubscribe func()
