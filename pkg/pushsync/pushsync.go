@@ -31,17 +31,15 @@ type PushSync struct {
 	storer        storage.Storer
 	peerSuggester topology.ClosestPeerer
 	quit          chan struct{}
-
-	logger  logging.Logger
-	metrics metrics
+	logger        logging.Logger
+	metrics       metrics
 }
 
 type Options struct {
 	Streamer      p2p.Streamer
 	Storer        storage.Storer
 	ClosestPeerer topology.ClosestPeerer
-
-	Logger logging.Logger
+	Logger        logging.Logger
 }
 
 var retryInterval = 10 * time.Second // time interval between retries
@@ -80,8 +78,9 @@ func (ps *PushSync) Close() error {
 	return nil
 }
 
+// handler handles chunk delivery from other node and inserts it to localstore.
+// it also sends this chunk to the closest peer if one exists.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
-	// handle chunk delivery from other node
 	_, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
@@ -119,6 +118,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	return ps.storer.Set(ctx, storage.ModeSetSyncPush, chunk.Address())
 }
 
+// chunksWorker polls localstore sends chunks to peers.
 func (ps *PushSync) chunksWorker(ctx context.Context) {
 	var chunks <-chan swarm.Chunk
 	var unsubscribe func()
@@ -193,8 +193,7 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 	}
 }
 
-// sendChunkMsg sends chunks to their destination
-// by opening a stream to the closest peer
+// sendChunkMsg sends a chunk to a given peer.
 func (ps *PushSync) sendChunkMsg(ctx context.Context, peer swarm.Address, ch swarm.Chunk) error {
 	startTimer := time.Now()
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
