@@ -12,15 +12,13 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 )
 
-var (
-	testErr              = errors.New("test error")
-	shouldNotBeCalledErr = errors.New("should not be called")
-)
-
 func TestExecute(t *testing.T) {
+	testErr := errors.New("test error")
+	shouldNotBeCalledErr := errors.New("should not be called")
 	failInterval := 10 * time.Minute
 	startBackoff := 1 * time.Minute
 	initTime := time.Now()
+
 	testCases := map[string]struct {
 		limit        int
 		ferrors      []error
