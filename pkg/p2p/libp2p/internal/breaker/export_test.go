@@ -10,10 +10,6 @@ func SetTimeNow(f func() time.Time) {
 	timeNow = f
 }
 
-func GetInitialBackoff() time.Duration {
-	return initialBackoff
-}
-
 func GetBackoffLimit() time.Duration {
 	return backoffLimit
 }

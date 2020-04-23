@@ -22,7 +22,6 @@ type breaker struct {
 	limit                int
 	consFailedCalls      int
 	firstFailedTimestamp time.Time
-	closed               bool
 	closedTimestamp      time.Time
 	backoff              time.Duration
 	mtx                  sync.Mutex
@@ -58,7 +57,7 @@ func (b *breaker) beforef() error {
 		if newBackoff := b.backoff * 2; newBackoff <= backoffLimit {
 			b.backoff = newBackoff
 		} else {
-			newBackoff = backoffLimit
+			b.backoff = backoffLimit
 		}
 	}
 
