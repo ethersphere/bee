@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -30,25 +31,32 @@ type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Storer
 	peerSuggester topology.ClosestPeerer
+	retryChunks   map[string]int
+	retryChunksMu sync.Mutex
 	quit          chan struct{}
-	logger  logging.Logger
-	metrics metrics
+	logger        logging.Logger
+	metrics       metrics
 }
 
 type Options struct {
 	Streamer      p2p.Streamer
 	Storer        storage.Storer
 	ClosestPeerer topology.ClosestPeerer
-	Logger logging.Logger
+	Logger        logging.Logger
 }
 
-var retryInterval = 10 * time.Second // time interval between retries
+var (
+	retryInterval        = 10 * time.Second // time interval between retries
+	timeToWaitForReceipt = 2 * time.Second  // time to wait to get a receipt for a chunk
+	MaxRetries           = 3                // No of time to retry sending the chunk
+)
 
 func New(o Options) *PushSync {
 	ps := &PushSync{
 		streamer:      o.Streamer,
 		storer:        o.Storer,
 		peerSuggester: o.ClosestPeerer,
+		retryChunks:   make(map[string]int),
 		logger:        o.Logger,
 		metrics:       newMetrics(),
 		quit:          make(chan struct{}),
@@ -78,21 +86,22 @@ func (ps *PushSync) Close() error {
 	return nil
 }
 
-// handler handles chunk delivery from other node and inserts it in to the locastopre.
-// it also sends this chunk to the closest peer
+// handler handles chunk delivery from other node and inserts it in to the localstore,
+//sends a receipt for the chunk. it also forwards the chunk to the closest peer.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 
-	_, r := protobuf.NewWriterAndReader(stream)
+	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
 	var ch pb.Delivery
-
 	if err := r.ReadMsg(&ch); err != nil {
+		ps.metrics.ReceivedChunkErrorCounter.Inc()
 		if err == io.EOF {
 			return nil
 		}
 		return err
 	}
+	ps.metrics.ChunksSentCounter.Inc()
 
 	// create chunk and store it in the local store
 	addr := swarm.NewAddress(ch.Address)
@@ -102,7 +111,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return err
 	}
 
-	// push this to the closest node too
+	// Send a receipt immediately once the storage of the chunk is successfull
+	var receipt pb.Receipt
+	if err := w.WriteMsg(receipt); err != nil {
+		ps.metrics.SendReceiptErrorCounter.Inc()
+		return err
+	}
+	ps.metrics.ReceiptsSentCounter.Inc()
+
+	// Also push this chunk to the closest node too
 	peer, err := ps.peerSuggester.ClosestPeer(addr)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
@@ -111,16 +128,20 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 		return err
 	}
-	if err := ps.sendChunkMsg(ctx, peer, chunk); err != nil {
-		ps.metrics.SendChunkErrorCounter.Inc()
-		return err
+
+	err = ps.storer.Set(ctx, storage.ModeSetSyncPush, chunk.Address())
+	if err != nil {
+		ps.logger.Errorf("pushsync: error setting chunks to synced", "addr", chunk.Address().String(), "err", err)
+		ps.metrics.ErrorSettingChunkToSynced.Inc()
 	}
 
-	return ps.storer.Set(ctx, storage.ModeSetSyncPush, chunk.Address())
+	ps.metrics.TotalChunksSynced.Inc()
+
+	return err
 }
 
-//chunksWorker is a loop that keep looking for chunks that come pushIndex and
-// pushes them to the closest peer.
+// chunksWorker is a loop that keepd looking for chunks that are locally uploaded ( by monitoring pushIndex )
+// and pushes them to the closest peer.
 func (ps *PushSync) chunksWorker(ctx context.Context) {
 	var chunks <-chan swarm.Chunk
 	var unsubscribe func()
@@ -146,7 +167,7 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 			}
 
 			chunksInBatch++
-			ps.metrics.SendChunkCounter.Inc()
+			ps.metrics.TotalChunksToBeSentCounter.Inc()
 			peer, err := ps.peerSuggester.ClosestPeer(ch.Address())
 			if err != nil {
 				if errors.Is(err, topology.ErrWantSelf) {
@@ -157,15 +178,19 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 				}
 			}
 
-			if err := ps.sendChunkMsg(ctx, peer, ch); err != nil {
-				ps.metrics.SendChunkErrorCounter.Inc()
-				ps.logger.Errorf("error sending chunk", "addr", ch.Address().String(), "err", err)
+			if err := ps.sendChunkAndReceiveReceipt(ctx, peer, ch); err != nil {
+				ps.logger.Errorf("error while sending chunk or receiving receipt", "addr", ch.Address().String(), "err", err)
+				continue
 			}
 
 			// set chunk status to synced, insert to db GC index
 			if err := ps.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
-				ps.logger.Error("pushsync: error setting chunks to synced", "err", err)
+				ps.logger.Errorf("pushsync: error setting chunks to synced", "addr", ch.Address().String(), "err", err)
+				ps.metrics.ErrorSettingChunkToSynced.Inc()
+				continue
 			}
+
+			ps.metrics.TotalChunksSynced.Inc()
 
 			// retry interval timer triggers starting from new
 		case <-timer.C:
@@ -195,26 +220,57 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 	}
 }
 
-// sendChunkMsg sends chunks to their destination
-// by opening a stream to the closest peer
-func (ps *PushSync) sendChunkMsg(ctx context.Context, peer swarm.Address, ch swarm.Chunk) error {
+// sendChunkAndReceiveReceipt sends chunk to its destination
+// by opening a stream to the closest peer. It then waits for
+// an receipt from the peer.
+func (ps *PushSync) sendChunkAndReceiveReceipt(ctx context.Context, peer swarm.Address, ch swarm.Chunk) error {
 	startTimer := time.Now()
+
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
 	defer streamer.Close()
 
-	w, _ := protobuf.NewWriterAndReader(streamer)
+	ps.retryChunksMu.Lock()
 
-	if err := w.WriteMsg(&pb.Delivery{
+	var noOfRetries int
+	var ok bool
+	if noOfRetries, ok = ps.retryChunks[ch.Address().String()]; ok {
+		if noOfRetries > MaxRetries {
+			delete(ps.retryChunks, ch.Address().String())
+			ps.metrics.RetriesExhaustedCounter.Inc()
+			ps.retryChunksMu.Unlock()
+			return fmt.Errorf("max retries exhausted ", "address", ch.Address().String())
+		}
+		noOfRetries++
+	} else {
+		ps.retryChunks[ch.Address().String()] = 0
+	}
+	ps.retryChunksMu.Unlock()
+
+	w, r := protobuf.NewWriterAndReader(streamer)
+	if err := w.WriteMsgWithTimeout(timeToWaitForReceipt, &pb.Delivery{
 		Address: ch.Address().Bytes(),
 		Data:    ch.Data(),
 	}); err != nil {
+		ps.metrics.SendChunkErrorCounter.Inc()
 		return err
 	}
 
 	timeSpent := float64(time.Since(startTimer))
 	ps.metrics.SendChunkTimer.Add(timeSpent)
-	return err
+	ps.metrics.ChunksSentCounter.Inc()
+
+	startTimer = time.Now()
+	var receipt pb.Receipt
+	if err := r.ReadMsg(&receipt); err != nil {
+		ps.metrics.ReceiveReceiptErrorCounter.Inc()
+		return err
+	}
+	timeSpent = float64(time.Since(startTimer))
+	ps.metrics.ReceiptRTT.Add(timeSpent)
+	ps.metrics.ReceiptsReceivedCounter.Inc()
+
+	return nil
 }
