@@ -34,7 +34,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for %x", swarm.ZeroAddress)
 	}
 
-	// create the chunk to 
+	// create the chunk to
 	mockAddrHex := fmt.Sprintf("%064s", "2a")
 	mockAddr := swarm.MustParseHexAddress(mockAddrHex)
 	mockData := []byte("foo")

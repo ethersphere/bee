@@ -4,25 +4,25 @@
 
 package file
 
-// ErrAborted should be returned whenever a file operation is terminated 
+// ErrAborted should be returned whenever a file operation is terminated
 // before it has completed.
-type ErrAborted struct {
+type AbortError struct {
 	err error
 }
 
 // NewErrAbort creates a new ErrAborted instance.
-func NewErrAbort(err error) error {
-	return &ErrAborted {
+func NewAbortError(err error) error {
+	return &AbortError{
 		err: err,
 	}
 }
 
 // Unwrap returns an underlying error.
-func (e *ErrAborted) Unwrap() error {
+func (e *AbortError) Unwrap() error {
 	return e.err
 }
 
 // Error implement standard go error interface.
-func (e *ErrAborted) Error() string {
+func (e *AbortError) Error() string {
 	return e.err.Error()
 }

@@ -62,20 +62,19 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 	// retrieve the root chunk to read the total data length the be retrieved
 	rootChunk, err := s.store.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
-		s.logger.Debugf("retrieve root chunk %x fail: %v", address, err)
 		return nil, 0, err
 	}
 
 	// if this is a single chunk, short circuit to returning just that chunk
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
 	if spanLength < swarm.ChunkSize {
-		s.logger.Tracef("root chunk %v is single chunk, skipping join and returning directly", rootChunk)
+		s.logger.Tracef("simplejoiner root chunk %v is single chunk, skipping join and returning directly", rootChunk)
 		return &simpleReadCloser{
 			buffer: (rootChunk.Data()[8:]),
 		}, int64(spanLength), nil
 	}
 
-	s.logger.Tracef("joining root chunk %v", rootChunk)
+	s.logger.Tracef("simplejoiner joining root chunk %v", rootChunk)
 	r := internal.NewSimpleJoinerJob(ctx, s.store, rootChunk)
 	return r, int64(spanLength), nil
 }

@@ -74,9 +74,9 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 			// this will only already be closed if all the chunk data has been fully read
 			// in this case the error will always be nil and this will not be executed
 			if err != io.EOF {
-				j.logger.Errorf("chunk join job fail: %v", err)
+				j.logger.Errorf("simple joiner chunk join job fail: %v", err)
 			} else {
-				j.logger.Tracef("chunk join job eof")
+				j.logger.Tracef("simple joiner chunk join job eof")
 			}
 		}
 		j.err = err
@@ -125,7 +125,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 
 	// attempt to retrieve the chunk
-	j.logger.Tracef("next chunk level %d get: %v", level, address)
+	j.logger.Tracef("simple joiner job next chunk level %d get: %v", level, address)
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return err
@@ -136,7 +136,7 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 	// any level higher than 0 means the chunk contains references
 	// which must be recursively processed
 	if level > 0 {
-		j.logger.Tracef("cursor %d datalen %d", j.cursors[level], len(j.data[level]))
+		j.logger.Tracef("simple joiner cursor %d datalen %d", j.cursors[level], len(j.data[level]))
 		for j.cursors[level] < len(j.data[level]) {
 			if len(j.data[level]) == j.cursors[level] {
 				j.data[level] = ch.Data()[8:]
@@ -154,16 +154,16 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		data := ch.Data()[8:]
 		select {
 		case <-j.ctx.Done():
-			j.logger.Tracef("context done %v", j.ctx.Err())
+			j.logger.Tracef("simple joiner context done %v", j.ctx.Err())
 			j.readCount = j.spanLength
 			return j.ctx.Err()
 		case <-j.doneC:
-			return file.NewErrAbort(errors.New("chunk read aborted"))
+			return file.NewAbortError(errors.New("chunk read aborted"))
 		case j.dataC <- data:
 			j.readCount += int64(len(data))
 		}
 		// when we reach the end of data to be read
-		// bubble io.EOF error to the gofunc in the 
+		// bubble io.EOF error to the gofunc in the
 		// constructor that called start()
 		if j.readCount == j.spanLength {
 			j.logger.Trace("read all")

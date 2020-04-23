@@ -129,12 +129,12 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	// verify EOF is returned also after first time it is returned
 	_, err = j.Read(outBuffer)
 	if err != io.EOF {
-		t.Fatalf("expected io.EOF")
+		t.Fatal("expected io.EOF")
 	}
 
 	_, err = j.Read(outBuffer)
 	if err != io.EOF {
-		t.Fatalf("expected io.EOF")
+		t.Fatal("expected io.EOF")
 	}
 }
 
