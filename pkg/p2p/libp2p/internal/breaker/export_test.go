@@ -9,11 +9,3 @@ import "time"
 func SetTimeNow(f func() time.Time) {
 	timeNow = f
 }
-
-func GetBackoffLimit() time.Duration {
-	return backoffLimit
-}
-
-func GetFailInterval() time.Duration {
-	return failInterval
-}
