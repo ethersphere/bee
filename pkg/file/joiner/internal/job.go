@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -35,16 +36,17 @@ import (
 //
 // The process is repeated until the readCount reaches the announced spanLength of the chunk.
 type SimpleJoinerJob struct {
-	ctx        context.Context
-	store      storage.Storer
-	spanLength int64         // the total length of data represented by the root chunk the job was initialized with.
-	readCount  int64         // running count of chunks read by the io.Reader consumer.
-	cursors    [9]int        // per-level read cursor of data.
-	data       [9][]byte     // data of currently loaded chunk.
-	dataC      chan []byte   // channel to pass data chunks to the io.Reader method.
-	doneC      chan struct{} // channel to signal termination of join loop
-	err        error         // read by the main thread to capture error state of the job
-	logger     logging.Logger
+	ctx           context.Context
+	store         storage.Storer
+	spanLength    int64         // the total length of data represented by the root chunk the job was initialized with.
+	readCount     int64         // running count of chunks read by the io.Reader consumer.
+	cursors       [9]int        // per-level read cursor of data.
+	data          [9][]byte     // data of currently loaded chunk.
+	dataC         chan []byte   // channel to pass data chunks to the io.Reader method.
+	doneC         chan struct{} // channel to signal termination of join loop
+	closeDoneOnce sync.Once     // make sure done channel is closed only once
+	err           error         // read by the main thread to capture error state of the job
+	logger        logging.Logger
 }
 
 // NewSimpleJoinerJob creates a new simpleJoinerJob.
@@ -81,7 +83,7 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		}
 		j.err = err
 		close(j.dataC)
-		close(j.doneC)
+		j.closeDone()
 	}()
 
 	return j
@@ -191,8 +193,15 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 
 // Close is called by the consumer to gracefully abort the data retrieval.
 func (j *SimpleJoinerJob) Close() error {
-	j.doneC <- struct{}{}
+	j.closeDone()
 	return nil
+}
+
+// closeDone, for purpose readability, wraps the sync.Once execution of closing the doneC channel
+func (j *SimpleJoinerJob) closeDone() {
+	j.closeDoneOnce.Do(func() {
+		close(j.doneC)
+	})
 }
 
 // getLevelsFromLength calculates the last level index which a particular data section count will result in.
