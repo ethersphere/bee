@@ -10,12 +10,14 @@ import (
 	"time"
 )
 
-var _ Interface = (*breaker)(nil)
-
 var (
+	_ Interface = (*breaker)(nil)
+
+	// timeNow is used to deterrministically mock time.Now() in tests
+	timeNow = time.Now
+
 	// ErrClosed is the special error type that indicates that breaker is closed and that is not executing functions at the moment.
 	ErrClosed = errors.New("breaker closed")
-	timeNow   = time.Now // used instead of time.Since() so it can be mocked
 )
 
 type Interface interface {
@@ -81,6 +83,8 @@ func (b *breaker) Execute(f func() error) error {
 func (b *breaker) beforef() error {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
+
+	// use timeNow().Sub() instead of time.Since() so it can be deterministically mocked in tests
 	if b.consFailedCalls >= b.limit {
 		if b.closedTimestamp.IsZero() || timeNow().Sub(b.closedTimestamp) < b.backoff {
 			return ErrClosed
