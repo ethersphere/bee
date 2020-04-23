@@ -10,10 +10,16 @@ import (
 	"time"
 )
 
+var _ Interface = (*breaker)(nil)
+
 var (
 	ErrClosed = errors.New("breaker closed")
 	timeNow   = time.Now // used instead of time.Since() so it can be mocked
 )
+
+type Interface interface {
+	Execute(f func() error) error
+}
 
 type breaker struct {
 	limit                int
@@ -33,7 +39,7 @@ type Options struct {
 	MaxBackoff   time.Duration
 }
 
-func NewBreaker(o Options) *breaker {
+func NewBreaker(o Options) Interface {
 	breaker := &breaker{
 		limit:        o.Limit,
 		backoff:      o.StartBackoff,
