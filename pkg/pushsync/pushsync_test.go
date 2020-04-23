@@ -8,64 +8,37 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
-	"runtime"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
+	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/mock"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/discovery/mock"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology/full"
-	ma "github.com/multiformats/go-multiaddr"
 )
 
 // TestSencChunk tests that a chunk that is uploaded to localstore is sent to the appropriate closest peer.
-func TestSendChunk(t *testing.T) {
+func TestSendToClosest(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	// chunk data to upload
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 	chunkData := []byte("1234")
 
-	// create a pivot node and a cluster of nodes
-	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
-	connectedPeers := []p2p.Peer{
-		{
-			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000 -> po 0
-		},
-		{
-			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100 -> po 1
-		},
-		{
-			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110 -> po 1
-		},
-	}
-	closestPeer := connectedPeers[2].Address
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
+	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
 
-	// mock a connectivity between the nodes
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-		return pivotNode, nil
-	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
-		return connectedPeers
-	}))
-
-	// Create a full connectivity between the peers
-	discovery := mock.NewDiscovery()
-	statestore := mockstate.NewStateStore()
-	ab := addressbook.New(statestore)
-	fullDriver := full.New(discovery, ab, p2ps, logger, pivotNode)
+	// Create a mock connectivity between the peers
+	mockTopology := mock.NewTopologyDriver(mock.WithClosestPeer(closestPeer))
 
 	storer, err := localstore.New("", pivotNode.Bytes(), nil, logger)
 	if err != nil {
@@ -86,7 +59,7 @@ func TestSendChunk(t *testing.T) {
 	ps := pushsync.New(pushsync.Options{
 		Streamer:      recorder,
 		Logger:        logger,
-		ClosestPeerer: fullDriver,
+		ClosestPeerer: mockTopology,
 		Storer:        storer,
 	})
 	defer ps.Close()
@@ -98,21 +71,7 @@ func TestSendChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var records []*streamtest.Record
-
-LOOP:
-	for i := 0; i < 10; i++ {
-		records, _ = recorder.Records(closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
-		switch l := len(records); l {
-		case 1:
-			break LOOP
-		case 0:
-			time.Sleep(time.Millisecond * 10)
-		default:
-			t.Fatal("too many records!")
-		}
-	}
-
+	records := recorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(records[0].In()),
 		func() protobuf.Message { return new(pb.Delivery) },
@@ -144,30 +103,12 @@ func TestForwardChunk(t *testing.T) {
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 	chunkData := []byte("1234")
 
-	// create a pivot node and a cluster of nodes
-	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // pivot is 0000
-	connectedPeers := []p2p.Peer{
-		{
-			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000 -> po 0
-		},
-		{
-			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100 -> po 1
-		},
-		{
-			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110 -> po 1 want this one
-		},
-	}
-	closestPeer := connectedPeers[2].Address
+	// create a pivot node and a closest mocked closer node address
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // pivot is 0000
+	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110
 
-	// mock a connectivity between the nodes
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-		return pivotNode, nil
-	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
-		return connectedPeers
-	}))
-
-	// Create a full connectivity driver
-	fullDriver := full.New(mock.NewDiscovery(), addressbook.New(mockstate.NewStateStore()), p2ps, logger, pivotNode)
+	// Create a mock connectivity driver
+	mockTopology := mock.NewTopologyDriver(mock.WithClosestPeer(closestPeer))
 	storer, err := localstore.New("", pivotNode.Bytes(), nil, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +127,7 @@ func TestForwardChunk(t *testing.T) {
 			// when the peer address is the peer of `closestPeer`, since this will create an
 			// unnecessary entry in the recorder
 			return func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
-				if p.Address.Equal(connectedPeers[2].Address) {
+				if p.Address.Equal(closestPeer) {
 					mtx.Lock()
 					defer mtx.Unlock()
 					if targetCalled {
@@ -203,12 +144,11 @@ func TestForwardChunk(t *testing.T) {
 	ps := pushsync.New(pushsync.Options{
 		Streamer:      recorder,
 		Logger:        logger,
-		ClosestPeerer: fullDriver,
+		ClosestPeerer: mockTopology,
 		Storer:        storer,
 	})
 	defer ps.Close()
 
-	// TODO: this needs to go away once we have a simpler recorder
 	recorder.SetProtocols(ps.Protocol())
 
 	stream, err := recorder.NewStream(context.Background(), pivotNode, nil, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
@@ -216,7 +156,7 @@ func TestForwardChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.Close()
-	w, _ := protobuf.NewWriterAndReader(stream)
+	w := protobuf.NewWriter(stream)
 
 	// this triggers the handler of the pivot with a delivery stream
 	err = w.WriteMsg(&pb.Delivery{
@@ -227,22 +167,11 @@ func TestForwardChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 20; i++ {
-		mtx.Lock()
-		called := targetCalled
-		mtx.Unlock()
-
-		if !called {
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-
-	records, err := recorder.Records(closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if l := len(records); l != 1 {
-		t.Fatalf("got %v records, want %v", l, 1)
+	_ = recorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	mtx.Lock()
+	defer mtx.Unlock()
+	if !targetCalled {
+		t.Fatal("target not called")
 	}
 }
 
@@ -256,45 +185,17 @@ func TestNoForwardChunk(t *testing.T) {
 
 	// create a pivot node and a cluster of nodes
 	pivotNode := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // pivot is 0110
-	connectedPeers := []p2p.Peer{
-		{
-			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000 -> po 0
-		},
-		{
-			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100 -> po 1
-		},
-		{
-			Address: swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000"), // binary 0000 -> po 0
-		},
-	}
 
-	// mock a connectivity between the nodes
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-		return pivotNode, nil
-	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
-		return connectedPeers
-	}))
+	// Create a mock connectivity
+	mockTopology := mock.NewTopologyDriver(mock.WithClosestPeerErr(topology.ErrWantSelf))
 
-	// Create a full connectivity driver
-	fullDriver := full.New(mock.NewDiscovery(), addressbook.New(mockstate.NewStateStore()), p2ps, logger, pivotNode)
 	storer, err := localstore.New("", pivotNode.Bytes(), nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// how many calls to the handler we've handled
-	calls := 0
-
-	// setup the stream recorder to record stream data
 	recorder := streamtest.New(
 		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
-			calls++
-			if runtime.GOOS == "windows" {
-				// windows has a bit lower time resolution
-				// so, slow down the handler with a middleware
-				// not to get 0s for rtt value
-				time.Sleep(100 * time.Millisecond)
-			}
 			return f
 		}),
 	)
@@ -302,12 +203,11 @@ func TestNoForwardChunk(t *testing.T) {
 	ps := pushsync.New(pushsync.Options{
 		Streamer:      recorder,
 		Logger:        logger,
-		ClosestPeerer: fullDriver,
+		ClosestPeerer: mockTopology,
 		Storer:        storer,
 	})
 	defer ps.Close()
 
-	// TODO: this needs to go away once we have a simpler recorder
 	recorder.SetProtocols(ps.Protocol())
 
 	stream, err := recorder.NewStream(context.Background(), pivotNode, nil, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
@@ -315,7 +215,7 @@ func TestNoForwardChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.Close()
-	w, _ := protobuf.NewWriterAndReader(stream)
+	w := protobuf.NewWriter(stream)
 
 	// this triggers the handler of the pivot with a delivery stream
 	err = w.WriteMsg(&pb.Delivery{
@@ -326,12 +226,5 @@ func TestNoForwardChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// wait for some time and verify there are no entries here
-	for i := 0; i < 20; i++ {
-		if calls <= 1 {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			t.Fatal("too many calls")
-		}
-	}
+	_ = recorder.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 }

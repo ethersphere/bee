@@ -9,23 +9,44 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 )
 
-type TopologyDriver struct {
-	peers      []swarm.Address
-	addPeerErr error
-	mtx        sync.Mutex
+type mock struct {
+	peers          []swarm.Address
+	closestPeer    swarm.Address
+	closestPeerErr error
+	addPeerErr     error
+	mtx            sync.Mutex
 }
 
-func NewTopologyDriver() *TopologyDriver {
-	return &TopologyDriver{}
+func WithAddPeerErr(err error) Option {
+	return optionFunc(func(d *mock) {
+		d.addPeerErr = err
+	})
 }
 
-func (d *TopologyDriver) SetAddPeerErr(err error) {
-	d.addPeerErr = err
+func WithClosestPeer(addr swarm.Address) Option {
+	return optionFunc(func(d *mock) {
+		d.closestPeer = addr
+	})
 }
 
-func (d *TopologyDriver) AddPeer(_ context.Context, addr swarm.Address) error {
+func WithClosestPeerErr(err error) Option {
+	return optionFunc(func(d *mock) {
+		d.closestPeerErr = err
+	})
+}
+
+func NewTopologyDriver(opts ...Option) topology.Driver {
+	d := new(mock)
+	for _, o := range opts {
+		o.apply(d)
+	}
+	return d
+}
+
+func (d *mock) AddPeer(_ context.Context, addr swarm.Address) error {
 	if d.addPeerErr != nil {
 		return d.addPeerErr
 	}
@@ -36,6 +57,18 @@ func (d *TopologyDriver) AddPeer(_ context.Context, addr swarm.Address) error {
 	return nil
 }
 
-func (d *TopologyDriver) Peers() []swarm.Address {
+func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
+
+func (d *mock) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+	return d.closestPeer, d.closestPeerErr
+}
+
+type Option interface {
+	apply(*mock)
+}
+
+type optionFunc func(*mock)
+
+func (f optionFunc) apply(r *mock) { f(r) }

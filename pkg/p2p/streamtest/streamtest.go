@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -113,6 +114,32 @@ func (r *Recorder) Records(addr swarm.Address, protocolName, protocolVersio, str
 		return nil, ErrRecordsNotFound
 	}
 	return records, nil
+}
+
+// WaitRecords waits for some time for records to come into the recorder. If msgs is 0, the timeoutSec period is waited to verify
+// that _no_ messages arrive during this time period.
+func (r *Recorder) WaitRecords(t *testing.T, addr swarm.Address, proto, version, stream string, msgs int, timeoutSec int) []*Record {
+	t.Helper()
+	wait := 10 * time.Millisecond
+	iters := int((time.Duration(timeoutSec) * time.Second) / wait)
+
+	for i := 0; i < iters; i++ {
+		recs, _ := r.Records(addr, proto, version, stream)
+		if l := len(recs); l > msgs {
+			t.Fatalf("too many records. want %d got %d", msgs, l)
+		} else if msgs > 0 && l == msgs {
+			return recs
+		}
+		// we can be here if msgs == 0 && l == 0
+		// or msgs = x && l < x, both cases are fine
+		// and we should continue waiting
+
+		time.Sleep(wait)
+	}
+	if msgs > 0 {
+		t.Fatal("timed out while waiting for records")
+	}
+	return nil
 }
 
 type Record struct {

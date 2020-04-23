@@ -168,23 +168,21 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 			// retry interval timer triggers starting from new
 		case <-timer.C:
 			// initially timer is set to go off as well as every time we hit the end of push index
-			func() {
-				startTime := time.Now()
+			startTime := time.Now()
 
-				// if subscribe was running, stop it
-				if unsubscribe != nil {
-					unsubscribe()
-				}
+			// if subscribe was running, stop it
+			if unsubscribe != nil {
+				unsubscribe()
+			}
 
-				// and start iterating on Push index from the beginning
-				chunks, unsubscribe = ps.storer.SubscribePush(ctx)
+			// and start iterating on Push index from the beginning
+			chunks, unsubscribe = ps.storer.SubscribePush(ctx)
 
-				// reset timer to go off after retryInterval
-				timer.Reset(retryInterval)
+			// reset timer to go off after retryInterval
+			timer.Reset(retryInterval)
 
-				timeSpent := float64(time.Since(startTime))
-				ps.metrics.MarkAndSweepTimer.Add(timeSpent)
-			}()
+			timeSpent := float64(time.Since(startTime))
+			ps.metrics.MarkAndSweepTimer.Add(timeSpent)
 
 		case <-ps.quit:
 			if unsubscribe != nil {
