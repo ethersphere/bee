@@ -13,6 +13,7 @@ import (
 var _ Interface = (*breaker)(nil)
 
 var (
+	// ErrClosed is the special error type that indicates that breaker is closed and that is not executing functions at the moment.
 	ErrClosed = errors.New("breaker closed")
 	timeNow   = time.Now // used instead of time.Since() so it can be mocked
 )
@@ -66,9 +67,9 @@ func NewBreaker(o Options) Interface {
 	return breaker
 }
 
-// executes f() if the limit number of consecutive failed calls is not reached within fail interval.
-// f() call is not locked so it can still be executed concurently
-// returns `errClosed` if the limit is reached and f() result otherwise
+// Executes runs f() if the limit number of consecutive failed calls is not reached within fail interval.
+// f() call is not locked so it can still be executed concurently.
+// Returns `ErrClosed` if the limit is reached or f() result otherwise.
 func (b *breaker) Execute(f func() error) error {
 	if err := b.beforef(); err != nil {
 		return err
