@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -46,6 +47,7 @@ type Service struct {
 	addrssbook       addressbook.Putter
 	peers            *peerRegistry
 	peerHandler      func(context.Context, swarm.Address) error
+	conectionBreaker breaker.Interface
 	logger           logging.Logger
 	tracer           *tracing.Tracer
 }
@@ -163,6 +165,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		addrssbook:       o.Addressbook,
 		logger:           o.Logger,
 		tracer:           o.Tracer,
+		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // todo: fill non-default options
 	}
 
 	// Construct protocols.
@@ -314,7 +317,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, p2p.ErrAlreadyConnected
 	}
 
-	if err := s.host.Connect(ctx, *info); err != nil {
+	if err := s.conectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		return swarm.Address{}, err
 	}
 
