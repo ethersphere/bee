@@ -55,6 +55,9 @@ func (s *server) setupRouting() {
 	router.Handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.hasChunkHandler),
 	})
+	router.Handle("/topology", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.topologyJsonHandler),
+	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),

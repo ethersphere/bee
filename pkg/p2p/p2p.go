@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -18,7 +19,7 @@ type Service interface {
 	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
 	Disconnect(overlay swarm.Address) error
 	Peers() []Peer
-	SetPeerAddedHandler(func(context.Context, swarm.Address) error)
+	SetNotifiee(topology.Notifiee)
 	Addresses() ([]ma.Multiaddr, error)
 }
 

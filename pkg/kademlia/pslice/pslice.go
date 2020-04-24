@@ -16,8 +16,8 @@ import (
 // in order to reduce duplicate PO calculation which is normally known and already needed in the
 // calling context.
 type PSlice struct {
-	peers []swarm.Address
-	bins  []uint
+	peers []swarm.Address // the slice of peers
+	bins  []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
 
 	sync.Mutex
 }
@@ -93,6 +93,13 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 		}
 	}
 	return nil
+}
+
+func (s *PSlice) Length() int {
+	s.Lock()
+	defer s.Unlock()
+
+	return len(s.peers)
 }
 
 // ShallowestEmpty returns the shallowest empty bin if one exists.

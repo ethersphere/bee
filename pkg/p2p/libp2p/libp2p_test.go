@@ -126,6 +126,15 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	}
 }
 
+func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
+	t.Helper()
+	for i, a := range addrs {
+		if !a.Equal(swarm.ZeroAddress) {
+			t.Fatalf("address did not equal zero address. index %d", i)
+		}
+	}
+}
+
 func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr {
 	t.Helper()
 
