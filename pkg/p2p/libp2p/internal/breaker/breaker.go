@@ -69,7 +69,7 @@ func NewBreaker(o Options) Interface {
 	return breaker
 }
 
-// Executes runs f() if the limit number of consecutive failed calls is not reached within fail interval.
+// Execute runs f() if the limit number of consecutive failed calls is not reached within fail interval.
 // f() call is not locked so it can still be executed concurently.
 // Returns `ErrClosed` if the limit is reached or f() result otherwise.
 func (b *breaker) Execute(f func() error) error {
