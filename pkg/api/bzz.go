@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strings"
 
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"github.com/gorilla/mux"
@@ -22,6 +21,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+type bzzPostResponse struct {
+	Hash string
+}
 
 func hashFunc() hash.Hash {
 	return sha3.NewLegacyKeccak256()
@@ -65,8 +68,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "write error")
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain")
-	_, _ = io.Copy(w, strings.NewReader(addr.String()))
+	jsonhttp.OK(w, bzzPostResponse{Hash: addr.String()})
 }
 
 func (s *server) bzzGetHandler(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +96,6 @@ func (s *server) bzzGetHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "read error")
 		return
 	}
-	w.Header().Set("Content-Type", "binary/octet-stream")
+	w.Header().Set("Content-Type", "application/octet-stream")
 	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()))
 }

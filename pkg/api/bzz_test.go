@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -28,15 +29,9 @@ func TestBzz(t *testing.T) {
 	defer cleanup()
 
 	t.Run("upload", func(t *testing.T) {
-		resp := request(t, client, http.MethodPost, resource, bytes.NewReader(content), http.StatusOK)
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if string(data) != expHash {
-			t.Fatalf("hash mismatch. got %s, want %s", string(data), expHash)
-		}
+		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource, bytes.NewReader(content), http.StatusOK, api.BzzPostResponse{
+			Hash: expHash,
+		})
 	})
 
 	t.Run("download", func(t *testing.T) {
