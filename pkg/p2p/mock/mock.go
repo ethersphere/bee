@@ -10,16 +10,17 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Service struct {
-	addProtocolFunc         func(p2p.ProtocolSpec) error
-	connectFunc             func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
-	disconnectFunc          func(overlay swarm.Address) error
-	peersFunc               func() []p2p.Peer
-	setPeerAddedHandlerFunc func(func(context.Context, swarm.Address) error)
-	addressesFunc           func() ([]ma.Multiaddr, error)
+	addProtocolFunc func(p2p.ProtocolSpec) error
+	connectFunc     func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+	disconnectFunc  func(overlay swarm.Address) error
+	peersFunc       func() []p2p.Peer
+	setNotifieeFunc func(topology.Notifiee)
+	addressesFunc   func() ([]ma.Multiaddr, error)
 }
 
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
@@ -46,9 +47,9 @@ func WithPeersFunc(f func() []p2p.Peer) Option {
 	})
 }
 
-func WithSetPeerAddedHandlerFunc(f func(func(context.Context, swarm.Address) error)) Option {
+func WithSetNotifieeFunc(f func(topology.Notifiee)) Option {
 	return optionFunc(func(s *Service) {
-		s.setPeerAddedHandlerFunc = f
+		s.setNotifieeFunc = f
 	})
 }
 
@@ -87,12 +88,12 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return s.disconnectFunc(overlay)
 }
 
-func (s *Service) SetPeerAddedHandler(f func(context.Context, swarm.Address) error) {
-	if s.setPeerAddedHandlerFunc == nil {
+func (s *Service) SetNotifiee(f topology.Notifiee) {
+	if s.setNotifieeFunc == nil {
 		return
 	}
 
-	s.setPeerAddedHandlerFunc(f)
+	s.setNotifieeFunc(f)
 }
 
 func (s *Service) Addresses() ([]ma.Multiaddr, error) {
