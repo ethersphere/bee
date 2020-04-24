@@ -67,7 +67,7 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 
 	// if this is a single chunk, short circuit to returning just that chunk
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
-	if spanLength < swarm.ChunkSize {
+	if spanLength <= swarm.ChunkSize {
 		s.logger.Tracef("simplejoiner root chunk %v is single chunk, skipping join and returning directly", rootChunk)
 		return &simpleReadCloser{
 			buffer: (rootChunk.Data()[8:]),

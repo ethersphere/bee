@@ -59,7 +59,7 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		store:      store,
 		spanLength: int64(spanLength),
 		dataC:      make(chan []byte),
-		doneC:      make(chan struct{}, 1),
+		doneC:      make(chan struct{}),
 		logger:     logging.New(os.Stderr, 6),
 	}
 
@@ -127,7 +127,6 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 
 	// attempt to retrieve the chunk
-	j.logger.Tracef("simple joiner job next chunk level %d get: %v", level, address)
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return err
@@ -138,7 +137,6 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 	// any level higher than 0 means the chunk contains references
 	// which must be recursively processed
 	if level > 0 {
-		j.logger.Tracef("simple joiner cursor %d datalen %d", j.cursors[level], len(j.data[level]))
 		for j.cursors[level] < len(j.data[level]) {
 			if len(j.data[level]) == j.cursors[level] {
 				j.data[level] = ch.Data()[8:]
@@ -156,7 +154,6 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		data := ch.Data()[8:]
 		select {
 		case <-j.ctx.Done():
-			j.logger.Tracef("simple joiner context done %v", j.ctx.Err())
 			j.readCount = j.spanLength
 			return j.ctx.Err()
 		case <-j.doneC:
@@ -186,7 +183,6 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 		<-j.doneC
 		return 0, j.err
 	}
-	j.logger.Tracef("Read %d %x", len(data), data[:16])
 	copy(b, data)
 	return len(data), nil
 }
