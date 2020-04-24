@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+const (
+	// defaults
+	limit        = 100
+	failInterval = 30 * time.Minute
+	maxBackoff   = time.Hour
+	backoff      = 2 * time.Minute
+)
+
 var (
 	_ Interface = (*breaker)(nil)
 
@@ -21,17 +29,20 @@ var (
 )
 
 type Interface interface {
+	// Execute runs f() if the limit number of consecutive failed calls is not reached within fail interval.
+	// f() call is not locked so it can still be executed concurently.
+	// Returns `ErrClosed` if the limit is reached or f() result otherwise.
 	Execute(f func() error) error
 }
 
 type breaker struct {
-	limit                int
-	consFailedCalls      int
+	limit                int // breaker will not exeucute any more tasks after limit number of consequtive failuers happen
+	consFailedCalls      int // current number of consequtive fails
 	firstFailedTimestamp time.Time
 	closedTimestamp      time.Time
-	backoff              time.Duration
+	backoff              time.Duration // initial backoff duration
 	maxBackoff           time.Duration
-	failInterval         time.Duration
+	failInterval         time.Duration // consequitive failures are counted if they happen withing this interval
 	mtx                  sync.Mutex
 }
 
@@ -51,27 +62,24 @@ func NewBreaker(o Options) Interface {
 	}
 
 	if o.Limit == 0 {
-		breaker.limit = 100
+		breaker.limit = limit
 	}
 
 	if o.FailInterval == 0 {
-		breaker.failInterval = 30 * time.Minute
+		breaker.failInterval = failInterval
 	}
 
 	if o.MaxBackoff == 0 {
-		breaker.maxBackoff = time.Hour
+		breaker.maxBackoff = maxBackoff
 	}
 
 	if o.StartBackoff == 0 {
-		breaker.backoff = 2 * time.Minute
+		breaker.backoff = backoff
 	}
 
 	return breaker
 }
 
-// Execute runs f() if the limit number of consecutive failed calls is not reached within fail interval.
-// f() call is not locked so it can still be executed concurently.
-// Returns `ErrClosed` if the limit is reached or f() result otherwise.
 func (b *breaker) Execute(f func() error) error {
 	if err := b.beforef(); err != nil {
 		return err
