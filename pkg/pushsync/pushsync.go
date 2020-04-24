@@ -54,8 +54,7 @@ func New(o Options) *PushSync {
 		quit:          make(chan struct{}),
 	}
 
-	ctx := context.Background()
-	go ps.chunksWorker(ctx)
+	go ps.chunksWorker()
 
 	return ps
 }
@@ -119,9 +118,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 }
 
 // chunksWorker polls localstore sends chunks to peers.
-func (ps *PushSync) chunksWorker(ctx context.Context) {
-	var chunks <-chan swarm.Chunk
-	var unsubscribe func()
+func (ps *PushSync) chunksWorker() {
+	var (
+		chunks      <-chan swarm.Chunk
+		unsubscribe func()
+		ctx         = context.Background()
+	)
 
 	// timer, initially set to 0 to fall through select case on timer.C for initialisation
 	timer := time.NewTimer(0)
