@@ -231,6 +231,9 @@ func TestNoForwardChunk(t *testing.T) {
 	_ = recorder.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 }
 
+
+// TestSendChunkAndGetReceipt send a chunk to the closest node and expects a receipt.
+// the received node stores the chunk in the local store and then sends a receipt
 func TestSendChunkAndGetReceipt(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -238,6 +241,7 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 	chunkData := []byte("1234")
 	chunk := swarm.NewChunk(chunkAddress, chunkData)
+
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
@@ -265,10 +269,13 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 	defer ps.Close()
 	recorder.SetProtocols(ps.Protocol())
 
+
 	var wg sync.WaitGroup
-	go func() {
+	go func () {
 		wg.Add(1)
 		defer wg.Done()
+
+		// 1 - Receive chunk from closest node
 		records := recorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 		messages, err := protobuf.ReadMessages(
 			bytes.NewReader(records[0].In()),
@@ -277,26 +284,22 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if messages == nil {
+			t.Fatal(err)
+		}
 		if len(messages) > 1 {
 			t.Fatal("too many messages")
-		} else {
-			fmt.Println("message len ", len(messages))
 		}
 		delivery := messages[0].(*pb.Delivery)
 		rcvdChunk := swarm.NewChunk(swarm.NewAddress(delivery.Address), delivery.Data)
 
-		fmt.Println("RcvdChunk in closest peer")
-
-		if !bytes.Equal(rcvdChunk.Address().Bytes(), chunkAddress.Bytes()) {
-			t.Fatalf("chunk address mismatch")
-		}
-
-		stream, err := recorder.NewStream(context.Background(), pivotNode, nil, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
+		//  2 - respond with a receipt
+		rcvStream, err := recorder.NewStream(context.Background(), pivotNode, nil, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer stream.Close()
-		w := protobuf.NewWriter(stream)
+		defer rcvStream.Close()
+		w := protobuf.NewWriter(rcvStream)
 
 		// this triggers the handler of the pivot with a delivery stream
 		err = w.WriteMsg(&pb.Receipt{
@@ -305,7 +308,7 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println("Sent receipt to pivot node")
+
 	}()
 
 	err = ps.SendChunkAndReceiveReceipt(context.Background(), closestPeer, chunk)
@@ -314,8 +317,11 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 	}
 
 	wg.Wait()
+
 }
 
+
+// TestGetChunkAndSendReceipt receives a chunk from the closest node and sends a receipt.
 func TestGetChunkAndSendReceipt(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -334,6 +340,7 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 		}),
 	)
 
+
 	storer, err := localstore.New("", pivotNode.Bytes(), nil, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -349,6 +356,7 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 	})
 	defer ps.Close()
 	recorder.SetProtocols(ps.Protocol())
+
 
 	stream, err := recorder.NewStream(context.Background(), pivotNode, nil, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
 	if err != nil {
@@ -371,7 +379,7 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		fmt.Println("Sent chunk delivery")
+		fmt.Println("T - Sent chunk delivery - 1")
 
 		records := recorder.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 		messages, err := protobuf.ReadMessages(
@@ -381,14 +389,13 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if messages == nil {
+			t.Fatal(err)
+		}
 		if len(messages) > 1 {
 			t.Fatal("too many messages")
-		} else {
-			fmt.Println("message len ", len(messages))
 		}
 		receipt := messages[0].(*pb.Receipt)
-
-		fmt.Println("Received Receipt ")
 
 		if !bytes.Equal(receipt.Address, chunk.Address().Bytes()) {
 			t.Fatal(err)
@@ -405,9 +412,5 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 	if !bytes.Equal(rcvdChunk.Address().Bytes(), chunkAddress.Bytes()) {
 		t.Fatal(err)
 	}
-
-}
-
-func TestChunkSendRetry(t *testing.T) {
 
 }

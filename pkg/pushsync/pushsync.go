@@ -104,6 +104,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return err
 	}
 
+	if bytes.Equal(peer.Bytes(), p.Address.Bytes()) {
+		//Dont forward this chunk to the same peer as the received peer
+		return nil
+	}
+
 	// This sends the chunk to a given peer and waits for the receipt
 	return ps.SendChunkAndReceiveReceipt(ctx, peer, chunk)
 
@@ -224,8 +229,6 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	ps.metrics.ChunksSentCounter.Inc()
 
 
-	fmt.Println("Sent chunk and waiting for receipt")
-
 	var receipt pb.Receipt
 	if err := r.ReadMsg(&receipt); err != nil {
 		ps.metrics.ReceiveReceiptErrorCounter.Inc()
@@ -240,8 +243,6 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 		ps.metrics.InvalidReceiptReceived.Inc()
 		return err
 	}
-
-	fmt.Println("Got receipt")
 
 	// set chunk status to synced, insert to db GC index
 	if err := ps.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
@@ -265,8 +266,6 @@ func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.S
 	}
 	ps.metrics.ChunksSentCounter.Inc()
 
-	fmt.Println("Received chunk delivery")
-
 	// create chunk and store it in the local store
 	addr := swarm.NewAddress(ch.Address)
 	chunk := swarm.NewChunk(addr, ch.Data)
@@ -282,8 +281,5 @@ func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.S
 		return nil, err
 	}
 	ps.metrics.ReceiptsSentCounter.Inc()
-
-	fmt.Println("Sent Receipt")
-
     return chunk, nil
 }
