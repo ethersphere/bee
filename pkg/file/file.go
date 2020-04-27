@@ -20,3 +20,12 @@ import (
 type Joiner interface {
 	Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataLength int64, err error)
 }
+
+// Splitter starts a new file splitting job.
+//
+// Data is read from the provided reader.
+// If the dataLength parameter is 0, data is read until io.EOF is encountered.
+// When EOF is received and splitting is done, the resulting Swarm Address is returned.
+type Splitter interface {
+       Split(ctx context.Context, dataIn io.ReadCloser, dataLength int64) (addr swarm.Address, err error)
+}
