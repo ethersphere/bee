@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestSencChunk tests that a chunk that is uploaded to localstore is sent to the appropriate closest peer.
+// TestSendToClosest tests that a chunk that is uploaded to localstore is sent to the appropriate peer.
 func TestSendToClosest(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
