@@ -17,6 +17,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// TestBzz tests that the data upload api responds as expected when uploading,
+// downloading and requesting a resource that cannot be found.
 func TestBzz(t *testing.T) {
 	var (
 		resource        = "/bzz/"
