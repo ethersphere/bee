@@ -31,12 +31,12 @@ func TestContentAddressValidator(t *testing.T) {
 	copy(fooBytes[8:], []byte(foo))
 	ch := swarm.NewChunk(address, fooBytes)
 	if !validator.Validate(ch) {
-		t.Fatalf("data '%s' should have validated to hash '%x'", ch.Data(), ch.Address())
+		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 
 	// now test with incorrect data
 	ch = swarm.NewChunk(address, fooBytes[:len(fooBytes)-1])
 	if validator.Validate(ch) {
-		t.Fatalf("data '%s' should not have validated to hash '%x'", ch.Data(), ch.Address())
+		t.Fatalf("data '%s' should not have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 }
