@@ -23,7 +23,7 @@ import (
 )
 
 type bzzPostResponse struct {
-	Hash string
+	Hash swarm.Address `json:"hash"`
 }
 
 func hashFunc() hash.Hash {
@@ -68,7 +68,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "write error")
 		return
 	}
-	jsonhttp.OK(w, bzzPostResponse{Hash: addr.String()})
+	jsonhttp.OK(w, bzzPostResponse{Hash: addr})
 }
 
 func (s *server) bzzGetHandler(w http.ResponseWriter, r *http.Request) {

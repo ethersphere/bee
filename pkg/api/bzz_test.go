@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestBzz(t *testing.T) {
@@ -30,7 +31,7 @@ func TestBzz(t *testing.T) {
 
 	t.Run("upload", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource, bytes.NewReader(content), http.StatusOK, api.BzzPostResponse{
-			Hash: expHash,
+			Hash: swarm.MustParseHexAddress(expHash),
 		})
 	})
 
