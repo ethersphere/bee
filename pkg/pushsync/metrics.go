@@ -29,6 +29,7 @@ type metrics struct {
 
 	ErrorSettingChunkToSynced prometheus.Counter
 	RetriesExhaustedCounter   prometheus.Counter
+	InvalidReceiptReceived    prometheus.Counter
 
 	SendChunkTimer    prometheus.Counter
 	ReceiptRTT        prometheus.Counter
@@ -82,6 +83,12 @@ func newMetrics() metrics {
 			Name:      "received_receipts",
 			Help:      "Total no of times receipts received.",
 		}),
+		ReceiptsSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "sent_receipts",
+			Help:      "Total no of times receipts are sent.",
+		}),
 		SendReceiptErrorCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -107,7 +114,12 @@ func newMetrics() metrics {
 			Name:      "chunk_retries_exhausted",
 			Help:      "CHunk retries exhausted.",
 		}),
-
+		InvalidReceiptReceived: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "invalid_receipt_receipt",
+			Help:      "Invalid receipt received from peer.",
+		}),
 		SendChunkTimer: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
