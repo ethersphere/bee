@@ -40,7 +40,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := bmtlegacy.NewTreePool(hashFunc, swarm.SectionSize, bmtlegacy.PoolSize)
+	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	hasher := bmtlegacy.New(p)
 	span := len(data)
 	b := make([]byte, 8)

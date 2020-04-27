@@ -23,7 +23,7 @@ func TestBzz(t *testing.T) {
 	var (
 		resource        = "/bzz/"
 		content         = []byte("foo")
-		expHash         = "b9d678ef39fa973b430795a1f04e0f2541b47c996fd300552a1e8bfb5824325f"
+		expHash         = "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 		mockStorer      = mock.NewStorer()
 		client, cleanup = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
