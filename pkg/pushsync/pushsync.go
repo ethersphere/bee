@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-  "time"
+    "time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -63,7 +63,7 @@ func New(o Options) *PushSync {
 	}
 
 	ctx := context.Background()
-	go ps.chunksWorker()
+	go ps.chunksWorker(ctx)
 
 	return ps
 }
