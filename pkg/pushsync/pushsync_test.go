@@ -7,7 +7,6 @@ package pushsync_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io/ioutil"
 	"sync"
 	"testing"
@@ -373,7 +372,6 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("Sent Delivery")
 
 	// 2 - received Receipt
 	records := recorder.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
@@ -395,7 +393,6 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 	if !bytes.Equal(receipt.Address, chunk.Address().Bytes()) {
 		t.Fatal(err)
 	}
-	fmt.Println("Received receipt")
 
 	// 3 - receive Delivery
 	crecords := recorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
@@ -419,7 +416,6 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 	if !bytes.Equal(cdelivery.Data, chunk.Data()) {
 		t.Fatal(err)
 	}
-	fmt.Println("received delivery")
 
 	// 4 - send receipt
 	err = w.WriteMsg(&pb.Receipt{
@@ -428,7 +424,5 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	fmt.Println("Sent receipt")
 
 }
