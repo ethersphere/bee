@@ -4,4 +4,7 @@
 
 package api
 
-type PingpongResponse = pingpongResponse
+type (
+	PingpongResponse = pingpongResponse
+	BzzPostResponse  = bzzPostResponse
+)

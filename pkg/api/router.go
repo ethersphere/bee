@@ -32,6 +32,14 @@ func (s *server) setupRouting() {
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
+	router.Handle("/bzz/", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.bzzUploadHandler),
+	})
+
+	router.Handle("/bzz/{address}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.bzzGetHandler),
+	})
+
 	router.Handle("/bzz-chunk/{addr}", jsonhttp.MethodHandler{
 		"GET":  http.HandlerFunc(s.chunkGetHandler),
 		"POST": http.HandlerFunc(s.chunkUploadHandler),
