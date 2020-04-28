@@ -18,31 +18,21 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestChunkUpload uploads a chunk to an API that verifies the chunk according
+// TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
-	resource := func(addr swarm.Address) string {
-		return "/bzz-chunk/" + addr.String()
-	}
-
-	validHash, err := swarm.ParseHexAddress("aabbcc")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	invalidHash, err := swarm.ParseHexAddress("bbccdd")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	validContent := []byte("bbaatt")
-	invalidContent := []byte("bbaattss")
-
-	mockValidator := validator.NewMockValidator(validHash, validContent)
-	mockValidatingStorer := mock.NewValidatingStorer(mockValidator)
-	client, cleanup := newTestServer(t, testServerOptions{
-		Storer: mockValidatingStorer,
-	})
+	var (
+		resource             = func(addr swarm.Address) string { return "/bzz-chunk/" + addr.String() }
+		validHash            = swarm.MustParseHexAddress("aabbcc")
+		invalidHash          = swarm.MustParseHexAddress("bbccdd")
+		validContent         = []byte("bbaatt")
+		invalidContent       = []byte("bbaattss")
+		mockValidator        = validator.NewMockValidator(validHash, validContent)
+		mockValidatingStorer = mock.NewValidatingStorer(mockValidator)
+		client, cleanup      = newTestServer(t, testServerOptions{
+			Storer: mockValidatingStorer,
+		})
+	)
 	defer cleanup()
 
 	t.Run("invalid hash", func(t *testing.T) {

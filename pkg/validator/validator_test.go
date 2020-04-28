@@ -19,7 +19,7 @@ func TestContentAddressValidator(t *testing.T) {
 	validator := validator.NewContentAddressValidator()
 
 	// generate address from pre-generated hex of 'foo' from legacy bmt
-	bmtHashOfFoo := "b9d678ef39fa973b430795a1f04e0f2541b47c996fd300552a1e8bfb5824325f"
+	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
 
 	// set up a chunk object with correct expected length prefix
@@ -31,12 +31,12 @@ func TestContentAddressValidator(t *testing.T) {
 	copy(fooBytes[8:], []byte(foo))
 	ch := swarm.NewChunk(address, fooBytes)
 	if !validator.Validate(ch) {
-		t.Fatalf("data '%s' should have validated to hash '%x'", ch.Data(), ch.Address())
+		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 
 	// now test with incorrect data
 	ch = swarm.NewChunk(address, fooBytes[:len(fooBytes)-1])
 	if validator.Validate(ch) {
-		t.Fatalf("data '%s' should not have validated to hash '%x'", ch.Data(), ch.Address())
+		t.Fatalf("data '%s' should not have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 }

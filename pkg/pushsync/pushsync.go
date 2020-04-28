@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
+  "time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -63,7 +63,7 @@ func New(o Options) *PushSync {
 	}
 
 	ctx := context.Background()
-	go ps.chunksWorker(ctx)
+	go ps.chunksWorker()
 
 	return ps
 }
@@ -119,7 +119,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 func (ps *PushSync) chunksWorker(ctx context.Context) {
 	var chunks <-chan swarm.Chunk
 	var unsubscribe func()
-
 	// timer, initially set to 0 to fall through select case on timer.C for initialisation
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -282,4 +281,3 @@ func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.S
 	ps.metrics.ReceiptsSentCounter.Inc()
 	return chunk, nil
 }
-

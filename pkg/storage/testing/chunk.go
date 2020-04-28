@@ -38,7 +38,7 @@ func init() {
 func GenerateTestRandomChunk() swarm.Chunk {
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)
-	key := make([]byte, 32)
+	key := make([]byte, swarm.SectionSize)
 	_, _ = rand.Read(key)
 	return swarm.NewChunk(swarm.NewAddress(key), data)
 }

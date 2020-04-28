@@ -2,15 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-syntax = "proto3";
+package breaker
 
-package pb;
+import "time"
 
-message Delivery {
-  bytes Address = 1;
-  bytes Data = 2;
-}
-
-message Receipt {
-  bytes Address = 1;
+func SetTimeNow(f func() time.Time) {
+	timeNow = f
 }

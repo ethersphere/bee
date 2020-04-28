@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	ChunkSize = 4096
 	SectionSize = 32
+	Branches = 128
+	ChunkSize = SectionSize * Branches
 	MaxPO     = 16
 )
 
