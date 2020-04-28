@@ -90,8 +90,8 @@ func (ps *PushSync) Close() error {
 // It also sends a receipt for the chunk and  forwards the chunk to the closest peer.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	chunk, err := ps.ReceiveChunkAndSendReceipt(ctx, stream)
-    if err != nil {
-    	return err
+	if err != nil {
+		return err
 	}
 
 	// Also push this chunk to the closest node too
@@ -228,7 +228,6 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	ps.metrics.SendChunkTimer.Add(timeSpent)
 	ps.metrics.ChunksSentCounter.Inc()
 
-
 	var receipt pb.Receipt
 	if err := r.ReadMsg(&receipt); err != nil {
 		ps.metrics.ReceiveReceiptErrorCounter.Inc()
@@ -239,7 +238,7 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	ps.metrics.ReceiptsReceivedCounter.Inc()
 
 	// Check if the receipt is valid
-	if !bytes.Equal(ch.Address().Bytes(),receipt.Address) {
+	if !bytes.Equal(ch.Address().Bytes(), receipt.Address) {
 		ps.metrics.InvalidReceiptReceived.Inc()
 		return err
 	}
@@ -255,7 +254,7 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 }
 
 //ReceiveChunkAndSendReceipt receives a chunk and sends a corresponding receipt
-func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.Stream) (swarm.Chunk, error){
+func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.Stream) (swarm.Chunk, error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
@@ -281,5 +280,6 @@ func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.S
 		return nil, err
 	}
 	ps.metrics.ReceiptsSentCounter.Inc()
-    return chunk, nil
+	return chunk, nil
 }
+
