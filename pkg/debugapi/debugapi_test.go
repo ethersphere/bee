@@ -18,28 +18,30 @@ import (
 	mockstore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
 )
 
 type testServerOptions struct {
-	Overlay swarm.Address
-	P2P     p2p.Service
-	Storer  storage.Storer
+	Overlay      swarm.Address
+	P2P          p2p.Service
+	Storer       storage.Storer
+	TopologyOpts []mock.Option
 }
 
 type testServer struct {
 	Client         *http.Client
 	Addressbook    addressbook.GetPutter
-	TopologyDriver *mock.TopologyDriver
+	TopologyDriver topology.Driver
 	Cleanup        func()
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	statestore := mockstore.NewStateStore()
 	addressbook := addressbook.New(statestore)
-	topologyDriver := mock.NewTopologyDriver()
+	topologyDriver := mock.NewTopologyDriver(o.TopologyOpts...)
 
 	s := debugapi.New(debugapi.Options{
 		Overlay:        o.Overlay,

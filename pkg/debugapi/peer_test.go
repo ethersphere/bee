@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	topmock "github.com/ethersphere/bee/pkg/topology/mock"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -73,9 +74,9 @@ func TestConnect(t *testing.T) {
 				disconnectCalled = true
 				return nil
 			})),
+			TopologyOpts: []topmock.Option{topmock.WithAddPeerErr(testErr)},
 		})
 		defer testServer.Cleanup()
-		testServer.TopologyDriver.SetAddPeerErr(testErr)
 
 		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,

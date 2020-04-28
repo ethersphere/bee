@@ -73,6 +73,10 @@ func (m *mockStorer) SubscribePull(ctx context.Context, bin uint8, since uint64,
 	panic("not implemented") // TODO: Implement
 }
 
+func (m *mockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
+	panic("not implemented") // TODO: Implement
+}
+
 func (m *mockStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
