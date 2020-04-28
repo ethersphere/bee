@@ -33,6 +33,9 @@ type Interface interface {
 	// f() call is not locked so it can still be executed concurently.
 	// Returns `ErrClosed` if the limit is reached or f() result otherwise.
 	Execute(f func() error) error
+
+	// ClosedUntil retuns the timestamp when the breaker will become open again
+	ClosedUntil() time.Time
 }
 
 type breaker struct {
@@ -86,6 +89,17 @@ func (b *breaker) Execute(f func() error) error {
 	}
 
 	return b.afterf(f())
+}
+
+func (b *breaker) ClosedUntil() time.Time {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	if b.consFailedCalls >= b.limit {
+		return b.closedTimestamp.Add(b.backoff)
+	}
+
+	return timeNow()
 }
 
 func (b *breaker) beforef() error {

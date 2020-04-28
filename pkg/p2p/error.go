@@ -7,14 +7,36 @@ package p2p
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
-// ErrPeerNotFound should be returned by p2p service methods when the requested
-// peer is not found.
-var ErrPeerNotFound = errors.New("peer not found")
+var (
+	// ErrPeerNotFound should be returned by p2p service methods when the requested
+	// peer is not found.
+	ErrPeerNotFound = errors.New("peer not found")
+	// ErrAlreadyConnected is returned if connect was called for already connected node
+	ErrAlreadyConnected = errors.New("already connected")
+)
 
-// ErrAlreadyConnected is returned if connect was called for already connected node
-var ErrAlreadyConnected = errors.New("already connected")
+// ConnectionBackoffError indicates that connection calls will not be executed until `tryAfter` timetamp.
+// The reason is provided in the wrappped error.
+type ConnectionBackoffError struct {
+	tryAfter time.Time
+	err      error
+}
+
+// NewConnectionBackoffError creates new `ConnectionBackoffError` with provided underlying error and `tryeAfter` timestamp.
+func NewConnectionBackoffError(err error, tryAfter time.Time) error {
+	return &ConnectionBackoffError{err: err, tryAfter: tryAfter}
+}
+
+// Unwrap returns an underlying error.
+func (e *ConnectionBackoffError) Unwrap() error { return e.err }
+
+// Error implements function of the standard go error interface.
+func (e *ConnectionBackoffError) Error() string {
+	return e.err.Error()
+}
 
 // DisconnectError is an error that is specifically handled inside p2p. If returned by specific protocol
 // handler it causes peer disconnect.

@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -29,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -302,7 +304,6 @@ func NewBee(o Options) (*Bee, error) {
 				logger.Debugf("addressboook error persisting %s %s: %v", aa, overlay, err)
 				logger.Errorf("persisting node %s", aa)
 				return
-
 			}
 
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
@@ -332,8 +333,14 @@ func NewBee(o Options) (*Bee, error) {
 
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
+				var e *p2p.ConnectionBackoffError
+				if errors.Is(err, e) {
+					// todo: triger retry
+					logger.Info("todo")
+				}
+
 				_ = p2ps.Disconnect(overlay)
-				logger.Debugf("topology add peer fail %s: %v", overlay, err)
+				logger.Debugf("topology init add peer fail %s: %v", overlay, err)
 				logger.Errorf("topology add peer %s", overlay)
 				return
 			}
