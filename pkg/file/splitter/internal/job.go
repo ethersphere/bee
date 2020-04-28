@@ -50,8 +50,9 @@ func NewSimpleSplitterJob(ctx context.Context, r io.ReadCloser, store storage.St
 	return j
 }
 
-
-
+func (j *SimpleSplitterJob) Finish(l int64) (hash swarm.Address, err error) {
+	return swarm.ZeroAddress, nil
+}
 
 //// write to the data buffer on the specified level
 //// calls sum if chunk boundary is reached and recursively calls this function for the next level with the acquired bmt hash
