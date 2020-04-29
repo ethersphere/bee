@@ -9,8 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-    "time"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -31,8 +30,6 @@ type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Storer
 	peerSuggester topology.ClosestPeerer
-	retryChunks   map[string]int
-	retryChunksMu sync.Mutex
 	quit          chan struct{}
 	logger        logging.Logger
 	metrics       metrics
@@ -56,7 +53,6 @@ func New(o Options) *PushSync {
 		streamer:      o.Streamer,
 		storer:        o.Storer,
 		peerSuggester: o.ClosestPeerer,
-		retryChunks:   make(map[string]int),
 		logger:        o.Logger,
 		metrics:       newMetrics(),
 		quit:          make(chan struct{}),
@@ -64,7 +60,6 @@ func New(o Options) *PushSync {
 
 	ctx := context.Background()
 	go ps.chunksWorker(ctx)
-
 	return ps
 }
 
@@ -195,23 +190,6 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 		return fmt.Errorf("new stream: %w", err)
 	}
 	defer streamer.Close()
-
-	ps.retryChunksMu.Lock()
-
-	var noOfRetries int
-	var ok bool
-	if noOfRetries, ok = ps.retryChunks[ch.Address().String()]; ok {
-		if noOfRetries > MaxRetries {
-			delete(ps.retryChunks, ch.Address().String())
-			ps.metrics.RetriesExhaustedCounter.Inc()
-			ps.retryChunksMu.Unlock()
-			return fmt.Errorf("max retries exhausted for address: %s ", ch.Address().String())
-		}
-		noOfRetries++
-	} else {
-		ps.retryChunks[ch.Address().String()] = 0
-	}
-	ps.retryChunksMu.Unlock()
 
 	w, r := protobuf.NewWriterAndReader(streamer)
 	if err := w.WriteMsgWithTimeout(timeToWaitForReceipt, &pb.Delivery{
