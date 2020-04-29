@@ -255,7 +255,7 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	records := recorder1.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 2, 5)
+	records := recorder1.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(records[0].In()),
 		func() protobuf.Message { return new(pb.Delivery) },
@@ -277,9 +277,9 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 		t.Fatalf("chunk data mismatch")
 	}
 
-	//records = recorder1.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	records = recorder1.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 	messages, err = protobuf.ReadMessages(
-		bytes.NewReader(records[1].In()),
+		bytes.NewReader(records[0].In()),
 		func() protobuf.Message { return new(pb.Receipt) },
 	)
 	if err != nil {
