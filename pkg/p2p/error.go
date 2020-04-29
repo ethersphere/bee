@@ -30,6 +30,11 @@ func NewConnectionBackoffError(err error, tryAfter time.Time) error {
 	return &ConnectionBackoffError{err: err, tryAfter: tryAfter}
 }
 
+// TryAfter returns an tryAfter timetamp.
+func (e *ConnectionBackoffError) TryAfter() time.Time {
+	return e.tryAfter
+}
+
 // Unwrap returns an underlying error.
 func (e *ConnectionBackoffError) Unwrap() error { return e.err }
 

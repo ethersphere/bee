@@ -127,7 +127,6 @@ func TestClosedUntil(t *testing.T) {
 	if closed != timestamp.Add(startBackoff) {
 		t.Fatalf("expected: %s, got: %s", timestamp.Add(startBackoff), notClosed)
 	}
-
 }
 
 type timeMock struct {

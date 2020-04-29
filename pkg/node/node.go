@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -37,7 +38,6 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
@@ -317,37 +317,67 @@ func NewBee(o Options) (*Bee, error) {
 
 	wg.Wait()
 
-	overlays, err := addressbook.Overlays()
-	if err != nil {
-		return nil, fmt.Errorf("addressbook overlays: %w", err)
-	}
+	// Add addressbook 
+	var done bool
+	var backoff time.Duration
+	for !done {
+		if backoff != 0 {
+			time.Sleep(backoff)
+		}
 
-	jobsC := make(chan struct{}, 16)
-	for _, o := range overlays {
-		jobsC <- struct{}{}
-		wg.Add(1)
-		go func(overlay swarm.Address) {
-			defer func() {
-				<-jobsC
-			}()
+		overlays, err := addressbook.Overlays()
+		if err != nil {
+			return nil, fmt.Errorf("addressbook overlays: %w", err)
+		}
 
-			defer wg.Done()
-			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-				var e *p2p.ConnectionBackoffError
-				if errors.Is(err, e) {
-					// todo: triger retry
-					logger.Info("todo")
+		var eg errgroup.Group
+		jobsC := make(chan struct{}, 16)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		for _, o := range overlays {
+			select {
+			case jobsC <- struct{}{}:
+				// schedule next job
+			case <-ctx.Done():
+				break
+			}
+
+			overlay := o
+			eg.Go(func() error {
+				defer func() {
+					<-jobsC
+				}()
+
+				defer wg.Done()
+				if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
+					var e *p2p.ConnectionBackoffError
+					if errors.Is(err, e) {
+						cancel()
+						return err
+					}
+
+					_ = p2ps.Disconnect(overlay)
+					logger.Debugf("topology init add peer fail %s: %v", overlay, err)
+					logger.Errorf("topology add peer %s", overlay)
 				}
 
-				_ = p2ps.Disconnect(overlay)
-				logger.Debugf("topology init add peer fail %s: %v", overlay, err)
-				logger.Errorf("topology add peer %s", overlay)
-				return
-			}
-		}(o)
-	}
+				return nil
+			})
 
-	wg.Wait()
+			if err := eg.Wait(); err != nil {
+				backoffErr, ok := err.(*p2p.ConnectionBackoffError)
+				if !ok {
+					// should not happen
+					done = true
+				}
+
+				backoff = time.Until(backoffErr.TryAfter())
+			} else {
+				done = true
+			}
+		}
+	}
 
 	return b, nil
 }
