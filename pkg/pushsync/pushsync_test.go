@@ -7,6 +7,7 @@ package pushsync_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"sync"
 	"testing"
@@ -236,7 +237,7 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 	// chunk data to upload
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 	chunkData := []byte("1234")
-	//chunk := swarm.NewChunk(chunkAddress, chunkData)
+	chunk := swarm.NewChunk(chunkAddress, chunkData)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
@@ -250,7 +251,7 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 	defer ps2.Close()
 
 	// upload the chunk to the pivot node
-	_, err := storer1.Put(context.Background(), storage.ModePutUpload, swarm.NewChunk(chunkAddress, chunkData))
+	_, err := storer1.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +305,6 @@ func TestSendChunkAndGetReceipt(t *testing.T) {
 // 3 - Send the chunk to its closest peer
 // 4 - receive receipt
 func TestGetChunkAndSendReceipt(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
 
 	// chunk data to upload
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
@@ -312,99 +312,123 @@ func TestGetChunkAndSendReceipt(t *testing.T) {
 	chunk := swarm.NewChunk(chunkAddress, chunkData)
 
 	// create a pivot node and a mocked closest node
-	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
+	triggerNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
+	pivotNode :=   swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000")
 
-	recorder := streamtest.New(
-		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
-			return f
-		}),
-	)
 
-	storer, err := localstore.New("", pivotNode.Bytes(), nil, logger)
+
+	ps1, recorder1, storer1 := createPushSyncNode(t, triggerNode, pivotNode)
+	recorder1.SetProtocols(ps1.Protocol())
+	ps2, _ , _ := createPushSyncNode(t, pivotNode, closestPeer)
+	//recorder2.SetProtocols(ps2.Protocol())
+	//ps3, _ , _ := createPushSyncNode(t, closestPeer, chunkAddress)
+
+
+	defer ps1.Close()
+	defer ps2.Close()
+	//defer ps3.Close()
+
+	// upload the chunk to the trigger node
+	_, err := storer1.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	mockTopology := mock.NewTopologyDriver(mock.WithClosestPeer(closestPeer))
 
-	ps := pushsync.New(pushsync.Options{
-		Streamer:      recorder,
-		Storer:        storer,
-		ClosestPeerer: mockTopology,
-		Logger:        logger,
-	})
-	defer ps.Close()
-	recorder.SetProtocols(ps.Protocol())
-
-	// 1 - Send Delivery
-	stream, err := recorder.NewStream(context.Background(), pivotNode, nil, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stream.Close()
-	w := protobuf.NewWriter(stream)
-
-	err = w.WriteMsg(&pb.Delivery{
-		Address: chunk.Address().Bytes(),
-		Data:    chunk.Data(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// 2 - received Receipt
-	records := recorder.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	// Wait for Delivery from trigger node stream
+	records := recorder1.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 	messages, err := protobuf.ReadMessages(
+		bytes.NewReader(records[0].In()),
+		func() protobuf.Message { return new(pb.Delivery) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) > 1 {
+		t.Fatal("too many messages")
+	}
+	delivery := messages[0].(*pb.Delivery)
+	rcvdChunk := swarm.NewChunk(swarm.NewAddress(delivery.Address), delivery.Data)
+
+	if !bytes.Equal(rcvdChunk.Address().Bytes(), chunkAddress.Bytes()) {
+		t.Fatalf("chunk address mismatch")
+	}
+
+	if !bytes.Equal(rcvdChunk.Data(), chunkData) {
+		t.Fatalf("chunk data mismatch")
+	}
+
+	fmt.Println("Got delivery from trigger node")
+
+
+	// Wait for Receipt trigger node
+	records = recorder1.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	messages, err = protobuf.ReadMessages(
 		bytes.NewReader(records[0].In()),
 		func() protobuf.Message { return new(pb.Receipt) },
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if messages == nil {
-		t.Fatal(err)
-	}
 	if len(messages) > 1 {
 		t.Fatal("too many messages")
 	}
 	receipt := messages[0].(*pb.Receipt)
+	receiptAddress := swarm.NewAddress(receipt.Address)
 
-	if !bytes.Equal(receipt.Address, chunk.Address().Bytes()) {
-		t.Fatal(err)
-	}
-
-	// 3 - receive Delivery
-	crecords := recorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
-	cmessages, err := protobuf.ReadMessages(
-		bytes.NewReader(crecords[0].In()),
-		func() protobuf.Message { return new(pb.Delivery) },
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cmessages == nil {
-		t.Fatal(err)
-	}
-	if len(cmessages) > 1 {
-		t.Fatal("too many messages")
-	}
-	cdelivery := cmessages[0].(*pb.Delivery)
-	if !bytes.Equal(cdelivery.Address, chunk.Address().Bytes()) {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(cdelivery.Data, chunk.Data()) {
-		t.Fatal(err)
+	if !bytes.Equal(receiptAddress.Bytes(), chunkAddress.Bytes()) {
+		t.Fatalf("receipt address mismatch")
 	}
 
-	// 4 - send receipt
-	err = w.WriteMsg(&pb.Receipt{
-		Address: chunk.Address().Bytes(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	fmt.Println("Got receipt from pivot node node")
 
+
+	//// Wait for Delivery from pivot node
+	//records = recorder2.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	//messages, err = protobuf.ReadMessages(
+	//	bytes.NewReader(records[0].In()),
+	//	func() protobuf.Message { return new(pb.Delivery) },
+	//)
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//if len(messages) > 1 {
+	//	t.Fatal("too many messages")
+	//}
+	//delivery = messages[0].(*pb.Delivery)
+	//rcvdChunk = swarm.NewChunk(swarm.NewAddress(delivery.Address), delivery.Data)
+	//
+	//if !bytes.Equal(rcvdChunk.Address().Bytes(), chunkAddress.Bytes()) {
+	//	t.Fatalf("chunk address mismatch")
+	//}
+	//
+	//if !bytes.Equal(rcvdChunk.Data(), chunkData) {
+	//	t.Fatalf("chunk data mismatch")
+	//}
+	//
+	//fmt.Println("Got delivery from pivot node")
+	//
+	//
+	//// Wait for receipt from closest peer
+	//records = recorder2.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	//messages, err = protobuf.ReadMessages(
+	//	bytes.NewReader(records[0].In()),
+	//	func() protobuf.Message { return new(pb.Receipt) },
+	//)
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//if len(messages) > 1 {
+	//	t.Fatal("too many messages")
+	//}
+	//receipt = messages[0].(*pb.Receipt)
+	//receiptAddress = swarm.NewAddress(receipt.Address)
+	//
+	//if !bytes.Equal(receiptAddress.Bytes(), chunkAddress.Bytes()) {
+	//	t.Fatalf("receipt address mismatch")
+	//}
+	//fmt.Println("Got receipt from closest peer")
 }
 
 

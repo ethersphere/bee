@@ -89,9 +89,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return err
 	}
 
+	fmt.Println("Got delivery and sent receipt to peer " , p.Address.String())
+
+
 	// Also push this chunk to the closest node too
 	peer, err := ps.peerSuggester.ClosestPeer(chunk.Address())
 	if err != nil {
+		fmt.Println("error getting peer")
 		if errors.Is(err, topology.ErrWantSelf) {
 			// i'm the closest - nothing to do
 			return nil
@@ -101,12 +105,19 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if bytes.Equal(peer.Bytes(), p.Address.Bytes()) {
 		//Dont forward this chunk to the same peer as the received peer
+		fmt.Println("Forwarding to same peer", peer.String(), p.Address.String())
 		return nil
 	}
 
-	// This sends the chunk to a given peer and waits for the receipt
-	return ps.SendChunkAndReceiveReceipt(ctx, peer, chunk)
 
+	fmt.Println("Sending delivery to peer", peer.String())
+
+	// This sends the chunk to a given peer and waits for the receipt
+	err = ps.SendChunkAndReceiveReceipt(ctx, peer, chunk)
+
+	fmt.Println("sent delivery and got receipt")
+
+    return err
 }
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
