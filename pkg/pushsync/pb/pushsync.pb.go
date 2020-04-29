@@ -544,4 +544,3 @@ var (
 	ErrIntOverflowPushsync          = fmt.Errorf("proto: integer overflow")
 	ErrUnexpectedEndOfGroupPushsync = fmt.Errorf("proto: unexpected end of group")
 )
-
