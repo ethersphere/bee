@@ -93,7 +93,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	peer, err := ps.peerSuggester.ClosestPeer(chunk.Address())
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
-			// i'm the closest - nothing to do
+			// send the receipt because we're the closest ones
+			panic("to be implemented")
 			return nil
 		}
 		return err
@@ -101,6 +102,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if bytes.Equal(peer.Bytes(), p.Address.Bytes()) {
 		//Dont forward this chunk to the same peer as the received peer
+		panic("this is not supposed to happen anyway, because if we get recommended that peer from ClosestPeer() above, it means that this function is broken")
 		return nil
 	}
 
