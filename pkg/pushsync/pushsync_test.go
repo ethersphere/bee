@@ -85,7 +85,6 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	}
 
 
-
 	// this intercepts the incoming receipt message
 	records = recorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 	messages, err = protobuf.ReadMessages(
@@ -108,6 +107,8 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 
 // TestHandler expect a chunk from a node on a stream. It then stores the chunk in the local store and
 // sends back a receipt. This is tested by intercepting the incoming stream for proper messages.
+// It also sends the chunk to the closest peerand receives a receipt.
+// Chunk moves from   TriggerPeer -> PivotPeer -> ClosestPeer
 func TestHandler(t *testing.T) {
 	// chunk data to upload
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
@@ -115,39 +116,53 @@ func TestHandler(t *testing.T) {
 	chunk := swarm.NewChunk(chunkAddress, chunkData)
 
 	// create a pivot node and a mocked closest node
-	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
+	pivotPeer := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+    closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 
 
-	// pivot node needs the streamer since the chunk is intercepted by
-	// the chunk worker, then gets sent by opening a new stream
-	psPivot, storerPivot := createPushSyncNode(t, pivotNode, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
-	defer storerPivot.Close()
+    // Create the closest peer
+	psClosestPeer, closestStorerPeerDB := createPushSyncNode(t, closestPeer, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer closestStorerPeerDB.Close()
+	defer psClosestPeer.Close()
+
+	closestRecorder := streamtest.New(
+		streamtest.WithProtocols(psClosestPeer.Protocol()),
+		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
+			return f
+		}),
+	)
+
+
+	// creating the pivot peer
+	psPivot, storerPivotDB := createPushSyncNode(t, pivotPeer, closestRecorder, mock.WithClosestPeer(closestPeer))
+	defer storerPivotDB.Close()
 	defer psPivot.Close()
 
 
-	recorder := streamtest.New(
+	pivotRecorder := streamtest.New(
 		streamtest.WithProtocols(psPivot.Protocol()),
 		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
 			return f
 		}),
 	)
 
-	// peer is the node responding to the chunk receipt message
-	// mock should return ErrWantSelf since there's noone to forward to
-	psPeer, storerPeer := createPushSyncNode(t, closestPeer, recorder, mock.WithClosestPeer(pivotNode))
-	defer storerPeer.Close()
-	defer psPeer.Close()
+	// Creating the trigger peer
+	psTriggerPeer, triggerStorerDB := createPushSyncNode(t, triggerPeer, pivotRecorder, mock.WithClosestPeer(pivotPeer))
+	defer triggerStorerDB.Close()
+	defer psTriggerPeer.Close()
 
 
-	// upload the chunk to the pivot node
-	_, err := storerPeer.Put(context.Background(), storage.ModePutUpload, chunk)
+
+	// upload the chunk to the trigger node DB which triggers the chain reaction of sending this chunk
+	// from trigger peer to pivot peer to closest peer.
+	_, err := triggerStorerDB.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// this intercepts the incoming delivery message from a peer
-	records := recorder.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
+	records := pivotRecorder.WaitRecords(t, pivotPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(records[0].In()),
 		func() protobuf.Message { return new(pb.Delivery) },
@@ -169,8 +184,8 @@ func TestHandler(t *testing.T) {
 		t.Fatalf("chunk data mismatch")
 	}
 
-	// this intercepts the outgoing receipt message on the same stream
-	records = recorder.WaitRecords(t, pivotNode, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
+	records = pivotRecorder.WaitRecords(t, pivotPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 	messages, err = protobuf.ReadMessages(
 		bytes.NewReader(records[0].In()),
 		func() protobuf.Message { return new(pb.Receipt) },
@@ -187,6 +202,52 @@ func TestHandler(t *testing.T) {
 	if !bytes.Equal(receiptAddress.Bytes(), chunkAddress.Bytes()) {
 		t.Fatalf("receipt address mismatch")
 	}
+
+
+	// Pivot peer will forward the chunk to its closest peer. Intercept the incoming stream from pivot node and check
+	// for the correctness of the chunk
+	records = closestRecorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	messages, err = protobuf.ReadMessages(
+		bytes.NewReader(records[0].In()),
+		func() protobuf.Message { return new(pb.Delivery) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) > 1 {
+		t.Fatal("too many messages")
+	}
+	delivery = messages[0].(*pb.Delivery)
+	rcvdChunk = swarm.NewChunk(swarm.NewAddress(delivery.Address), delivery.Data)
+
+	if !bytes.Equal(rcvdChunk.Address().Bytes(), chunkAddress.Bytes()) {
+		t.Fatalf("chunk address mismatch")
+	}
+
+	if !bytes.Equal(rcvdChunk.Data(), chunkData) {
+		t.Fatalf("chunk data mismatch")
+	}
+
+	// Similarly intercept the same incoming stream to see if the closest peer is sending a proper receipt
+	records = closestRecorder.WaitRecords(t, closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	messages, err = protobuf.ReadMessages(
+		bytes.NewReader(records[0].In()),
+		func() protobuf.Message { return new(pb.Receipt) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) > 1 {
+		t.Fatal("too many messages")
+	}
+	receipt = messages[0].(*pb.Receipt)
+	receiptAddress = swarm.NewAddress(receipt.Address)
+
+	if !bytes.Equal(receiptAddress.Bytes(), chunkAddress.Bytes()) {
+		t.Fatalf("receipt address mismatch")
+	}
+
+
 }
 
 func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB) {
