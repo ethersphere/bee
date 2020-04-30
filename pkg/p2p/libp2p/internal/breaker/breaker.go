@@ -21,7 +21,7 @@ const (
 var (
 	_ Interface = (*breaker)(nil)
 
-	// timeNow is used to deterministically mock time.Now() in tests
+	// timeNow is used to deterministically mock time.Now() in tests.
 	timeNow = time.Now
 
 	// ErrClosed is the special error type that indicates that breaker is closed and that is not executing functions at the moment.
@@ -34,7 +34,7 @@ type Interface interface {
 	// Returns `ErrClosed` if the limit is reached or f() result otherwise.
 	Execute(f func() error) error
 
-	// ClosedUntil retuns the timestamp when the breaker will become open again
+	// ClosedUntil retuns the timestamp when the breaker will become open again.
 	ClosedUntil() time.Time
 }
 

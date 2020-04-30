@@ -14,7 +14,7 @@ var (
 	// ErrPeerNotFound should be returned by p2p service methods when the requested
 	// peer is not found.
 	ErrPeerNotFound = errors.New("peer not found")
-	// ErrAlreadyConnected is returned if connect was called for already connected node
+	// ErrAlreadyConnected is returned if connect was called for already connected node.
 	ErrAlreadyConnected = errors.New("already connected")
 )
 

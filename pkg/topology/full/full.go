@@ -81,8 +81,8 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 			delete(d.receivedPeers, addr.ByteString())
 			d.mtx.Unlock()
 			var e *p2p.ConnectionBackoffError
-			if errors.Is(err, e) {
-				d.backoff(err.(*p2p.ConnectionBackoffError).TryAfter())
+			if errors.As(err, &e) {
+				d.backoff(e.TryAfter())
 				return err
 			}
 			return err
@@ -173,11 +173,11 @@ func (d *driver) backoff(tryAfter time.Time) {
 			// todo: context should be in line with the shutdown of the driver itself
 			if err := d.AddPeer(context.Background(), addr); err != nil {
 				var e *p2p.ConnectionBackoffError
-				if errors.Is(err, e) {
+				if errors.As(err, &e) {
 					d.mtx.Lock()
 					d.backoffActive = false
 					d.mtx.Unlock()
-					d.backoff(err.(*p2p.ConnectionBackoffError).TryAfter())
+					d.backoff(e.TryAfter())
 					return
 				}
 
