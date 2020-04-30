@@ -178,9 +178,10 @@ func (d *driver) backoff(tryAfter time.Time) {
 					d.backoffActive = false
 					d.mtx.Unlock()
 					d.backoff(e.TryAfter())
+					return
 				}
 
-				return
+				continue
 			}
 		}
 	}()
