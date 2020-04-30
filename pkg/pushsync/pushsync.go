@@ -44,8 +44,7 @@ type Options struct {
 
 var (
 	retryInterval        = 10 * time.Second // time interval between retries
-	timeToWaitForReceipt = 2 * time.Second  // time to wait to get a receipt for a chunk
-	MaxRetries           = 3                // No of time to retry sending the chunk
+	timeToWaitForReceipt = 3 * time.Second  // time to wait to get a receipt for a chunk
 )
 
 func New(o Options) *PushSync {
@@ -89,6 +88,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if err != nil {
 		return err
 	}
+
+
+	// Forwarding the received chunk to its closest peer is not as per swarm book section 2.3.2.
+	// but this is up for discussion
 
 	// Select the closest peer to forward the received chunk
 	peer, err := ps.peerSuggester.ClosestPeer(chunk.Address())
@@ -181,6 +184,8 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 	}
 }
 
+// ReceiveChunkAndSendReceipt receives a chunk delivery from a peer, stores it in the localDB and sends a receipt
+// in the same stream. Swarm book 2.3.2.
 func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.Stream) (swarm.Chunk, error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
@@ -199,10 +204,13 @@ func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.S
 	if err != nil {
 		return nil, err
 	}
+	ps.metrics.TotalChunksStoredInDB.Inc()
 
 	// Send a receipt immediately once the storage of the chunk is successfull
-	var receipt pb.Receipt
-	if err := w.WriteMsg(&receipt); err != nil {
+	receipt := &pb.Receipt{
+		Address: chunk.Address().Bytes(),
+	}
+	if err := w.WriteMsg(receipt); err != nil {
 		ps.metrics.SendReceiptErrorCounter.Inc()
 		return nil, err
 	}
@@ -213,6 +221,8 @@ func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.S
 
 // sendChunkAndReceiveReceipt sends chunk to a given peer
 // by opening a stream. It then waits for a receipt from that peer.
+// Once the receipt is received within a given time frame it marks that this chunk
+// as synced in the localstore.
 func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.Address, ch swarm.Chunk) error {
 	startTimer := time.Now()
 

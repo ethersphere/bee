@@ -16,6 +16,7 @@ type metrics struct {
 
 	TotalChunksToBeSentCounter prometheus.Counter
 	TotalChunksSynced          prometheus.Counter
+	TotalChunksStoredInDB       prometheus.Counter
 
 	ChunksSentCounter         prometheus.Counter
 	ChunksReceivedCounter     prometheus.Counter
@@ -51,6 +52,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_chunk_synced",
 			Help:      "Total chunks synced succesfully with valid receipts.",
+		}),
+		TotalChunksStoredInDB: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_chunk_stored_in_DB",
+			Help:      "Total chunks stored succesfully in local store.",
 		}),
 
 		ChunksSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
