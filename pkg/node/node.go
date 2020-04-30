@@ -307,7 +307,7 @@ func NewBee(o Options) (*Bee, error) {
 
 	wg.Wait()
 
-	// Connect bootnodes if there are no good nodes in addresbook
+	// Connect bootnodes if no nodes from the addressbook was sucesufully added to topology
 	if count == 0 {
 		for _, a := range o.Bootnodes {
 			wg.Add(1)
