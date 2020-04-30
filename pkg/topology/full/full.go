@@ -31,17 +31,17 @@ var _ topology.Driver = (*driver)(nil)
 // - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address.
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
 type driver struct {
-	base swarm.Address // the base address for this node
-
+	base          swarm.Address // the base address for this node
 	discovery     discovery.Driver
-	addressBook   addressbook.GetPutter
+	addressBook   addressbook.Interface
 	p2pService    p2p.Service
 	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
-	mtx           sync.Mutex          // guards received peers
+	backoffActive bool
+	mtx           sync.Mutex // guards received peers
 	logger        logging.Logger
 }
 
-func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) topology.Driver {
+func New(disc discovery.Driver, addressBook addressbook.Interface, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) topology.Driver {
 	return &driver{
 		base:          baseAddress,
 		discovery:     disc,
@@ -54,7 +54,7 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2
 
 // AddPeer adds a new peer to the topology driver.
 // The peer would be subsequently broadcasted to all connected peers.
-// All conneceted peers are also broadcasted to the new peer.
+// All connected peers are also broadcasted to the new peer.
 func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	d.mtx.Lock()
 	if _, ok := d.receivedPeers[addr.ByteString()]; ok {
@@ -80,6 +80,11 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 			d.mtx.Lock()
 			delete(d.receivedPeers, addr.ByteString())
 			d.mtx.Unlock()
+			var e *p2p.ConnectionBackoffError
+			if errors.Is(err, e) {
+				d.backoff(e.TryAfter())
+				return err
+			}
 			return err
 		}
 
@@ -150,6 +155,37 @@ func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	}
 
 	return closest, nil
+}
+
+func (d *driver) backoff(tryAfter time.Time) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.backoffActive {
+		return
+	}
+
+	d.backoffActive = true
+
+	go func() {
+		time.Sleep(time.Until(tryAfter))
+		addresses, _ := d.addressBook.Overlays()
+		for _, addr := range addresses {
+			// todo: context should be in line with the cancel of the whole driver
+			// since this driver is for testing it is not implemetned at the moment
+			// and backoff routine will not be canceled together with the driver
+			if err := d.AddPeer(context.Background(), addr); err != nil {
+				var e *p2p.ConnectionBackoffError
+				if errors.Is(err, e) {
+					d.mtx.Lock()
+					d.backoffActive = false
+					d.mtx.Unlock()
+					d.backoff(e.TryAfter())
+				}
+
+				return
+			}
+		}
+	}()
 }
 
 func isConnected(addr swarm.Address, connectedPeers []p2p.Peer) bool {

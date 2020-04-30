@@ -6,7 +6,6 @@ package node
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +13,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -31,13 +30,13 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
@@ -278,105 +277,74 @@ func NewBee(o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	// Connect bootnodes
+	overlays, err := addressbook.Overlays()
+	if err != nil {
+		return nil, fmt.Errorf("addressbook overlays: %w", err)
+	}
+
+	var count int32
 	var wg sync.WaitGroup
-	for _, a := range o.Bootnodes {
+	jobsC := make(chan struct{}, 16)
+	for _, o := range overlays {
+		jobsC <- struct{}{}
 		wg.Add(1)
-		go func(aa string) {
+		go func(overlay swarm.Address) {
+			defer func() {
+				<-jobsC
+			}()
+
 			defer wg.Done()
-			addr, err := ma.NewMultiaddr(aa)
-			if err != nil {
-				logger.Debugf("multiaddress fail %s: %v", aa, err)
-				logger.Errorf("connect to bootnode %s", aa)
-				return
-			}
-
-			overlay, err := p2ps.Connect(p2pCtx, addr)
-			if err != nil {
-				logger.Debugf("connect fail %s: %v", aa, err)
-				logger.Errorf("connect to bootnode %s", aa)
-				return
-			}
-
-			err = addressbook.Put(overlay, addr)
-			if err != nil {
-				_ = p2ps.Disconnect(overlay)
-				logger.Debugf("addressboook error persisting %s %s: %v", aa, overlay, err)
-				logger.Errorf("persisting node %s", aa)
-				return
-			}
-
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				_ = p2ps.Disconnect(overlay)
-				logger.Debugf("topology add peer fail %s %s: %v", aa, overlay, err)
-				logger.Errorf("connect to bootnode %s", aa)
+				logger.Debugf("topology add peer fail %s: %v", overlay, err)
+				logger.Errorf("topology add peer %s", overlay)
 				return
 			}
-		}(a)
+
+			atomic.AddInt32(&count, 1)
+		}(o)
 	}
 
 	wg.Wait()
 
-	// Add addressbook 
-	var done bool
-	var backoff time.Duration
-	for !done {
-		if backoff != 0 {
-			time.Sleep(backoff)
-		}
-
-		overlays, err := addressbook.Overlays()
-		if err != nil {
-			return nil, fmt.Errorf("addressbook overlays: %w", err)
-		}
-
-		var eg errgroup.Group
-		jobsC := make(chan struct{}, 16)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		for _, o := range overlays {
-			select {
-			case jobsC <- struct{}{}:
-				// schedule next job
-			case <-ctx.Done():
-				break
-			}
-
-			overlay := o
-			eg.Go(func() error {
-				defer func() {
-					<-jobsC
-				}()
-
+	// Connect bootnodes if there are no good nodes in addresbook
+	if count > 0 {
+		for _, a := range o.Bootnodes {
+			wg.Add(1)
+			go func(aa string) {
 				defer wg.Done()
-				if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-					var e *p2p.ConnectionBackoffError
-					if errors.Is(err, e) {
-						cancel()
-						return err
-					}
+				addr, err := ma.NewMultiaddr(aa)
+				if err != nil {
+					logger.Debugf("multiaddress fail %s: %v", aa, err)
+					logger.Errorf("connect to bootnode %s", aa)
+					return
+				}
 
+				overlay, err := p2ps.Connect(p2pCtx, addr)
+				if err != nil {
+					logger.Debugf("connect fail %s: %v", aa, err)
+					logger.Errorf("connect to bootnode %s", aa)
+					return
+				}
+
+				err = addressbook.Put(overlay, addr)
+				if err != nil {
 					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("topology init add peer fail %s: %v", overlay, err)
-					logger.Errorf("topology add peer %s", overlay)
+					logger.Debugf("addressboook error persisting %s %s: %v", aa, overlay, err)
+					logger.Errorf("persisting node %s", aa)
+					return
 				}
 
-				return nil
-			})
-
-			if err := eg.Wait(); err != nil {
-				backoffErr, ok := err.(*p2p.ConnectionBackoffError)
-				if !ok {
-					// should not happen
-					done = true
+				if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
+					_ = p2ps.Disconnect(overlay)
+					logger.Debugf("topology add peer fail %s %s: %v", aa, overlay, err)
+					logger.Errorf("connect to bootnode %s", aa)
+					return
 				}
-
-				backoff = time.Until(backoffErr.TryAfter())
-			} else {
-				done = true
-			}
+			}(a)
 		}
+
+		wg.Wait()
 	}
 
 	return b, nil
