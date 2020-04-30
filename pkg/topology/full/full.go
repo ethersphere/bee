@@ -170,9 +170,7 @@ func (d *driver) backoff(tryAfter time.Time) {
 		time.Sleep(time.Until(tryAfter))
 		addresses, _ := d.addressBook.Overlays()
 		for _, addr := range addresses {
-			// todo: context should be in line with the cancel of the whole driver
-			// since this driver is for testing it is not implemetned at the moment
-			// and backoff routine will not be canceled together with the driver
+			// todo: context should be in line with the shutdown of the driver itself
 			if err := d.AddPeer(context.Background(), addr); err != nil {
 				var e *p2p.ConnectionBackoffError
 				if errors.Is(err, e) {
