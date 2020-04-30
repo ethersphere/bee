@@ -37,7 +37,7 @@ type driver struct {
 	p2pService    p2p.Service
 	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
 	backoffActive bool
-	mtx           sync.Mutex // guards received peers
+	mtx           sync.Mutex
 	logger        logging.Logger
 }
 
@@ -82,7 +82,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 			d.mtx.Unlock()
 			var e *p2p.ConnectionBackoffError
 			if errors.Is(err, e) {
-				d.backoff(e.TryAfter())
+				d.backoff(err.(*p2p.ConnectionBackoffError).TryAfter())
 				return err
 			}
 			return err
@@ -177,7 +177,7 @@ func (d *driver) backoff(tryAfter time.Time) {
 					d.mtx.Lock()
 					d.backoffActive = false
 					d.mtx.Unlock()
-					d.backoff(e.TryAfter())
+					d.backoff(err.(*p2p.ConnectionBackoffError).TryAfter())
 					return
 				}
 

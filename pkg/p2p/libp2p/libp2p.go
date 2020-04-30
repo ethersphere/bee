@@ -37,9 +37,6 @@ import (
 
 var (
 	_ p2p.Service = (*Service)(nil)
-
-	// ErrBadNetwork indicates that it is suspected that network is currently in bad condition
-	ErrBadNetwork = errors.New("bad network")
 )
 
 type Service struct {
