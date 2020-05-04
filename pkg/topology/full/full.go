@@ -176,10 +176,10 @@ func (d *driver) backoff(tryAfter time.Time) {
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
+		defer cancel()
 		select {
 		case <-done:
 		case <-d.quit:
-			cancel()
 		}
 	}()
 
