@@ -80,37 +80,130 @@ func (ps *PushSync) Close() error {
 	return nil
 }
 
-// handler handles chunk delivery from other node and inserts it in to the local store,
-// It also sends a receipt for the chunk on the same stream.
-// ALso it forwards the received chunk to its closest peer.
+// handler handles chunk delivery from other node and forwards to its destination node.
+// If the current node is the destination, it stores in the local store and sends a receipt
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
-	chunk, err := ps.ReceiveChunkAndSendReceipt(ctx, stream)
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
+
+	// Get the delivery
+	ch, err := ps.getChunkDelivery(r)
 	if err != nil {
 		return err
 	}
 
+	// create chunk
+	addr := swarm.NewAddress(ch.Address)
+	chunk := swarm.NewChunk(addr, ch.Data)
 
-	// Forwarding the received chunk to its closest peer is not as per swarm book section 2.3.2.
-	// but this is up for discussion
-
-	// Select the closest peer to forward the received chunk
+	// Select the closest peer to forward the chunk
 	peer, err := ps.peerSuggester.ClosestPeer(chunk.Address())
-	 if err != nil {
-			if errors.Is(err, topology.ErrWantSelf) {
-				// i'm the closest - nothing to do
-				return nil
-			}
-			return err
-	 }
+	if err != nil {
+		// If i am the closest peer then store the chunk and send receipt
+		if errors.Is(err, topology.ErrWantSelf) {
 
-	//Dont forward this chunk to the same peer as the received peer
-	if bytes.Equal(peer.Bytes(), p.Address.Bytes()) {
+			// Store the chunk in the local store
+			_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
+			if err != nil {
+				return err
+			}
+			ps.metrics.TotalChunksStoredInDB.Inc()
+
+			// Send a receipt immediately once the storage of the chunk is successfull
+			if err := ps.sendReceipt(w, chunk.Address().Bytes()); err != nil {
+				return err
+			}
+			return nil
+		}
+		ps.logger.Debugf("Error finding the closest peer. Error : %s", err.Error())
 		return err
 	}
 
-	// This sends the chunk to a given peer and waits for the receipt
-	return ps.SendChunkAndReceiveReceipt(ctx, peer, chunk)
+	//Dont forward this chunk to the same peer as the received peer
+	if bytes.Equal(peer.Bytes(), p.Address.Bytes()) {
+		ps.logger.Debugf("Could not forward delivery to the same peer as the received one.")
+		return err
+	}
 
+	// Forward chunk to closest peer
+	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+	if err != nil {
+		return fmt.Errorf("new stream: %w", err)
+	}
+	defer streamer.Close()
+
+	wc, rc := protobuf.NewWriterAndReader(streamer)
+
+	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
+		return err
+	}
+	receiptRTTTimer := time.Now()
+
+	receipt, err := ps.receiveReceipt(rc)
+	if err != nil {
+		return nil
+	}
+	timeSpent := float64(time.Since(receiptRTTTimer))
+	ps.metrics.ReceiptRTT.Add(timeSpent)
+
+	// Check if the receipt is valid
+	if !bytes.Equal(chunk.Address().Bytes(), receipt.Address) {
+		ps.metrics.InvalidReceiptReceived.Inc()
+		return err
+	}
+
+	// forward the receipt to the received stream
+	if err := ps.sendReceipt(w, chunk.Address().Bytes()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ps *PushSync) getChunkDelivery(r protobuf.Reader) (ch pb.Delivery, err error) {
+	if err = r.ReadMsg(&ch); err != nil {
+		ps.metrics.ReceivedChunkErrorCounter.Inc()
+		return ch, err
+	}
+	ps.metrics.ChunksSentCounter.Inc()
+	return ch, nil
+}
+
+func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err error) {
+	startTimer := time.Now()
+	if err = w.WriteMsgWithTimeout(timeToWaitForReceipt, &pb.Delivery{
+		Address: chunk.Address().Bytes(),
+		Data:    chunk.Data(),
+	}); err != nil {
+		ps.metrics.SendChunkErrorCounter.Inc()
+		return err
+	}
+
+	timeSpent := float64(time.Since(startTimer))
+	ps.metrics.SendChunkTimer.Add(timeSpent)
+	ps.metrics.ChunksSentCounter.Inc()
+	return nil
+}
+
+func (ps *PushSync) sendReceipt(w protobuf.Writer, addr []byte) (err error) {
+	receipt := &pb.Receipt{
+		Address: addr,
+	}
+	if err := w.WriteMsg(receipt); err != nil {
+		ps.metrics.SendReceiptErrorCounter.Inc()
+		return err
+	}
+	ps.metrics.ReceiptsSentCounter.Inc()
+	return nil
+}
+
+func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err error) {
+	if err := r.ReadMsg(&receipt); err != nil {
+		ps.metrics.ReceiveReceiptErrorCounter.Inc()
+		return receipt, err
+	}
+	ps.metrics.ReceiptsReceivedCounter.Inc()
+	return receipt, nil
 }
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
@@ -184,48 +277,11 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 	}
 }
 
-// ReceiveChunkAndSendReceipt receives a chunk delivery from a peer, stores it in the localDB and sends a receipt
-// in the same stream. Swarm book 2.3.2.
-func (ps *PushSync) ReceiveChunkAndSendReceipt(ctx context.Context, stream p2p.Stream) (swarm.Chunk, error) {
-	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
-
-	var ch pb.Delivery
-	if err := r.ReadMsg(&ch); err != nil {
-		ps.metrics.ReceivedChunkErrorCounter.Inc()
-		return  nil, err
-	}
-	ps.metrics.ChunksSentCounter.Inc()
-
-	// create chunk and store it in the local store
-	addr := swarm.NewAddress(ch.Address)
-	chunk := swarm.NewChunk(addr, ch.Data)
-	_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
-	if err != nil {
-		return nil, err
-	}
-	ps.metrics.TotalChunksStoredInDB.Inc()
-
-	// Send a receipt immediately once the storage of the chunk is successfull
-	receipt := &pb.Receipt{
-		Address: chunk.Address().Bytes(),
-	}
-	if err := w.WriteMsg(receipt); err != nil {
-		ps.metrics.SendReceiptErrorCounter.Inc()
-		return nil, err
-	}
-	ps.metrics.ReceiptsSentCounter.Inc()
-
-	return chunk, nil
-}
-
 // sendChunkAndReceiveReceipt sends chunk to a given peer
 // by opening a stream. It then waits for a receipt from that peer.
 // Once the receipt is received within a given time frame it marks that this chunk
 // as synced in the localstore.
 func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.Address, ch swarm.Chunk) error {
-	startTimer := time.Now()
-
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
@@ -233,27 +289,17 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	defer streamer.Close()
 
 	w, r := protobuf.NewWriterAndReader(streamer)
-	if err := w.WriteMsgWithTimeout(timeToWaitForReceipt, &pb.Delivery{
-		Address: ch.Address().Bytes(),
-		Data:    ch.Data(),
-	}); err != nil {
-		ps.metrics.SendChunkErrorCounter.Inc()
+	if err := ps.sendChunkDelivery(w, ch); err != nil {
 		return err
 	}
-
-	timeSpent := float64(time.Since(startTimer))
 	receiptRTTTimer := time.Now()
-	ps.metrics.SendChunkTimer.Add(timeSpent)
-	ps.metrics.ChunksSentCounter.Inc()
 
-	var receipt pb.Receipt
-	if err := r.ReadMsg(&receipt); err != nil {
-		ps.metrics.ReceiveReceiptErrorCounter.Inc()
-		return err
+	receipt, err := ps.receiveReceipt(r)
+	if err != nil {
+		return nil
 	}
-	timeSpent = float64(time.Since(receiptRTTTimer))
+	timeSpent := float64(time.Since(receiptRTTTimer))
 	ps.metrics.ReceiptRTT.Add(timeSpent)
-	ps.metrics.ReceiptsReceivedCounter.Inc()
 
 	// Check if the receipt is valid
 	if !bytes.Equal(ch.Address().Bytes(), receipt.Address) {
