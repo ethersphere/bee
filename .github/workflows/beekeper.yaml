@@ -1,0 +1,43 @@
+name: Beekeper
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  beekeper:
+    env:
+      REPLICA: 3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install k3d
+        run: curl -s https://raw.githubusercontent.com/rancher/k3d/master/install.sh | bash
+      - name: Install latest beekeeper
+        run: |
+          export TAG=$(curl -s https://api.github.com/repos/ethersphere/beekeeper/releases/latest | jq -r .tag_name)
+          curl -Ls https://github.com/ethersphere/beekeeper/releases/download/${TAG}/beekeeper-linux-amd64 -o beekeeper
+          chmod +x beekeeper
+      - name: Create cluster
+        run: k3d create --publish="80:80" --enable-registry --registry-name registry.localhost
+      - name: Set kubeconfig
+        run: |
+          until k3d get-kubeconfig --name='k3s-default' &> /dev/null; do echo "Waiting for the cluster..."; sleep 1; done
+          mkdir ~/.kube
+          cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
+      - name: Set helm repo and namespace
+        run: |
+          helm repo add ethersphere "https://ethersphere.github.io/helm"
+          kubectl create ns bee
+      - name: Build latest bee image
+        run: |
+          docker build --network=host -t registry.localhost:5000/ethersphere/bee:latest .
+          docker push registry.localhost:5000/ethersphere/bee:latest
+      - name: Set bees
+        run: |
+          export LAST_BEE=$(($REPLICA-1))
+          helm install bee -f .github/bee.yaml ethersphere/bee --namespace bee --set image.repository=registry.localhost:5000/ethersphere/bee --set replicaCount="${REPLICA}" --set bootnode.enabled=true --wait
+          until curl -s "bee-${LAST_BEE}-debug.localhost/addresses" &> /dev/null; do echo "Waiting for the node..."; sleep 1; done
+      - name: Test peercount
+        run: ./beekeeper check peercount -c "${REPLICA}" -u http://bee-%d-debug.localhost
