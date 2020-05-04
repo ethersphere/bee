@@ -391,5 +391,9 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("localstore: %w", err)
 	}
 
+	if err := b.topologyCloser.Close(); err != nil {
+		return fmt.Errorf("topology driver: %w", err)
+	}
+
 	return b.errorLogWriter.Close()
 }
