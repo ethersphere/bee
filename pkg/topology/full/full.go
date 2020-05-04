@@ -31,17 +31,18 @@ var _ topology.Driver = (*driver)(nil)
 // - Every peer which is added to the driver gets broadcasted to every other peer regardless of its address.
 // - A random peer is picked when asking for a peer to retrieve an arbitrary chunk (Peerer interface).
 type driver struct {
-	base swarm.Address // the base address for this node
-
+	base          swarm.Address // the base address for this node
 	discovery     discovery.Driver
-	addressBook   addressbook.GetPutter
+	addressBook   addressbook.Interface
 	p2pService    p2p.Service
 	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
-	mtx           sync.Mutex          // guards received peers
+	backoffActive bool
 	logger        logging.Logger
+	mtx           sync.Mutex
+	quit          chan struct{}
 }
 
-func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) topology.Driver {
+func New(disc discovery.Driver, addressBook addressbook.Interface, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) topology.Driver {
 	return &driver{
 		base:          baseAddress,
 		discovery:     disc,
@@ -49,12 +50,13 @@ func New(disc discovery.Driver, addressBook addressbook.GetPutter, p2pService p2
 		p2pService:    p2pService,
 		receivedPeers: make(map[string]struct{}),
 		logger:        logger,
+		quit:          make(chan struct{}),
 	}
 }
 
 // AddPeer adds a new peer to the topology driver.
 // The peer would be subsequently broadcasted to all connected peers.
-// All conneceted peers are also broadcasted to the new peer.
+// All connected peers are also broadcasted to the new peer.
 func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	d.mtx.Lock()
 	if _, ok := d.receivedPeers[addr.ByteString()]; ok {
@@ -77,6 +79,14 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	if !isConnected(addr, connectedPeers) {
 		peerAddr, err := d.p2pService.Connect(ctx, ma)
 		if err != nil {
+			d.mtx.Lock()
+			delete(d.receivedPeers, addr.ByteString())
+			d.mtx.Unlock()
+			var e *p2p.ConnectionBackoffError
+			if errors.As(err, &e) {
+				d.backoff(e.TryAfter())
+				return err
+			}
 			return err
 		}
 
@@ -107,11 +117,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		return nil
 	}
 
-	if err := d.discovery.BroadcastPeers(context.Background(), addr, connectedAddrs...); err != nil {
-		return err
-	}
-
-	return nil
+	return d.discovery.BroadcastPeers(context.Background(), addr, connectedAddrs...)
 }
 
 // ClosestPeer returns the closest connected peer we have in relation to a
@@ -147,6 +153,60 @@ func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	}
 
 	return closest, nil
+}
+
+func (d *driver) Close() error {
+	close(d.quit)
+	return nil
+}
+
+func (d *driver) backoff(tryAfter time.Time) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.backoffActive {
+		return
+	}
+
+	d.backoffActive = true
+
+	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		select {
+		case <-done:
+		case <-d.quit:
+		}
+	}()
+
+	go func() {
+		defer func() { close(done) }()
+
+		select {
+		case <-time.After(time.Until(tryAfter)):
+			d.mtx.Lock()
+			d.backoffActive = false
+			d.mtx.Unlock()
+
+			addresses, _ := d.addressBook.Overlays()
+			for _, addr := range addresses {
+				select {
+				case <-d.quit:
+					return
+				default:
+					if err := d.AddPeer(ctx, addr); err != nil {
+						var e *p2p.ConnectionBackoffError
+						if errors.As(err, &e) {
+							d.backoff(e.TryAfter())
+							return
+						}
+					}
+				}
+			}
+		case <-d.quit:
+			return
+		}
+	}()
 }
 
 func isConnected(addr swarm.Address, connectedPeers []p2p.Peer) bool {
