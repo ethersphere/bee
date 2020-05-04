@@ -25,12 +25,12 @@ type ConnectionBackoffError struct {
 	err      error
 }
 
-// NewConnectionBackoffError creates new `ConnectionBackoffError` with provided underlying error and `tryeAfter` timestamp.
+// NewConnectionBackoffError creates new `ConnectionBackoffError` with provided underlying error and `tryAfter` timestamp.
 func NewConnectionBackoffError(err error, tryAfter time.Time) error {
 	return &ConnectionBackoffError{err: err, tryAfter: tryAfter}
 }
 
-// TryAfter returns an tryAfter timetamp.
+// TryAfter returns a tryAfter timetamp.
 func (e *ConnectionBackoffError) TryAfter() time.Time {
 	return e.tryAfter
 }

@@ -319,7 +319,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	if err := s.conectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
-		if err == breaker.ErrClosed {
+		if errors.Is(err, breaker.ErrClosed) {
 			return swarm.Address{}, p2p.NewConnectionBackoffError(err, s.conectionBreaker.ClosedUntil())
 		}
 		return swarm.Address{}, err

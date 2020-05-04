@@ -37,8 +37,9 @@ type driver struct {
 	p2pService    p2p.Service
 	receivedPeers map[string]struct{} // track already received peers. Note: implement cleanup or expiration if needed to stop infinite grow
 	backoffActive bool
-	mtx           sync.Mutex
 	logger        logging.Logger
+	mtx           sync.Mutex
+	quit          chan struct{}
 }
 
 func New(disc discovery.Driver, addressBook addressbook.Interface, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) topology.Driver {
@@ -49,6 +50,7 @@ func New(disc discovery.Driver, addressBook addressbook.Interface, p2pService p2
 		p2pService:    p2pService,
 		receivedPeers: make(map[string]struct{}),
 		logger:        logger,
+		quit:          make(chan struct{}),
 	}
 }
 
@@ -157,6 +159,11 @@ func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	return closest, nil
 }
 
+func (d *driver) Close() error {
+	close(d.quit)
+	return nil
+}
+
 func (d *driver) backoff(tryAfter time.Time) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -166,23 +173,42 @@ func (d *driver) backoff(tryAfter time.Time) {
 
 	d.backoffActive = true
 
+	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(time.Until(tryAfter))
-		addresses, _ := d.addressBook.Overlays()
-		for _, addr := range addresses {
-			// todo: context should be in line with the shutdown of the driver itself
-			if err := d.AddPeer(context.Background(), addr); err != nil {
-				var e *p2p.ConnectionBackoffError
-				if errors.As(err, &e) {
-					d.mtx.Lock()
-					d.backoffActive = false
-					d.mtx.Unlock()
-					d.backoff(e.TryAfter())
-					return
-				}
+		select {
+		case <-done:
+		case <-d.quit:
+			cancel()
+		}
+	}()
 
-				continue
+	go func() {
+		defer func() { close(done) }()
+
+		select {
+		case <-time.After(time.Until(tryAfter)):
+			d.mtx.Lock()
+			d.backoffActive = false
+			d.mtx.Unlock()
+
+			addresses, _ := d.addressBook.Overlays()
+			for _, addr := range addresses {
+				select {
+				case <-d.quit:
+					return
+				default:
+					if err := d.AddPeer(ctx, addr); err != nil {
+						var e *p2p.ConnectionBackoffError
+						if errors.As(err, &e) {
+							d.backoff(e.TryAfter())
+							return
+						}
+					}
+				}
 			}
+		case <-d.quit:
+			return
 		}
 	}()
 }
