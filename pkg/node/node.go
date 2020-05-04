@@ -52,6 +52,7 @@ type Bee struct {
 	tracerCloser     io.Closer
 	stateStoreCloser io.Closer
 	localstoreCloser io.Closer
+	topologyCloser   io.Closer
 }
 
 type Options struct {
@@ -169,6 +170,7 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	topologyDriver := full.New(hive, addressbook, p2ps, logger, address)
+	b.topologyCloser = topologyDriver
 	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
 	p2ps.SetPeerAddedHandler(topologyDriver.AddPeer)
 	addrs, err := p2ps.Addresses()
