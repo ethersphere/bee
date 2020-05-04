@@ -7,6 +7,7 @@ package topology
 import (
 	"context"
 	"errors"
+	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -17,6 +18,7 @@ var ErrWantSelf = errors.New("node wants self")
 type Driver interface {
 	PeerAdder
 	ClosestPeerer
+	io.Closer
 }
 
 type PeerAdder interface {

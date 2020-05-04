@@ -35,7 +35,9 @@ import (
 	"github.com/multiformats/go-multistream"
 )
 
-var _ p2p.Service = (*Service)(nil)
+var (
+	_ p2p.Service = (*Service)(nil)
+)
 
 type Service struct {
 	ctx              context.Context
@@ -169,7 +171,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 	}
 
 	// Construct protocols.
-
 	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
 	matcher, err := s.protocolSemverMatcher(id)
 	if err != nil {
@@ -278,7 +279,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			s.metrics.HandledStreamCount.Inc()
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay}, stream); err != nil {
 				var e *p2p.DisconnectError
-				if errors.Is(err, e) {
+				if errors.As(err, &e) {
 					// todo: test connection close and refactor
 					_ = s.Disconnect(overlay)
 				}
@@ -318,6 +319,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	if err := s.conectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+		if errors.Is(err, breaker.ErrClosed) {
+			return swarm.Address{}, p2p.NewConnectionBackoffError(err, s.conectionBreaker.ClosedUntil())
+		}
 		return swarm.Address{}, err
 	}
 

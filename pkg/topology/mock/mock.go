@@ -65,6 +65,10 @@ func (d *mock) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	return d.closestPeer, d.closestPeerErr
 }
 
+func (d *mock) Close() error {
+	return nil
+}
+
 type Option interface {
 	apply(*mock)
 }

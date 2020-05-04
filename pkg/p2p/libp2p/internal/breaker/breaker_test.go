@@ -100,6 +100,35 @@ func TestExecute(t *testing.T) {
 	}
 }
 
+func TestClosedUntil(t *testing.T) {
+	timestamp := time.Now()
+	startBackoff := 1 * time.Minute
+	testError := errors.New("test error")
+	timeMock := timeMock{times: []time.Time{timestamp, timestamp, timestamp}}
+	breaker.SetTimeNow(timeMock.next)
+
+	b := breaker.NewBreaker(breaker.Options{
+		Limit:        1,
+		StartBackoff: startBackoff,
+	})
+
+	notClosed := b.ClosedUntil()
+	if notClosed != timestamp {
+		t.Fatalf("expected: %s, got: %s", timestamp, notClosed)
+	}
+
+	if err := b.Execute(func() error {
+		return testError
+	}); err != testError {
+		t.Fatalf("expected nil got %s", err)
+	}
+
+	closed := b.ClosedUntil()
+	if closed != timestamp.Add(startBackoff) {
+		t.Fatalf("expected: %s, got: %s", timestamp.Add(startBackoff), notClosed)
+	}
+}
+
 type timeMock struct {
 	times []time.Time
 	curr  int

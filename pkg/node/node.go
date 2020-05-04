@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -51,6 +52,7 @@ type Bee struct {
 	tracerCloser     io.Closer
 	stateStoreCloser io.Closer
 	localstoreCloser io.Closer
+	topologyCloser   io.Closer
 }
 
 type Options struct {
@@ -168,6 +170,7 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	topologyDriver := full.New(hive, addressbook, p2ps, logger, address)
+	b.topologyCloser = topologyDriver
 	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
 	p2ps.SetPeerAddedHandler(topologyDriver.AddPeer)
 	addrs, err := p2ps.Addresses()
@@ -276,51 +279,13 @@ func NewBee(o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	// Connect bootnodes
-	var wg sync.WaitGroup
-	for _, a := range o.Bootnodes {
-		wg.Add(1)
-		go func(aa string) {
-			defer wg.Done()
-			addr, err := ma.NewMultiaddr(aa)
-			if err != nil {
-				logger.Debugf("multiaddress fail %s: %v", aa, err)
-				logger.Errorf("connect to bootnode %s", aa)
-				return
-			}
-
-			overlay, err := p2ps.Connect(p2pCtx, addr)
-			if err != nil {
-				logger.Debugf("connect fail %s: %v", aa, err)
-				logger.Errorf("connect to bootnode %s", aa)
-				return
-			}
-
-			err = addressbook.Put(overlay, addr)
-			if err != nil {
-				_ = p2ps.Disconnect(overlay)
-				logger.Debugf("addressboook error persisting %s %s: %v", aa, overlay, err)
-				logger.Errorf("persisting node %s", aa)
-				return
-
-			}
-
-			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-				_ = p2ps.Disconnect(overlay)
-				logger.Debugf("topology add peer fail %s %s: %v", aa, overlay, err)
-				logger.Errorf("connect to bootnode %s", aa)
-				return
-			}
-		}(a)
-	}
-
-	wg.Wait()
-
 	overlays, err := addressbook.Overlays()
 	if err != nil {
 		return nil, fmt.Errorf("addressbook overlays: %w", err)
 	}
 
+	var count int32
+	var wg sync.WaitGroup
 	jobsC := make(chan struct{}, 16)
 	for _, o := range overlays {
 		jobsC <- struct{}{}
@@ -337,10 +302,52 @@ func NewBee(o Options) (*Bee, error) {
 				logger.Errorf("topology add peer %s", overlay)
 				return
 			}
+
+			atomic.AddInt32(&count, 1)
 		}(o)
 	}
 
 	wg.Wait()
+
+	// Connect bootnodes if no nodes from the addressbook was sucesufully added to topology
+	if count == 0 {
+		for _, a := range o.Bootnodes {
+			wg.Add(1)
+			go func(a string) {
+				defer wg.Done()
+				addr, err := ma.NewMultiaddr(a)
+				if err != nil {
+					logger.Debugf("multiaddress fail %s: %v", a, err)
+					logger.Errorf("connect to bootnode %s", a)
+					return
+				}
+
+				overlay, err := p2ps.Connect(p2pCtx, addr)
+				if err != nil {
+					logger.Debugf("connect fail %s: %v", a, err)
+					logger.Errorf("connect to bootnode %s", a)
+					return
+				}
+
+				err = addressbook.Put(overlay, addr)
+				if err != nil {
+					_ = p2ps.Disconnect(overlay)
+					logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
+					logger.Errorf("persisting node %s", a)
+					return
+				}
+
+				if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
+					_ = p2ps.Disconnect(overlay)
+					logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
+					logger.Errorf("connect to bootnode %s", a)
+					return
+				}
+			}(a)
+		}
+
+		wg.Wait()
+	}
 
 	return b, nil
 }
@@ -382,6 +389,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.localstoreCloser.Close(); err != nil {
 		return fmt.Errorf("localstore: %w", err)
+	}
+
+	if err := b.topologyCloser.Close(); err != nil {
+		return fmt.Errorf("topology driver: %w", err)
 	}
 
 	return b.errorLogWriter.Close()
