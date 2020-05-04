@@ -1,0 +1,36 @@
+image:
+  repository: ethersphere/bee
+  tag: latest
+  pullPolicy: Always
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: traefik
+  hosts:
+    - domain: localhost
+      paths:
+        - /
+
+ingressDebug:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: traefik
+  hosts:
+    - domain: localhost
+      paths:
+        - /
+
+serviceAccount:
+  create: true
+
+resources:
+  limits:
+    memory: 0.5Gi
+    cpu: 0.5
+  requests:
+    memory: 0.25Gi
+    cpu: 0.25
+
+beeConfig:
+  enable_debug_api: true
