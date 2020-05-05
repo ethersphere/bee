@@ -207,30 +207,29 @@ func (s *SimpleSplitterJob) hashUnfinished() {
 ////
 //// After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() {
+	// calculate the total number of levels needed to represent the data (including the data level)
+	targetLevel := file.GetLevelsFromLength(s.length, swarm.SectionSize, swarm.Branches)
+
+	// sum every intermediate level and write to the level above it
+	for i := 1; i < targetLevel; i++ {
+
+		// and if there is a single reference outside a balanced tree on this level
+		// don't hash it again but pass it on to the next level
+		if s.counts[i] > 0 {
+			// TODO: simplify if possible
+			if int64(s.counts[i-1])-file.Spans[targetLevel-1-i] <= 1 {
+				s.cursors[i+1] = s.cursors[i]
+				s.cursors[i] = s.cursors[i-1]
+				continue
+			}
+		}
+
+		ref := s.sum(i)
+		copy(s.buffer[s.cursors[i+1]:], ref)
+		s.cursors[i+1] += len(ref)
+		s.cursors[i] = s.cursors[i+1]
+	}
 }
-//	// calculate the total number of levels needed to represent the data (including the data level)
-//	targetLevel := getLevelsFromLength(r.length, r.params.SectionSize, r.params.Branches)
-//
-//	// sum every intermediate level and write to the level above it
-//	for i := 1; i < targetLevel; i++ {
-//
-//		// and if there is a single reference outside a balanced tree on this level
-//		// don't hash it again but pass it on to the next level
-//		if r.counts[i] > 0 {
-//			// TODO: simplify if possible
-//			if r.counts[i-1]-r.params.Spans[targetLevel-1-i] <= 1 {
-//				r.cursors[i+1] = r.cursors[i]
-//				r.cursors[i] = r.cursors[i-1]
-//				continue
-//			}
-//		}
-//
-//		ref := r.sum(i)
-//		copy(r.buffer[r.cursors[i+1]:], ref)
-//		r.cursors[i+1] += len(ref)
-//		r.cursors[i] = r.cursors[i+1]
-//	}
-//}
 
 // closeDone, for purpose readability, wraps the sync.Once execution of closing the doneC channel
 func (j *SimpleSplitterJob) closeDone() {
