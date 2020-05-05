@@ -98,7 +98,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	receipt := messages[0].(*pb.Receipt)
 	receiptAddress := swarm.NewAddress(receipt.Address)
 
-	if !bytes.Equal(receiptAddress.Bytes(), chunkAddress.Bytes()) {
+	if !receiptAddress.Equal(chunkAddress) {
 		t.Fatalf("receipt address mismatch")
 	}
 }
@@ -218,7 +218,7 @@ func TestHandler(t *testing.T) {
 	receipt := messages[0].(*pb.Receipt)
 	receiptAddress := swarm.NewAddress(receipt.Address)
 
-	if !bytes.Equal(receiptAddress.Bytes(), chunkAddress.Bytes()) {
+	if !receiptAddress.Equal(chunkAddress) {
 		t.Fatalf("receipt address mismatch")
 	}
 
@@ -237,7 +237,7 @@ func TestHandler(t *testing.T) {
 	receipt = messages[0].(*pb.Receipt)
 	receiptAddress = swarm.NewAddress(receipt.Address)
 
-	if !bytes.Equal(receiptAddress.Bytes(), chunkAddress.Bytes()) {
+	if !receiptAddress.Equal(chunkAddress) {
 		t.Fatalf("receipt address mismatch")
 	}
 }

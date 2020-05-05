@@ -5,7 +5,6 @@
 package pushsync
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -80,7 +79,7 @@ func (ps *PushSync) Close() error {
 }
 
 // handler handles chunk delivery from other node and forwards to its destination node.
-// If the current node is the destination, it stores in the local store and sends a receipt
+// If the current node is the destination, it stores in the local store and sends a receipt.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
@@ -88,7 +87,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Get the delivery
 	ch, err := ps.getChunkDelivery(r)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not receive chunk delivery: %w ", err)
 	}
 
 	// create chunk
@@ -109,19 +108,17 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			ps.metrics.TotalChunksStoredInDB.Inc()
 
 			// Send a receipt immediately once the storage of the chunk is successfull
-			err = ps.sendReceipt(w, chunk.Address().Bytes())
+			err = ps.sendReceipt(w, chunk.Address())
 			if err != nil {
 				return err
 			}
 			return nil
 		}
-		ps.logger.Debugf("Error finding the closest peer. Error : %s", err.Error())
 		return err
 	}
 
 	//Dont forward this chunk to the same peer as the received peer
-	if bytes.Equal(peer.Bytes(), p.Address.Bytes()) {
-		ps.logger.Debugf("Could not forward delivery to the same peer as the received one.")
+	if p.Address.Equal(peer) {
 		return err
 	}
 
@@ -135,26 +132,26 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
 
 	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
-		return err
+		return fmt.Errorf("could not send chunk to closest peer: %w ", err)
 	}
 	receiptRTTTimer := time.Now()
 
 	receipt, err := ps.receiveReceipt(rc)
 	if err != nil {
-		return nil
+		return fmt.Errorf("could not receive receipt: %w ", err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
-	// Check if the receipt is validSendChunkTimer
-	if !bytes.Equal(chunk.Address().Bytes(), receipt.Address) {
+	// Check if the receipt is valid
+	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
 		return err
 	}
 
 	// forward the receipt to the received stream
-	err = ps.sendReceipt(w, chunk.Address().Bytes())
+	err = ps.sendReceipt(w, chunk.Address())
 	if err != nil {
-		return err
+		return fmt.Errorf("could not send receipt back: %w", err)
 	}
 
 	return nil
@@ -183,9 +180,9 @@ func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err
 	return nil
 }
 
-func (ps *PushSync) sendReceipt(w protobuf.Writer, addr []byte) (err error) {
+func (ps *PushSync) sendReceipt(w protobuf.Writer, addr swarm.Address) (err error) {
 	receipt := &pb.Receipt{
-		Address: addr,
+		Address: addr.Bytes(),
 	}
 	if err := w.WriteMsg(receipt); err != nil {
 		ps.metrics.SendReceiptErrorCounter.Inc()
@@ -286,18 +283,18 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 
 	w, r := protobuf.NewWriterAndReader(streamer)
 	if err := ps.sendChunkDelivery(w, ch); err != nil {
-		return err
+		return fmt.Errorf("could not send chunk delivery : %w", err)
 	}
 	receiptRTTTimer := time.Now()
 
 	receipt, err := ps.receiveReceipt(r)
 	if err != nil {
-		return nil
+		return fmt.Errorf("could not receive receipt: %w", err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
 	// Check if the receipt is valid
-	if !bytes.Equal(ch.Address().Bytes(), receipt.Address) {
+	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
 		return err
 	}
@@ -305,7 +302,7 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	// set chunk status to synced, insert to db GC index
 	if err := ps.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
 		ps.metrics.ErrorSettingChunkToSynced.Inc()
-		return err
+		return fmt.Errorf("could not set chunk as synced in DB: %w", err)
 	}
 
 	ps.metrics.TotalChunksSynced.Inc()

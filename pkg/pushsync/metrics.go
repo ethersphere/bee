@@ -127,21 +127,21 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "send_chunk_time_histogram",
 			Help:      "Histogram for Time taken to send a chunk.",
-			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
 		MarkAndSweepTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "mark_and_sweep_time_histogram",
 			Help:      "Histogram of time spent in mark and sweep.",
-			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
 		ReceiptRTT: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "receipt_rtt_histogram",
 			Help:      "Histogram of RTT for receiving receipt for a pushed chunk.",
-			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
 	}
 }
