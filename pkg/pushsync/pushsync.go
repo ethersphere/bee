@@ -127,11 +127,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		// Send a receipt immediately once the storage of the chunk is successfull
 		receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
-		err = ps.sendReceipt(w, receipt)
-		if err != nil {
-			return fmt.Errorf("send receipt: %w", err)
-		}
-		return nil
+		return ps.sendReceipt(w, receipt)
 	}
 
 	// Forward chunk to closest peer
