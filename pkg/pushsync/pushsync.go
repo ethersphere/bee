@@ -103,14 +103,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			// Store the chunk in the local store
 			_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
 			if err != nil {
-				return err
+				return fmt.Errorf("could not store chunk in local DB: %w ", err)
 			}
 			ps.metrics.TotalChunksStoredInDB.Inc()
 
 			// Send a receipt immediately once the storage of the chunk is successfull
 			err = ps.sendReceipt(w, chunk.Address())
 			if err != nil {
-				return err
+				return fmt.Errorf("could not send receipt: %w ", err)
 			}
 			return nil
 		}
