@@ -12,7 +12,12 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/file"
+	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
+
+func hashFunc() hash.Hash {
+	return sha3.NewLegacyKeccak256()
+}
 
 // ReferenceHasher is the source-of-truth implementation of the swarm file hashing algorithm
 type SimpleSplitterJob struct {
@@ -31,6 +36,8 @@ type SimpleSplitterJob struct {
 }
 
 func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength int64) *SimpleSplitterJob {
+
+	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	j := &SimpleSplitterJob{
 		ctx: ctx,
 		cursors: make([]int, 9),
@@ -40,6 +47,7 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 		dataC:   make(chan []byte),
 		doneC:   make(chan struct{}),
 		resultC: make(chan []byte),
+		hasher: bmtlegacy.New(p),
 		logger:     logging.New(os.Stderr, 6),
 	}
 
@@ -62,6 +70,9 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 
 func (j *SimpleSplitterJob) start() error {
 	var total int64
+
+// TODO: put in separate function to avoid outer label
+OUTER:
 	for {
 		select {
 		case <-j.ctx.Done():
@@ -74,8 +85,8 @@ func (j *SimpleSplitterJob) start() error {
 			j.update(0, d)
 			total += int64(len(d))
 			if total == j.spanLength {
-				j.logger.Tracef("file write done for context %v, length %d bytes", j.ctx, total)
-				break
+				j.logger.Tracef("last write %d done for context %v, total length %d bytes", len(d), j.ctx, total)
+				break OUTER
 			}
 		}
 	}
@@ -126,50 +137,46 @@ func (j *SimpleSplitterJob) Finish(l int64) (hash swarm.Address, err error) {
 	return swarm.ZeroAddress, nil
 }
 
-//// write to the data buffer on the specified level
-//// calls sum if chunk boundary is reached and recursively calls this function for the next level with the acquired bmt hash
-//// adjusts cursors accordingly
+// write to the data buffer on the specified level
+// calls sum if chunk boundary is reached and recursively calls this function for the next level with the acquired bmt hash
+// adjusts cursors accordingly
 func (s *SimpleSplitterJob) update(lvl int, data []byte) {
+	if lvl == 0 {
+		s.length += len(data)
+	}
+	copy(s.buffer[s.cursors[lvl]:s.cursors[lvl]+len(data)], data)
+	s.cursors[lvl] += len(data)
+	if s.cursors[lvl]-s.cursors[lvl+1] == swarm.ChunkSize {
+		ref := s.sum(lvl)
+		s.update(lvl+1, ref)
+		s.cursors[lvl] = s.cursors[lvl+1]
+	}
 }
-//	if lvl == 0 {
-//		r.length += len(data)
-//	}
-//	copy(r.buffer[r.cursors[lvl]:r.cursors[lvl]+len(data)], data)
-//	r.cursors[lvl] += len(data)
-//	if r.cursors[lvl]-r.cursors[lvl+1] == r.params.ChunkSize {
-//		ref := r.sum(lvl)
-//		r.update(lvl+1, ref)
-//		r.cursors[lvl] = r.cursors[lvl+1]
-//	}
-//}
-//
-//// calculates and returns the bmt sum of the last written data on the level
+
+// calculates and returns the bmt sum of the last written data on the level
 func (s *SimpleSplitterJob) sum(lvl int) []byte {
 	return nil
+	s.counts[lvl]++
+	spanSize := s.params.Spans[lvl] * swarm.ChunkSize
+	span := (s.length-1)%spanSize + 1
+
+	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
+
+	s.hasher.Reset()
+	s.hasher.SetSpan(span)
+	s.hasher.Write(s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum])
+	ref := s.hasher.Sum(nil)
+	return ref
 }
-//	r.counts[lvl]++
-//	spanSize := r.params.Spans[lvl] * r.params.ChunkSize
-//	span := (r.length-1)%spanSize + 1
-//
-//	sizeToSum := r.cursors[lvl] - r.cursors[lvl+1]
-//
-//	r.hasher.Reset()
-//	r.hasher.SetSpan(span)
-//	r.hasher.Write(r.buffer[r.cursors[lvl+1] : r.cursors[lvl+1]+sizeToSum])
-//	ref := r.hasher.Sum(nil)
-//	return ref
-//}
-//
-//// called after all data has been written
-//// sums the final chunks of each level
-//// skips intermediate levels that end on span boundary
+
+// called after all data has been written
+// sums the final chunks of each level
+// skips intermediate levels that end on span boundary
 func (s *SimpleSplitterJob) digest() []byte {
-	return nil
+	// the first section of the buffer will hold the root hash
+	return r.buffer[:r.params.SectionSize]
 }
-//
-//	// the first section of the buffer will hold the root hash
-//	return r.buffer[:r.params.SectionSize]
-//}
+
 //
 //// hashes the remaining unhashed chunks at the end of each level
 func (s *SimpleSplitterJob) hashUnfinished() {

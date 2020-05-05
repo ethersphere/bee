@@ -3,6 +3,7 @@ package internal_test
 import (
 	"context"
 	"testing"
+//	"time"
 
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -12,6 +13,7 @@ import (
 func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	store := mock.NewStorer()
 
+	//ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond * 250)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -31,7 +33,7 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 
 	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
-	if addressResult.Equal(address) {
+	if !addressResult.Equal(address) {
 		t.Fatalf("expected %v, got %v", address, addressResult)
 	}
 }
