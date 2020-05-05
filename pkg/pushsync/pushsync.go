@@ -232,7 +232,7 @@ func (ps *PushSync) chunksWorker() {
 			if err != nil {
 				if errors.Is(err, topology.ErrWantSelf) {
 					if err := ps.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
-						ps.logger.Error("pushsync: error setting chunks to synced", "err", err)
+						ps.logger.Error("pushsync: error setting chunks to synced: %v", err)
 					}
 					continue
 				}
@@ -240,7 +240,7 @@ func (ps *PushSync) chunksWorker() {
 
 			// TODO: make this function as a go routine and process several chunks in parallel
 			if err := ps.SendChunkAndReceiveReceipt(ctx, peer, ch); err != nil {
-				ps.logger.Errorf("error while sending chunk or receiving receipt", "addr", ch.Address().String(), "err", err)
+				ps.logger.Errorf("pushsync: error while sending chunk or receiving receipt: %v", err)
 				continue
 			}
 
