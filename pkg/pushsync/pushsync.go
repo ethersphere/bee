@@ -103,14 +103,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			// Store the chunk in the local store
 			_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
 			if err != nil {
-				return fmt.Errorf("could not store chunk in local DB: %w ", err)
+				return fmt.Errorf("chunk store: %w", err)
 			}
 			ps.metrics.TotalChunksStoredInDB.Inc()
 
 			// Send a receipt immediately once the storage of the chunk is successfull
 			err = ps.sendReceipt(w, chunk.Address())
 			if err != nil {
-				return fmt.Errorf("could not send receipt: %w ", err)
+				return fmt.Errorf("send receipt: %w", err)
 			}
 			return nil
 		}
@@ -132,13 +132,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
 
 	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
-		return fmt.Errorf("could not send chunk to closest peer: %w ", err)
+		return fmt.Errorf("send chunk: %w", err)
 	}
 	receiptRTTTimer := time.Now()
 
 	receipt, err := ps.receiveReceipt(rc)
 	if err != nil {
-		return fmt.Errorf("could not receive receipt: %w ", err)
+		return fmt.Errorf("receive receipt: %w", err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
@@ -151,7 +151,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// forward the receipt to the received stream
 	err = ps.sendReceipt(w, chunk.Address())
 	if err != nil {
-		return fmt.Errorf("could not send receipt back: %w", err)
+		return fmt.Errorf("send receipt: %w", err)
 	}
 
 	return nil
@@ -283,13 +283,13 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 
 	w, r := protobuf.NewWriterAndReader(streamer)
 	if err := ps.sendChunkDelivery(w, ch); err != nil {
-		return fmt.Errorf("could not send chunk delivery : %w", err)
+		return fmt.Errorf("chunk deliver: %w", err)
 	}
 	receiptRTTTimer := time.Now()
 
 	receipt, err := ps.receiveReceipt(r)
 	if err != nil {
-		return fmt.Errorf("could not receive receipt: %w", err)
+		return fmt.Errorf("receive receipt: %w", err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
@@ -302,7 +302,7 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	// set chunk status to synced, insert to db GC index
 	if err := ps.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
 		ps.metrics.ErrorSettingChunkToSynced.Inc()
-		return fmt.Errorf("could not set chunk as synced in DB: %w", err)
+		return fmt.Errorf("chunk store: %w", err)
 	}
 
 	ps.metrics.TotalChunksSynced.Inc()
