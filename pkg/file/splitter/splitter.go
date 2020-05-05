@@ -36,7 +36,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 			if err == io.EOF {
 				break
 			}
-			return
+			return swarm.ZeroAddress, err
 		}
 		j.Write(data[:c])
 		//j.update(0, data[:c])
@@ -45,5 +45,3 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 
 	return swarm.ZeroAddress, nil
 }
-}
-
