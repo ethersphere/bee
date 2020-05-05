@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"sync"
@@ -12,7 +13,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
+	"golang.org/x/crypto/sha3"
 )
 
 func hashFunc() hash.Hash {
@@ -24,12 +27,13 @@ type SimpleSplitterJob struct {
 	ctx context.Context
 	cursors []int              // section write position, indexed per level
 	spanLength int64	   // target length of data
-	length  int                // number of bytes written to the data level of the hasher
+	length  int64              // number of bytes written to the data level of the hasher
 	buffer  []byte             // keeps data and hashes, indexed by cursors
 	counts  []int              // number of sums performed, indexed per level
 	dataC   chan []byte
 	doneC   chan struct{}
 	closeDoneOnce sync.Once     // make sure done channel is closed only once
+	hasher bmt.Hash
 	resultC	chan []byte
 	err error
 	logger        logging.Logger
@@ -93,8 +97,9 @@ OUTER:
 
 	j.err = errors.New("Write called after Sum")
 
+	j.hashUnfinished()
+
 	if total > swarm.ChunkSize {
-		j.hashUnfinished()
 		j.moveDanglingChunk()
 	}
 
@@ -133,16 +138,12 @@ func (j *SimpleSplitterJob) Sum(b []byte) []byte {
 	return result
 }
 
-func (j *SimpleSplitterJob) Finish(l int64) (hash swarm.Address, err error) {
-	return swarm.ZeroAddress, nil
-}
-
 // write to the data buffer on the specified level
 // calls sum if chunk boundary is reached and recursively calls this function for the next level with the acquired bmt hash
 // adjusts cursors accordingly
 func (s *SimpleSplitterJob) update(lvl int, data []byte) {
 	if lvl == 0 {
-		s.length += len(data)
+		s.length += int64(len(data))
 	}
 	copy(s.buffer[s.cursors[lvl]:s.cursors[lvl]+len(data)], data)
 	s.cursors[lvl] += len(data)
@@ -155,9 +156,8 @@ func (s *SimpleSplitterJob) update(lvl int, data []byte) {
 
 // calculates and returns the bmt sum of the last written data on the level
 func (s *SimpleSplitterJob) sum(lvl int) []byte {
-	return nil
 	s.counts[lvl]++
-	spanSize := s.params.Spans[lvl] * swarm.ChunkSize
+	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
 
 	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
@@ -174,20 +174,18 @@ func (s *SimpleSplitterJob) sum(lvl int) []byte {
 // skips intermediate levels that end on span boundary
 func (s *SimpleSplitterJob) digest() []byte {
 	// the first section of the buffer will hold the root hash
-	return r.buffer[:r.params.SectionSize]
+	return s.buffer[:swarm.SectionSize]
 }
 
-//
-//// hashes the remaining unhashed chunks at the end of each level
+// hashes the remaining unhashed chunks at the end of each level
 func (s *SimpleSplitterJob) hashUnfinished() {
+	if s.length%swarm.ChunkSize != 0 {
+		ref := s.sum(0)
+		copy(s.buffer[s.cursors[1]:], ref)
+		s.cursors[1] += len(ref)
+		s.cursors[0] = s.cursors[1]
+	}
 }
-//	if r.length%r.params.ChunkSize != 0 {
-//		ref := r.sum(0)
-//		copy(r.buffer[r.cursors[1]:], ref)
-//		r.cursors[1] += len(ref)
-//		r.cursors[0] = r.cursors[1]
-//	}
-//}
 //
 //// in case of a balanced tree this method concatenates the reference to the single reference
 //// at the highest level of the tree.
