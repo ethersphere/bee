@@ -32,7 +32,7 @@ func (s *server) setupRouting() {
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
-	router.Handle("/bzz/", jsonhttp.MethodHandler{
+	router.Handle("/bzz", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.bzzUploadHandler),
 	})
 
