@@ -176,6 +176,9 @@ func (s *SimpleSplitterJob) writeToLevel(lvl int, data []byte) {
 	s.cursors[lvl] += len(data)
 	if s.cursors[lvl]-s.cursors[lvl+1] == swarm.ChunkSize {
 		ref := s.sumLevel(lvl)
+		addr := swarm.NewAddress(ref)
+		ch := swarm.NewChunk(addr, sbuffer[s.cursors[lvl+1], s.cursors[lvl])
+		s.store.Put(s.ctx, storage.modePutUpload, ch)
 		s.writeToLevel(lvl+1, ref)
 		s.cursors[lvl] = s.cursors[lvl+1]
 	}
