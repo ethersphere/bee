@@ -61,7 +61,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addr := swarm.NewAddress(hasher.Sum(nil))
-	_, err = s.Storer.Put(ctx, storage.ModePutUpload, swarm.NewChunk(addr, data[8:]))
+	_, err = s.Storer.Put(ctx, storage.ModePutUpload, swarm.NewChunk(addr, data))
 	if err != nil {
 		s.Logger.Debugf("bzz: write error: %v, addr %s", err, addr)
 		s.Logger.Error("bzz: write error")
@@ -97,5 +97,5 @@ func (s *server) bzzGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()))
+	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()[8:]))
 }

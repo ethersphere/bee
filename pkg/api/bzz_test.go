@@ -21,7 +21,7 @@ import (
 // downloading and requesting a resource that cannot be found.
 func TestBzz(t *testing.T) {
 	var (
-		resource        = "/bzz/"
+		resource        = "/bzz"
 		content         = []byte("foo")
 		expHash         = "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 		mockStorer      = mock.NewStorer()
@@ -38,7 +38,7 @@ func TestBzz(t *testing.T) {
 	})
 
 	t.Run("download", func(t *testing.T) {
-		resp := request(t, client, http.MethodGet, resource+expHash, nil, http.StatusOK)
+		resp := request(t, client, http.MethodGet, resource+"/"+expHash, nil, http.StatusOK)
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -50,7 +50,7 @@ func TestBzz(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodGet, resource+"abcd", nil, http.StatusNotFound, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodGet, resource+"/abcd", nil, http.StatusNotFound, jsonhttp.StatusResponse{
 			Message: "not found",
 			Code:    http.StatusNotFound,
 		})
