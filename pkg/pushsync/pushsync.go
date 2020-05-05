@@ -87,7 +87,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Get the delivery
 	ch, err := ps.getChunkDelivery(r)
 	if err != nil {
-		return fmt.Errorf("could not receive chunk delivery: %w ", err)
+		return fmt.Errorf("chunk delivery: %w", err)
 	}
 
 	// create chunk
