@@ -4,29 +4,25 @@
 package file
 
 import (
+	"bytes"
+
 	"io"
 )
 
 // simpleJoinerReadCloser wraps a byte slice in a io.ReadCloser implementation.
 type simpleReadCloser struct {
-	buffer []byte
-	cursor int
+	buffer io.Reader
 }
 
 func NewSimpleReadCloser(buffer []byte) io.ReadCloser {
 	return &simpleReadCloser{
-		buffer: buffer,
+		buffer: bytes.NewBuffer(buffer),
 	}
 }
 
 // Read implements io.Reader.
 func (s *simpleReadCloser) Read(b []byte) (int, error) {
-	if s.cursor == len(s.buffer) {
-		return 0, io.EOF
-	}
-	copy(b, s.buffer)
-	s.cursor += len(s.buffer)
-	return len(s.buffer), nil
+	return s.buffer.Read(b)
 }
 
 // Close implements io.Closer.

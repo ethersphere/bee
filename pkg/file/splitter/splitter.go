@@ -37,7 +37,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 
 	var total int
 	data := make([]byte, swarm.ChunkSize)
-	for {
+	for  {
 		c, err := r.Read(data)
 		if err != nil {
 			if err == io.EOF {

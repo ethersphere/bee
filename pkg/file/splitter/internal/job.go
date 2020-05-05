@@ -34,6 +34,7 @@ func hashFunc() hash.Hash {
 // error and will may result in undefined result.
 type SimpleSplitterJob struct {
 	ctx context.Context
+	store storage.Storer
 	cursors []int              // section write position, indexed per level
 	spanLength int64	   // target length of data
 	length  int64              // number of bytes written to the data level of the hasher
@@ -56,6 +57,7 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	j := &SimpleSplitterJob{
 		ctx: ctx,
+		store: store,
 		cursors: make([]int, 9),
 		spanLength: spanLength,
 		counts:  make([]int, 9),
@@ -113,8 +115,6 @@ OUTER:
 			}
 		}
 	}
-
-	j.err = errors.New("Write called after Sum")
 
 	j.hashUnfinished()
 
@@ -176,15 +176,14 @@ func (s *SimpleSplitterJob) writeToLevel(lvl int, data []byte) {
 	s.cursors[lvl] += len(data)
 	if s.cursors[lvl]-s.cursors[lvl+1] == swarm.ChunkSize {
 		ref := s.sumLevel(lvl)
-		addr := swarm.NewAddress(ref)
-		ch := swarm.NewChunk(addr, sbuffer[s.cursors[lvl+1], s.cursors[lvl])
-		s.store.Put(s.ctx, storage.modePutUpload, ch)
 		s.writeToLevel(lvl+1, ref)
 		s.cursors[lvl] = s.cursors[lvl+1]
 	}
 }
 
 // sumLevel calculates and returns the bmt sum of the last written data on the level.
+//
+// TODO: error handling on store write fail
 func (s *SimpleSplitterJob) sumLevel(lvl int) []byte {
 	s.counts[lvl]++
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
@@ -196,6 +195,12 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) []byte {
 	s.hasher.SetSpan(span)
 	s.hasher.Write(s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum])
 	ref := s.hasher.Sum(nil)
+	addr := swarm.NewAddress(ref)
+	ch := swarm.NewChunk(addr, s.buffer[s.cursors[lvl+1]:s.cursors[lvl]])
+	_, err := s.store.Put(s.ctx, storage.ModePutUpload, ch)
+	if err != nil {
+		return nil
+	}
 	return ref
 }
 
