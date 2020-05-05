@@ -232,7 +232,7 @@ func (ps *PushSync) chunksWorker() {
 			if err != nil {
 				if errors.Is(err, topology.ErrWantSelf) {
 					if err := ps.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
-						ps.logger.Error("pushsync: error setting chunks to synced: %v", err)
+						ps.logger.Errorf("pushsync: error setting chunks to synced: %v", err)
 					}
 					continue
 				}
