@@ -12,11 +12,13 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// simpleSplitter wraps a non-optimized implementation of file.Splitter
 type simpleSplitter struct {
 	store storage.Storer
 	logger logging.Logger
 }
 
+// NewSimpleSplitter creates a new SimpleSplitter
 func NewSimpleSplitter(store storage.Storer) file.Splitter {
 	return &simpleSplitter{
 		store: store,
@@ -24,6 +26,12 @@ func NewSimpleSplitter(store storage.Storer) file.Splitter {
 	}
 }
 
+// Split implements the file.Splitter interface
+//
+// It uses a non-optimized internal component that blocks when performing
+// multiple levels of hashing when building the file hash tree.
+//
+// It returns the Swarmhash of the data.
 func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength int64) (addr swarm.Address, err error) {
 	j := internal.NewSimpleSplitterJob(ctx, s.store, dataLength)
 
@@ -31,7 +39,6 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 	data := make([]byte, swarm.ChunkSize)
 	for {
 		c, err := r.Read(data)
-		// TODO: provide error to caller
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -39,9 +46,9 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 			return swarm.ZeroAddress, err
 		}
 		j.Write(data[:c])
-		//j.update(0, data[:c])
 		total += c
 	}
 
-	return swarm.ZeroAddress, nil
+	sum := j.Sum(nil)
+	return swarm.NewAddress(sum), nil
 }
