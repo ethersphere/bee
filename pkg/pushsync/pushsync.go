@@ -154,7 +154,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	// forward the receipt to the received stream
-	err = ps.sendReceipt(w, chunk.Address().Bytes());
+	err = ps.sendReceipt(w, chunk.Address().Bytes())
 	if err != nil {
 		return err
 	}
