@@ -2,52 +2,124 @@ package internal
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"os"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/file"
 )
 
 // ReferenceHasher is the source-of-truth implementation of the swarm file hashing algorithm
 type SimpleSplitterJob struct {
+	ctx context.Context
 	cursors []int              // section write position, indexed per level
+	spanLength int64	   // target length of data
 	length  int                // number of bytes written to the data level of the hasher
 	buffer  []byte             // keeps data and hashes, indexed by cursors
 	counts  []int              // number of sums performed, indexed per level
-	reader io.ReadCloser
+	dataC   chan []byte
+	doneC   chan struct{}
+	closeDoneOnce sync.Once     // make sure done channel is closed only once
+	resultC	chan []byte
+	err error
+	logger        logging.Logger
 }
 
-func NewSimpleSplitterJob(ctx context.Context, r io.ReadCloser, store storage.Storer) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength int64) *SimpleSplitterJob {
 	j := &SimpleSplitterJob{
+		ctx: ctx,
 		cursors: make([]int, 9),
+		spanLength: spanLength,
 		counts:  make([]int, 9),
 		buffer:  make([]byte, swarm.ChunkSize*9),
-		reader: r,
+		dataC:   make(chan []byte),
+		doneC:   make(chan struct{}),
+		resultC: make(chan []byte),
+		logger:     logging.New(os.Stderr, 6),
 	}
 
-	data := make([]byte, swarm.ChunkSize)
 	go func() {
-		var total int
-		for {
-			c, err := r.Read(data)
-			// TODO: provide error to caller
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				return
+		err := j.start()
+		if err != nil {
+			if err != io.EOF {
+				j.logger.Errorf("simple splitter chunk split job with context %v fail: %v", j.ctx, err)
+			} else {
+				j.logger.Tracef("simple splitter split job with context %v eof", j.ctx)
 			}
-			j.update(0, data[:c])
-			total += c
 		}
-
-		j.hashUnfinished()
-
-		j.moveDanglingChunk()
-
-		j.digest()
+		j.err = err
+		close(j.dataC)
+		j.closeDone()
 	}()
+
 	return j
+}
+
+func (j *SimpleSplitterJob) start() error {
+	var total int64
+	for {
+		select {
+		case <-j.ctx.Done():
+			return j.ctx.Err()
+		case <-j.doneC:
+			if j.spanLength > 0 && total != j.spanLength {
+				return file.NewAbortError(errors.New("file write aborted"))
+			}
+		case d := <-j.dataC:
+			j.update(0, d)
+			total += int64(len(d))
+			if total == j.spanLength {
+				j.logger.Tracef("file write done for context %v, length %d bytes", j.ctx, total)
+				break
+			}
+		}
+	}
+
+	j.err = errors.New("Write called after Sum")
+
+	if total > swarm.ChunkSize {
+		j.hashUnfinished()
+		j.moveDanglingChunk()
+	}
+
+	j.resultC <- j.digest()
+
+	return nil
+}
+
+func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
+	if cap(b) > swarm.ChunkSize {
+		return 0, fmt.Errorf("Write must be called with a maximum of %d bytes", swarm.ChunkSize)
+	}
+
+	// Write assumes that doneC will be closed on any state of abortion
+	select {
+		case <-j.doneC:
+			return 0, j.err
+		case j.dataC <- b:
+	}
+	return len(b), nil
+}
+
+func (j *SimpleSplitterJob) Sum(b []byte) []byte {
+
+	// doneC signals writes are completed
+	j.closeDone()
+
+	// wait for result of timeout event
+	// if times out result will be nil
+	// the error state will not be reported, so important that Write() handles any edge case that may lead to error
+	var result []byte
+	select {
+	case result = <-j.resultC:
+	case <-j.ctx.Done():
+	}
+	return result
 }
 
 func (j *SimpleSplitterJob) Finish(l int64) (hash swarm.Address, err error) {
@@ -155,3 +227,10 @@ func (s *SimpleSplitterJob) moveDanglingChunk() {
 //		r.cursors[i] = r.cursors[i+1]
 //	}
 //}
+
+// closeDone, for purpose readability, wraps the sync.Once execution of closing the doneC channel
+func (j *SimpleSplitterJob) closeDone() {
+	j.closeDoneOnce.Do(func() {
+		close(j.doneC)
+	})
+}

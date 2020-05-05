@@ -25,9 +25,25 @@ func NewSimpleSplitter(store storage.Storer) file.Splitter {
 }
 
 func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength int64) (addr swarm.Address, err error) {
-	j := internal.NewSimpleSplitterJob(ctx, r, s.store)
+	j := internal.NewSimpleSplitterJob(ctx, s.store, dataLength)
 
-	_ = j
+	var total int
+	data := make([]byte, swarm.ChunkSize)
+	for {
+		c, err := r.Read(data)
+		// TODO: provide error to caller
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return
+		}
+		j.Write(data[:c])
+		//j.update(0, data[:c])
+		total += c
+	}
+
 	return swarm.ZeroAddress, nil
+}
 }
 
