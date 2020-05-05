@@ -16,25 +16,21 @@ type metrics struct {
 
 	TotalChunksToBeSentCounter prometheus.Counter
 	TotalChunksSynced          prometheus.Counter
-	TotalChunksStoredInDB       prometheus.Counter
-
-	ChunksSentCounter         prometheus.Counter
-	ChunksReceivedCounter     prometheus.Counter
-	SendChunkErrorCounter     prometheus.Counter
-	ReceivedChunkErrorCounter prometheus.Counter
-
+	TotalChunksStoredInDB      prometheus.Counter
+	ChunksSentCounter          prometheus.Counter
+	ChunksReceivedCounter      prometheus.Counter
+	SendChunkErrorCounter      prometheus.Counter
+	ReceivedChunkErrorCounter  prometheus.Counter
 	ReceiptsReceivedCounter    prometheus.Counter
 	ReceiptsSentCounter        prometheus.Counter
 	SendReceiptErrorCounter    prometheus.Counter
 	ReceiveReceiptErrorCounter prometheus.Counter
-
-	ErrorSettingChunkToSynced prometheus.Counter
-	RetriesExhaustedCounter   prometheus.Counter
-	InvalidReceiptReceived    prometheus.Counter
-
-	SendChunkTimer    prometheus.Counter
-	ReceiptRTT        prometheus.Counter
-	MarkAndSweepTimer prometheus.Counter
+	ErrorSettingChunkToSynced  prometheus.Counter
+	RetriesExhaustedCounter    prometheus.Counter
+	InvalidReceiptReceived     prometheus.Counter
+	SendChunkTimer             prometheus.Histogram
+	ReceiptRTT                 prometheus.Histogram
+	MarkAndSweepTimer          prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -59,7 +55,6 @@ func newMetrics() metrics {
 			Name:      "total_chunk_stored_in_DB",
 			Help:      "Total chunks stored succesfully in local store.",
 		}),
-
 		ChunksSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -127,25 +122,26 @@ func newMetrics() metrics {
 			Name:      "invalid_receipt_receipt",
 			Help:      "Invalid receipt received from peer.",
 		}),
-		SendChunkTimer: prometheus.NewCounter(prometheus.CounterOpts{
+		SendChunkTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "send_chunk_time_taken",
-			Help:      "Total time taken to send a chunk.",
+			Name:      "send_chunk_time_histogram",
+			Help:      "Histogram for Time taken to send a chunk.",
+			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
-
-		MarkAndSweepTimer: prometheus.NewCounter(prometheus.CounterOpts{
+		MarkAndSweepTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "mark_and_sweep_time",
-			Help:      "Total time spent in mark and sweep.",
+			Name:      "mark_and_sweep_time_histogram",
+			Help:      "Histogram of time spent in mark and sweep.",
+			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
-
-		ReceiptRTT: prometheus.NewCounter(prometheus.CounterOpts{
+		ReceiptRTT: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "receipt_rtt",
-			Help:      "Time taken to receive a receipt for a pushed chunk.",
+			Name:      "receipt_rtt_histogram",
+			Help:      "Histogram of RTT for receiving receipt for a pushed chunk.",
+			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
 	}
 }

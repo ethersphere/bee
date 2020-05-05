@@ -57,8 +57,7 @@ func New(o Options) *PushSync {
 		quit:          make(chan struct{}),
 	}
 
-	ctx := context.Background()
-	go ps.chunksWorker(ctx)
+	go ps.chunksWorker()
 	return ps
 }
 
@@ -144,10 +143,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if err != nil {
 		return nil
 	}
-	timeSpent := float64(time.Since(receiptRTTTimer))
-	ps.metrics.ReceiptRTT.Add(timeSpent)
+	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
-	// Check if the receipt is valid
+	// Check if the receipt is validSendChunkTimer
 	if !bytes.Equal(chunk.Address().Bytes(), receipt.Address) {
 		ps.metrics.InvalidReceiptReceived.Inc()
 		return err
@@ -180,9 +178,7 @@ func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err
 		ps.metrics.SendChunkErrorCounter.Inc()
 		return err
 	}
-
-	timeSpent := float64(time.Since(startTimer))
-	ps.metrics.SendChunkTimer.Add(timeSpent)
+	ps.metrics.SendChunkTimer.Observe(time.Since(startTimer).Seconds())
 	ps.metrics.ChunksSentCounter.Inc()
 	return nil
 }
@@ -210,14 +206,14 @@ func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err e
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
 // and pushes them to the closest peer and get a receipt.
-func (ps *PushSync) chunksWorker(ctx context.Context) {
+func (ps *PushSync) chunksWorker() {
 	var chunks <-chan swarm.Chunk
 	var unsubscribe func()
 	// timer, initially set to 0 to fall through select case on timer.C for initialisation
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	chunksInBatch := -1
-
+	ctx := context.Background()
 	for {
 		select {
 		// handle incoming chunks
@@ -266,9 +262,7 @@ func (ps *PushSync) chunksWorker(ctx context.Context) {
 
 			// reset timer to go off after retryInterval
 			timer.Reset(retryInterval)
-
-			timeSpent := float64(time.Since(startTime))
-			ps.metrics.MarkAndSweepTimer.Add(timeSpent)
+			ps.metrics.MarkAndSweepTimer.Observe(time.Since(startTime).Seconds())
 
 		case <-ps.quit:
 			if unsubscribe != nil {
@@ -300,8 +294,7 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	if err != nil {
 		return nil
 	}
-	timeSpent := float64(time.Since(receiptRTTTimer))
-	ps.metrics.ReceiptRTT.Add(timeSpent)
+	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
 	// Check if the receipt is valid
 	if !bytes.Equal(ch.Address().Bytes(), receipt.Address) {
