@@ -159,7 +159,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Check if the receipt is valid
 	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		return fmt.Errorf("invalid receipt: %w", err)
+		return errors.New("invalid receipt")
 	}
 
 	// forward the receipt to the received stream
@@ -310,7 +310,7 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 	// Check if the receipt is valid
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		return err
+		return errors.New("invalid receipt")
 	}
 
 	// set chunk status to synced, insert to db GC index
