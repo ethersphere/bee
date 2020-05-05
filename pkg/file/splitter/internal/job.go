@@ -109,7 +109,7 @@ OUTER:
 }
 
 func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
-	if cap(b) > swarm.ChunkSize {
+	if len(b) > swarm.ChunkSize {
 		return 0, fmt.Errorf("Write must be called with a maximum of %d bytes", swarm.ChunkSize)
 	}
 
@@ -208,7 +208,6 @@ func (s *SimpleSplitterJob) hashUnfinished() {
 //// After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() {
 }
-//
 //	// calculate the total number of levels needed to represent the data (including the data level)
 //	targetLevel := getLevelsFromLength(r.length, r.params.SectionSize, r.params.Branches)
 //

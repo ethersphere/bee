@@ -63,7 +63,7 @@ var (
 	}
 
 	start = 0
-	end   = 7 //len(dataLengths)
+	end   = len(dataLengths)
 )
 
 func TestSplitterJobPartialSingleChunk(t *testing.T) {
@@ -117,15 +117,23 @@ func testSplitterJobVector(t *testing.T) {
 
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	data, err := g.SequentialBytes(int(dataLength))
-	logger.Debugf("data %v", data)
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
-
-	c, err := j.Write(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c < len(data) {
-		t.Fatalf("short write %d", c)
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
+
+	for i := 0; i < len(data); i += swarm.ChunkSize {
+		l := swarm.ChunkSize
+		if len(data) - i < swarm.ChunkSize {
+			l = len(data) - i
+		}
+		c, err := j.Write(data[i:i+l])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c < l {
+			t.Fatalf("short write %d", c)
+		}
 	}
 
 	hashResult := j.Sum(nil)
