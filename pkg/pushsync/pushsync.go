@@ -117,9 +117,23 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return err
 	}
 
-	//Dont forward this chunk to the same peer as the received peer
+	// This is a special situation in that the other peer thinks thats we are the closest node
+	// and we think that the sending peer
 	if p.Address.Equal(peer) {
-		return err
+
+		// Store the chunk in the local store
+		_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
+		if err != nil {
+			return fmt.Errorf("chunk store: %w", err)
+		}
+		ps.metrics.TotalChunksStoredInDB.Inc()
+
+		// Send a receipt immediately once the storage of the chunk is successfull
+		err = ps.sendReceipt(w, chunk.Address())
+		if err != nil {
+			return fmt.Errorf("send receipt: %w", err)
+		}
+		return nil
 	}
 
 	// Forward chunk to closest peer
@@ -145,7 +159,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Check if the receipt is valid
 	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		return err
+		return fmt.Errorf("invalid receipt: %w", err)
 	}
 
 	// forward the receipt to the received stream
