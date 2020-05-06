@@ -30,22 +30,22 @@ var (
 
 type Interface interface {
 	// Execute runs f() if the limit number of consecutive failed calls is not reached within fail interval.
-	// f() call is not locked so it can still be executed concurently.
+	// f() call is not locked so it can still be executed concurrently.
 	// Returns `ErrClosed` if the limit is reached or f() result otherwise.
 	Execute(f func() error) error
 
-	// ClosedUntil retuns the timestamp when the breaker will become open again.
+	// ClosedUntil returns the timestamp when the breaker will become open again.
 	ClosedUntil() time.Time
 }
 
 type breaker struct {
-	limit                int // breaker will not exeucute any more tasks after limit number of consequtive failuers happen
-	consFailedCalls      int // current number of consequtive fails
+	limit                int // breaker will not execute any more tasks after limit number of consecutive failures happen
+	consFailedCalls      int // current number of consecutive fails
 	firstFailedTimestamp time.Time
 	closedTimestamp      time.Time
 	backoff              time.Duration // initial backoff duration
 	maxBackoff           time.Duration
-	failInterval         time.Duration // consequitive failures are counted if they happen withing this interval
+	failInterval         time.Duration // consecutive failures are counted if they happen within this interval
 	mtx                  sync.Mutex
 }
 

@@ -7,8 +7,8 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/validator"
 )
 
 // TestContentAddressValidator checks that the validator evaluates correctly
