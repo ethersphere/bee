@@ -26,12 +26,13 @@ const (
 )
 
 type PushSync struct {
-	streamer      p2p.Streamer
-	storer        storage.Storer
-	peerSuggester topology.ClosestPeerer
-	quit          chan struct{}
-	logger        logging.Logger
-	metrics       metrics
+	streamer          p2p.Streamer
+	storer            storage.Storer
+	peerSuggester     topology.ClosestPeerer
+	logger            logging.Logger
+	metrics           metrics
+	quit              chan struct{}
+	chunksWorkerQuitC chan struct{}
 }
 
 type Options struct {
@@ -48,12 +49,13 @@ var (
 
 func New(o Options) *PushSync {
 	ps := &PushSync{
-		streamer:      o.Streamer,
-		storer:        o.Storer,
-		peerSuggester: o.ClosestPeerer,
-		logger:        o.Logger,
-		metrics:       newMetrics(),
-		quit:          make(chan struct{}),
+		streamer:          o.Streamer,
+		storer:            o.Storer,
+		peerSuggester:     o.ClosestPeerer,
+		logger:            o.Logger,
+		metrics:           newMetrics(),
+		quit:              make(chan struct{}),
+		chunksWorkerQuitC: make(chan struct{}),
 	}
 
 	go ps.chunksWorker()
@@ -75,6 +77,12 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 
 func (ps *PushSync) Close() error {
 	close(ps.quit)
+
+	// Wait for chunks worker to finish
+	select {
+	case <-ps.chunksWorkerQuitC:
+	case <-time.After(3 * time.Second):
+	}
 	return nil
 }
 
@@ -220,6 +228,7 @@ func (ps *PushSync) chunksWorker() {
 	// timer, initially set to 0 to fall through select case on timer.C for initialisation
 	timer := time.NewTimer(0)
 	defer timer.Stop()
+	defer close(ps.chunksWorkerQuitC)
 	chunksInBatch := -1
 	ctx := context.Background()
 	for {

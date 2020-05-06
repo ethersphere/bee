@@ -51,7 +51,6 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
 	psPivot, storerPivot := createPushSyncNode(t, pivotNode, recorder, mock.WithClosestPeer(closestPeer))
-	defer storerPivot.Close()
 
 	// upload the chunk to the pivot node
 	_, err := storerPivot.Put(context.Background(), storage.ModePutUpload, chunk)
@@ -65,7 +64,9 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, closestPeer, recorder, chunkAddress, nil)
 
+	// Close the pushsync and then the DB
 	psPivot.Close()
+	storerPivot.Close()
 }
 
 // TestHandler expect a chunk from a node on a stream. It then stores the chunk in the local store and
@@ -87,8 +88,6 @@ func TestHandler(t *testing.T) {
 
 	// Create the closest peer
 	psClosestPeer, closestStorerPeerDB := createPushSyncNode(t, closestPeer, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
-	defer closestStorerPeerDB.Close()
-
 
 	closestRecorder := streamtest.New(
 		streamtest.WithProtocols(psClosestPeer.Protocol()),
@@ -99,8 +98,6 @@ func TestHandler(t *testing.T) {
 
 	// creating the pivot peer
 	psPivot, storerPivotDB := createPushSyncNode(t, pivotPeer, closestRecorder, mock.WithClosestPeer(closestPeer))
-	defer storerPivotDB.Close()
-
 
 	pivotRecorder := streamtest.New(
 		streamtest.WithProtocols(psPivot.Protocol()),
@@ -111,7 +108,6 @@ func TestHandler(t *testing.T) {
 
 	// Creating the trigger peer
 	psTriggerPeer, triggerStorerDB := createPushSyncNode(t, triggerPeer, pivotRecorder, mock.WithClosestPeer(pivotPeer))
-	defer triggerStorerDB.Close()
 
 	// upload the chunk to the trigger node DB which triggers the chain reaction of sending this chunk
 	// from trigger peer to pivot peer to closest peer.
@@ -137,6 +133,11 @@ func TestHandler(t *testing.T) {
 	psClosestPeer.Close()
 	psPivot.Close()
 	psTriggerPeer.Close()
+
+	// closing all DBs
+	closestStorerPeerDB.Close()
+	storerPivotDB.Close()
+	triggerStorerDB.Close()
 }
 
 func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB) {
@@ -160,6 +161,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
+	t.Helper()
 	records := recorder.WaitRecords(t, peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 
 	if data != nil {
