@@ -97,7 +97,7 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	}
 
 	_, err = j.Write([]byte("bar"))
-	if err != nil {
+	if err == nil {
 		t.Fatal(err)
 	}
 }
