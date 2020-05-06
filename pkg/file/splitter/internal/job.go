@@ -9,9 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"io"
 	"os"
-	"sync"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -45,11 +43,6 @@ type SimpleSplitterJob struct {
 	cursors       []int         // section write position, indexed per level
 	hasher        bmt.Hash      // underlying hasher used for hashing the tree
 	buffer        []byte        // keeps data and hashes, indexed by cursors
-	dataC         chan []byte   // receives data in the processing thread from Write calls
-	doneC         chan struct{} // closed when last write has been performed and/or sum is called
-	resultC       chan []byte   // passes result hash from the processing thread to the Sum call
-	closeDoneOnce sync.Once     // make sure done channel is closed only once
-	err           error
 	logger        logging.Logger
 }
 
@@ -67,105 +60,33 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 		cursors:    make([]int, 9),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, swarm.ChunkSize*9),
-		dataC:      make(chan []byte),
-		doneC:      make(chan struct{}),
-		resultC:    make(chan []byte),
 		logger:     logging.New(os.Stderr, 6),
 	}
-
-	go func() {
-		err := j.start()
-		if err != nil {
-			if err != io.EOF {
-				j.logger.Errorf("simple splitter chunk split job with context %v fail: %v", j.ctx, err)
-			} else {
-				j.logger.Tracef("simple splitter split job with context %v eof", j.ctx)
-			}
-		}
-		j.err = err
-		j.closeDone()
-		close(j.dataC)
-	}()
-
 	return j
 }
 
-// start initiates a loop that consumes written data from the caller and passes it to the
-// tree building process.
-//
-// When write is done it calls the post-processing functions for the tree
-// and passes the digest to the Sum call through the result channel.
-//
-// It also handles context aborts and catches premature calls to Sum.
-func (j *SimpleSplitterJob) start() error {
-	var total int64
-
-	// TODO: put in separate function to avoid outer label
-OUTER:
-	for {
-		select {
-		case <-j.ctx.Done():
-			return j.ctx.Err()
-		case <-j.doneC:
-			if j.spanLength > 0 && total != j.spanLength {
-				return file.NewAbortError(errors.New("file write aborted"))
-			}
-		case d := <-j.dataC:
-			j.writeToLevel(0, d)
-			total += int64(len(d))
-			if total == j.spanLength {
-				j.err = errors.New("Write called after Sum")
-				j.logger.Tracef("last write %d done for context %v, total length %d bytes", len(d), j.ctx, total)
-				break OUTER
-			}
-		}
-	}
-
-	j.hashUnfinished()
-
-	if total > swarm.ChunkSize {
-		j.moveDanglingChunk()
-	}
-
-	select {
-	case j.resultC <- j.digest():
-	case <-j.ctx.Done():
-		return j.ctx.Err()
-	}
-
-	return nil
-}
-
-// Write adds data to the file splitter process.
+// Write adds data to the file splitter.
 func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 	if len(b) > swarm.ChunkSize {
 		return 0, fmt.Errorf("Write must be called with a maximum of %d bytes", swarm.ChunkSize)
 	}
+	j.length += int64(len(b))
+	if j.length > j.spanLength {
+		return 0, errors.New("Write past span length")
+	}
 
-	// Write assumes that doneC will be closed on any state of abortion
-	select {
-	case <-j.doneC:
-		return 0, j.err
-	case j.dataC <- b:
+	j.writeToLevel(0, b)
+	if j.length == j.spanLength {
+		j.logger.Tracef("last write %d done for context %v, total length %d bytes", len(b), j.ctx, j.length)
 	}
 	return len(b), nil
 }
 
-// Sum returns the hash of the file hasher job once it is calculated.
+// Sum returns the Swarm hash of the data.
 func (j *SimpleSplitterJob) Sum(b []byte) []byte {
-
-	// doneC signals writes are completed
-	j.closeDone()
-
-	// wait for result of timeout event
-	// if times out result will be nil
-	// the error state will not be reported, so important that Write() handles any edge case that may lead to error
-	var result []byte
-	select {
-	case result = <-j.resultC:
-	case <-j.ctx.Done():
-	}
-	return result
+	j.hashUnfinished()
+	j.moveDanglingChunk()
+	return j.digest()
 }
 
 // writeToLevel writes to the data buffer on the specified level.
@@ -174,9 +95,6 @@ func (j *SimpleSplitterJob) Sum(b []byte) []byte {
 //
 // It adjusts the relevant levels' cursors accordingly.
 func (s *SimpleSplitterJob) writeToLevel(lvl int, data []byte) {
-	if lvl == 0 {
-		s.length += int64(len(data))
-	}
 	copy(s.buffer[s.cursors[lvl]:s.cursors[lvl]+len(data)], data)
 	s.cursors[lvl] += len(data)
 	if s.cursors[lvl]-s.cursors[lvl+1] == swarm.ChunkSize {
@@ -257,6 +175,7 @@ func (s *SimpleSplitterJob) hashUnfinished() {
 //
 // After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() {
+
 	// calculate the total number of levels needed to represent the data (including the data level)
 	targetLevel := file.GetLevelsFromLength(s.length, swarm.SectionSize, swarm.Branches)
 
@@ -279,11 +198,4 @@ func (s *SimpleSplitterJob) moveDanglingChunk() {
 		s.cursors[i+1] += len(ref)
 		s.cursors[i] = s.cursors[i+1]
 	}
-}
-
-// closeDone, for purpose readability, wraps the sync.Once execution of closing the doneC channel
-func (j *SimpleSplitterJob) closeDone() {
-	j.closeDoneOnce.Do(func() {
-		close(j.doneC)
-	})
 }

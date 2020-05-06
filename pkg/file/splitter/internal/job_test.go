@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/file/splitter/internal"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -73,7 +72,8 @@ var (
 func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	store := mock.NewStorer()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
+	//ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	data := []byte("foo")
