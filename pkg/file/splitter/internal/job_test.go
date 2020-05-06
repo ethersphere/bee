@@ -95,6 +95,11 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	if !addressResult.Equal(address) {
 		t.Fatalf("expected %v, got %v", address, addressResult)
 	}
+
+	_, err = j.Write([]byte("bar"))
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSplitterJobVector(t *testing.T) {

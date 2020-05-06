@@ -39,16 +39,16 @@ func hashFunc() hash.Hash {
 type SimpleSplitterJob struct {
 	ctx           context.Context
 	store         storage.Storer
-	cursors       []int         // section write position, indexed per level
 	spanLength    int64         // target length of data
 	length        int64         // number of bytes written to the data level of the hasher
+	sumCounts     []int         // number of sums performed, indexed per level
+	cursors       []int         // section write position, indexed per level
+	hasher        bmt.Hash      // underlying hasher used for hashing the tree
 	buffer        []byte        // keeps data and hashes, indexed by cursors
-	counts        []int         // number of sums performed, indexed per level
 	dataC         chan []byte   // receives data in the processing thread from Write calls
 	doneC         chan struct{} // closed when last write has been performed and/or sum is called
-	closeDoneOnce sync.Once     // make sure done channel is closed only once
-	hasher        bmt.Hash      // underlying hasher used for hashing the tree
 	resultC       chan []byte   // passes result hash from the processing thread to the Sum call
+	closeDoneOnce sync.Once     // make sure done channel is closed only once
 	err           error
 	logger        logging.Logger
 }
@@ -62,14 +62,14 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 	j := &SimpleSplitterJob{
 		ctx:        ctx,
 		store:      store,
-		cursors:    make([]int, 9),
 		spanLength: spanLength,
-		counts:     make([]int, 9),
+		sumCounts:     make([]int, 9),
+		cursors:    make([]int, 9),
+		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, swarm.ChunkSize*9),
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),
 		resultC:    make(chan []byte),
-		hasher:     bmtlegacy.New(p),
 		logger:     logging.New(os.Stderr, 6),
 	}
 
@@ -83,8 +83,8 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 			}
 		}
 		j.err = err
-		close(j.dataC)
 		j.closeDone()
+		close(j.dataC)
 	}()
 
 	return j
@@ -190,7 +190,7 @@ func (s *SimpleSplitterJob) writeToLevel(lvl int, data []byte) {
 //
 // TODO: error handling on store write fail
 func (s *SimpleSplitterJob) sumLevel(lvl int) []byte {
-	s.counts[lvl]++
+	s.sumCounts[lvl]++
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
 
@@ -265,9 +265,9 @@ func (s *SimpleSplitterJob) moveDanglingChunk() {
 
 		// and if there is a single reference outside a balanced tree on this level
 		// don't hash it again but pass it on to the next level
-		if s.counts[i] > 0 {
+		if s.sumCounts[i] > 0 {
 			// TODO: simplify if possible
-			if int64(s.counts[i-1])-file.Spans[targetLevel-1-i] <= 1 {
+			if int64(s.sumCounts[i-1])-file.Spans[targetLevel-1-i] <= 1 {
 				s.cursors[i+1] = s.cursors[i]
 				s.cursors[i] = s.cursors[i-1]
 				continue
