@@ -15,7 +15,7 @@ func init() {
 // generates a dictionary of maximum span lengths per level represented by one SectionSize() of data
 //
 // TODO: level 0 should be SectionSize() not Branches()
-func GenerateSpanSizes(levels int, branches int) []int64 {
+func GenerateSpanSizes(levels, branches int) []int64 {
 	spans := make([]int64, levels)
 	branchesSixtyfour := int64(branches)
 	var span int64 = 1
@@ -28,7 +28,7 @@ func GenerateSpanSizes(levels int, branches int) []int64 {
 
 // getLevelsFromLength calculates the last level index which a particular data section count will result in.
 // The returned level will be the level of the root hash.
-func GetLevelsFromLength(length int64, sectionSize int, branches int) int {
+func GetLevelsFromLength(length int64, sectionSize, branches int) int {
 	s := int64(sectionSize)
 	b := int64(branches)
 	if length == 0 {
