@@ -110,6 +110,7 @@ OUTER:
 			j.writeToLevel(0, d)
 			total += int64(len(d))
 			if total == j.spanLength {
+				j.err = errors.New("Write called after Sum")
 				j.logger.Tracef("last write %d done for context %v, total length %d bytes", len(d), j.ctx, total)
 				break OUTER
 			}
@@ -125,10 +126,10 @@ OUTER:
 	select {
 	case j.resultC <- j.digest():
 	case <-j.ctx.Done():
-		j.err = j.ctx.Err()
+		return j.ctx.Err()
 	}
 
-	return j.err
+	return nil
 }
 
 // Write adds data to the file splitter process.
@@ -192,12 +193,18 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) []byte {
 	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
 
 	s.hasher.Reset()
-	s.hasher.SetSpan(span)
-	s.hasher.Write(s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum])
+	err := s.hasher.SetSpan(span)
+	if err != nil {
+		return nil
+	}
+	_, err = s.hasher.Write(s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum])
+	if err != nil {
+		return nil
+	}
 	ref := s.hasher.Sum(nil)
 	addr := swarm.NewAddress(ref)
 	ch := swarm.NewChunk(addr, s.buffer[s.cursors[lvl+1]:s.cursors[lvl]])
-	_, err := s.store.Put(s.ctx, storage.ModePutUpload, ch)
+	_, err = s.store.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil
 	}

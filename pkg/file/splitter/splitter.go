@@ -2,6 +2,7 @@ package splitter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -45,7 +46,13 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 			}
 			return swarm.ZeroAddress, err
 		}
-		j.Write(data[:c])
+		cc, err := j.Write(data[:c])
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
+		if cc < c {
+			return swarm.ZeroAddress, fmt.Errorf("write count to file hasher component %d does not match read count %d", cc, c)
+		}
 		total += c
 	}
 
