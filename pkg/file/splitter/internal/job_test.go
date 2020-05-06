@@ -8,20 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/file/splitter/internal"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/file/splitter/internal"
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 
 var (
 	dataLengths = []int{31, // 0
-		32,                     // 1
-		33,                     // 2
-		63,                     // 3
-		64,                     // 4
-		65,                     // 5
+		32,                           // 1
+		33,                           // 2
+		63,                           // 3
+		64,                           // 4
+		65,                           // 5
 		swarm.ChunkSize,              // 6
 		swarm.ChunkSize + 31,         // 7
 		swarm.ChunkSize + 32,         // 8
@@ -69,7 +69,7 @@ var (
 func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	store := mock.NewStorer()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond * 250)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
 	defer cancel()
 
 	data := []byte("foo")
@@ -124,10 +124,10 @@ func testSplitterJobVector(t *testing.T) {
 
 	for i := 0; i < len(data); i += swarm.ChunkSize {
 		l := swarm.ChunkSize
-		if len(data) - i < swarm.ChunkSize {
+		if len(data)-i < swarm.ChunkSize {
 			l = len(data) - i
 		}
-		c, err := j.Write(data[i:i+l])
+		c, err := j.Write(data[i : i+l])
 		if err != nil {
 			t.Fatal(err)
 		}

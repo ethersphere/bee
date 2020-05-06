@@ -14,14 +14,14 @@ import (
 
 // simpleSplitter wraps a non-optimized implementation of file.Splitter
 type simpleSplitter struct {
-	store storage.Storer
+	store  storage.Storer
 	logger logging.Logger
 }
 
 // NewSimpleSplitter creates a new SimpleSplitter
 func NewSimpleSplitter(store storage.Storer) file.Splitter {
 	return &simpleSplitter{
-		store: store,
+		store:  store,
 		logger: logging.New(os.Stderr, 6),
 	}
 }
@@ -37,7 +37,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 
 	var total int
 	data := make([]byte, swarm.ChunkSize)
-	for  {
+	for {
 		c, err := r.Read(data)
 		if err != nil {
 			if err == io.EOF {

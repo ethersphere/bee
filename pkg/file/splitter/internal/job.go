@@ -9,10 +9,10 @@ import (
 	"os"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
@@ -27,25 +27,25 @@ func hashFunc() hash.Hash {
 // writes of data whose length is defined in advance.
 //
 // After the job is constructed, Write must be called with up to ChunkSize byte slices
-// until the full data length has been written. The Sum should be called which will 
+// until the full data length has been written. The Sum should be called which will
 // return the SwarmHash of the data.
 //
 // Called Sum before the last Write, or Write after Sum has been called, may result in
 // error and will may result in undefined result.
 type SimpleSplitterJob struct {
-	ctx context.Context
-	store storage.Storer
-	cursors []int              // section write position, indexed per level
-	spanLength int64	   // target length of data
-	length  int64              // number of bytes written to the data level of the hasher
-	buffer  []byte             // keeps data and hashes, indexed by cursors
-	counts  []int              // number of sums performed, indexed per level
-	dataC   chan []byte	   // receives data in the processing thread from Write calls
-	doneC   chan struct{}	   // closed when last write has been performed and/or sum is called
-	closeDoneOnce sync.Once    // make sure done channel is closed only once
-	hasher bmt.Hash		   // underlying hasher used for hashing the tree
-	resultC	chan []byte        // passes result hash from the processing thread to the Sum call
-	err error
+	ctx           context.Context
+	store         storage.Storer
+	cursors       []int         // section write position, indexed per level
+	spanLength    int64         // target length of data
+	length        int64         // number of bytes written to the data level of the hasher
+	buffer        []byte        // keeps data and hashes, indexed by cursors
+	counts        []int         // number of sums performed, indexed per level
+	dataC         chan []byte   // receives data in the processing thread from Write calls
+	doneC         chan struct{} // closed when last write has been performed and/or sum is called
+	closeDoneOnce sync.Once     // make sure done channel is closed only once
+	hasher        bmt.Hash      // underlying hasher used for hashing the tree
+	resultC       chan []byte   // passes result hash from the processing thread to the Sum call
+	err           error
 	logger        logging.Logger
 }
 
@@ -56,16 +56,16 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	j := &SimpleSplitterJob{
-		ctx: ctx,
-		store: store,
-		cursors: make([]int, 9),
+		ctx:        ctx,
+		store:      store,
+		cursors:    make([]int, 9),
 		spanLength: spanLength,
-		counts:  make([]int, 9),
-		buffer:  make([]byte, swarm.ChunkSize*9),
-		dataC:   make(chan []byte),
-		doneC:   make(chan struct{}),
-		resultC: make(chan []byte),
-		hasher: bmtlegacy.New(p),
+		counts:     make([]int, 9),
+		buffer:     make([]byte, swarm.ChunkSize*9),
+		dataC:      make(chan []byte),
+		doneC:      make(chan struct{}),
+		resultC:    make(chan []byte),
+		hasher:     bmtlegacy.New(p),
 		logger:     logging.New(os.Stderr, 6),
 	}
 
@@ -86,7 +86,7 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 	return j
 }
 
-// start initiates a loop that consumes written data from the caller and passes it to the 
+// start initiates a loop that consumes written data from the caller and passes it to the
 // tree building process.
 //
 // When write is done it calls the post-processing functions for the tree
@@ -96,7 +96,7 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 func (j *SimpleSplitterJob) start() error {
 	var total int64
 
-// TODO: put in separate function to avoid outer label
+	// TODO: put in separate function to avoid outer label
 OUTER:
 	for {
 		select {
@@ -139,9 +139,9 @@ func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 
 	// Write assumes that doneC will be closed on any state of abortion
 	select {
-		case <-j.doneC:
-			return 0, j.err
-		case j.dataC <- b:
+	case <-j.doneC:
+		return 0, j.err
+	case j.dataC <- b:
 	}
 	return len(b), nil
 }

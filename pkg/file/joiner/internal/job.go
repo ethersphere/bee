@@ -198,4 +198,3 @@ func (j *SimpleJoinerJob) closeDone() {
 		close(j.doneC)
 	})
 }
-

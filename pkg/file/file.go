@@ -27,5 +27,5 @@ type Joiner interface {
 // If the dataLength parameter is 0, data is read until io.EOF is encountered.
 // When EOF is received and splitting is done, the resulting Swarm Address is returned.
 type Splitter interface {
-       Split(ctx context.Context, dataIn io.ReadCloser, dataLength int64) (addr swarm.Address, err error)
+	Split(ctx context.Context, dataIn io.ReadCloser, dataLength int64) (addr swarm.Address, err error)
 }

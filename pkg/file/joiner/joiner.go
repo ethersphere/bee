@@ -24,7 +24,6 @@ type simpleJoiner struct {
 	logger logging.Logger
 }
 
-
 // NewSimpleJoiner creates a new simpleJoiner.
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
 	return &simpleJoiner{
