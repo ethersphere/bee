@@ -172,6 +172,9 @@ func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.
 		if err != nil {
 			t.Fatal(err)
 		}
+		if messages == nil {
+			t.Fatal("nil rcvd. for message")
+		}
 		if len(messages) > 1 {
 			t.Fatal("too many messages")
 		}
@@ -191,6 +194,9 @@ func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.
 		)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if messages == nil {
+			t.Fatal("nil rcvd. for message")
 		}
 		if len(messages) > 1 {
 			t.Fatal("too many messages")
