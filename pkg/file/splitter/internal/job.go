@@ -35,15 +35,15 @@ func hashFunc() hash.Hash {
 // Called Sum before the last Write, or Write after Sum has been called, may result in
 // error and will may result in undefined result.
 type SimpleSplitterJob struct {
-	ctx           context.Context
-	store         storage.Storer
-	spanLength    int64         // target length of data
-	length        int64         // number of bytes written to the data level of the hasher
-	sumCounts     []int         // number of sums performed, indexed per level
-	cursors       []int         // section write position, indexed per level
-	hasher        bmt.Hash      // underlying hasher used for hashing the tree
-	buffer        []byte        // keeps data and hashes, indexed by cursors
-	logger        logging.Logger
+	ctx        context.Context
+	store      storage.Storer
+	spanLength int64    // target length of data
+	length     int64    // number of bytes written to the data level of the hasher
+	sumCounts  []int    // number of sums performed, indexed per level
+	cursors    []int    // section write position, indexed per level
+	hasher     bmt.Hash // underlying hasher used for hashing the tree
+	buffer     []byte   // keeps data and hashes, indexed by cursors
+	logger     logging.Logger
 }
 
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
@@ -56,7 +56,7 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 		ctx:        ctx,
 		store:      store,
 		spanLength: spanLength,
-		sumCounts:     make([]int, 9),
+		sumCounts:  make([]int, 9),
 		cursors:    make([]int, 9),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, swarm.ChunkSize*9),
