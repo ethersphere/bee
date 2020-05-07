@@ -39,6 +39,10 @@ build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
 
+.PHONY: hooks
+hooks:
+	ln -f -s .githooks/pre-push.bash .git/hooks/pre-push
+
 .PHONY: clean
 clean:
 	$(GO) clean
