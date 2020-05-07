@@ -41,7 +41,7 @@ build:
 
 .PHONY: hooks
 hooks:
-	ln -f -s .githooks/pre-push.bash .git/hooks/pre-push
+	ln -f -s ../../.githooks/pre-push.bash .git/hooks/pre-push
 
 .PHONY: clean
 clean:
