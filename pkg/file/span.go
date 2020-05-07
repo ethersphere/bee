@@ -26,9 +26,9 @@ func GenerateSpanSizes(levels, branches int) []int64 {
 	return spans
 }
 
-// getLevelsFromLength calculates the last level index which a particular data section count will result in.
+// Levels calculates the last level index which a particular data section count will result in.
 // The returned level will be the level of the root hash.
-func GetLevelsFromLength(length int64, sectionSize, branches int) int {
+func Levels(length int64, sectionSize, branches int) int {
 	s := int64(sectionSize)
 	b := int64(branches)
 	if length == 0 {

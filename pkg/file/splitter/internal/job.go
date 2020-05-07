@@ -197,7 +197,7 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 // After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() error {
 	// calculate the total number of levels needed to represent the data (including the data level)
-	targetLevel := file.GetLevelsFromLength(s.length, swarm.SectionSize, swarm.Branches)
+	targetLevel := file.Levels(s.length, swarm.SectionSize, swarm.Branches)
 
 	// sum every intermediate level and write to the level above it
 	for i := 1; i < targetLevel; i++ {

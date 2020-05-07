@@ -51,7 +51,7 @@ type SimpleJoinerJob struct {
 // NewSimpleJoinerJob creates a new simpleJoinerJob.
 func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swarm.Chunk) *SimpleJoinerJob {
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
-	levelCount := file.GetLevelsFromLength(int64(spanLength), swarm.SectionSize, swarm.Branches)
+	levelCount := file.Levels(int64(spanLength), swarm.SectionSize, swarm.Branches)
 
 	j := &SimpleJoinerJob{
 		ctx:        ctx,
