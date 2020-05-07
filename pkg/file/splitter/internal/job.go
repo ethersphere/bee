@@ -83,11 +83,11 @@ func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 	if j.length == j.spanLength {
 		err := j.hashUnfinished()
 		if err != nil {
-			return file.NewHashError(err)
+			return 0, file.NewHashError(err)
 		}
 		err = j.moveDanglingChunk()
 		if err != nil {
-			return file.NewHashError(err)
+			return 0, file.NewHashError(err)
 		}
 
 	}
