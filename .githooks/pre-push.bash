@@ -13,10 +13,4 @@ if ! command -v golangci-lint &> /dev/null; then
     go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
 fi
 
-make lint
-
-make vet
-
-make test-race
-
-exit 0
+make lint vet test-race
