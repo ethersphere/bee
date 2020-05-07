@@ -76,14 +76,26 @@ func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 		return 0, errors.New("Write past span length")
 	}
 
-	j.writeToLevel(0, b)
+	err := j.writeToLevel(0, b)
+	if err != nil {
+		return 0, err
+	}
+	if j.length == j.spanLength {
+		err := j.hashUnfinished()
+		if err != nil {
+			file.NewHashError(err)
+		}
+		err = j.moveDanglingChunk()
+		if err != nil {
+			file.NewHashError(err)
+		}
+
+	}
 	return len(b), nil
 }
 
 // Sum returns the Swarm hash of the data.
 func (j *SimpleSplitterJob) Sum(b []byte) []byte {
-	j.hashUnfinished()
-	j.moveDanglingChunk()
 	return j.digest()
 }
 
@@ -92,20 +104,27 @@ func (j *SimpleSplitterJob) Sum(b []byte) []byte {
 // the next level with the acquired bmt hash
 //
 // It adjusts the relevant levels' cursors accordingly.
-func (s *SimpleSplitterJob) writeToLevel(lvl int, data []byte) {
+func (s *SimpleSplitterJob) writeToLevel(lvl int, data []byte) error {
 	copy(s.buffer[s.cursors[lvl]:s.cursors[lvl]+len(data)], data)
 	s.cursors[lvl] += len(data)
 	if s.cursors[lvl]-s.cursors[lvl+1] == swarm.ChunkSize {
-		ref := s.sumLevel(lvl)
-		s.writeToLevel(lvl+1, ref)
+		ref, err := s.sumLevel(lvl)
+		if err != nil {
+			return err
+		}
+		err = s.writeToLevel(lvl+1, ref)
+		if err != nil {
+			return err
+		}
 		s.cursors[lvl] = s.cursors[lvl+1]
 	}
+	return nil
 }
 
 // sumLevel calculates and returns the bmt sum of the last written data on the level.
 //
 // TODO: error handling on store write fail
-func (s *SimpleSplitterJob) sumLevel(lvl int) []byte {
+func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	s.sumCounts[lvl]++
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
@@ -115,20 +134,20 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) []byte {
 	s.hasher.Reset()
 	err := s.hasher.SetSpan(span)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	_, err = s.hasher.Write(s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum])
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	ref := s.hasher.Sum(nil)
 	addr := swarm.NewAddress(ref)
 	ch := swarm.NewChunk(addr, s.buffer[s.cursors[lvl+1]:s.cursors[lvl]])
 	_, err = s.store.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return ref
+	return ref, nil
 }
 
 // digest returns the calculated digest after a Sum call.
@@ -144,13 +163,17 @@ func (s *SimpleSplitterJob) digest() []byte {
 
 // hashUnfinished hasher the remaining unhashed chunks at the end of each level if
 // write doesn't end on a chunk boundary.
-func (s *SimpleSplitterJob) hashUnfinished() {
+func (s *SimpleSplitterJob) hashUnfinished() error {
 	if s.length%swarm.ChunkSize != 0 {
-		ref := s.sumLevel(0)
+		ref, err := s.sumLevel(0)
+		if err != nil {
+			return err
+		}
 		copy(s.buffer[s.cursors[1]:], ref)
 		s.cursors[1] += len(ref)
 		s.cursors[0] = s.cursors[1]
 	}
+	return nil
 }
 
 // moveDanglingChunk concatenates the reference to the single reference
@@ -172,7 +195,7 @@ func (s *SimpleSplitterJob) hashUnfinished() {
 // F   F   F   F
 //
 // After which the SS will be hashed to obtain the final root hash
-func (s *SimpleSplitterJob) moveDanglingChunk() {
+func (s *SimpleSplitterJob) moveDanglingChunk() error {
 	// calculate the total number of levels needed to represent the data (including the data level)
 	targetLevel := file.GetLevelsFromLength(s.length, swarm.SectionSize, swarm.Branches)
 
@@ -190,9 +213,13 @@ func (s *SimpleSplitterJob) moveDanglingChunk() {
 			}
 		}
 
-		ref := s.sumLevel(i)
+		ref, err := s.sumLevel(i)
+		if err != nil {
+			return err
+		}
 		copy(s.buffer[s.cursors[i+1]:], ref)
 		s.cursors[i+1] += len(ref)
 		s.cursors[i] = s.cursors[i+1]
 	}
+	return nil
 }
