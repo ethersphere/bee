@@ -20,7 +20,7 @@ import (
 
 var (
 	dataLengths = []int{
-		31,			      // 0
+		31,                           // 0
 		32,                           // 1
 		33,                           // 2
 		63,                           // 3
@@ -117,10 +117,10 @@ func TestSplitterJobVector(t *testing.T) {
 
 func testSplitterJobVector(t *testing.T) {
 	var (
-		paramstring = strings.Split(t.Name(), "/")
+		paramstring   = strings.Split(t.Name(), "/")
 		dataLength, _ = strconv.ParseInt(paramstring[1], 10, 0)
-		expectHex = paramstring[2]
-		store = mock.NewStorer()
+		expectHex     = paramstring[2]
+		store         = mock.NewStorer()
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

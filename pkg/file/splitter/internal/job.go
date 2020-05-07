@@ -62,7 +62,7 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, swarm.ChunkSize*levelBufferLimit),
-		logger: logger,
+		logger:     logger,
 	}
 }
 

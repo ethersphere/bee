@@ -27,7 +27,6 @@ func (e *AbortError) Error() string {
 	return e.err.Error()
 }
 
-
 // HashError should be returned whenever a file operation is terminated
 // before it has completed.
 type HashError struct {
