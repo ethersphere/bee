@@ -6,13 +6,11 @@ package internal_test
 
 import (
 	"context"
-	"io/ioutil"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/splitter/internal"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	mockbytes "gitlab.com/nolash/go-mockbytes"
@@ -79,9 +77,8 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger := logging.New(ioutil.Discard, 0)
 	data := []byte("foo")
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), logger)
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
 
 	c, err := j.Write(data)
 	if err != nil {
@@ -123,17 +120,15 @@ func testSplitterJobVector(t *testing.T) {
 		store         = mock.NewStorer()
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	data, err := g.SequentialBytes(int(dataLength))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	logger := logging.New(ioutil.Discard, 0)
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
 
 	for i := 0; i < len(data); i += swarm.ChunkSize {
 		l := swarm.ChunkSize

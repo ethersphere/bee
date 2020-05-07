@@ -11,7 +11,6 @@ import (
 	"hash"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bmt"
@@ -46,13 +45,12 @@ type SimpleSplitterJob struct {
 	cursors    []int    // section write position, indexed per level
 	hasher     bmt.Hash // underlying hasher used for hashing the tree
 	buffer     []byte   // keeps data and hashes, indexed by cursors
-	logger     logging.Logger
 }
 
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength int64, logger logging.Logger) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength int64) *SimpleSplitterJob {
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	return &SimpleSplitterJob{
 		ctx:        ctx,
@@ -62,7 +60,6 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, swarm.ChunkSize*levelBufferLimit),
-		logger:     logger,
 	}
 }
 
@@ -73,7 +70,7 @@ func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 	}
 	j.length += int64(len(b))
 	if j.length > j.spanLength {
-		return 0, errors.New("Write past span length")
+		return 0, errors.New("write past span length")
 	}
 
 	err := j.writeToLevel(0, b)

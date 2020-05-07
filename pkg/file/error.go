@@ -33,7 +33,7 @@ type HashError struct {
 	err error
 }
 
-// NewHashError creates a new ErrAborted instance.
+// NewHashError creates a new HashError instance.
 func NewHashError(err error) error {
 	return &HashError{
 		err: err,

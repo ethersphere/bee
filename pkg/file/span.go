@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package file
 
 import (
@@ -12,9 +16,7 @@ func init() {
 	Spans = GenerateSpanSizes(9, swarm.Branches)
 }
 
-// generates a dictionary of maximum span lengths per level represented by one SectionSize() of data
-//
-// TODO: level 0 should be SectionSize() not Branches()
+// GenerateSpanSizes generates a dictionary of maximum span lengths per level represented by one SectionSize() of data
 func GenerateSpanSizes(levels, branches int) []int64 {
 	spans := make([]int64, levels)
 	branchesSixtyfour := int64(branches)
