@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"os"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -19,6 +18,10 @@ import (
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
 )
+
+// maximum amount of file tree levels this file hasher component can handle
+// (128 ^ (9 - 1)) * 4096 = 295147905179352825856 bytes
+const levelBufferLimit = 9
 
 // hashFunc is a hasher factory used by the bmt hasher
 func hashFunc() hash.Hash {
@@ -49,20 +52,18 @@ type SimpleSplitterJob struct {
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength int64) *SimpleSplitterJob {
-
+func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength int64, logger logging.Logger) *SimpleSplitterJob {
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
-	j := &SimpleSplitterJob{
+	return &SimpleSplitterJob{
 		ctx:        ctx,
 		store:      store,
 		spanLength: spanLength,
-		sumCounts:  make([]int, 9),
-		cursors:    make([]int, 9),
+		sumCounts:  make([]int, levelBufferLimit),
+		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
-		buffer:     make([]byte, swarm.ChunkSize*9),
-		logger:     logging.New(os.Stderr, 6),
+		buffer:     make([]byte, swarm.ChunkSize*levelBufferLimit),
+		logger: logger,
 	}
-	return j
 }
 
 // Write adds data to the file splitter.
@@ -76,9 +77,6 @@ func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 	}
 
 	j.writeToLevel(0, b)
-	if j.length == j.spanLength {
-		j.logger.Tracef("last write %d done for context %v, total length %d bytes", len(b), j.ctx, j.length)
-	}
 	return len(b), nil
 }
 
@@ -175,7 +173,6 @@ func (s *SimpleSplitterJob) hashUnfinished() {
 //
 // After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() {
-
 	// calculate the total number of levels needed to represent the data (including the data level)
 	targetLevel := file.GetLevelsFromLength(s.length, swarm.SectionSize, swarm.Branches)
 

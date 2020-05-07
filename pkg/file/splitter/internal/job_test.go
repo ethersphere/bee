@@ -6,7 +6,7 @@ package internal_test
 
 import (
 	"context"
-	"os"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,7 +19,8 @@ import (
 )
 
 var (
-	dataLengths = []int{31, // 0
+	dataLengths = []int{
+		31,			      // 0
 		32,                           // 1
 		33,                           // 2
 		63,                           // 3
@@ -69,15 +70,18 @@ var (
 	end   = len(dataLengths)
 )
 
+// TestSplitterJobPartialSingleChunk passes sub-chunk length data to the splitter,
+// verifies the correct hash is returned, and that write after Sum/complete Write
+// returns error.
 func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	store := mock.NewStorer()
 
-	//ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	logger := logging.New(ioutil.Discard, 0)
 	data := []byte("foo")
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), logger)
 
 	c, err := j.Write(data)
 	if err != nil {
@@ -98,10 +102,11 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 
 	_, err = j.Write([]byte("bar"))
 	if err == nil {
-		t.Fatal(err)
+		t.Fatal("expected error writing after write/sum complete")
 	}
 }
 
+// TestSplitterJobVector verifies file hasher results of legacy test vectors
 func TestSplitterJobVector(t *testing.T) {
 	for i := start; i < end; i++ {
 		dataLengthStr := strconv.Itoa(dataLengths[i])
@@ -111,15 +116,12 @@ func TestSplitterJobVector(t *testing.T) {
 }
 
 func testSplitterJobVector(t *testing.T) {
-
-	logger := logging.New(os.Stderr, 6)
-
-	paramstring := strings.Split(t.Name(), "/")
-	dataLength, _ := strconv.ParseInt(paramstring[1], 10, 0)
-	expect := paramstring[2]
-	logger.Debugf("job hash vector: %d", dataLength)
-
-	store := mock.NewStorer()
+	var (
+		paramstring = strings.Split(t.Name(), "/")
+		dataLength, _ = strconv.ParseInt(paramstring[1], 10, 0)
+		expectHex = paramstring[2]
+		store = mock.NewStorer()
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -129,7 +131,9 @@ func testSplitterJobVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
+
+	logger := logging.New(ioutil.Discard, 0)
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), logger)
 
 	for i := 0; i < len(data); i += swarm.ChunkSize {
 		l := swarm.ChunkSize
@@ -145,13 +149,11 @@ func testSplitterJobVector(t *testing.T) {
 		}
 	}
 
-	hashResult := j.Sum(nil)
-	addressResult := swarm.NewAddress(hashResult)
+	actualBytes := j.Sum(nil)
+	actual := swarm.NewAddress(actualBytes)
 
-	addressHex := expect
-	logger.Debugf("addr hex %v %v", addressHex, addressResult)
-	address := swarm.MustParseHexAddress(addressHex)
-	if !address.Equal(addressResult) {
-		t.Fatalf("expected %v, got %v", address, addressResult)
+	expect := swarm.MustParseHexAddress(expectHex)
+	if !expect.Equal(actual) {
+		t.Fatalf("expected %v, got %v", expect, actual)
 	}
 }
