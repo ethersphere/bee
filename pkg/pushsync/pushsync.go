@@ -230,7 +230,11 @@ func (ps *PushSync) chunksWorker() {
 	defer timer.Stop()
 	defer close(ps.chunksWorkerQuitC)
 	chunksInBatch := -1
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-ps.quit
+		cancel()
+	}()
 	for {
 		select {
 		// handle incoming chunks
