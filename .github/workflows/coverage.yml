@@ -1,6 +1,12 @@
 name: Coverage
 
-on: [pull_request]
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+    branches:
+      - '**'
 
 jobs:
   coverage:
