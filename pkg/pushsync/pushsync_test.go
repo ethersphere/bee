@@ -51,6 +51,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
 	psPivot, storerPivot := createPushSyncNode(t, pivotNode, recorder, mock.WithClosestPeer(closestPeer))
+	defer storerPivot.Close()
 
 	// upload the chunk to the pivot node
 	_, err := storerPivot.Put(context.Background(), storage.ModePutUpload, chunk)
@@ -66,7 +67,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 
 	// Close the pushsync and then the DB
 	psPivot.Close()
-	storerPivot.Close()
+
 }
 
 // TestHandler expect a chunk from a node on a stream. It then stores the chunk in the local store and
