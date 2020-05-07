@@ -11,7 +11,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func GenerateTestRandomFileChunk(address swarm.Address, spanLength int, dataSize int) swarm.Chunk {
+// GenerateTestRandomFileChunk generates one single chunk with arbitrary content and address
+func GenerateTestRandomFileChunk(address swarm.Address, spanLength, dataSize int) swarm.Chunk {
 	data := make([]byte, dataSize+8)
 	binary.LittleEndian.PutUint64(data, uint64(spanLength))
 	_, _ = rand.Read(data[8:]) // # skipcq: GSC-G404
