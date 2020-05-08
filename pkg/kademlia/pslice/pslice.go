@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-// PSlice maintaines a list of addresses, indexing them by their different proximity orders.
+// PSlice maintains a list of addresses, indexing them by their different proximity orders.
 // Currently, when peers are added or removed, their proximity order must be supplied, this is
 // in order to reduce duplicate PO calculation which is normally known and already needed in the
 // calling context.
@@ -40,7 +40,7 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 	}
 
 	var binEnd = uint(len(s.peers))
-INNER:
+
 	for i := len(s.bins) - 1; i >= 0; i-- {
 		peers := s.peers[s.bins[i]:binEnd]
 		for _, v := range peers {
@@ -52,7 +52,7 @@ INNER:
 				return nil
 			}
 			if next {
-				break INNER
+				break
 			}
 		}
 		binEnd = s.bins[i]
@@ -79,7 +79,6 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 		}
 
 		peers := s.peers[s.bins[i]:binEnd]
-	INNER:
 		for _, v := range peers {
 			stop, next, err := pf(v, uint8(i))
 			if err != nil {
@@ -89,7 +88,7 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 				return nil
 			}
 			if next {
-				break INNER
+				break
 			}
 		}
 	}

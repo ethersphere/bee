@@ -203,37 +203,63 @@ func TestIterators(t *testing.T) {
 		peers[i] = a
 	}
 
-	testIterator(t, ps, 0, []swarm.Address{})
-	testIteratorRev(t, ps, 0, []swarm.Address{})
+	testIterator(t, ps, false, false, 0, []swarm.Address{})
+	testIteratorRev(t, ps, false, false, 0, []swarm.Address{})
 
 	for i, v := range peers {
 		ps.Add(v, uint8(i))
 	}
 
-	testIterator(t, ps, 4, []swarm.Address{peers[3], peers[2], peers[1], peers[0]})
-	testIteratorRev(t, ps, 4, peers)
+	testIterator(t, ps, false, false, 4, []swarm.Address{peers[3], peers[2], peers[1], peers[0]})
+	testIteratorRev(t, ps, false, false, 4, peers)
 
 	ps.Remove(peers[2], 2)
-	testIterator(t, ps, 3, []swarm.Address{peers[3], peers[1], peers[0]})
-	testIteratorRev(t, ps, 3, []swarm.Address{peers[0], peers[1], peers[3]})
+	testIterator(t, ps, false, false, 3, []swarm.Address{peers[3], peers[1], peers[0]})
+	testIteratorRev(t, ps, false, false, 3, []swarm.Address{peers[0], peers[1], peers[3]})
 
 	ps.Remove(peers[0], 0)
-	testIterator(t, ps, 2, []swarm.Address{peers[3], peers[1]})
-	testIteratorRev(t, ps, 2, []swarm.Address{peers[1], peers[3]})
+	testIterator(t, ps, false, false, 2, []swarm.Address{peers[3], peers[1]})
+	testIteratorRev(t, ps, false, false, 2, []swarm.Address{peers[1], peers[3]})
 
 	ps.Remove(peers[3], 3)
-	testIterator(t, ps, 1, []swarm.Address{peers[1]})
-	testIteratorRev(t, ps, 1, []swarm.Address{peers[1]})
+	testIterator(t, ps, false, false, 1, []swarm.Address{peers[1]})
+	testIteratorRev(t, ps, false, false, 1, []swarm.Address{peers[1]})
 
 	ps.Remove(peers[1], 1)
-	testIterator(t, ps, 0, []swarm.Address{})
-	testIteratorRev(t, ps, 0, []swarm.Address{})
+	testIterator(t, ps, false, false, 0, []swarm.Address{})
+	testIteratorRev(t, ps, false, false, 0, []swarm.Address{})
 }
 
-func testIteratorRev(t *testing.T, ps *pslice.PSlice, iterations int, peerseq []swarm.Address) {
+// TestIteratorsJumpStop tests that the EachBin and EachBinRev iterators jump to next bin and stop as expected.
+func TestIteratorsJumpStop(t *testing.T) {
+	ps := pslice.New(4)
+
+	base := test.RandomAddress()
+	peers := make([]swarm.Address, 12)
+	j := 0
+	for i := 0; i < 4; i++ {
+		for ii := 0; ii < 3; ii++ {
+			a := test.RandomAddressAt(base, i)
+			peers[j] = a
+			ps.Add(a, uint8(i))
+			j++
+		}
+	}
+
+	// check that jump to next bin works as expected
+	testIterator(t, ps, true, false, 4, []swarm.Address{peers[11], peers[8], peers[5], peers[2]})
+	testIteratorRev(t, ps, true, false, 4, []swarm.Address{peers[2], peers[5], peers[8], peers[11]})
+
+	// check that the stop functionality works correctly
+	testIterator(t, ps, true, true, 1, []swarm.Address{peers[11]})
+	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[2]})
+
+}
+
+func testIteratorRev(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iterations int, peerseq []swarm.Address) {
 	t.Helper()
 	i := 0
-	f := func(p swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+	f := func(p swarm.Address, po uint8) (bool, bool, error) {
 		if i == iterations {
 			t.Fatal("too many iterations!")
 		}
@@ -241,7 +267,7 @@ func testIteratorRev(t *testing.T, ps *pslice.PSlice, iterations int, peerseq []
 			t.Errorf("got wrong peer seq from iterator")
 		}
 		i++
-		return false, false, nil
+		return stop, skipNext, nil
 	}
 
 	err := ps.EachBinRev(f)
@@ -254,10 +280,10 @@ func testIteratorRev(t *testing.T, ps *pslice.PSlice, iterations int, peerseq []
 	}
 }
 
-func testIterator(t *testing.T, ps *pslice.PSlice, iterations int, peerseq []swarm.Address) {
+func testIterator(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iterations int, peerseq []swarm.Address) {
 	t.Helper()
 	i := 0
-	f := func(p swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+	f := func(p swarm.Address, po uint8) (bool, bool, error) {
 		if i == iterations {
 			t.Fatal("too many iterations!")
 		}
@@ -265,7 +291,7 @@ func testIterator(t *testing.T, ps *pslice.PSlice, iterations int, peerseq []swa
 			t.Errorf("got wrong peer seq from iterator")
 		}
 		i++
-		return false, false, nil
+		return stop, skipNext, nil
 	}
 
 	err := ps.EachBin(f)
