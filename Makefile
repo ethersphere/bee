@@ -1,5 +1,6 @@
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
+GOLANGCI_LINT_VERSION ?= v1.26.0
 
 LDFLAGS ?= -s -w
 ifdef COMMIT
@@ -21,6 +22,10 @@ dist:
 .PHONY: lint
 lint:
 	$(GOLANGCI_LINT) run
+
+.PHONY: linter
+linter:
+	cd /tmp && GO111MODULE=on $(GO) get -u github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: vet
 vet:
