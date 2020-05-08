@@ -7,8 +7,8 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/validator"
 )
 
 // TestContentAddressValidator checks that the validator evaluates correctly
@@ -28,7 +28,7 @@ func TestContentAddressValidator(t *testing.T) {
 	fooLength := len(foo)
 	fooBytes := make([]byte, 8+fooLength)
 	binary.LittleEndian.PutUint64(fooBytes, uint64(fooLength))
-	copy(fooBytes[8:], []byte(foo))
+	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
 	if !validator.Validate(ch) {
 		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
