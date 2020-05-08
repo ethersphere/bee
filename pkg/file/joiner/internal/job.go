@@ -125,6 +125,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 // io.Reader consumer.
 func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 
+	j.logger.Debugf("ifirst leveldata %d %v", level, address)
 	// attempt to retrieve the chunk
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
@@ -139,6 +140,7 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		for j.cursors[level] < len(j.data[level]) {
 			if len(j.data[level]) == j.cursors[level] {
 				j.data[level] = ch.Data()[8:]
+				j.logger.Debugf("leveldata %d %v", level, j.data[level])
 				j.cursors[level] = 0
 			}
 			err = j.nextReference(level)

@@ -5,6 +5,7 @@
 package internal
 
 import (
+	"encoding/binary"
 	"context"
 	"errors"
 	"fmt"
@@ -59,7 +60,7 @@ func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength 
 		sumCounts:  make([]int, levelBufferLimit),
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
-		buffer:     make([]byte, swarm.ChunkSize*levelBufferLimit),
+		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit),
 	}
 }
 
@@ -139,7 +140,9 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	}
 	ref := s.hasher.Sum(nil)
 	addr := swarm.NewAddress(ref)
-	ch := swarm.NewChunk(addr, s.buffer[s.cursors[lvl+1]:s.cursors[lvl]])
+	spanBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(spanBytes, uint64(span))
+	ch := swarm.NewChunk(addr, append(spanBytes, s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]...))
 	_, err = s.store.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err
