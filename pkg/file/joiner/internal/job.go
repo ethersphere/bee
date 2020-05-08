@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"sync"
 
@@ -52,7 +51,7 @@ type SimpleJoinerJob struct {
 // NewSimpleJoinerJob creates a new simpleJoinerJob.
 func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swarm.Chunk) *SimpleJoinerJob {
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
-	levelCount := getLevelsFromLength(int64(spanLength), swarm.SectionSize, swarm.Branches)
+	levelCount := file.Levels(int64(spanLength), swarm.SectionSize, swarm.Branches)
 
 	j := &SimpleJoinerJob{
 		ctx:        ctx,
@@ -67,7 +66,7 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 	// data level has index 0
 	startLevelIndex := levelCount - 1
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
-	j.logger.Tracef("simple joiner start index %d for address %x", startLevelIndex, rootChunk.Address())
+	j.logger.Tracef("simple joiner start index %d for address %s", startLevelIndex, rootChunk.Address())
 
 	// retrieval must be asynchronous to the io.Reader()
 	go func() {
@@ -198,19 +197,4 @@ func (j *SimpleJoinerJob) closeDone() {
 	j.closeDoneOnce.Do(func() {
 		close(j.doneC)
 	})
-}
-
-// getLevelsFromLength calculates the last level index which a particular data section count will result in.
-// The returned level will be the level of the root hash.
-func getLevelsFromLength(l int64, sectionSize int, branches int) int {
-	s := int64(sectionSize)
-	b := int64(branches)
-	if l == 0 {
-		return 0
-	} else if l <= s*b {
-		return 1
-	}
-	c := (l - 1) / s
-
-	return int(math.Log(float64(c))/math.Log(float64(b)) + 1)
 }

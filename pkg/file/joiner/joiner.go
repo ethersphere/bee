@@ -24,27 +24,6 @@ type simpleJoiner struct {
 	logger logging.Logger
 }
 
-// simpleJoinerReadCloser wraps a byte slice in a io.ReadCloser implementation.
-type simpleReadCloser struct {
-	buffer []byte
-	cursor int
-}
-
-// Read implements io.Reader.
-func (s *simpleReadCloser) Read(b []byte) (int, error) {
-	if s.cursor == len(s.buffer) {
-		return 0, io.EOF
-	}
-	copy(b, s.buffer)
-	s.cursor += len(s.buffer)
-	return len(s.buffer), nil
-}
-
-// Close implements io.Closer.
-func (s *simpleReadCloser) Close() error {
-	return nil
-}
-
 // NewSimpleJoiner creates a new simpleJoiner.
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
 	return &simpleJoiner{
@@ -68,10 +47,8 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 	// if this is a single chunk, short circuit to returning just that chunk
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
 	if spanLength <= swarm.ChunkSize {
-		s.logger.Tracef("simplejoiner root chunk %v is single chunk, skipping join and returning directly", rootChunk)
-		return &simpleReadCloser{
-			buffer: (rootChunk.Data()[8:]),
-		}, int64(spanLength), nil
+		data := rootChunk.Data()[8:]
+		return file.NewSimpleReadCloser(data), int64(spanLength), nil
 	}
 
 	s.logger.Tracef("simplejoiner joining root chunk %v", rootChunk)
