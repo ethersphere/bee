@@ -37,7 +37,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_chunk_stored_in_DB",
-			Help:      "Total chunks stored succesfully in local store.",
+			Help:      "Total chunks stored successfully in local store.",
 		}),
 		ChunksSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

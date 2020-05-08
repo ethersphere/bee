@@ -143,7 +143,6 @@ type Putter interface {
 	Put(ctx context.Context, mode ModePut, chs ...swarm.Chunk) (exist []bool, err error)
 }
 
-
 // StateStorer defines methods required to get, set, delete values for different keys
 // and close the underlying resources.
 type StateStorer interface {

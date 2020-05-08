@@ -35,7 +35,7 @@ func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Add
 	for _, addr := range addrs {
 		s.ModeSet[addr.String()] = mode
 	}
-	return s.Set(ctx, mode, addrs...)
+	return nil
 }
 
 func TestSendChunkToPushSync(t *testing.T) {

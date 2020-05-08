@@ -95,7 +95,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 			ps.metrics.TotalChunksStoredInDB.Inc()
 
-			// Send a receipt immediately once the storage of the chunk is successfull
+			// Send a receipt immediately once the storage of the chunk is successfully
 			receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
 			err = ps.sendReceipt(w, receipt)
 			if err != nil {
@@ -117,7 +117,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 		ps.metrics.TotalChunksStoredInDB.Inc()
 
-		// Send a receipt immediately once the storage of the chunk is successfull
+		// Send a receipt immediately once the storage of the chunk is successfully
 		receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
 		return ps.sendReceipt(w, receipt)
 	}

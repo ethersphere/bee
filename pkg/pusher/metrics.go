@@ -34,7 +34,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_chunk_synced",
-			Help:      "Total chunks synced succesfully with valid receipts.",
+			Help:      "Total chunks synced successfully with valid receipts.",
 		}),
 		ErrorSettingChunkToSynced: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
