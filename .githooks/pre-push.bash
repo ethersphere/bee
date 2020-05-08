@@ -10,7 +10,7 @@ fi
 
 if ! command -v golangci-lint &> /dev/null; then
     echo "installing golangci-lint..."
-    go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+    make linter
 fi
 
 make lint vet test-race
