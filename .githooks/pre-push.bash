@@ -8,9 +8,4 @@ if [ -z "$commits" ]; then
     exit 0
 fi
 
-if ! command -v golangci-lint &> /dev/null; then
-    echo "installing golangci-lint..."
-    go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
-fi
-
-make lint vet test-race
+make build lint vet test-race
