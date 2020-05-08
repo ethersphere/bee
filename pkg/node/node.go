@@ -7,8 +7,6 @@ package node
 import (
 	"context"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/pusher"
-	"github.com/ethersphere/bee/pkg/pushsync"
 	"io"
 	"log"
 	"net"
@@ -16,9 +14,6 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-
-	"github.com/sirupsen/logrus"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -34,6 +29,8 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/pusher"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -43,6 +40,8 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 type Bee struct {
