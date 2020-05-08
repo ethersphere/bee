@@ -34,7 +34,7 @@ func (s *simpleReadCloser) Read(b []byte) (int, error) {
 // Close implements io.Closer.
 func (s *simpleReadCloser) Close() error {
 	if s.closed {
-		panic("close on already closed reader")
+		return errors.New("close on already closed reader")
 	}
 	s.closed = true
 	return nil
