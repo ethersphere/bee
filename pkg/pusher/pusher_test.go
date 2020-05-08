@@ -26,7 +26,7 @@ import (
 type Store struct {
 	storage.Storer
 	ModeSet   map[string]storage.ModeSet
-	modeSetMu sync.Mutex
+	modeSetMu *sync.Mutex
 }
 
 func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
@@ -145,6 +145,8 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 	pusherStorer := &Store{
 		Storer:  storer,
 		ModeSet: make(map[string]storage.ModeSet),
+		modeSetMu: &sync.Mutex{},
+
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, PeerSuggester: peerSuggester, Logger: logger})
