@@ -7,6 +7,8 @@ package node
 import (
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/pusher"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"io"
 	"log"
 	"net"
@@ -53,6 +55,7 @@ type Bee struct {
 	stateStoreCloser io.Closer
 	localstoreCloser io.Closer
 	topologyCloser   io.Closer
+	pusherCloser     io.Closer
 }
 
 type Options struct {
@@ -205,6 +208,21 @@ func NewBee(o Options) (*Bee, error) {
 	})
 
 	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+
+	pushSyncProtocol := pushsync.New(pushsync.Options{
+		Streamer:      p2ps,
+		Storer:        storer,
+		ClosestPeerer: topologyDriver,
+		Logger:        logger,
+	})
+
+	pushSyncPusher := pusher.New(pusher.Options{
+		Storer:        storer,
+		PeerSuggester: topologyDriver,
+		PushSyncer:    pushSyncProtocol,
+		Logger:        logger,
+	})
+	b.pusherCloser = pushSyncPusher
 
 	var apiService api.Service
 	if o.APIAddr != "" {
@@ -372,6 +390,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 	if err := eg.Wait(); err != nil {
 		return err
+	}
+
+	if err := b.pusherCloser.Close(); err != nil {
+		return fmt.Errorf("pusher: %w", err)
 	}
 
 	b.p2pCancel()
