@@ -1,6 +1,12 @@
 name: Go
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+    branches:
+      - '**'
 
 jobs:
   build:
@@ -8,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        go: [1.14, 1.x]
+        go: [1.14]
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
     - name: Setup Go
