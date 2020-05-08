@@ -3,70 +3,165 @@
 [![Go](https://github.com/ethersphere/bee/workflows/Go/badge.svg)](https://github.com/ethersphere/bee/actions)
 [![GoDoc](https://godoc.org/github.com/ethersphere/bee?status.svg)](https://godoc.org/github.com/ethersphere/bee)
 
-This is an experiment to abstract libp2p as underlay networking for Ethereum Swarm.
+Bee is the second official Ethereum Swarm implementation. This project is in very early stage and under active development.
 
-Work in progress. This is not the final abstraction.
+No compatibility with the first Ethereum Swarm implementation is provided, mainly because the change in underlaying protocol from devp2p to libp2p. A bee node cannot join swarm network and vice versa.
+
+API compatibility will be guaranteed when version 1.0 is released, but not before that.
 
 ## Install
 
+Installing from source by checking the git repository:
+
 ```sh
+git clone https://github.com/ethersphere/bee
+cd bee
 make binary
 cp dist/bee /usr/local/bin/bee
 ```
 
-## Usage (experimental api)
+## Running the Bee node
 
-Execute the command terminals to start `node 1`:
-
-```sh
-bee start --api-addr :8081 --p2p-addr :7071 --data-dir data1
-```
-
-### Bootnodes 
-Use one of the multiaddresses as bootnode for `node 2` in order to connect them:
+Bee node provides CLI help that lists all available commands and flags. Every command has its own help.
 
 ```sh
-bee start --api-addr :8082 --p2p-addr :7072 --data-dir data2 --bootnode /ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+bee -h
+bee start -h
 ```
 
-### Debug API
-Start `node 2` with debugapi enabled:
+To run the node with the default configuration:
 
 ```sh
-bee start --api-addr :8082 --p2p-addr :7072 --debug-api-addr :6062 --enable-debug-api --data-dir dist/storage2
+bee start
 ```
 
-Use one of the multiaddresses of `node 1` in order to connect them:
+This command starts bee node including HTTP API for user interaction and P2P API for communication between bee nodes.
+
+It will open an interactive prompt asking for a password which protects node private keys. Interactive prompt can be avoided by providing a CLI flag `--password-file` with path to the file that contains the password, just to pass it as the value to `--password` flag. These values are also possible to be set with environment variables or configuration file.
+
+## Configuration
+
+Configuration parameters can be passed to the bee node by:
+
+- command line arguments
+- environment variables
+- configuration file
+
+with that order of precedence.
+
+Available command line parameters can be seen by invoking help flag `bee start -h`.
+
+Environment variables are analogues to these flags and can be constructed with simple rules:
+
+- remove `--` prefix from the flag name
+- capitalize all characters in the flag name
+- replace all `-` characters with `_`
+- prepend `BEE_` prefix to the resulted string
+
+For example, cli flag `--api-addr` has an analogues env variable `BEE_API_ADDR`
+
+Configuration file path is by default `$HOME/.bee.yaml`, but it can be changed with `--config` cli flag or `BEE_CONFIG` environment variable.
+
+Configuration file variables are all from the `bee start -h` help page, just without the `--` prefix. For example, `--api-addr` and `--data-dir` can be specified with configuration file such as this one:
+
+```yaml
+api-addr: 127.0.0.1:8085
+data-dir: /data/bees/bee5
+```
+
+## Starting more bee nodes locally with debugging
+
+It is possible to start multiple, persistent, completely independent, bee nodes on a single running operating system. This can be achieved with less complexity with prepared configuration files for every node.
+
+An example configuration for the first node would be:
+
+```yaml
+api-addr: :8081
+p2p-addr: :7071
+debug-api-addr: :6061
+enable-debug-api: true
+data-dir: /tmp/bee/node1
+password: some pass phze
+verbosity: trace
+tracing: true
+```
+
+Save a file named `node1.yaml` with this content, and create as many as you need by incrementing the number in in filename and `api-addr`, `p2p-addr`, `debug-api-addr` and `data-dir`.
+
+For example, file `node2.yaml` should have this content:
+
+```yaml
+api-addr: :8082
+p2p-addr: :7072
+debug-api-addr: :6062
+enable-debug-api: true
+data-dir: /tmp/bee/node2
+password: some pass phze
+verbosity: trace
+tracing: true
+```
+
+### Starting the first node
+
+The first node address will be used for other nodes to discover themselves. It is usually referred as the `bootnode address`.
 
 ```sh
-curl -XPOST localhost:6062/connect/ip4/127.0.0.1/tcp/30401/p2p/QmT4TNB4cKYanUjdYodw1Cns8cuVaRVo24hHNYcT7JjkTB
+bee --config node1.yaml start
 ```
 
-### Ping-pong
-Take the address of the connected peer to `node 1` from log line `peer "4932309428148935717" connected` and make an HTTP POST request to `localhost:{PORT1}/pingpong/{ADDRESS}` like:
+When the node starts it will print out some of its `p2p addresses` in a multiaddress form like this: `/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM`. This address is the `bootnonde address`.
+
+### Starting other nodes
+
+Other nodes should be started by providing the bootnode address to them, so that they can connect to each other:
 
 ```sh
-curl -XPOST localhost:8502/pingpong/4932309428148935717
+bee --config node2.yaml start --bootnode /ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM
+bee --config node3.yaml start --bootnode /ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM
+bee --config node4.yaml start --bootnode /ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM
+...
 ```
 
-## Structure
+## Getting node addresses
 
-- cmd/bee - a simple application integrating p2p and pingpong service
-- pkg/api - a simple http api exposing pingpong endpoint
-- pkg/p2p - p2p abstraction
-- pkg/p2p/libp2p - p2p implementation using libp2p
-- pkg/p2p/mock - p2p protocol testing tools
-- pkg/p2p/protobuf - protobuf message encoding and decoding functions
-- pkg/pingpong - p2p protocol implementation example
+Every node can provide its overlay address and underlay addresses by reading the logs when the node starts or through Debug API:
 
-## Restrictions
+```sh
+curl localhost:6060/addresses
+```
 
-- Package pkg/p2p only contains generalized abstraction of p2p protocol. It does not impose stream encoding.
-- Package pkg/p2p/libp2p and is only allowed to depend on go-libp2p packages given that it is just one pkg/p2p implementation. No other implementation should depend on go-libp2p packages.
-- Package pkg/p2p/protobuf provides all the helpers needed to make easer for protocol implementations to use protocol buffers for encoding.
+It will return a response with addresses:
 
-## TODO
+```json
+{
+  "overlay": "7ecf777fdab7553fbc4db7f265a7bd80d27b171babe931bc61e9d7966974ef47",
+  "underlay": [
+    "/ip6/::1/udp/7071/quic/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM",
+    "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM",
+    "/ip4/127.0.0.1/udp/7071/quic/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM",
+    "/ip6/::1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM",
+  ]
+}
+```
 
-- P2P mock (protocol tester) implementation improvements
-- Figure out routing (whether to use libp2p Routing or to abstract hive on top of p2p package)
-- Instrumentation: tracing
+## Testing a connection with PingPong protocol
+
+To check if two nodes are connected and to see the round trip time for message exchange between them, get the overlay address from one node, for example local node 2:
+
+```sh
+curl localhost:6062/addresses
+```
+
+And use that address in the API call on another node, for example, local node 1:
+
+```sh
+curl -XPOST localhost:8081/pingpong/d4440baf2d79e481c3c6fd93a2014d2e6fe0386418829439f26d13a8253d04f1
+```
+
+## Contributing
+
+Please read the [coding guidelines](CODING.md).
+
+## License
+
+This library is distributed under the BSD-style license found in the [LICENSE](LICENSE) file.
