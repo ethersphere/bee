@@ -39,7 +39,7 @@ func newMetrics() metrics {
 		ErrorSettingChunkToSynced: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "cannot_set_chunk_sync_in_DB",
+			Name:      "cannot_set_chunk_sync_in_db",
 			Help:      "Total no of times the chunk cannot be synced in DB.",
 		}),
 		MarkAndSweepTimer: prometheus.NewHistogram(prometheus.HistogramOpts{

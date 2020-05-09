@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
-	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
@@ -25,29 +24,32 @@ import (
 
 type Store struct {
 	storage.Storer
-	ModeSet   map[string]storage.ModeSet
+	modeSet   map[string]storage.ModeSet
 	modeSetMu *sync.Mutex
 }
+
+var noOfRetries = 10 // no of times to retry to see if we have received response from pushsync
 
 func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
 	s.modeSetMu.Lock()
 	defer s.modeSetMu.Unlock()
 	for _, addr := range addrs {
-		s.ModeSet[addr.String()] = mode
+		s.modeSet[addr.String()] = mode
 	}
 	return nil
 }
 
 func TestSendChunkToPushSync(t *testing.T) {
-	chunk := createChunk(t)
+	chunk := createChunk()
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pb.Receipt, error) {
-		receipt := &pb.Receipt{
-			Address: chunk.Address().Bytes(),
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		time.Sleep(30 * time.Millisecond)
+		receipt := &pushsync.Receipt{
+			Address: swarm.NewAddress(chunk.Address().Bytes()),
 		}
 		return receipt, nil
 	})
@@ -59,23 +61,29 @@ func TestSendChunkToPushSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Give some time for chunk to be pushed and receipt to be received
-	time.Sleep(10 * time.Millisecond)
+	// Check is the chunk is set as synced in the DB.
+	for i := 0; i < noOfRetries; i++ {
+		// Give some time for chunk to be pushed and receipt to be received
+		time.Sleep(10 * time.Millisecond)
 
-	err = checkIfModeSet(t, chunk.Address(), storage.ModeSetSyncPush, storer)
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
-	chunk := createChunk(t)
+	chunk := createChunk()
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pb.Receipt, error) {
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		return nil, errors.New("invalid receipt")
 	})
 
@@ -86,26 +94,32 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Give some time for chunk to be pushed and receipt to be received
-	time.Sleep(10 * time.Millisecond)
+	// Check is the chunk is set as synced in the DB.
+	for i := 0; i < noOfRetries; i++ {
+		// Give some time for chunk to be pushed and receipt to be received
+		time.Sleep(10 * time.Millisecond)
 
-	err = checkIfModeSet(t, chunk.Address(), storage.ModeSetSyncPush, storer)
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		if err != nil {
+			continue
+		}
+	}
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
 }
 
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
-	chunk := createChunk(t)
+	chunk := createChunk()
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pb.Receipt, error) {
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		// Set 10 times more than the time we wait for the test to complete so that
 		// the response never reaches our testcase
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 		return nil, nil
 	})
 
@@ -116,18 +130,22 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Give some time for chunk to be pushed and receipt to be received
-	time.Sleep(10 * time.Millisecond)
+	// Check is the chunk is set as synced in the DB.
+	for i := 0; i < noOfRetries; i++ {
+		// Give some time for chunk to be pushed and receipt to be received
+		time.Sleep(10 * time.Millisecond)
 
-	err = checkIfModeSet(t, chunk.Address(), storage.ModeSetSyncPush, storer)
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		if err != nil {
+			continue
+		}
+	}
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
 }
 
-func createChunk(t *testing.T) swarm.Chunk {
-	t.Helper()
-
+func createChunk() swarm.Chunk {
 	// chunk data to upload
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 	chunkData := []byte("1234")
@@ -144,7 +162,7 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 
 	pusherStorer := &Store{
 		Storer:    storer,
-		ModeSet:   make(map[string]storage.ModeSet),
+		modeSet:   make(map[string]storage.ModeSet),
 		modeSetMu: &sync.Mutex{},
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
@@ -152,14 +170,12 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 	return pusherService, pusherStorer
 }
 
-func checkIfModeSet(t *testing.T, addr swarm.Address, mode storage.ModeSet, storer *Store) error {
-	t.Helper()
-
+func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) error {
 	var found bool
 	storer.modeSetMu.Lock()
 	defer storer.modeSetMu.Unlock()
 
-	for k, v := range storer.ModeSet {
+	for k, v := range storer.modeSet {
 		if addr.String() == k {
 			found = true
 			if v != mode {

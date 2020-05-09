@@ -90,7 +90,9 @@ func (s *Service) chunksWorker() {
 				}
 			}
 
-			_, err = s.pushSyncer.SendChunkAndReceiveReceipt(ctx, peer, ch)
+			// Later when we process receipt, get the receipt and process it
+			// for now ignoring the receipt and checking only for error
+			_, err = s.pushSyncer.ChunkPusher(ctx, peer, ch)
 			if err != nil {
 				s.logger.Errorf("pusher: error while sending chunk or receiving receipt: %v", err)
 				continue

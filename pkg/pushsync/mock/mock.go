@@ -7,18 +7,18 @@ package mock
 import (
 	"context"
 
-	"github.com/ethersphere/bee/pkg/pushsync/pb"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type PushSync struct {
-	SendChunk func(ctx context.Context, peer swarm.Address, chunk swarm.Chunk) (*pb.Receipt, error)
+	SendChunk func(ctx context.Context, peer swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error)
 }
 
-func New(sendChunk func(ctx context.Context, peer swarm.Address, chunk swarm.Chunk) (*pb.Receipt, error)) *PushSync {
+func New(sendChunk func(ctx context.Context, peer swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error)) *PushSync {
 	return &PushSync{SendChunk: sendChunk}
 }
 
-func (s *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pb.Receipt, error) {
+func (s *PushSync) ChunkPusher(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 	return s.SendChunk(ctx, address, chunk)
 }

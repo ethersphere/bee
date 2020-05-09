@@ -26,7 +26,11 @@ const (
 )
 
 type PushSyncer interface {
-	SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*pb.Receipt, error)
+	ChunkPusher(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*Receipt, error)
+}
+
+type Receipt struct {
+	Address swarm.Address
 }
 
 type PushSync struct {
@@ -207,7 +211,7 @@ func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err e
 // sendChunkAndReceiveReceipt sends chunk to a given peer
 // by opening a stream. It then waits for a receipt from that peer and
 // returns error or nil based on the receiving and the validity of the receipt.
-func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*pb.Receipt, error) {
+func (ps *PushSync) ChunkPusher(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*Receipt, error) {
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -231,5 +235,10 @@ func (ps *PushSync) SendChunkAndReceiveReceipt(ctx context.Context, peer swarm.A
 		ps.metrics.InvalidReceiptReceived.Inc()
 		return nil, errors.New("invalid receipt")
 	}
-	return &receipt, nil
+
+	rec := &Receipt{
+		Address: swarm.NewAddress(receipt.Address),
+	}
+
+	return rec, nil
 }
