@@ -47,14 +47,14 @@ func TestSendChunkToPushSync(t *testing.T) {
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-		time.Sleep(30 * time.Millisecond)
 		receipt := &pushsync.Receipt{
 			Address: swarm.NewAddress(chunk.Address().Bytes()),
 		}
 		return receipt, nil
 	})
 
-	_, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	defer storer.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -74,6 +74,7 @@ func TestSendChunkToPushSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	p.Close()
 }
 
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
@@ -87,7 +88,8 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	_, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	defer storer.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -107,6 +109,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
+	p.Close()
 }
 
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
@@ -123,7 +126,8 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return nil, nil
 	})
 
-	_, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	defer storer.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -143,6 +147,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
+	p.Close()
 }
 
 func createChunk() swarm.Chunk {
