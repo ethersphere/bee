@@ -52,12 +52,12 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	defer storerPivot.Close()
 
 	// Trigger the sending of chunk to the closest node
-	receipt, err := psPivot.SendChunkAndReceiveReceipt(context.Background(), closestPeer, chunk)
+	receipt, err := psPivot.ChunkPusher(context.Background(), closestPeer, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
+	if !chunk.Address().Equal(receipt.Address) {
 		t.Fatal("invalid receipt")
 	}
 
@@ -112,12 +112,12 @@ func TestHandler(t *testing.T) {
 	psTriggerPeer, triggerStorerDB := createPushSyncNode(t, triggerPeer, pivotRecorder, mock.WithClosestPeer(pivotPeer))
 	defer triggerStorerDB.Close()
 
-	receipt, err := psTriggerPeer.SendChunkAndReceiveReceipt(context.Background(), pivotPeer, chunk)
+	receipt, err := psTriggerPeer.ChunkPusher(context.Background(), pivotPeer, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
+	if !chunk.Address().Equal(receipt.Address) {
 		t.Fatal("invalid receipt")
 	}
 
