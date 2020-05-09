@@ -22,14 +22,17 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/mock"
 )
 
+// no of times to retry to see if we have received response from pushsync
+var noOfRetries = 10
+
+// Wrap the actual storer to intercept the modeSet that the pusher will call when a valid receipt is received
 type Store struct {
 	storage.Storer
 	modeSet   map[string]storage.ModeSet
 	modeSetMu *sync.Mutex
 }
 
-var noOfRetries = 10 // no of times to retry to see if we have received response from pushsync
-
+// Override the Set function to capture the ModeSetSyncPush
 func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
 	s.modeSetMu.Lock()
 	defer s.modeSetMu.Unlock()
@@ -39,6 +42,9 @@ func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Add
 	return nil
 }
 
+// TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.
+// once the receipt is got this check to see if the localstore is updated to see if the chunk is set
+// as ModeSetSyncPush status.
 func TestSendChunkToPushSync(t *testing.T) {
 	chunk := createChunk()
 
@@ -77,6 +83,9 @@ func TestSendChunkToPushSync(t *testing.T) {
 	p.Close()
 }
 
+// TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent ot its closest peer and
+// get a invalid receipt (not with the address of the chunk sent). The test makes sure that this error
+// is received and the ModeSetSyncPush is not set for the chunk.
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	chunk := createChunk()
 
@@ -112,6 +121,9 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	p.Close()
 }
 
+// TestSendChunkAndTimeoutinReceivingReceipt sends a chunk to pushsync to be sent ot its closest peer and
+// expects a timeout to get instead of getting a receipt. The test makes sure that timeout error
+// is received and the ModeSetSyncPush is not set for the chunk.
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	chunk := createChunk()
 
@@ -193,3 +205,7 @@ func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) err
 	}
 	return nil
 }
+
+// To avoid timeout during race testing
+// cd pkg/pusher
+// go test -race -count 1000 -timeout 60m .
