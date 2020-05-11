@@ -12,8 +12,7 @@ import (
 )
 
 // RandomAddressAt generates a random address
-// at proximity order prox relative to address
-// if prox is negative a random address is generated.
+// at proximity order prox relative to address.
 func RandomAddressAt(self swarm.Address, prox int) swarm.Address {
 	addr := make([]byte, len(self.Bytes()))
 	copy(addr, self.Bytes())
@@ -42,6 +41,7 @@ func RandomAddressAt(self swarm.Address, prox int) swarm.Address {
 	return a
 }
 
+// RandomAddress generates a random address.
 func RandomAddress() swarm.Address {
 	b := make([]byte, 32)
 	return RandomAddressAt(swarm.NewAddress(b), -1)
