@@ -18,13 +18,13 @@ import (
 
 // simpleJoiner wraps a non-optimized implementation of file.Joiner.
 type simpleJoiner struct {
-	store  storage.Storer
+	store storage.Storer
 }
 
 // NewSimpleJoiner creates a new simpleJoiner.
 func NewSimpleJoiner(store storage.Storer) file.Joiner {
 	return &simpleJoiner{
-		store:  store,
+		store: store,
 	}
 }
 

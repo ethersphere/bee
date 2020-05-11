@@ -170,13 +170,13 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 // the reading of data
 func (j *SimpleJoinerJob) sendChunkToReader(data []byte) error {
 	select {
-		case <-j.ctx.Done():
-			j.readCount = j.spanLength
-			return j.ctx.Err()
-		case <-j.doneC:
-			return file.NewAbortError(errors.New("chunk read aborted"))
-		case j.dataC <- data:
-			j.readCount += int64(len(data))
+	case <-j.ctx.Done():
+		j.readCount = j.spanLength
+		return j.ctx.Err()
+	case <-j.doneC:
+		return file.NewAbortError(errors.New("chunk read aborted"))
+	case j.dataC <- data:
+		j.readCount += int64(len(data))
 		// when we reach the end of data to be read
 		// bubble io.EOF error to the gofunc in the
 		// constructor that called start()
