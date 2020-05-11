@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"io/ioutil"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/file"
