@@ -11,10 +11,6 @@ import (
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 
-const (
-	VectorCount = 20
-)
-
 var (
 	fileByteMod int = 255
 	fileLengths     = []int{
@@ -65,6 +61,8 @@ var (
 	}
 )
 
+// GetVector returns test data corresponding to the test vector index,
+// and the expected result address.
 func GetVector(t *testing.T, idx int) ([]byte, swarm.Address) {
 	t.Helper()
 	if idx > fileLengths[idx] {
@@ -76,4 +74,9 @@ func GetVector(t *testing.T, idx int) ([]byte, swarm.Address) {
 		t.Fatal(err)
 	}
 	return data, swarm.MustParseHexAddress(fileExpectHashHex[idx])
+}
+
+// GetVectorCount returns the number of available test vectors.
+func GetVectorCount() {
+	return len(fileLengths)
 }

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	test "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -28,6 +26,12 @@ var (
 	end   = test.VectorCount
 )
 
+// TestSplitThenJoin splits a file with the splitter implementation and
+// joins it again with the joiner implementation, verifying that the
+// rebuilt data matches the original.
+//
+// It uses the same test vectors as the splitter tests to generate the
+// data for tests.
 func TestSplitThenJoin(t *testing.T) {
 	for i := start; i < end; i++ {
 		dataLengthStr := strconv.Itoa(i)
@@ -39,13 +43,13 @@ func testSplitThenJoin(t *testing.T) {
 	var (
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
-		logger      = logging.New(os.Stderr, 6)
 		store       = mock.NewStorer()
 		s           = splitter.NewSimpleSplitter(store)
 		j           = joiner.NewSimpleJoiner(store)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
 
+	// first split
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
@@ -54,6 +58,7 @@ func testSplitThenJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// then join
 	r, l, err := j.Join(ctx, resultAddress)
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +68,7 @@ func testSplitThenJoin(t *testing.T) {
 	}
 
 	var resultData []byte
-	chunkCount := (len(data) / swarm.ChunkSize) + 1
-	for i := 0; i < chunkCount; i++ {
+	for i := 0; i < len(data); i += swarm.ChunkSize {
 		readData := make([]byte, swarm.ChunkSize)
 		_, err := r.Read(readData)
 		if err != nil {
@@ -74,12 +78,9 @@ func testSplitThenJoin(t *testing.T) {
 			t.Fatal(err)
 		}
 		resultData = append(resultData, readData...)
-
-		logger.Debugf("added %d/%d data %v..%v", len(resultData), len(data), readData[:8], readData[len(readData)-8:])
 	}
 
 	if !bytes.Equal(resultData[:len(data)], data) {
 		t.Fatalf("data mismatch %d", len(data))
 	}
-	t.Logf("data ok %d", len(data))
 }

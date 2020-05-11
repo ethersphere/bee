@@ -67,7 +67,6 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 	// data level has index 0
 	startLevelIndex := levelCount - 1
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
-	j.logger.Tracef("simple joiner start index %d for address %s", startLevelIndex, rootChunk.Address())
 
 	// retrieval must be asynchronous to the io.Reader()
 	go func() {
@@ -77,8 +76,6 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 			// in this case the error will always be nil and this will not be executed
 			if err != io.EOF {
 				j.logger.Errorf("simple joiner chunk join job fail: %v", err)
-			} else {
-				j.logger.Tracef("simple joiner chunk join job eof")
 			}
 		}
 		j.err = err
@@ -108,16 +105,21 @@ func (j *SimpleJoinerJob) start(level int) error {
 func (j *SimpleJoinerJob) nextReference(level int) error {
 	data := j.data[level]
 	cursor := j.cursors[level]
-	j.logger.Debugf("nextchunk len %d crsr %d span %d read %d", len(data), cursor, j.spanLength, j.readCount)
 	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
 	err := j.nextChunk(level-1, chunkAddress)
 	if err != nil {
+		// if the last write is a "dangling chunk" the data chunk will have been moved
+		// to an intermediate level. In this edge case, the error must be suppressed,
+		// and the cursor manually to data length boundary to terminate the loop in
+		// the calling frame.
 		if j.readCount+int64(len(data)) == j.spanLength {
 			j.cursors[level] = len(j.data[level])
 			j.dataC <- data
 			return nil
 		}
-		return err
+		if err != io.EOF {
+			j.logger.Debugf("error in chunk join for %v: %v", chunkAddress, err)
+		}
 	}
 
 	// move the cursor to the next reference
@@ -132,14 +134,9 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 // io.Reader consumer.
 func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 
-	j.logger.Debugf("ifirst leveldata %d %v", level, address)
 	// attempt to retrieve the chunk
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
-		j.logger.Warningf("cannot find chunk %v", address)
-		if j.spanLength == j.readCount+int64(len(j.data[level])) {
-			j.logger.Warningf("is last chunk")
-		}
 		return err
 	}
 	j.cursors[level] = 0
@@ -151,7 +148,6 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		for j.cursors[level] < len(j.data[level]) {
 			if len(j.data[level]) == j.cursors[level] {
 				j.data[level] = ch.Data()[8:]
-				j.logger.Debugf("leveldata %d %v", level, j.data[level])
 				j.cursors[level] = 0
 			}
 			err = j.nextReference(level)
@@ -177,7 +173,6 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		// bubble io.EOF error to the gofunc in the
 		// constructor that called start()
 		if j.readCount == j.spanLength {
-			j.logger.Trace("read all")
 			return io.EOF
 		}
 	}
