@@ -28,10 +28,10 @@ var (
 
 // TestSplitThenJoin splits a file with the splitter implementation and
 // joins it again with the joiner implementation, verifying that the
-// rebuilt data matches the original.
+// rebuilt data matches the original data that was split.
 //
 // It uses the same test vectors as the splitter tests to generate the
-// data for tests.
+// necessary data.
 func TestSplitThenJoin(t *testing.T) {
 	for i := start; i < end; i++ {
 		dataLengthStr := strconv.Itoa(i)
@@ -50,7 +50,7 @@ func testSplitThenJoin(t *testing.T) {
 	)
 
 	// first split
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
 	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)))
@@ -67,6 +67,7 @@ func testSplitThenJoin(t *testing.T) {
 		t.Fatalf("data length return expected %d, got %d", len(data), l)
 	}
 
+	// read from joiner
 	var resultData []byte
 	for i := 0; i < len(data); i += swarm.ChunkSize {
 		readData := make([]byte, swarm.ChunkSize)
@@ -80,6 +81,7 @@ func testSplitThenJoin(t *testing.T) {
 		resultData = append(resultData, readData...)
 	}
 
+	// compare result
 	if !bytes.Equal(resultData[:len(data)], data) {
 		t.Fatalf("data mismatch %d", len(data))
 	}
