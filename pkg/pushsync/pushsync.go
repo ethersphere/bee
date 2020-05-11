@@ -26,7 +26,7 @@ const (
 )
 
 type PushSyncer interface {
-	ChunkPusher(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*Receipt, error)
+	PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error)
 }
 
 type Receipt struct {
@@ -208,10 +208,21 @@ func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err e
 	return receipt, nil
 }
 
-// sendChunkAndReceiveReceipt sends chunk to a given peer
-// by opening a stream. It then waits for a receipt from that peer and
-// returns error or nil based on the receiving and the validity of the receipt.
-func (ps *PushSync) ChunkPusher(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*Receipt, error) {
+// PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
+// a receipt from that peer and returns error or nil based on the receiving and
+// the validity of the receipt.
+func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
+	peer, err := ps.peerSuggester.ClosestPeer(ch.Address())
+	if err != nil {
+		if errors.Is(err, topology.ErrWantSelf) {
+			// if you are the closest node return a receipt immediately
+			return &Receipt{
+				Address: ch.Address(),
+			}, nil
+		}
+		return nil, fmt.Errorf("closest peer: %w", err)
+	}
+
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)

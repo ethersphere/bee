@@ -12,13 +12,13 @@ import (
 )
 
 type PushSync struct {
-	SendChunk func(ctx context.Context, peer swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error)
+	SendChunk func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error)
 }
 
-func New(sendChunk func(ctx context.Context, peer swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error)) *PushSync {
+func New(sendChunk func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error)) *PushSync {
 	return &PushSync{SendChunk: sendChunk}
 }
 
-func (s *PushSync) ChunkPusher(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-	return s.SendChunk(ctx, address, chunk)
+func (s *PushSync) PushChunkToClosest(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+	return s.SendChunk(ctx, chunk)
 }

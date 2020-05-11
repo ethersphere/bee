@@ -52,7 +52,7 @@ func TestSendChunkToPushSync(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		receipt := &pushsync.Receipt{
 			Address: swarm.NewAddress(chunk.Address().Bytes()),
 		}
@@ -93,7 +93,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		return nil, errors.New("invalid receipt")
 	})
 
@@ -131,7 +131,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, address swarm.Address, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		// Set 10 times more than the time we wait for the test to complete so that
 		// the response never reaches our testcase
 		time.Sleep(1 * time.Second)

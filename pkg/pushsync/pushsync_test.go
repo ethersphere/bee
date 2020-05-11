@@ -52,7 +52,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	defer storerPivot.Close()
 
 	// Trigger the sending of chunk to the closest node
-	receipt, err := psPivot.ChunkPusher(context.Background(), closestPeer, chunk)
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestHandler(t *testing.T) {
 	psTriggerPeer, triggerStorerDB := createPushSyncNode(t, triggerPeer, pivotRecorder, mock.WithClosestPeer(pivotPeer))
 	defer triggerStorerDB.Close()
 
-	receipt, err := psTriggerPeer.ChunkPusher(context.Background(), pivotPeer, chunk)
+	receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
 	if err != nil {
 		t.Fatal(err)
 	}

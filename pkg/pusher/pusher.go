@@ -6,7 +6,6 @@ package pusher
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -18,7 +17,6 @@ import (
 
 type Service struct {
 	storer            storage.Storer
-	peerSuggester     topology.ClosestPeerer
 	pushSyncer        pushsync.PushSyncer
 	logger            logging.Logger
 	metrics           metrics
@@ -38,7 +36,6 @@ var retryInterval = 10 * time.Second // time interval between retries
 func New(o Options) *Service {
 	service := &Service{
 		storer:            o.Storer,
-		peerSuggester:     o.PeerSuggester,
 		pushSyncer:        o.PushSyncer,
 		logger:            o.Logger,
 		metrics:           newMetrics(),
@@ -81,18 +78,10 @@ func (s *Service) chunksWorker() {
 
 			chunksInBatch++
 			s.metrics.TotalChunksToBeSentCounter.Inc()
-			peer, err := s.peerSuggester.ClosestPeer(ch.Address())
-			if err != nil {
-				if errors.Is(err, topology.ErrWantSelf) {
-					// set chunk status to synced
-					s.setChunkAsSynced(ctx, ch.Address())
-					continue
-				}
-			}
 
 			// Later when we process receipt, get the receipt and process it
 			// for now ignoring the receipt and checking only for error
-			_, err = s.pushSyncer.ChunkPusher(ctx, peer, ch)
+			_, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
 			if err != nil {
 				s.logger.Errorf("pusher: error while sending chunk or receiving receipt: %v", err)
 				continue
