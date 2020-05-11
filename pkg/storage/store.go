@@ -129,7 +129,7 @@ func (d *Descriptor) String() string {
 type Storer interface {
 	Get(ctx context.Context, mode ModeGet, addr swarm.Address) (ch swarm.Chunk, err error)
 	GetMulti(ctx context.Context, mode ModeGet, addrs ...swarm.Address) (ch []swarm.Chunk, err error)
-	Put(ctx context.Context, mode ModePut, chs ...swarm.Chunk) (exist []bool, err error)
+	Putter
 	Has(ctx context.Context, addr swarm.Address) (yes bool, err error)
 	HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error)
 	Set(ctx context.Context, mode ModeSet, addrs ...swarm.Address) (err error)
@@ -137,6 +137,10 @@ type Storer interface {
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, stop func())
 	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
 	io.Closer
+}
+
+type Putter interface {
+	Put(ctx context.Context, mode ModePut, chs ...swarm.Chunk) (exist []bool, err error)
 }
 
 // StateStorer defines methods required to get, set, delete values for different keys

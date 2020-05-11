@@ -14,8 +14,6 @@ type metrics struct {
 	// to be able to return them by Metrics()
 	// using reflection
 
-	TotalChunksToBeSentCounter prometheus.Counter
-	TotalChunksSynced          prometheus.Counter
 	TotalChunksStoredInDB      prometheus.Counter
 	ChunksSentCounter          prometheus.Counter
 	ChunksReceivedCounter      prometheus.Counter
@@ -25,30 +23,16 @@ type metrics struct {
 	ReceiptsSentCounter        prometheus.Counter
 	SendReceiptErrorCounter    prometheus.Counter
 	ReceiveReceiptErrorCounter prometheus.Counter
-	ErrorSettingChunkToSynced  prometheus.Counter
 	RetriesExhaustedCounter    prometheus.Counter
 	InvalidReceiptReceived     prometheus.Counter
 	SendChunkTimer             prometheus.Histogram
 	ReceiptRTT                 prometheus.Histogram
-	MarkAndSweepTimer          prometheus.Histogram
 }
 
 func newMetrics() metrics {
 	subsystem := "pushsync"
 
 	return metrics{
-		TotalChunksToBeSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_chunk_to_be_sent",
-			Help:      "Total chunks to be sent.",
-		}),
-		TotalChunksSynced: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_chunk_synced",
-			Help:      "Total chunks synced successfully with valid receipts.",
-		}),
 		TotalChunksStoredInDB: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -103,13 +87,6 @@ func newMetrics() metrics {
 			Name:      "receive_receipt_error",
 			Help:      "Total no of time error received while receiving receipt.",
 		}),
-
-		ErrorSettingChunkToSynced: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "cannot_set_chunk_sync_in_DB",
-			Help:      "Total no of times the chunk cannot be synced in DB.",
-		}),
 		RetriesExhaustedCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -127,13 +104,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "send_chunk_time_histogram",
 			Help:      "Histogram for Time taken to send a chunk.",
-			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
-		}),
-		MarkAndSweepTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "mark_and_sweep_time_histogram",
-			Help:      "Histogram of time spent in mark and sweep.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
 		ReceiptRTT: prometheus.NewHistogram(prometheus.HistogramOpts{
