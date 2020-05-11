@@ -4,7 +4,9 @@
 
 syntax = "proto3";
 
-package pb;
+package pushsync;
+
+option go_package = "pb";
 
 message Delivery {
   bytes Address = 1;
