@@ -4,7 +4,9 @@
 
 syntax = "proto3";
 
-package pb;
+package test;
+
+option go_package = "pb";
 
 message Message {
     string Text = 1;

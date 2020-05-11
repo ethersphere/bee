@@ -4,7 +4,9 @@
 
 syntax = "proto3";
 
-package pb;
+package retieval;
+
+option go_package = "pb";
 
 message Request {
     bytes Addr = 1;
