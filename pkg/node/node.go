@@ -215,6 +215,10 @@ func NewBee(o Options) (*Bee, error) {
 		Logger:        logger,
 	})
 
+	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
+		return nil, fmt.Errorf("pushsync service: %w", err)
+	}
+
 	pushSyncPusher := pusher.New(pusher.Options{
 		Storer:        storer,
 		PeerSuggester: topologyDriver,
