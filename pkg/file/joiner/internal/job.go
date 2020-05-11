@@ -114,8 +114,9 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 		// the calling frame.
 		if j.readCount+int64(len(data)) == j.spanLength {
 			j.cursors[level] = len(j.data[level])
-			j.dataC <- data
-			return nil
+			//j.dataC <- data
+			err = j.sendChunkToReader(data)
+			return err
 		}
 		if err != io.EOF {
 			j.logger.Debugf("error in chunk join for %v: %v", chunkAddress, err)
@@ -124,7 +125,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 
 	// move the cursor to the next reference
 	j.cursors[level] += swarm.SectionSize
-	return nil
+	return err
 }
 
 // nextChunk retrieves data chunks by resolving references in intermediate chunks.
@@ -160,7 +161,15 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		// * context cancelled when client has disappeared, timeout etc
 		// * doneC receive when gracefully terminated through Close
 		data := ch.Data()[8:]
-		select {
+		err = j.sendChunkToReader(data)
+	}
+	return err
+}
+
+// sendChunkToReader handles exceptions on the part of consumer in
+// the reading of data
+func (j *SimpleJoinerJob) sendChunkToReader(data []byte) error {
+	select {
 		case <-j.ctx.Done():
 			j.readCount = j.spanLength
 			return j.ctx.Err()
@@ -168,7 +177,6 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 			return file.NewAbortError(errors.New("chunk read aborted"))
 		case j.dataC <- data:
 			j.readCount += int64(len(data))
-		}
 		// when we reach the end of data to be read
 		// bubble io.EOF error to the gofunc in the
 		// constructor that called start()
@@ -176,7 +184,7 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 			return io.EOF
 		}
 	}
-	return err
+	return nil
 }
 
 // Read is called by the consumer to retrieve the joined data.

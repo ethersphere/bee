@@ -66,7 +66,7 @@ var (
 func GetVector(t *testing.T, idx int) ([]byte, swarm.Address) {
 	t.Helper()
 	if idx > fileLengths[idx] {
-		t.Fatalf("idx %d out of bound for count %d", idx, VectorCount)
+		t.Fatalf("idx %d out of bound for count %d", idx, GetVectorCount())
 	}
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(fileByteMod)
 	data, err := g.SequentialBytes(fileLengths[idx])
@@ -77,6 +77,6 @@ func GetVector(t *testing.T, idx int) ([]byte, swarm.Address) {
 }
 
 // GetVectorCount returns the number of available test vectors.
-func GetVectorCount() {
+func GetVectorCount() int {
 	return len(fileLengths)
 }

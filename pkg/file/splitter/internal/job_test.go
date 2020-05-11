@@ -11,14 +11,14 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/splitter/internal"
-	filetesting "github.com/ethersphere/bee/pkg/file/testing"
+	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
 	start = 0
-	end   = filetesting.VectorCount
+	end   = test.GetVectorCount()
 )
 
 // TestSplitterJobPartialSingleChunk passes sub-chunk length data to the splitter,
@@ -71,7 +71,7 @@ func testSplitterJobVector(t *testing.T) {
 		store       = mock.NewStorer()
 	)
 
-	data, expect := filetesting.GetVector(t, int(dataIdx))
+	data, expect := test.GetVector(t, int(dataIdx))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))

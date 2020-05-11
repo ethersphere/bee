@@ -23,7 +23,7 @@ import (
 
 var (
 	start = 0
-	end   = test.VectorCount
+	end   = test.GetVectorCount()
 )
 
 // TestSplitThenJoin splits a file with the splitter implementation and
