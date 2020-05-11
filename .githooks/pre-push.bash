@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Get current branch name
 current=$(git rev-parse --abbrev-ref HEAD)
-if git branch -r | grep "^  origin/${current}$" &> /dev/null; then
+if git branch -r | grep "^  ${1}/${current}$" &> /dev/null; then
     # Check if we actually have commits to push
     commits=$(git log @{u}..)
     if [ -z "$commits" ]; then
