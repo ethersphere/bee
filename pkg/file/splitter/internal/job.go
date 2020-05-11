@@ -9,11 +9,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"hash"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
@@ -144,6 +146,8 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	binary.LittleEndian.PutUint64(spanBytes, uint64(span))
 	ch := swarm.NewChunk(addr, append(spanBytes, s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]...))
 	_, err = s.store.Put(s.ctx, storage.ModePutUpload, ch)
+	logger := logging.New(os.Stderr, 6)
+	logger.Debugf("put ch %v", ch)
 	if err != nil {
 		return nil, err
 	}

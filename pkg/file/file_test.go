@@ -7,6 +7,7 @@ package file_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"strings"
 	"strconv"
@@ -44,7 +45,7 @@ func testSplitThenJoin(t *testing.T) {
 		data, _ = test.GetVector(t, int(dataIdx))
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second * 10)
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
 	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)))
@@ -61,22 +62,23 @@ func testSplitThenJoin(t *testing.T) {
 	}
 
 	var resultData []byte
-	chunkCount := len(data) / swarm.ChunkSize
+	chunkCount := (len(data) / swarm.ChunkSize) + 1
 	for i := 0; i < chunkCount; i++ {
 		readData := make([]byte, swarm.ChunkSize)
-		c, err := r.Read(readData)
+		_, err := r.Read(readData)
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			t.Fatal(err)
 		}
-		if c < swarm.ChunkSize {
-			t.Fatalf("shortread %d", c)
-		}
 		resultData = append(resultData, readData...)
-		//logger.Debugf("added data %v..%v", readData[:8], readData[len(readData)-8:])
+
+		logger.Debugf("added %d/%d data %v..%v", len(resultData), len(data), readData[:8], readData[len(readData)-8:])
 	}
 
-	if !bytes.Equal(resultData, data) {
-		t.Fatal("data mismatch")
+	if !bytes.Equal(resultData[:len(data)], data) {
+		t.Fatalf("data mismatch %d", len(data))
 	}
-	_ = logger
+	t.Logf("data ok %d", len(data))
 }

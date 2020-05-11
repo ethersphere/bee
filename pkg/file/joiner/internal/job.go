@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -59,8 +59,8 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		spanLength: int64(spanLength),
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),
-		//logger:     logging.New(os.Stderr, 6),
-		logger:     logging.New(ioutil.Discard, 0),
+		logger:     logging.New(os.Stderr, 6),
+		//logger:     logging.New(ioutil.Discard, 0),
 	}
 
 	// startLevelIndex is the root chunk level
@@ -108,9 +108,15 @@ func (j *SimpleJoinerJob) start(level int) error {
 func (j *SimpleJoinerJob) nextReference(level int) error {
 	data := j.data[level]
 	cursor := j.cursors[level]
+	j.logger.Debugf("nextchunk len %d crsr %d span %d read %d", len(data), cursor, j.spanLength, j.readCount)
 	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
 	err := j.nextChunk(level-1, chunkAddress)
 	if err != nil {
+		if j.readCount + int64(len(data)) == j.spanLength {
+			j.cursors[level] = len(j.data[level])
+			j.dataC <- data
+			return nil
+		}
 		return err
 	}
 
@@ -130,6 +136,10 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 	// attempt to retrieve the chunk
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
+		j.logger.Warningf("cannot find chunk %v", address)
+		if j.spanLength == j.readCount + int64(len(j.data[level])) {
+			j.logger.Warningf("is last chunk")
+		}
 		return err
 	}
 	j.cursors[level] = 0
