@@ -97,7 +97,6 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 
 // ShallowestEmpty returns the shallowest empty bin if one exists.
 // If such bin does not exists, returns true as bool value.
-// Must be called under lock.
 func (s *PSlice) ShallowestEmpty() (bin uint8, none bool) {
 	s.Lock()
 	defer s.Unlock()
@@ -107,7 +106,7 @@ func (s *PSlice) ShallowestEmpty() (bin uint8, none bool) {
 	binCp[len(binCp)-1] = uint(len(s.peers))
 
 	for i := uint8(0); i < uint8(len(binCp)-1); i++ {
-		if binCp[i+1]-binCp[i] == 0 {
+		if binCp[i+1] == binCp[i] {
 			return i, false
 		}
 	}
@@ -128,7 +127,12 @@ func (s *PSlice) exists(addr swarm.Address) (bool, int) {
 	if len(s.peers) == 0 {
 		return false, 0
 	}
-	return peerExists(s.peers, addr)
+	for i, a := range s.peers {
+		if a.Equal(addr) {
+			return true, i
+		}
+	}
+	return false, 0
 }
 
 // Add a peer at a certain PO.
@@ -140,7 +144,9 @@ func (s *PSlice) Add(addr swarm.Address, po uint8) {
 		return
 	}
 
-	s.peers = append(s.peers[:s.bins[po]], append([]swarm.Address{addr}, s.peers[s.bins[po]:]...)...)
+	head := s.peers[:s.bins[po]]
+	tail := append([]swarm.Address{addr}, s.peers[s.bins[po]:]...)
+	s.peers = append(head, tail...)
 	s.incDeeper(po)
 }
 
@@ -185,14 +191,4 @@ func (s *PSlice) decDeeper(po uint8) {
 	for i := po + 1; i < uint8(len(s.bins)); i++ {
 		s.bins[i]--
 	}
-}
-
-// check if a certain address exists within the given slice of peers.
-func peerExists(peers []swarm.Address, peer swarm.Address) (exists bool, idx int) {
-	for i, addr := range peers {
-		if addr.Equal(peer) {
-			return true, i
-		}
-	}
-	return false, 0
 }

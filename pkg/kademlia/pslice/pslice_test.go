@@ -31,7 +31,7 @@ func TestShallowestEmpty(t *testing.T) {
 		sd, none := ps.ShallowestEmpty()
 		if i == 15 {
 			if !none {
-				t.Fatal("expected last bin to be empty and return no empty bins")
+				t.Fatal("expected last bin to be empty, thus return no empty bins true")
 			}
 		} else {
 			if sd != uint8(i+1) {
@@ -43,35 +43,38 @@ func TestShallowestEmpty(t *testing.T) {
 		}
 	}
 
+	// this part removes peers in certain bins and asserts
+	// that the shallowest empty bin behaves correctly once the bins
 	for _, tc := range []struct {
-		rmPO  int
-		expSE uint8
+		removePo         int
+		expectShallowest uint8
 	}{
-		{rmPO: 3,
-			expSE: 3,
+		{
+			removePo:         3,
+			expectShallowest: 3,
 		}, {
-			rmPO:  1,
-			expSE: 1,
+			removePo:         1,
+			expectShallowest: 1,
 		}, {
-			rmPO:  10,
-			expSE: 1,
+			removePo:         10,
+			expectShallowest: 1,
 		}, {
-			rmPO:  15,
-			expSE: 1,
+			removePo:         15,
+			expectShallowest: 1,
 		}, {
-			rmPO:  14,
-			expSE: 1,
+			removePo:         14,
+			expectShallowest: 1,
 		}, {
-			rmPO:  0,
-			expSE: 0,
+			removePo:         0,
+			expectShallowest: 0,
 		},
 	} {
-		po := uint8(swarm.Proximity(base.Bytes(), peers[tc.rmPO].Bytes()))
-		ps.Remove(peers[tc.rmPO], po)
+		po := uint8(swarm.Proximity(base.Bytes(), peers[tc.removePo].Bytes()))
+		ps.Remove(peers[tc.removePo], po)
 
 		sd, none := ps.ShallowestEmpty()
-		if sd != tc.expSE || none {
-			t.Fatalf("empty bin mismatch got %d want %d", sd, tc.expSE)
+		if sd != tc.expectShallowest || none {
+			t.Fatalf("empty bin mismatch got %d want %d", sd, tc.expectShallowest)
 		}
 	}
 	ps.Add(peers[0], 0)
@@ -97,7 +100,6 @@ func TestAddRemove(t *testing.T) {
 		b := test.RandomAddressAt(base, i)
 		peers[i+1] = b
 	}
-	chkNotExists(t, ps, peers...)
 
 	// add one
 	ps.Add(peers[0], 0)
@@ -274,10 +276,6 @@ func testIteratorRev(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, itera
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if i != iterations {
-		t.Fatalf("iterations mismatch, want %d got %d", iterations, i)
-	}
 }
 
 func testIterator(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iterations int, peerseq []swarm.Address) {
@@ -311,7 +309,7 @@ func chkBins(t *testing.T, ps *pslice.PSlice, seq []uint) {
 	pb := pslice.PSliceBins(ps)
 	for i, v := range seq {
 		if pb[i] != v {
-			t.Fatalf("bin seq wrong, get %d want %d", pb[i], v)
+			t.Fatalf("bin seq wrong, get %d want %d, index %v", pb[i], v, pb)
 		}
 	}
 }
