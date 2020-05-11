@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -50,7 +49,7 @@ func testSplitThenJoin(t *testing.T) {
 	)
 
 	// first split
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
 	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)))
