@@ -18,16 +18,20 @@ func TestShallowestEmpty(t *testing.T) {
 	var (
 		ps    = pslice.New(16)
 		base  = test.RandomAddress()
-		peers = make([]swarm.Address, 16)
+		peers = make([][]swarm.Address, 16)
 	)
 
 	for i := 0; i < 16; i++ {
-		a := test.RandomAddressAt(base, i)
-		peers[i] = a
+		for j := 0; j < 3; j++ {
+			a := test.RandomAddressAt(base, i)
+			peers[i] = append(peers[i], a)
+		}
 	}
 
 	for i, v := range peers {
-		ps.Add(v, uint8(i))
+		for _, vv := range v {
+			ps.Add(vv, uint8(i))
+		}
 		sd, none := ps.ShallowestEmpty()
 		if i == 15 {
 			if !none {
@@ -69,15 +73,16 @@ func TestShallowestEmpty(t *testing.T) {
 			expectShallowest: 0,
 		},
 	} {
-		po := uint8(swarm.Proximity(base.Bytes(), peers[tc.removePo].Bytes()))
-		ps.Remove(peers[tc.removePo], po)
-
+		for _, v := range peers[tc.removePo] {
+			po := uint8(swarm.Proximity(base.Bytes(), v.Bytes()))
+			ps.Remove(v, po)
+		}
 		sd, none := ps.ShallowestEmpty()
 		if sd != tc.expectShallowest || none {
 			t.Fatalf("empty bin mismatch got %d want %d", sd, tc.expectShallowest)
 		}
 	}
-	ps.Add(peers[0], 0)
+	ps.Add(peers[0][0], 0)
 	if sd, none := ps.ShallowestEmpty(); sd != 1 || none {
 		t.Fatalf("expected bin 1 to be empty shallowest but got %d", sd)
 	}
