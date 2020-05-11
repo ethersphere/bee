@@ -17,7 +17,7 @@ const (
 
 var (
 	fileByteMod int = 255
-	fileLengths = []int{
+	fileLengths     = []int{
 		31,                           // 0
 		32,                           // 1
 		33,                           // 2

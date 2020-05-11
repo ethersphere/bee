@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/splitter/internal"
+	filetesting "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	filetesting "github.com/ethersphere/bee/pkg/file/testing"
 )
 
 var (
@@ -66,9 +66,9 @@ func TestSplitterJobVector(t *testing.T) {
 
 func testSplitterJobVector(t *testing.T) {
 	var (
-		paramstring   = strings.Split(t.Name(), "/")
-		dataIdx, _ = strconv.ParseInt(paramstring[1], 10, 0)
-		store         = mock.NewStorer()
+		paramstring = strings.Split(t.Name(), "/")
+		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
+		store       = mock.NewStorer()
 	)
 
 	data, expect := filetesting.GetVector(t, int(dataIdx))

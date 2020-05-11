@@ -5,17 +5,17 @@
 package internal
 
 import (
-	"encoding/binary"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"os"
 	"hash"
+	"os"
 
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"

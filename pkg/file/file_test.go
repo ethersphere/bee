@@ -9,19 +9,20 @@ import (
 	"context"
 	"io"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/swarm"
 	test "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
+
 var (
 	start = 0
 	end   = test.VectorCount
@@ -36,16 +37,16 @@ func TestSplitThenJoin(t *testing.T) {
 
 func testSplitThenJoin(t *testing.T) {
 	var (
-		paramstring   = strings.Split(t.Name(), "/")
-		dataIdx, _ = strconv.ParseInt(paramstring[1], 10, 0)
-		logger = logging.New(os.Stderr, 6)
-		store = mock.NewStorer()
-		s = splitter.NewSimpleSplitter(store)
-		j = joiner.NewSimpleJoiner(store)
-		data, _ = test.GetVector(t, int(dataIdx))
+		paramstring = strings.Split(t.Name(), "/")
+		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
+		logger      = logging.New(os.Stderr, 6)
+		store       = mock.NewStorer()
+		s           = splitter.NewSimpleSplitter(store)
+		j           = joiner.NewSimpleJoiner(store)
+		data, _     = test.GetVector(t, int(dataIdx))
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
 	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)))

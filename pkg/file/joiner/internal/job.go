@@ -112,7 +112,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
 	err := j.nextChunk(level-1, chunkAddress)
 	if err != nil {
-		if j.readCount + int64(len(data)) == j.spanLength {
+		if j.readCount+int64(len(data)) == j.spanLength {
 			j.cursors[level] = len(j.data[level])
 			j.dataC <- data
 			return nil
@@ -137,7 +137,7 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		j.logger.Warningf("cannot find chunk %v", address)
-		if j.spanLength == j.readCount + int64(len(j.data[level])) {
+		if j.spanLength == j.readCount+int64(len(j.data[level])) {
 			j.logger.Warningf("is last chunk")
 		}
 		return err
