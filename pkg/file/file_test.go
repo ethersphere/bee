@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"strings"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,43 +18,50 @@ import (
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
+	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	mockbytes "gitlab.com/nolash/go-mockbytes"
+)
+var (
+	start = 0
+	end   = test.VectorCount
 )
 
 func TestSplitThenJoin(t *testing.T) {
-
-	logger := logging.New(os.Stderr, 6)
-	chunkCount := swarm.Branches + 2
-
-	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
-	testData, err := g.SequentialBytes(swarm.ChunkSize * chunkCount)
-	if err != nil {
-		t.Fatal(err)
+	for i := start; i < end; i++ {
+		dataLengthStr := strconv.Itoa(i)
+		t.Run(dataLengthStr, testSplitThenJoin)
 	}
+}
 
-	store := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(store)
-
+func testSplitThenJoin(t *testing.T) {
+	var (
+		paramstring   = strings.Split(t.Name(), "/")
+		dataIdx, _ = strconv.ParseInt(paramstring[1], 10, 0)
+		logger = logging.New(os.Stderr, 6)
+		store = mock.NewStorer()
+		s = splitter.NewSimpleSplitter(store)
+		j = joiner.NewSimpleJoiner(store)
+		data, _ = test.GetVector(t, int(dataIdx))
+	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	testDataReader := file.NewSimpleReadCloser(testData)
-	resultAddress, err := s.Split(ctx, testDataReader, int64(len(testData)))
+	dataReader := file.NewSimpleReadCloser(data)
+	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	j := joiner.NewSimpleJoiner(store)
 	r, l, err := j.Join(ctx, resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l != int64(len(testData)) {
-		t.Fatalf("data length return expected %d, got %d", len(testData), l)
+	if l != int64(len(data)) {
+		t.Fatalf("data length return expected %d, got %d", len(data), l)
 	}
 
 	var resultData []byte
+	chunkCount := len(data) / swarm.ChunkSize
 	for i := 0; i < chunkCount; i++ {
 		readData := make([]byte, swarm.ChunkSize)
 		c, err := r.Read(readData)
@@ -63,10 +72,11 @@ func TestSplitThenJoin(t *testing.T) {
 			t.Fatalf("shortread %d", c)
 		}
 		resultData = append(resultData, readData...)
-		logger.Debugf("added data %v..%v", readData[:8], readData[len(readData)-8:])
+		//logger.Debugf("added data %v..%v", readData[:8], readData[len(readData)-8:])
 	}
 
-	if !bytes.Equal(resultData, testData) {
+	if !bytes.Equal(resultData, data) {
 		t.Fatal("data mismatch")
 	}
+	_ = logger
 }

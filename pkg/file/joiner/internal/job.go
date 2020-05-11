@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"io/ioutil"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -59,7 +59,8 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		spanLength: int64(spanLength),
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),
-		logger:     logging.New(os.Stderr, 6),
+		//logger:     logging.New(os.Stderr, 6),
+		logger:     logging.New(ioutil.Discard, 0),
 	}
 
 	// startLevelIndex is the root chunk level
