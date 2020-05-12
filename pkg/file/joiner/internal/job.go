@@ -113,18 +113,18 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 		// the calling frame.
 		if j.readCount+int64(len(data)) == j.spanLength {
 			j.cursors[level] = len(j.data[level])
-			//j.dataC <- data
 			err = j.sendChunkToReader(data)
 			return err
 		}
 		if err != io.EOF {
 			j.logger.Debugf("error in chunk join for %v: %v", chunkAddress, err)
 		}
+		return err
 	}
 
 	// move the cursor to the next reference
 	j.cursors[level] += swarm.SectionSize
-	return err
+	return nil
 }
 
 // nextChunk retrieves data chunks by resolving references in intermediate chunks.

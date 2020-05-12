@@ -129,6 +129,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 
 	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
 
+	// perform hashing
 	s.hasher.Reset()
 	err := s.hasher.SetSpan(span)
 	if err != nil {
@@ -139,14 +140,19 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 		return nil, err
 	}
 	ref := s.hasher.Sum(nil)
+
+	// assemble chunk and put in store
 	addr := swarm.NewAddress(ref)
-	spanBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(spanBytes, uint64(span))
-	ch := swarm.NewChunk(addr, append(spanBytes, s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]...))
+	head := make([]byte, 8)
+	binary.LittleEndian.PutUint64(head, uint64(span))
+	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
+	chunkData := append(head, tail...)
+	ch := swarm.NewChunk(addr, chunkData)
 	_, err = s.store.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err
 	}
+
 	return ref, nil
 }
 
