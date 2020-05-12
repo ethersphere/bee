@@ -1,4 +1,4 @@
-name: Beekeper
+name: Beekeeper
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - master
 
 jobs:
-  beekeper:
+  beekeeper:
     env:
       REPLICA: 3
     runs-on: ubuntu-latest
@@ -38,7 +38,7 @@ jobs:
         run: |
           export LAST_BEE=$(($REPLICA-1))
           until kubectl get svc traefik -n kube-system &> /dev/null; do echo "Waiting for the traefik service..."; sleep 1; done
-          helm install bee -f .github/beekeper/bee.yaml ethersphere/bee --namespace bee --set image.repository=registry.localhost:5000/ethersphere/bee --set replicaCount="${REPLICA}" --set bootnode.enabled=true --wait
+          helm install bee -f .github/beekeeper/bee.yaml ethersphere/bee --namespace bee --set image.repository=registry.localhost:5000/ethersphere/bee --set replicaCount="${REPLICA}" --set bootnode.enabled=true --wait
           until [[ "$(curl -s bee-${LAST_BEE}-debug.localhost/readiness | jq -r .status)" == "ok" ]] &> /dev/null; do echo "Waiting for the last bee..."; sleep 1; done
       - name: Test fullconnectivity
         run: ./beekeeper check fullconnectivity --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
