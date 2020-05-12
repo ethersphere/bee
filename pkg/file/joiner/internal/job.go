@@ -119,8 +119,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 			err = j.sendChunkToReader(data)
 			return err
 		}
-		j.logger.Debugf("error in chunk join for %v: %v", chunkAddress, err)
-		return err
+		return fmt.Errorf("error in join for chunk %v: %v", chunkAddress, err)
 	}
 
 	// move the cursor to the next reference
