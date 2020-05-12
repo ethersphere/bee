@@ -107,6 +107,9 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
 	err := j.nextChunk(level-1, chunkAddress)
 	if err != nil {
+		if err == io.EOF {
+			return err
+		}
 		// if the last write is a "dangling chunk" the data chunk will have been moved
 		// to an intermediate level. In this edge case, the error must be suppressed,
 		// and the cursor manually to data length boundary to terminate the loop in
@@ -116,9 +119,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 			err = j.sendChunkToReader(data)
 			return err
 		}
-		if err != io.EOF {
-			j.logger.Debugf("error in chunk join for %v: %v", chunkAddress, err)
-		}
+		j.logger.Debugf("error in chunk join for %v: %v", chunkAddress, err)
 		return err
 	}
 
