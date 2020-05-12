@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"io/ioutil"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -59,14 +59,13 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 		spanLength: int64(spanLength),
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),
-		logger:     logging.New(os.Stderr, 6),
+		logger:     logging.New(ioutil.Discard, 0),
 	}
 
 	// startLevelIndex is the root chunk level
 	// data level has index 0
 	startLevelIndex := levelCount - 1
 	j.data[startLevelIndex] = rootChunk.Data()[8:]
-	j.logger.Tracef("simple joiner start index %d for address %s", startLevelIndex, rootChunk.Address())
 
 	// retrieval must be asynchronous to the io.Reader()
 	go func() {
@@ -76,8 +75,6 @@ func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swa
 			// in this case the error will always be nil and this will not be executed
 			if err != io.EOF {
 				j.logger.Errorf("simple joiner chunk join job fail: %v", err)
-			} else {
-				j.logger.Tracef("simple joiner chunk join job eof")
 			}
 		}
 		j.err = err
@@ -110,7 +107,19 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
 	err := j.nextChunk(level-1, chunkAddress)
 	if err != nil {
-		return err
+		if err == io.EOF {
+			return err
+		}
+		// if the last write is a "dangling chunk" the data chunk will have been moved
+		// to an intermediate level. In this edge case, the error must be suppressed,
+		// and the cursor manually to data length boundary to terminate the loop in
+		// the calling frame.
+		if j.readCount+int64(len(data)) == j.spanLength {
+			j.cursors[level] = len(j.data[level])
+			err = j.sendChunkToReader(data)
+			return err
+		}
+		return fmt.Errorf("error in join for chunk %v: %v", chunkAddress, err)
 	}
 
 	// move the cursor to the next reference
@@ -151,24 +160,30 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		// * context cancelled when client has disappeared, timeout etc
 		// * doneC receive when gracefully terminated through Close
 		data := ch.Data()[8:]
-		select {
-		case <-j.ctx.Done():
-			j.readCount = j.spanLength
-			return j.ctx.Err()
-		case <-j.doneC:
-			return file.NewAbortError(errors.New("chunk read aborted"))
-		case j.dataC <- data:
-			j.readCount += int64(len(data))
-		}
+		err = j.sendChunkToReader(data)
+	}
+	return err
+}
+
+// sendChunkToReader handles exceptions on the part of consumer in
+// the reading of data
+func (j *SimpleJoinerJob) sendChunkToReader(data []byte) error {
+	select {
+	case <-j.ctx.Done():
+		j.readCount = j.spanLength
+		return j.ctx.Err()
+	case <-j.doneC:
+		return file.NewAbortError(errors.New("chunk read aborted"))
+	case j.dataC <- data:
+		j.readCount += int64(len(data))
 		// when we reach the end of data to be read
 		// bubble io.EOF error to the gofunc in the
 		// constructor that called start()
 		if j.readCount == j.spanLength {
-			j.logger.Trace("read all")
 			return io.EOF
 		}
 	}
-	return err
+	return nil
 }
 
 // Read is called by the consumer to retrieve the joined data.
