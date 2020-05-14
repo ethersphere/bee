@@ -391,6 +391,11 @@ func TestTopologyNotifiee(t *testing.T) {
 	expectPeersEventually(t, s1)
 	waitAddrSet(t, &n1disconnectedAddr, &mtx, overlay2)
 
+	// note that both n1disconnect and n2disconnect callbacks are called after just
+	// one disconnect. this is due to the fact the when the libp2p abstraction is explicitly
+	// called to disconnect from a peer, it will also notify the topology notifiee, since
+	// peer disconnections can also result from components from outside the bound of the
+	// topology driver
 	mtx.Lock()
 	expectZeroAddress(t, n2connectedAddr)
 	mtx.Unlock()

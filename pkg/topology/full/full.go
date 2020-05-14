@@ -162,7 +162,7 @@ func (d *driver) Connected(ctx context.Context, addr swarm.Address) error {
 }
 
 func (d *driver) Disconnected(swarm.Address) {
-	panic("todo")
+	// TODO: implement if necessary
 }
 
 func (d *driver) MarshalJSON() ([]byte, error) {

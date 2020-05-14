@@ -9,7 +9,7 @@ in a way that a kademlia connectivity is actively maintained by the node.
 A thorough explanation of the logic in the `manage()` forever loop:
 The `manageC` channel gets triggered every time there's a change in the information regarding peers we know about.
 This can be a result of: (1) A peer has disconnected from us (2) A peer has been added to the list of known peers (from
-discovery, debugapi, bootnode flag or just because she was persisted in the address book and the node has been restarted).
+discovery, debugapi, bootnode flag or just because it was persisted in the address book and the node has been restarted).
 
 So the information has been changed, and potentially upon disconnection, the depth can travel to a shallower depth in result.
 If a peer gets added through AddPeer, this does not necessarily infer an immediate depth change, since the peer might end up in the backlog for a long time until we actually need to connect to her.
@@ -23,7 +23,7 @@ which is deeper. So this becomes our strategy and we operate with this in mind, 
 connections to peers for whatever reason can only result in increasing depth.
 
 Empty intermediate bins should be eliminated by the `binSaturated` method indicating a bin size too short, which in turn means that connections should be established within this bin.
-Empty bins have special status in terms of depth calculation and as mentioned before they are prioritized over deeper, non empty bins and they constitute as the node's depth when the latter is recalculated. For the rational behind this please refer to the appropriate chapters in the book of Swarm.
+Empty bins have special status in terms of depth calculation and as mentioned before they are prioritized over deeper, non empty bins and they constitute as the node's depth when the latter is recalculated. For the rationale behind this please refer to the appropriate chapters in the book of Swarm.
 
 A special case of the `manage()` functionality is that when we iterate over peers and we come across a peer that has PO >= depth, we would always like to connect to that peer. This should always be enforced within the bounds of the `binSaturated` function and guarantees an ever increasing kademlia depth
 in an ever-increasing size of Swarm, resulting in smaller areas of responsibility for the nodes, maintaining a general upper bound of the assigned nominal area of responsibility in terms of actual storage requirement. See book of Swarm for more details.

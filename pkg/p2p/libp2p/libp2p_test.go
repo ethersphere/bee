@@ -93,7 +93,7 @@ func expectPeers(t *testing.T, s *libp2p.Service, addrs ...swarm.Address) {
 }
 
 // expectPeersEventually validates that peers with addresses are connected with
-// retires. It is supposed to be used to validate asynchronous connecting on the
+// retries. It is supposed to be used to validate asynchronous connecting on the
 // peer that is connected to.
 func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Address) {
 	t.Helper()

@@ -223,7 +223,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 
 		if s.topologyNotifiee != nil {
 			if err := s.topologyNotifiee.Connected(ctx, i.Address); err != nil {
-				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
+				s.logger.Debugf("topology notifiee error: %s: %v", peerID, err)
 			}
 		}
 
