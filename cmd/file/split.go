@@ -25,12 +25,12 @@ import (
 )
 
 var (
-	outdir              string // flag variable, output dir for fsStore
-	inputLength         int64  // flag variable, limit of data input
-	host                string // flag variable, http api host
-	port                int    // flag variable, http api port
-	noHttp              bool   // flag variable, skips http api if set
-	ssl                 bool   // flag variable, uses https for api if set
+	outdir      string // flag variable, output dir for fsStore
+	inputLength int64  // flag variable, limit of data input
+	host        string // flag variable, http api host
+	port        int    // flag variable, http api port
+	noHttp      bool   // flag variable, skips http api if set
+	ssl         bool   // flag variable, uses https for api if set
 )
 
 // teeStore provides a storage.Putter that can put to multiple underlying storage.Putters
@@ -231,7 +231,6 @@ must be set to the length of the input.`,
 	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
 	err := c.Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
