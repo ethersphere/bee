@@ -65,7 +65,7 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.listPinnedChunks),
 	})
 	router.Handle("/topology", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.topologyJsonHandler),
+		"GET": http.HandlerFunc(s.topologyHandler),
 	})
 
 	baseRouter.Handle("/", web.ChainHandlers(

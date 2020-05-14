@@ -54,7 +54,7 @@ type Kad struct {
 	depth          uint8                 // current neighborhood depth
 	depthMu        sync.RWMutex          // protect depth changes
 	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
-	waitNext       map[string]time.Time  // sancation connections to a peer, key is overlay string and value is time to next retry
+	waitNext       map[string]time.Time  // sanction connections to a peer, key is overlay string and value is time to next retry
 	waitNextMu     sync.Mutex            // synchronize map
 	logger         logging.Logger        // logger
 	quit           chan struct{}         // quit channel

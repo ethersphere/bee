@@ -61,7 +61,7 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 	return nil
 }
 
-// EachBinRev iterates over all peers from shallowest to deepest.
+// EachBinRev iterates over all peers from shallowest bin to deepest.
 func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	s.Lock()
 	defer s.Unlock()

@@ -15,15 +15,17 @@ type topologyResponse struct {
 	Topology string `json:"topology"`
 }
 
-func (s *server) topologyJsonHandler(w http.ResponseWriter, r *http.Request) {
+func (s *server) topologyHandler(w http.ResponseWriter, r *http.Request) {
 	ms, ok := s.TopologyDriver.(json.Marshaler)
 	if !ok {
+		s.Logger.Error("topology driver cast to json marshaler error")
 		jsonhttp.InternalServerError(w, "topology json marshal interface error")
 		return
 	}
 
 	bytes, err := ms.MarshalJSON()
 	if err != nil {
+		s.Logger.Errorf("topology marshal to json: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
