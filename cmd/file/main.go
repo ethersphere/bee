@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -20,17 +24,76 @@ var (
 	notImplementedError = errors.New("method not implemented")
 	outdir string
 	inputLength int64
+	host string
+	port int
+	noHttp bool
+	ssl bool
 )
 
+type teeStore struct {
+	putters []storage.Putter
+}
+
+func newTeeStore() *teeStore {
+	return &teeStore{}
+}
+
+func (t *teeStore) Add(putter storage.Putter) {
+	t.putters = append(t.putters, putter)
+}
+
+func (t *teeStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	for _, putter := range t.putters {
+		_, err := putter.Put(ctx, mode, chs...)
+		if err != nil {
+			return []bool{}, err
+		}
+	}
+	return []bool{}, nil
+}
 
 type fsStore struct {
 	path string
 }
 
-func newFsStore(path string) *fsStore {
+func newFsStore(path string) storage.Putter {
 	return &fsStore{
 		path: path,
 	}
+}
+
+type apiStore struct {
+	baseUrl string
+}
+
+func newApiStore(host string, port int, ssl bool) (storage.Putter, error) {
+	proto := "http"
+	if ssl {
+		proto += "s"
+	}
+	urlString := fmt.Sprintf("%s://%s:%d/bzz-chunk", proto, host, port)
+	url, err := url.Parse(urlString)
+	if err != nil {
+		return nil, err
+	}
+	return &apiStore{
+		baseUrl: url.String(),
+	}, nil
+}
+
+func (a *apiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	for _, ch := range chs {
+		addr := ch.Address().String()
+		buf := bytes.NewReader(ch.Data())
+		url := strings.Join([]string{a.baseUrl, addr}, "/")
+		c := &http.Client{}
+		res, err := c.Post(url, "application/octet-stream", buf)
+		if err != nil {
+			return []bool{}, err
+		}
+		_ = res
+	}
+	return []bool{}, nil
 }
 
 type limitReadCloser struct {
@@ -94,8 +157,19 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	store := newFsStore(outdir)
-	s := splitter.NewSimpleSplitter(store)
+	stores := newTeeStore()
+	if outdir != "" {
+		store := newFsStore(outdir)
+		stores.Add(store)
+	}
+	if !noHttp {
+		store, err := newApiStore(host, port, ssl)
+		if err != nil {
+			return err
+		}
+		stores.Add(store)
+	}
+	s := splitter.NewSimpleSplitter(stores)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second * 60)
 	defer cancel()
 	addr, err := s.Split(ctx, infile, inputLength)
@@ -113,12 +187,11 @@ func main() {
 		RunE: Split,
 	}
 
-	dir, err := os.Getwd()
-	if err != nil {
-		fmt.Fprint(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	c.Flags().StringVar(&outdir, "output-dir", filepath.Join(dir, "chunks"), "output directory")
+	c.Flags().StringVar(&outdir, "output-dir", "", "output directory")
 	c.Flags().Int64Var(&inputLength, "count", 0, "input data length")
+	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
+	c.Flags().IntVar(&port, "port", 8500, "api port")
+	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
+	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
 	c.Execute()
 }
