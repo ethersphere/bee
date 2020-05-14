@@ -167,11 +167,7 @@ func TestDisconnectError(t *testing.T) {
 
 	expectPeers(t, s1, overlay2)
 
-	_, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	_, _ = s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
 	expectPeersEventually(t, s1)
 }
 
