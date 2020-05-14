@@ -68,7 +68,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		if inputLength == 0 {
 			return errors.New("must specify length of input on stdin")
 		}
-		infile = os.Stdin
+		infile = io.LimitReader(os.Stdin, inputLength)
 	}
 
 	err = os.MkdirAll(outdir, 0o777)
