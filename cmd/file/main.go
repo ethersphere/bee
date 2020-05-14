@@ -33,6 +33,22 @@ func newFsStore(path string) *fsStore {
 	}
 }
 
+type limitReadCloser struct {
+	io.Reader
+	closeFunc func() error
+}
+
+func newLimitReadCloser(r io.Reader, closeFunc func() error, c int64) io.ReadCloser {
+	return &limitReadCloser{
+		Reader: io.LimitReader(r, c),
+		closeFunc: closeFunc,
+	}
+}
+
+func (l *limitReadCloser) Close() error {
+	return l.closeFunc()
+}
+
 func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
 		chunkPath := filepath.Join(f.path, ch.Address().String())
@@ -45,7 +61,7 @@ func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 }
 
 func Split(cmd *cobra.Command, args []string) (err error) {
-	var infile *os.File
+	var infile io.ReadCloser
 
 	if len(args) > 0 {
 		info, err := os.Stat(args[0])
@@ -60,16 +76,17 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		} else {
 			inputLength = fileLength
 		}
-		infile, err = os.Open(args[0])
-		defer infile.Close()
+		f, err := os.Open(args[0])
 		if err != nil {
 			return err
 		}
+		defer f.Close()
+		infile = newLimitReadCloser(f, f.Close, inputLength)
 	} else {
 		if inputLength == 0 {
 			return errors.New("must specify length of input on stdin")
 		}
-		infile = io.LimitReader(os.Stdin, inputLength)
+		infile = newLimitReadCloser(os.Stdin, func() error { return nil }, inputLength)
 	}
 
 	err = os.MkdirAll(outdir, 0o777)
