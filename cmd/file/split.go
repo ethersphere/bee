@@ -182,7 +182,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 	// add the fsStore and/or apiStore, depending on flags
 	stores := newTeeStore()
 	if outdir != "" {
-		err := os.MkdirAll(outdir, 0777)
+		err := os.MkdirAll(outdir, 0750)
 		if err != nil {
 			return err
 		}
