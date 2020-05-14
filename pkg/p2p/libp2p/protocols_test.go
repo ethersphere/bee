@@ -168,7 +168,7 @@ func TestDisconnectError(t *testing.T) {
 	expectPeers(t, s1, overlay2)
 
 	// no need to check the errorrs here as new stream should induce disconnect which could result in errors during headers exchange
-	// the important this is to check that disconnect actually happens after the stream is created
+	// node should disconnect after the new stream function is done
 	_, _ = s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
 	expectPeersEventually(t, s1)
 }
