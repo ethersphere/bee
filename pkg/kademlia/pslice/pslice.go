@@ -171,7 +171,7 @@ func (s *PSlice) Remove(addr swarm.Address, po uint8) {
 	s.decDeeper(po)
 }
 
-// incDeeper increments the peers slice bin index for proximity order > po.
+// incDeeper increments the peers slice bin index for proximity order > po for non-empty bins only.
 // Must be called under lock.
 func (s *PSlice) incDeeper(po uint8) {
 	if po > uint8(len(s.bins)) {
