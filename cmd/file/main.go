@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -40,22 +41,22 @@ func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 	return []bool{}, nil
 }
 
-func main() {
+func Split(cmd *cobra.Command, args []string) (err error) {
 	var infile *os.File
 	var infileLength int64
 	var outdir string
 
-	if len(os.Args) > 1 {
-		info, err := os.Stat(os.Args[1])
+	if len(args) > 0 {
+		info, err := os.Stat(args[0])
 		if err != nil {
 			fmt.Fprint(os.Stderr, err.Error())
-			os.Exit(1)
+			return err
 		}
 		infileLength = info.Size()
-		infile, err = os.Open(os.Args[1])
+		infile, err = os.Open(args[0])
 		if err != nil {
 			fmt.Fprint(os.Stderr, err.Error())
-			os.Exit(1)
+			return err
 		}
 	} else {
 		panic("cant before count is set")
@@ -63,10 +64,10 @@ func main() {
 	}
 
 	outdir = "chunk"
-	err := os.MkdirAll(outdir, 0o777)
+	err = os.MkdirAll(outdir, 0o777)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err.Error())
-		os.Exit(1)
+		return err
 	}
 
 	store := newFsStore(outdir)
@@ -76,7 +77,17 @@ func main() {
 	addr, err := s.Split(ctx, infile, infileLength)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err.Error())
-		os.Exit(1)
+		return err
 	}
 	fmt.Println(addr)
+	return nil
+}
+
+func main() {
+	c := &cobra.Command{
+		Use: "split",
+		Short: "split data into swarm chunks",
+		RunE: Split,
+	}
+	c.Execute()
 }
