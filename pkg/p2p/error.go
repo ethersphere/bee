@@ -49,9 +49,9 @@ type DisconnectError struct {
 	err error
 }
 
-// Disconnect wraps error and creates a special error that is treated specially
+// NewDisconnectError wraps error and creates a special error that is treated specially
 // by p2p. It causes peer to disconnect.
-func Disconnect(err error) error {
+func NewDisconnectError(err error) error {
 	return &DisconnectError{
 		err: err,
 	}

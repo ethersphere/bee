@@ -141,7 +141,38 @@ func TestNewStream_semanticVersioning(t *testing.T) {
 			expectErrNotSupported(t, err)
 		}
 	}
+}
 
+func TestDisconnectError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
+	defer cleanup1()
+
+	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
+	defer cleanup2()
+
+	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
+		return p2p.NewDisconnectError(errors.New("test error"))
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s1, overlay2)
+
+	_, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeersEventually(t, s1)
 }
 
 const (

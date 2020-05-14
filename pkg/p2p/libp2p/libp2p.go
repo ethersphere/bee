@@ -249,8 +249,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			peerID := streamlibp2p.Conn().RemotePeer()
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
-				// todo: this should never happen, should we disconnect in this case?
-				// todo: test connection close and refactor
+				// todo: this should never happen
 				_ = s.disconnect(peerID)
 				s.logger.Errorf("overlay address for peer %q not found", peerID)
 				return
@@ -280,7 +279,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay}, stream); err != nil {
 				var e *p2p.DisconnectError
 				if errors.As(err, &e) {
-					// todo: test connection close and refactor
 					_ = s.Disconnect(overlay)
 				}
 
