@@ -36,7 +36,7 @@ import (
 // The process is repeated until the readCount reaches the announced spanLength of the chunk.
 type SimpleJoinerJob struct {
 	ctx           context.Context
-	getter	storage.Getter
+	getter        storage.Getter
 	spanLength    int64         // the total length of data represented by the root chunk the job was initialized with.
 	readCount     int64         // running count of chunks read by the io.Reader consumer.
 	cursors       [9]int        // per-level read cursor of data.
@@ -55,7 +55,7 @@ func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk sw
 
 	j := &SimpleJoinerJob{
 		ctx:        ctx,
-		getter:	getter,
+		getter:     getter,
 		spanLength: int64(spanLength),
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),

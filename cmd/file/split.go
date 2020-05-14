@@ -18,20 +18,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
 
 var (
 	notImplementedError = errors.New("method not implemented")
-	outdir string // flag variable, output dir for fsStore
-	inputLength int64 // flag variable, limit of data input
-	host string // flag variable, http api host
-	port int // flag variable, http api port
-	noHttp bool // flag variable, skips http api if set
-	ssl bool // flag variable, uses https for api if set
+	outdir              string // flag variable, output dir for fsStore
+	inputLength         int64  // flag variable, limit of data input
+	host                string // flag variable, http api host
+	port                int    // flag variable, http api port
+	noHttp              bool   // flag variable, skips http api if set
+	ssl                 bool   // flag variable, uses https for api if set
 )
 
 // teeStore provides a storage.Putter that can put to multiple underlying storage.Putters
@@ -97,9 +97,9 @@ func newApiStore(host string, port int, ssl bool) (storage.Putter, error) {
 		scheme += "s"
 	}
 	u := &url.URL{
-		Host: fmt.Sprintf("%s:%d", host, port),
+		Host:   fmt.Sprintf("%s:%d", host, port),
 		Scheme: scheme,
-		Path: "bzz-chunk",
+		Path:   "bzz-chunk",
 	}
 	return &apiStore{
 		baseUrl: u.String(),
@@ -131,7 +131,7 @@ type limitReadCloser struct {
 // newLimitReadCloser creates a new limitReadCloser.
 func newLimitReadCloser(r io.Reader, closeFunc func() error, c int64) io.ReadCloser {
 	return &limitReadCloser{
-		Reader: io.LimitReader(r, c),
+		Reader:    io.LimitReader(r, c),
 		closeFunc: closeFunc,
 	}
 }
@@ -200,7 +200,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 
 	// split and rule
 	s := splitter.NewSimpleSplitter(stores)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second * 60)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 	addr, err := s.Split(ctx, infile, inputLength)
 	if err != nil {
@@ -214,8 +214,8 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 
 func main() {
 	c := &cobra.Command{
-		Use: "split [datafile]",
-		Args: cobra.RangeArgs(0, 1),
+		Use:   "split [datafile]",
+		Args:  cobra.RangeArgs(0, 1),
 		Short: "Split data into swarm chunks",
 		Long: `Creates and stores Swarm chunks from file or standard input.
 
