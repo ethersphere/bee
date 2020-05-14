@@ -218,13 +218,13 @@ func main() {
 		Short: "Split data into swarm chunks",
 		Long: `Creates and stores Swarm chunks from input data.
 
+If datafile is not given, data will be read from standard in. In this case the --count flag must be set 
+to the length of the input.
+
 The application will expect to transmit the chunks to the bee HTTP API, unless the --no-http flag has been set.
 
 If --output-dir is set, the chunks will be saved to the file system, using the flag argument as destination directory. 
-Chunks are saved in individual files, and the file names will be the hex addresses of the chunks.
-
-If datafile is not given, data will be read from standard in. In this case the --count flag
-must be set to the length of the input.`,
+Chunks are saved in individual files, and the file names will be the hex addresses of the chunks.`,
 		RunE: Split,
 	}
 
