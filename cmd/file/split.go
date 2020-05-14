@@ -25,7 +25,6 @@ import (
 )
 
 var (
-	notImplementedError = errors.New("method not implemented")
 	outdir              string // flag variable, output dir for fsStore
 	inputLength         int64  // flag variable, limit of data input
 	host                string // flag variable, http api host
@@ -230,5 +229,9 @@ must be set to the length of the input.`,
 	c.Flags().IntVar(&port, "port", 8500, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
-	c.Execute()
+	err := c.Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 }
