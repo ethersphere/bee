@@ -7,7 +7,6 @@ package splitter_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
@@ -24,7 +23,7 @@ func TestSplitIncomplete(t *testing.T) {
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	testDataReader := file.NewSimpleReadCloser(testData)
@@ -48,7 +47,7 @@ func TestSplitSingleChunk(t *testing.T) {
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	testDataReader := file.NewSimpleReadCloser(testData)
