@@ -10,16 +10,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
 
 var (
-	host        string // flag variable, http api host
-	port        int    // flag variable, http api port
-	ssl         bool   // flag variable, uses https for api if set
+	host string // flag variable, http api host
+	port int    // flag variable, http api port
+	ssl  bool   // flag variable, uses https for api if set
 )
 
 // apiStore provies a storage.Getter that retrieves chunks from swarm through the HTTP chunk API.
@@ -74,7 +74,7 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	store, err := newApiStore (host, port, ssl)
+	store, err := newApiStore(host, port, ssl)
 	if err != nil {
 		return err
 	}
@@ -105,8 +105,8 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 
 func main() {
 	c := &cobra.Command{
-		Use: "join [hash]",
-		Args: cobra.ExactArgs(1),
+		Use:   "join [hash]",
+		Args:  cobra.ExactArgs(1),
 		Short: "Retrieve data from Swarm",
 		Long: `Assembles chunked data from referenced by a root Swarm Hash.
 
