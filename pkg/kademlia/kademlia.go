@@ -119,7 +119,7 @@ func (k *Kad) manage() {
 
 				currentDepth := k.NeighborhoodDepth()
 				if k.saturationFunc(po, currentDepth, k.connectedPeers) {
-					return false, false, nil
+					return false, true, nil // bin is saturated, skip to next bin
 				}
 
 				ma, err := k.addressBook.Get(peer)
