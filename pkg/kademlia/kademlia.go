@@ -91,6 +91,13 @@ func New(o Options) *Kad {
 func (k *Kad) manage() {
 	var peerToRemove swarm.Address
 	defer close(k.done)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-k.quit:
+			cancel()
+		}
+	}()
 
 	for {
 		select {
@@ -130,17 +137,7 @@ func (k *Kad) manage() {
 				}
 
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-				okc := make(chan struct{})
-				ctx, cancel := context.WithCancel(context.Background())
-				go func() {
-					select {
-					case <-okc:
-					case <-k.quit:
-						cancel()
-					}
-				}()
 				_, err = k.p2p.Connect(ctx, ma)
-				close(okc)
 				if err != nil {
 					k.logger.Debugf("error connecting to peer %s: %v", peer, err)
 					k.waitNextMu.Lock()
