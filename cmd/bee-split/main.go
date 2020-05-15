@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -107,16 +106,18 @@ func newApiStore(host string, port int, ssl bool) (storage.Putter, error) {
 
 // Put implements storage.Putter
 func (a *apiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	c := http.DefaultClient
 	for _, ch := range chs {
 		addr := ch.Address().String()
 		buf := bytes.NewReader(ch.Data())
 		url := strings.Join([]string{a.baseUrl, addr}, "/")
-		c := &http.Client{}
 		res, err := c.Post(url, "application/octet-stream", buf)
 		if err != nil {
 			return nil, err
 		}
-		_ = res
+		if res.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("upload failed: %v", res.Status)
+		}
 	}
 	return nil, nil
 }
@@ -199,7 +200,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 
 	// split and rule
 	s := splitter.NewSimpleSplitter(stores)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	addr, err := s.Split(ctx, infile, inputLength)
 	if err != nil {
