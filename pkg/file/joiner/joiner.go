@@ -18,13 +18,13 @@ import (
 
 // simpleJoiner wraps a non-optimized implementation of file.Joiner.
 type simpleJoiner struct {
-	store storage.Storer
+	getter storage.Getter
 }
 
 // NewSimpleJoiner creates a new simpleJoiner.
-func NewSimpleJoiner(store storage.Storer) file.Joiner {
+func NewSimpleJoiner(getter storage.Getter) file.Joiner {
 	return &simpleJoiner{
-		store: store,
+		getter: getter,
 	}
 }
 
@@ -35,7 +35,7 @@ func NewSimpleJoiner(store storage.Storer) file.Joiner {
 func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataSize int64, err error) {
 
 	// retrieve the root chunk to read the total data length the be retrieved
-	rootChunk, err := s.store.Get(ctx, storage.ModeGetRequest, address)
+	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -47,6 +47,6 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 		return file.NewSimpleReadCloser(data), int64(spanLength), nil
 	}
 
-	r := internal.NewSimpleJoinerJob(ctx, s.store, rootChunk)
+	r := internal.NewSimpleJoinerJob(ctx, s.getter, rootChunk)
 	return r, int64(spanLength), nil
 }
