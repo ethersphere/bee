@@ -53,10 +53,10 @@ func (t *teeStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.C
 	for _, putter := range t.putters {
 		_, err := putter.Put(ctx, mode, chs...)
 		if err != nil {
-			return []bool{}, err
+			return nil, err
 		}
 	}
-	return []bool{}, nil
+	return nil, nil
 }
 
 // fsStore provides a storage.Putter that writes chunks directly to the filesystem.
@@ -78,10 +78,10 @@ func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 		chunkPath := filepath.Join(f.path, ch.Address().String())
 		err := ioutil.WriteFile(chunkPath, ch.Data(), 0o666)
 		if err != nil {
-			return []bool{}, err
+			return nil, err
 		}
 	}
-	return []bool{}, nil
+	return nil, nil
 }
 
 // apiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
@@ -114,11 +114,11 @@ func (a *apiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.C
 		c := &http.Client{}
 		res, err := c.Post(url, "application/octet-stream", buf)
 		if err != nil {
-			return []bool{}, err
+			return nil, err
 		}
 		_ = res
 	}
-	return []bool{}, nil
+	return nil, nil
 }
 
 // limitReadCloser wraps the input to the application to limit the input to the given count flag.
