@@ -15,6 +15,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/discovery/mock"
 	"github.com/ethersphere/bee/pkg/kademlia"
 	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -330,10 +331,11 @@ func TestMarshal(t *testing.T) {
 
 func newTestKademlia(p2p p2p.Service, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface) {
 	var (
-		base   = test.RandomAddress()                                                                                     // base address
-		logger = logging.New(ioutil.Discard, 0)                                                                           // logger
-		ab     = addressbook.New(mockstate.NewStateStore())                                                               // address book
-		kad    = kademlia.New(kademlia.Options{Base: base, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f}) // kademlia instance
+		base   = test.RandomAddress()                                                                                                      // base address
+		logger = logging.New(ioutil.Discard, 0)                                                                                            // logger
+		ab     = addressbook.New(mockstate.NewStateStore())                                                                                // address book
+		disc   = mock.NewDiscovery()                                                                                                       // mock discovery
+		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f}) // kademlia instance
 	)
 	return base, kad, ab
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const (
@@ -135,26 +136,13 @@ func (k *Kad) manage() {
 
 					return false, false, err
 				}
-
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-				_, err = k.p2p.Connect(ctx, ma)
+				err = k.connect(ctx, peer, ma, po)
 				if err != nil {
-					k.logger.Debugf("error connecting to peer %s: %v", peer, err)
-					k.waitNextMu.Lock()
-					k.waitNext[peer.String()] = time.Now().Add(timeToRetry)
-					k.waitNextMu.Unlock()
-					select {
-					case <-k.quit:
-						// shutting down
-						return true, false, nil
-					default:
-					}
-
-					// TODO: somehow keep track of attempts and at some point forget about the peer
-					return false, false, nil // dont stop, continue to next peer
+					k.logger.Errorf("error connecting to peer %s: %v", peer, err)
+					// continue to next
+					return false, false, nil
 				}
-
-				k.connectedPeers.Add(peer, po)
 
 				k.waitNextMu.Lock()
 				delete(k.waitNext, peer.String())
@@ -248,6 +236,48 @@ func (k *Kad) recalcDepth() uint8 {
 	}
 
 	return shallowestEmpty
+}
+
+// connect connects to a peer and gossips its address to our connected peers,
+// as well as sends the peers we are connected to to the newly connected peer
+func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
+	_, err := k.p2p.Connect(ctx, ma)
+	if err != nil {
+		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
+		k.waitNextMu.Lock()
+		k.waitNext[peer.String()] = time.Now().Add(timeToRetry)
+		k.waitNextMu.Unlock()
+
+		// TODO: somehow keep track of attempts and at some point forget about the peer
+		return err //false, false, nil // dont stop, continue to next peer
+	}
+
+	k.connectedPeers.Add(peer, po)
+
+	connectedAddrs := []swarm.Address{}
+
+	_ = k.connectedPeers.EachBinRev(func(connectedPeer swarm.Address, po uint8) (bool, bool, error) {
+		if connectedPeer.Equal(peer) {
+			return false, false, nil
+		}
+		connectedAddrs = append(connectedAddrs, connectedPeer)
+		if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
+			// we don't want to fail the whole process because of this, keep on gossiping
+			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
+			return false, false, nil
+		}
+		return false, false, nil
+	})
+
+	if len(connectedAddrs) == 0 {
+		return nil
+	}
+
+	err = k.discovery.BroadcastPeers(context.Background(), peer, connectedAddrs...)
+	if err != nil {
+		_ = k.p2p.Disconnect(peer)
+	}
+	return err
 }
 
 // AddPeer adds a peer to the knownPeers list.
