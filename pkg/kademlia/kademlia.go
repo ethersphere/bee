@@ -269,6 +269,25 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 	return nil
 }
 
+// Connected is called when a peer has dialed in.
+func (k *Kad) Connected(_ context.Context, addr swarm.Address) error {
+	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
+	k.connectedPeers.Add(addr, po)
+
+	k.waitNextMu.Lock()
+	delete(k.waitNext, addr.String())
+	k.waitNextMu.Unlock()
+
+	k.depthMu.Lock()
+	k.depth = k.recalcDepth()
+	k.depthMu.Unlock()
+	select {
+	case k.manageC <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(addr swarm.Address) {
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))

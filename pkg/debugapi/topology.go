@@ -12,7 +12,7 @@ import (
 )
 
 type topologyResponse struct {
-	Topology string `json:"topology"`
+	Topology string `json:"topology"` //TODO: this is not so great since it makes the actual kademlia state to be an escaped string
 }
 
 func (s *server) topologyHandler(w http.ResponseWriter, r *http.Request) {
