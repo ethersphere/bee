@@ -39,7 +39,7 @@ func hashFunc() hash.Hash {
 // error and will may result in undefined result.
 type SimpleSplitterJob struct {
 	ctx        context.Context
-	store      storage.Storer
+	putter     storage.Putter
 	spanLength int64    // target length of data
 	length     int64    // number of bytes written to the data level of the hasher
 	sumCounts  []int    // number of sums performed, indexed per level
@@ -51,11 +51,11 @@ type SimpleSplitterJob struct {
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, store storage.Storer, spanLength int64) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64) *SimpleSplitterJob {
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	return &SimpleSplitterJob{
 		ctx:        ctx,
-		store:      store,
+		putter:     putter,
 		spanLength: spanLength,
 		sumCounts:  make([]int, levelBufferLimit),
 		cursors:    make([]int, levelBufferLimit),
@@ -148,7 +148,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData := append(head, tail...)
 	ch := swarm.NewChunk(addr, chunkData)
-	_, err = s.store.Put(s.ctx, storage.ModePutUpload, ch)
+	_, err = s.putter.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err
 	}

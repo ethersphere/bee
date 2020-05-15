@@ -36,7 +36,7 @@ import (
 // The process is repeated until the readCount reaches the announced spanLength of the chunk.
 type SimpleJoinerJob struct {
 	ctx           context.Context
-	store         storage.Storer
+	getter        storage.Getter
 	spanLength    int64         // the total length of data represented by the root chunk the job was initialized with.
 	readCount     int64         // running count of chunks read by the io.Reader consumer.
 	cursors       [9]int        // per-level read cursor of data.
@@ -49,13 +49,13 @@ type SimpleJoinerJob struct {
 }
 
 // NewSimpleJoinerJob creates a new simpleJoinerJob.
-func NewSimpleJoinerJob(ctx context.Context, store storage.Storer, rootChunk swarm.Chunk) *SimpleJoinerJob {
+func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk swarm.Chunk) *SimpleJoinerJob {
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
 	levelCount := file.Levels(int64(spanLength), swarm.SectionSize, swarm.Branches)
 
 	j := &SimpleJoinerJob{
 		ctx:        ctx,
-		store:      store,
+		getter:     getter,
 		spanLength: int64(spanLength),
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),
@@ -135,7 +135,7 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 
 	// attempt to retrieve the chunk
-	ch, err := j.store.Get(j.ctx, storage.ModeGetRequest, address)
+	ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return err
 	}
