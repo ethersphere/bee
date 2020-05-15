@@ -170,7 +170,6 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
 		infile = newLimitReadCloser(f, f.Close, inputLength)
 	} else {
 		// this simple splitter is too stupid to handle open-ended input, sadly
