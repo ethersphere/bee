@@ -6,28 +6,41 @@ package mock
 
 import (
 	"context"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type MockStorer interface {
+	storage.Storer
+	GetModeSet(addr swarm.Address) (mode storage.ModeSet)
+}
+
 type mockStorer struct {
 	store     map[string][]byte
+	modeSet   map[string]storage.ModeSet
+	modeSetMu *sync.Mutex
 	validator swarm.ChunkValidator
 }
 
 func NewStorer() storage.Storer {
 	return &mockStorer{
-		store: make(map[string][]byte),
+		store:     make(map[string][]byte),
+		modeSet:   make(map[string]storage.ModeSet),
+		modeSetMu: &sync.Mutex{},
 	}
 }
 
-func NewValidatingStorer(v swarm.ChunkValidator) storage.Storer {
+func NewValidatingStorer(v swarm.ChunkValidator) MockStorer {
 	return &mockStorer{
 		store:     make(map[string][]byte),
+		modeSet:   make(map[string]storage.ModeSet),
+		modeSetMu: &sync.Mutex{},
 		validator: v,
 	}
 }
+
 func (m *mockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	v, has := m.store[addr.String()]
 	if !has {
@@ -62,7 +75,21 @@ func (m *mockStorer) HasMulti(ctx context.Context, addrs ...swarm.Address) (yes 
 }
 
 func (m *mockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
-	panic("not implemented") // TODO: Implement
+	m.modeSetMu.Lock()
+	defer m.modeSetMu.Unlock()
+	for _, addr := range addrs {
+		m.modeSet[addr.String()] = mode
+	}
+	return nil
+}
+
+func (m *mockStorer) GetModeSet(addr swarm.Address) (mode storage.ModeSet) {
+	m.modeSetMu.Lock()
+	defer m.modeSetMu.Unlock()
+	if mode, ok := m.modeSet[addr.String()]; ok {
+		return mode
+	}
+	return mode
 }
 
 func (m *mockStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error) {
@@ -74,6 +101,14 @@ func (m *mockStorer) SubscribePull(ctx context.Context, bin uint8, since uint64,
 }
 
 func (m *mockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) GetPinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*storage.PinInfo, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mockStorer) GetPinInfo(address swarm.Address) (uint64, error) {
 	panic("not implemented") // TODO: Implement
 }
 
