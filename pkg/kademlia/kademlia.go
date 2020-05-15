@@ -27,7 +27,7 @@ const (
 
 var (
 	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
-	timeToRetry                = 30 * time.Second
+	timeToRetry                = 60 * time.Second
 )
 
 type binSaturationFunc func(bin, depth uint8, peers *pslice.PSlice) bool
