@@ -98,6 +98,7 @@ func (k *Kad) manage() {
 			return
 		case <-k.manageC:
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
@@ -129,12 +130,28 @@ func (k *Kad) manage() {
 				}
 
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-				_, err = k.p2p.Connect(context.Background(), ma)
+				okc := make(chan struct{})
+				ctx, cancel := context.WithCancel(context.Background())
+				go func() {
+					select {
+					case <-okc:
+					case <-k.quit:
+						cancel()
+					}
+				}()
+				_, err = k.p2p.Connect(ctx, ma)
+				close(okc)
 				if err != nil {
 					k.logger.Debugf("error connecting to peer %s: %v", peer, err)
 					k.waitNextMu.Lock()
 					k.waitNext[peer.String()] = time.Now().Add(timeToRetry)
 					k.waitNextMu.Unlock()
+					select {
+					case <-k.quit:
+						// shutting down
+						return true, false, nil
+					default:
+					}
 
 					// TODO: somehow keep track of attempts and at some point forget about the peer
 					return false, false, nil // dont stop, continue to next peer
@@ -151,6 +168,13 @@ func (k *Kad) manage() {
 				k.depthMu.Unlock()
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
+
+				select {
+				case <-k.quit:
+					// shutting down
+					return true, false, nil
+				default:
+				}
 
 				// the bin could be saturated or not, so a decision cannot
 				// be made before checking the next peer, so we iterate to next
