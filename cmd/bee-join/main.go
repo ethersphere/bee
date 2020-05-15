@@ -59,7 +59,10 @@ func (a *apiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.
 	if err != nil {
 		return nil, err
 	}
-	res.Body.Close()
+	err = res.Body.Close()
+	if err != nil {
+		return nil, err
+	}
 	ch = swarm.NewChunk(address, chunkData)
 	return ch, nil
 }
