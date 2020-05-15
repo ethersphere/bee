@@ -76,7 +76,7 @@ func newFsStore(path string) storage.Putter {
 func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
 		chunkPath := filepath.Join(f.path, ch.Address().String())
-		err := ioutil.WriteFile(chunkPath, ch.Data(), 0o777)
+		err := ioutil.WriteFile(chunkPath, ch.Data(), 0o666)
 		if err != nil {
 			return []bool{}, err
 		}
@@ -182,7 +182,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 	// add the fsStore and/or apiStore, depending on flags
 	stores := newTeeStore()
 	if outdir != "" {
-		err := os.MkdirAll(outdir, 0750)
+		err := os.MkdirAll(outdir, 0o777) // skipcq: GSC-G301
 		if err != nil {
 			return err
 		}
@@ -228,10 +228,10 @@ Chunks are saved in individual files, and the file names will be the hex address
 		RunE: Split,
 	}
 
-	c.Flags().StringVar(&outdir, "output-dir", "", "saves chunks to given directory")
-	c.Flags().Int64Var(&inputLength, "count", 0, "read at most this many bytes")
+	c.Flags().StringVarP(&outdir, "output-dir", "d", "", "saves chunks to given directory")
+	c.Flags().Int64VarP(&inputLength, "count", "c", 0, "read at most this many bytes")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
-	c.Flags().IntVar(&port, "port", 8500, "api port")
+	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
 	err := c.Execute()
