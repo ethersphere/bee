@@ -94,10 +94,8 @@ func (k *Kad) manage() {
 	defer close(k.done)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		select {
-		case <-k.quit:
-			cancel()
-		}
+		<-k.quit
+		cancel()
 	}()
 
 	for {
