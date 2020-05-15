@@ -37,12 +37,15 @@ func NewSimpleSplitter(putter storage.Putter) file.Splitter {
 func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength int64) (addr swarm.Address, err error) {
 	j := internal.NewSimpleSplitterJob(ctx, s.putter, dataLength)
 
-	var total int
+	var total int64
 	data := make([]byte, swarm.ChunkSize)
 	for {
 		c, err := r.Read(data)
 		if err != nil {
 			if err == io.EOF {
+				if total < dataLength {
+					return swarm.ZeroAddress, fmt.Errorf("splitter only received %d bytes of data, expected %d bytes", total, dataLength)
+				}
 				break
 			}
 			return swarm.ZeroAddress, err
@@ -54,7 +57,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 		if cc < c {
 			return swarm.ZeroAddress, fmt.Errorf("write count to file hasher component %d does not match read count %d", cc, c)
 		}
-		total += c
+		total += int64(c)
 	}
 
 	sum := j.Sum(nil)
