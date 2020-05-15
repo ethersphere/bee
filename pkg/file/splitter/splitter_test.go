@@ -23,11 +23,8 @@ func TestSplitIncomplete(t *testing.T) {
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	testDataReader := file.NewSimpleReadCloser(testData)
-	_, err := s.Split(ctx, testDataReader, 41)
+	_, err := s.Split(context.Background(), testDataReader, 41)
 	if err == nil {
 		t.Fatalf("expected error on EOF before full length write")
 	}
@@ -36,8 +33,6 @@ func TestSplitIncomplete(t *testing.T) {
 // TestSplitSingleChunk hashes one single chunk and verifies
 // that that corresponding chunk exist in the store afterwards.
 func TestSplitSingleChunk(t *testing.T) {
-
-	// edge case selected from internal/job_test.go
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	testData, err := g.SequentialBytes(swarm.ChunkSize)
 	if err != nil {
@@ -47,11 +42,8 @@ func TestSplitSingleChunk(t *testing.T) {
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	testDataReader := file.NewSimpleReadCloser(testData)
-	resultAddress, err := s.Split(ctx, testDataReader, int64(len(testData)))
+	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +54,7 @@ func TestSplitSingleChunk(t *testing.T) {
 		t.Fatalf("expected %v, got %v", testHashAddress, resultAddress)
 	}
 
-	_, err = store.Get(ctx, storage.ModeGetRequest, resultAddress)
+	_, err = store.Get(context.Background(), storage.ModeGetRequest, resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +64,6 @@ func TestSplitSingleChunk(t *testing.T) {
 // create a full chunk of intermediate hashes.
 // It verifies that all created chunks exist in the store afterwards.
 func TestSplitThreeLevels(t *testing.T) {
-
 	// edge case selected from internal/job_test.go
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	testData, err := g.SequentialBytes(swarm.ChunkSize * swarm.Branches)
@@ -83,12 +74,8 @@ func TestSplitThreeLevels(t *testing.T) {
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store)
 
-	//ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond * 500)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	testDataReader := file.NewSimpleReadCloser(testData)
-	resultAddress, err := s.Split(ctx, testDataReader, int64(len(testData)))
+	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,12 +86,12 @@ func TestSplitThreeLevels(t *testing.T) {
 		t.Fatalf("expected %v, got %v", testHashAddress, resultAddress)
 	}
 
-	_, err = store.Get(ctx, storage.ModeGetRequest, resultAddress)
+	_, err = store.Get(context.Background(), storage.ModeGetRequest, resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rootChunk, err := store.Get(ctx, storage.ModeGetRequest, resultAddress)
+	rootChunk, err := store.Get(context.Background(), storage.ModeGetRequest, resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +100,7 @@ func TestSplitThreeLevels(t *testing.T) {
 	for i := 0; i < swarm.ChunkSize; i += swarm.SectionSize {
 		dataAddressBytes := rootData[i : i+swarm.SectionSize]
 		dataAddress := swarm.NewAddress(dataAddressBytes)
-		_, err := store.Get(ctx, storage.ModeGetRequest, dataAddress)
+		_, err := store.Get(context.Background(), storage.ModeGetRequest, dataAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
