@@ -16,7 +16,7 @@ import (
 )
 
 type topologyResponse struct {
-	Topology string `json:"topology"` //TODO: this is not so great since it makes the actual kademlia state to be an escaped string
+	Topology string `json:"topology"`
 }
 
 func TestTopologyOK(t *testing.T) {
