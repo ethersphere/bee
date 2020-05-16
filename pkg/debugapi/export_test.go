@@ -9,5 +9,4 @@ type (
 	PeerConnectResponse = peerConnectResponse
 	PeersResponse       = peersResponse
 	AddressesResponse   = addressesResponse
-	TopologyResponse    = topologyResponse
 )

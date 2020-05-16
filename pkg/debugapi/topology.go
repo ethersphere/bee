@@ -5,15 +5,13 @@
 package debugapi
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
-
-type topologyResponse struct {
-	Topology string `json:"topology"` //TODO: this is not so great since it makes the actual kademlia state to be an escaped string
-}
 
 func (s *server) topologyHandler(w http.ResponseWriter, r *http.Request) {
 	ms, ok := s.TopologyDriver.(json.Marshaler)
@@ -23,11 +21,11 @@ func (s *server) topologyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bytes, err := ms.MarshalJSON()
+	b, err := ms.MarshalJSON()
 	if err != nil {
 		s.Logger.Errorf("topology marshal to json: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
-	jsonhttp.OK(w, topologyResponse{Topology: string(bytes)})
+	io.Copy(w, bytes.NewBuffer(b))
 }
