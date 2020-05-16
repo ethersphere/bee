@@ -63,7 +63,6 @@ type Options struct {
 	DisableQUIC bool
 	NetworkID   int32
 	Addressbook addressbook.Putter
-	Notifiee    topology.Notifiee
 	Logger      logging.Logger
 	Tracer      *tracing.Tracer
 }
@@ -157,7 +156,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	peerRegistry := newPeerRegistry(registryOptions{disconnecter: o.Notifiee})
+	peerRegistry := newPeerRegistry()
 	s := &Service{
 		ctx:              ctx,
 		host:             h,
@@ -170,7 +169,6 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		logger:           o.Logger,
 		tracer:           o.Tracer,
 		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // todo: fill non-default options
-		topologyNotifiee: o.Notifiee,
 	}
 
 	// Construct protocols.
