@@ -133,3 +133,7 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 		r.disconnecter.Disconnected(overlay)
 	}
 }
+
+func (r *peerRegistry) setDisconnecter(d topology.Disconnecter) {
+	r.disconnecter = d
+}
