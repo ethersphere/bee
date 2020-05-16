@@ -6,8 +6,10 @@ package kademlia_test
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 	"math/rand"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ import (
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/test"
 )
 
@@ -312,6 +315,89 @@ func TestBackoff(t *testing.T) {
 	addOne(t, kad, ab, addr)
 
 	waitConns(t, &conns, 2)
+}
+
+// TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
+func TestClosestPeer(t *testing.T) {
+	logger := logging.New(os.Stdout, 5)
+	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+	connectedPeers := []p2p.Peer{
+		{
+			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000 -> po 0 to base
+		},
+		{
+			Address: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // binary 0100 -> po 1 to base
+		},
+		{
+			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110 -> po 1 to base
+		},
+	}
+
+	disc := mock.NewDiscovery()
+	ab := addressbook.New(mockstate.NewStateStore())
+	var conns int32
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		_ = atomic.AddInt32(&conns, 1)
+		return base, nil
+	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
+		return connectedPeers
+	}))
+
+	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2ps, Logger: logger})
+	defer kad.Close()
+
+	for _, v := range connectedPeers {
+		addOne(t, kad, ab, v.Address)
+	}
+	waitConns(t, &conns, 3)
+
+	for _, tc := range []struct {
+		chunkAddress swarm.Address // chunk address to test
+		expectedPeer int           // points to the index of the connectedPeers slice. -1 means self (baseOverlay)
+	}{
+		{
+			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111, wants peer 2
+			expectedPeer: 2,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("c000000000000000000000000000000000000000000000000000000000000000"), // 1100, want peer 0
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("e000000000000000000000000000000000000000000000000000000000000000"), // 1110, want peer 0
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("a000000000000000000000000000000000000000000000000000000000000000"), // 1010, want peer 0
+			expectedPeer: 0,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100, want peer 1
+			expectedPeer: 1,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101, want peer 1
+			expectedPeer: 1,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // want self
+			expectedPeer: -1,
+		},
+	} {
+		peer, err := kad.ClosestPeer(tc.chunkAddress)
+		if err != nil {
+			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
+				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
+			}
+			continue
+		}
+
+		expected := connectedPeers[tc.expectedPeer].Address
+
+		if !peer.Equal(expected) {
+			t.Fatalf("peers not equal. got %s expected %s", peer, expected)
+		}
+	}
 }
 
 func TestMarshal(t *testing.T) {

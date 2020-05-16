@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -335,8 +336,39 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 }
 
 // ClosestPeer returns the closest peer to a given address.
-func (k *Kad) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
-	panic("not implemented") // TODO: Implement
+func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
+	if k.connectedPeers.Length() == 0 {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	closest := k.base
+	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
+		if err != nil {
+			return false, false, err
+		}
+		switch dcmp {
+		case 0:
+			// do nothing
+		case -1:
+			// current peer is closer
+			closest = peer
+		case 1:
+			// closest is already closer to chunk
+			// do nothing
+		}
+		return false, false, nil
+	})
+	if err != nil {
+		return swarm.Address{}, err
+	}
+
+	// check if self
+	if closest.Equal(k.base) {
+		return swarm.Address{}, topology.ErrWantSelf
+	}
+
+	return closest, nil
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.
