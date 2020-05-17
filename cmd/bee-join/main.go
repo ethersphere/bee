@@ -22,11 +22,11 @@ import (
 )
 
 var (
-	outFilePath string // flag variable, output file
-	outFileForce bool  // flag variable, overwrite output file if exists
-	host string // flag variable, http api host
-	port int    // flag variable, http api port
-	ssl  bool   // flag variable, uses https for api if set
+	outFilePath  string // flag variable, output file
+	outFileForce bool   // flag variable, overwrite output file if exists
+	host         string // flag variable, http api host
+	port         int    // flag variable, http api port
+	ssl          bool   // flag variable, uses https for api if set
 )
 
 // apiStore provies a storage.Getter that retrieves chunks from swarm through the HTTP chunk API.
@@ -90,7 +90,7 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 			outFileFlags |= os.O_EXCL
 		}
 		// open the file
-		outFile, err= os.OpenFile(outFilePath, outFileFlags , 0o666)
+		outFile, err = os.OpenFile(outFilePath, outFileFlags, 0o666)
 		if err != nil {
 			return err
 		}
