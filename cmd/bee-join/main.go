@@ -90,7 +90,7 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 			outFileFlags |= os.O_EXCL
 		}
 		// open the file
-		outFile, err = os.OpenFile(outFilePath, outFileFlags, 0o666)
+		outFile, err = os.OpenFile(outFilePath, outFileFlags, 0o666) // skipcq: GSC-G302
 		if err != nil {
 			return err
 		}
