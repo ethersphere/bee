@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package main
 
 import (
@@ -8,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -17,6 +22,8 @@ import (
 )
 
 var (
+	outFilePath string // flag variable, output file
+	outFileForce bool  // flag variable, overwrite output file if exists
 	host string // flag variable, http api host
 	port int    // flag variable, http api port
 	ssl  bool   // flag variable, uses https for api if set
@@ -47,8 +54,7 @@ func newApiStore(host string, port int, ssl bool) (storage.Getter, error) {
 func (a *apiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.Address) (ch swarm.Chunk, err error) {
 	addressHex := address.String()
 	url := strings.Join([]string{a.baseUrl, addressHex}, "/")
-	c := http.DefaultClient
-	res, err := c.Get(url)
+	res, err := http.DefaultClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -59,37 +65,60 @@ func (a *apiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.
 	if err != nil {
 		return nil, err
 	}
-	err = res.Body.Close()
-	if err != nil {
-		return nil, err
-	}
 	ch = swarm.NewChunk(address, chunkData)
 	return ch, nil
 }
 
 // Join is the underlying procedure for the CLI command
 func Join(cmd *cobra.Command, args []string) (err error) {
+	// if output file is specified, create it if it does not exist
+	var outFile *os.File
+	if outFilePath != "" {
+		// make sure we have full path
+		outDir := filepath.Dir(outFilePath)
+		if outDir != "." {
+			err := os.MkdirAll(outDir, 0o777) // skipcq: GSC-G301
+			if err != nil {
+				return err
+			}
+		}
+		// protect any existing file unless explicitly told not to
+		outFileFlags := os.O_CREATE | os.O_WRONLY
+		if outFileForce {
+			outFileFlags |= os.O_TRUNC
+		} else {
+			outFileFlags |= os.O_EXCL
+		}
+		// open the file
+		outFile, err= os.OpenFile(outFilePath, outFileFlags , 0o666)
+		if err != nil {
+			return err
+		}
+		defer outFile.Close()
+	} else {
+		outFile = os.Stdout
+	}
 
-	outFile := os.Stdout
-
+	// process the reference to retrieve
 	addr, err := swarm.ParseHexAddress(args[0])
 	if err != nil {
 		return err
 	}
 
+	// initialize interface with HTTP API
 	store, err := newApiStore(host, port, ssl)
 	if err != nil {
 		return err
 	}
-	j := joiner.NewSimpleJoiner(store)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	r, l, err := j.Join(ctx, addr)
+	// create the join and get its data reader
+	j := joiner.NewSimpleJoiner(store)
+	r, l, err := j.Join(context.Background(), addr)
 	if err != nil {
 		return err
 	}
 
+	// join, rinse, repeat until done
 	teeReader := io.TeeReader(r, outFile)
 	data := make([]byte, swarm.ChunkSize)
 	var total int64
@@ -116,6 +145,8 @@ func main() {
 Will output retrieved data to stdout.`,
 		RunE: Join,
 	}
+	c.Flags().StringVarP(&outFilePath, "output-file", "o", "", "file to write output to")
+	c.Flags().BoolVarP(&outFileForce, "force", "f", false, "overwrite existing output file")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
