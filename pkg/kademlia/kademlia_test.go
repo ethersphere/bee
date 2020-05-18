@@ -43,12 +43,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		p2p = p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-			_ = atomic.AddInt32(&conns, 1)
-			return swarm.ZeroAddress, nil
-		}))
-
-		base, kad, ab = newTestKademlia(p2p, nil)
+		base, kad, ab = newTestKademlia(&conns, nil)
 		peers         []swarm.Address
 		binEight      []swarm.Address
 	)
@@ -173,16 +168,11 @@ func TestManage(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		p2p = p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-			_ = atomic.AddInt32(&conns, 1)
-			return swarm.ZeroAddress, nil
-		}))
-
 		saturationVal  = false
 		saturationFunc = func(bin, depth uint8, peers *pslice.PSlice) bool {
 			return saturationVal
 		}
-		base, kad, ab = newTestKademlia(p2p, saturationFunc)
+		base, kad, ab = newTestKademlia(&conns, saturationFunc)
 	)
 	// first, saturationFunc returns always false, this means that the bin is not saturated,
 	// hence we expect that every peer we add to kademlia will be connected to
@@ -221,15 +211,9 @@ func TestManage(t *testing.T) {
 // in shallower depth for the rest of the function to be executed
 func TestBinSaturation(t *testing.T) {
 	var (
-		conns int32 // how many connect calls were made to the p2p mock
-
-		p2p = p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-			_ = atomic.AddInt32(&conns, 1)
-			return swarm.ZeroAddress, nil
-		}))
-		base, kad, ab = newTestKademlia(p2p, nil)
-
-		peers []swarm.Address
+		conns         int32 // how many connect calls were made to the p2p mock
+		base, kad, ab = newTestKademlia(&conns, nil)
+		peers         []swarm.Address
 	)
 
 	// add two peers in a few bins to generate some depth >= 0, this will
@@ -277,10 +261,7 @@ func TestBinSaturation(t *testing.T) {
 // result in the correct behavior once called.
 func TestNotifieeHooks(t *testing.T) {
 	var (
-		p2p = p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-			return swarm.ZeroAddress, nil
-		}))
-		base, kad, ab = newTestKademlia(p2p, nil)
+		base, kad, ab = newTestKademlia(nil, nil)
 	)
 
 	peer := test.RandomAddressAt(base, 3)
@@ -304,6 +285,13 @@ func TestNotifieeHooks(t *testing.T) {
 	}
 }
 
+// TestDiscoveryHooks check that a peer is gossiped to other peers
+// once we establish a connection to this peer. This could be as a result of
+// us proactively dialing in to a peer, or when a peer dials in.
+func TestDiscoveryHooks(t *testing.T) {
+
+}
+
 func TestBackoff(t *testing.T) {
 	// cheat and decrease the timer
 	defer func(t time.Duration) {
@@ -315,11 +303,7 @@ func TestBackoff(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		p2p = p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-			_ = atomic.AddInt32(&conns, 1)
-			return swarm.ZeroAddress, nil
-		}))
-		base, kad, ab = newTestKademlia(p2p, nil)
+		base, kad, ab = newTestKademlia(&conns, nil)
 	)
 
 	// add one peer, wait for connection
@@ -367,14 +351,8 @@ func TestClosestPeer(t *testing.T) {
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
 	var conns int32
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-		_ = atomic.AddInt32(&conns, 1)
-		return base, nil
-	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
-		return connectedPeers
-	}))
 
-	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2ps, Logger: logger})
+	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2pMock(&conns), Logger: logger})
 	defer kad.Close()
 
 	for _, v := range connectedPeers {
@@ -433,10 +411,7 @@ func TestClosestPeer(t *testing.T) {
 
 func TestMarshal(t *testing.T) {
 	var (
-		p2p = p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-			return swarm.ZeroAddress, nil
-		}))
-		_, kad, ab = newTestKademlia(p2p, nil)
+		_, kad, ab = newTestKademlia(nil, nil)
 	)
 	a := test.RandomAddress()
 	addOne(t, kad, ab, a)
@@ -446,15 +421,27 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-func newTestKademlia(p2p p2p.Service, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface) {
+func newTestKademlia(connCounter *int32, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface) {
 	var (
-		base   = test.RandomAddress()                                                                                                      // base address
+		base   = test.RandomAddress() // base address
+		p2p    = p2pMock(connCounter)
 		logger = logging.New(ioutil.Discard, 0)                                                                                            // logger
 		ab     = addressbook.New(mockstate.NewStateStore())                                                                                // address book
 		disc   = mock.NewDiscovery()                                                                                                       // mock discovery
 		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f}) // kademlia instance
 	)
 	return base, kad, ab
+}
+
+func p2pMock(counter *int32) p2p.Service {
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		if counter != nil {
+			_ = atomic.AddInt32(counter, 1)
+		}
+		return swarm.ZeroAddress, nil
+	}))
+
+	return p2ps
 }
 
 func removeOne(k *kademlia.Kad, peer swarm.Address) {
