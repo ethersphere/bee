@@ -27,5 +27,5 @@ func (s *server) topologyHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
-	io.Copy(w, bytes.NewBuffer(b))
+	_, _ = io.Copy(w, bytes.NewBuffer(b))
 }
