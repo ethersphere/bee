@@ -273,6 +273,37 @@ func TestBinSaturation(t *testing.T) {
 	waitConns(t, &conns, 1)
 }
 
+// TestNotifieeHooks tests that the Connected/Disconnected hooks
+// result in the correct behavior once called.
+func TestNotifieeHooks(t *testing.T) {
+	var (
+		p2p = p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+			return swarm.ZeroAddress, nil
+		}))
+		base, kad, ab = newTestKademlia(p2p, nil)
+	)
+
+	peer := test.RandomAddressAt(base, 3)
+	addr := test.RandomAddressAt(peer, 4) // address which is closer to peer
+	connectOne(t, kad, ab, peer)
+
+	p, err := kad.ClosestPeer(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !p.Equal(peer) {
+		t.Fatal("got wrong peer address")
+	}
+
+	// disconnect the peer, expect error
+	kad.Disconnected(peer)
+	_, err = kad.ClosestPeer(addr)
+	if !errors.Is(err, topology.ErrNotFound) {
+		t.Fatalf("expected topology.ErrNotFound but got %v", err)
+	}
+}
+
 func TestBackoff(t *testing.T) {
 	// cheat and decrease the timer
 	defer func(t time.Duration) {
@@ -431,6 +462,18 @@ func removeOne(k *kademlia.Kad, peer swarm.Address) {
 }
 
 const underlayBase = "/ip4/127.0.0.1/tcp/7070/dns/"
+
+func connectOne(t *testing.T, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address) {
+	t.Helper()
+	multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ab.Put(peer, multiaddr); err != nil {
+		t.Fatal(err)
+	}
+	_ = k.Connected(context.Background(), peer)
+}
 
 func addOne(t *testing.T, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address) {
 	t.Helper()
