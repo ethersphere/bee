@@ -252,14 +252,20 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 	}
 
 	k.connectedPeers.Add(peer, po)
+	return k.announce(ctx, peer)
+}
 
-	connectedAddrs := []swarm.Address{}
+// announce a newly connected peer to our connected peers, but also
+// notify the peer about our already connected peers
+func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
+	addrs := []swarm.Address{}
 
-	_ = k.connectedPeers.EachBinRev(func(connectedPeer swarm.Address, po uint8) (bool, bool, error) {
+	_ = k.connectedPeers.EachBinRev(func(connectedPeer swarm.Address, _ uint8) (bool, bool, error) {
 		if connectedPeer.Equal(peer) {
+			// skip to next
 			return false, false, nil
 		}
-		connectedAddrs = append(connectedAddrs, connectedPeer)
+		addrs = append(addrs, connectedPeer)
 		if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
 			// we don't want to fail the whole process because of this, keep on gossiping
 			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
@@ -268,11 +274,11 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 		return false, false, nil
 	})
 
-	if len(connectedAddrs) == 0 {
+	if len(addrs) == 0 {
 		return nil
 	}
 
-	err = k.discovery.BroadcastPeers(context.Background(), peer, connectedAddrs...)
+	err := k.discovery.BroadcastPeers(context.Background(), peer, addrs...)
 	if err != nil {
 		_ = k.p2p.Disconnect(peer)
 	}
@@ -299,7 +305,7 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 }
 
 // Connected is called when a peer has dialed in.
-func (k *Kad) Connected(_ context.Context, addr swarm.Address) error {
+func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
 	k.connectedPeers.Add(addr, po)
 
@@ -310,11 +316,12 @@ func (k *Kad) Connected(_ context.Context, addr swarm.Address) error {
 	k.depthMu.Lock()
 	k.depth = k.recalcDepth()
 	k.depthMu.Unlock()
+
 	select {
 	case k.manageC <- struct{}{}:
 	default:
 	}
-	return nil
+	return k.announce(ctx, addr)
 }
 
 // Disconnected is called when peer disconnects.

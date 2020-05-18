@@ -7,7 +7,6 @@ package kademlia_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -305,6 +304,8 @@ func TestDiscoveryHooks(t *testing.T) {
 	waitBcast(t, disc, p1, p2)
 	waitBcast(t, disc, p2, p1)
 
+	disc.Reset()
+
 	// add another peer that dialed in, check that all peers gossiped
 	// correctly to each other
 	connectOne(t, kad, ab, p3)
@@ -547,9 +548,7 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 	t.Helper()
 
 	for i := 0; i < 50; i++ {
-		fmt.Println(d.Broadcasts())
 		if d.Broadcasts() > 0 {
-
 			recs, ok := d.AddresseeRecords(pivot)
 			if !ok {
 				t.Fatal("got no records for pivot")

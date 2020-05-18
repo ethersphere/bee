@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -30,8 +29,6 @@ func (d *Discovery) BroadcastPeers(ctx context.Context, addressee swarm.Address,
 		d.records[addressee.String()] = append(d.records[addressee.String()], peer)
 		d.mtx.Unlock()
 	}
-	fmt.Println("addressess", addressee, "peers", peers)
-
 	d.mtx.Lock()
 	d.ctr++
 	d.mtx.Unlock()
@@ -49,4 +46,11 @@ func (d *Discovery) AddresseeRecords(addressee swarm.Address) (peers []swarm.Add
 	defer d.mtx.Unlock()
 	peers, exists = d.records[addressee.String()]
 	return
+}
+
+func (d *Discovery) Reset() {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.ctr = 0
+	d.records = make(map[string][]swarm.Address)
 }
