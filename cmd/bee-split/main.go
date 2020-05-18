@@ -89,7 +89,7 @@ type apiStore struct {
 }
 
 // newApiStore creates a new apiStor
-func newApiStore(host string, port int, ssl bool) (storage.Putter, error) {
+func newApiStore(host string, port int, ssl bool) storage.Putter {
 	scheme := "http"
 	if ssl {
 		scheme += "s"
@@ -101,7 +101,7 @@ func newApiStore(host string, port int, ssl bool) (storage.Putter, error) {
 	}
 	return &apiStore{
 		baseUrl: u.String(),
-	}, nil
+	}
 }
 
 // Put implements storage.Putter
@@ -190,10 +190,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		stores.Add(store)
 	}
 	if !noHttp {
-		store, err := newApiStore(host, port, ssl)
-		if err != nil {
-			return err
-		}
+		store := newApiStore(host, port, ssl)
 		stores.Add(store)
 	}
 
