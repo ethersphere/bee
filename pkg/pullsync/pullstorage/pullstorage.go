@@ -99,3 +99,13 @@ func (s *ps) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) 
 	_, err := s.Storer.Put(ctx, mode, chs...)
 	return err
 }
+
+// Set chunks.
+func (s *ps) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
+	return s.Storer.Set(ctx, mode, addrs...)
+}
+
+// Has chunks.
+func (s *ps) Has(ctx context.Context, addr swarm.Address) (bool, error) {
+	return s.Storer.Has(ctx, addr)
+}
