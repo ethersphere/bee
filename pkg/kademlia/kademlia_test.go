@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"math/rand"
-	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -76,9 +75,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	// depth 2 (shallowest empty bin)
 	kDepth(t, kad, 2)
 
-	// reset the counter
-	atomic.StoreInt32(&conns, 0)
-
 	for i := 2; i < len(peers)-1; i++ {
 		addOne(t, kad, ab, peers[i])
 
@@ -87,9 +83,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 
 		// depth is i+1
 		kDepth(t, kad, i+1)
-
-		// reset
-		atomic.StoreInt32(&conns, 0)
 	}
 
 	// the last peer in bin 7 which is empty we insert manually,
@@ -99,8 +92,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	// depth is 8 because we have nnLowWatermark neighbors in bin 8
 	kDepth(t, kad, 8)
 
-	atomic.StoreInt32(&conns, 0)
-
 	// now add another ONE peer at depth+1, and expect the depth to still
 	// stay 8, because the counter for nnLowWatermark would be reached only at the next
 	// depth iteration when calculating depth
@@ -109,15 +100,12 @@ func TestNeighborhoodDepth(t *testing.T) {
 	waitConn(t, &conns)
 	kDepth(t, kad, 8)
 
-	atomic.StoreInt32(&conns, 0)
-
 	// fill the rest up to the bin before last and check that everything works at the edges
 	for i := 10; i < kademlia.MaxBins-1; i++ {
 		addr := test.RandomAddressAt(base, i)
 		addOne(t, kad, ab, addr)
 		waitConn(t, &conns)
 		kDepth(t, kad, i-1)
-		atomic.StoreInt32(&conns, 0)
 	}
 
 	// add a whole bunch of peers in bin 13, expect depth to stay at 13
@@ -127,7 +115,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	}
 
 	waitConns(t, &conns, 15)
-	atomic.StoreInt32(&conns, 0)
 	kDepth(t, kad, 13)
 
 	// add one at 14 - depth should be now 14
@@ -226,7 +213,6 @@ func TestBinSaturation(t *testing.T) {
 		}
 	}
 	waitConns(t, &conns, 10)
-	atomic.StoreInt32(&conns, 0)
 
 	// add one more peer in each bin shallower than depth and
 	// expect no connections due to saturation. if we add a peer within
@@ -242,14 +228,12 @@ func TestBinSaturation(t *testing.T) {
 	addOne(t, kad, ab, addr)
 
 	waitConns(t, &conns, 1)
-	atomic.StoreInt32(&conns, 0)
 
 	// again, one bin higher
 	addr = test.RandomAddressAt(base, 7)
 	addOne(t, kad, ab, addr)
 
 	waitConns(t, &conns, 1)
-	atomic.StoreInt32(&conns, 0)
 
 	// this is in order to hit the `if size < 2` in the saturation func
 	removeOne(kad, peers[2])
@@ -333,7 +317,6 @@ func TestBackoff(t *testing.T) {
 	addOne(t, kad, ab, addr)
 
 	waitConns(t, &conns, 1)
-	atomic.StoreInt32(&conns, 0)
 
 	// remove that peer
 	removeOne(kad, addr)
@@ -344,7 +327,6 @@ func TestBackoff(t *testing.T) {
 	addOne(t, kad, ab, addr)
 
 	waitConns(t, &conns, 1)
-	atomic.StoreInt32(&conns, 0)
 
 	// wait for another 400ms, add another, expect 2 connections
 	time.Sleep(400 * time.Millisecond)
@@ -356,7 +338,7 @@ func TestBackoff(t *testing.T) {
 
 // TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
 func TestClosestPeer(t *testing.T) {
-	logger := logging.New(os.Stdout, 5)
+	logger := logging.New(ioutil.Discard, 0)
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 	connectedPeers := []p2p.Peer{
 		{
