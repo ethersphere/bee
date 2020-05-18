@@ -36,7 +36,7 @@ import (
 // function will terminate current and further iterations without errors, and also close the returned channel.
 // Make sure that you check the second returned parameter from the channel to stop iteration when its value
 // is false.
-func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan storage.Descriptor, stop func()) {
+func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan storage.Descriptor, closed <-chan struct{}, stop func()) {
 	db.metrics.SubscribePull.Inc()
 
 	chunkDescriptors := make(chan storage.Descriptor)
@@ -176,7 +176,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 		}
 	}
 
-	return chunkDescriptors, stop
+	return chunkDescriptors, db.close, stop
 }
 
 // LastPullSubscriptionBinID returns chunk bin id of the latest Chunk

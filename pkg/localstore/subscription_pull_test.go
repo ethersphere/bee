@@ -54,7 +54,7 @@ func TestDB_SubscribePull_first(t *testing.T) {
 	since := chunksInGivenBin + 1
 
 	go func() {
-		ch, stop := db.SubscribePull(context.TODO(), bin, since, 0)
+		ch, _, stop := db.SubscribePull(context.TODO(), bin, since, 0)
 		defer stop()
 
 		chnk := <-ch
@@ -100,7 +100,7 @@ func TestDB_SubscribePull(t *testing.T) {
 	errChan := make(chan error)
 
 	for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
-		ch, stop := db.SubscribePull(ctx, bin, 0, 0)
+		ch, _, stop := db.SubscribePull(ctx, bin, 0, 0)
 		defer stop()
 
 		// receive and validate addresses from the subscription
@@ -149,7 +149,7 @@ func TestDB_SubscribePull_multiple(t *testing.T) {
 	// that all of them will write every address error to errChan
 	for j := 0; j < subsCount; j++ {
 		for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
-			ch, stop := db.SubscribePull(ctx, bin, 0, 0)
+			ch, _, stop := db.SubscribePull(ctx, bin, 0, 0)
 			defer stop()
 
 			// receive and validate addresses from the subscription
@@ -237,7 +237,7 @@ func TestDB_SubscribePull_since(t *testing.T) {
 		if !ok {
 			continue
 		}
-		ch, stop := db.SubscribePull(ctx, bin, since, 0)
+		ch, _, stop := db.SubscribePull(ctx, bin, since, 0)
 		defer stop()
 
 		// receive and validate addresses from the subscription
@@ -313,7 +313,7 @@ func TestDB_SubscribePull_until(t *testing.T) {
 		if !ok {
 			continue
 		}
-		ch, stop := db.SubscribePull(ctx, bin, 0, until)
+		ch, _, stop := db.SubscribePull(ctx, bin, 0, until)
 		defer stop()
 
 		// receive and validate addresses from the subscription
@@ -404,7 +404,7 @@ func TestDB_SubscribePull_sinceAndUntil(t *testing.T) {
 			// skip this bin from testing
 			continue
 		}
-		ch, stop := db.SubscribePull(ctx, bin, since, until)
+		ch, _, stop := db.SubscribePull(ctx, bin, since, until)
 		defer stop()
 
 		// receive and validate addresses from the subscription
@@ -491,7 +491,7 @@ func TestDB_SubscribePull_rangeOnRemovedChunks(t *testing.T) {
 			// ignore this bin if it has only one chunk left
 			continue
 		}
-		ch, stop := db.SubscribePull(ctx, bin, since, until)
+		ch, _, stop := db.SubscribePull(ctx, bin, since, until)
 		defer stop()
 
 		// the returned channel should be closed
