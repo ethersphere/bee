@@ -136,7 +136,8 @@ func (k *Kad) manage() {
 					return false, false, err
 				}
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-				err = k.connect(ctx, peer, ma, po)
+
+        err = k.connect(ctx, peer, ma, po)
 				if err != nil {
 					k.logger.Errorf("error connecting to peer %s: %v", peer, err)
 					// continue to next
