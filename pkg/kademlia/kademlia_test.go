@@ -7,6 +7,7 @@ package kademlia_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -43,9 +44,9 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		base, kad, ab = newTestKademlia(&conns, nil)
-		peers         []swarm.Address
-		binEight      []swarm.Address
+		base, kad, ab, _ = newTestKademlia(&conns, nil)
+		peers            []swarm.Address
+		binEight         []swarm.Address
 	)
 
 	defer kad.Close()
@@ -172,7 +173,7 @@ func TestManage(t *testing.T) {
 		saturationFunc = func(bin, depth uint8, peers *pslice.PSlice) bool {
 			return saturationVal
 		}
-		base, kad, ab = newTestKademlia(&conns, saturationFunc)
+		base, kad, ab, _ = newTestKademlia(&conns, saturationFunc)
 	)
 	// first, saturationFunc returns always false, this means that the bin is not saturated,
 	// hence we expect that every peer we add to kademlia will be connected to
@@ -182,7 +183,6 @@ func TestManage(t *testing.T) {
 	}
 
 	waitConns(t, &conns, 50)
-	atomic.StoreInt32(&conns, 0)
 	saturationVal = true
 
 	// now since the bin is "saturated", no new connections should be made
@@ -211,9 +211,9 @@ func TestManage(t *testing.T) {
 // in shallower depth for the rest of the function to be executed
 func TestBinSaturation(t *testing.T) {
 	var (
-		conns         int32 // how many connect calls were made to the p2p mock
-		base, kad, ab = newTestKademlia(&conns, nil)
-		peers         []swarm.Address
+		conns            int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _ = newTestKademlia(&conns, nil)
+		peers            []swarm.Address
 	)
 
 	// add two peers in a few bins to generate some depth >= 0, this will
@@ -261,11 +261,11 @@ func TestBinSaturation(t *testing.T) {
 // result in the correct behavior once called.
 func TestNotifieeHooks(t *testing.T) {
 	var (
-		base, kad, ab = newTestKademlia(nil, nil)
+		base, kad, ab, _ = newTestKademlia(nil, nil)
+		peer             = test.RandomAddressAt(base, 3)
+		addr             = test.RandomAddressAt(peer, 4) // address which is closer to peer
 	)
 
-	peer := test.RandomAddressAt(base, 3)
-	addr := test.RandomAddressAt(peer, 4) // address which is closer to peer
 	connectOne(t, kad, ab, peer)
 
 	p, err := kad.ClosestPeer(addr)
@@ -289,7 +289,28 @@ func TestNotifieeHooks(t *testing.T) {
 // once we establish a connection to this peer. This could be as a result of
 // us proactively dialing in to a peer, or when a peer dials in.
 func TestDiscoveryHooks(t *testing.T) {
+	var (
+		conns            int32
+		_, kad, ab, disc = newTestKademlia(&conns, nil)
+		p1, p2, p3       = test.RandomAddress(), test.RandomAddress(), test.RandomAddress()
+	)
 
+	// first add a peer from AddPeer, wait for the connection
+	addOne(t, kad, ab, p1)
+	waitConn(t, &conns)
+	// add another peer from AddPeer, wait for the connection
+	// then check that peers are gossiped to each other via discovery
+	addOne(t, kad, ab, p2)
+	waitConn(t, &conns)
+	waitBcast(t, disc, p1, p2)
+	waitBcast(t, disc, p2, p1)
+
+	// add another peer that dialed in, check that all peers gossiped
+	// correctly to each other
+	connectOne(t, kad, ab, p3)
+	waitBcast(t, disc, p1, p3)
+	waitBcast(t, disc, p2, p3)
+	waitBcast(t, disc, p3, p1, p2)
 }
 
 func TestBackoff(t *testing.T) {
@@ -303,7 +324,7 @@ func TestBackoff(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		base, kad, ab = newTestKademlia(&conns, nil)
+		base, kad, ab, _ = newTestKademlia(&conns, nil)
 	)
 
 	// add one peer, wait for connection
@@ -411,7 +432,7 @@ func TestClosestPeer(t *testing.T) {
 
 func TestMarshal(t *testing.T) {
 	var (
-		_, kad, ab = newTestKademlia(nil, nil)
+		_, kad, ab, _ = newTestKademlia(nil, nil)
 	)
 	a := test.RandomAddress()
 	addOne(t, kad, ab, a)
@@ -421,7 +442,7 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-func newTestKademlia(connCounter *int32, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface) {
+func newTestKademlia(connCounter *int32, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery) {
 	var (
 		base   = test.RandomAddress() // base address
 		p2p    = p2pMock(connCounter)
@@ -430,7 +451,7 @@ func newTestKademlia(connCounter *int32, f func(bin, depth uint8, peers *pslice.
 		disc   = mock.NewDiscovery()                                                                                                       // mock discovery
 		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f}) // kademlia instance
 	)
-	return base, kad, ab
+	return base, kad, ab, disc
 }
 
 func p2pMock(counter *int32) p2p.Service {
@@ -499,15 +520,62 @@ func waitConn(t *testing.T, conns *int32) {
 	waitConns(t, conns, 1)
 }
 
+// waits for some connections for some time. resets the pointer value
+// if the correct number of connections have been reached.
 func waitConns(t *testing.T, conns *int32, exp int32) {
 	t.Helper()
 	var got int32
+	if exp == 0 {
+		// sleep for some time before checking for a 0.
+		// this gives some time for unwanted connections to be
+		// established.
+
+		time.Sleep(50 * time.Millisecond)
+	}
 	for i := 0; i < 50; i++ {
-		got = atomic.LoadInt32(conns)
-		if got == exp {
+		if atomic.LoadInt32(conns) == exp {
+			atomic.StoreInt32(conns, 0)
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for connections to be established. got %d want %d", got, exp)
+}
+
+// wait for discovery BroadcastPeers to happen
+func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...swarm.Address) {
+	t.Helper()
+
+	for i := 0; i < 50; i++ {
+		fmt.Println(d.Broadcasts())
+		if d.Broadcasts() > 0 {
+
+			recs, ok := d.AddresseeRecords(pivot)
+			if !ok {
+				t.Fatal("got no records for pivot")
+			}
+			oks := 0
+			for _, a := range addrs {
+				if !isIn(a, recs) {
+					t.Fatalf("address %s not found in discovery records: %s", a, addrs)
+				}
+				oks++
+			}
+
+			if oks == len(addrs) {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for broadcast to happen")
+}
+
+func isIn(addr swarm.Address, addrs []swarm.Address) bool {
+	for _, v := range addrs {
+		if v.Equal(addr) {
+			return true
+		}
+	}
+	return false
 }
