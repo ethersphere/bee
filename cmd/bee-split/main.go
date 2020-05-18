@@ -222,7 +222,8 @@ The application will expect to transmit the chunks to the bee HTTP API, unless t
 
 If --output-dir is set, the chunks will be saved to the file system, using the flag argument as destination directory. 
 Chunks are saved in individual files, and the file names will be the hex addresses of the chunks.`,
-		RunE: Split,
+		RunE:         Split,
+		SilenceUsage: true,
 	}
 
 	c.Flags().StringVarP(&outdir, "output-dir", "d", "", "saves chunks to given directory")
@@ -233,6 +234,7 @@ Chunks are saved in individual files, and the file names will be the hex address
 	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
 	err := c.Execute()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }

@@ -7,7 +7,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -116,15 +115,21 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// join, rinse, repeat until done
-	teeReader := io.TeeReader(r, outFile)
 	data := make([]byte, swarm.ChunkSize)
 	var total int64
 	for i := int64(0); i < l; i += swarm.ChunkSize {
-		c, err := teeReader.Read(data)
+		cr, err := r.Read(data)
 		if err != nil {
 			return err
 		}
-		total += int64(c)
+		total += int64(cr)
+		cw, err := outFile.Write(data[:cr])
+		if err != nil {
+			return err
+		}
+		if cw != cr {
+			return fmt.Errorf("short wrote %d of %d for chunk %d", cw, cr, i)
+		}
 	}
 	if total != l {
 		return fmt.Errorf("received only %d of %d total bytes", total, l)
@@ -140,7 +145,8 @@ func main() {
 		Long: `Assembles chunked data from referenced by a root Swarm Hash.
 
 Will output retrieved data to stdout.`,
-		RunE: Join,
+		RunE:         Join,
+		SilenceUsage: true,
 	}
 	c.Flags().StringVarP(&outFilePath, "output-file", "o", "", "file to write output to")
 	c.Flags().BoolVarP(&outFileForce, "force", "f", false, "overwrite existing output file")
@@ -150,6 +156,7 @@ Will output retrieved data to stdout.`,
 
 	err := c.Execute()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
