@@ -234,7 +234,7 @@ Chunks are saved in individual files, and the file names will be the hex address
 	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
 	err := c.Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
