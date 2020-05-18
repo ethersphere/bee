@@ -35,7 +35,7 @@ type apiStore struct {
 }
 
 // newApiStore creates a new apiStore
-func newApiStore(host string, port int, ssl bool) (storage.Getter, error) {
+func newApiStore(host string, port int, ssl bool) storage.Getter {
 	scheme := "http"
 	if ssl {
 		scheme += "s"
@@ -47,7 +47,7 @@ func newApiStore(host string, port int, ssl bool) (storage.Getter, error) {
 	}
 	return &apiStore{
 		baseUrl: u.String(),
-	}, nil
+	}
 }
 
 // Get implements storage.Getter
@@ -106,10 +106,7 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// initialize interface with HTTP API
-	store, err := newApiStore(host, port, ssl)
-	if err != nil {
-		return err
-	}
+	store := newApiStore(host, port, ssl)
 
 	// create the join and get its data reader
 	j := joiner.NewSimpleJoiner(store)
