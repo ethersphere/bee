@@ -99,7 +99,7 @@ func (c *command) initStartCmd() (err error) {
 				Addr:               c.config.GetString(optionNameP2PAddr),
 				DisableWS:          c.config.GetBool(optionNameP2PDisableWS),
 				DisableQUIC:        c.config.GetBool(optionNameP2PDisableQUIC),
-				NetworkID:          c.config.GetInt32(optionNameNetworkID),
+				NetworkID:          c.config.GetUint64(optionNameNetworkID),
 				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
 				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:    c.config.GetString(optionNameTracingEndpoint),
@@ -159,7 +159,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameEnableDebugAPI, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
-	cmd.Flags().Int32(optionNameNetworkID, 1, "ID of the Swarm network")
+	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
