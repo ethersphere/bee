@@ -40,7 +40,7 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 		if err != nil {
 			t.Fatal(err)
 		}
-		o.Overlay = crypto.NewAddress(swarmPK.PublicKey)
+		o.Overlay = crypto.NewOverlayAddress(swarmPK.PublicKey, o.NetworkID)
 	}
 
 	if o.Logger == nil {
