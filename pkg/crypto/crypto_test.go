@@ -37,7 +37,7 @@ func TestNewAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := crypto.NewAddress(k.PublicKey)
+	a := crypto.NewOverlayAddress(k.PublicKey, 1)
 	if l := len(a.Bytes()); l != 32 {
 		t.Errorf("got address length %v, want %v", l, 32)
 	}

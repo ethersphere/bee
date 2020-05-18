@@ -17,7 +17,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/crypto/sha3"
 )
@@ -35,9 +34,8 @@ const (
 )
 
 type encryptedKey struct {
-	Address swarm.Address `json:"address"`
-	Crypto  keyCripto     `json:"crypto"`
-	Version int           `json:"version"`
+	Crypto  keyCripto `json:"crypto"`
+	Version int       `json:"version"`
 }
 
 type keyCripto struct {
@@ -68,7 +66,6 @@ func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(encryptedKey{
-		Address: crypto.NewAddress(k.PublicKey),
 		Crypto:  *kc,
 		Version: keyVersion,
 	})

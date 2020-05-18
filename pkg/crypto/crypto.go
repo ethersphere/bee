@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec"
@@ -15,9 +16,12 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// NewAddress constructs a Swarm Address from ECDSA private key.
-func NewAddress(p ecdsa.PublicKey) swarm.Address {
-	h := sha3.Sum256(elliptic.Marshal(btcec.S256(), p.X, p.Y))
+// NewOverlayAddress constructs a Swarm Address from ECDSA private key.
+func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64) swarm.Address {
+	data := make([]byte, 28)
+	copy(data, elliptic.Marshal(btcec.S256(), p.X, p.Y)[12:32])
+	binary.LittleEndian.PutUint64(data[20:28], networkID)
+	h := sha3.Sum256(data)
 	return swarm.NewAddress(h[:])
 }
 
