@@ -49,7 +49,7 @@ type Service struct {
 }
 
 func New(overlay swarm.Address, underlay []byte, privateKey *ecdsa.PrivateKey, networkID uint64, logger logging.Logger) (*Service, error) {
-	toSign := append(underlay[:], strconv.FormatUint(networkID, 10)...)
+	toSign := append(underlay, strconv.FormatUint(networkID, 10)...)
 	signature, err := crypto.Sign(privateKey, toSign)
 	if err != nil {
 		return nil, err
@@ -172,7 +172,7 @@ func (s *Service) checkSyn(syn *pb.Syn) error {
 		return fmt.Errorf("incompatible network ID")
 	}
 
-	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay[:], strconv.FormatUint(syn.NetworkID, 10)...))
+	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, strconv.FormatUint(syn.NetworkID, 10)...))
 	if err != nil {
 		return fmt.Errorf("could not recover public key from signature")
 	}
