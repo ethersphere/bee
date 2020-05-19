@@ -76,8 +76,8 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-invalid-value", func(t *testing.T) {
-		headers := make(map[string]string)
-		headers[api.PinHeaderName] = "hdgdh"
+		headers := make(map[string][]string)
+		headers[api.PinHeaderName] = []string{"hdgdh"}
 		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -89,7 +89,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
-		headers := make(map[string]string)
+		headers := make(map[string][]string)
 		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -101,8 +101,8 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-ok", func(t *testing.T) {
-		headers := make(map[string]string)
-		headers[api.PinHeaderName] = "True"
+		headers := make(map[string][]string)
+		headers[api.PinHeaderName] = []string{"True"}
 		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,

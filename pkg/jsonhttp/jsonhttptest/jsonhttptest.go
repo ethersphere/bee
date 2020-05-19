@@ -67,7 +67,7 @@ func ResponseDirectWithJson(t *testing.T, client *http.Client, method, url strin
 }
 
 func ResponseDirectWithHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
-	response interface{}, headers map[string]string) {
+	response interface{}, headers http.Header) {
 	t.Helper()
 
 	resp := request(t, client, method, url, body, responseCode, headers)
@@ -100,16 +100,14 @@ func ResponseUnmarshal(t *testing.T, client *http.Client, method, url string, bo
 	}
 }
 
-func request(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, headers map[string]string) *http.Response {
+func request(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, headers http.Header) *http.Response {
 	t.Helper()
 
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
+	req.Header = headers
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)

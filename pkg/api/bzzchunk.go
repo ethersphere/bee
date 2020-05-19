@@ -18,7 +18,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Presence of this header in the HTTP request indicates the chunk needs to be pinned
+// Presence of this header in the HTTP request indicates the chunk needs to be pinned.
 const PinHeaderName = "x-swarm-pin"
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -51,8 +51,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if this chunk needs to pinned and pin it
-	pinHeader := r.Header.Get(PinHeaderName)
-	if pinHeader != "" && strings.ToLower(pinHeader) == "true" {
+	pinHeaderValues := r.Header.Get(PinHeaderName)
+	if pinHeaderValues != "" && strings.ToLower(pinHeaderValues) == "true" {
 		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
 		if err != nil {
 			s.Logger.Debugf("bzz-chunk: chunk pinning error: %v, addr %s", err, address)

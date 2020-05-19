@@ -119,8 +119,8 @@ type Descriptor struct {
 	BinID   uint64
 }
 
-// PinInfo holds the required information for pinning
-type PinInfo struct {
+// Pinner holds the required information for pinning
+type Pinner struct {
 	Address    swarm.Address
 	PinCounter uint64
 }
@@ -142,8 +142,8 @@ type Storer interface {
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, stop func())
 	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
-	GetPinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*PinInfo, err error)
-	GetPinInfo(address swarm.Address) (uint64, error)
+	PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*Pinner, err error)
+	PinInfo(address swarm.Address) (uint64, error)
 	io.Closer
 }
 
