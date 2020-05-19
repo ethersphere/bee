@@ -1,6 +1,8 @@
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 GOLANGCI_LINT_VERSION ?= v1.24.0
+GOGOPROTOBUF ?= protoc-gen-gogofaster
+GOGOPROTOBUF_VERSION ?= v1.3.1
 
 LDFLAGS ?= -s -w
 ifdef COMMIT
@@ -47,6 +49,16 @@ build:
 .PHONY: githooks
 githooks:
 	ln -f -s ../../.githooks/pre-push.bash .git/hooks/pre-push
+
+.PHONY: protobuftools
+protobuftools:
+	which protoc || ( echo "install protoc for your system from https://github.com/protocolbuffers/protobuf/releases" && exit 1)
+	which $(GOGOPROTOBUF) || ( cd /tmp && GO111MODULE=on $(GO) get -u github.com/gogo/protobuf/$(GOGOPROTOBUF)@$(GOGOPROTOBUF_VERSION) )
+
+.PHONY: protobuf
+protobuf: GOFLAGS=-mod=mod # use modules for protobuf file include option
+protobuf: protobuftools
+	$(GO) generate -run protoc ./...
 
 .PHONY: clean
 clean:

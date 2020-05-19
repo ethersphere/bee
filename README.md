@@ -158,6 +158,19 @@ And use that address in the API call on another node, for example, local node 1:
 curl -XPOST localhost:8081/pingpong/d4440baf2d79e481c3c6fd93a2014d2e6fe0386418829439f26d13a8253d04f1
 ```
 
+## Generating protobuf
+
+To process protocol buffer files and generate the Go code from it two tools are needed:
+
+- protoc - https://github.com/protocolbuffers/protobuf/releases
+- protoc-gen-gogofaster - https://github.com/gogo/protobuf
+
+Makefile rule `protobuf` can be used to automate `protoc-gen-gogofaster` installation and code generation:
+
+```sh
+make protobuf
+```
+
 ## Contributing
 
 Please read the [coding guidelines](CODING.md).
