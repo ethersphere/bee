@@ -55,19 +55,16 @@ type Service struct {
 }
 
 type Options struct {
-	PrivateKey  *ecdsa.PrivateKey
-	Overlay     swarm.Address
-	Addr        string
 	DisableWS   bool
 	DisableQUIC bool
-	NetworkID   uint64
 	Addressbook addressbook.Putter
 	Logger      logging.Logger
 	Tracer      *tracing.Tracer
 }
 
-func New(ctx context.Context, o Options) (*Service, error) {
-	host, port, err := net.SplitHostPort(o.Addr)
+func New(ctx context.Context, privateKey *ecdsa.PrivateKey, networkID uint64, overlay swarm.Address, addr string,
+	o Options) (*Service, error) {
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
 	}
@@ -119,11 +116,9 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		libp2p.Peerstore(libp2pPeerstore),
 	}
 
-	if o.PrivateKey != nil {
-		opts = append(opts,
-			libp2p.Identity((*crypto.Secp256k1PrivateKey)(o.PrivateKey)),
-		)
-	}
+	opts = append(opts,
+		libp2p.Identity((*crypto.Secp256k1PrivateKey)(privateKey)),
+	)
 
 	transports := []libp2p.Option{
 		libp2p.Transport(tcp.NewTCPTransport),
@@ -155,14 +150,24 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	underlay, err := h.ID().MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	handshakeService, err := handshake.New(overlay, underlay, privateKey, networkID, o.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("handshake service: %w", err)
+	}
+
 	peerRegistry := newPeerRegistry()
 	s := &Service{
 		ctx:              ctx,
 		host:             h,
 		libp2pPeerstore:  libp2pPeerstore,
 		metrics:          newMetrics(),
-		networkID:        o.NetworkID,
-		handshakeService: handshake.New(o.Overlay, o.NetworkID, o.Logger),
+		networkID:        networkID,
+		handshakeService: handshakeService,
 		peers:            peerRegistry,
 		addrssbook:       o.Addressbook,
 		logger:           o.Logger,
@@ -182,21 +187,13 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		peerID := stream.Conn().RemotePeer()
 		i, err := s.handshakeService.Handle(NewStream(stream), peerID)
 		if err != nil {
-			if err == handshake.ErrNetworkIDIncompatible {
-				s.logger.Warningf("peer %s has a different network id.", peerID)
-			}
-
-			if err == handshake.ErrHandshakeDuplicate {
-				s.logger.Warningf("handshake happened for already connected peer %s", peerID)
-			}
-
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			_ = s.disconnect(peerID)
 			return
 		}
 
-		if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
+		if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
 			_ = stream.Close()
 			return
 		}
@@ -210,7 +207,7 @@ func New(ctx context.Context, o Options) (*Service, error) {
 			return
 		}
 
-		err = s.addrssbook.Put(i.Address, remoteMultiaddr)
+		err = s.addrssbook.Put(i.Overlay, remoteMultiaddr)
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
 			s.logger.Errorf("unable to persist peer %v", peerID)
@@ -219,13 +216,13 @@ func New(ctx context.Context, o Options) (*Service, error) {
 		}
 
 		if s.peerHandler != nil {
-			if err := s.peerHandler(ctx, i.Address); err != nil {
+			if err := s.peerHandler(ctx, i.Overlay); err != nil {
 				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
 			}
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("peer %s connected", i.Address)
+		s.logger.Infof("peer %s connected", i.Overlay)
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -335,12 +332,12 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), i.Address); exists {
+	if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
 			return swarm.Address{}, err
 		}
 
-		return i.Address, nil
+		return i.Overlay, nil
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
@@ -348,8 +345,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("peer %s connected", i.Address)
-	return i.Address, nil
+	s.logger.Infof("peer %s connected", i.Overlay)
+	return i.Overlay, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
