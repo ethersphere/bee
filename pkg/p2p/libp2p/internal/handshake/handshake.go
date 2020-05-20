@@ -27,7 +27,7 @@ const (
 	ProtocolName    = "handshake"
 	ProtocolVersion = "1.0.0"
 	StreamName      = "handshake"
-	messageTimeout  = 50 * time.Second // maximum allowed time for a message to be read or written.
+	messageTimeout  = 10 * time.Second // maximum allowed time for a message to be read or written.
 )
 
 // PeerFinder has the information if the peer already exists in swarm.
