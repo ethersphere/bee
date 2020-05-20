@@ -63,8 +63,7 @@ type Service struct {
 }
 
 func New(overlay swarm.Address, underlay string, signer crypto.SignRecoverer, networkID uint64, logger logging.Logger) (*Service, error) {
-	toSign := []byte(underlay + strconv.FormatUint(networkID, 10))
-	signature, err := signer.Sign(toSign)
+	signature, err := signer.Sign([]byte(underlay + strconv.FormatUint(networkID, 10)))
 	if err != nil {
 		return nil, err
 	}
