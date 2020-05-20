@@ -44,12 +44,3 @@ func DecodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), data)
 	return (*ecdsa.PrivateKey)(privk), nil
 }
-
-func Sign(k *ecdsa.PrivateKey, data []byte) (signature []byte, err error) {
-	return btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(k), data, true)
-}
-
-func Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
-	p, _, err := btcec.RecoverCompact(btcec.S256(), signature, data)
-	return (*ecdsa.PublicKey)(p), err
-}

@@ -19,27 +19,25 @@ type Recoverer interface {
 	Recover(signature, data []byte) (*ecdsa.PublicKey, error)
 }
 
+// Recover verifies signature with the data base provided.
+// Is exported so it can be used in other `Recoverer` implementations as well.
+func Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
+	p, _, err := btcec.RecoverCompact(btcec.S256(), signature, data)
+	return (*ecdsa.PublicKey)(p), err
+}
+
 type SignRecoverer interface {
 	Signer
 	Recoverer
 }
 
-type defaultRecoverer struct{}
-
-func (d defaultRecoverer) Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
-	p, _, err := btcec.RecoverCompact(btcec.S256(), signature, data)
-	return (*ecdsa.PublicKey)(p), err
-}
-
 type defaultSigner struct {
-	key       *ecdsa.PrivateKey
-	recoverer Recoverer
+	key *ecdsa.PrivateKey
 }
 
 func NewDefaultSigner(key *ecdsa.PrivateKey) SignRecoverer {
 	return &defaultSigner{
-		key:       key,
-		recoverer: defaultRecoverer{},
+		key: key,
 	}
 }
 
@@ -52,5 +50,5 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 }
 
 func (d *defaultSigner) Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
-	return d.recoverer.Recover(signature, data)
+	return Recover(signature, data)
 }
