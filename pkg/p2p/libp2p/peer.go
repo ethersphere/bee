@@ -16,10 +16,6 @@ import (
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-type registryOptions struct {
-	disconnecter topology.Disconnecter
-}
-
 type peerRegistry struct {
 	underlays   map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
 	overlays    map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
@@ -30,14 +26,13 @@ type peerRegistry struct {
 	network.Notifiee                       // peerRegistry can be the receiver for network.Notify
 }
 
-func newPeerRegistry(o registryOptions) *peerRegistry {
+func newPeerRegistry() *peerRegistry {
 	return &peerRegistry{
 		underlays:   make(map[string]libp2ppeer.ID),
 		overlays:    make(map[libp2ppeer.ID]swarm.Address),
 		connections: make(map[libp2ppeer.ID]map[network.Conn]struct{}),
 
-		disconnecter: o.disconnecter,
-		Notifiee:     new(network.NoopNotifiee),
+		Notifiee: new(network.NoopNotifiee),
 	}
 }
 
@@ -132,4 +127,8 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	if r.disconnecter != nil {
 		r.disconnecter.Disconnected(overlay)
 	}
+}
+
+func (r *peerRegistry) setDisconnecter(d topology.Disconnecter) {
+	r.disconnecter = d
 }

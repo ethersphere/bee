@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const (
@@ -117,7 +119,7 @@ func (k *Kad) manage() {
 
 				currentDepth := k.NeighborhoodDepth()
 				if k.saturationFunc(po, currentDepth, k.connectedPeers) {
-					return false, false, nil
+					return false, true, nil // bin is saturated, skip to next bin
 				}
 
 				ma, err := k.addressBook.Get(peer)
@@ -133,26 +135,14 @@ func (k *Kad) manage() {
 
 					return false, false, err
 				}
-
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-				_, err = k.p2p.Connect(ctx, ma)
+
+				err = k.connect(ctx, peer, ma, po)
 				if err != nil {
-					k.logger.Debugf("error connecting to peer %s: %v", peer, err)
-					k.waitNextMu.Lock()
-					k.waitNext[peer.String()] = time.Now().Add(timeToRetry)
-					k.waitNextMu.Unlock()
-					select {
-					case <-k.quit:
-						// shutting down
-						return true, false, nil
-					default:
-					}
-
-					// TODO: somehow keep track of attempts and at some point forget about the peer
-					return false, false, nil // dont stop, continue to next peer
+					k.logger.Errorf("error connecting to peer %s: %v", peer, err)
+					// continue to next
+					return false, false, nil
 				}
-
-				k.connectedPeers.Add(peer, po)
 
 				k.waitNextMu.Lock()
 				delete(k.waitNext, peer.String())
@@ -248,6 +238,54 @@ func (k *Kad) recalcDepth() uint8 {
 	return shallowestEmpty
 }
 
+// connect connects to a peer and gossips its address to our connected peers,
+// as well as sends the peers we are connected to to the newly connected peer
+func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
+	_, err := k.p2p.Connect(ctx, ma)
+	if err != nil {
+		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
+		k.waitNextMu.Lock()
+		k.waitNext[peer.String()] = time.Now().Add(timeToRetry)
+		k.waitNextMu.Unlock()
+
+		// TODO: somehow keep track of attempts and at some point forget about the peer
+		return err //false, false, nil // dont stop, continue to next peer
+	}
+
+	k.connectedPeers.Add(peer, po)
+	return k.announce(ctx, peer)
+}
+
+// announce a newly connected peer to our connected peers, but also
+// notify the peer about our already connected peers
+func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
+	addrs := []swarm.Address{}
+
+	_ = k.connectedPeers.EachBinRev(func(connectedPeer swarm.Address, _ uint8) (bool, bool, error) {
+		if connectedPeer.Equal(peer) {
+			// skip to next
+			return false, false, nil
+		}
+		addrs = append(addrs, connectedPeer)
+		if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
+			// we don't want to fail the whole process because of this, keep on gossiping
+			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
+			return false, false, nil
+		}
+		return false, false, nil
+	})
+
+	if len(addrs) == 0 {
+		return nil
+	}
+
+	err := k.discovery.BroadcastPeers(context.Background(), peer, addrs...)
+	if err != nil {
+		_ = k.p2p.Disconnect(peer)
+	}
+	return err
+}
+
 // AddPeer adds a peer to the knownPeers list.
 // This does not guarantee that a connection will immediately
 // be made to the peer.
@@ -265,6 +303,26 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 	}
 
 	return nil
+}
+
+// Connected is called when a peer has dialed in.
+func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
+	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
+	k.connectedPeers.Add(addr, po)
+
+	k.waitNextMu.Lock()
+	delete(k.waitNext, addr.String())
+	k.waitNextMu.Unlock()
+
+	k.depthMu.Lock()
+	k.depth = k.recalcDepth()
+	k.depthMu.Unlock()
+
+	select {
+	case k.manageC <- struct{}{}:
+	default:
+	}
+	return k.announce(ctx, addr)
 }
 
 // Disconnected is called when peer disconnects.
@@ -286,8 +344,39 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 }
 
 // ClosestPeer returns the closest peer to a given address.
-func (k *Kad) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
-	panic("not implemented") // TODO: Implement
+func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
+	if k.connectedPeers.Length() == 0 {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	closest := k.base
+	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
+		if err != nil {
+			return false, false, err
+		}
+		switch dcmp {
+		case 0:
+			// do nothing
+		case -1:
+			// current peer is closer
+			closest = peer
+		case 1:
+			// closest is already closer to chunk
+			// do nothing
+		}
+		return false, false, nil
+	})
+	if err != nil {
+		return swarm.Address{}, err
+	}
+
+	// check if self
+	if closest.Equal(k.base) {
+		return swarm.Address{}, topology.ErrWantSelf
+	}
+
+	return closest, nil
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.

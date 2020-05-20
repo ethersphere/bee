@@ -61,7 +61,6 @@ type Options struct {
 	DisableWS   bool
 	DisableQUIC bool
 	Addressbook addressbook.Putter
-	Notifiee    topology.Notifiee
 	Logger      logging.Logger
 	Tracer      *tracing.Tracer
 }
@@ -161,7 +160,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
 
-	peerRegistry := newPeerRegistry(registryOptions{disconnecter: o.Notifiee})
+	peerRegistry := newPeerRegistry()
 	s := &Service{
 		ctx:              ctx,
 		host:             h,
@@ -174,7 +173,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		logger:           o.Logger,
 		tracer:           o.Tracer,
 		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // todo: fill non-default options
-		topologyNotifiee: o.Notifiee,
 	}
 
 	// Construct protocols.
@@ -374,6 +372,7 @@ func (s *Service) Peers() []p2p.Peer {
 
 func (s *Service) SetNotifiee(n topology.Notifiee) {
 	s.topologyNotifiee = n
+	s.peers.setDisconnecter(n)
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
