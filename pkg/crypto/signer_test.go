@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 )
 
-func TestSignRecover(t *testing.T) {
+func TestDefaultSigner(t *testing.T) {
 	testBytes := []byte("test string")
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
