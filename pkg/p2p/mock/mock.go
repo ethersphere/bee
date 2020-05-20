@@ -19,7 +19,7 @@ type Service struct {
 	connectFunc     func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
 	disconnectFunc  func(overlay swarm.Address) error
 	peersFunc       func() []p2p.Peer
-	setNotifieeFunc func(topology.Notifiee)
+	setNotifierFunc func(topology.Notifier)
 	addressesFunc   func() ([]ma.Multiaddr, error)
 }
 
@@ -47,9 +47,9 @@ func WithPeersFunc(f func() []p2p.Peer) Option {
 	})
 }
 
-func WithSetNotifieeFunc(f func(topology.Notifiee)) Option {
+func WithSetNotifierFunc(f func(topology.Notifier)) Option {
 	return optionFunc(func(s *Service) {
-		s.setNotifieeFunc = f
+		s.setNotifierFunc = f
 	})
 }
 
@@ -88,12 +88,12 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return s.disconnectFunc(overlay)
 }
 
-func (s *Service) SetNotifiee(f topology.Notifiee) {
-	if s.setNotifieeFunc == nil {
+func (s *Service) SetNotifier(f topology.Notifier) {
+	if s.setNotifierFunc == nil {
 		return
 	}
 
-	s.setNotifieeFunc(f)
+	s.setNotifierFunc(f)
 }
 
 func (s *Service) Addresses() ([]ma.Multiaddr, error) {

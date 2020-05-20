@@ -196,14 +196,9 @@ func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 
 	size := 0
 	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
-		switch {
-		case po < bin:
-			return true, false, nil
-		case po > bin:
-			return false, true, nil
+		if po == bin {
+			size++
 		}
-
-		size++
 		return false, false, nil
 	})
 
@@ -249,7 +244,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 		k.waitNextMu.Unlock()
 
 		// TODO: somehow keep track of attempts and at some point forget about the peer
-		return err //false, false, nil // dont stop, continue to next peer
+		return err // dont stop, continue to next peer
 	}
 
 	k.connectedPeers.Add(peer, po)
@@ -290,7 +285,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
-	if k.connectedPeers.Exists(addr) || k.knownPeers.Exists(addr) {
+	if k.knownPeers.Exists(addr) {
 		return nil
 	}
 
@@ -398,10 +393,10 @@ func (k *Kad) MarshalJSON() ([]byte, error) {
 
 func (k *Kad) marshal(indent bool) ([]byte, error) {
 	type binInfo struct {
-		BinPopulation  uint
-		BinConnected   uint
-		KnownPeers     []string
-		ConnectedPeers []string
+		BinPopulation     uint
+		BinConnected      uint
+		DisconnectedPeers []string
+		ConnectedPeers    []string
 	}
 
 	type kadBins struct {
@@ -455,7 +450,7 @@ func (k *Kad) marshal(indent bool) ([]byte, error) {
 			}
 		}
 
-		infos[po].KnownPeers = append(infos[po].KnownPeers, addr.String())
+		infos[po].DisconnectedPeers = append(infos[po].DisconnectedPeers, addr.String())
 		return false, false, nil
 	})
 

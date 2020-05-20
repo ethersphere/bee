@@ -50,7 +50,7 @@ type Service struct {
 	handshakeService *handshake.Service
 	addressbook      addressbook.Putter
 	peers            *peerRegistry
-	topologyNotifiee topology.Notifiee
+	topologyNotifier topology.Notifier
 	conectionBreaker breaker.Interface
 	logger           logging.Logger
 	tracer           *tracing.Tracer
@@ -370,8 +370,8 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetNotifiee(n topology.Notifiee) {
-	s.topologyNotifiee = n
+func (s *Service) SetNotifier(n topology.Notifier) {
+	s.topologyNotifier = n
 	s.peers.setDisconnecter(n)
 }
 

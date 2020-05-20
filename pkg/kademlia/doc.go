@@ -74,7 +74,9 @@ As of such, we would calculate depth in the following manner:
 
 Note: when we are connected to less or equal to `nnLowWatermark` peers, the
 depth will always be considered `0`, thus a short-circuit is handling this edge
-case explicitly in the `recalcDepth` method
+case explicitly in the `recalcDepth` method.
+
+TODO: add pseudo-code how to calculate depth.
 
 A few examples to depth calculation:
 
@@ -154,7 +156,7 @@ bin | nodes
 ==DEPTH==
 3			3
 4			0
-depth: 2 (depth candidate is 3, shallowest empty bin is 4)
+depth: 3 (depth candidate is 3, shallowest empty bin is 4)
 
 8. all bins full
 bin | nodes
@@ -165,8 +167,6 @@ bin | nodes
 3			3
 ==DEPTH==
 4			2
-depth: 4 (depth candidate is 2, no empty bins)
-
-
+depth: 4 (depth candidate is 4, no empty bins)
 */
 package kademlia

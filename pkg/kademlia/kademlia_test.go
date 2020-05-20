@@ -240,9 +240,9 @@ func TestBinSaturation(t *testing.T) {
 	waitConns(t, &conns, 1)
 }
 
-// TestNotifieeHooks tests that the Connected/Disconnected hooks
+// TestNotifierHooks tests that the Connected/Disconnected hooks
 // result in the correct behavior once called.
-func TestNotifieeHooks(t *testing.T) {
+func TestNotifierHooks(t *testing.T) {
 	var (
 		base, kad, ab, _ = newTestKademlia(nil, nil)
 		peer             = test.RandomAddressAt(base, 3)

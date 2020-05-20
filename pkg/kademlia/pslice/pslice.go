@@ -150,10 +150,10 @@ func (s *PSlice) Add(addr swarm.Address, po uint8) {
 	if e, _ := s.exists(addr); e {
 		return
 	}
-
 	head := s.peers[:s.bins[po]]
 	tail := append([]swarm.Address{addr}, s.peers[s.bins[po]:]...)
 	s.peers = append(head, tail...)
+
 	s.incDeeper(po)
 }
 
@@ -182,9 +182,7 @@ func (s *PSlice) incDeeper(po uint8) {
 		// don't increment if the value in k.bins == len(k.peers)
 		// otherwise the calling context gets an out of bound error
 		// when accessing the slice
-		if s.bins[i] < uint(len(s.peers)) {
-			s.bins[i]++
-		}
+		s.bins[i]++
 	}
 }
 

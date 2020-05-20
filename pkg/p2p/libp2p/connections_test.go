@@ -338,14 +338,14 @@ func TestTopologyNotifiee(t *testing.T) {
 			n2disconnectedAddr = a
 		}
 	)
-	notifiee1 := mockNotifiee(n1c, n1d)
+	notifier1 := mockNotifier(n1c, n1d)
 	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup1()
-	s1.SetNotifiee(notifiee1)
-	notifiee2 := mockNotifiee(n2c, n2d)
+	s1.SetNotifier(notifier1)
+	notifier2 := mockNotifier(n2c, n2d)
 	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
 	defer cleanup2()
-	s2.SetNotifiee(notifiee2)
+	s2.SetNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -430,7 +430,7 @@ func (n *notifiee) Disconnected(a swarm.Address) {
 	n.disconnected(a)
 }
 
-func mockNotifiee(c cFunc, d dFunc) topology.Notifiee {
+func mockNotifier(c cFunc, d dFunc) topology.Notifier {
 	return &notifiee{connected: c, disconnected: d}
 }
 

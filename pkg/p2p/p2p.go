@@ -19,7 +19,7 @@ type Service interface {
 	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
 	Disconnect(overlay swarm.Address) error
 	Peers() []Peer
-	SetNotifiee(topology.Notifiee)
+	SetNotifier(topology.Notifier)
 	Addresses() ([]ma.Multiaddr, error)
 }
 

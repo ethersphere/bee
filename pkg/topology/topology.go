@@ -20,11 +20,11 @@ var (
 type Driver interface {
 	PeerAdder
 	ClosestPeerer
-	Notifiee
+	Notifier
 	io.Closer
 }
 
-type Notifiee interface {
+type Notifier interface {
 	Connecter
 	Disconnecter
 }
