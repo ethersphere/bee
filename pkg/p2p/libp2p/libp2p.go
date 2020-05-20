@@ -12,6 +12,7 @@ import (
 	"net"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	beecrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
@@ -155,7 +156,7 @@ func New(ctx context.Context, privateKey *ecdsa.PrivateKey, networkID uint64, ov
 		return nil, err
 	}
 
-	handshakeService, err := handshake.New(overlay, underlay, privateKey, networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, underlay, beecrypto.NewDefaultSigner(privateKey), networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}

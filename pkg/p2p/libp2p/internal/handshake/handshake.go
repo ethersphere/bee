@@ -6,7 +6,6 @@ package handshake
 
 import (
 	"bytes"
-	"crypto/ecdsa"
 	"fmt"
 	"strconv"
 	"sync"
@@ -39,7 +38,7 @@ type Service struct {
 	overlay              swarm.Address
 	underlay             []byte
 	signature            []byte
-	privateKey           *ecdsa.PrivateKey
+	signer               crypto.SignRecoverer
 	networkID            uint64
 	receivedHandshakes   map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu sync.Mutex
@@ -48,9 +47,9 @@ type Service struct {
 	network.Notifiee // handhsake service can be the receiver for network.Notify
 }
 
-func New(overlay swarm.Address, underlay []byte, privateKey *ecdsa.PrivateKey, networkID uint64, logger logging.Logger) (*Service, error) {
+func New(overlay swarm.Address, underlay []byte, signer crypto.SignRecoverer, networkID uint64, logger logging.Logger) (*Service, error) {
 	toSign := append(underlay, strconv.FormatUint(networkID, 10)...)
-	signature, err := crypto.Sign(privateKey, toSign)
+	signature, err := signer.Sign(toSign)
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +57,8 @@ func New(overlay swarm.Address, underlay []byte, privateKey *ecdsa.PrivateKey, n
 	return &Service{
 		overlay:            overlay,
 		underlay:           underlay,
-		privateKey:         privateKey,
 		signature:          signature,
+		signer:             signer,
 		networkID:          networkID,
 		receivedHandshakes: make(map[libp2ppeer.ID]struct{}),
 		logger:             logger,
@@ -172,7 +171,7 @@ func (s *Service) checkSyn(syn *pb.Syn) error {
 		return fmt.Errorf("incompatible network ID")
 	}
 
-	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, strconv.FormatUint(syn.NetworkID, 10)...))
+	recoveredPK, err := s.signer.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, strconv.FormatUint(syn.NetworkID, 10)...))
 	if err != nil {
 		return fmt.Errorf("could not recover public key from signature")
 	}

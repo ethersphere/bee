@@ -39,13 +39,15 @@ func TestHandshake(t *testing.T) {
 
 	node1Overlay := crypto.NewOverlayAddress(privateKey1.PublicKey, 0)
 	node2Overlay := crypto.NewOverlayAddress(privateKey2.PublicKey, 0)
+	signer1 := crypto.NewDefaultSigner(privateKey1)
+	signer2 := crypto.NewDefaultSigner(privateKey2)
 
-	signature1, err := crypto.Sign(privateKey1, []byte("underlay10"))
+	signature1, err := signer1.Sign([]byte("underlay10"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	signature2, err := crypto.Sign(privateKey2, []byte("underlay20"))
+	signature2, err := signer2.Sign([]byte("underlay20"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,7 @@ func TestHandshake(t *testing.T) {
 		Signature: signature2,
 	}
 
-	handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+	handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,12 +262,14 @@ func TestHandle(t *testing.T) {
 		Light:     false,
 	}
 
-	signature1, err := crypto.Sign(privateKey1, []byte("underlay10"))
+	signer1 := crypto.NewDefaultSigner(privateKey1)
+	signer2 := crypto.NewDefaultSigner(privateKey2)
+	signature1, err := signer1.Sign([]byte("underlay10"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	signature2, err := crypto.Sign(privateKey2, []byte("16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS0"))
+	signature2, err := signer2.Sign([]byte("16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS0"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +295,7 @@ func TestHandle(t *testing.T) {
 
 	logger := logging.New(ioutil.Discard, 0)
 	t.Run("OK", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +340,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -356,7 +360,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - write error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -386,7 +390,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -418,7 +422,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - networkID mismatch ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -448,7 +452,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - duplicate handshake", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -498,7 +502,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("Error - invalid ack", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, privateKey1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
