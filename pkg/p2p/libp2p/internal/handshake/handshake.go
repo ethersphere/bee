@@ -6,6 +6,7 @@ package handshake
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -29,6 +30,20 @@ const (
 	messageTimeout  = 10 * time.Second // maximum allowed time for a message to be read or written.
 )
 
+var (
+	// ErrNetworkIDIncompatible is returned if response from the other peer does not have valid networkID.
+	ErrNetworkIDIncompatible = errors.New("incompatible network ID")
+
+	// ErrHandshakeDuplicate is returned  if the handshake response has been received by an already processed peer.
+	ErrHandshakeDuplicate = errors.New("duplicate handshake")
+
+	// ErrInvalidSignature is returned if peer info was received with invalid signature
+	ErrInvalidSignature = errors.New("invalid signature")
+
+	// ErrInvalidAck is returned if ack does not match the syn provided
+	ErrInvalidAck = errors.New("invalid ack")
+)
+
 // PeerFinder has the information if the peer already exists in swarm.
 type PeerFinder interface {
 	Exists(overlay swarm.Address) (found bool)
@@ -47,8 +62,8 @@ type Service struct {
 	network.Notifiee // handhsake service can be the receiver for network.Notify
 }
 
-func New(overlay swarm.Address, underlay []byte, signer crypto.SignRecoverer, networkID uint64, logger logging.Logger) (*Service, error) {
-	toSign := append(underlay, strconv.FormatUint(networkID, 10)...)
+func New(overlay swarm.Address, underlay string, signer crypto.SignRecoverer, networkID uint64, logger logging.Logger) (*Service, error) {
+	toSign := []byte(underlay + strconv.FormatUint(networkID, 10))
 	signature, err := signer.Sign(toSign)
 	if err != nil {
 		return nil, err
@@ -56,7 +71,7 @@ func New(overlay swarm.Address, underlay []byte, signer crypto.SignRecoverer, ne
 
 	return &Service{
 		overlay:            overlay,
-		underlay:           underlay,
+		underlay:           []byte(underlay),
 		signature:          signature,
 		signer:             signer,
 		networkID:          networkID,
@@ -112,7 +127,7 @@ func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err 
 	s.receivedHandshakesMu.Lock()
 	if _, exists := s.receivedHandshakes[peerID]; exists {
 		s.receivedHandshakesMu.Unlock()
-		return nil, fmt.Errorf("handshake duplicate")
+		return nil, ErrHandshakeDuplicate
 	}
 
 	s.receivedHandshakes[peerID] = struct{}{}
@@ -168,17 +183,17 @@ func (s *Service) Disconnected(_ network.Network, c network.Conn) {
 
 func (s *Service) checkSyn(syn *pb.Syn) error {
 	if syn.NetworkID != s.networkID {
-		return fmt.Errorf("incompatible network ID")
+		return ErrNetworkIDIncompatible
 	}
 
 	recoveredPK, err := s.signer.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, strconv.FormatUint(syn.NetworkID, 10)...))
 	if err != nil {
-		return fmt.Errorf("could not recover public key from signature")
+		return ErrInvalidSignature
 	}
 
 	recoveredOverlay := crypto.NewOverlayAddress(*recoveredPK, syn.NetworkID)
 	if !bytes.Equal(recoveredOverlay.Bytes(), syn.BzzAddress.Overlay) {
-		return fmt.Errorf("invalid overlay from signature")
+		return ErrInvalidSignature
 	}
 
 	return nil
@@ -188,7 +203,7 @@ func (s *Service) checkAck(ack *pb.Ack) error {
 	if !bytes.Equal(ack.BzzAddress.Overlay, s.overlay.Bytes()) ||
 		!bytes.Equal(ack.BzzAddress.Underlay, s.underlay) ||
 		!bytes.Equal(ack.BzzAddress.Signature, s.signature) {
-		return fmt.Errorf("invalid ack received")
+		return ErrInvalidAck
 	}
 
 	return nil

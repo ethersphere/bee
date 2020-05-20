@@ -78,7 +78,7 @@ func TestHandshake(t *testing.T) {
 		Signature: signature2,
 	}
 
-	handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+	handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,8 +196,8 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err == nil || err.Error() != "incompatible network ID" {
-			t.Fatalf("expected %s, got %s", errors.New("incompatible network ID"), err)
+		if err != ErrNetworkIDIncompatible {
+			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
 		}
 	})
 
@@ -211,7 +211,7 @@ func TestHandshake(t *testing.T) {
 		if err := w.WriteMsg(&pb.SynAck{
 			Syn: &pb.Syn{
 				BzzAddress: node2BzzAddress,
-				NetworkID:  5,
+				NetworkID:  node2Info.NetworkID,
 				Light:      node2Info.Light,
 			},
 			Ack: &pb.Ack{BzzAddress: node2BzzAddress},
@@ -224,8 +224,40 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err == nil || err.Error() != "invalid ack received" {
-			t.Fatalf("expected %s, got %s", errors.New("invalid ack received"), err)
+		if err != ErrInvalidAck {
+			t.Fatalf("expected %s, got %s", ErrInvalidAck, err)
+		}
+	})
+
+	t.Run("ERROR - invalid signature", func(t *testing.T) {
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w, _ := protobuf.NewWriterAndReader(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			Syn: &pb.Syn{
+				BzzAddress: &pb.BzzAddress{
+					Underlay:  node2BzzAddress.Underlay,
+					Signature: []byte("wrong signature"),
+					Overlay:   node2BzzAddress.Overlay,
+				},
+				NetworkID: node2Info.NetworkID,
+				Light:     node2Info.Light,
+			},
+			Ack: &pb.Ack{BzzAddress: node1BzzAddress},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(stream1)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+
+		if err != ErrInvalidSignature {
+			t.Fatalf("expected %s, got %s", ErrInvalidSignature, err)
 		}
 	})
 }
@@ -295,7 +327,7 @@ func TestHandle(t *testing.T) {
 
 	logger := logging.New(ioutil.Discard, 0)
 	t.Run("OK", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -340,7 +372,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -360,7 +392,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - write error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -390,7 +422,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -422,7 +454,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - networkID mismatch ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -446,13 +478,13 @@ func TestHandle(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err == nil || err.Error() != "incompatible network ID" {
-			t.Fatalf("expected %s, got %s", errors.New("incompatible network ID"), err)
+		if err != ErrNetworkIDIncompatible {
+			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
 		}
 	})
 
 	t.Run("ERROR - duplicate handshake", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -496,13 +528,13 @@ func TestHandle(t *testing.T) {
 		})
 
 		_, err = handshakeService.Handle(stream1, node2AddrInfo.ID)
-		if err == nil || err.Error() != "handshake duplicate" {
-			t.Fatalf("expected %s, got %s", fmt.Errorf("handshake duplicate"), err)
+		if err != ErrHandshakeDuplicate {
+			t.Fatalf("expected %s, got %s", ErrHandshakeDuplicate, err)
 		}
 	})
 
 	t.Run("Error - invalid ack", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, node1Info.Underlay, signer1, 0, logger)
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -526,8 +558,42 @@ func TestHandle(t *testing.T) {
 		}
 
 		_, err = handshakeService.Handle(stream1, node2AddrInfo.ID)
-		if err == nil || err.Error() != "invalid ack received" {
-			t.Fatalf("expected %s, got %s", fmt.Errorf("invalid ack received"), err)
+		if err != ErrInvalidAck {
+			t.Fatalf("expected %s, got %s", ErrInvalidAck, err)
+		}
+	})
+
+	t.Run("ERROR - invalid signature ", func(t *testing.T) {
+		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w, _ := protobuf.NewWriterAndReader(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			BzzAddress: &pb.BzzAddress{
+				Underlay:  node2BzzAddress.Underlay,
+				Signature: []byte("wrong signature"),
+				Overlay:   node2BzzAddress.Overlay,
+			},
+			NetworkID: node2Info.NetworkID,
+			Light:     node2Info.Light,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handle(stream1, node2AddrInfo.ID)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+
+		if err != ErrInvalidSignature {
+			t.Fatalf("expected %s, got %s", ErrInvalidSignature, err)
 		}
 	})
 }

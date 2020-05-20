@@ -151,12 +151,7 @@ func New(ctx context.Context, privateKey *ecdsa.PrivateKey, networkID uint64, ov
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	underlay, err := h.ID().MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	handshakeService, err := handshake.New(overlay, underlay, beecrypto.NewDefaultSigner(privateKey), networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, h.ID().String(), beecrypto.NewDefaultSigner(privateKey), networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
