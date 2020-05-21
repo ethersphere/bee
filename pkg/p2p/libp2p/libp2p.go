@@ -64,7 +64,7 @@ type Options struct {
 	Tracer      *tracing.Tracer
 }
 
-func New(ctx context.Context, signer beecrypto.SignRecoverer, networkID uint64, overlay swarm.Address, addr string,
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string,
 	o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {

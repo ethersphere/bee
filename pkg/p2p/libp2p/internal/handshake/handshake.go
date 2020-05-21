@@ -53,7 +53,7 @@ type Service struct {
 	overlay              swarm.Address
 	underlay             []byte
 	signature            []byte
-	signer               crypto.SignRecoverer
+	signer               crypto.Signer
 	networkID            uint64
 	receivedHandshakes   map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu sync.Mutex
@@ -62,7 +62,7 @@ type Service struct {
 	network.Notifiee // handhsake service can be the receiver for network.Notify
 }
 
-func New(overlay swarm.Address, underlay string, signer crypto.SignRecoverer, networkID uint64, logger logging.Logger) (*Service, error) {
+func New(overlay swarm.Address, underlay string, signer crypto.Signer, networkID uint64, logger logging.Logger) (*Service, error) {
 	signature, err := signer.Sign([]byte(underlay + strconv.FormatUint(networkID, 10)))
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func (s *Service) checkSyn(syn *pb.Syn) error {
 		return ErrNetworkIDIncompatible
 	}
 
-	recoveredPK, err := s.signer.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, strconv.FormatUint(syn.NetworkID, 10)...))
+	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, strconv.FormatUint(syn.NetworkID, 10)...))
 	if err != nil {
 		return ErrInvalidSignature
 	}

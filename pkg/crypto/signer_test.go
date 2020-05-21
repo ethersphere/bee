@@ -23,8 +23,8 @@ func TestDefaultSigner(t *testing.T) {
 		t.Fatal()
 	}
 
-	t.Run("sign & recover with valid signature", func(t *testing.T) {
-		pubKey, err := signer.Recover(signature, testBytes)
+	t.Run("OK - sign & recover", func(t *testing.T) {
+		pubKey, err := crypto.Recover(signature, testBytes)
 		if err != nil {
 			t.Fatal()
 		}
@@ -34,18 +34,13 @@ func TestDefaultSigner(t *testing.T) {
 		}
 	})
 
-	t.Run("sign & recover with invalid signature", func(t *testing.T) {
-		pubKey, err := signer.Recover(signature, testBytes)
+	t.Run("OK - recover with invalid data", func(t *testing.T) {
+		pubKey, err := crypto.Recover(signature, []byte("invalid"))
 		if err != nil {
 			t.Fatal()
 		}
 
-		otherPrivKey, err := crypto.GenerateSecp256k1Key()
-		if err != nil {
-			t.Fatal()
-		}
-
-		if pubKey.X.Cmp(otherPrivKey.PublicKey.X) == 0 && pubKey.Y.Cmp(otherPrivKey.PublicKey.Y) == 0 {
+		if pubKey.X.Cmp(privKey.PublicKey.X) == 0 && pubKey.Y.Cmp(privKey.PublicKey.Y) == 0 {
 			t.Fatal("shold have been different")
 		}
 	})
