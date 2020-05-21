@@ -112,7 +112,7 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", resp.Syn.BzzAddress.Overlay)
+	s.logger.Tracef("handshake finished for peer %s", swarm.NewAddress(resp.Syn.BzzAddress.Overlay).String())
 
 	return &Info{
 		Overlay:   swarm.NewAddress(resp.Syn.BzzAddress.Overlay),
