@@ -1020,10 +1020,8 @@ func TestIndex_firstAndLast(t *testing.T) {
 		got, err = index.First(tc.prefix)
 		if !errors.Is(err, tc.err) {
 			t.Errorf("got error %v for First with prefix %v, want %v", err, tc.prefix, tc.err)
-		} else {
-			if !bytes.Equal(got.Address, tc.first) {
-				t.Errorf("got %v for First with prefix %v, want %v", got.Address, tc.prefix, tc.first)
-			}
+		} else if !bytes.Equal(got.Address, tc.first) {
+			t.Errorf("got %v for First with prefix %v, want %v", got.Address, tc.prefix, tc.first)
 		}
 	}
 }
