@@ -30,7 +30,7 @@ func (db *DB) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChu
 
 	it, err := db.pinIndex.First(prefix)
 	if err != nil {
-		return nil, fmt.Errorf("pin chunks: %w", err)
+		return nil, fmt.Errorf("get first pin: %w", err)
 	}
 	err = db.pinIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 		pinnedChunks = append(pinnedChunks,
