@@ -50,7 +50,7 @@ type Item struct {
 // Merge is a helper method to construct a new
 // Item by filling up fields with default values
 // of a particular Item with values from another one.
-func (i Item) Merge(i2 Item) (new Item) {
+func (i Item) Merge(i2 Item) Item {
 	if i.Address == nil {
 		i.Address = i2.Address
 	}
