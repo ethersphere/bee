@@ -75,6 +75,18 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Expose-Headers", TagHeaderName)
 	}
 
+	// Check if this chunk needs to pinned and pin it
+	pinHeaderValues := r.Header.Get(PinHeaderName)
+	if pinHeaderValues != "" && strings.ToLower(pinHeaderValues) == "true" {
+		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
+		if err != nil {
+			s.Logger.Debugf("bzz-chunk: chunk pinning error: %v, addr %s", err, address)
+			s.Logger.Error("bzz-chunk: chunk pinning error")
+			jsonhttp.InternalServerError(w, "cannot pin chunk")
+			return
+		}
+	}
+
 	jsonhttp.OK(w, nil)
 }
 
