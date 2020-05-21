@@ -33,11 +33,11 @@ func (db *DB) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChu
 		return nil, fmt.Errorf("pin chunks: %w", err)
 	}
 	err = db.pinIndex.Iterate(func(item shed.Item) (stop bool, err error) {
-		pi := &storage.Pinner{
-			Address:    swarm.NewAddress(item.Address),
-			PinCounter: item.PinCounter,
-		}
-		pinnedChunks = append(pinnedChunks, pi)
+		pinnedChunks = append(pinnedChunks,
+			&storage.Pinner{
+				Address:    swarm.NewAddress(item.Address),
+				PinCounter: item.PinCounter,
+			})
 		count++
 		if count >= maxChunksToDisplay {
 			return true, nil
