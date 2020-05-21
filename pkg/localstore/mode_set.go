@@ -139,11 +139,11 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr swar
 	// provided by the access function, and it is not
 	// a property of a chunk provided to Accessor.Put.
 	i, err := db.retrievalDataIndex.Get(item)
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		item.StoreTimestamp = i.StoreTimestamp
 		item.BinID = i.BinID
-	case leveldb.ErrNotFound:
+	case errors.Is(err, leveldb.ErrNotFound):
 		err = db.pushIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return 0, err
@@ -158,15 +158,15 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr swar
 	}
 
 	i, err = db.retrievalAccessIndex.Get(item)
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		item.AccessTimestamp = i.AccessTimestamp
 		err = db.gcIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return 0, err
 		}
 		gcSizeChange--
-	case leveldb.ErrNotFound:
+	case errors.Is(err, leveldb.ErrNotFound):
 		// the chunk is not accessed before
 	default:
 		return 0, err
@@ -205,7 +205,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 
 	i, err := db.retrievalDataIndex.Get(item)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			// chunk is not found,
 			// no need to update gc index
 			// just delete from the push index
@@ -228,7 +228,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 		// this prevents duplicate increments
 		i, err := db.pullIndex.Get(item)
 		if err != nil {
-			if err == leveldb.ErrNotFound {
+			if errors.Is(err, leveldb.ErrNotFound) {
 				// we handle this error internally, since this is an internal inconsistency of the indices
 				// if we return the error here - it means that for example, in stream protocol peers which we sync
 				// to would be dropped. this is possible when the chunk is put with ModePutRequest and ModeSetSyncPull is
@@ -263,7 +263,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 	case storage.ModeSetSyncPush:
 		i, err := db.pushIndex.Get(item)
 		if err != nil {
-			if err == leveldb.ErrNotFound {
+			if errors.Is(err, leveldb.ErrNotFound) {
 				// we handle this error internally, since this is an internal inconsistency of the indices
 				// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 				// but this function is called with ModeSetSyncPush
@@ -295,15 +295,15 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 	}
 
 	i, err = db.retrievalAccessIndex.Get(item)
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		item.AccessTimestamp = i.AccessTimestamp
 		err = db.gcIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return 0, err
 		}
 		gcSizeChange--
-	case leveldb.ErrNotFound:
+	case errors.Is(err, leveldb.ErrNotFound):
 		// the chunk is not accessed before
 	default:
 		return 0, err
@@ -340,10 +340,10 @@ func (db *DB) setRemove(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange 
 	// provided by the access function, and it is not
 	// a property of a chunk provided to Accessor.Put.
 	i, err := db.retrievalAccessIndex.Get(item)
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		item.AccessTimestamp = i.AccessTimestamp
-	case leveldb.ErrNotFound:
+	case errors.Is(err, leveldb.ErrNotFound):
 	default:
 		return 0, err
 	}
@@ -390,7 +390,7 @@ func (db *DB) setPin(batch *leveldb.Batch, addr swarm.Address) (err error) {
 	existingPinCounter := uint64(0)
 	pinnedChunk, err := db.pinIndex.Get(item)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			// If this Address is not present in DB, then its a new entry
 			existingPinCounter = 0
 
