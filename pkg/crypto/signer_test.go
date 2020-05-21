@@ -41,7 +41,7 @@ func TestDefaultSigner(t *testing.T) {
 		}
 
 		if pubKey.X.Cmp(privKey.PublicKey.X) == 0 && pubKey.Y.Cmp(privKey.PublicKey.Y) == 0 {
-			t.Fatal("shold have been different")
+			t.Fatal("expected different public key")
 		}
 	})
 }
