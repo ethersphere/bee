@@ -56,6 +56,14 @@ func (s *server) setupRouting() {
 	router.Handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.hasChunkHandler),
 	})
+	router.Handle("/chunks-pin/{address}", jsonhttp.MethodHandler{
+		"POST":   http.HandlerFunc(s.pinChunk),
+		"DELETE": http.HandlerFunc(s.unpinChunk),
+		"GET":    http.HandlerFunc(s.listPinnedChunks),
+	})
+	router.Handle("/chunks-pin", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.listPinnedChunks),
+	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
