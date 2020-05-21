@@ -3,6 +3,9 @@ FROM golang:1.14 AS build
 ARG COMMIT=""
 
 WORKDIR /src
+# enable modules caching in separate layer
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . ./
 
 RUN make binary COMMIT=$COMMIT
