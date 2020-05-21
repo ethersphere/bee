@@ -56,6 +56,7 @@ type Service struct {
 }
 
 type Options struct {
+	PrivateKey  *ecdsa.PrivateKey
 	DisableWS   bool
 	DisableQUIC bool
 	Addressbook addressbook.Putter
@@ -63,7 +64,7 @@ type Options struct {
 	Tracer      *tracing.Tracer
 }
 
-func New(ctx context.Context, privateKey *ecdsa.PrivateKey, networkID uint64, overlay swarm.Address, addr string,
+func New(ctx context.Context, signer beecrypto.SignRecoverer, networkID uint64, overlay swarm.Address, addr string,
 	o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -117,9 +118,11 @@ func New(ctx context.Context, privateKey *ecdsa.PrivateKey, networkID uint64, ov
 		libp2p.Peerstore(libp2pPeerstore),
 	}
 
-	opts = append(opts,
-		libp2p.Identity((*crypto.Secp256k1PrivateKey)(privateKey)),
-	)
+	if o.PrivateKey != nil {
+		opts = append(opts,
+			libp2p.Identity((*crypto.Secp256k1PrivateKey)(o.PrivateKey)),
+		)
+	}
 
 	transports := []libp2p.Option{
 		libp2p.Transport(tcp.NewTCPTransport),
@@ -151,7 +154,7 @@ func New(ctx context.Context, privateKey *ecdsa.PrivateKey, networkID uint64, ov
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, h.ID().String(), beecrypto.NewDefaultSigner(privateKey), networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, h.ID().String(), signer, networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}

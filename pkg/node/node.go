@@ -134,7 +134,8 @@ func NewBee(o Options) (*Bee, error) {
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
 
-	p2ps, err := libp2p.New(p2pCtx, libp2pPrivateKey, o.NetworkID, address, o.Addr, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, crypto.NewDefaultSigner(swarmPrivateKey), o.NetworkID, address, o.Addr, libp2p.Options{
+		PrivateKey:  libp2pPrivateKey,
 		DisableWS:   o.DisableWS,
 		DisableQUIC: o.DisableQUIC,
 		Addressbook: addressbook,

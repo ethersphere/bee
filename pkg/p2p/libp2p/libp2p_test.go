@@ -45,7 +45,7 @@ func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Ser
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s, err = libp2p.New(ctx, privateKey, networkID, overlay, addr, o)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(privateKey), networkID, overlay, addr, o)
 	if err != nil {
 		t.Fatal(err)
 	}
