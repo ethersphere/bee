@@ -7,15 +7,25 @@ package api
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
+
 	"github.com/gorilla/mux"
 )
+
+// Presense of this header means that it needs to be tagged
+const TagHeaderName = "x-swarm-tag"
+
+// Presence of this header in the HTTP request indicates the chunk needs to be pinned.
+const PinHeaderName = "x-swarm-pin"
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["addr"]
@@ -44,6 +54,25 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("bzz-chunk: chunk write error")
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
+	}
+	// Check if this chunk needs to pinned and pin it
+	pinHeaderValues := r.Header.Get(PinHeaderName)
+	if pinHeaderValues != "" && strings.ToLower(pinHeaderValues) == "true" {
+		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
+		if err != nil {
+			s.Logger.Debugf("bzz-chunk: chunk pinning error: %v, addr %s", err, address)
+			s.Logger.Error("bzz-chunk: chunk pinning error")
+			jsonhttp.InternalServerError(w, "cannot pin chunk")
+			return
+		}
+	}
+
+	// Check if this chunk needs to be tagged, then send back a UUid so that it can be tracked
+	tagHeaderValues := r.Header.Get(TagHeaderName)
+	if tagHeaderValues != "" {
+		UUid := tags.NewTags() //give the swarm.address as argument later
+		w.Header().Set(TagHeaderName, fmt.Sprint(UUid))
+		w.Header().Set("Access-Control-Expose-Headers", TagHeaderName)
 	}
 
 	jsonhttp.OK(w, nil)
