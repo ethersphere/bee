@@ -104,7 +104,7 @@ func TestHandshake(t *testing.T) {
 		Signature: signature2,
 	}
 
-	handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+	handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -55,6 +55,7 @@ type Service struct {
 	signature            []byte
 	signer               crypto.Signer
 	networkID            uint64
+	networkIDBytes       []byte
 	receivedHandshakes   map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu sync.Mutex
 	logger               logging.Logger
@@ -69,7 +70,7 @@ func New(overlay swarm.Address, peerID libp2ppeer.ID, signer crypto.Signer, netw
 	}
 
 	networkIDBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(networkIDBytes, networkID)
+	binary.LittleEndian.PutUint64(networkIDBytes, networkID)
 	signature, err := signer.Sign(append(underlay, networkIDBytes...))
 	if err != nil {
 		return nil, err
@@ -81,6 +82,7 @@ func New(overlay swarm.Address, peerID libp2ppeer.ID, signer crypto.Signer, netw
 		signature:          signature,
 		signer:             signer,
 		networkID:          networkID,
+		networkIDBytes:     networkIDBytes,
 		receivedHandshakes: make(map[libp2ppeer.ID]struct{}),
 		logger:             logger,
 		Notifiee:           new(network.NoopNotifiee),
@@ -120,7 +122,6 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	}
 
 	s.logger.Tracef("handshake finished for peer %s", swarm.NewAddress(resp.Syn.BzzAddress.Overlay).String())
-
 	return &Info{
 		Overlay:   swarm.NewAddress(resp.Syn.BzzAddress.Overlay),
 		Underlay:  resp.Syn.BzzAddress.Underlay,
@@ -192,9 +193,7 @@ func (s *Service) checkSyn(syn *pb.Syn) error {
 		return ErrNetworkIDIncompatible
 	}
 
-	networkIDBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(networkIDBytes, syn.NetworkID)
-	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, networkIDBytes...))
+	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, s.networkIDBytes...))
 	if err != nil {
 		return ErrInvalidSignature
 	}
