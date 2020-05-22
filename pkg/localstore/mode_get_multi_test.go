@@ -18,6 +18,7 @@ package localstore
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -74,7 +75,7 @@ func TestModeGetMulti(t *testing.T) {
 
 			want := storage.ErrNotFound
 			_, err = db.GetMulti(context.Background(), mode, append(addrs, missingChunk.Address())...)
-			if err != want {
+			if !errors.Is(err, want) {
 				t.Errorf("got error %v, want %v", err, want)
 			}
 		})

@@ -23,7 +23,8 @@
 package shed
 
 import (
-	"github.com/ethersphere/bee/pkg/logging"
+	"errors"
+
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -41,14 +42,13 @@ var (
 type DB struct {
 	ldb     *leveldb.DB
 	metrics metrics
-	logger  logging.Logger
 	quit    chan struct{} // Quit channel to stop the metrics collection before closing the database
 }
 
 // NewDB constructs a new DB and validates the schema
 // if it exists in database on the given path.
 // metricsPrefix is used for metrics collection for the given DB.
-func NewDB(path string, logger logging.Logger) (db *DB, err error) {
+func NewDB(path string) (db *DB, err error) {
 	var ldb *leveldb.DB
 	if path == "" {
 		ldb, err = leveldb.Open(storage.NewMemStorage(), nil)
@@ -65,11 +65,10 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	db = &DB{
 		ldb:     ldb,
 		metrics: newMetrics(),
-		logger:  logger,
 	}
 
 	if _, err = db.getSchema(); err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			// save schema with initialized default fields
 			if err = db.putSchema(schema{
 				Fields:  make(map[string]fieldSpec),
@@ -102,7 +101,7 @@ func (db *DB) Put(key []byte, value []byte) (err error) {
 // Get wraps LevelDB Get method to increment metrics counter.
 func (db *DB) Get(key []byte) (value []byte, err error) {
 	value, err = db.ldb.Get(key, nil)
-	if err == leveldb.ErrNotFound {
+	if errors.Is(err, leveldb.ErrNotFound) {
 		db.metrics.GetNotFoundCounter.Inc()
 		return nil, err
 	} else {

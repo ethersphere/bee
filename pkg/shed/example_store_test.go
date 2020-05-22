@@ -20,12 +20,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/testing"
@@ -52,8 +51,7 @@ type Store struct {
 // and possible conflicts with schema from existing database is checked
 // automatically.
 func New(path string) (s *Store, err error) {
-	logger := logging.New(ioutil.Discard, 0)
-	db, err := shed.NewDB(path, logger)
+	db, err := shed.NewDB(path)
 	if err != nil {
 		return nil, err
 	}
@@ -166,18 +164,18 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 		Address: addr.Bytes(),
 	})
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("retrieval index get: %w", err)
 	}
 
 	// Get the chunk access timestamp.
 	accessItem, err := s.accessIndex.Get(shed.Item{
 		Address: addr.Bytes(),
 	})
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		// Remove gc index entry if access timestamp is found.
 		err = s.gcIndex.DeleteInBatch(batch, shed.Item{
 			Address:         item.Address,
@@ -185,13 +183,13 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 			AccessTimestamp: item.StoreTimestamp,
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gc index delete in batch: %w", err)
 		}
-	case leveldb.ErrNotFound:
-	// Access timestamp is not found. Do not do anything.
-	// This is the firs get request.
+	case errors.Is(err, leveldb.ErrNotFound):
+		// Access timestamp is not found. Do not do anything.
+		// This is the first get request.
 	default:
-		return nil, err
+		return nil, fmt.Errorf("access index get: %w", err)
 	}
 
 	// Specify new access timestamp
@@ -203,7 +201,7 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 		AccessTimestamp: accessTimestamp,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("access index put in batch: %w", err)
 	}
 
 	// Put new access timestamp in gc index.
@@ -213,20 +211,20 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 		StoreTimestamp:  item.StoreTimestamp,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gc index put in batch: %w", err)
 	}
 
 	// Increment access counter.
 	// Currently this information is not used anywhere.
 	_, err = s.accessCounter.IncInBatch(batch)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("access counter inc in batch: %w", err)
 	}
 
 	// Write the batch.
 	err = s.db.WriteBatch(batch)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write batch: %w", err)
 	}
 
 	// Return the chunk.
@@ -285,7 +283,7 @@ func (s *Store) CollectGarbage() (err error) {
 // string from a database field.
 func (s *Store) GetSchema() (name string, err error) {
 	name, err = s.schemaName.Get()
-	if err == leveldb.ErrNotFound {
+	if errors.Is(err, leveldb.ErrNotFound) {
 		return "", nil
 	}
 	return name, err
@@ -313,13 +311,13 @@ func Example_store() {
 	ch := testing.GenerateTestRandomChunk()
 	err = s.Put(context.Background(), ch)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("put chunk:", err)
 		return
 	}
 
 	got, err := s.Get(context.Background(), ch.Address())
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("get chunk:", err)
 		return
 	}
 

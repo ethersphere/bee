@@ -19,6 +19,7 @@ package localstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -248,7 +249,7 @@ func newRetrieveIndexesTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTim
 		// access index should not be set
 		wantErr := leveldb.ErrNotFound
 		_, err = db.retrievalAccessIndex.Get(addressToItem(chunk.Address()))
-		if err != wantErr {
+		if !errors.Is(err, wantErr) {
 			t.Errorf("got error %v, want %v", err, wantErr)
 		}
 	}
@@ -286,7 +287,7 @@ func newPullIndexTest(db *DB, ch swarm.Chunk, binID uint64, wantError error) fun
 			Address: ch.Address().Bytes(),
 			BinID:   binID,
 		})
-		if err != wantError {
+		if !errors.Is(err, wantError) {
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
@@ -305,7 +306,7 @@ func newPushIndexTest(db *DB, ch swarm.Chunk, storeTimestamp int64, wantError er
 			Address:        ch.Address().Bytes(),
 			StoreTimestamp: storeTimestamp,
 		})
-		if err != wantError {
+		if !errors.Is(err, wantError) {
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
@@ -325,7 +326,7 @@ func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp i
 			BinID:           binID,
 			AccessTimestamp: accessTimestamp,
 		})
-		if err != wantError {
+		if !errors.Is(err, wantError) {
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {

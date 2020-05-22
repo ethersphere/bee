@@ -19,6 +19,7 @@ package shed
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sort"
 	"testing"
@@ -254,7 +255,7 @@ func TestIndex(t *testing.T) {
 		_, err = index.Get(Item{
 			Address: want.Address,
 		})
-		if err != wantErr {
+		if !errors.Is(err, wantErr) {
 			t.Fatalf("got error %v, want %v", err, wantErr)
 		}
 	})
@@ -294,7 +295,7 @@ func TestIndex(t *testing.T) {
 		_, err = index.Get(Item{
 			Address: want.Address,
 		})
-		if err != wantErr {
+		if !errors.Is(err, wantErr) {
 			t.Fatalf("got error %v, want %v", err, wantErr)
 		}
 	})
@@ -355,7 +356,7 @@ func TestIndex(t *testing.T) {
 			})
 			want := leveldb.ErrNotFound
 			err := index.Fill(items)
-			if err != want {
+			if !errors.Is(err, want) {
 				t.Errorf("got error %v, want %v", err, want)
 			}
 		})
@@ -1008,21 +1009,17 @@ func TestIndex_firstAndLast(t *testing.T) {
 		},
 	} {
 		got, err := index.Last(tc.prefix)
-		if tc.err != err {
+		if !errors.Is(err, tc.err) {
 			t.Errorf("got error %v for Last with prefix %v, want %v", err, tc.prefix, tc.err)
-		} else {
-			if !bytes.Equal(got.Address, tc.last) {
-				t.Errorf("got %v for Last with prefix %v, want %v", got.Address, tc.prefix, tc.last)
-			}
+		} else if !bytes.Equal(got.Address, tc.last) {
+			t.Errorf("got %v for Last with prefix %v, want %v", got.Address, tc.prefix, tc.last)
 		}
 
 		got, err = index.First(tc.prefix)
-		if tc.err != err {
+		if !errors.Is(err, tc.err) {
 			t.Errorf("got error %v for First with prefix %v, want %v", err, tc.prefix, tc.err)
-		} else {
-			if !bytes.Equal(got.Address, tc.first) {
-				t.Errorf("got %v for First with prefix %v, want %v", got.Address, tc.prefix, tc.first)
-			}
+		} else if !bytes.Equal(got.Address, tc.first) {
+			t.Errorf("got %v for First with prefix %v, want %v", got.Address, tc.prefix, tc.first)
 		}
 	}
 }

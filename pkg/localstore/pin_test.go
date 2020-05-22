@@ -6,6 +6,7 @@ package localstore
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestPinning(t *testing.T) {
 		// Nothing should be there in the pinned DB
 		_, err := db.PinnedChunks(context.Background(), swarm.NewAddress([]byte{0}))
 		if err != nil {
-			if err.Error() != "pin chunks: leveldb: not found" {
+			if !errors.Is(err, leveldb.ErrNotFound) {
 				t.Fatal(err)
 			}
 		}
@@ -119,7 +120,7 @@ func TestPinInfo(t *testing.T) {
 		}
 		_, err = db.PinInfo(swarm.NewAddress(chunk.Address().Bytes()))
 		if err != nil {
-			if err != leveldb.ErrNotFound {
+			if !errors.Is(err, leveldb.ErrNotFound) {
 				t.Fatal(err)
 			}
 		}
