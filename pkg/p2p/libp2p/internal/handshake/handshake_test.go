@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package handshake
+package handshake_test
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/mock"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -52,7 +53,7 @@ func TestHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	node1Info := Info{
+	node1Info := handshake.Info{
 		Overlay:   node1Overlay,
 		Underlay:  node1Underlay,
 		NetworkID: 0,
@@ -65,7 +66,7 @@ func TestHandshake(t *testing.T) {
 		Signature: signature1,
 	}
 
-	node2Info := Info{
+	node2Info := handshake.Info{
 		Overlay:   node2Overlay,
 		Underlay:  node2Underlay,
 		NetworkID: 0,
@@ -78,7 +79,7 @@ func TestHandshake(t *testing.T) {
 		Signature: signature2,
 	}
 
-	handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+	handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +152,7 @@ func TestHandshake(t *testing.T) {
 		stream1.SetWriteErr(testErr, 1)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.SynAck{
 			Syn: &pb.Syn{
 				BzzAddress: node2BzzAddress,
@@ -179,7 +180,7 @@ func TestHandshake(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.SynAck{
 			Syn: &pb.Syn{
 				BzzAddress: node2BzzAddress,
@@ -196,8 +197,8 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != ErrNetworkIDIncompatible {
-			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
+		if err != handshake.ErrNetworkIDIncompatible {
+			t.Fatalf("expected %s, got %s", handshake.ErrNetworkIDIncompatible, err)
 		}
 	})
 
@@ -207,7 +208,7 @@ func TestHandshake(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.SynAck{
 			Syn: &pb.Syn{
 				BzzAddress: node2BzzAddress,
@@ -224,8 +225,8 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != ErrInvalidAck {
-			t.Fatalf("expected %s, got %s", ErrInvalidAck, err)
+		if err != handshake.ErrInvalidAck {
+			t.Fatalf("expected %s, got %s", handshake.ErrInvalidAck, err)
 		}
 	})
 
@@ -235,7 +236,7 @@ func TestHandshake(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.SynAck{
 			Syn: &pb.Syn{
 				BzzAddress: &pb.BzzAddress{
@@ -256,8 +257,8 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != ErrInvalidSignature {
-			t.Fatalf("expected %s, got %s", ErrInvalidSignature, err)
+		if err != handshake.ErrInvalidSignature {
+			t.Fatalf("expected %s, got %s", handshake.ErrInvalidSignature, err)
 		}
 	})
 }
@@ -287,7 +288,7 @@ func TestHandle(t *testing.T) {
 
 	node1Underlay := []byte("underlay1")
 	node2Underlay := []byte("16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS")
-	node1Info := Info{
+	node1Info := handshake.Info{
 		Overlay:   node1Overlay,
 		Underlay:  node1Underlay,
 		NetworkID: 0,
@@ -306,7 +307,7 @@ func TestHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	node2Info := Info{
+	node2Info := handshake.Info{
 		Overlay:   node2Overlay,
 		Underlay:  node2Underlay,
 		NetworkID: 0,
@@ -327,7 +328,7 @@ func TestHandle(t *testing.T) {
 
 	logger := logging.New(ioutil.Discard, 0)
 	t.Run("OK", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -337,7 +338,7 @@ func TestHandle(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.Syn{
 			BzzAddress: node2BzzAddress,
 			NetworkID:  node2Info.NetworkID,
@@ -363,7 +364,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		testInfo(t, node1Info, Info{
+		testInfo(t, node1Info, handshake.Info{
 			Overlay:   swarm.NewAddress(got.Syn.BzzAddress.Overlay),
 			Underlay:  got.Syn.BzzAddress.Underlay,
 			NetworkID: got.Syn.NetworkID,
@@ -372,7 +373,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - read error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,7 +393,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - write error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,7 +403,7 @@ func TestHandle(t *testing.T) {
 		var buffer bytes.Buffer
 		stream := mock.NewStream(&buffer, &buffer)
 		stream.SetWriteErr(testErr, 1)
-		w, _ := protobuf.NewWriterAndReader(stream)
+		w := protobuf.NewWriter(stream)
 		if err := w.WriteMsg(&pb.Syn{
 			BzzAddress: node2BzzAddress,
 			NetworkID:  node2Info.NetworkID,
@@ -422,7 +423,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - ack read error ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -434,7 +435,7 @@ func TestHandle(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 		stream1.SetReadErr(testErr, 1)
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.Syn{
 			BzzAddress: node2BzzAddress,
 			NetworkID:  node2Info.NetworkID,
@@ -454,7 +455,7 @@ func TestHandle(t *testing.T) {
 	})
 
 	t.Run("ERROR - networkID mismatch ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -464,7 +465,7 @@ func TestHandle(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.Syn{
 			BzzAddress: node2BzzAddress,
 			NetworkID:  5,
@@ -478,13 +479,13 @@ func TestHandle(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != ErrNetworkIDIncompatible {
-			t.Fatalf("expected %s, got %s", ErrNetworkIDIncompatible, err)
+		if err != handshake.ErrNetworkIDIncompatible {
+			t.Fatalf("expected %s, got %s", handshake.ErrNetworkIDIncompatible, err)
 		}
 	})
 
 	t.Run("ERROR - duplicate handshake", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -494,7 +495,7 @@ func TestHandle(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.Syn{
 			BzzAddress: node2BzzAddress,
 			NetworkID:  node2Info.NetworkID,
@@ -520,7 +521,7 @@ func TestHandle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		testInfo(t, node1Info, Info{
+		testInfo(t, node1Info, handshake.Info{
 			Overlay:   swarm.NewAddress(got.Syn.BzzAddress.Overlay),
 			Underlay:  got.Syn.BzzAddress.Underlay,
 			NetworkID: got.Syn.NetworkID,
@@ -528,13 +529,13 @@ func TestHandle(t *testing.T) {
 		})
 
 		_, err = handshakeService.Handle(stream1, node2AddrInfo.ID)
-		if err != ErrHandshakeDuplicate {
-			t.Fatalf("expected %s, got %s", ErrHandshakeDuplicate, err)
+		if err != handshake.ErrHandshakeDuplicate {
+			t.Fatalf("expected %s, got %s", handshake.ErrHandshakeDuplicate, err)
 		}
 	})
 
 	t.Run("Error - invalid ack", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -544,7 +545,7 @@ func TestHandle(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.Syn{
 			BzzAddress: node2BzzAddress,
 			NetworkID:  node2Info.NetworkID,
@@ -558,13 +559,13 @@ func TestHandle(t *testing.T) {
 		}
 
 		_, err = handshakeService.Handle(stream1, node2AddrInfo.ID)
-		if err != ErrInvalidAck {
-			t.Fatalf("expected %s, got %s", ErrInvalidAck, err)
+		if err != handshake.ErrInvalidAck {
+			t.Fatalf("expected %s, got %s", handshake.ErrInvalidAck, err)
 		}
 	})
 
 	t.Run("ERROR - invalid signature ", func(t *testing.T) {
-		handshakeService, err := New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, string(node1Info.Underlay), signer1, 0, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -574,7 +575,7 @@ func TestHandle(t *testing.T) {
 		stream1 := mock.NewStream(&buffer1, &buffer2)
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
-		w, _ := protobuf.NewWriterAndReader(stream2)
+		w := protobuf.NewWriter(stream2)
 		if err := w.WriteMsg(&pb.Syn{
 			BzzAddress: &pb.BzzAddress{
 				Underlay:  node2BzzAddress.Underlay,
@@ -592,14 +593,14 @@ func TestHandle(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != ErrInvalidSignature {
-			t.Fatalf("expected %s, got %s", ErrInvalidSignature, err)
+		if err != handshake.ErrInvalidSignature {
+			t.Fatalf("expected %s, got %s", handshake.ErrInvalidSignature, err)
 		}
 	})
 }
 
 // testInfo validates if two Info instances are equal.
-func testInfo(t *testing.T, got, want Info) {
+func testInfo(t *testing.T, got, want handshake.Info) {
 	t.Helper()
 
 	if !got.Overlay.Equal(want.Overlay) || !bytes.Equal(got.Underlay, want.Underlay) || got.NetworkID != want.NetworkID || got.Light != want.Light {

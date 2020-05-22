@@ -27,7 +27,7 @@ const (
 	ProtocolName    = "handshake"
 	ProtocolVersion = "1.0.0"
 	StreamName      = "handshake"
-	messageTimeout  = 10 * time.Second // maximum allowed time for a message to be read or written.
+	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
 )
 
 var (

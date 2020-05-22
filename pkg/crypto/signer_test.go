@@ -14,19 +14,19 @@ func TestDefaultSigner(t *testing.T) {
 	testBytes := []byte("test string")
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 
 	signer := crypto.NewDefaultSigner(privKey)
 	signature, err := signer.Sign(testBytes)
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 
 	t.Run("OK - sign & recover", func(t *testing.T) {
 		pubKey, err := crypto.Recover(signature, testBytes)
 		if err != nil {
-			t.Fatal()
+			t.Fatal(err)
 		}
 
 		if pubKey.X.Cmp(privKey.PublicKey.X) != 0 || pubKey.Y.Cmp(privKey.PublicKey.Y) != 0 {
@@ -37,7 +37,7 @@ func TestDefaultSigner(t *testing.T) {
 	t.Run("OK - recover with invalid data", func(t *testing.T) {
 		pubKey, err := crypto.Recover(signature, []byte("invalid"))
 		if err != nil {
-			t.Fatal()
+			t.Fatal(err)
 		}
 
 		if pubKey.X.Cmp(privKey.PublicKey.X) == 0 && pubKey.Y.Cmp(privKey.PublicKey.Y) == 0 {
