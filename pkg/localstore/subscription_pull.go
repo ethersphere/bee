@@ -187,7 +187,7 @@ func (db *DB) LastPullSubscriptionBinID(bin uint8) (id uint64, err error) {
 
 	item, err := db.pullIndex.Last([]byte{bin})
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			return 0, nil
 		}
 		return 0, err
