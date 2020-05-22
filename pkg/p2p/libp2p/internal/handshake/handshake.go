@@ -6,9 +6,9 @@ package handshake
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -62,15 +62,22 @@ type Service struct {
 	network.Notifiee // handhsake service can be the receiver for network.Notify
 }
 
-func New(overlay swarm.Address, underlay string, signer crypto.Signer, networkID uint64, logger logging.Logger) (*Service, error) {
-	signature, err := signer.Sign([]byte(underlay + strconv.FormatUint(networkID, 10)))
+func New(overlay swarm.Address, peerID libp2ppeer.ID, signer crypto.Signer, networkID uint64, logger logging.Logger) (*Service, error) {
+	underlay, err := peerID.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	networkIDBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(networkIDBytes, networkID)
+	signature, err := signer.Sign(append(underlay, networkIDBytes...))
 	if err != nil {
 		return nil, err
 	}
 
 	return &Service{
 		overlay:            overlay,
-		underlay:           []byte(underlay),
+		underlay:           underlay,
 		signature:          signature,
 		signer:             signer,
 		networkID:          networkID,
@@ -185,7 +192,9 @@ func (s *Service) checkSyn(syn *pb.Syn) error {
 		return ErrNetworkIDIncompatible
 	}
 
-	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, strconv.FormatUint(syn.NetworkID, 10)...))
+	networkIDBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(networkIDBytes, syn.NetworkID)
+	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, networkIDBytes...))
 	if err != nil {
 		return ErrInvalidSignature
 	}
