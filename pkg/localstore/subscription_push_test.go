@@ -32,8 +32,7 @@ import (
 // push syncing subscription is created and validates if
 // all addresses are received in the right order.
 func TestDB_SubscribePush(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	chunks := make([]swarm.Chunk, 0)
 	var chunksMu sync.Mutex
@@ -118,8 +117,7 @@ func TestDB_SubscribePush(t *testing.T) {
 // multiple push syncing subscriptions are created and
 // validates if all addresses are received in the right order.
 func TestDB_SubscribePush_multiple(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make([]swarm.Address, 0)
 	var addrsMu sync.Mutex
