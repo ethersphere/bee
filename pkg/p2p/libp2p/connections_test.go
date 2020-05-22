@@ -16,8 +16,7 @@ import (
 )
 
 func TestAddresses(t *testing.T) {
-	s, _, cleanup := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup()
+	s, _ := newService(t, libp2p.Options{NetworkID: 1})
 
 	addrs, err := s.Addresses()
 	if err != nil {
@@ -32,11 +31,9 @@ func TestConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, overlay1 := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
+	s2, overlay2 := newService(t, libp2p.Options{NetworkID: 1})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -60,11 +57,9 @@ func TestDoubleConnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, overlay1 := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
+	s2, overlay2 := newService(t, libp2p.Options{NetworkID: 1})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -87,11 +82,9 @@ func TestDoubleDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, overlay1 := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
+	s2, overlay2 := newService(t, libp2p.Options{NetworkID: 1})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -122,11 +115,9 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, overlay1 := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
+	s2, overlay2 := newService(t, libp2p.Options{NetworkID: 1})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -165,11 +156,9 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, overlay1 := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
+	s2, overlay2 := newService(t, libp2p.Options{NetworkID: 1})
 
 	addrs, err := s1.Addresses()
 	if err != nil {
@@ -197,11 +186,9 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, overlay1 := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
+	s2, overlay2 := newService(t, libp2p.Options{NetworkID: 1})
 
 	addrs, err := s1.Addresses()
 	if err != nil {
@@ -235,11 +222,9 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, _, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, _ := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, _, cleanup2 := newService(t, libp2p.Options{NetworkID: 2})
-	defer cleanup2()
+	s2, _ := newService(t, libp2p.Options{NetworkID: 2})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -255,19 +240,17 @@ func TestConnectWithDisabledQUICAndWSTransports(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{
+	s1, overlay1 := newService(t, libp2p.Options{
 		NetworkID:   1,
 		DisableQUIC: true,
 		DisableWS:   true,
 	})
-	defer cleanup1()
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{
+	s2, overlay2 := newService(t, libp2p.Options{
 		NetworkID:   1,
 		DisableQUIC: true,
 		DisableWS:   true,
 	})
-	defer cleanup2()
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -284,11 +267,9 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup1()
+	s1, overlay1 := newService(t, libp2p.Options{NetworkID: 1})
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
-	defer cleanup2()
+	s2, overlay2 := newService(t, libp2p.Options{NetworkID: 1})
 
 	addr := serviceUnderlayAddress(t, s1)
 

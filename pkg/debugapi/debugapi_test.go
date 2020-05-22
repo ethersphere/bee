@@ -36,7 +36,6 @@ type testServer struct {
 	Client         *http.Client
 	Addressbook    addressbook.GetPutter
 	TopologyDriver topology.Driver
-	Cleanup        func()
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *testServer {
@@ -53,7 +52,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		Storer:         o.Storer,
 	})
 	ts := httptest.NewServer(s)
-	cleanup := ts.Close
+	t.Cleanup(ts.Close)
 
 	client := &http.Client{
 		Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
@@ -69,19 +68,18 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		Client:         client,
 		Addressbook:    addrbook,
 		TopologyDriver: topologyDriver,
-		Cleanup:        cleanup,
 	}
 }
 
-func newBZZTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
+func newBZZTestServer(t *testing.T, o testServerOptions) *http.Client {
 	s := api.New(api.Options{
 		Storer: o.Storer,
 		Logger: logging.New(ioutil.Discard, 0),
 	})
 	ts := httptest.NewServer(s)
-	cleanup = ts.Close
+	t.Cleanup(ts.Close)
 
-	client = &http.Client{
+	return &http.Client{
 		Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			u, err := url.Parse(ts.URL + r.URL.String())
 			if err != nil {
@@ -91,7 +89,6 @@ func newBZZTestServer(t *testing.T, o testServerOptions) (client *http.Client, c
 			return ts.Client().Transport.RoundTrip(r)
 		}),
 	}
-	return client, cleanup
 }
 
 func mustMultiaddr(t *testing.T, s string) multiaddr.Multiaddr {

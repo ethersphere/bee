@@ -32,11 +32,10 @@ func TestChunkUploadDownload(t *testing.T) {
 		invalidContent       = []byte("bbaattss")
 		mockValidator        = validator.NewMockValidator(validHash, validContent)
 		mockValidatingStorer = mock.NewValidatingStorer(mockValidator)
-		client, cleanup      = newTestServer(t, testServerOptions{
+		client               = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
 		})
 	)
-	defer cleanup()
 
 	t.Run("invalid hash", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(invalidHash), bytes.NewReader(validContent), http.StatusBadRequest, jsonhttp.StatusResponse{
