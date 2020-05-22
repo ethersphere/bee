@@ -34,10 +34,10 @@ func TestTracing(t *testing.T) {
 	}
 	defer closer2.Close()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{})
+	s1, overlay1, cleanup1 := newService(t, 1, libp2p.Options{})
 	defer cleanup1()
 
-	s2, _, cleanup2 := newService(t, libp2p.Options{})
+	s2, _, cleanup2 := newService(t, 1, libp2p.Options{})
 	defer cleanup2()
 
 	var handledTracingSpan string

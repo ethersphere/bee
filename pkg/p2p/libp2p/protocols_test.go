@@ -18,10 +18,10 @@ func TestNewStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
+	s1, overlay1, cleanup1 := newService(t, 1, libp2p.Options{})
 	defer cleanup1()
 
-	s2, _, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
+	s2, _, cleanup2 := newService(t, 1, libp2p.Options{})
 	defer cleanup2()
 
 	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
@@ -49,10 +49,10 @@ func TestNewStream_errNotSupported(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
+	s1, overlay1, cleanup1 := newService(t, 1, libp2p.Options{})
 	defer cleanup1()
 
-	s2, _, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
+	s2, _, cleanup2 := newService(t, 1, libp2p.Options{})
 	defer cleanup2()
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -86,10 +86,10 @@ func TestNewStream_semanticVersioning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
+	s1, overlay1, cleanup1 := newService(t, 1, libp2p.Options{})
 	defer cleanup1()
 
-	s2, _, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
+	s2, _, cleanup2 := newService(t, 1, libp2p.Options{})
 	defer cleanup2()
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -147,10 +147,10 @@ func TestDisconnectError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1, cleanup1 := newService(t, libp2p.Options{NetworkID: 1})
+	s1, overlay1, cleanup1 := newService(t, 1, libp2p.Options{})
 	defer cleanup1()
 
-	s2, overlay2, cleanup2 := newService(t, libp2p.Options{NetworkID: 1})
+	s2, overlay2, cleanup2 := newService(t, 1, libp2p.Options{})
 	defer cleanup2()
 
 	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
