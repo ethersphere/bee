@@ -34,9 +34,9 @@ func TestTracing(t *testing.T) {
 	}
 	defer closer2.Close()
 
-	s1, overlay1 := newService(t, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2p.Options{})
 
-	s2, _ := newService(t, libp2p.Options{})
+	s2, _ := newService(t, 1, libp2p.Options{})
 
 	var handledTracingSpan string
 	handled := make(chan struct{})

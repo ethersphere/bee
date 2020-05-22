@@ -23,32 +23,20 @@ import (
 )
 
 // newService constructs a new libp2p service.
-func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address) {
+func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address) {
 	t.Helper()
 
-	if o.PrivateKey == nil {
-		var err error
-		o.PrivateKey, err = crypto.GenerateSecp256k1Key()
-		if err != nil {
-			t.Fatal(err)
-		}
+	privateKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if o.Overlay.IsZero() {
-		var err error
-		swarmPK, err := crypto.GenerateSecp256k1Key()
-		if err != nil {
-			t.Fatal(err)
-		}
-		o.Overlay = crypto.NewOverlayAddress(swarmPK.PublicKey, o.NetworkID)
-	}
+	overlay = crypto.NewOverlayAddress(privateKey.PublicKey, networkID)
+
+	addr := ":0"
 
 	if o.Logger == nil {
 		o.Logger = logging.New(ioutil.Discard, 0)
-	}
-
-	if o.Addr == "" {
-		o.Addr = ":0"
 	}
 
 	if o.Addressbook == nil {
@@ -57,7 +45,7 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s, err := libp2p.New(ctx, o)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(privateKey), networkID, overlay, addr, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +53,7 @@ func newService(t *testing.T, o libp2p.Options) (s *libp2p.Service, overlay swar
 		cancel()
 		s.Close()
 	})
-	return s, o.Overlay
+	return s, overlay
 }
 
 // expectPeers validates that peers with addresses are connected.

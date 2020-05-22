@@ -23,9 +23,9 @@ func TestHeaders(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2p.Options{})
 
-	s2, overlay2 := newService(t, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2p.Options{})
 
 	var gotHeaders p2p.Headers
 	handled := make(chan struct{})
@@ -70,9 +70,9 @@ func TestHeaders_empty(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2p.Options{})
 
-	s2, overlay2 := newService(t, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2p.Options{})
 
 	var gotHeaders p2p.Headers
 	handled := make(chan struct{})
@@ -126,9 +126,9 @@ func TestHeadler(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2p.Options{})
 
-	s2, _ := newService(t, libp2p.Options{})
+	s2, _ := newService(t, 1, libp2p.Options{})
 
 	var gotReceivedHeaders p2p.Headers
 	handled := make(chan struct{})
