@@ -47,7 +47,7 @@ type Service struct {
 	metrics          metrics
 	networkID        uint64
 	handshakeService *handshake.Service
-	addrssbook       addressbook.Putter
+	addressbook      addressbook.Putter
 	peers            *peerRegistry
 	peerHandler      func(context.Context, swarm.Address) error
 	conectionBreaker breaker.Interface
@@ -154,7 +154,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, h.ID().String(), signer, networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, h.ID(), signer, networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -168,7 +168,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		networkID:        networkID,
 		handshakeService: handshakeService,
 		peers:            peerRegistry,
-		addrssbook:       o.Addressbook,
+		addressbook:      o.Addressbook,
 		logger:           o.Logger,
 		tracer:           o.Tracer,
 		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // todo: fill non-default options
@@ -206,7 +206,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		err = s.addrssbook.Put(i.Overlay, remoteMultiaddr)
+		err = s.addressbook.Put(i.Overlay, remoteMultiaddr)
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
 			s.logger.Errorf("unable to persist peer %v", peerID)
