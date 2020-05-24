@@ -62,12 +62,26 @@ func TestHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	node1Overlay := crypto.NewOverlayAddress(privateKey1.PublicKey, 0)
-	node2Overlay := crypto.NewOverlayAddress(privateKey2.PublicKey, 0)
+	node1Overlay := crypto.NewOverlayAddress(privateKey1.PublicKey, 3)
+	node2Overlay := crypto.NewOverlayAddress(privateKey2.PublicKey, 3)
+	node1Info := handshake.Info{
+		Overlay:   node1Overlay,
+		Underlay:  node1Underlay,
+		NetworkID: 3,
+		Light:     false,
+	}
+
+	node2Info := handshake.Info{
+		Overlay:   node2Overlay,
+		Underlay:  node2Underlay,
+		NetworkID: 3,
+		Light:     false,
+	}
+
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 	signer2 := crypto.NewDefaultSigner(privateKey2)
 	networkIDBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(networkIDBytes, 0)
+	binary.BigEndian.PutUint64(networkIDBytes, node1Info.NetworkID)
 	signature1, err := signer1.Sign(append(node1Underlay, networkIDBytes...))
 	if err != nil {
 		t.Fatal(err)
@@ -78,26 +92,11 @@ func TestHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	node1Info := handshake.Info{
-		Overlay:   node1Overlay,
-		Underlay:  node1Underlay,
-		NetworkID: 0,
-		Light:     false,
-	}
-
 	node1BzzAddress := &pb.BzzAddress{
 		Overlay:   node1Info.Overlay.Bytes(),
 		Underlay:  node1Info.Underlay,
 		Signature: signature1,
 	}
-
-	node2Info := handshake.Info{
-		Overlay:   node2Overlay,
-		Underlay:  node2Underlay,
-		NetworkID: 0,
-		Light:     false,
-	}
-
 	node2BzzAddress := &pb.BzzAddress{
 		Overlay:   node2Info.Overlay.Bytes(),
 		Underlay:  node2Info.Underlay,
@@ -288,7 +287,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - OK", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,7 +331,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -351,7 +350,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - write error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -380,7 +379,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - ack read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -411,7 +410,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - networkID mismatch ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -440,7 +439,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - duplicate handshake", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -489,7 +488,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - invalid ack", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -518,7 +517,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - invalid signature ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, 0, logger)
+		handshakeService, err := handshake.New(node1Info.Overlay, node1Addr.ID, signer1, node1Info.NetworkID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}

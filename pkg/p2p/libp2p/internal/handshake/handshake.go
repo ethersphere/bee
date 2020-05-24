@@ -70,7 +70,7 @@ func New(overlay swarm.Address, peerID libp2ppeer.ID, signer crypto.Signer, netw
 	}
 
 	networkIDBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(networkIDBytes, networkID)
+	binary.BigEndian.PutUint64(networkIDBytes, networkID)
 	signature, err := signer.Sign(append(underlay, networkIDBytes...))
 	if err != nil {
 		return nil, err
