@@ -156,7 +156,6 @@ func (k *Kad) manage() {
 
 				select {
 				case <-k.quit:
-					// shutting down
 					return true, false, nil
 				default:
 				}
@@ -205,7 +204,7 @@ func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 	return size >= 2
 }
 
-// recalcDepth returns the kademlia depth. Must be called under lock.
+// recalcDepth calculates and returns the kademlia depth.
 func (k *Kad) recalcDepth() uint8 {
 	// handle edge case separately
 	if k.connectedPeers.Length() <= nnLowWatermark {
@@ -258,7 +257,6 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 
 	_ = k.connectedPeers.EachBinRev(func(connectedPeer swarm.Address, _ uint8) (bool, bool, error) {
 		if connectedPeer.Equal(peer) {
-			// skip to next
 			return false, false, nil
 		}
 		addrs = append(addrs, connectedPeer)
