@@ -34,8 +34,7 @@ import (
 // validates that pull index iterator will iterate it the same
 // order.
 func TestDB_pullIndex(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	chunkCount := 50
 
@@ -79,8 +78,7 @@ func TestDB_pullIndex(t *testing.T) {
 // a chunk with and performing operations using synced, access and
 // request modes.
 func TestDB_gcIndex(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	chunkCount := 50
 

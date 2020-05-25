@@ -29,8 +29,7 @@ import (
 // chunks and another one to import and validate that all chunks are
 // imported.
 func TestExportImport(t *testing.T) {
-	db1, cleanup1 := newTestDB(t, nil)
-	defer cleanup1()
+	db1 := newTestDB(t, nil)
 
 	var chunkCount = 100
 
@@ -56,8 +55,7 @@ func TestExportImport(t *testing.T) {
 		t.Errorf("got export count %v, want %v", c, wantChunksCount)
 	}
 
-	db2, cleanup2 := newTestDB(t, nil)
-	defer cleanup2()
+	db2 := newTestDB(t, nil)
 
 	c, err = db2.Import(&buf, false)
 	if err != nil {

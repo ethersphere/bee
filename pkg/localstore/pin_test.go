@@ -25,8 +25,7 @@ func TestPinning(t *testing.T) {
 	sort.Strings(addresses)
 
 	t.Run("empty-db", func(t *testing.T) {
-		db, cleanupFunc := newTestDB(t, nil)
-		defer cleanupFunc()
+		db := newTestDB(t, nil)
 		// Nothing should be there in the pinned DB
 		_, err := db.PinnedChunks(context.Background(), swarm.NewAddress([]byte{0}))
 		if err != nil {
@@ -37,8 +36,7 @@ func TestPinning(t *testing.T) {
 	})
 
 	t.Run("get-pinned-chunks", func(t *testing.T) {
-		db, cleanupFunc := newTestDB(t, nil)
-		defer cleanupFunc()
+		db := newTestDB(t, nil)
 
 		err := db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...)
 		if err != nil {
@@ -66,8 +64,7 @@ func TestPinning(t *testing.T) {
 func TestPinInfo(t *testing.T) {
 	chunk := generateTestRandomChunk()
 	t.Run("get-pinned-chunks", func(t *testing.T) {
-		db, cleanupFunc := newTestDB(t, nil)
-		defer cleanupFunc()
+		db := newTestDB(t, nil)
 
 		// pin once
 		err := db.Set(context.Background(), storage.ModeSetPin, swarm.NewAddress(chunk.Address().Bytes()))
@@ -97,8 +94,7 @@ func TestPinInfo(t *testing.T) {
 	})
 
 	t.Run("get-unpinned-chunks", func(t *testing.T) {
-		db, cleanupFunc := newTestDB(t, nil)
-		defer cleanupFunc()
+		db := newTestDB(t, nil)
 
 		// pin once
 		err := db.Set(context.Background(), storage.ModeSetPin, swarm.NewAddress(chunk.Address().Bytes()))

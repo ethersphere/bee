@@ -60,8 +60,7 @@ func init() {
 // TestDB validates if the chunk can be uploaded and
 // correctly retrieved.
 func TestDB(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	ch := generateTestRandomChunk()
 
@@ -93,7 +92,7 @@ func TestDB_updateGCSem(t *testing.T) {
 	var count int
 	var max int
 	var mu sync.Mutex
-	defer setTestHookUpdateGC(func() {
+	t.Cleanup(setTestHookUpdateGC(func() {
 		mu.Lock()
 		// add to the count of current goroutines
 		count++
@@ -109,13 +108,12 @@ func TestDB_updateGCSem(t *testing.T) {
 		mu.Lock()
 		count--
 		mu.Unlock()
-	})()
+	}))
 
 	defer func(m int) { maxParallelUpdateGC = m }(maxParallelUpdateGC)
 	maxParallelUpdateGC = 3
 
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	ch := generateTestRandomChunk()
 
@@ -141,7 +139,7 @@ func TestDB_updateGCSem(t *testing.T) {
 // newTestDB is a helper function that constructs a
 // temporary database and returns a cleanup function that must
 // be called to remove the data.
-func newTestDB(t testing.TB, o *Options) (db *DB, cleanupFunc func()) {
+func newTestDB(t testing.TB, o *Options) *DB {
 	t.Helper()
 
 	baseKey := make([]byte, 32)
@@ -151,16 +149,15 @@ func newTestDB(t testing.TB, o *Options) (db *DB, cleanupFunc func()) {
 	logger := logging.New(ioutil.Discard, 0)
 	db, err := New("", baseKey, o, logger)
 	if err != nil {
-		cleanupFunc()
 		t.Fatal(err)
 	}
-	cleanupFunc = func() {
+	t.Cleanup(func() {
 		err := db.Close()
 		if err != nil {
 			t.Error(err)
 		}
-	}
-	return db, cleanupFunc
+	})
+	return db
 }
 
 var (
@@ -523,8 +520,7 @@ func testIndexCounts(t *testing.T, pushIndex, pullIndex, gcIndex, gcExcludeIndex
 // TestDBDebugIndexes tests that the index counts are correct for the
 // index debug function
 func TestDBDebugIndexes(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	uploadTimestamp := time.Now().UTC().UnixNano()
 	defer setNow(func() (t int64) {

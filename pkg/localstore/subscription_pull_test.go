@@ -34,8 +34,7 @@ import (
 // which means that the `SubscribePull` method should return chunk with BinID=49 via the channel, and the chunk for BinID=49 is uploaded,
 // after the subscription, then it would have been skipped, where the correct behaviour is to not skip it and return it via the channel.
 func TestDB_SubscribePull_first(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make(map[uint8][]swarm.Address)
 	var addrsMu sync.Mutex
@@ -82,8 +81,7 @@ func TestDB_SubscribePull_first(t *testing.T) {
 // all addresses are received in the right order
 // for expected proximity order bins.
 func TestDB_SubscribePull(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make(map[uint8][]swarm.Address)
 	var addrsMu sync.Mutex
@@ -127,8 +125,7 @@ func TestDB_SubscribePull(t *testing.T) {
 // validates if all addresses are received in the right order
 // for expected proximity order bins.
 func TestDB_SubscribePull_multiple(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make(map[uint8][]swarm.Address)
 	var addrsMu sync.Mutex
@@ -178,8 +175,7 @@ func TestDB_SubscribePull_multiple(t *testing.T) {
 // and validates if all expected addresses are received in the
 // right order for expected proximity order bins.
 func TestDB_SubscribePull_since(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make(map[uint8][]swarm.Address)
 	var addrsMu sync.Mutex
@@ -257,8 +253,7 @@ func TestDB_SubscribePull_since(t *testing.T) {
 // and validates if all expected addresses are received in the
 // right order for expected proximity order bins.
 func TestDB_SubscribePull_until(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make(map[uint8][]swarm.Address)
 	var addrsMu sync.Mutex
@@ -336,8 +331,7 @@ func TestDB_SubscribePull_until(t *testing.T) {
 // and until arguments, and validates if all expected addresses
 // are received in the right order for expected proximity order bins.
 func TestDB_SubscribePull_sinceAndUntil(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make(map[uint8][]swarm.Address)
 	var addrsMu sync.Mutex
@@ -430,8 +424,7 @@ func TestDB_SubscribePull_sinceAndUntil(t *testing.T) {
 //   but before the chunks that are left
 // - validates that no chunks are received on subscription channel
 func TestDB_SubscribePull_rangeOnRemovedChunks(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	// keeps track of available chunks in the database
 	// per bin with their bin ids
@@ -575,10 +568,8 @@ func readPullSubscriptionBin(ctx context.Context, db *DB, bin uint8, ch <-chan s
 					})
 					if err != nil {
 						err = fmt.Errorf("got chunk (bin id %v in bin %v) from retrieval index %s: %v", i, bin, addrs[bin][i], err)
-					} else {
-						if got.BinID != want.BinID {
-							err = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got, want)
-						}
+					} else if got.BinID != want.BinID {
+						err = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got, want)
 					}
 				}
 			}
@@ -617,8 +608,7 @@ func checkErrChan(ctx context.Context, t *testing.T, errChan chan error, wantedC
 // is returning the last chunk descriptor for proximity order bins by
 // doing a few rounds of chunk uploads.
 func TestDB_LastPullSubscriptionBinID(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	addrs := make(map[uint8][]swarm.Address)
 
@@ -673,8 +663,7 @@ func TestDB_LastPullSubscriptionBinID(t *testing.T) {
 // TestAddressInBin validates that function addressInBin
 // returns a valid address for every proximity order bin.
 func TestAddressInBin(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, nil)
-	defer cleanupFunc()
+	db := newTestDB(t, nil)
 
 	for po := uint8(0); po < swarm.MaxPO; po++ {
 		addr := db.addressInBin(po)
