@@ -4,28 +4,24 @@
 
 package swarm
 
-import (
-	"math"
-)
-
 // Bit related utility functions
 
 func (a *Address) Get(i int) bool {
-	return a.b.bitget(i)
+	return getbit(a.b, i)
 }
 
 func (a *Address) Set(i int, v bool) {
-	return a.b.bitset(i, v)
+	setbit(a.b, i, v)
 }
 
-func (by []byte) bitget(i int) bool {
+func getbit(by []byte, i int) bool {
 	bi := i / 8
 	return by[bi]&(0x1<<uint(i%8)) != 0
 }
 
-func (by []byte) bitset(i int, v bool) {
+func setbit(by []byte, i int, v bool) {
 	bi := i / 8
-	cv := by.get(i)
+	cv := getbit(by, i)
 	if cv != v {
 		by[bi] ^= 0x1 << uint8(i%8)
 	}
@@ -34,27 +30,29 @@ func (by []byte) bitset(i int, v bool) {
 // Prefix(n) returns first n bits of an address padded by zeroes
 func (a *Address) Prefix(n int) (pref Address) {
 	
-	prefix := make([]byte, len(a.b) )
-	if n <= 0 {
-		return 
-	}
 	for i:=1; i <= n; i++ {
 		pref.Set(i, a.Get(i))
 	}
 	for i:=n+1; i<= len(a.b)*8; i++{
 		pref.Set(i, false)
 	}
+	return pref
 }
 
 //AddSuffix sets the bits in an address beginning from "suffixfrom" until length of suffix byteslice to the bits in suffix
-func (a *Address) AddSuffix(suffix []byte, suffixfrom int) []byte {
+func (a *Address) AddSuffix(suffix []byte, suffixfrom int) *Address {
 	suffixtill := min(suffixfrom + len(suffix)*8, len(a.b)*8)
 	for i:=suffixfrom; i<suffixtill; i++ {
 		currentsuffixbit := i + 1 - suffixfrom
-		a.b.bitset(i, suffix.getbit(currentsuffixbit))
+		a.Set(i, getbit(suffix, currentsuffixbit))
 	}
+	return a
+
 }
 
-func (a []byte) CreateIdealAddress() Address {
-
+func min(a, b int) int {
+    if a < b {
+        return a
+    }
+    return b
 }

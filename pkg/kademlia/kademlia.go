@@ -102,7 +102,7 @@ func (k *Kad) manage() {
 	}()
 
 	// For each bin we create bitwise diverse pseudoaddresses used for minimizing gaps later on
-	k.idealPeers.populateIdealPeers()
+	//k.idealPeers.populateIdealPeers()
 
 	for {
 		select {
@@ -200,7 +200,7 @@ func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 	// gaps measurement)
 
 	size := 0
-	diversity := 0
+	//diversity := 0
 	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
 		if po == bin {
 			size++
