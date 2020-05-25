@@ -14,20 +14,19 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type bookFunc func(t *testing.T) (book addressbook.GetPutter, cleanup func())
+type bookFunc func(t *testing.T) (book addressbook.GetPutter)
 
 func TestInMem(t *testing.T) {
-	run(t, func(t *testing.T) (addressbook.GetPutter, func()) {
+	run(t, func(t *testing.T) addressbook.GetPutter {
 		store := mock.NewStateStore()
 		book := addressbook.New(store)
 
-		return book, func() {}
+		return book
 	})
 }
 
 func run(t *testing.T, f bookFunc) {
-	store, cleanup := f(t)
-	defer cleanup()
+	store := f(t)
 
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{0, 1, 2, 4})
