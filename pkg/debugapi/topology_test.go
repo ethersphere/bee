@@ -26,7 +26,6 @@ func TestTopologyOK(t *testing.T) {
 	testServer := newTestServer(t, testServerOptions{
 		TopologyOpts: []topmock.Option{topmock.WithMarshalJSONFunc(marshalFunc)},
 	})
-	defer testServer.Cleanup()
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/topology", nil, http.StatusOK, topologyResponse{
 		Topology: "abcd",
@@ -40,7 +39,6 @@ func TestTopologyError(t *testing.T) {
 	testServer := newTestServer(t, testServerOptions{
 		TopologyOpts: []topmock.Option{topmock.WithMarshalJSONFunc(marshalFunc)},
 	})
-	defer testServer.Cleanup()
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/topology", nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 		Message: "error",

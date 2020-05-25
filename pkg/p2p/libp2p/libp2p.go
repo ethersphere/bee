@@ -215,8 +215,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if s.topologyNotifiee != nil {
-			if err := s.topologyNotifiee.Connected(ctx, i.Overlay); err != nil {
+		if s.topologyNotifier != nil {
+			if err := s.topologyNotifier.Connected(ctx, i.Overlay); err != nil {
 				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
 			}
 		}

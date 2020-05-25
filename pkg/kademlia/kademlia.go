@@ -118,7 +118,7 @@ func (k *Kad) manage() {
 				k.waitNextMu.Unlock()
 
 				currentDepth := k.NeighborhoodDepth()
-				if k.saturationFunc(po, currentDepth, k.connectedPeers) {
+				if saturated := k.saturationFunc(po, currentDepth, k.connectedPeers); saturated {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
