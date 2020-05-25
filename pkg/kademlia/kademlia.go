@@ -53,6 +53,7 @@ type Kad struct {
 	saturationFunc binSaturationFunc     // pluggable saturation function
 	connectedPeers *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
 	knownPeers     *pslice.PSlice        // both are po aware slice of addresses
+	idealPeers     *pslice.PSlice        // a reference tree of balanced peers
 	depth          uint8                 // current neighborhood depth
 	depthMu        sync.RWMutex          // protect depth changes
 	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
@@ -77,6 +78,7 @@ func New(o Options) *Kad {
 		saturationFunc: o.SaturationFunc,
 		connectedPeers: pslice.New(maxBins),
 		knownPeers:     pslice.New(maxBins),
+		idealPeers:     pslice.New(maxBins),
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]time.Time),
 		logger:         o.Logger,
@@ -99,12 +101,21 @@ func (k *Kad) manage() {
 		cancel()
 	}()
 
+	// For each bin we create bitwise diverse pseudoaddresses used for minimizing gaps later on
+	k.idealPeers.populateIdealPeers()
+
 	for {
 		select {
 		case <-k.quit:
 			return
 		case <-k.manageC:
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+
+				// lets check saturation first and jump to next bin if it's saturated so
+				currentDepth := k.NeighborhoodDepth()
+				if saturated := k.saturationFunc(po, currentDepth, k.connectedPeers); saturated {
+					return false, true, nil // bin is saturated, skip to next bin
+				}
 
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
@@ -116,11 +127,6 @@ func (k *Kad) manage() {
 					return false, false, nil
 				}
 				k.waitNextMu.Unlock()
-
-				currentDepth := k.NeighborhoodDepth()
-				if saturated := k.saturationFunc(po, currentDepth, k.connectedPeers); saturated {
-					return false, true, nil // bin is saturated, skip to next bin
-				}
 
 				ma, err := k.addressBook.Get(peer)
 				if err != nil {
@@ -194,12 +200,23 @@ func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 	// gaps measurement)
 
 	size := 0
+	diversity := 0
 	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
 		if po == bin {
 			size++
 		}
+
+		// proximity of this peer to an ethos
+		// how many ethoses we have? log2 nnlow
+		// check if different peers satisfy different ethoses
+
+
+
+
 		return false, false, nil
 	})
+
+
 
 	return size >= 2
 }
