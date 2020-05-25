@@ -28,7 +28,7 @@ jobs:
           cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
       - name: Add entries to /etc/hosts
         run: |
-          echo -e "127.0.0.10\tregistry.localhost"; done | sudo tee -a /etc/hosts
+          echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost"; done | sudo tee -a /etc/hosts
       - name: Set helm repo and namespace
         run: |
