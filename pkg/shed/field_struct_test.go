@@ -25,8 +25,7 @@ import (
 // TestStructField validates put and get operations
 // of the StructField.
 func TestStructField(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	complexField, err := db.NewStructField("complex-field")
 	if err != nil {

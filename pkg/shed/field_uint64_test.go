@@ -25,8 +25,7 @@ import (
 // TestUint64Field validates put and get operations
 // of the Uint64Field.
 func TestUint64Field(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
 	if err != nil {
@@ -112,8 +111,7 @@ func TestUint64Field(t *testing.T) {
 // TestUint64Field_Inc validates Inc operation
 // of the Uint64Field.
 func TestUint64Field_Inc(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
 	if err != nil {
@@ -142,8 +140,7 @@ func TestUint64Field_Inc(t *testing.T) {
 // TestUint64Field_IncInBatch validates IncInBatch operation
 // of the Uint64Field.
 func TestUint64Field_IncInBatch(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
 	if err != nil {
@@ -196,8 +193,7 @@ func TestUint64Field_IncInBatch(t *testing.T) {
 // TestUint64Field_Dec validates Dec operation
 // of the Uint64Field.
 func TestUint64Field_Dec(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
 	if err != nil {
@@ -233,8 +229,7 @@ func TestUint64Field_Dec(t *testing.T) {
 // TestUint64Field_DecInBatch validates DecInBatch operation
 // of the Uint64Field.
 func TestUint64Field_DecInBatch(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
 	if err != nil {

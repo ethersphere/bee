@@ -23,16 +23,16 @@ type testServerOptions struct {
 	Storer   storage.Storer
 }
 
-func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, cleanup func()) {
+func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 	s := api.New(api.Options{
 		Pingpong: o.Pingpong,
 		Storer:   o.Storer,
 		Logger:   logging.New(ioutil.Discard, 0),
 	})
 	ts := httptest.NewServer(s)
-	cleanup = ts.Close
+	t.Cleanup(ts.Close)
 
-	client = &http.Client{
+	return &http.Client{
 		Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			u, err := url.Parse(ts.URL + r.URL.String())
 			if err != nil {
@@ -42,5 +42,4 @@ func newTestServer(t *testing.T, o testServerOptions) (client *http.Client, clea
 			return ts.Client().Transport.RoundTrip(r)
 		}),
 	}
-	return client, cleanup
 }

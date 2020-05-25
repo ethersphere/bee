@@ -21,7 +21,6 @@ func TestHasChunkHandler(t *testing.T) {
 	testServer := newTestServer(t, testServerOptions{
 		Storer: mockStorer,
 	})
-	defer testServer.Cleanup()
 
 	key := swarm.MustParseHexAddress("aabbcc")
 	value := []byte("data data data")

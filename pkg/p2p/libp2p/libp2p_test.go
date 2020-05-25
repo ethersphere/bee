@@ -23,7 +23,7 @@ import (
 )
 
 // newService constructs a new libp2p service.
-func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address, cleanup func()) {
+func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address) {
 	t.Helper()
 
 	privateKey, err := crypto.GenerateSecp256k1Key()
@@ -49,10 +49,11 @@ func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Ser
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s, overlay, func() {
+	t.Cleanup(func() {
 		cancel()
 		s.Close()
-	}
+	})
+	return s, overlay
 }
 
 // expectPeers validates that peers with addresses are connected.

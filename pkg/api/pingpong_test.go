@@ -36,10 +36,9 @@ func TestPingpong(t *testing.T) {
 		return rtt, nil
 	})
 
-	client, cleanup := newTestServer(t, testServerOptions{
+	client := newTestServer(t, testServerOptions{
 		Pingpong: pingpongService,
 	})
-	defer cleanup()
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+peerID.String(), nil, http.StatusOK, api.PingpongResponse{
