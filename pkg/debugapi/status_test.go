@@ -14,7 +14,6 @@ import (
 
 func TestHealth(t *testing.T) {
 	testServer := newTestServer(t, testServerOptions{})
-	defer testServer.Cleanup()
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/health", nil, http.StatusOK, debugapi.StatusResponse{
 		Status: "ok",
@@ -23,7 +22,6 @@ func TestHealth(t *testing.T) {
 
 func TestReadiness(t *testing.T) {
 	testServer := newTestServer(t, testServerOptions{})
-	defer testServer.Cleanup()
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/readiness", nil, http.StatusOK, debugapi.StatusResponse{
 		Status: "ok",

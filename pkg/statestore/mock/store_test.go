@@ -13,7 +13,7 @@ import (
 )
 
 func TestMockStateStore(t *testing.T) {
-	test.Run(t, func(t *testing.T) (storage.StateStorer, func()) {
-		return mock.NewStateStore(), func() {}
+	test.Run(t, func(t *testing.T) storage.StateStorer {
+		return mock.NewStateStore()
 	})
 }
