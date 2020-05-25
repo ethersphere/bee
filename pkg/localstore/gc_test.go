@@ -57,17 +57,18 @@ func testDBCollectGarbageWorker(t *testing.T) {
 
 	chunkCount := 150
 
-	db, cleanupFunc := newTestDB(t, &Options{
-		Capacity: 100,
-	})
+	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
-	defer setTestHookCollectGarbage(func(collectedCount uint64) {
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
-		case <-db.close:
+		case <-closed:
 		}
-	})()
-	defer cleanupFunc()
+	}))
+	db := newTestDB(t, &Options{
+		Capacity: 100,
+	})
+	closed = db.close
 
 	addrs := make([]swarm.Address, 0)
 
@@ -146,17 +147,19 @@ func TestPinGC(t *testing.T) {
 	pinChunksCount := 50
 	dbCapacity := uint64(100)
 
-	db, cleanupFunc := newTestDB(t, &Options{
-		Capacity: dbCapacity,
-	})
+	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
 	defer setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
-		case <-db.close:
+		case <-closed:
 		}
 	})()
-	defer cleanupFunc()
+
+	db := newTestDB(t, &Options{
+		Capacity: dbCapacity,
+	})
+	closed = db.close
 
 	addrs := make([]swarm.Address, 0)
 	pinAddrs := make([]swarm.Address, 0)
@@ -252,10 +255,9 @@ func TestGCAfterPin(t *testing.T) {
 
 	chunkCount := 50
 
-	db, cleanupFunc := newTestDB(t, &Options{
+	db := newTestDB(t, &Options{
 		Capacity: 100,
 	})
-	defer cleanupFunc()
 
 	pinAddrs := make([]swarm.Address, 0)
 
@@ -299,10 +301,9 @@ func TestGCAfterPin(t *testing.T) {
 // to test garbage collection runs by uploading, syncing and
 // requesting a number of chunks.
 func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{
+	db := newTestDB(t, &Options{
 		Capacity: 100,
 	})
-	defer cleanupFunc()
 
 	testHookCollectGarbageChan := make(chan uint64)
 	defer setTestHookCollectGarbage(func(collectedCount uint64) {
