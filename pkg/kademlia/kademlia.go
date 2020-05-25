@@ -393,10 +393,10 @@ func (k *Kad) MarshalJSON() ([]byte, error) {
 
 func (k *Kad) marshal(indent bool) ([]byte, error) {
 	type binInfo struct {
-		BinPopulation     uint
-		BinConnected      uint
-		DisconnectedPeers []string
-		ConnectedPeers    []string
+		BinPopulation     uint     `json:"population"`
+		BinConnected      uint     `json:"connected"`
+		DisconnectedPeers []string `json:"disconnectedPeers"`
+		ConnectedPeers    []string `json:"connectedPeers"`
 	}
 
 	type kadBins struct {
@@ -419,13 +419,13 @@ func (k *Kad) marshal(indent bool) ([]byte, error) {
 	}
 
 	type kadParams struct {
-		Base           string    // base address string
-		Population     int       // known
-		Connected      int       // connected count
-		Timestamp      time.Time // now
-		NNLowWatermark int       // low watermark for depth calculation
-		Depth          uint8     // current depth
-		Bins           kadBins   // individual bin info
+		Base           string    `json:"baseAddr"`       // base address string
+		Population     int       `json:"population"`     // known
+		Connected      int       `json:"connected"`      // connected count
+		Timestamp      time.Time `json:"timestamp"`      // now
+		NNLowWatermark int       `json:"nnLowWatermark"` // low watermark for depth calculation
+		Depth          uint8     `json:"depth"`          // current depth
+		Bins           kadBins   `json:"bins"`           // individual bin info
 	}
 
 	var infos []binInfo
