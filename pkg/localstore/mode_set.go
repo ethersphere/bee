@@ -233,7 +233,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 				// if we return the error here - it means that for example, in stream protocol peers which we sync
 				// to would be dropped. this is possible when the chunk is put with ModePutRequest and ModeSetSyncPull is
 				// called on the same chunk (which should not happen)
-				db.logger.Errorf("chunk not found in pull index. addr: %s", addr.String())
+				db.logger.Debugf("localstore: chunk with address %s not found in pull index", addr)
 				break
 			}
 			return 0, err
@@ -267,7 +267,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 				// we handle this error internally, since this is an internal inconsistency of the indices
 				// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 				// but this function is called with ModeSetSyncPush
-				db.logger.Errorf("chunk not found in push index. addr : %s", addr.String())
+				db.logger.Debugf("localstore: chunk with address %s not found in push index", addr)
 				break
 			}
 			return 0, err
@@ -277,7 +277,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 			if err != nil {
 				// we cannot break or return here since the function needs to
 				// run to end from db.pushIndex.DeleteInBatch
-				db.logger.Errorf("error getting tags on push sync set. uid : %d", i.Tag)
+				db.logger.Errorf("localstore: get tags on push sync set uid %d: %v", i.Tag, err)
 			} else {
 				// setting a chunk for push sync assumes the tag is not anonymous
 				if t.Anonymous {
