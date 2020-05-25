@@ -18,6 +18,7 @@ package localstore
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -54,7 +55,7 @@ func (db *DB) collectGarbageWorker() {
 			// another collect garbage run is needed
 			collectedCount, done, err := db.collectGarbage()
 			if err != nil {
-				db.logger.Errorf("localstore collect garbage. Error : %s", err.Error())
+				db.logger.Errorf("localstore: collect garbage: %v", err)
 			}
 			// check if another gc run is needed
 			if !done {
@@ -96,8 +97,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	// remove them from the gcIndex before iterating through gcIndex
 	err = db.removeChunksInExcludeIndexFromGC()
 	if err != nil {
-		db.logger.Errorf("localstore exclude pinned chunks. Error : %s", err)
-		return 0, true, err
+		return 0, true, fmt.Errorf("remove chunks in exclude index: %v", err)
 	}
 
 	gcSize, err := db.gcSize.Get()
