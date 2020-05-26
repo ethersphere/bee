@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
@@ -28,8 +29,10 @@ var (
 	inputLength int64  // flag variable, limit of data input
 	host        string // flag variable, http api host
 	port        int    // flag variable, http api port
-	noHttp      bool   // flag variable, skips http api if set
+	outHttp     bool   // flag variable, skips http api if set
 	ssl         bool   // flag variable, uses https for api if set
+	loglevel    int    // flag variable, sets loglevel for operation
+	logger      logging.Logger
 )
 
 // teeStore provides a storage.Putter that can put to multiple underlying storage.Putters
@@ -143,6 +146,9 @@ func (l *limitReadCloser) Close() error {
 
 // Split is the underlying procedure for the CLI command
 func Split(cmd *cobra.Command, args []string) (err error) {
+	loglevelConst := logging.ToLogLevel(loglevel)
+	logger = logging.New(os.Stderr, loglevelConst)
+
 	var infile io.ReadCloser
 
 	// if one arg is set, this is the input file
@@ -171,12 +177,14 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 			return err
 		}
 		infile = newLimitReadCloser(f, f.Close, inputLength)
+		logger.Debugf("Reading %d bytes of data from %s", inputLength, args[0])
 	} else {
 		// this simple splitter is too stupid to handle open-ended input, sadly
 		if inputLength == 0 {
 			return errors.New("must specify length of input on stdin")
 		}
 		infile = newLimitReadCloser(os.Stdin, func() error { return nil }, inputLength)
+		logger.Debugf("Reading %d bytes of data from stdin", inputLength)
 	}
 
 	// add the fsStore and/or apiStore, depending on flags
@@ -189,7 +197,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		store := newFsStore(outdir)
 		stores.Add(store)
 	}
-	if !noHttp {
+	if outHttp {
 		store := newApiStore(host, port, ssl)
 		stores.Add(store)
 	}
@@ -212,13 +220,13 @@ func main() {
 	c := &cobra.Command{
 		Use:   "split [datafile]",
 		Args:  cobra.RangeArgs(0, 1),
-		Short: "Split data into swarm chunks",
-		Long: `Creates and stores Swarm chunks from input data.
+		Short: "Create Swarm Hash from input data",
+		Long: `Creates a Swarm Hash file tree from input data, and optionally stores the created chunks.
 
 If datafile is not given, data will be read from standard in. In this case the --count flag must be set 
 to the length of the input.
 
-The application will expect to transmit the chunks to the bee HTTP API, unless the --no-http flag has been set.
+If the --http flag has been set, the application will attempt to transmit the chunks to the bee HTTP API.
 
 If --output-dir is set, the chunks will be saved to the file system, using the flag argument as destination directory. 
 Chunks are saved in individual files, and the file names will be the hex addresses of the chunks.`,
@@ -226,12 +234,13 @@ Chunks are saved in individual files, and the file names will be the hex address
 		SilenceUsage: true,
 	}
 
-	c.Flags().StringVarP(&outdir, "output-dir", "d", "", "saves chunks to given directory")
+	c.Flags().StringVarP(&outdir, "output-dir", "d", "", "save chunks to given directory")
 	c.Flags().Int64VarP(&inputLength, "count", "c", 0, "read at most this many bytes")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
-	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
-	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
+	c.Flags().BoolVarP(&ssl, "ssl", "s", false, "use ssl")
+	c.Flags().IntVarP(&loglevel, "loglevel", "l", 0, "log verbosity")
+	c.Flags().BoolVar(&outHttp, "http", false, "save chunks to given bee endpoint")
 	err := c.Execute()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
