@@ -345,14 +345,13 @@ func NewBee(o Options) (*Bee, error) {
 					addresses, err := resolveAddr(p2pCtx, addr)
 					if err != nil {
 						logger.Errorf("resolveAddr fail %s: %v", addr, err)
-						return
 					}
 					for _, ad := range addresses {
+						logger.Infof("connecting to %s", ad)
 						overlay, err := p2ps.Connect(p2pCtx, ad)
 						if err != nil {
 							logger.Debugf("connect fail %s: %v", a, err)
 							logger.Errorf("connect to bootnode %s", a)
-							return
 						}
 
 						err = addressbook.Put(overlay, ad)
@@ -360,14 +359,12 @@ func NewBee(o Options) (*Bee, error) {
 							_ = p2ps.Disconnect(overlay)
 							logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
 							logger.Errorf("persisting node %s", a)
-							return
 						}
 
 						if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 							_ = p2ps.Disconnect(overlay)
 							logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
 							logger.Errorf("connect to bootnode %s", a)
-							return
 						}
 
 						if err == nil {

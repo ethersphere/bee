@@ -7,7 +7,6 @@ package node
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"time"
 
@@ -18,8 +17,9 @@ import (
 func resolveAddr(ctx context.Context, addr ma.Multiaddr) ([]ma.Multiaddr, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()
-	// var addresses = make([]ma.Multiaddr, 0)
+	// used to store resolved multiaddresses (ip4, ip6, dns4, dns6)
 	var addresses []ma.Multiaddr
+	// used to store dnsaddr multiaddresses
 	var midAddrs []ma.Multiaddr
 	dnsResolver := madns.DefaultResolver
 	addrs, err := dnsResolver.Resolve(ctx, addr)
@@ -31,16 +31,15 @@ func resolveAddr(ctx context.Context, addr ma.Multiaddr) ([]ma.Multiaddr, error)
 	}
 	for {
 		for _, addr := range addrs {
-			fmt.Printf("addr: %+v\n", addr)
 			comp, _ := ma.SplitFirst(addr)
 			if comp.Protocol().Name != "dnsaddr" {
 				addresses = append(addresses, addr)
-				// continue
 			} else {
-				time.Sleep(1000 * time.Millisecond)
+				// not to DoS DNS server
+				time.Sleep(100 * time.Millisecond)
 				resAddrs, err := dnsResolver.Resolve(ctx, addr)
-				fmt.Printf("resAddrs: %+v\n", resAddrs)
 				if err != nil {
+					// if at some point DNS fails return all resolved addresses
 					if len(addresses) > 0 {
 						return addresses, nil
 					}
@@ -55,11 +54,8 @@ func resolveAddr(ctx context.Context, addr ma.Multiaddr) ([]ma.Multiaddr, error)
 					}
 				}
 			}
-
-			// if len(addrs) == 0 {
-			// 	return addresses, nil
-			// }
 		}
+		// if no more addresses to resolve shuffle result and return
 		if len(midAddrs) == 0 {
 			ranAddresses := make([]ma.Multiaddr, len(addresses))
 			rand.Seed(time.Now().UnixNano())
