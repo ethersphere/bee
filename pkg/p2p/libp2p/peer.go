@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -21,7 +22,8 @@ type peerRegistry struct {
 	connections map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
 	mu          sync.RWMutex
 
-	network.Notifiee // peerRegistry can be the receiver for network.Notify
+	disconnecter     topology.Disconnecter // peerRegistry notifies topology on peer disconnection
+	network.Notifiee                       // peerRegistry can be the receiver for network.Notify
 }
 
 func newPeerRegistry() *peerRegistry {
@@ -29,7 +31,8 @@ func newPeerRegistry() *peerRegistry {
 		underlays:   make(map[string]libp2ppeer.ID),
 		overlays:    make(map[libp2ppeer.ID]swarm.Address),
 		connections: make(map[libp2ppeer.ID]map[network.Conn]struct{}),
-		Notifiee:    new(network.NoopNotifiee),
+
+		Notifiee: new(network.NoopNotifiee),
 	}
 }
 
@@ -59,6 +62,9 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	delete(r.connections[peerID], c)
 	if len(r.connections[peerID]) == 0 {
 		delete(r.connections, peerID)
+	}
+	if r.disconnecter != nil {
+		r.disconnecter.Disconnected(overlay)
 	}
 }
 
@@ -117,4 +123,12 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	delete(r.underlays, overlay.ByteString())
 	delete(r.connections, peerID)
 	r.mu.Unlock()
+
+	if r.disconnecter != nil {
+		r.disconnecter.Disconnected(overlay)
+	}
+}
+
+func (r *peerRegistry) setDisconnecter(d topology.Disconnecter) {
+	r.disconnecter = d
 }
