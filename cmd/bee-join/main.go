@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
@@ -26,6 +27,8 @@ var (
 	host         string // flag variable, http api host
 	port         int    // flag variable, http api port
 	ssl          bool   // flag variable, uses https for api if set
+	loglevel     int    // flag variable, sets loglevel for operation
+	logger       logging.Logger
 )
 
 // apiStore provies a storage.Getter that retrieves chunks from swarm through the HTTP chunk API.
@@ -70,6 +73,15 @@ func (a *apiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.
 
 // Join is the underlying procedure for the CLI command
 func Join(cmd *cobra.Command, args []string) (err error) {
+	loglevelConst := logging.ToLogLevel(loglevel)
+	logger = logging.New(os.Stderr, loglevelConst)
+
+	// process the reference to retrieve
+	addr, err := swarm.ParseHexAddress(args[0])
+	if err != nil {
+		return err
+	}
+
 	// if output file is specified, create it if it does not exist
 	var outFile *os.File
 	if outFilePath != "" {
@@ -94,14 +106,10 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 			return err
 		}
 		defer outFile.Close()
+		logger.Debugf("Writing data from Swarm Hash %s to file %s", addr, outFilePath)
 	} else {
 		outFile = os.Stdout
-	}
-
-	// process the reference to retrieve
-	addr, err := swarm.ParseHexAddress(args[0])
-	if err != nil {
-		return err
+		logger.Debugf("Writing data from Swarm Hash %s to stdout", addr)
 	}
 
 	// initialize interface with HTTP API
@@ -153,6 +161,7 @@ Will output retrieved data to stdout.`,
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
+	c.Flags().IntVarP(&loglevel, "loglevel", "l", 0, "log verbosity")
 
 	err := c.Execute()
 	if err != nil {

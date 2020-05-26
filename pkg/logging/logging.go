@@ -50,3 +50,12 @@ func New(w io.Writer, level logrus.Level) Logger {
 func (l *logger) NewEntry() *logrus.Entry {
 	return logrus.NewEntry(l.Logger)
 }
+
+// ToLogLevel bounds a numeric loglevel value to the amount of loglevels
+// provided by the underlying logging package
+func ToLogLevel(level int) logrus.Level {
+	if level >= len(logrus.AllLevels) {
+		level = len(logrus.AllLevels) - 1
+	}
+	return logrus.AllLevels[level]
+}
