@@ -29,10 +29,13 @@ func SetBit(by []byte, i int, v bool) {
 	if cv != v {
 		by[bi] ^= 0x1 << uint8(i%8)
 	}
+	//fmt.Println("sot %v", i)
 }
 
 // Prefix(n) returns first n bits of an address padded by zeroes
-func (a *Address) Prefix(n int) (pref Address) {
+func (a *Address) Prefix(n int) Address {
+	prefb := make([]byte, 64)
+	pref := NewAddress(prefb)
 	for i := 1; i <= n; i++ {
 		pref.Set(i, a.Get(i))
 	}
@@ -44,7 +47,7 @@ func (a *Address) Prefix(n int) (pref Address) {
 
 //AddSuffix sets the bits in an address beginning from "suffixfrom" until length of suffix byteslice to the bits in suffix
 func (a *Address) AddSuffix(suffix []byte, suffixfrom int) *Address {
-	suffixtill := MinimumInt(suffixfrom+len(suffix)*8, len(a.b)*8)
+	suffixtill := MinimumInt(suffixfrom+len(suffix)*8-1, len(a.b)*8)
 	for i := suffixfrom; i < suffixtill; i++ {
 		currentsuffixbit := i + 1 - suffixfrom
 		a.Set(i, GetBit(suffix, currentsuffixbit))

@@ -529,10 +529,10 @@ func (k *Kad) Close() error {
 }
 
 func (k *Kad) PopulateIdealPeers() {
-	for i := 0; i <= maxBins; i++ {
+	for i := 0; i < maxBins; i++ {
 		currentPrefix := k.base.Prefix(i + 1)
 		currentPrefix.SwitchOneBit(i + 1)
-		for j := 0; j <= nnLowWatermark; j++ {
+		for j := 0; j < nnLowWatermark; j++ {
 			// how many bits are we going to suffix
 			digits := int(math.Log2(float64(nnLowWatermark)))
 			// room for the current suffix
@@ -543,6 +543,11 @@ func (k *Kad) PopulateIdealPeers() {
 			currentSuffix[0] = currentSuffix[0] << offset
 			// Suffix from bit 'i+2' and add peer to bin 'i'
 			k.idealPeers.Add(*currentPrefix.AddSuffix(currentSuffix, i+2), uint8(i))
+
 		}
 	}
+	k.idealPeers.EachBin(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		k.logger.Debugf("Added ideal peer %s", peer.String())
+		return false, false, nil
+	})
 }
