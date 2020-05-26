@@ -46,7 +46,7 @@ type Disconnecter interface {
 }
 
 type ClosestPeerer interface {
-	ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
+	ClosestConnectedPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO

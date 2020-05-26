@@ -66,7 +66,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
-	peerID, err := s.peerSuggester.ClosestPeer(addr)
+	peerID, err := s.peerSuggester.ClosestConnectedPeer(addr)
 	if err != nil {
 		return nil, err
 	}

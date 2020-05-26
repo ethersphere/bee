@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"sync"
 	"time"
 
@@ -102,7 +103,7 @@ func (k *Kad) manage() {
 	}()
 
 	// For each bin we create bitwise diverse pseudoaddresses used for minimizing gaps later on
-	//k.idealPeers.populateIdealPeers()
+	k.PopulateIdealPeers()
 
 	for {
 		select {
@@ -210,13 +211,8 @@ func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 		// how many ethoses we have? log2 nnlow
 		// check if different peers satisfy different ethoses
 
-
-
-
 		return false, false, nil
 	})
-
-
 
 	return size >= 2
 }
@@ -353,14 +349,24 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	}
 }
 
-// ClosestPeer returns the closest peer to a given address.
-func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
-	if k.connectedPeers.Length() == 0 {
+// ClosestConnectedPeer returns the closest connected peer to a given address
+func (k *Kad) ClosestConnectedPeer(addr swarm.Address) (swarm.Address, error) {
+	return k.ClosestPeer(addr, k.connectedPeers)
+}
+
+// ClosestKnownPeer returns the closest known peer to a given address
+func (k *Kad) ClosestKnownPeer(addr swarm.Address) (swarm.Address, error) {
+	return k.ClosestPeer(addr, k.knownPeers)
+}
+
+// ClosestPeer returns the closest peer to a given address from the PSlice it was provided with
+func (k *Kad) ClosestPeer(addr swarm.Address, peerSlice *pslice.PSlice) (swarm.Address, error) {
+	if peerSlice.Length() == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
 	closest := k.base
-	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	err := peerSlice.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
 		if err != nil {
 			return false, false, err
@@ -520,4 +526,23 @@ func (k *Kad) Close() error {
 		k.logger.Warning("kademlia manage loop did not shut down properly")
 	}
 	return nil
+}
+
+func (k *Kad) PopulateIdealPeers() {
+	for i := 0; i <= maxBins; i++ {
+		currentPrefix := k.base.Prefix(i + 1)
+		currentPrefix.SwitchOneBit(i + 1)
+		for j := 0; j <= nnLowWatermark; j++ {
+			// how many bits are we going to suffix
+			digits := int(math.Log2(float64(nnLowWatermark)))
+			// room for the current suffix
+			currentSuffix := make([]byte, 1)
+			// we'll have to bitshift left by offset so that the suffix is padded with zeroes from the right not the left
+			offset := len(currentSuffix)*8 - digits
+			currentSuffix[0] = byte(j)
+			currentSuffix[0] = currentSuffix[0] << offset
+			// Suffix from bit 'i+2' and add peer to bin 'i'
+			k.idealPeers.Add(*currentPrefix.AddSuffix(currentSuffix, i+2), uint8(i))
+		}
+	}
 }

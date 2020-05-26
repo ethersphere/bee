@@ -27,7 +27,7 @@ func WithAddPeerErr(err error) Option {
 	})
 }
 
-func WithClosestPeer(addr swarm.Address) Option {
+func WithClosestConnectedPeer(addr swarm.Address) Option {
 	return optionFunc(func(d *mock) {
 		d.closestPeer = addr
 	})
@@ -75,7 +75,7 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestConnectedPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
 	return d.closestPeer, d.closestPeerErr
 }
 

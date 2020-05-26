@@ -251,7 +251,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	connectOne(t, kad, ab, peer)
 
-	p, err := kad.ClosestPeer(addr)
+	p, err := kad.ClosestConnectedPeer(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	// disconnect the peer, expect error
 	kad.Disconnected(peer)
-	_, err = kad.ClosestPeer(addr)
+	_, err = kad.ClosestConnectedPeer(addr)
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
 	}
@@ -337,7 +337,7 @@ func TestBackoff(t *testing.T) {
 }
 
 // TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
-func TestClosestPeer(t *testing.T) {
+func TestClosestConnectedPeer(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 	connectedPeers := []p2p.Peer{
@@ -397,7 +397,7 @@ func TestClosestPeer(t *testing.T) {
 			expectedPeer: -1,
 		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress)
+		peer, err := kad.ClosestConnectedPeer(tc.chunkAddress)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
