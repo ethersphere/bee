@@ -15,18 +15,28 @@ import (
 )
 
 func TestPersistentStateStore(t *testing.T) {
-	test.Run(t, func(t *testing.T) (storage.StateStorer, func()) {
+	test.Run(t, func(t *testing.T) storage.StateStorer {
 		dir, err := ioutil.TempDir("", "statestore_test")
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+		})
 
 		store, err := leveldb.NewStateStore(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() {
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
 
-		return store, func() { os.RemoveAll(dir) }
+		return store
 	})
 
 	test.RunPersist(t, func(t *testing.T, dir string) storage.StateStorer {

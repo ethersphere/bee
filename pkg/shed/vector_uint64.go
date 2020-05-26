@@ -18,17 +18,17 @@ package shed
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Uint64Vector provides a way to have multiple counters in the database.
 // It transparently encodes uint64 type value to bytes.
 type Uint64Vector struct {
-	db     *DB
-	key    []byte
-	logger logging.Logger
+	db  *DB
+	key []byte
 }
 
 // NewUint64Vector returns a new Uint64Vector.
@@ -36,12 +36,11 @@ type Uint64Vector struct {
 func (db *DB) NewUint64Vector(name string) (f Uint64Vector, err error) {
 	key, err := db.schemaFieldKey(name, "vector-uint64")
 	if err != nil {
-		return f, err
+		return f, fmt.Errorf("get schema key: %w", err)
 	}
 	return Uint64Vector{
-		db:     db,
-		key:    key,
-		logger: db.logger,
+		db:  db,
+		key: key,
 	}, nil
 }
 
@@ -51,7 +50,7 @@ func (db *DB) NewUint64Vector(name string) (f Uint64Vector, err error) {
 func (f Uint64Vector) Get(i uint64) (val uint64, err error) {
 	b, err := f.db.Get(f.indexKey(i))
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			return 0, nil
 		}
 		return 0, err
@@ -75,10 +74,9 @@ func (f Uint64Vector) PutInBatch(batch *leveldb.Batch, i, val uint64) {
 func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			val = 0
 		} else {
-			f.logger.Debugf("error getiing value while doing Inc. Error: %s", err.Error())
 			return 0, err
 		}
 	}
@@ -92,10 +90,9 @@ func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 func (f Uint64Vector) IncInBatch(batch *leveldb.Batch, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			val = 0
 		} else {
-			f.logger.Debugf("error getiing value while doing IncInBatch. Error: %s", err.Error())
 			return 0, err
 		}
 	}
@@ -110,10 +107,9 @@ func (f Uint64Vector) IncInBatch(batch *leveldb.Batch, i uint64) (val uint64, er
 func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			val = 0
 		} else {
-			f.logger.Debugf("error getiing value while doing Dec. Error: %s", err.Error())
 			return 0, err
 		}
 	}
@@ -130,10 +126,9 @@ func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 func (f Uint64Vector) DecInBatch(batch *leveldb.Batch, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if errors.Is(err, leveldb.ErrNotFound) {
 			val = 0
 		} else {
-			f.logger.Debugf("error getiing value while doing DecInBatch. Error: %s", err.Error())
 			return 0, err
 		}
 	}

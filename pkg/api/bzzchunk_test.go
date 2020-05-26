@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -21,6 +23,7 @@ import (
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
+
 	var (
 		resource             = func(addr swarm.Address) string { return "/bzz-chunk/" + addr.String() }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
@@ -29,11 +32,10 @@ func TestChunkUploadDownload(t *testing.T) {
 		invalidContent       = []byte("bbaattss")
 		mockValidator        = validator.NewMockValidator(validHash, validContent)
 		mockValidatingStorer = mock.NewValidatingStorer(mockValidator)
-		client, cleanup      = newTestServer(t, testServerOptions{
+		client               = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
 		})
 	)
-	defer cleanup()
 
 	t.Run("invalid hash", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(invalidHash), bytes.NewReader(validContent), http.StatusBadRequest, jsonhttp.StatusResponse{
@@ -72,6 +74,46 @@ func TestChunkUploadDownload(t *testing.T) {
 			t.Fatal("data retrieved doesnt match uploaded content")
 		}
 	})
+	t.Run("pin-invalid-value", func(t *testing.T) {
+		headers := make(map[string][]string)
+		headers[api.PinHeaderName] = []string{"hdgdh"}
+		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		}, headers)
+
+		// Also check if the chunk is NOT pinned
+		if mockValidatingStorer.GetModeSet(validHash) == storage.ModeSetPin {
+			t.Fatal("chunk should not be pinned")
+		}
+	})
+	t.Run("pin-header-missing", func(t *testing.T) {
+		headers := make(map[string][]string)
+		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		}, headers)
+
+		// Also check if the chunk is NOT pinned
+		if mockValidatingStorer.GetModeSet(validHash) == storage.ModeSetPin {
+			t.Fatal("chunk should not be pinned")
+		}
+	})
+	t.Run("pin-ok", func(t *testing.T) {
+		headers := make(map[string][]string)
+		headers[api.PinHeaderName] = []string{"True"}
+		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		}, headers)
+
+		// Also check if the chunk is pinned
+		if mockValidatingStorer.GetModeSet(validHash) != storage.ModeSetPin {
+			t.Fatal("chunk is not pinned")
+		}
+
+	})
+
 }
 
 func request(t *testing.T, client *http.Client, method string, resource string, body io.Reader, responseCode int) *http.Response {

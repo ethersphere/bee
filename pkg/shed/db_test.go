@@ -20,15 +20,12 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // TestNewDB constructs a new DB
 // and validates if the schema is initialized properly.
 func TestNewDB(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	s, err := db.getSchema()
 	if err != nil {
@@ -56,9 +53,8 @@ func TestDB_persistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-	logger := logging.New(ioutil.Discard, 0)
 
-	db, err := NewDB(dir, logger)
+	db, err := NewDB(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +72,7 @@ func TestDB_persistence(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db2, err := NewDB(dir, logger)
+	db2, err := NewDB(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,14 +92,16 @@ func TestDB_persistence(t *testing.T) {
 // newTestDB is a helper function that constructs a
 // temporary database and returns a cleanup function that must
 // be called to remove the data.
-func newTestDB(t *testing.T) (db *DB, cleanupFunc func()) {
+func newTestDB(t *testing.T) *DB {
 	t.Helper()
-	logger := logging.New(ioutil.Discard, 0)
-	db, err := NewDB("", logger)
+	db, err := NewDB("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return db, func() {
-		db.Close()
-	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	return db
 }

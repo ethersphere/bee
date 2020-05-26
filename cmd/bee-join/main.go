@@ -110,6 +110,8 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 	} else {
 		outFile = os.Stdout
 		logger.Debugf("Writing data from Swarm Hash %s to stdout", addr)
+	} else {
+		outFile = os.Stdout
 	}
 
 	// initialize interface with HTTP API

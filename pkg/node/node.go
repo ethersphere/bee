@@ -65,7 +65,7 @@ type Options struct {
 	Addr               string
 	DisableWS          bool
 	DisableQUIC        bool
-	NetworkID          int32
+	NetworkID          uint64
 	Bootnodes          []string
 	Logger             logging.Logger
 	TracingEnabled     bool
@@ -105,7 +105,7 @@ func NewBee(o Options) (*Bee, error) {
 	if err != nil {
 		return nil, fmt.Errorf("swarm key: %w", err)
 	}
-	address := crypto.NewAddress(swarmPrivateKey.PublicKey)
+	address := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, o.NetworkID)
 	if created {
 		logger.Info("new swarm key created")
 	}
@@ -134,13 +134,10 @@ func NewBee(o Options) (*Bee, error) {
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
 
-	p2ps, err := libp2p.New(p2pCtx, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, crypto.NewDefaultSigner(swarmPrivateKey), o.NetworkID, address, o.Addr, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
-		Overlay:     address,
-		Addr:        o.Addr,
 		DisableWS:   o.DisableWS,
 		DisableQUIC: o.DisableQUIC,
-		NetworkID:   o.NetworkID,
 		Addressbook: addressbook,
 		Logger:      logger,
 		Tracer:      tracer,

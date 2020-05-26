@@ -25,8 +25,7 @@ import (
 // TestStringField validates put and get operations
 // of the StringField.
 func TestStringField(t *testing.T) {
-	db, cleanupFunc := newTestDB(t)
-	defer cleanupFunc()
+	db := newTestDB(t)
 
 	simpleString, err := db.NewStringField("simple-string")
 	if err != nil {

@@ -18,6 +18,7 @@ package localstore
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -32,8 +33,7 @@ import (
 func TestModeSetAccess(t *testing.T) {
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
-			db, cleanupFunc := newTestDB(t, nil)
-			defer cleanupFunc()
+			db := newTestDB(t, nil)
 
 			chunks := generateTestRandomChunks(tc.count)
 
@@ -70,8 +70,7 @@ func TestModeSetAccess(t *testing.T) {
 // as a result we should expect the tag value to remain in the pull index
 // and we expect that the tag should not be incremented by pull sync set
 func TestModeSetSyncPullNormalTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
-	defer cleanupFunc()
+	db := newTestDB(t, &Options{Tags: tags.NewTags()})
 
 	tag, err := db.tags.Create("test", 1, false)
 	if err != nil {
@@ -124,8 +123,7 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 // TestModeSetSyncPullAnonymousTag checks that pull sync correcly increments
 // counters on an anonymous tag which is expected to be handled only by pull sync
 func TestModeSetSyncPullAnonymousTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
-	defer cleanupFunc()
+	db := newTestDB(t, &Options{Tags: tags.NewTags()})
 
 	tag, err := db.tags.Create("test", 1, true)
 	if err != nil {
@@ -176,8 +174,7 @@ func TestModeSetSyncPullAnonymousTag(t *testing.T) {
 // then tries to Set both with push and pull Sync modes, but asserts that only the pull sync
 // increments were done to the tag
 func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
-	defer cleanupFunc()
+	db := newTestDB(t, &Options{Tags: tags.NewTags()})
 
 	tag, err := db.tags.Create("test", 1, true)
 	if err != nil {
@@ -245,8 +242,7 @@ func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
 // correctly on a normal tag (that is, a tag that is expected to show progress bars
 // according to push sync progress)
 func TestModeSetSyncPushNormalTag(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{Tags: tags.NewTags()})
-	defer cleanupFunc()
+	db := newTestDB(t, &Options{Tags: tags.NewTags()})
 
 	tag, err := db.tags.Create("test", 1, false)
 	if err != nil {
@@ -317,8 +313,7 @@ func TestModeSetSyncPushNormalTag(t *testing.T) {
 func TestModeSetRemove(t *testing.T) {
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
-			db, cleanupFunc := newTestDB(t, nil)
-			defer cleanupFunc()
+			db := newTestDB(t, nil)
 
 			chunks := generateTestRandomChunks(tc.count)
 
@@ -336,13 +331,13 @@ func TestModeSetRemove(t *testing.T) {
 				for _, ch := range chunks {
 					wantErr := leveldb.ErrNotFound
 					_, err := db.retrievalDataIndex.Get(addressToItem(ch.Address()))
-					if err != wantErr {
+					if !errors.Is(err, wantErr) {
 						t.Errorf("got error %v, want %v", err, wantErr)
 					}
 
 					// access index should not be set
 					_, err = db.retrievalAccessIndex.Get(addressToItem(ch.Address()))
-					if err != wantErr {
+					if !errors.Is(err, wantErr) {
 						t.Errorf("got error %v, want %v", err, wantErr)
 					}
 				}
