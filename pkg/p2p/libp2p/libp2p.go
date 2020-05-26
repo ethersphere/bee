@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
@@ -49,7 +50,7 @@ type Service struct {
 	handshakeService *handshake.Service
 	addressbook      addressbook.Putter
 	peers            *peerRegistry
-	peerHandler      func(context.Context, swarm.Address) error
+	topologyNotifier topology.Notifier
 	conectionBreaker breaker.Interface
 	logger           logging.Logger
 	tracer           *tracing.Tracer
@@ -214,8 +215,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if s.peerHandler != nil {
-			if err := s.peerHandler(ctx, i.Overlay); err != nil {
+		if s.topologyNotifier != nil {
+			if err := s.topologyNotifier.Connected(ctx, i.Overlay); err != nil {
 				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
 			}
 		}
@@ -361,7 +362,6 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 	if err := s.host.Network().ClosePeer(peerID); err != nil {
 		return err
 	}
-
 	s.peers.remove(peerID)
 	return nil
 }
@@ -370,8 +370,9 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetPeerAddedHandler(h func(context.Context, swarm.Address) error) {
-	s.peerHandler = h
+func (s *Service) SetNotifier(n topology.Notifier) {
+	s.topologyNotifier = n
+	s.peers.setDisconnecter(n)
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
