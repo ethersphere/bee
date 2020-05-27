@@ -468,6 +468,9 @@ func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addre
 	}
 
 	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
@@ -481,6 +484,9 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 		t.Fatal(err)
 	}
 	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
