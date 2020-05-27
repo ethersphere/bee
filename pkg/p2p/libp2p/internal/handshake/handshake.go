@@ -53,7 +53,6 @@ type PeerFinder interface {
 type Service struct {
 	bzzAddress           bzz.Address
 	networkID            uint64
-	networkIDBytes       []byte
 	receivedHandshakes   map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu sync.Mutex
 	logger               logging.Logger
