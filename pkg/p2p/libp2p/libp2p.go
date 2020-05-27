@@ -47,7 +47,7 @@ type Service struct {
 	metrics          metrics
 	networkID        uint64
 	handshakeService *handshake.Service
-	addressbook      addressbook.GetPutter
+	addressbook      addressbook.Putter
 	peers            *peerRegistry
 	peerHandler      func(context.Context, swarm.Address) error
 	conectionBreaker breaker.Interface
@@ -59,7 +59,7 @@ type Options struct {
 	PrivateKey  *ecdsa.PrivateKey
 	DisableWS   bool
 	DisableQUIC bool
-	Addressbook addressbook.GetPutter
+	Addressbook addressbook.Putter
 	Logger      logging.Logger
 	Tracer      *tracing.Tracer
 }
