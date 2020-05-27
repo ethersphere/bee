@@ -61,11 +61,11 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 // returns a storage.ErrInvalidChunk error when
 // encountering an invalid chunk.
 func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	for _, ch := range chs {
-		if !s.valid(ch) {
-			return nil, storage.ErrInvalidChunk
-		}
-	}
+	//for _, ch := range chs {
+	//	if !s.valid(ch) {
+	//		return nil, storage.ErrInvalidChunk
+	//	}
+	//}
 	return s.Storer.Put(ctx, mode, chs...)
 }
 

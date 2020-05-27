@@ -20,17 +20,19 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/syndtr/goleveldb/leveldb"
+
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestDB_collectGarbageWorker tests garbage collection runs
@@ -293,6 +295,70 @@ func TestGCAfterPin(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func TestPinAfterMultiGC(t *testing.T) {
+	db, cleanupFunc := newTestDB(t, &Options{
+		Capacity: 100,
+	})
+	defer cleanupFunc()
+
+	pinnedChunks := make([]swarm.Address, 0)
+
+	// upload random chunks above db capacity to see if chunks are still pinned
+	for i := 0; i < 200000; i++ {
+		ch := generateTestRandomChunk()
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(pinnedChunks) < 10 {
+			rch := generateAndPinAChunk(t, db)
+			pinnedChunks = append(pinnedChunks, rch.Address())
+		}
+	}
+
+	t.Run("pin Index count", newItemsCountTest(db.pinIndex, len(pinnedChunks)))
+
+	// Check if all the pinned chunks are present in the data DB
+	for _, addr := range pinnedChunks {
+		outItem := shed.Item{
+			Address: addr.Bytes(),
+		}
+		gotChunk, err := db.Get(context.Background(), storage.ModeGetRequest, swarm.NewAddress(outItem.Address))
+		if err != nil {
+			fmt.Println("Pinned chunk missing ", addr)
+			t.Fatal(err)
+		}
+		if !gotChunk.Address().Equal(swarm.NewAddress(addr.Bytes())) {
+			t.Fatal("Pinned chunk is not equal to got chunk")
+		}
+	}
+
+}
+
+func generateAndPinAChunk(t *testing.T, db *DB) swarm.Chunk {
+	// Create a chunk and pin it
+	pinnedChunk := generateTestRandomChunk()
+
+	_, err := db.Put(context.Background(), storage.ModePutUpload, pinnedChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Set(context.Background(), storage.ModeSetPin, pinnedChunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Set(context.Background(), storage.ModeSetSyncPull, pinnedChunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pinnedChunk
 }
 
 // TestDB_collectGarbageWorker_withRequests is a helper test function

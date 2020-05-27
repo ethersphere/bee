@@ -17,11 +17,14 @@
 package localstore
 
 import (
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/syndtr/goleveldb/leveldb"
+
+	"github.com/ethersphere/bee/pkg/shed"
 )
 
 var (
@@ -115,6 +118,10 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
 
+		ok, err := db.pinIndex.Has(item)
+		if ok {
+			fmt.Println("Removing pinned chunk :", hex.EncodeToString(item.Address))
+		}
 		// delete from retrieve, pull, gc
 		err = db.retrievalDataIndex.DeleteInBatch(batch, item)
 		if err != nil {
