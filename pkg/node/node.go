@@ -258,12 +258,11 @@ func NewBee(o Options) (*Bee, error) {
 	if o.DebugAPIAddr != "" {
 		// Debug API server
 		debugAPIService := debugapi.New(debugapi.Options{
-			Overlay:        address,
-			P2P:            p2ps,
-			Logger:         logger,
-			Addressbook:    addressbook,
-			TopologyDriver: topologyDriver,
-			Storer:         storer,
+			Overlay:     address,
+			P2P:         p2ps,
+			Logger:      logger,
+			Addressbook: addressbook,
+			Storer:      storer,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
@@ -340,27 +339,27 @@ func NewBee(o Options) (*Bee, error) {
 					return
 				}
 
-				overlay, err := p2ps.Connect(p2pCtx, addr)
+				_, err = p2ps.Connect(p2pCtx, addr)
 				if err != nil {
 					logger.Debugf("connect fail %s: %v", a, err)
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
 
-				err = addressbook.Put(overlay, addr)
-				if err != nil {
-					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
-					logger.Errorf("persisting node %s", a)
-					return
-				}
+				// err = addressbook.Put(overlay, addr)
+				// if err != nil {
+				// 	_ = p2ps.Disconnect(overlay)
+				// 	logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
+				// 	logger.Errorf("persisting node %s", a)
+				// 	return
+				// }
 
-				if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
-					logger.Errorf("connect to bootnode %s", a)
-					return
-				}
+				// if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
+				// 	_ = p2ps.Disconnect(overlay)
+				// 	logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
+				// 	logger.Errorf("connect to bootnode %s", a)
+				// 	return
+				// }
 			}(a)
 		}
 

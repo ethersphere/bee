@@ -66,9 +66,8 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 
 	d.receivedPeers[addr.ByteString()] = struct{}{}
 	d.mtx.Unlock()
-
 	connectedPeers := d.p2pService.Peers()
-	ma, err := d.addressBook.Get(addr)
+	bzzAddress, err := d.addressBook.Get(addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return topology.ErrNotFound
@@ -77,7 +76,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	}
 
 	if !isConnected(addr, connectedPeers) {
-		peerAddr, err := d.p2pService.Connect(ctx, ma)
+		peerAddr, err := d.p2pService.Connect(ctx, bzzAddress.Underlay)
 		if err != nil {
 			d.mtx.Lock()
 			delete(d.receivedPeers, addr.ByteString())
@@ -93,7 +92,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		// update addr if it is wrong or it has been changed
 		if !addr.Equal(peerAddr) {
 			addr = peerAddr
-			err := d.addressBook.Put(peerAddr, ma)
+			err := d.addressBook.Put(peerAddr, bzzAddress)
 			if err != nil {
 				return err
 			}
@@ -168,7 +167,6 @@ func (d *driver) backoff(tryAfter time.Time) {
 	}
 
 	d.backoffActive = true
-
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -181,13 +179,11 @@ func (d *driver) backoff(tryAfter time.Time) {
 
 	go func() {
 		defer func() { close(done) }()
-
 		select {
 		case <-time.After(time.Until(tryAfter)):
 			d.mtx.Lock()
 			d.backoffActive = false
 			d.mtx.Unlock()
-
 			addresses, _ := d.addressBook.Overlays()
 			for _, addr := range addresses {
 				select {

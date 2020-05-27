@@ -154,7 +154,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, h.ID(), signer, networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, h.Addrs()[0], signer, networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -192,21 +192,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
+		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 			_ = stream.Close()
 			return
 		}
 
 		_ = stream.Close()
-		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
-		if err != nil {
-			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
-			s.logger.Errorf("unable to connect with peer %v", peerID)
-			_ = s.disconnect(peerID)
-			return
-		}
-
-		err = s.addressbook.Put(i.Overlay, remoteMultiaddr)
+		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
 			s.logger.Errorf("unable to persist peer %v", peerID)
@@ -215,13 +207,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		if s.peerHandler != nil {
-			if err := s.peerHandler(ctx, i.Overlay); err != nil {
+			if err := s.peerHandler(ctx, i.BzzAddress.Overlay); err != nil {
 				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
 			}
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("peer %s connected", i.Overlay)
+		s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -331,21 +323,35 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
+	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
 			return swarm.Address{}, err
 		}
 
-		return i.Overlay, nil
+		return i.BzzAddress.Overlay, nil
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
 		return swarm.Address{}, err
 	}
 
+	err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
+	if err != nil {
+		s.logger.Debugf("connect: addressbook put error %s: %v", info.ID, err)
+		s.logger.Errorf("unable to persist peer %v", info.ID)
+		_ = s.disconnect(info.ID)
+		return
+	}
+
+	if s.peerHandler != nil {
+		if err := s.peerHandler(ctx, i.BzzAddress.Overlay); err != nil {
+			s.logger.Debugf("peerhandler error: %s: %v", info.ID, err)
+		}
+	}
+
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("peer %s connected", i.Overlay)
-	return i.Overlay, nil
+	s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
+	return i.BzzAddress.Overlay, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {

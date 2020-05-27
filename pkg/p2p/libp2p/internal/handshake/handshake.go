@@ -6,12 +6,12 @@ package handshake
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -21,6 +21,7 @@ import (
 
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const (
@@ -37,8 +38,8 @@ var (
 	// ErrHandshakeDuplicate is returned  if the handshake response has been received by an already processed peer.
 	ErrHandshakeDuplicate = errors.New("duplicate handshake")
 
-	// ErrInvalidSignature is returned if peer info was received with invalid signature
-	ErrInvalidSignature = errors.New("invalid signature")
+	// ErrInvalidBzzAddress is returned if peer info was received with invalid bzz address
+	ErrInvalidBzzAddress = errors.New("invalid bzz address")
 
 	// ErrInvalidAck is returned if ack does not match the syn provided
 	ErrInvalidAck = errors.New("invalid ack")
@@ -50,39 +51,25 @@ type PeerFinder interface {
 }
 
 type Service struct {
-	overlay              swarm.Address
-	underlay             []byte
-	signature            []byte
-	signer               crypto.Signer
+	bzzAddress           bzz.Address
 	networkID            uint64
 	networkIDBytes       []byte
 	receivedHandshakes   map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu sync.Mutex
 	logger               logging.Logger
 
-	network.Notifiee // handhsake service can be the receiver for network.Notify
+	network.Notifiee // handshake service can be the receiver for network.Notify
 }
 
-func New(overlay swarm.Address, peerID libp2ppeer.ID, signer crypto.Signer, networkID uint64, logger logging.Logger) (*Service, error) {
-	underlay, err := peerID.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	networkIDBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(networkIDBytes, networkID)
-	signature, err := signer.Sign(append(underlay, networkIDBytes...))
+func New(overlay swarm.Address, underlay ma.Multiaddr, signer crypto.Signer, networkID uint64, logger logging.Logger) (*Service, error) {
+	bzzAddress, err := bzz.NewAddress(signer, underlay, overlay, networkID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Service{
-		overlay:            overlay,
-		underlay:           underlay,
-		signature:          signature,
-		signer:             signer,
+		bzzAddress:         *bzzAddress,
 		networkID:          networkID,
-		networkIDBytes:     networkIDBytes,
 		receivedHandshakes: make(map[libp2ppeer.ID]struct{}),
 		logger:             logger,
 		Notifiee:           new(network.NoopNotifiee),
@@ -93,9 +80,9 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Syn{
 		BzzAddress: &pb.BzzAddress{
-			Underlay:  s.underlay,
-			Signature: s.signature,
-			Overlay:   s.overlay.Bytes(),
+			Underlay:  s.bzzAddress.Underlay.Bytes(),
+			Signature: s.bzzAddress.Signature,
+			Overlay:   s.bzzAddress.Overlay.Bytes(),
 		},
 		NetworkID: s.networkID,
 	}); err != nil {
@@ -111,8 +98,13 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, err
 	}
 
-	if err := s.checkSyn(resp.Syn); err != nil {
-		return nil, err
+	if resp.Syn.NetworkID != s.networkID {
+		return nil, ErrNetworkIDIncompatible
+	}
+
+	bzzAddress, err := bzz.Parse(resp.Syn.BzzAddress.Underlay, resp.Syn.BzzAddress.Overlay, resp.Syn.BzzAddress.Signature, resp.Syn.NetworkID)
+	if err != nil {
+		return nil, ErrInvalidBzzAddress
 	}
 
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Ack{
@@ -123,10 +115,9 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 
 	s.logger.Tracef("handshake finished for peer %s", swarm.NewAddress(resp.Syn.BzzAddress.Overlay).String())
 	return &Info{
-		Overlay:   swarm.NewAddress(resp.Syn.BzzAddress.Overlay),
-		Underlay:  resp.Syn.BzzAddress.Underlay,
-		NetworkID: resp.Syn.NetworkID,
-		Light:     resp.Syn.Light,
+		BzzAddress: bzzAddress,
+		NetworkID:  resp.Syn.NetworkID,
+		Light:      resp.Syn.Light,
 	}, nil
 }
 
@@ -146,16 +137,21 @@ func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err 
 		return nil, fmt.Errorf("read syn message: %w", err)
 	}
 
-	if err := s.checkSyn(&req); err != nil {
-		return nil, err
+	if req.NetworkID != s.networkID {
+		return nil, ErrNetworkIDIncompatible
+	}
+
+	bzzAddress, err := bzz.Parse(req.BzzAddress.Underlay, req.BzzAddress.Overlay, req.BzzAddress.Signature, req.NetworkID)
+	if err != nil {
+		return nil, ErrInvalidBzzAddress
 	}
 
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.SynAck{
 		Syn: &pb.Syn{
 			BzzAddress: &pb.BzzAddress{
-				Underlay:  s.underlay,
-				Signature: s.signature,
-				Overlay:   s.overlay.Bytes(),
+				Underlay:  s.bzzAddress.Underlay.Bytes(),
+				Signature: s.bzzAddress.Signature,
+				Overlay:   s.bzzAddress.Overlay.Bytes(),
 			},
 			NetworkID: s.networkID,
 		},
@@ -175,10 +171,9 @@ func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err 
 
 	s.logger.Tracef("handshake finished for peer %s", req.BzzAddress.Overlay)
 	return &Info{
-		Overlay:   swarm.NewAddress(req.BzzAddress.Overlay),
-		Underlay:  req.BzzAddress.Underlay,
-		NetworkID: req.NetworkID,
-		Light:     req.Light,
+		BzzAddress: bzzAddress,
+		NetworkID:  req.NetworkID,
+		Light:      req.Light,
 	}, nil
 }
 
@@ -188,28 +183,10 @@ func (s *Service) Disconnected(_ network.Network, c network.Conn) {
 	delete(s.receivedHandshakes, c.RemotePeer())
 }
 
-func (s *Service) checkSyn(syn *pb.Syn) error {
-	if syn.NetworkID != s.networkID {
-		return ErrNetworkIDIncompatible
-	}
-
-	recoveredPK, err := crypto.Recover(syn.BzzAddress.Signature, append(syn.BzzAddress.Underlay, s.networkIDBytes...))
-	if err != nil {
-		return ErrInvalidSignature
-	}
-
-	recoveredOverlay := crypto.NewOverlayAddress(*recoveredPK, syn.NetworkID)
-	if !bytes.Equal(recoveredOverlay.Bytes(), syn.BzzAddress.Overlay) {
-		return ErrInvalidSignature
-	}
-
-	return nil
-}
-
 func (s *Service) checkAck(ack *pb.Ack) error {
-	if !bytes.Equal(ack.BzzAddress.Overlay, s.overlay.Bytes()) ||
-		!bytes.Equal(ack.BzzAddress.Underlay, s.underlay) ||
-		!bytes.Equal(ack.BzzAddress.Signature, s.signature) {
+	if !bytes.Equal(ack.BzzAddress.Overlay, s.bzzAddress.Overlay.Bytes()) ||
+		!bytes.Equal(ack.BzzAddress.Underlay, s.bzzAddress.Underlay.Bytes()) ||
+		!bytes.Equal(ack.BzzAddress.Signature, s.bzzAddress.Signature) {
 		return ErrInvalidAck
 	}
 
@@ -217,8 +194,7 @@ func (s *Service) checkAck(ack *pb.Ack) error {
 }
 
 type Info struct {
-	Overlay   swarm.Address
-	Underlay  []byte
-	NetworkID uint64
-	Light     bool
+	BzzAddress *bzz.Address
+	NetworkID  uint64
+	Light      bool
 }

@@ -19,6 +19,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	ab "github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/bzz"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/hive/pb"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -33,11 +35,12 @@ func TestBroadcastPeers(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
+	networkID := uint64(1)
 
 	// populate all expected and needed random resources for 2 full batches
 	// tests cases that uses fewer resources can use sub-slices of this data
-	var multiaddrs []ma.Multiaddr
-	var addrs []swarm.Address
+	var bzzAddresses []bzz.Address
+	var overlays []swarm.Address
 	var wantMsgs []pb.Peers
 
 	for i := 0; i < 2; i++ {
@@ -45,61 +48,71 @@ func TestBroadcastPeers(t *testing.T) {
 	}
 
 	for i := 0; i < 2*hive.MaxBatchSize; i++ {
-		ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
+		underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pk, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(pk)
+		overlay := crypto.NewOverlayAddress(pk.PublicKey, networkID)
+		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		multiaddrs = append(multiaddrs, ma)
-		addrs = append(addrs, swarm.NewAddress(createRandomBytes()))
-		err = addressbook.Put(addrs[i], multiaddrs[i])
+		bzzAddresses = append(bzzAddresses, *bzzAddr)
+		overlays = append(overlays, bzzAddr.Overlay)
+		err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: addrs[i].Bytes(), Underlay: multiaddrs[i].String()})
+		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: bzzAddresses[i].Overlay.Bytes(), Underlay: bzzAddresses[i].Underlay.Bytes(), Signature: bzzAddresses[i].Signature})
 	}
 
 	testCases := map[string]struct {
-		addresee           swarm.Address
-		peers              []swarm.Address
-		wantMsgs           []pb.Peers
-		wantOverlays       []swarm.Address
-		wantMultiAddresses []ma.Multiaddr
+		addresee         swarm.Address
+		peers            []swarm.Address
+		wantMsgs         []pb.Peers
+		wantOverlays     []swarm.Address
+		wantBzzAddresses []bzz.Address
 	}{
 		"OK - single record": {
-			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:              []swarm.Address{addrs[0]},
-			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers[:1]}},
-			wantOverlays:       []swarm.Address{addrs[0]},
-			wantMultiAddresses: []ma.Multiaddr{multiaddrs[0]},
+			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:            []swarm.Address{overlays[0]},
+			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers[:1]}},
+			wantOverlays:     []swarm.Address{overlays[0]},
+			wantBzzAddresses: []bzz.Address{bzzAddresses[0]},
 		},
 		"OK - single batch - multiple records": {
-			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:              addrs[:15],
-			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
-			wantOverlays:       addrs[:15],
-			wantMultiAddresses: multiaddrs[:15],
+			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:            overlays[:15],
+			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
+			wantOverlays:     overlays[:15],
+			wantBzzAddresses: bzzAddresses[:15],
 		},
 		"OK - single batch - max number of records": {
-			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:              addrs[:hive.MaxBatchSize],
-			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers[:hive.MaxBatchSize]}},
-			wantOverlays:       addrs[:hive.MaxBatchSize],
-			wantMultiAddresses: multiaddrs[:hive.MaxBatchSize],
+			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:            overlays[:hive.MaxBatchSize],
+			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers[:hive.MaxBatchSize]}},
+			wantOverlays:     overlays[:hive.MaxBatchSize],
+			wantBzzAddresses: bzzAddresses[:hive.MaxBatchSize],
 		},
 		"OK - multiple batches": {
-			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:              addrs[:hive.MaxBatchSize+10],
-			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers[:10]}},
-			wantOverlays:       addrs[:hive.MaxBatchSize+10],
-			wantMultiAddresses: multiaddrs[:hive.MaxBatchSize+10],
+			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:            overlays[:hive.MaxBatchSize+10],
+			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers[:10]}},
+			wantOverlays:     overlays[:hive.MaxBatchSize+10],
+			wantBzzAddresses: bzzAddresses[:hive.MaxBatchSize+10],
 		},
 		"OK - multiple batches - max number of records": {
-			addresee:           swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:              addrs[:2*hive.MaxBatchSize],
-			wantMsgs:           []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers}},
-			wantOverlays:       addrs[:2*hive.MaxBatchSize],
-			wantMultiAddresses: multiaddrs[:2*hive.MaxBatchSize],
+			addresee:         swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:            overlays[:2*hive.MaxBatchSize],
+			wantMsgs:         []pb.Peers{{Peers: wantMsgs[0].Peers}, {Peers: wantMsgs[1].Peers}},
+			wantOverlays:     overlays[:2*hive.MaxBatchSize],
+			wantBzzAddresses: bzzAddresses[:2*hive.MaxBatchSize],
 		},
 	}
 
@@ -111,6 +124,7 @@ func TestBroadcastPeers(t *testing.T) {
 			server := hive.New(hive.Options{
 				Logger:      logger,
 				AddressBook: addressbookclean,
+				NetworkID:   networkID,
 			})
 
 			// setup the stream recorder to record stream data
@@ -123,6 +137,7 @@ func TestBroadcastPeers(t *testing.T) {
 				Streamer:    recorder,
 				Logger:      logger,
 				AddressBook: addressbook,
+				NetworkID:   networkID,
 			})
 
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
@@ -151,7 +166,7 @@ func TestBroadcastPeers(t *testing.T) {
 			}
 
 			expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
-			expectMultiaddresessEventually(t, addressbookclean, tc.wantMultiAddresses)
+			expectBzzAddresessEventually(t, addressbookclean, tc.wantBzzAddresses)
 		})
 	}
 }
@@ -189,29 +204,25 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 	t.Errorf("Overlays got %v, want %v", o, wantOverlays)
 }
 
-func expectMultiaddresessEventually(t *testing.T, exporter ab.Interface, wantMultiaddresses []ma.Multiaddr) {
-	for i := 0; i < 10; i++ {
-		var stringMultiaddresses []string
-		m, err := exporter.Multiaddresses()
+func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAddresses []bzz.Address) {
+	for i := 0; i < 100; i++ {
+		time.Sleep(50 * time.Millisecond)
+		addresses, err := exporter.Multiaddresses()
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, v := range m {
-			stringMultiaddresses = append(stringMultiaddresses, v.String())
+
+		if len(addresses) != len(wantBzzAddresses) {
+			continue
 		}
 
-		var stringWantMultiAddresses []string
-		for _, v := range wantMultiaddresses {
-			stringWantMultiAddresses = append(stringWantMultiAddresses, v.String())
+		for i, v := range addresses {
+			if !v.Equal(&wantBzzAddresses[i]) {
+				continue
+			}
 		}
 
-		sort.Strings(stringMultiaddresses)
-		sort.Strings(stringWantMultiAddresses)
-		if reflect.DeepEqual(stringMultiaddresses, stringWantMultiAddresses) {
-			return
-		}
-
-		time.Sleep(50 * time.Millisecond)
+		return
 	}
 
 	m, err := exporter.Multiaddresses()
@@ -219,7 +230,7 @@ func expectMultiaddresessEventually(t *testing.T, exporter ab.Interface, wantMul
 		t.Fatal(err)
 	}
 
-	t.Errorf("Multiaddresses got %v, want %v", m, wantMultiaddresses)
+	t.Errorf("Multiaddresses got %v, want %v", m, wantBzzAddresses)
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
@@ -239,16 +250,9 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 	}
 
 	var peers []pb.Peers
-
 	for _, m := range messages {
 		peers = append(peers, *m.(*pb.Peers))
 	}
 
 	return peers, nil
-}
-
-func createRandomBytes() []byte {
-	randBytes := make([]byte, 32)
-	rand.Read(randBytes)
-	return randBytes
 }

@@ -5,14 +5,12 @@
 package addressbook
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-
-	ma "github.com/multiformats/go-multiaddr"
 )
 
 const keyPrefix = "addressbook_entry_"
@@ -22,7 +20,7 @@ var _ Interface = (*store)(nil)
 type Interface interface {
 	GetPutter
 	Overlays() ([]swarm.Address, error)
-	Multiaddresses() ([]ma.Multiaddr, error)
+	Multiaddresses() ([]bzz.Address, error)
 }
 
 type GetPutter interface {
@@ -31,11 +29,11 @@ type GetPutter interface {
 }
 
 type Getter interface {
-	Get(overlay swarm.Address) (addr ma.Multiaddr, err error)
+	Get(overlay swarm.Address) (addr bzz.Address, err error)
 }
 
 type Putter interface {
-	Put(overlay swarm.Address, addr ma.Multiaddr) (err error)
+	Put(overlay swarm.Address, addr bzz.Address) (err error)
 }
 
 type store struct {
@@ -48,22 +46,19 @@ func New(storer storage.StateStorer) Interface {
 	}
 }
 
-func (s *store) Get(overlay swarm.Address) (ma.Multiaddr, error) {
+func (s *store) Get(overlay swarm.Address) (bzz.Address, error) {
 	key := keyPrefix + overlay.String()
-	v := PeerEntry{}
-
+	v := bzz.Address{}
 	err := s.store.Get(key, &v)
 	if err != nil {
-		return nil, err
+		return bzz.Address{}, err
 	}
-	return v.Multiaddr, nil
+	return v, nil
 }
 
-func (s *store) Put(overlay swarm.Address, addr ma.Multiaddr) (err error) {
+func (s *store) Put(overlay swarm.Address, addr bzz.Address) (err error) {
 	key := keyPrefix + overlay.String()
-	pe := &PeerEntry{Overlay: overlay, Multiaddr: addr}
-
-	return s.store.Put(key, pe)
+	return s.store.Put(key, &addr)
 }
 
 func (s *store) Overlays() (overlays []swarm.Address, err error) {
@@ -90,15 +85,15 @@ func (s *store) Overlays() (overlays []swarm.Address, err error) {
 	return overlays, nil
 }
 
-func (s *store) Multiaddresses() (multis []ma.Multiaddr, err error) {
+func (s *store) Multiaddresses() (multis []bzz.Address, err error) {
 	err = s.store.Iterate(keyPrefix, func(_, value []byte) (stop bool, err error) {
-		entry := &PeerEntry{}
+		entry := &bzz.Address{}
 		err = entry.UnmarshalJSON(value)
 		if err != nil {
 			return true, err
 		}
 
-		multis = append(multis, entry.Multiaddr)
+		multis = append(multis, *entry)
 		return false, nil
 	})
 	if err != nil {
@@ -106,47 +101,4 @@ func (s *store) Multiaddresses() (multis []ma.Multiaddr, err error) {
 	}
 
 	return multis, nil
-}
-
-type PeerEntry struct {
-	Overlay   swarm.Address
-	Multiaddr ma.Multiaddr
-}
-
-func (p *PeerEntry) MarshalJSON() ([]byte, error) {
-	v := struct {
-		Overlay   string
-		Multiaddr string
-	}{
-		Overlay:   p.Overlay.String(),
-		Multiaddr: p.Multiaddr.String(),
-	}
-	return json.Marshal(&v)
-}
-
-func (p *PeerEntry) UnmarshalJSON(b []byte) error {
-	v := struct {
-		Overlay   string
-		Multiaddr string
-	}{}
-	err := json.Unmarshal(b, &v)
-	if err != nil {
-		return err
-	}
-
-	a, err := swarm.ParseHexAddress(v.Overlay)
-	if err != nil {
-		return err
-	}
-
-	p.Overlay = a
-
-	m, err := ma.NewMultiaddr(v.Multiaddr)
-	if err != nil {
-		return err
-	}
-
-	p.Multiaddr = m
-
-	return nil
 }
