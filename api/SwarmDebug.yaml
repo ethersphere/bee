@@ -1,78 +1,102 @@
 openapi: 3.0.0
 info:
   version: 0.9.6
-  title: Swarm API
-  description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations'
+  title: Swarm Debug API
+  description: 'A list of the currently provided debug interfaces to interact with the swarm node'
 security:
   - {}
 externalDocs:
-  description: Read the documentation @ Swarm-guide
+  description: Browse the documentations @ Swarm-guide
   url: 'https://swarm-guide.readthedocs.io/en/latest/'
 servers:
   - url: '{apiRoot}'
     variables:
       apiRoot:
-        default: 'http://localhost:8081/'
-        description: Base address of the local swarm node API
+        default: http://localhost:6061/
+        description: Base address of the local Swarm node debug API
 paths:
-  '/bzz':
-    post:
-      summary: 'Upload file'
+  '/addresses':
+    get:
+      summary: 'Get addresses'
       tags: 
-        - 'Endpoints on local swarm node'
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              properties:
-                file:
-                  type: array
-                  items:
-                    type: string
-                    format: binary
-          file:
-            schema:
-              type: string
-              format: binary
-          application/x-tar:
-            schema:
-              type: string
-              format: binary
-      operationId: BzzUploadFile
+        - 'Swarm Debug Endpoints'
       responses:
         default:
           description: Default response
 
-  '/bzz/{address}':
-    get:
-      summary: 'Download File'
+  '/connect/{multi-address:.+}':
+    post:
+      summary: 'Connect to address'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Swarm Debug Endpoints'
       responses:
         default:
           description: Default response
 
-  '/pingpong/{peer-id}':
-    post:
-      summary: 'Test peer'
-      tags: 
-        - 'Endpoints on local swarm node'
-      responses:
-        default:
-          description: Default response
-          
-  '/bzz-chunk/{addr}':
+  '/peers':
     get:
-      summary: 'Download Chunk'
+      summary: 'Get a list of peers'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Swarm Debug Endpoints'
       responses:
         default:
           description: Default response
+
+  '/peers/{address}':
+    delete:
+      summary: 'Remove peer'
+      tags: 
+        - 'Swarm Debug Endpoints'
+      responses:
+        default:
+          description: Default response
+
+  '/chunks/{address}':
+    get:
+      summary: 'Get chunk address'
+      tags: 
+        - 'Swarm Debug Endpoints'
+      responses:
+        default:
+          description: Default response
+
+  '/chunks-pin/{address}':
     post:
-      summary: 'Upload Chunk'
+      summary: 'Pin chunk with given address'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Swarm Debug Endpoints'
       responses:
         default:
           description: Default response
+    delete:
+      summary: 'Unpin chunk with given address'
+      tags: 
+        - 'Swarm Debug Endpoints'
+      responses:
+        default:
+          description: Default response
+    get:
+      summary: 'Get pinning status of chunk with given address'
+      tags: 
+        - 'Swarm Debug Endpoints'
+      responses:
+        default:
+          description: Default response
+
+  '/chunks-pin/':
+    get:
+      summary: 'Get list of pinned chunks'
+      tags: 
+        - 'Swarm Debug Endpoints'
+      responses:
+        default:
+          description: Default response      
+
+  '/topology':
+    get:
+      summary: 'Get topology'
+      tags: 
+        - 'Swarm Debug Endpoints'
+      responses:
+        default:
+          description: Default response      
