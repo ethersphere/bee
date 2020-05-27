@@ -207,7 +207,7 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAddresses []bzz.Address) {
 	for i := 0; i < 100; i++ {
 		time.Sleep(50 * time.Millisecond)
-		addresses, err := exporter.Multiaddresses()
+		addresses, err := exporter.Addresses()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -225,7 +225,7 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 		return
 	}
 
-	m, err := exporter.Multiaddresses()
+	m, err := exporter.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}

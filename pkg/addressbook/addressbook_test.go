@@ -74,7 +74,7 @@ func run(t *testing.T, f bookFunc) {
 		t.Fatalf("expected overlay len %v, got %v", 1, len(overlays))
 	}
 
-	addresses, err := store.Multiaddresses()
+	addresses, err := store.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,7 +20,7 @@ var _ Interface = (*store)(nil)
 type Interface interface {
 	GetPutter
 	Overlays() ([]swarm.Address, error)
-	Multiaddresses() ([]bzz.Address, error)
+	Addresses() ([]bzz.Address, error)
 }
 
 type GetPutter interface {
@@ -85,7 +85,7 @@ func (s *store) Overlays() (overlays []swarm.Address, err error) {
 	return overlays, nil
 }
 
-func (s *store) Multiaddresses() (multis []bzz.Address, err error) {
+func (s *store) Addresses() (multis []bzz.Address, err error) {
 	err = s.store.Iterate(keyPrefix, func(_, value []byte) (stop bool, err error) {
 		entry := &bzz.Address{}
 		err = entry.UnmarshalJSON(value)
