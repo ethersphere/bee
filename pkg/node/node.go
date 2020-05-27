@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pusher"
@@ -339,44 +340,13 @@ func NewBee(o Options) (*Bee, error) {
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
-
-				comp, _ := ma.SplitFirst(addr)
-				if comp.Protocol().Name == "dnsaddr" {
-					addresses, err := resolveAddr(p2pCtx, addr)
-					if err != nil {
-						logger.Errorf("resolveAddr fail %s: %v", addr, err)
-					}
-					for _, ad := range addresses {
-						logger.Infof("connecting to %s", ad)
-						overlay, err := p2ps.Connect(p2pCtx, ad)
-						if err != nil {
-							logger.Debugf("connect fail %s: %v", a, err)
-							logger.Errorf("connect to bootnode %s", a)
-						}
-
-						err = addressbook.Put(overlay, ad)
-						if err != nil {
-							_ = p2ps.Disconnect(overlay)
-							logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
-							logger.Errorf("persisting node %s", a)
-						}
-
-						if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-							_ = p2ps.Disconnect(overlay)
-							logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
-							logger.Errorf("connect to bootnode %s", a)
-						}
-
-						if err == nil {
-							break
-						}
-					}
-				} else {
+				var count int
+				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
 					overlay, err := p2ps.Connect(p2pCtx, addr)
 					if err != nil {
 						logger.Debugf("connect fail %s: %v", a, err)
 						logger.Errorf("connect to bootnode %s", a)
-						return
+						return false, nil
 					}
 
 					err = addressbook.Put(overlay, addr)
@@ -384,15 +354,22 @@ func NewBee(o Options) (*Bee, error) {
 						_ = p2ps.Disconnect(overlay)
 						logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
 						logger.Errorf("persisting node %s", a)
-						return
+						return false, nil
 					}
 
 					if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 						_ = p2ps.Disconnect(overlay)
 						logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
 						logger.Errorf("connect to bootnode %s", a)
-						return
+						return false, nil
 					}
+					count++
+					// connect to max 3 bootnodes
+					return count > 3, nil
+				}); err != nil {
+					logger.Debugf("connect fail %s: %v", a, err)
+					logger.Errorf("connect to bootnode %s", a)
+					return
 				}
 			}(a)
 		}
