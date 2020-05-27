@@ -149,12 +149,12 @@ func TestPinGC(t *testing.T) {
 
 	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
-	defer setTestHookCollectGarbage(func(collectedCount uint64) {
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
 		case <-closed:
 		}
-	})()
+	}))
 
 	db := newTestDB(t, &Options{
 		Capacity: dbCapacity,
