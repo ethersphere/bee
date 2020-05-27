@@ -22,6 +22,10 @@ var (
 	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
 	fullCloseTimeout          = fullCloseTimeoutDefault // timeout of fullclose
 	fullCloseTimeoutDefault   = 5 * time.Second         // default timeout used for helper function to reset timeout when changed
+
+	noopMiddleware = func(f p2p.HandlerFunc) p2p.HandlerFunc {
+		return f
+	}
 )
 
 type Recorder struct {
@@ -47,6 +51,9 @@ func New(opts ...Option) *Recorder {
 	r := &Recorder{
 		records: make(map[string][]*Record),
 	}
+
+	r.middlewares = append(r.middlewares, noopMiddleware)
+
 	for _, o := range opts {
 		o.apply(r)
 	}
@@ -118,7 +125,7 @@ func (r *Recorder) Records(addr swarm.Address, protocolName, protocolVersio, str
 
 // WaitRecords waits for some time for records to come into the recorder. If msgs is 0, the timeoutSec period is waited to verify
 // that _no_ messages arrive during this time period.
-func (r *Recorder) WaitRecords(t *testing.T, addr swarm.Address, proto, version, stream string, msgs int, timeoutSec int) []*Record {
+func (r *Recorder) WaitRecords(t *testing.T, addr swarm.Address, proto, version, stream string, msgs, timeoutSec int) []*Record {
 	t.Helper()
 	wait := 10 * time.Millisecond
 	iters := int((time.Duration(timeoutSec) * time.Second) / wait)

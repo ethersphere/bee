@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/pushsync"
@@ -39,12 +38,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	psPeer, storerPeer := createPushSyncNode(t, closestPeer, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
-	recorder := streamtest.New(
-		streamtest.WithProtocols(psPeer.Protocol()),
-		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
-			return f
-		}),
-	)
+	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
@@ -90,23 +84,13 @@ func TestHandler(t *testing.T) {
 	psClosestPeer, closestStorerPeerDB := createPushSyncNode(t, closestPeer, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
-	closestRecorder := streamtest.New(
-		streamtest.WithProtocols(psClosestPeer.Protocol()),
-		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
-			return f
-		}),
-	)
+	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()))
 
 	// creating the pivot peer
 	psPivot, storerPivotDB := createPushSyncNode(t, pivotPeer, closestRecorder, mock.WithClosestPeer(closestPeer))
 	defer storerPivotDB.Close()
 
-	pivotRecorder := streamtest.New(
-		streamtest.WithProtocols(psPivot.Protocol()),
-		streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
-			return f
-		}),
-	)
+	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()))
 
 	// Creating the trigger peer
 	psTriggerPeer, triggerStorerDB := createPushSyncNode(t, triggerPeer, pivotRecorder, mock.WithClosestPeer(pivotPeer))
