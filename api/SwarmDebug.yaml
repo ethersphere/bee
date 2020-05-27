@@ -1,0 +1,78 @@
+openapi: 3.0.0
+info:
+  version: 0.9.6
+  title: Swarm API
+  description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations'
+security:
+  - {}
+externalDocs:
+  description: Read the documentation @ Swarm-guide
+  url: 'https://swarm-guide.readthedocs.io/en/latest/'
+servers:
+  - url: '{apiRoot}'
+    variables:
+      apiRoot:
+        default: 'http://localhost:8081/'
+        description: Base address of the local swarm node API
+paths:
+  '/bzz':
+    post:
+      summary: 'Upload file'
+      tags: 
+        - 'Endpoints on local swarm node'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                file:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+          file:
+            schema:
+              type: string
+              format: binary
+          application/x-tar:
+            schema:
+              type: string
+              format: binary
+      operationId: BzzUploadFile
+      responses:
+        default:
+          description: Default response
+
+  '/bzz/{address}':
+    get:
+      summary: 'Download File'
+      tags: 
+        - 'Endpoints on local swarm node'
+      responses:
+        default:
+          description: Default response
+
+  '/pingpong/{peer-id}':
+    post:
+      summary: 'Test peer'
+      tags: 
+        - 'Endpoints on local swarm node'
+      responses:
+        default:
+          description: Default response
+          
+  '/bzz-chunk/{addr}':
+    get:
+      summary: 'Download Chunk'
+      tags: 
+        - 'Endpoints on local swarm node'
+      responses:
+        default:
+          description: Default response
+    post:
+      summary: 'Upload Chunk'
+      tags: 
+        - 'Endpoints on local swarm node'
+      responses:
+        default:
+          description: Default response
