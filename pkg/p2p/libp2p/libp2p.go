@@ -47,7 +47,7 @@ type Service struct {
 	metrics          metrics
 	networkID        uint64
 	handshakeService *handshake.Service
-	addressbook      addressbook.Putter
+	addressbook      addressbook.GetPutter
 	peers            *peerRegistry
 	peerHandler      func(context.Context, swarm.Address) error
 	conectionBreaker breaker.Interface
@@ -59,7 +59,7 @@ type Options struct {
 	PrivateKey  *ecdsa.PrivateKey
 	DisableWS   bool
 	DisableQUIC bool
-	Addressbook addressbook.Putter
+	Addressbook addressbook.GetPutter
 	Logger      logging.Logger
 	Tracer      *tracing.Tracer
 }
@@ -154,7 +154,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, h.Addrs()[0], signer, networkID, o.Logger)
+	underlays, err := buildFullMAs(h.Addrs(), h.ID())
+	if err != nil {
+		return nil, fmt.Errorf("handshake service: %w", err)
+	}
+
+	handshakeService, err := handshake.New(overlay, underlays[0], signer, networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -198,6 +203,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		_ = stream.Close()
+
 		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
@@ -278,19 +284,25 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() (addrs []ma.Multiaddr, err error) {
+func (s *Service) Addresses() ([]ma.Multiaddr, error) {
+	return buildFullMAs(s.host.Addrs(), s.host.ID())
+}
+
+func buildFullMAs(addrs []ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	// Build host multiaddress
-	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", s.host.ID().Pretty()))
+	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.Pretty()))
 	if err != nil {
 		return nil, err
 	}
 
+	var addreses []ma.Multiaddr
 	// Now we can build a full multiaddress to reach this host
 	// by encapsulating both addresses:
-	for _, addr := range s.host.Addrs() {
-		addrs = append(addrs, addr.Encapsulate(hostAddr))
+	for _, addr := range addrs {
+		addreses = append(addreses, addr.Encapsulate(hostAddr))
 	}
-	return addrs, nil
+
+	return addreses, nil
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {

@@ -115,7 +115,6 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 	s.logger.Tracef("handshake finished for peer %s", swarm.NewAddress(resp.Syn.BzzAddress.Overlay).String())
 	return &Info{
 		BzzAddress: bzzAddress,
-		NetworkID:  resp.Syn.NetworkID,
 		Light:      resp.Syn.Light,
 	}, nil
 }
@@ -171,7 +170,6 @@ func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err 
 	s.logger.Tracef("handshake finished for peer %s", req.BzzAddress.Overlay)
 	return &Info{
 		BzzAddress: bzzAddress,
-		NetworkID:  req.NetworkID,
 		Light:      req.Light,
 	}, nil
 }
@@ -194,6 +192,5 @@ func (s *Service) checkAck(ack *pb.Ack) error {
 
 type Info struct {
 	BzzAddress *bzz.Address
-	NetworkID  uint64
 	Light      bool
 }

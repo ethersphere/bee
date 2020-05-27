@@ -132,14 +132,16 @@ func (s *Service) peersHandler(_ context.Context, peer p2p.Peer, stream p2p.Stre
 	for _, newPeer := range peersReq.Peers {
 		bzzAddress, err := bzz.Parse(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
 		if err != nil {
-			s.logger.Infof("Skipping peer in response %s: %w", newPeer, err)
+			s.logger.Info("Skipping peer in response %s: %w", newPeer, err)
 			continue
 		}
 
 		err = s.addressBook.Put(bzzAddress.Overlay, *bzzAddress)
 		if err != nil {
-			return err
+			s.logger.Warningf("Skipping peer in response %s: %w", newPeer, err)
+			continue
 		}
+
 		if s.peerHandler != nil {
 			if err := s.peerHandler(context.Background(), bzzAddress.Overlay); err != nil {
 				return err

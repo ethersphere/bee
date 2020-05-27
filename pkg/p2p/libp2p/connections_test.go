@@ -36,7 +36,6 @@ func TestConnectDisconnect(t *testing.T) {
 	s2, overlay2 := newService(t, 1, libp2p.Options{})
 
 	addr := serviceUnderlayAddress(t, s1)
-
 	overlay, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)

@@ -161,6 +161,7 @@ func NewBee(o Options) (*Bee, error) {
 	hive := hive.New(hive.Options{
 		Streamer:    p2ps,
 		AddressBook: addressbook,
+		NetworkID:   o.NetworkID,
 		Logger:      logger,
 	})
 
@@ -316,7 +317,7 @@ func NewBee(o Options) (*Bee, error) {
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("topology add peer fail %s: %v", overlay, err)
-				logger.Errorf("topology add peer %s", overlay)
+				logger.Errorf("connect to peer %s from addressbook", overlay)
 				return
 			}
 
