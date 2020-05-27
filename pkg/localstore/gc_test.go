@@ -27,12 +27,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndtr/goleveldb/leveldb"
-
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestDB_collectGarbageWorker tests garbage collection runs

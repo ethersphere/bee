@@ -19,6 +19,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -105,6 +106,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				triggerPushFeed = true
 			}
 			gcSizeChange += c
+			fmt.Println("Added address :", ch.Address().String())
 		}
 
 	case storage.ModePutSync:
