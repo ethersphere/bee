@@ -25,6 +25,12 @@ type Address struct {
 	Signature []byte
 }
 
+type addressJSON struct {
+	Overlay   string
+	Underlay  string
+	Signature string
+}
+
 func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64) (*Address, error) {
 	networkIDBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(networkIDBytes, networkID)
@@ -70,25 +76,16 @@ func (a *Address) Equal(b *Address) bool {
 }
 
 func (p *Address) MarshalJSON() ([]byte, error) {
-	v := struct {
-		Overlay   string
-		Underlay  string
-		Signature string
-	}{
+	return json.Marshal(&addressJSON{
 		Overlay:   p.Overlay.String(),
 		Underlay:  p.Underlay.String(),
 		Signature: base64.StdEncoding.EncodeToString(p.Signature),
-	}
-	return json.Marshal(&v)
+	})
 }
 
 func (p *Address) UnmarshalJSON(b []byte) error {
-	v := struct {
-		Overlay   string
-		Underlay  string
-		Signature string
-	}{}
-	err := json.Unmarshal(b, &v)
+	v := &addressJSON{}
+	err := json.Unmarshal(b, v)
 	if err != nil {
 		return err
 	}
@@ -107,9 +104,5 @@ func (p *Address) UnmarshalJSON(b []byte) error {
 
 	p.Underlay = m
 	p.Signature, err = base64.StdEncoding.DecodeString(v.Signature)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }

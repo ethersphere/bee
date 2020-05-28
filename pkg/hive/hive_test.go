@@ -230,7 +230,7 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 		t.Fatal(err)
 	}
 
-	t.Errorf("Multiaddresses got %v, want %v", m, wantBzzAddresses)
+	t.Errorf("Bzz addresses got %v, want %v", m, wantBzzAddresses)
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {

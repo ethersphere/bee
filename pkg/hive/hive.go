@@ -98,7 +98,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				s.logger.Debugf("Peer not found %s", p, err)
+				s.logger.Debugf("Peer not found %s", p)
 				continue
 			}
 			return err

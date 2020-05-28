@@ -157,7 +157,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	underlays, err := buildFullMAs(h.Addrs(), h.ID())
 	if err != nil {
-		return nil, fmt.Errorf("handshake service: %w", err)
+		return nil, fmt.Errorf("could not build host multiaddresses: %w", err)
 	}
 
 	handshakeService, err := handshake.New(overlay, underlays[0], signer, networkID, o.Logger)
