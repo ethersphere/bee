@@ -16,6 +16,7 @@ const (
 	SectionSize = 32
 	Branches    = 128
 	ChunkSize   = SectionSize * Branches
+	HashSize    = 32
 	MaxPO       = 16
 )
 
