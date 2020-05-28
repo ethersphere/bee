@@ -5,12 +5,54 @@
 package entry_test
 
 import (
+	"bytes"
+	"context"
+	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/entry"
+	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type readNoopCloser struct {
+	io.Reader
+}
+
+func NewReadNoopCloser(reader io.Reader) io.ReadCloser {
+	return &readNoopCloser {
+		Reader: reader,
+	}
+}
+
+func (t *readNoopCloser) Close() error {
+	return nil
+}
+
 func TestEntry(t *testing.T) {
 	_ = entry.New(swarm.ZeroAddress)
+}
+
+func TestMetadata(t *testing.T) {
+	e := entry.New(swarm.ZeroAddress)
+	m := entry.NewMetadata("foo.bin")
+	m = m.WithMimeType("text/plain")
+
+	store := mock.NewStorer()
+	s := splitter.NewSimpleSplitter(store)
+
+	metadataBytes, err := m.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metadataBuf := bytes.NewBuffer(metadataBytes)
+	metadataReadCloser := NewReadNoopCloser(metadataBuf)
+	addr, err := s.Split(context.Background(), metadataReadCloser, int64(len(metadataBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	e.SetMetadata(addr)
 }
