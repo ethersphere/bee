@@ -66,11 +66,11 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
-	peerID, err := s.peerSuggester.ClosestPeer(addr)
+	peer, err := s.peerSuggester.ClosestPeer(addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get closest: %w", err)
 	}
-	stream, err := s.streamer.NewStream(ctx, peerID, nil, protocolName, protocolVersion, streamName)
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
@@ -81,12 +81,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data [
 	if err := w.WriteMsg(&pb.Request{
 		Addr: addr.Bytes(),
 	}); err != nil {
-		return nil, fmt.Errorf("stream write: %w", err)
+		return nil, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
 
 	var d pb.Delivery
 	if err := r.ReadMsg(&d); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
 
 	return d.Data, nil
@@ -97,18 +97,18 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	defer stream.Close()
 	var req pb.Request
 	if err := r.ReadMsg(&req); err != nil {
-		return err
+		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
 
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
 	if err != nil {
-		return err
+		return fmt.Errorf("get from store: %w peer %s", err, p.Address.String())
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data: chunk.Data(),
 	}); err != nil {
-		return err
+		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
 	return nil
