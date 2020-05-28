@@ -37,15 +37,6 @@ func TestBzzAddress(t *testing.T) {
 		t.Fatalf("got %s expected %s", bzzAddress2, bzzAddress)
 	}
 
-	bzzAddress3, err := bzz.Parse(bzzAddress2.Underlay.Bytes(), bzzAddress2.Overlay.Bytes(), bzzAddress2.Signature, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bzzAddress3.Equal(bzzAddress2) {
-		t.Fatalf("got %s expected %s", bzzAddress2, bzzAddress)
-	}
-
 	bytes, err := bzzAddress.MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
