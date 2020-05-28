@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/tags"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -20,7 +21,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Presense of this header means that it needs to be tagged
+// Presence of this header means that it needs to be tagged
 const TagHeaderName = "x-swarm-tag"
 
 // Presence of this header in the HTTP request indicates the chunk needs to be pinned.
@@ -38,6 +39,18 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// create the Tag for the chunk
+	tagName := r.Header.Get(TagHeaderName)
+	if tagName == "" {
+		tagName = fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
+	}
+	tag, err := s.Tags.Create(tagName, 1, false)
+	if err != nil {
+		s.Logger.Debugf("bzz-chunk: tag creation error: %v, addr %s", err, address)
+		s.Logger.Error("bzz-chunk: tag creation error")
+		jsonhttp.InternalServerError(w, "cannot create tag")
+	}
+
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: read chunk data error: %v, addr %s", err, address)
@@ -47,13 +60,19 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	_, err = s.Storer.Put(ctx, storage.ModePutUpload, swarm.NewChunk(address, data))
+	seen, err := s.Storer.Put(ctx, storage.ModePutUpload, swarm.NewChunk(address, data))
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: chunk write error: %v, addr %s", err, address)
 		s.Logger.Error("bzz-chunk: chunk write error")
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
+	} else if len(seen) > 0 && seen[0] {
+		tag.Inc(tags.StateSeen)
 	}
+
+	// Indicate that the chunk is stored
+	tag.Inc(tags.StateStored)
+
 	// Check if this chunk needs to pinned and pin it
 	pinHeaderValues := r.Header.Get(PinHeaderName)
 	if pinHeaderValues != "" && strings.ToLower(pinHeaderValues) == "true" {
@@ -66,17 +85,6 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Tag the chunk and  send back a UUid so that it can be tracked
-	tagName := r.Header.Get(TagHeaderName)
-	if tagName == "" {
-		tagName = fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
-	}
-	tag, err := s.Tags.Create(tagName, 1, false)
-	if err != nil {
-		s.Logger.Debugf("bzz-chunk: tag creation error: %v, addr %s", err, address)
-		s.Logger.Error("bzz-chunk: tag creation error")
-		jsonhttp.InternalServerError(w, "cannot create tag")
-	}
 	tag.Address = address
 	w.Header().Set(TagHeaderName, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderName)

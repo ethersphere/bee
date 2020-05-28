@@ -3,6 +3,7 @@ package mock_test
 import (
 	"bytes"
 	"context"
+	"github.com/ethersphere/bee/pkg/tags"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -64,7 +65,7 @@ func TestMockValidatingStorer(t *testing.T) {
 	validContent := []byte("bbaatt")
 	invalidContent := []byte("bbaattss")
 
-	s := mock.NewValidatingStorer(validator.NewMockValidator(validAddress, validContent))
+	s := mock.NewValidatingStorer(validator.NewMockValidator(validAddress, validContent), tags.NewTags())
 
 	ctx := context.Background()
 

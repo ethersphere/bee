@@ -15,7 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -38,6 +37,7 @@ import (
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
@@ -203,6 +203,7 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:      storer,
 		Logger:      logger,
 	})
+	tag := tags.NewTags()
 
 	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
 
@@ -221,11 +222,11 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:        storer,
 		PeerSuggester: topologyDriver,
 		PushSyncer:    pushSyncProtocol,
+		Tags:          tag,
 		Logger:        logger,
 	})
 	b.pusherCloser = pushSyncPusher
 
-	tag := tags.NewTags()
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server

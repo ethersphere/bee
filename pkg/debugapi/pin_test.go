@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // TestPinChunkHandler checks for pinning, unpinning and listing of chunks.
@@ -25,13 +26,16 @@ func TestPinChunkHandler(t *testing.T) {
 	hash := swarm.MustParseHexAddress("aabbcc")
 	data := []byte("bbaatt")
 	mockValidator := validator.NewMockValidator(hash, data)
-	mockValidatingStorer := mock.NewValidatingStorer(mockValidator)
+	tag := tags.NewTags()
+	mockValidatingStorer := mock.NewValidatingStorer(mockValidator, tag)
 	debugTestServer := newTestServer(t, testServerOptions{
 		Storer: mockValidatingStorer,
+		Tags:   tag,
 	})
 	// This server is used to store chunks
 	bzzTestServer := newBZZTestServer(t, testServerOptions{
 		Storer: mockValidatingStorer,
+		Tags:   tag,
 	})
 
 	// bad chunk address
