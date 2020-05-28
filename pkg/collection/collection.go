@@ -27,4 +27,5 @@ type Collection interface {
 type Entry interface {
 	Reference() swarm.Address
 	Metadata(MetadataType) swarm.Address
+	SetMetadata(MetadataType, swarm.Address)
 }

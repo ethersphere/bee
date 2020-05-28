@@ -14,10 +14,14 @@ type Entry struct {
 	meta      swarm.Address
 }
 
-func New(reference swarm.Address) collection.Entry {
+func New(reference swarm.Address) *Entry {
 	return &Entry{
 		reference: reference,
 	}
+}
+
+func (e *Entry) SetMetadata(metadataAddress swarm.Address) {
+	e.meta = metadataAddress
 }
 
 func (e *Entry) Reference() swarm.Address {
@@ -25,5 +29,5 @@ func (e *Entry) Reference() swarm.Address {
 }
 
 func (e *Entry) Metadata(collection.MetadataType) swarm.Address {
-	return swarm.ZeroAddress
+	return e.meta
 }
