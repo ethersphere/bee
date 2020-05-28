@@ -37,6 +37,31 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 	}
 }
 
+func ResponseDirectReceiveHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
+	response interface{}) http.Header {
+	t.Helper()
+
+	resp := request(t, client, method, url, body, responseCode, nil)
+	defer resp.Body.Close()
+
+	got, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = bytes.TrimSpace(got)
+
+	want, err := json.Marshal(response)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Errorf("got response %s, want %s", string(got), string(want))
+	}
+
+	return resp.Header
+}
+
 // ResponseDirectWithJson checks for responses in json format. It is useful in cases where the response is json.
 func ResponseDirectWithJson(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {
 	t.Helper()
@@ -66,7 +91,7 @@ func ResponseDirectWithJson(t *testing.T, client *http.Client, method, url strin
 	}
 }
 
-func ResponseDirectWithHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
+func ResponseDirectSendHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
 	response interface{}, headers http.Header) {
 	t.Helper()
 

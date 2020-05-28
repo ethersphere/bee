@@ -12,12 +12,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
-
 	"github.com/gorilla/mux"
 )
 
@@ -67,25 +66,20 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check if this chunk needs to be tagged, then send back a UUid so that it can be tracked
-	tagHeaderValues := r.Header.Get(TagHeaderName)
-	if tagHeaderValues != "" {
-		UUid := tags.NewTags() //give the swarm.address as argument later
-		w.Header().Set(TagHeaderName, fmt.Sprint(UUid))
-		w.Header().Set("Access-Control-Expose-Headers", TagHeaderName)
+	// Tag the chunk and  send back a UUid so that it can be tracked
+	tagName := r.Header.Get(TagHeaderName)
+	if tagName == "" {
+		tagName = fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 	}
-
-	// Check if this chunk needs to pinned and pin it
-	pinHeaderValues := r.Header.Get(PinHeaderName)
-	if pinHeaderValues != "" && strings.ToLower(pinHeaderValues) == "true" {
-		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
-		if err != nil {
-			s.Logger.Debugf("bzz-chunk: chunk pinning error: %v, addr %s", err, address)
-			s.Logger.Error("bzz-chunk: chunk pinning error")
-			jsonhttp.InternalServerError(w, "cannot pin chunk")
-			return
-		}
+	tag, err := s.Tags.Create(tagName, 1, false)
+	if err != nil {
+		s.Logger.Debugf("bzz-chunk: tag creation error: %v, addr %s", err, address)
+		s.Logger.Error("bzz-chunk: tag creation error")
+		jsonhttp.InternalServerError(w, "cannot create tag")
 	}
+	tag.Address = address
+	w.Header().Set(TagHeaderName, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", TagHeaderName)
 
 	jsonhttp.OK(w, nil)
 }

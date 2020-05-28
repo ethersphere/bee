@@ -45,13 +45,10 @@ func (s *server) setupRouting() {
 		"POST": http.HandlerFunc(s.chunkUploadHandler),
 	})
 
-	router.Handle("/bzz-tag/{addr}", jsonhttp.MethodHandler{
+	router.Handle("/bzz-tag/addr/{addr}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getTagInfoUsingAddress),
 	})
-	router.Handle("/bzz-tag/{uuid}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTagInfoUsingUUid),
-	})
-	router.Handle("/bzz-tag/{name}", jsonhttp.MethodHandler{
+	router.Handle("/bzz-tag/uuid/{uuid}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getTagInfoUsingUUid),
 	})
 

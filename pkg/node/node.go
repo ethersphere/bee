@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -227,11 +228,13 @@ func NewBee(o Options) (*Bee, error) {
 	})
 	b.pusherCloser = pushSyncPusher
 
+	tag := tags.NewTags()
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
+			Tags:     tag,
 			Storer:   ns,
 			Logger:   logger,
 			Tracer:   tracer,

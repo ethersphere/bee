@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	"github.com/ethersphere/bee/pkg/tags"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -26,15 +27,16 @@ func TestChunkUploadDownload(t *testing.T) {
 
 	var (
 		resource             = func(addr swarm.Address) string { return "/bzz-chunk/" + addr.String() }
-		tagResource          = func(addr swarm.Address) string { return "/bzz-tag/" + addr.String() }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		invalidHash          = swarm.MustParseHexAddress("bbccdd")
 		validContent         = []byte("bbaatt")
 		invalidContent       = []byte("bbaattss")
 		mockValidator        = validator.NewMockValidator(validHash, validContent)
 		mockValidatingStorer = mock.NewValidatingStorer(mockValidator)
+		tag                  = tags.NewTags()
 		client, cleanup      = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
+			Tags:   tag,
 		})
 	)
 	defer cleanup()
@@ -80,7 +82,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	t.Run("pin-invalid-value", func(t *testing.T) {
 		headers := make(map[string][]string)
 		headers[api.PinHeaderName] = []string{"hdgdh"}
-		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirectSendHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, headers)
@@ -92,7 +94,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
 		headers := make(map[string][]string)
-		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirectSendHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, headers)
@@ -105,7 +107,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	t.Run("pin-ok", func(t *testing.T) {
 		headers := make(map[string][]string)
 		headers[api.PinHeaderName] = []string{"True"}
-		jsonhttptest.ResponseDirectWithHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirectSendHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, headers)
@@ -113,31 +115,6 @@ func TestChunkUploadDownload(t *testing.T) {
 		// Also check if the chunk is pinned
 		if mockValidatingStorer.GetModeSet(validHash) != storage.ModeSetPin {
 			t.Fatal("chunk is not pinned")
-		}
-
-	})
-
-	t.Run("tag", func(t *testing.T) {
-		headers := make(map[string][]string)
-		headers[api.TagHeaderName] = []string{"ananymous"}
-		// try to fetch the same chunk
-		resp := request(t, client, http.MethodGet, resource(validHash), nil, http.StatusOK)
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !bytes.Equal(validContent, data) {
-			t.Fatal("data retrieved doesnt match uploaded content")
-		}
-		uuid := resp.Header.Get(api.TagHeaderName)
-		// later we have to check if this uuid returns HTTP results
-
-		// try to fetch the tag using the same UUID, it it is not there it is error
-		resp = request(t, client, http.MethodGet, tagResource(validHash), nil, http.StatusOK)
-		rcvdUUid := resp.Header.Get(api.TagHeaderName)
-		if uuid != rcvdUUid {
-			t.Fatalf("invalid response uid received")
 		}
 
 	})
