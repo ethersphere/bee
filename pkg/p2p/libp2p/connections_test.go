@@ -376,10 +376,12 @@ func TestTopologyNotifiee(t *testing.T) {
 	waitAddrSet(t, &n1disconnectedAddr, &mtx, overlay2)
 	waitAddrSet(t, &n2disconnectedAddr, &mtx, overlay1)
 
+	mtx.Lock()
 	n1connectedAddr = swarm.ZeroAddress
 	n2connectedAddr = swarm.ZeroAddress
 	n1disconnectedAddr = swarm.ZeroAddress
 	n2disconnectedAddr = swarm.ZeroAddress
+	mtx.Unlock()
 
 	addr2 := serviceUnderlayAddress(t, s2)
 	o2, err := s1.Connect(ctx, addr2)
