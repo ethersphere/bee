@@ -37,10 +37,10 @@ func TestEntry(t *testing.T) {
 func TestMetadata(t *testing.T) {
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store)
-	data := []bytes("foo")
+	data := []byte("foo")
 	buf := bytes.NewBuffer(data)
 	bufCloser := NewReadNoopCloser(buf)
-	addr, err := s.Split(context.Background(), bufCloser, len(data))
+	addr, err := s.Split(context.Background(), bufCloser, int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestMetadata(t *testing.T) {
 
 	metadataBuf := bytes.NewBuffer(metadataBytes)
 	metadataReadCloser := NewReadNoopCloser(metadataBuf)
-	addr, err := s.Split(context.Background(), metadataReadCloser, int64(len(metadataBytes)))
+	addr, err = s.Split(context.Background(), metadataReadCloser, int64(len(metadataBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
