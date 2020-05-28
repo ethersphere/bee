@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
+	"github.com/ethersphere/bee/pkg/kademlia"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
@@ -37,7 +38,6 @@ import (
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology/full"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
@@ -135,13 +135,10 @@ func NewBee(o Options) (*Bee, error) {
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
 
-	p2ps, err := libp2p.New(p2pCtx, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, crypto.NewDefaultSigner(swarmPrivateKey), o.NetworkID, address, o.Addr, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
-		Overlay:     address,
-		Addr:        o.Addr,
 		DisableWS:   o.DisableWS,
 		DisableQUIC: o.DisableQUIC,
-		NetworkID:   o.NetworkID,
 		Addressbook: addressbook,
 		Logger:      logger,
 		Tracer:      tracer,
@@ -172,10 +169,10 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("hive service: %w", err)
 	}
 
-	topologyDriver := full.New(hive, addressbook, p2ps, logger, address)
+	topologyDriver := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Logger: logger})
 	b.topologyCloser = topologyDriver
 	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
-	p2ps.SetPeerAddedHandler(topologyDriver.AddPeer)
+	p2ps.SetNotifier(topologyDriver)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)

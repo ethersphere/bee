@@ -79,7 +79,7 @@ func RunPersist(t *testing.T, f func(t *testing.T, dir string) storage.StateStor
 	testStoreIterator(t, persistedStore, "some_other_prefix", 1000)
 }
 
-func Run(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
+func Run(t *testing.T, f func(t *testing.T) storage.StateStorer) {
 	t.Helper()
 
 	t.Run("test_put_get", func(t *testing.T) { testPutGet(t, f) })
@@ -87,13 +87,11 @@ func Run(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
 	t.Run("test_iterator", func(t *testing.T) { testIterator(t, f) })
 }
 
-func testDelete(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
+func testDelete(t *testing.T, f func(t *testing.T) storage.StateStorer) {
 	t.Helper()
 
 	// create a store
-	store, cleanup := f(t)
-	defer store.Close()
-	defer cleanup()
+	store := f(t)
 
 	// insert some values
 	insertValues(t, store, key1, key2, value1, value2)
@@ -114,13 +112,11 @@ func testDelete(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())
 	testEmpty(t, store)
 }
 
-func testPutGet(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
+func testPutGet(t *testing.T, f func(t *testing.T) storage.StateStorer) {
 	t.Helper()
 
 	// create a store
-	store, cleanup := f(t)
-	defer store.Close()
-	defer cleanup()
+	store := f(t)
 
 	// insert some values
 	insertValues(t, store, key1, key2, value1, value2)
@@ -129,13 +125,11 @@ func testPutGet(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())
 	testPersistedValues(t, store, key1, key2, value1, value2)
 }
 
-func testIterator(t *testing.T, f func(t *testing.T) (storage.StateStorer, func())) {
+func testIterator(t *testing.T, f func(t *testing.T) storage.StateStorer) {
 	t.Helper()
 
 	// create a store
-	store, cleanup := f(t)
-	defer store.Close()
-	defer cleanup()
+	store := f(t)
 
 	// insert some values
 	insert(t, store, "some_prefix", 1000)

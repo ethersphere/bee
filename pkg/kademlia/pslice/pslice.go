@@ -16,8 +16,8 @@ import (
 // in order to reduce duplicate PO calculation which is normally known and already needed in the
 // calling context.
 type PSlice struct {
-	peers []swarm.Address
-	bins  []uint
+	peers []swarm.Address // the slice of peers
+	bins  []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
 
 	sync.Mutex
 }
@@ -61,7 +61,7 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 	return nil
 }
 
-// EachBinRev iterates over all peers from shallowest to deepest.
+// EachBinRev iterates over all peers from shallowest bin to deepest.
 func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	s.Lock()
 	defer s.Unlock()
@@ -93,6 +93,13 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 		}
 	}
 	return nil
+}
+
+func (s *PSlice) Length() int {
+	s.Lock()
+	defer s.Unlock()
+
+	return len(s.peers)
 }
 
 // ShallowestEmpty returns the shallowest empty bin if one exists.
@@ -143,10 +150,10 @@ func (s *PSlice) Add(addr swarm.Address, po uint8) {
 	if e, _ := s.exists(addr); e {
 		return
 	}
-
 	head := s.peers[:s.bins[po]]
 	tail := append([]swarm.Address{addr}, s.peers[s.bins[po]:]...)
 	s.peers = append(head, tail...)
+
 	s.incDeeper(po)
 }
 
@@ -164,7 +171,7 @@ func (s *PSlice) Remove(addr swarm.Address, po uint8) {
 	s.decDeeper(po)
 }
 
-// incDeeper increments the peers slice bin index for proximity order > po.
+// incDeeper increments the peers slice bin index for proximity order > po for non-empty bins only.
 // Must be called under lock.
 func (s *PSlice) incDeeper(po uint8) {
 	if po > uint8(len(s.bins)) {
@@ -175,9 +182,7 @@ func (s *PSlice) incDeeper(po uint8) {
 		// don't increment if the value in k.bins == len(k.peers)
 		// otherwise the calling context gets an out of bound error
 		// when accessing the slice
-		if s.bins[i] < uint(len(s.peers)) {
-			s.bins[i]++
-		}
+		s.bins[i]++
 	}
 }
 

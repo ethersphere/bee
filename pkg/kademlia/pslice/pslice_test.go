@@ -304,8 +304,7 @@ func testIterator(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iteratio
 }
 
 func chkLen(t *testing.T, ps *pslice.PSlice, l int) {
-	pp := pslice.PSlicePeers(ps)
-	if lp := len(pp); lp != l {
+	if lp := ps.Length(); lp != l {
 		t.Fatalf("length mismatch, want %d got %d", l, lp)
 	}
 }

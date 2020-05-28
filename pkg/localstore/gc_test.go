@@ -19,6 +19,7 @@ package localstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -56,17 +57,18 @@ func testDBCollectGarbageWorker(t *testing.T) {
 
 	chunkCount := 150
 
-	db, cleanupFunc := newTestDB(t, &Options{
-		Capacity: 100,
-	})
+	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
-	defer setTestHookCollectGarbage(func(collectedCount uint64) {
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
-		case <-db.close:
+		case <-closed:
 		}
-	})()
-	defer cleanupFunc()
+	}))
+	db := newTestDB(t, &Options{
+		Capacity: 100,
+	})
+	closed = db.close
 
 	addrs := make([]swarm.Address, 0)
 
@@ -114,7 +116,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 	// the first synced chunk should be removed
 	t.Run("get the first synced chunk", func(t *testing.T) {
 		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
 		}
 	})
@@ -122,7 +124,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 	t.Run("only first inserted chunks should be removed", func(t *testing.T) {
 		for i := 0; i < (chunkCount - int(gcTarget)); i++ {
 			_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
-			if err != storage.ErrNotFound {
+			if !errors.Is(err, storage.ErrNotFound) {
 				t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
 			}
 		}
@@ -145,17 +147,19 @@ func TestPinGC(t *testing.T) {
 	pinChunksCount := 50
 	dbCapacity := uint64(100)
 
-	db, cleanupFunc := newTestDB(t, &Options{
-		Capacity: dbCapacity,
-	})
+	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
-	defer setTestHookCollectGarbage(func(collectedCount uint64) {
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
-		case <-db.close:
+		case <-closed:
 		}
-	})()
-	defer cleanupFunc()
+	}))
+
+	db := newTestDB(t, &Options{
+		Capacity: dbCapacity,
+	})
+	closed = db.close
 
 	addrs := make([]swarm.Address, 0)
 	pinAddrs := make([]swarm.Address, 0)
@@ -238,7 +242,7 @@ func TestPinGC(t *testing.T) {
 	t.Run("first chunks after pinned chunks should be removed", func(t *testing.T) {
 		for i := pinChunksCount; i < (int(dbCapacity) - int(gcTarget)); i++ {
 			_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
-			if err != leveldb.ErrNotFound {
+			if !errors.Is(err, leveldb.ErrNotFound) {
 				t.Fatal(err)
 			}
 		}
@@ -251,10 +255,9 @@ func TestGCAfterPin(t *testing.T) {
 
 	chunkCount := 50
 
-	db, cleanupFunc := newTestDB(t, &Options{
+	db := newTestDB(t, &Options{
 		Capacity: 100,
 	})
-	defer cleanupFunc()
 
 	pinAddrs := make([]swarm.Address, 0)
 
@@ -298,10 +301,9 @@ func TestGCAfterPin(t *testing.T) {
 // to test garbage collection runs by uploading, syncing and
 // requesting a number of chunks.
 func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
-	db, cleanupFunc := newTestDB(t, &Options{
+	db := newTestDB(t, &Options{
 		Capacity: 100,
 	})
-	defer cleanupFunc()
 
 	testHookCollectGarbageChan := make(chan uint64)
 	defer setTestHookCollectGarbage(func(collectedCount uint64) {
@@ -410,7 +412,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	// the second synced chunk should be removed
 	t.Run("get gc-ed chunk", func(t *testing.T) {
 		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[1])
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
 		}
 	})

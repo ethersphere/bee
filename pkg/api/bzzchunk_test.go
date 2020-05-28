@@ -39,7 +39,6 @@ func TestChunkUploadDownload(t *testing.T) {
 			Tags:   tag,
 		})
 	)
-	defer cleanup()
 
 	t.Run("invalid hash", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(invalidHash), bytes.NewReader(validContent), http.StatusBadRequest, jsonhttp.StatusResponse{

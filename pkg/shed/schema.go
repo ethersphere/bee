@@ -63,7 +63,7 @@ func (db *DB) schemaFieldKey(name, fieldType string) (key []byte, err error) {
 	}
 	s, err := db.getSchema()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get schema: %w", err)
 	}
 	var found bool
 	for n, f := range s.Fields {
@@ -80,7 +80,7 @@ func (db *DB) schemaFieldKey(name, fieldType string) (key []byte, err error) {
 		}
 		err := db.putSchema(s)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("put schema: %w", err)
 		}
 	}
 	return append([]byte{keyPrefixFields}, []byte(name)...), nil
@@ -102,7 +102,7 @@ func (db *DB) RenameIndex(name, newName string) (renamed bool, err error) {
 	}
 	s, err := db.getSchema()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("get schema: %w", err)
 	}
 	for i, f := range s.Indexes {
 		if f.Name == name {
@@ -126,7 +126,7 @@ func (db *DB) schemaIndexPrefix(name string) (id byte, err error) {
 	}
 	s, err := db.getSchema()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get schema: %w", err)
 	}
 	nextID := keyPrefixIndexStart
 	for i, f := range s.Indexes {
