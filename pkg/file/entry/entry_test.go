@@ -35,12 +35,19 @@ func TestEntry(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	e := entry.New(swarm.ZeroAddress)
-	m := entry.NewMetadata("foo.bin")
-	m = m.WithMimeType("text/plain")
-
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store)
+	data := []bytes("foo")
+	buf := bytes.NewBuffer(data)
+	bufCloser := NewReadNoopCloser(buf)
+	addr, err := s.Split(context.Background(), bufCloser, len(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	e := entry.New(addr)
+	m := entry.NewMetadata("foo.bin")
+	m = m.WithMimeType("text/plain")
 
 	metadataBytes, err := m.MarshalBinary()
 	if err != nil {
