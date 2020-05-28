@@ -305,7 +305,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 	pinnedChunks := make([]swarm.Address, 0)
 
 	// upload random chunks above db capacity to see if chunks are still pinned
-	for i := 0; i < 200000; i++ {
+	for i := 0; i < 2000; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -319,6 +319,28 @@ func TestPinAfterMultiGC(t *testing.T) {
 		if len(pinnedChunks) < 10 {
 			rch := generateAndPinAChunk(t, db)
 			pinnedChunks = append(pinnedChunks, rch.Address())
+		}
+	}
+	for i := 0; i < 2000; i++ {
+		ch := generateTestRandomChunk()
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2000; i++ {
+		ch := generateTestRandomChunk()
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 
