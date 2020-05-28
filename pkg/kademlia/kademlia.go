@@ -237,6 +237,9 @@ func (k *Kad) recalcDepth() uint8 {
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
 	_, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
+		if errors.Is(err, p2p.ErrAlreadyConnected) {
+			return nil
+		}
 		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
 		k.waitNextMu.Lock()
 		k.waitNext[peer.String()] = time.Now().Add(timeToRetry)
