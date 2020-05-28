@@ -242,6 +242,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 	_, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
+			k.connectedPeers.Add(peer, po)
 			return nil
 		}
 		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
