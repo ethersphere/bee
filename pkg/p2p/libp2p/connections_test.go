@@ -321,6 +321,7 @@ func TestTopologyNotifiee(t *testing.T) {
 		n1d = func(a swarm.Address) {
 			mtx.Lock()
 			defer mtx.Unlock()
+			expectZeroAddress(t, n1disconnectedAddr) // fail if set more than once
 			n1disconnectedAddr = a
 		}
 
@@ -334,6 +335,7 @@ func TestTopologyNotifiee(t *testing.T) {
 		n2d = func(a swarm.Address) {
 			mtx.Lock()
 			defer mtx.Unlock()
+			expectZeroAddress(t, n2disconnectedAddr) // fail if set more than once
 			n2disconnectedAddr = a
 		}
 	)
