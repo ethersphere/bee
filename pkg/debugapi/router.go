@@ -21,9 +21,12 @@ import (
 func (s *server) setupRouting() {
 	baseRouter := http.NewServeMux()
 
-	baseRouter.Handle("/metrics", promhttp.InstrumentMetricHandler(
-		s.metricsRegistry,
-		promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+	baseRouter.Handle("/metrics", web.ChainHandlers(
+		logging.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandler(promhttp.InstrumentMetricHandler(
+			s.metricsRegistry,
+			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+		)),
 	))
 
 	router := mux.NewRouter()
@@ -38,8 +41,14 @@ func (s *server) setupRouting() {
 
 	router.Handle("/debug/vars", expvar.Handler())
 
-	router.HandleFunc("/health", s.statusHandler)
-	router.HandleFunc("/readiness", s.statusHandler)
+	router.Handle("/health", web.ChainHandlers(
+		logging.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(s.statusHandler),
+	))
+	router.Handle("/readiness", web.ChainHandlers(
+		logging.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(s.statusHandler),
+	))
 
 	router.Handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
