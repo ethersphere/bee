@@ -167,7 +167,7 @@ func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err 
 		return nil, err
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", req.BzzAddress.Overlay)
+	s.logger.Tracef("handshake finished for peer %s", swarm.NewAddress(req.BzzAddress.Overlay).String())
 	return &Info{
 		BzzAddress: bzzAddress,
 		Light:      req.Light,
