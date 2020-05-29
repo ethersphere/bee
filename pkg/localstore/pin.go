@@ -7,11 +7,13 @@ package localstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 const (
@@ -60,6 +62,9 @@ func (db *DB) PinInfo(address swarm.Address) (uint64, error) {
 	}
 	out, err := db.pinIndex.Get(it)
 	if err != nil {
+		if errors.Is(err, leveldb.ErrNotFound) {
+			return 0, storage.ErrNotFound
+		}
 		return 0, err
 	}
 	return out.PinCounter, nil
