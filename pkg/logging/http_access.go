@@ -60,10 +60,10 @@ func NewHTTPAccessLogHandler(logger Logger, level logrus.Level, message string) 
 	}
 }
 
-// SerAccessLogLevelHandler overrides the log level set in
+// SetAccessLogLevelHandler overrides the log level set in
 // NewHTTPAccessLogHandler for a specific endpoint. Use log level 0 to suppress
 // log messages.
-func SerAccessLogLevelHandler(level logrus.Level) func(h http.Handler) http.Handler {
+func SetAccessLogLevelHandler(level logrus.Level) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if rl, ok := w.(*responseLogger); ok {

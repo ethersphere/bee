@@ -22,7 +22,7 @@ func (s *server) setupRouting() {
 	baseRouter := http.NewServeMux()
 
 	baseRouter.Handle("/metrics", web.ChainHandlers(
-		logging.SerAccessLogLevelHandler(0), // suppress access log messages
+		logging.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
 			s.metricsRegistry,
 			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
@@ -42,11 +42,11 @@ func (s *server) setupRouting() {
 	router.Handle("/debug/vars", expvar.Handler())
 
 	router.Handle("/health", web.ChainHandlers(
-		logging.SerAccessLogLevelHandler(0), // suppress access log messages
+		logging.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(s.statusHandler),
 	))
 	router.Handle("/readiness", web.ChainHandlers(
-		logging.SerAccessLogLevelHandler(0), // suppress access log messages
+		logging.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(s.statusHandler),
 	))
 
