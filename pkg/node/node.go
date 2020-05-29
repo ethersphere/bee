@@ -204,6 +204,10 @@ func NewBee(o Options) (*Bee, error) {
 		Logger:      logger,
 	})
 
+	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
+		return nil, fmt.Errorf("retrieval service: %w", err)
+	}
+
 	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
