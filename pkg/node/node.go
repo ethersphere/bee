@@ -353,7 +353,7 @@ func NewBee(o Options) (*Bee, error) {
 				err = addressbook.Put(overlay, addr)
 				if err != nil {
 					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
+					logger.Debugf("addressbook error persisting %s %s: %v", a, overlay, err)
 					logger.Errorf("persisting node %s", a)
 					return
 				}
