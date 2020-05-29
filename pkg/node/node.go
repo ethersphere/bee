@@ -259,11 +259,12 @@ func NewBee(o Options) (*Bee, error) {
 	if o.DebugAPIAddr != "" {
 		// Debug API server
 		debugAPIService := debugapi.New(debugapi.Options{
-			Overlay:     address,
-			P2P:         p2ps,
-			Logger:      logger,
-			Addressbook: addressbook,
-			Storer:      storer,
+			Overlay:        address,
+			P2P:            p2ps,
+			Logger:         logger,
+			Addressbook:    addressbook,
+			TopologyDriver: topologyDriver,
+			Storer:         storer,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
