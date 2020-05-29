@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -106,15 +105,12 @@ func (k *Kad) manage() {
 			return
 		case <-k.manageC:
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-				k.logger.Debugf("manage iterated known peer %s", peer.String())
 				if k.connectedPeers.Exists(peer) {
-					k.logger.Debug("already connected")
 					return false, false, nil
 				}
 
 				k.waitNextMu.Lock()
 				if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next) {
-					k.logger.Debug("wait next")
 					k.waitNextMu.Unlock()
 					return false, false, nil
 				}
@@ -122,7 +118,6 @@ func (k *Kad) manage() {
 
 				currentDepth := k.NeighborhoodDepth()
 				if saturated := k.saturationFunc(po, currentDepth, k.connectedPeers); saturated {
-					k.logger.Debug("bin saturated")
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
@@ -329,8 +324,6 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(addr swarm.Address) {
-	debug.PrintStack()
-	k.logger.Debugf("peer %s disconnecting from kademlia", addr.String())
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
 	k.connectedPeers.Remove(addr, po)
 
