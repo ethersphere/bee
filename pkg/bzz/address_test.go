@@ -32,7 +32,7 @@ func TestBzzAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bzzAddress2, err := bzz.Parse(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, 3)
+	bzzAddress2, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, 3)
 	if err != nil {
 		t.Fatal(err)
 	}

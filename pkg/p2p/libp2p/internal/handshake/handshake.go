@@ -101,7 +101,7 @@ func (s *Service) Handshake(stream p2p.Stream) (i *Info, err error) {
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	bzzAddress, err := bzz.Parse(resp.Syn.BzzAddress.Underlay, resp.Syn.BzzAddress.Overlay, resp.Syn.BzzAddress.Signature, resp.Syn.NetworkID)
+	bzzAddress, err := bzz.ParseAddress(resp.Syn.BzzAddress.Underlay, resp.Syn.BzzAddress.Overlay, resp.Syn.BzzAddress.Signature, resp.Syn.NetworkID)
 	if err != nil {
 		return nil, ErrInvalidBzzAddress
 	}
@@ -139,7 +139,7 @@ func (s *Service) Handle(stream p2p.Stream, peerID libp2ppeer.ID) (i *Info, err 
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	bzzAddress, err := bzz.Parse(req.BzzAddress.Underlay, req.BzzAddress.Overlay, req.BzzAddress.Signature, req.NetworkID)
+	bzzAddress, err := bzz.ParseAddress(req.BzzAddress.Underlay, req.BzzAddress.Overlay, req.BzzAddress.Signature, req.NetworkID)
 	if err != nil {
 		return nil, ErrInvalidBzzAddress
 	}

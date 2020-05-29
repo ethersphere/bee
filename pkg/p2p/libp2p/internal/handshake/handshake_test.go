@@ -332,7 +332,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bzzAddress, err := bzz.Parse(got.Syn.BzzAddress.Underlay, got.Syn.BzzAddress.Overlay, got.Syn.BzzAddress.Signature, got.Syn.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Syn.BzzAddress.Underlay, got.Syn.BzzAddress.Overlay, got.Syn.BzzAddress.Signature, got.Syn.NetworkID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -507,7 +507,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		bzzAddress, err := bzz.Parse(got.Syn.BzzAddress.Underlay, got.Syn.BzzAddress.Overlay, got.Syn.BzzAddress.Signature, got.Syn.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Syn.BzzAddress.Underlay, got.Syn.BzzAddress.Overlay, got.Syn.BzzAddress.Signature, got.Syn.NetworkID)
 		if err != nil {
 			t.Fatal(err)
 		}
