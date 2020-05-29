@@ -57,9 +57,9 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.hasChunkHandler),
 	})
 	router.Handle("/chunks-pin/{address}", jsonhttp.MethodHandler{
+		"GET":    http.HandlerFunc(s.getPinnedChunk),
 		"POST":   http.HandlerFunc(s.pinChunk),
 		"DELETE": http.HandlerFunc(s.unpinChunk),
-		"GET":    http.HandlerFunc(s.listPinnedChunks),
 	})
 	router.Handle("/chunks-pin", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.listPinnedChunks),

@@ -11,8 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
 func ResponseDirect(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {
@@ -34,35 +32,6 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 
 	if !bytes.Equal(got, want) {
 		t.Errorf("got response %s, want %s", string(got), string(want))
-	}
-}
-
-// ResponseDirectWithJson checks for responses in json format. It is useful in cases where the response is json.
-func ResponseDirectWithJson(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {
-	t.Helper()
-
-	resp := request(t, client, method, url, body, responseCode, nil)
-	defer resp.Body.Close()
-
-	got, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got = bytes.TrimSpace(got)
-
-	want, err := json.Marshal(response)
-	if err != nil {
-		t.Error(err)
-	}
-	var wantJson jsonhttp.StatusResponse
-	err = json.Unmarshal(want, &wantJson)
-	if err != nil {
-		t.Error(err)
-	}
-	wantString := "[" + wantJson.Message + "]"
-
-	if wantString != string(got) {
-		t.Errorf("got response %s, want %s", string(got), wantString)
 	}
 }
 
