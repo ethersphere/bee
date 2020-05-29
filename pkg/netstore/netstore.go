@@ -7,6 +7,7 @@ package netstore
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -34,25 +35,21 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			data, err := s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
 
 			ch = swarm.NewChunk(addr, data)
-			if err != nil {
-				return nil, err
-			}
-
 			if !s.valid(ch) {
 				return nil, storage.ErrInvalidChunk
 			}
 
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("netstore retrieve put: %w", err)
 			}
 			return ch, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("netstore get: %w", err)
 	}
 	return ch, nil
 }
