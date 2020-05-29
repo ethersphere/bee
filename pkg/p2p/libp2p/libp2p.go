@@ -215,7 +215,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 		if s.topologyNotifier != nil {
 			if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
-				s.logger.Debugf("toplogy notifier error: %s: %v", peerID, err)
+				s.logger.Debugf("topology notifier: %s: %v", peerID, err)
 			}
 		}
 
