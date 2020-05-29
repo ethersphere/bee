@@ -304,7 +304,7 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
-	k.knownPeers.Add(addr, uint8(po))
+	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
 
 	k.waitNextMu.Lock()
