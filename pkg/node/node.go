@@ -315,7 +315,6 @@ func NewBee(o Options) (*Bee, error) {
 
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("topology add peer fail %s: %v", overlay, err)
 				logger.Errorf("topology add peer %s", overlay)
 				return
