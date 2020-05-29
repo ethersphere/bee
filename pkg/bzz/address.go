@@ -26,9 +26,9 @@ type Address struct {
 }
 
 type addressJSON struct {
-	Overlay   string
-	Underlay  string
-	Signature string
+	Overlay   string `json:"overlay"`
+	Underlay  string `json:"underlay"`
+	Signature string `json:"signature"`
 }
 
 func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64) (*Address, error) {
@@ -46,7 +46,7 @@ func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Addre
 	}, nil
 }
 
-func Parse(underlay, overlay, signature []byte, networkID uint64) (*Address, error) {
+func ParseAddress(underlay, overlay, signature []byte, networkID uint64) (*Address, error) {
 	networkIDBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(networkIDBytes, networkID)
 	recoveredPK, err := crypto.Recover(signature, append(underlay, networkIDBytes...))

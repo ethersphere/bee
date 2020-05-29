@@ -170,8 +170,6 @@ func (k *Kad) manage() {
 					po := uint8(swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes()))
 					k.knownPeers.Remove(peerToRemove, po)
 				} else {
-					k.logger.Errorf("this happened: %v", err)
-
 					k.logger.Errorf("kademlia manage loop iterator: %v", err)
 				}
 			}

@@ -130,15 +130,15 @@ func (s *Service) peersHandler(_ context.Context, peer p2p.Peer, stream p2p.Stre
 		return fmt.Errorf("close stream: %w", err)
 	}
 	for _, newPeer := range peersReq.Peers {
-		bzzAddress, err := bzz.Parse(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
+		bzzAddress, err := bzz.ParseAddress(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
 		if err != nil {
-			s.logger.Warningf("Skipping peer in response %s: %w", newPeer, err)
+			s.logger.Warningf("skipping peer in response %s: %w", newPeer, err)
 			continue
 		}
 
 		err = s.addressBook.Put(bzzAddress.Overlay, *bzzAddress)
 		if err != nil {
-			s.logger.Warningf("Skipping peer in response %s: %w", newPeer, err)
+			s.logger.Warningf("skipping peer in response %s: %w", newPeer, err)
 			continue
 		}
 
