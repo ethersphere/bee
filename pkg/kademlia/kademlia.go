@@ -148,6 +148,8 @@ func (k *Kad) manage() {
 					return false, false, nil
 				}
 
+				k.connectedPeers.Add(peer, po)
+
 				k.waitNextMu.Lock()
 				delete(k.waitNext, peer.String())
 				k.waitNextMu.Unlock()
@@ -242,7 +244,6 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 	_, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
-			k.connectedPeers.Add(peer, po)
 			return nil
 		}
 		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
@@ -251,10 +252,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 		k.waitNextMu.Unlock()
 
 		// TODO: somehow keep track of attempts and at some point forget about the peer
-		return err // dont stop, continue to next peer
+		return err
 	}
 
-	k.connectedPeers.Add(peer, po)
 	return k.announce(ctx, peer)
 }
 
@@ -291,7 +291,6 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
-	k.logger.Debugf("addpeer %s to kademlia", addr.String())
 	if k.knownPeers.Exists(addr) {
 		return nil
 	}
@@ -309,8 +308,8 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
-	k.logger.Debugf("peer %s connected to kademlia", addr.String())
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
+	k.knownPeers.Add(addr, uint8(po))
 	k.connectedPeers.Add(addr, po)
 
 	k.waitNextMu.Lock()
