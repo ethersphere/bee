@@ -105,7 +105,6 @@ func (k *Kad) manage() {
 			return
 		case <-k.manageC:
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
@@ -143,6 +142,8 @@ func (k *Kad) manage() {
 					// continue to next
 					return false, false, nil
 				}
+
+				k.connectedPeers.Add(peer, po)
 
 				k.waitNextMu.Lock()
 				delete(k.waitNext, peer.String())
@@ -246,10 +247,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 		k.waitNextMu.Unlock()
 
 		// TODO: somehow keep track of attempts and at some point forget about the peer
-		return err // dont stop, continue to next peer
+		return err
 	}
 
-	k.connectedPeers.Add(peer, po)
 	return k.announce(ctx, peer)
 }
 
@@ -304,6 +304,7 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
+	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
 
 	k.waitNextMu.Lock()
