@@ -358,7 +358,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 
 	if s.topologyNotifier != nil {
 		if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
-			s.logger.Debugf("toplogy notifier error: %s: %v", info.ID, err)
+			s.logger.Debugf("topology notifier error: %s: %v", info.ID, err)
 		}
 	}
 
