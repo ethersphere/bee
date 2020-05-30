@@ -40,6 +40,7 @@ func TestConnectDisconnect(t *testing.T) {
 	s2, overlay2 := newService(t, 1, libp2p.Options{})
 
 	addr := serviceUnderlayAddress(t, s1)
+
 	overlay, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +322,6 @@ func TestTopologyNotifiee(t *testing.T) {
 		n1d = func(a swarm.Address) {
 			mtx.Lock()
 			defer mtx.Unlock()
-			expectZeroAddress(t, n1disconnectedAddr) // fail if set more than once
 			n1disconnectedAddr = a
 		}
 
@@ -335,7 +335,6 @@ func TestTopologyNotifiee(t *testing.T) {
 		n2d = func(a swarm.Address) {
 			mtx.Lock()
 			defer mtx.Unlock()
-			expectZeroAddress(t, n2disconnectedAddr) // fail if set more than once
 			n2disconnectedAddr = a
 		}
 	)
@@ -349,6 +348,7 @@ func TestTopologyNotifiee(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
+	// s2 connects to s1, thus the notifiee on s1 should be called on Connect
 	overlay, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
@@ -357,33 +357,33 @@ func TestTopologyNotifiee(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	// expect that n1 notifee called with s2 overlay and vice versa
+	// expect that n1 notifee called with s2 overlay
 	waitAddrSet(t, &n1connectedAddr, &mtx, overlay2)
-	waitAddrSet(t, &n2connectedAddr, &mtx, overlay1)
 
 	mtx.Lock()
-	expectZeroAddress(t, n1disconnectedAddr, n2disconnectedAddr)
+	expectZeroAddress(t, n1disconnectedAddr, n2connectedAddr, n2disconnectedAddr)
 	mtx.Unlock()
 
+	// s2 disconnects from s1 so s1 disconnect notifiee should be called
 	if err := s2.Disconnect(overlay); err != nil {
 		t.Fatal(err)
 	}
 
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
-
-	// expect both disconnect notifiers to be called
 	waitAddrSet(t, &n1disconnectedAddr, &mtx, overlay2)
-	waitAddrSet(t, &n2disconnectedAddr, &mtx, overlay1)
 
+	// note that both n1disconnect and n2disconnect callbacks are called after just
+	// one disconnect. this is due to the fact the when the libp2p abstraction is explicitly
+	// called to disconnect from a peer, it will also notify the topology notifiee, since
+	// peer disconnections can also result from components from outside the bound of the
+	// topology driver
 	mtx.Lock()
-	n1connectedAddr = swarm.ZeroAddress
-	n2connectedAddr = swarm.ZeroAddress
-	n1disconnectedAddr = swarm.ZeroAddress
-	n2disconnectedAddr = swarm.ZeroAddress
+	expectZeroAddress(t, n2connectedAddr)
 	mtx.Unlock()
 
 	addr2 := serviceUnderlayAddress(t, s2)
+	// s1 connects to s2, thus the notifiee on s2 should be called on Connect
 	o2, err := s1.Connect(ctx, addr2)
 	if err != nil {
 		t.Fatal(err)
@@ -391,9 +391,7 @@ func TestTopologyNotifiee(t *testing.T) {
 
 	expectPeers(t, s1, overlay2)
 	expectPeersEventually(t, s2, overlay1)
-	// expect both connect notifiers to be called
 	waitAddrSet(t, &n2connectedAddr, &mtx, overlay1)
-	waitAddrSet(t, &n1connectedAddr, &mtx, overlay2)
 
 	// s1 disconnects from s2 so s2 disconnect notifiee should be called
 	if err := s1.Disconnect(o2); err != nil {
@@ -402,8 +400,6 @@ func TestTopologyNotifiee(t *testing.T) {
 	expectPeers(t, s1)
 	expectPeersEventually(t, s2)
 	waitAddrSet(t, &n2disconnectedAddr, &mtx, overlay1)
-	waitAddrSet(t, &n1disconnectedAddr, &mtx, overlay2)
-
 }
 
 func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.Address) {

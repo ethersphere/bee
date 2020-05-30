@@ -348,20 +348,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, err
 	}
 
-	err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
-	if err != nil {
-		s.logger.Debugf("connect: addressbook put error %s: %v", info.ID, err)
-		s.logger.Errorf("unable to persist peer %v", info.ID)
-		_ = s.disconnect(info.ID)
-		return
-	}
-
-	if s.topologyNotifier != nil {
-		if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
-			s.logger.Debugf("topology notifier error: %s: %v", info.ID, err)
-		}
-	}
-
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
 	return i.BzzAddress.Overlay, nil
