@@ -354,12 +354,18 @@ func NewBee(o Options) (*Bee, error) {
 				}
 
 				bzzAddr, err := bzz.NewAddress(signer, addr, overlay, o.NetworkID)
+				if err != nil {
+					_ = p2ps.Disconnect(overlay)
+					logger.Debugf("new bzz address error %s %s: %v", a, overlay, err)
+					logger.Errorf("connect to bootnode %s", a)
+					return
+				}
 
 				err = addressbook.Put(overlay, *bzzAddr)
 				if err != nil {
 					_ = p2ps.Disconnect(overlay)
 					logger.Debugf("addressbook error persisting %s %s: %v", a, overlay, err)
-					logger.Errorf("persisting node %s", a)
+					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
 
