@@ -10,6 +10,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/collection"
 	"github.com/ethersphere/bee/pkg/file/entry"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/file/splitter"
@@ -56,10 +57,21 @@ func TestMetadata(t *testing.T) {
 
 	metadataBuf := bytes.NewBuffer(metadataBytes)
 	metadataReadCloser := NewReadNoopCloser(metadataBuf)
-	addr, err = s.Split(context.Background(), metadataReadCloser, int64(len(metadataBytes)))
+	metaAddr, err := s.Split(context.Background(), metadataReadCloser, int64(len(metadataBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.SetMetadata(metaAddr)
 
-	e.SetMetadata(addr)
+	// retrieve the data through the interface
+	newEntry := entry.New(addr)
+	newEntry.SetMetadata(metaAddr)
+	if !newEntry.Reference().Equal(addr) {
+		t.Fatal(err)
+	}
+
+	if !newEntry.Metadata(collection.FilenameMimetype).Equal(metaAddr) {
+		t.Fatalf("mf omf %v", collection.FilenameMimetype)
+	}
+
 }
