@@ -12,7 +12,7 @@ import (
 type MetadataType uint8
 
 const (
-	FilenameMimetype MetadataType = iota
+	FilenameMimeType MetadataType = iota
 )
 
 // Collection provides a specific ordering of a collection of binary data vectors

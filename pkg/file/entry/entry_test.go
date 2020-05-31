@@ -10,10 +10,12 @@ import (
 	"io"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/collection"
 	"github.com/ethersphere/bee/pkg/file/entry"
 //	"github.com/ethersphere/bee/pkg/storage/mock"
 //	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 type readNoopCloser struct {
@@ -60,15 +62,27 @@ func TestMetadataSerialize(t *testing.T) {
 }
 
 func TestEntrySerialize(t *testing.T) {
-//	store := mock.NewStorer()
-//	s := splitter.NewSimpleSplitter(store)
-//	data := []byte("foo")
-//	buf := bytes.NewBuffer(data)
-//	bufCloser := NewReadNoopCloser(buf)
-//	addr, err := s.Split(context.Background(), bufCloser, int64(len(data)))
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	e := entry.New(addr)
+	referenceAddress := test.RandomAddress()
+	metadataAddress := test.RandomAddress()
+	e := entry.New(referenceAddress)
+	e.SetMetadata(metadataAddress)
+	entrySerialized, err := e.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entryRecovered := &entry.Entry{}
+	err = entryRecovered.UnmarshalBinary(entrySerialized)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !referenceAddress.Equal(entryRecovered.Reference()) {
+		t.Fatalf("expected reference %s, got %s", referenceAddress, entryRecovered.Reference())
+	}
+
+	metadataAddressRecovered := entryRecovered.Metadata(collection.FilenameMimeType)
+	if !metadataAddress.Equal(metadataAddressRecovered) {
+		t.Fatalf("expected metadata %s, got %s", metadataAddress, metadataAddressRecovered)
+	}
 }
