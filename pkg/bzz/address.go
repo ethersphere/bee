@@ -20,7 +20,7 @@ import (
 var ErrInvalidAddress = errors.New("invalid address")
 
 // Address represents the bzz address in swarm.
-// It consists of a peers underlay (physical) address, overlay (toplogy) address and signature.
+// It consists of a peers underlay (physical) address, overlay (topology) address and signature.
 // Signature is used to verify the `Overlay/Underlay` pair, as it is based on `underlay|networkID`, signed with the public key of Overlay address
 type Address struct {
 	Underlay  ma.Multiaddr
