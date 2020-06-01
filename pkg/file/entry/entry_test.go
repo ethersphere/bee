@@ -5,56 +5,13 @@
 package entry_test
 
 import (
-	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/collection"
 	"github.com/ethersphere/bee/pkg/file/entry"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
-type readNoopCloser struct {
-	io.Reader
-}
-
-func NewReadNoopCloser(reader io.Reader) io.ReadCloser {
-	return &readNoopCloser {
-		Reader: reader,
-	}
-}
-
-func (t *readNoopCloser) Close() error {
-	return nil
-}
-
-func TestEntry(t *testing.T) {
-	_ = entry.New(swarm.ZeroAddress)
-}
-
-func TestMetadataSerialize(t *testing.T) {
-	m := entry.NewMetadata("foo.bin")
-	m = m.WithMimeType("text/plain")
-
-	metadataBytes, err := m.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metadataRecovered := &entry.Metadata{}
-	err = metadataRecovered.UnmarshalBinary(metadataBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if m.Filename != metadataRecovered.Filename {
-		t.Fatalf("Deserialize mismatch, expected %v, got %v", m.Filename, metadataRecovered.Filename)
-	}
-
-	if m.MimeType != metadataRecovered.MimeType {
-		t.Fatalf("Deserialize mismatch, expected %v, got %v", m.MimeType, metadataRecovered.MimeType)
-	}
-}
 
 func TestEntrySerialize(t *testing.T) {
 	referenceAddress := test.RandomAddress()
