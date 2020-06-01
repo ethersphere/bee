@@ -12,7 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
-
 func TestEntrySerialize(t *testing.T) {
 	referenceAddress := test.RandomAddress()
 	metadataAddress := test.RandomAddress()
