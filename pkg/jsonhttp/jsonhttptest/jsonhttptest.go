@@ -37,11 +37,11 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 	}
 }
 
-func ResponseDirectReceiveHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
-	response interface{}) http.Header {
+func ResponseDirectSendHeadersAndReceiveHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
+	response interface{}, headers http.Header) http.Header {
 	t.Helper()
 
-	resp := request(t, client, method, url, body, responseCode, nil)
+	resp := request(t, client, method, url, body, responseCode, headers)
 	defer resp.Body.Close()
 
 	got, err := ioutil.ReadAll(resp.Body)

@@ -85,7 +85,7 @@ func (s *Service) chunksWorker() {
 
 			t, err := s.tag.GetByAddress(ch.Address())
 			if err != nil {
-				s.logger.Errorf("pusher: error while getting tag: %v", err)
+				s.logger.Debugf("pusher: get tag by address %s: %v", ch.Address(), err)
 				continue
 			}
 			t.Inc(tags.StateSent)
@@ -136,7 +136,7 @@ func (s *Service) setChunkAsSynced(ctx context.Context, addr swarm.Address) {
 		s.metrics.TotalChunksSynced.Inc()
 		ta, err := s.tag.GetByAddress(addr)
 		if err != nil {
-			s.logger.Errorf("pusher: error setting tag to synced: %v", err)
+			s.logger.Debugf("pusher: get tag by address %s: %v", addr, err)
 		}
 		ta.Inc(tags.StateSynced)
 	}

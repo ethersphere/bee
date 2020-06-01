@@ -14,6 +14,26 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func (s *server) getANewTag(w http.ResponseWriter, r *http.Request) {
+	tagName := mux.Vars(r)["name"]
+	if tagName == "" {
+		s.Logger.Debugf("bzz-tag: invalid tag name : %s", tagName)
+		s.Logger.Error("bzz-tag: invalid tag name")
+		jsonhttp.BadRequest(w, "invalid tag name")
+		return
+	}
+
+	tag, err := s.Tags.Create(tagName, 1, false)
+	if err != nil {
+		s.Logger.Debugf("bzz-chunk: tag creation error: %v", err)
+		s.Logger.Error("bzz-chunk: tag creation error")
+		jsonhttp.InternalServerError(w, "cannot create tag")
+		return
+	}
+
+	jsonhttp.OK(w, tag)
+}
+
 func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["addr"]
 	address, err := swarm.ParseHexAddress(addr)
@@ -29,11 +49,11 @@ func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) 
 		s.Logger.Debugf("bzz-tag: tag not present %s : %v, ", address.String(), err)
 		s.Logger.Error("bzz-tag: tag not present")
 		jsonhttp.InternalServerError(w, "tag not present")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", jsonhttp.DefaultContentTypeHeader)
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	r.Header.Del("ETag")
 	err = json.NewEncoder(w).Encode(&tag)
 	if err != nil {
 		s.Logger.Debugf("bzz-tag: tag encode error %s: %v", address.String(), err)
@@ -41,7 +61,8 @@ func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.InternalServerError(w, "tag encode error")
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+
+	jsonhttp.OK(w, tag)
 }
 
 func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
@@ -60,11 +81,11 @@ func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Debugf("bzz-tag: tag not present : %v, uuid %s", err, uidStr)
 		s.Logger.Error("bzz-tag: tag not present")
 		jsonhttp.InternalServerError(w, "tag not present")
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	r.Header.Del("ETag")
 	err = json.NewEncoder(w).Encode(&tag)
 	if err != nil {
 		s.Logger.Debugf("bzz-tag: tag encode error: %v, uuid %s", err, uidStr)
@@ -72,5 +93,6 @@ func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "tag encode error")
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+
+	jsonhttp.OK(w, tag)
 }
