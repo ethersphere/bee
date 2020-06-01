@@ -15,29 +15,36 @@ var (
 	serializedDataSize = swarm.SectionSize * 2
 )
 
+// Entry provides addition of metadata to a data reference.
+// Implements collection.Entry.
 type Entry struct {
 	reference swarm.Address
 	metadata      swarm.Address
 }
 
+// New creates a new Entry.
 func New(reference swarm.Address) *Entry {
 	return &Entry{
 		reference: reference,
 	}
 }
 
+// SetMetadata sets the metadata for the data reference in Entry.
 func (e *Entry) SetMetadata(metadataAddress swarm.Address) {
 	e.metadata = metadataAddress
 }
 
+// Reference implements collection.Entry
 func (e *Entry) Reference() swarm.Address {
 	return e.reference
 }
 
+// Metadata implements collection.Entry
 func (e *Entry) Metadata(collection.MetadataType) swarm.Address {
 	return e.metadata
 }
 
+// MarshalBinary implements encoding.BinaryMarshaler
 func (e *Entry) MarshalBinary() ([]byte, error) {
 	br := e.reference.Bytes()
 	bm := e.metadata.Bytes()
@@ -45,6 +52,7 @@ func (e *Entry) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
+// UnmarshalBinary implements encoding.BinaryUnmarshaler
 func (e *Entry) UnmarshalBinary(b []byte) error {
 	if len(b) != serializedDataSize  {
 		return errors.New("Invalid data length")

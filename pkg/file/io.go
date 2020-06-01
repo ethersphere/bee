@@ -11,12 +11,13 @@ import (
 	"io"
 )
 
-// simpleJoinerReadCloser wraps a byte slice in a io.ReadCloser implementation.
+// simpleReadCloser wraps a byte slice in a io.ReadCloser implementation.
 type simpleReadCloser struct {
 	buffer io.Reader
 	closed bool
 }
 
+// NewSimpleReadCloser creates a new simpleReadCloser.
 func NewSimpleReadCloser(buffer []byte) io.ReadCloser {
 	return &simpleReadCloser{
 		buffer: bytes.NewBuffer(buffer),

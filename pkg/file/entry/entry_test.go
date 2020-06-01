@@ -5,15 +5,11 @@
 package entry_test
 
 import (
-//	"bytes"
-//	"context"
 	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/collection"
 	"github.com/ethersphere/bee/pkg/file/entry"
-//	"github.com/ethersphere/bee/pkg/storage/mock"
-//	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
@@ -37,7 +33,6 @@ func TestEntry(t *testing.T) {
 }
 
 func TestMetadataSerialize(t *testing.T) {
-
 	m := entry.NewMetadata("foo.bin")
 	m = m.WithMimeType("text/plain")
 
