@@ -180,7 +180,7 @@ func (m *MockStorer) PinInfo(address swarm.Address) (uint64, error) {
 			return m.pinnedCounter[i], nil
 		}
 	}
-	return 0, errors.New("could not find address")
+	return 0, storage.ErrNotFound
 }
 
 func (m *MockStorer) Close() error {

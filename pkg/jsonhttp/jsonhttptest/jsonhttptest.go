@@ -11,8 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
 func ResponseDirect(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {
@@ -36,6 +34,7 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 		t.Errorf("got response %s, want %s", string(got), string(want))
 	}
 }
+
 
 func ResponseDirectSendHeadersAndReceiveHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
 	response interface{}, headers http.Header) http.Header {
@@ -91,7 +90,7 @@ func ResponseDirectWithJson(t *testing.T, client *http.Client, method, url strin
 	}
 }
 
-func ResponseDirectSendHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
+func ResponseDirectWithHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
 	response interface{}, headers http.Header) {
 	t.Helper()
 

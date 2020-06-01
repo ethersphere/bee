@@ -205,6 +205,10 @@ func NewBee(o Options) (*Bee, error) {
 	})
 	tag := tags.NewTags()
 
+	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
+		return nil, fmt.Errorf("retrieval service: %w", err)
+	}
+
 	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
@@ -319,7 +323,6 @@ func NewBee(o Options) (*Bee, error) {
 
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("topology add peer fail %s: %v", overlay, err)
 				logger.Errorf("topology add peer %s", overlay)
 				return
@@ -354,7 +357,7 @@ func NewBee(o Options) (*Bee, error) {
 				err = addressbook.Put(overlay, addr)
 				if err != nil {
 					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
+					logger.Debugf("addressbook error persisting %s %s: %v", a, overlay, err)
 					logger.Errorf("persisting node %s", a)
 					return
 				}

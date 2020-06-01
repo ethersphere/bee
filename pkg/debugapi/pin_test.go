@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -82,9 +83,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check is the chunk is pinned once
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":1}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
+			Address:    swarm.MustParseHexAddress("aabbcc"),
+			PinCounter: 1,
 		})
 
 	})
@@ -97,9 +98,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check is the chunk is pinned twice
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":2}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
+			Address:    swarm.MustParseHexAddress("aabbcc"),
+			PinCounter: 2,
 		})
 	})
 
@@ -111,9 +112,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check is the chunk is pinned once
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":1}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
+			Address:    swarm.MustParseHexAddress("aabbcc"),
+			PinCounter: 1,
 		})
 	})
 
@@ -125,9 +126,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check if the chunk is removed from the pinIndex
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Message: "pin chunks: leveldb: not found",
-			Code:    http.StatusInternalServerError,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusNotFound, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusNotFound),
+			Code:    http.StatusNotFound,
 		})
 	})
 
@@ -157,10 +158,17 @@ func TestPinChunkHandler(t *testing.T) {
 			Code:    http.StatusOK,
 		})
 
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":1},{"Address":"ddeeff","PinCounter":1}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", nil, http.StatusOK, debugapi.ListPinnedChunksResponse{
+			Chunks: []debugapi.PinnedChunk{
+				{
+					Address:    swarm.MustParseHexAddress("aabbcc"),
+					PinCounter: 1,
+				},
+				{
+					Address:    swarm.MustParseHexAddress("ddeeff"),
+					PinCounter: 1,
+				},
+			},
 		})
-
 	})
 }
