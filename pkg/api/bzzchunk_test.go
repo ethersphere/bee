@@ -6,11 +6,12 @@ package api_test
 
 import (
 	"bytes"
-	"github.com/ethersphere/bee/pkg/tags"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/tags"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -81,7 +82,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	t.Run("pin-invalid-value", func(t *testing.T) {
 		headers := make(map[string][]string)
 		headers[api.PinHeaderName] = []string{"hdgdh"}
-		jsonhttptest.ResponseDirectSendHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, headers)
@@ -93,7 +94,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
 		headers := make(map[string][]string)
-		jsonhttptest.ResponseDirectSendHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, headers)
@@ -106,7 +107,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	t.Run("pin-ok", func(t *testing.T) {
 		headers := make(map[string][]string)
 		headers[api.PinHeaderName] = []string{"True"}
-		jsonhttptest.ResponseDirectSendHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, headers)

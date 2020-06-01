@@ -5,7 +5,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -30,7 +29,8 @@ func (s *server) getANewTag(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "cannot create tag")
 		return
 	}
-
+	w.Header().Set("Content-Type", jsonhttp.DefaultContentTypeHeader)
+	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
 	jsonhttp.OK(w, tag)
 }
 
@@ -54,14 +54,6 @@ func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", jsonhttp.DefaultContentTypeHeader)
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	err = json.NewEncoder(w).Encode(&tag)
-	if err != nil {
-		s.Logger.Debugf("bzz-tag: tag encode error %s: %v", address.String(), err)
-		s.Logger.Error("bzz-tag: tag encode error")
-		jsonhttp.InternalServerError(w, "tag encode error")
-		return
-	}
-
 	jsonhttp.OK(w, tag)
 }
 
@@ -86,13 +78,5 @@ func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	err = json.NewEncoder(w).Encode(&tag)
-	if err != nil {
-		s.Logger.Debugf("bzz-tag: tag encode error: %v, uuid %s", err, uidStr)
-		s.Logger.Error("bzz-tag: tag encode error")
-		jsonhttp.InternalServerError(w, "tag encode error")
-		return
-	}
-
 	jsonhttp.OK(w, tag)
 }

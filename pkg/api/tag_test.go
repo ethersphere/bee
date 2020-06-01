@@ -192,7 +192,7 @@ func isTagFoundInResponse(t *testing.T, headers http.Header, tag *tags.Tag) uint
 		t.Fatal(err)
 	}
 	if tag != nil {
-		if uint32(uid) != tag.Uid {
+		if uid != uint64(tag.Uid) {
 			t.Fatalf("uid created is not received while uploading chunk, expected : %d, got %d", tag.Uid, uid)
 		}
 	}
