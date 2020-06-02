@@ -26,7 +26,7 @@ type Entry struct {
 func New(reference, metadata swarm.Address) *Entry {
 	return &Entry{
 		reference: reference,
-		metadata: metadata,
+		metadata:  metadata,
 	}
 }
 
