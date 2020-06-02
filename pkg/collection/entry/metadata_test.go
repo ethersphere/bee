@@ -7,9 +7,10 @@ package entry_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file/entry"
+	"github.com/ethersphere/bee/pkg/collection/entry"
 )
 
+// TestMetadataSerialize verifies integrity of serialization.
 func TestMetadataSerialize(t *testing.T) {
 	m := entry.NewMetadata("foo.bin")
 	m = m.WithMimeType("text/plain")

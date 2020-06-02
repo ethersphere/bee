@@ -8,10 +8,11 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/collection"
-	"github.com/ethersphere/bee/pkg/file/entry"
+	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
+// TestEntrySerialize verifies integrity of serialization.
 func TestEntrySerialize(t *testing.T) {
 	referenceAddress := test.RandomAddress()
 	metadataAddress := test.RandomAddress()
