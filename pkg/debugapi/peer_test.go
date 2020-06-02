@@ -15,9 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	topmock "github.com/ethersphere/bee/pkg/topology/mock"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -40,11 +38,6 @@ func TestConnect(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
 			Address: overlay.String(),
 		})
-
-		multia, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && underlay != multia.String() {
-			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
-		}
 	})
 
 	t.Run("error", func(t *testing.T) {
@@ -59,36 +52,6 @@ func TestConnect(t *testing.T) {
 			Code:    http.StatusMethodNotAllowed,
 			Message: http.StatusText(http.StatusMethodNotAllowed),
 		})
-	})
-
-	t.Run("error - add peer", func(t *testing.T) {
-		disconnectCalled := false
-		testServer := newTestServer(t, testServerOptions{
-			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-				if addr.String() == errorUnderlay {
-					return swarm.Address{}, testErr
-				}
-				return overlay, nil
-			}), mock.WithDisconnectFunc(func(addr swarm.Address) error {
-				disconnectCalled = true
-				return nil
-			})),
-			TopologyOpts: []topmock.Option{topmock.WithAddPeerErr(testErr)},
-		})
-
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Code:    http.StatusInternalServerError,
-			Message: testErr.Error(),
-		})
-
-		multia, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && underlay != multia.String() {
-			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
-		}
-
-		if !disconnectCalled {
-			t.Fatalf("disconnect not called.")
-		}
 	})
 }
 
@@ -143,7 +106,6 @@ func TestDisconnect(t *testing.T) {
 
 func TestPeer(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-
 	testServer := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithPeersFunc(func() []p2p.Peer {
 			return []p2p.Peer{{Address: overlay}}

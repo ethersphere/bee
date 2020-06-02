@@ -48,8 +48,8 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		P2P:            o.P2P,
 		Logger:         logging.New(ioutil.Discard, 0),
 		Addressbook:    addrbook,
-		TopologyDriver: topologyDriver,
 		Storer:         o.Storer,
+		TopologyDriver: topologyDriver,
 	})
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
@@ -65,9 +65,8 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		}),
 	}
 	return &testServer{
-		Client:         client,
-		Addressbook:    addrbook,
-		TopologyDriver: topologyDriver,
+		Client:      client,
+		Addressbook: addrbook,
 	}
 }
 

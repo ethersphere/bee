@@ -121,7 +121,7 @@ func (k *Kad) manage() {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
-				ma, err := k.addressBook.Get(peer)
+				bzzAddr, err := k.addressBook.Get(peer)
 				if err != nil {
 					// either a peer is not known in the address book, in which case it
 					// should be removed, or that some severe I/O problem is at hand
@@ -136,7 +136,7 @@ func (k *Kad) manage() {
 				}
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
 
-				err = k.connect(ctx, peer, ma, po)
+				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 				if err != nil {
 					k.logger.Errorf("error connecting to peer %s: %v", peer, err)
 					// continue to next

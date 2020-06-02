@@ -155,7 +155,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, h.ID(), signer, networkID, o.Logger)
+	// todo: handle different underlays
+	underlay, err := buildUnderlayAddress(h.Addrs()[0], h.ID())
+	if err != nil {
+		return nil, fmt.Errorf("build host multiaddress: %w", err)
+	}
+
+	handshakeService, err := handshake.New(overlay, underlay, signer, networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -193,21 +199,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
+		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 			_ = stream.Close()
 			return
 		}
 
 		_ = stream.Close()
-		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
-		if err != nil {
-			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
-			s.logger.Errorf("unable to connect with peer %v", peerID)
-			_ = s.disconnect(peerID)
-			return
-		}
 
-		err = s.addressbook.Put(i.Overlay, remoteMultiaddr)
+		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
 			s.logger.Errorf("unable to persist peer %v", peerID)
@@ -216,13 +215,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		if s.topologyNotifier != nil {
-			if err := s.topologyNotifier.Connected(ctx, i.Overlay); err != nil {
-				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
+			if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
+				s.logger.Debugf("topology notifier: %s: %v", peerID, err)
 			}
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("peer %s connected", i.Overlay)
+		s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -287,19 +286,27 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() (addrs []ma.Multiaddr, err error) {
+func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
+	for _, addr := range s.host.Addrs() {
+		a, err := buildUnderlayAddress(addr, s.host.ID())
+		if err != nil {
+			return nil, err
+		}
+
+		addreses = append(addreses, a)
+	}
+
+	return addreses, nil
+}
+
+func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	// Build host multiaddress
-	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", s.host.ID().Pretty()))
+	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.Pretty()))
 	if err != nil {
 		return nil, err
 	}
 
-	// Now we can build a full multiaddress to reach this host
-	// by encapsulating both addresses:
-	for _, addr := range s.host.Addrs() {
-		addrs = append(addrs, addr.Encapsulate(hostAddr))
-	}
-	return addrs, nil
+	return addr.Encapsulate(hostAddr), nil
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
@@ -332,12 +339,12 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
+	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
 			return swarm.Address{}, err
 		}
 
-		return i.Overlay, nil
+		return i.BzzAddress.Overlay, nil
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
@@ -345,8 +352,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("peer %s connected", i.Overlay)
-	return i.Overlay, nil
+	s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
+	return i.BzzAddress.Overlay, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
