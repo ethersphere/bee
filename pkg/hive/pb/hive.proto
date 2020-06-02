@@ -13,6 +13,7 @@ message Peers {
 }
 
 message BzzAddress {
-    bytes Overlay = 1;
-    string Underlay = 2;
+    bytes Underlay = 1;
+    bytes Signature = 2;
+    bytes Overlay = 3;
 }

@@ -67,8 +67,9 @@ func (m *Peers) GetPeers() []*BzzAddress {
 }
 
 type BzzAddress struct {
-	Overlay  []byte `protobuf:"bytes,1,opt,name=Overlay,proto3" json:"Overlay,omitempty"`
-	Underlay string `protobuf:"bytes,2,opt,name=Underlay,proto3" json:"Underlay,omitempty"`
+	Underlay  []byte `protobuf:"bytes,1,opt,name=Underlay,proto3" json:"Underlay,omitempty"`
+	Signature []byte `protobuf:"bytes,2,opt,name=Signature,proto3" json:"Signature,omitempty"`
+	Overlay   []byte `protobuf:"bytes,3,opt,name=Overlay,proto3" json:"Overlay,omitempty"`
 }
 
 func (m *BzzAddress) Reset()         { *m = BzzAddress{} }
@@ -104,18 +105,25 @@ func (m *BzzAddress) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_BzzAddress proto.InternalMessageInfo
 
+func (m *BzzAddress) GetUnderlay() []byte {
+	if m != nil {
+		return m.Underlay
+	}
+	return nil
+}
+
+func (m *BzzAddress) GetSignature() []byte {
+	if m != nil {
+		return m.Signature
+	}
+	return nil
+}
+
 func (m *BzzAddress) GetOverlay() []byte {
 	if m != nil {
 		return m.Overlay
 	}
 	return nil
-}
-
-func (m *BzzAddress) GetUnderlay() string {
-	if m != nil {
-		return m.Underlay
-	}
-	return ""
 }
 
 func init() {
@@ -126,17 +134,18 @@ func init() {
 func init() { proto.RegisterFile("hive.proto", fileDescriptor_d635d1ead41ba02c) }
 
 var fileDescriptor_d635d1ead41ba02c = []byte{
-	// 158 bytes of a gzipped FileDescriptorProto
+	// 174 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xca, 0xc8, 0x2c, 0x4b,
 	0xd5, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x01, 0xb1, 0x95, 0xf4, 0xb9, 0x58, 0x03, 0x52,
 	0x53, 0x8b, 0x8a, 0x85, 0xd4, 0xb8, 0x58, 0x0b, 0x40, 0x0c, 0x09, 0x46, 0x05, 0x66, 0x0d, 0x6e,
 	0x23, 0x01, 0x3d, 0xb0, 0x52, 0xa7, 0xaa, 0x2a, 0xc7, 0x94, 0x94, 0xa2, 0xd4, 0xe2, 0xe2, 0x20,
-	0x88, 0xb4, 0x92, 0x13, 0x17, 0x17, 0x42, 0x50, 0x48, 0x82, 0x8b, 0xdd, 0xbf, 0x2c, 0xb5, 0x28,
-	0x27, 0xb1, 0x52, 0x82, 0x51, 0x81, 0x51, 0x83, 0x27, 0x08, 0xc6, 0x15, 0x92, 0xe2, 0xe2, 0x08,
-	0xcd, 0x4b, 0x81, 0x48, 0x31, 0x29, 0x30, 0x6a, 0x70, 0x06, 0xc1, 0xf9, 0x4e, 0x32, 0x27, 0x1e,
-	0xc9, 0x31, 0x5e, 0x78, 0x24, 0xc7, 0xf8, 0xe0, 0x91, 0x1c, 0xe3, 0x84, 0xc7, 0x72, 0x0c, 0x17,
-	0x1e, 0xcb, 0x31, 0xdc, 0x78, 0x2c, 0xc7, 0x10, 0xc5, 0x54, 0x90, 0x94, 0xc4, 0x06, 0x76, 0x9f,
-	0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0xed, 0x0e, 0xc1, 0x96, 0xad, 0x00, 0x00, 0x00,
+	0x88, 0xb4, 0x52, 0x02, 0x17, 0x17, 0x42, 0x50, 0x48, 0x8a, 0x8b, 0x23, 0x34, 0x2f, 0x25, 0xb5,
+	0x28, 0x27, 0xb1, 0x52, 0x82, 0x51, 0x81, 0x51, 0x83, 0x27, 0x08, 0xce, 0x17, 0x92, 0xe1, 0xe2,
+	0x0c, 0xce, 0x4c, 0xcf, 0x4b, 0x2c, 0x29, 0x2d, 0x4a, 0x95, 0x60, 0x02, 0x4b, 0x22, 0x04, 0x84,
+	0x24, 0xb8, 0xd8, 0xfd, 0xcb, 0x20, 0x1a, 0x99, 0xc1, 0x72, 0x30, 0xae, 0x93, 0xcc, 0x89, 0x47,
+	0x72, 0x8c, 0x17, 0x1e, 0xc9, 0x31, 0x3e, 0x78, 0x24, 0xc7, 0x38, 0xe1, 0xb1, 0x1c, 0xc3, 0x85,
+	0xc7, 0x72, 0x0c, 0x37, 0x1e, 0xcb, 0x31, 0x44, 0x31, 0x15, 0x24, 0x25, 0xb1, 0x81, 0x5d, 0x6f,
+	0x0c, 0x08, 0x00, 0x00, 0xff, 0xff, 0x2e, 0x11, 0xc0, 0xe9, 0xcb, 0x00, 0x00, 0x00,
 }
 
 func (m *Peers) Marshal() (dAtA []byte, err error) {
@@ -196,17 +205,24 @@ func (m *BzzAddress) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Underlay) > 0 {
-		i -= len(m.Underlay)
-		copy(dAtA[i:], m.Underlay)
-		i = encodeVarintHive(dAtA, i, uint64(len(m.Underlay)))
-		i--
-		dAtA[i] = 0x12
-	}
 	if len(m.Overlay) > 0 {
 		i -= len(m.Overlay)
 		copy(dAtA[i:], m.Overlay)
 		i = encodeVarintHive(dAtA, i, uint64(len(m.Overlay)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Signature) > 0 {
+		i -= len(m.Signature)
+		copy(dAtA[i:], m.Signature)
+		i = encodeVarintHive(dAtA, i, uint64(len(m.Signature)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Underlay) > 0 {
+		i -= len(m.Underlay)
+		copy(dAtA[i:], m.Underlay)
+		i = encodeVarintHive(dAtA, i, uint64(len(m.Underlay)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -245,11 +261,15 @@ func (m *BzzAddress) Size() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Overlay)
+	l = len(m.Underlay)
 	if l > 0 {
 		n += 1 + l + sovHive(uint64(l))
 	}
-	l = len(m.Underlay)
+	l = len(m.Signature)
+	if l > 0 {
+		n += 1 + l + sovHive(uint64(l))
+	}
+	l = len(m.Overlay)
 	if l > 0 {
 		n += 1 + l + sovHive(uint64(l))
 	}
@@ -380,6 +400,74 @@ func (m *BzzAddress) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Underlay", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHive
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthHive
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthHive
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Underlay = append(m.Underlay[:0], dAtA[iNdEx:postIndex]...)
+			if m.Underlay == nil {
+				m.Underlay = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Signature", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHive
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthHive
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthHive
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Signature = append(m.Signature[:0], dAtA[iNdEx:postIndex]...)
+			if m.Signature == nil {
+				m.Signature = []byte{}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Overlay", wireType)
 			}
 			var byteLen int
@@ -411,38 +499,6 @@ func (m *BzzAddress) Unmarshal(dAtA []byte) error {
 			if m.Overlay == nil {
 				m.Overlay = []byte{}
 			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Underlay", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowHive
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthHive
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthHive
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Underlay = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

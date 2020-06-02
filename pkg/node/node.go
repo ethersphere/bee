@@ -17,6 +17,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
@@ -133,8 +134,9 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
+	signer := crypto.NewDefaultSigner(swarmPrivateKey)
 
-	p2ps, err := libp2p.New(p2pCtx, crypto.NewDefaultSigner(swarmPrivateKey), o.NetworkID, address, o.Addr, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, o.Addr, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
 		DisableWS:   o.DisableWS,
 		DisableQUIC: o.DisableQUIC,
@@ -161,6 +163,7 @@ func NewBee(o Options) (*Bee, error) {
 	hive := hive.New(hive.Options{
 		Streamer:    p2ps,
 		AddressBook: addressbook,
+		NetworkID:   o.NetworkID,
 		Logger:      logger,
 	})
 
@@ -350,11 +353,19 @@ func NewBee(o Options) (*Bee, error) {
 					return
 				}
 
-				err = addressbook.Put(overlay, addr)
+				bzzAddr, err := bzz.NewAddress(signer, addr, overlay, o.NetworkID)
+				if err != nil {
+					_ = p2ps.Disconnect(overlay)
+					logger.Debugf("new bzz address error %s %s: %v", a, overlay, err)
+					logger.Errorf("connect to bootnode %s", a)
+					return
+				}
+
+				err = addressbook.Put(overlay, *bzzAddr)
 				if err != nil {
 					_ = p2ps.Disconnect(overlay)
 					logger.Debugf("addressbook error persisting %s %s: %v", a, overlay, err)
-					logger.Errorf("persisting node %s", a)
+					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
 

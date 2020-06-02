@@ -8,16 +8,18 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/bzz"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type bookFunc func(t *testing.T) (book addressbook.GetPutter)
+type bookFunc func(t *testing.T) (book addressbook.Interface)
 
 func TestInMem(t *testing.T) {
-	run(t, func(t *testing.T) addressbook.GetPutter {
+	run(t, func(t *testing.T) addressbook.Interface {
 		store := mock.NewStateStore()
 		book := addressbook.New(store)
 
@@ -27,7 +29,6 @@ func TestInMem(t *testing.T) {
 
 func run(t *testing.T, f bookFunc) {
 	store := f(t)
-
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{0, 1, 2, 4})
 	multiaddr, err := ma.NewMultiaddr("/ip4/1.1.1.1")
@@ -35,7 +36,17 @@ func run(t *testing.T, f bookFunc) {
 		t.Fatal(err)
 	}
 
-	err = store.Put(addr1, multiaddr)
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bzzAddr, err := bzz.NewAddress(crypto.NewDefaultSigner(pk), multiaddr, addr1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Put(addr1, *bzzAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +61,25 @@ func run(t *testing.T, f bookFunc) {
 		t.Fatal("value found in store but should not have been")
 	}
 
-	if multiaddr.String() != v.String() {
+	if !bzzAddr.Equal(&v) {
 		t.Fatalf("value retrieved from store not equal to original stored address: %v, want %v", v, multiaddr)
+	}
+
+	overlays, err := store.Overlays()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(overlays) != 1 {
+		t.Fatalf("expected overlay len %v, got %v", 1, len(overlays))
+	}
+
+	addresses, err := store.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(addresses) != 1 {
+		t.Fatalf("expected addresses len %v, got %v", 1, len(addresses))
 	}
 }
