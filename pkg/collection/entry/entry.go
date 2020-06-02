@@ -7,11 +7,12 @@ package entry
 import (
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/collection"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/collection"
 )
 
 var (
+	_ = collection.Entry(&Entry{})
 	serializedDataSize = swarm.SectionSize * 2
 )
 
@@ -36,7 +37,7 @@ func (e *Entry) Reference() swarm.Address {
 }
 
 // Metadata implements collection.Entry
-func (e *Entry) Metadata(collection.MetadataType) swarm.Address {
+func (e *Entry) Metadata() swarm.Address {
 	return e.metadata
 }
 

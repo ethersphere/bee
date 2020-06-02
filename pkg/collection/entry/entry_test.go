@@ -7,13 +7,8 @@ package entry_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/collection"
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/swarm/test"
-)
-
-var (
-	_ = collection.Entry(&entry.Entry{})
 )
 
 // TestEntrySerialize verifies integrity of serialization.
@@ -36,7 +31,7 @@ func TestEntrySerialize(t *testing.T) {
 		t.Fatalf("expected reference %s, got %s", referenceAddress, entryRecovered.Reference())
 	}
 
-	metadataAddressRecovered := entryRecovered.Metadata(collection.CustomMetadataType)
+	metadataAddressRecovered := entryRecovered.Metadata()
 	if !metadataAddress.Equal(metadataAddressRecovered) {
 		t.Fatalf("expected metadata %s, got %s", metadataAddress, metadataAddressRecovered)
 	}

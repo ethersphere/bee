@@ -9,14 +9,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// MetadataType disambiguates different type of metadata structures between entry
-// implementations.
-type MetadataType uint8
-
-const (
-	CustomMetadataType MetadataType = iota
-)
-
 // Collection provides a specific ordering of a collection of binary data vectors
 // stored in bee.
 type Collection interface {
@@ -28,5 +20,5 @@ type Collection interface {
 // given data vector concealed by Reference.
 type Entry interface {
 	Reference() swarm.Address
-	Metadata(MetadataType) swarm.Address
+	Metadata() swarm.Address
 }
