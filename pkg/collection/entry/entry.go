@@ -23,7 +23,7 @@ type Entry struct {
 }
 
 // New creates a new Entry.
-func New(reference swarm.Address, metadata swarm.Address) *Entry {
+func New(reference, metadata swarm.Address) *Entry {
 	return &Entry{
 		reference: reference,
 		metadata: metadata,
@@ -51,7 +51,7 @@ func (e *Entry) MarshalBinary() ([]byte, error) {
 // UnmarshalBinary implements encoding.BinaryUnmarshaler
 func (e *Entry) UnmarshalBinary(b []byte) error {
 	if len(b) != serializedDataSize {
-		return errors.New("Invalid data length")
+		return errors.New("invalid data length")
 	}
 	e.reference = swarm.NewAddress(b[:swarm.SectionSize])
 	e.metadata = swarm.NewAddress(b[swarm.SectionSize:])
