@@ -155,12 +155,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	underlays, err := buildFullMAs(h.Addrs(), h.ID())
+	// todo: handle different underlays
+	underlay, err := buildUnderlayAddress(h.Addrs()[0], h.ID())
 	if err != nil {
 		return nil, fmt.Errorf("build host multiaddresses: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, underlays[0], signer, networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, underlay, signer, networkID, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -285,25 +286,27 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() ([]ma.Multiaddr, error) {
-	return buildFullMAs(s.host.Addrs(), s.host.ID())
+func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
+	for _, addr := range s.host.Addrs() {
+		a, err := buildUnderlayAddress(addr, s.host.ID())
+		if err != nil {
+			return nil, err
+		}
+
+		addreses = append(addreses, a)
+	}
+
+	return addreses, nil
 }
 
-func buildFullMAs(addrs []ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	// Build host multiaddress
 	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.Pretty()))
 	if err != nil {
 		return nil, err
 	}
 
-	var addreses []ma.Multiaddr
-	// Now we can build a full multiaddress to reach this host
-	// by encapsulating both addresses:
-	for _, addr := range addrs {
-		addreses = append(addreses, addr.Encapsulate(hostAddr))
-	}
-
-	return addreses, nil
+	return addr.Encapsulate(hostAddr), nil
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
