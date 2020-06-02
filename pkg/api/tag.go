@@ -7,31 +7,57 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
+
 	"github.com/gorilla/mux"
 )
 
+type tagResponse struct {
+	Total     int64         `json:"total"`
+	Split     int64         `json:"split"`
+	Seen      int64         `json:"seen"`
+	Stored    int64         `json:"stored"`
+	Sent      int64         `json:"sent"`
+	Synced    int64         `json:"synced"`
+	Uid       uint32        `json:"uid"`
+	Anonymous bool          `json:"anonymous"`
+	Name      string        `json:"name"`
+	Address   swarm.Address `json:"address"`
+	StartedAt time.Time     `json:"startedAt"`
+}
+
+func newTag(tag *tags.Tag) tagResponse {
+	return tagResponse{
+		Total:     tag.Total,
+		Split:     tag.Split,
+		Seen:      tag.Seen,
+		Stored:    tag.Stored,
+		Sent:      tag.Sent,
+		Synced:    tag.Synced,
+		Uid:       tag.Uid,
+		Anonymous: tag.Anonymous,
+		Name:      tag.Name,
+		Address:   tag.Address,
+		StartedAt: tag.StartedAt,
+	}
+}
 func (s *server) getANewTag(w http.ResponseWriter, r *http.Request) {
 	tagName := mux.Vars(r)["name"]
-	if tagName == "" {
-		s.Logger.Debugf("bzz-tag: invalid tag name : %s", tagName)
-		s.Logger.Error("bzz-tag: invalid tag name")
-		jsonhttp.BadRequest(w, "invalid tag name")
-		return
-	}
 
-	tag, err := s.Tags.Create(tagName, 1, false)
+	tag, err := s.Tags.Create(tagName, 0, false)
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: tag creation error: %v", err)
-		s.Logger.Error("bzz-chunk: tag creation error")
+		s.Logger.Debugf("bzz-chunk: tag create error: %v", err)
+		s.Logger.Error("bzz-chunk: tag create error")
 		jsonhttp.InternalServerError(w, "cannot create tag")
 		return
 	}
-	w.Header().Set("Content-Type", jsonhttp.DefaultContentTypeHeader)
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, tag)
+	jsonhttp.OK(w, newTag(tag))
+
 }
 
 func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) {
@@ -52,9 +78,8 @@ func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", jsonhttp.DefaultContentTypeHeader)
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, tag)
+	jsonhttp.OK(w, newTag(tag))
 }
 
 func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
@@ -62,9 +87,9 @@ func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
 
 	uuid, err := strconv.ParseUint(uidStr, 10, 32)
 	if err != nil {
-		s.Logger.Debugf("bzz-tag: parse uuid  %s: %v", uidStr, err)
-		s.Logger.Error("bzz-tag: error uploading chunk")
-		jsonhttp.BadRequest(w, "invalid chunk address")
+		s.Logger.Debugf("bzz-tag: parse uid  %s: %v", uidStr, err)
+		s.Logger.Error("bzz-tag: parse uid")
+		jsonhttp.BadRequest(w, "invalid uid")
 		return
 	}
 
@@ -76,7 +101,6 @@ func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, tag)
+	jsonhttp.OK(w, newTag(tag))
 }

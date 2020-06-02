@@ -137,6 +137,7 @@ func (s *Service) setChunkAsSynced(ctx context.Context, addr swarm.Address) {
 		ta, err := s.tag.GetByAddress(addr)
 		if err != nil {
 			s.logger.Debugf("pusher: get tag by address %s: %v", addr, err)
+			return
 		}
 		ta.Inc(tags.StateSynced)
 	}

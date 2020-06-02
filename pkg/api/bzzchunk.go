@@ -71,6 +71,10 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Increment the total tags here since we dont have a splitter
+	// for the file upload, it will done in the early stage itself in bulk
+	tag.Inc(tags.TotalChunks)
+
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: read chunk data error: %v, addr %s", err, address)

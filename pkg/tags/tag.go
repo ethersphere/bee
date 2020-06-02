@@ -40,7 +40,8 @@ var (
 type State = uint32
 
 const (
-	StateSplit  State = iota // chunk has been processed by filehasher/swarm safe call
+	TotalChunks State = iota // The total no of chunks for the tag
+	StateSplit               // chunk has been processed by filehasher/swarm safe call
 	StateStored              // chunk stored locally
 	StateSeen                // chunk previously seen
 	StateSent                // chunk sent to neighbourhood
@@ -100,6 +101,8 @@ func (t *Tag) FinishRootSpan() {
 func (t *Tag) IncN(state State, n int) {
 	var v *int64
 	switch state {
+	case TotalChunks:
+		v = &t.Total
 	case StateSplit:
 		v = &t.Split
 	case StateStored:
@@ -123,6 +126,8 @@ func (t *Tag) Inc(state State) {
 func (t *Tag) Get(state State) int64 {
 	var v *int64
 	switch state {
+	case TotalChunks:
+		v = &t.Total
 	case StateSplit:
 		v = &t.Split
 	case StateStored:
