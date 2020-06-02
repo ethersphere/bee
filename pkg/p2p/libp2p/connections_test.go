@@ -357,11 +357,11 @@ func TestTopologyNotifiee(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	// expect that n1 notifee called with s2 overlay
 	waitAddrSet(t, &n1connectedAddr, &mtx, overlay2)
+	waitAddrSet(t, &n2connectedAddr, &mtx, overlay1)
 
 	mtx.Lock()
-	expectZeroAddress(t, n1disconnectedAddr, n2connectedAddr, n2disconnectedAddr)
+	expectZeroAddress(t, n1disconnectedAddr, n2disconnectedAddr)
 	mtx.Unlock()
 
 	// s2 disconnects from s1 so s1 disconnect notifiee should be called
@@ -372,18 +372,14 @@ func TestTopologyNotifiee(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 	waitAddrSet(t, &n1disconnectedAddr, &mtx, overlay2)
+	waitAddrSet(t, &n2disconnectedAddr, &mtx, overlay1)
 
-	// note that both n1disconnect and n2disconnect callbacks are called after just
-	// one disconnect. this is due to the fact the when the libp2p abstraction is explicitly
-	// called to disconnect from a peer, it will also notify the topology notifiee, since
-	// peer disconnections can also result from components from outside the bound of the
-	// topology driver
-	mtx.Lock()
-	expectZeroAddress(t, n2connectedAddr)
-	mtx.Unlock()
+	n1connectedAddr = swarm.ZeroAddress
+	n2connectedAddr = swarm.ZeroAddress
+	n1disconnectedAddr = swarm.ZeroAddress
+	n2disconnectedAddr = swarm.ZeroAddress
 
 	addr2 := serviceUnderlayAddress(t, s2)
-	// s1 connects to s2, thus the notifiee on s2 should be called on Connect
 	bzzAddr2, err := s1.Connect(ctx, addr2)
 	if err != nil {
 		t.Fatal(err)
@@ -392,6 +388,7 @@ func TestTopologyNotifiee(t *testing.T) {
 	expectPeers(t, s1, overlay2)
 	expectPeersEventually(t, s2, overlay1)
 	waitAddrSet(t, &n2connectedAddr, &mtx, overlay1)
+	waitAddrSet(t, &n1connectedAddr, &mtx, overlay2)
 
 	// s1 disconnects from s2 so s2 disconnect notifiee should be called
 	if err := s1.Disconnect(bzzAddr2.Overlay); err != nil {
@@ -400,6 +397,8 @@ func TestTopologyNotifiee(t *testing.T) {
 	expectPeers(t, s1)
 	expectPeersEventually(t, s2)
 	waitAddrSet(t, &n2disconnectedAddr, &mtx, overlay1)
+	waitAddrSet(t, &n1disconnectedAddr, &mtx, overlay2)
+
 }
 
 func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.Address) {

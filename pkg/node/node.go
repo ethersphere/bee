@@ -345,24 +345,9 @@ func NewBee(o Options) (*Bee, error) {
 					return
 				}
 
-				bzzAddr, err := p2ps.Connect(p2pCtx, addr)
+				_, err = p2ps.Connect(p2pCtx, addr)
 				if err != nil {
 					logger.Debugf("connect fail %s: %v", a, err)
-					logger.Errorf("connect to bootnode %s", a)
-					return
-				}
-
-				err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
-				if err != nil {
-					_ = p2ps.Disconnect(bzzAddr.Overlay)
-					logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
-					logger.Errorf("connect to bootnode %s", a)
-					return
-				}
-
-				if err := topologyDriver.AddPeer(p2pCtx, bzzAddr.Overlay); err != nil {
-					_ = p2ps.Disconnect(bzzAddr.Overlay)
-					logger.Debugf("topology add peer fail %s %s: %v", a, bzzAddr.Overlay, err)
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}

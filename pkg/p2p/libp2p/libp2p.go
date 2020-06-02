@@ -207,18 +207,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 		_ = stream.Close()
 
-		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
-		if err != nil {
-			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
-			s.logger.Errorf("unable to persist peer %v", peerID)
-			_ = s.disconnect(peerID)
+		if err := s.afterConnect(ctx, *i.BzzAddress); err != nil {
+			s.logger.Errorf("connect %v", i.BzzAddress.Overlay)
 			return
-		}
-
-		if s.topologyNotifier != nil {
-			if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
-				s.logger.Debugf("topology notifier: %s: %v", peerID, err)
-			}
 		}
 
 		s.metrics.HandledStreamCount.Inc()
@@ -232,6 +223,25 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(peerRegistry)       // update peer registry on network events
 	h.Network().Notify(s.handshakeService) // update handshake service on network events
 	return s, nil
+}
+
+func (s *Service) afterConnect(ctx context.Context, address bzz.Address) error {
+	err := s.addressbook.Put(address.Overlay, address)
+	if err != nil {
+		s.logger.Debugf("handshake: addressbook put error %s: %v", address.Overlay, err)
+		_ = s.Disconnect(address.Overlay)
+		return err
+	}
+
+	if s.topologyNotifier != nil {
+		if err := s.topologyNotifier.Connected(ctx, address.Overlay); err != nil {
+			s.logger.Debugf("topology notifier: %s: %v", address.Overlay, err)
+			_ = s.Disconnect(address.Overlay)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -349,6 +359,11 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
+		return nil, err
+	}
+
+	if err := s.afterConnect(ctx, *i.BzzAddress); err != nil {
+		s.logger.Errorf("connect %v", i.BzzAddress.Overlay)
 		return nil, err
 	}
 
