@@ -30,7 +30,7 @@ type tagResponse struct {
 	StartedAt time.Time     `json:"startedAt"`
 }
 
-func newTag(tag *tags.Tag) tagResponse {
+func newTagResponse(tag *tags.Tag) tagResponse {
 	return tagResponse{
 		Total:     tag.Total,
 		Split:     tag.Split,
@@ -45,7 +45,7 @@ func newTag(tag *tags.Tag) tagResponse {
 		StartedAt: tag.StartedAt,
 	}
 }
-func (s *server) getANewTag(w http.ResponseWriter, r *http.Request) {
+func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
 	tagName := mux.Vars(r)["name"]
 
 	tag, err := s.Tags.Create(tagName, 0, false)
@@ -56,7 +56,7 @@ func (s *server) getANewTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, newTag(tag))
+	jsonhttp.OK(w, newTagResponse(tag))
 
 }
 
@@ -65,7 +65,7 @@ func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) 
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("bzz-tag: parse chunk address %s: %v", addr, err)
-		s.Logger.Error("bzz-tag: error uploading chunk")
+		s.Logger.Error("bzz-tag: parse chunk address")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
@@ -79,7 +79,7 @@ func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, newTag(tag))
+	jsonhttp.OK(w, newTagResponse(tag))
 }
 
 func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
@@ -102,5 +102,5 @@ func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, newTag(tag))
+	jsonhttp.OK(w, newTagResponse(tag))
 }

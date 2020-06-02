@@ -35,7 +35,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("bzz-chunk: parse chunk address %s: %v", addr, err)
-		s.Logger.Error("bzz-chunk: error uploading chunk")
+		s.Logger.Error("bzz-chunk: parse chunk address")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
@@ -57,15 +57,15 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tagUid, err := strconv.ParseUint(tagUidStr, 10, 32)
 		if err != nil {
 			s.Logger.Debugf("bzz-chunk: parse taguid %s: %v", tagUidStr, err)
-			s.Logger.Error("bzz-chunk: error uploading chunk")
+			s.Logger.Error("bzz-chunk: parse taguid")
 			jsonhttp.BadRequest(w, "invalid taguid")
 			return
 		}
 
 		tag, err = s.Tags.Get(uint32(tagUid))
 		if err != nil {
-			s.Logger.Debugf("bzz-chunk: tag creation error: %v, addr %s", err, address)
-			s.Logger.Error("bzz-chunk: tag creation error")
+			s.Logger.Debugf("bzz-chunk: tag get error: %v, addr %s", err, address)
+			s.Logger.Error("bzz-chunk: tag get error")
 			jsonhttp.InternalServerError(w, "cannot create tag")
 			return
 		}

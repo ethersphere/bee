@@ -46,7 +46,7 @@ func (s *server) setupRouting() {
 	})
 
 	router.Handle("/bzz-tag/name/{name}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getANewTag),
+		"POST": http.HandlerFunc(s.CreateTag),
 	})
 
 	router.Handle("/bzz-tag/addr/{addr}", jsonhttp.MethodHandler{

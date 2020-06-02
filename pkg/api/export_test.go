@@ -7,4 +7,5 @@ package api
 type (
 	PingpongResponse = pingpongResponse
 	BzzPostResponse  = bzzPostResponse
+	TagResponse      = tagResponse
 )
