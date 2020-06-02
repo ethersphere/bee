@@ -228,14 +228,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 func (s *Service) afterConnect(ctx context.Context, address bzz.Address) error {
 	err := s.addressbook.Put(address.Overlay, address)
 	if err != nil {
-		s.logger.Debugf("handshake: addressbook put error %s: %v", address.Overlay, err)
+		s.logger.Debugf("addressbook put error %s: %v", address.Overlay, err)
 		_ = s.Disconnect(address.Overlay)
 		return err
 	}
 
 	if s.topologyNotifier != nil {
 		if err := s.topologyNotifier.Connected(ctx, address.Overlay); err != nil {
-			s.logger.Debugf("topology notifier: %s: %v", address.Overlay, err)
+			s.logger.Debugf("topology notifier connected: %s: %v", address.Overlay, err)
 			_ = s.Disconnect(address.Overlay)
 			return err
 		}
@@ -363,7 +363,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	if err := s.afterConnect(ctx, *i.BzzAddress); err != nil {
-		s.logger.Errorf("connect %v", i.BzzAddress.Overlay)
 		return nil, err
 	}
 
