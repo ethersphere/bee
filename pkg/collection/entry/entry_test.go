@@ -16,8 +16,7 @@ import (
 func TestEntrySerialize(t *testing.T) {
 	referenceAddress := test.RandomAddress()
 	metadataAddress := test.RandomAddress()
-	e := entry.New(referenceAddress)
-	e.SetMetadata(metadataAddress)
+	e := entry.New(referenceAddress, metadataAddress)
 	entrySerialized, err := e.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)

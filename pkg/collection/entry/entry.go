@@ -23,15 +23,11 @@ type Entry struct {
 }
 
 // New creates a new Entry.
-func New(reference swarm.Address) *Entry {
+func New(reference swarm.Address, metadata swarm.Address) *Entry {
 	return &Entry{
 		reference: reference,
+		metadata: metadata,
 	}
-}
-
-// SetMetadata sets the metadata for the data reference in Entry.
-func (e *Entry) SetMetadata(metadataAddress swarm.Address) {
-	e.metadata = metadataAddress
 }
 
 // Reference implements collection.Entry
