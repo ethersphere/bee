@@ -12,6 +12,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
+var (
+	_ = collection.Entry(&entry.Entry{})
+)
+
 // TestEntrySerialize verifies integrity of serialization.
 func TestEntrySerialize(t *testing.T) {
 	referenceAddress := test.RandomAddress()
@@ -32,7 +36,7 @@ func TestEntrySerialize(t *testing.T) {
 		t.Fatalf("expected reference %s, got %s", referenceAddress, entryRecovered.Reference())
 	}
 
-	metadataAddressRecovered := entryRecovered.Metadata(collection.FilenameMimeType)
+	metadataAddressRecovered := entryRecovered.Metadata(collection.CustomMetadataType)
 	if !metadataAddress.Equal(metadataAddressRecovered) {
 		t.Fatalf("expected metadata %s, got %s", metadataAddress, metadataAddressRecovered)
 	}

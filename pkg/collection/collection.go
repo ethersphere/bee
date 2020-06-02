@@ -9,10 +9,12 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// MetadataType disambiguates different type of metadata structures between entry
+// implementations.
 type MetadataType uint8
 
 const (
-	FilenameMimeType MetadataType = iota
+	CustomMetadataType MetadataType = iota
 )
 
 // Collection provides a specific ordering of a collection of binary data vectors
