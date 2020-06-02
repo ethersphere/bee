@@ -27,7 +27,7 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bzzAddr, err := s.P2P.Connect(r.Context(), addr)
+	address, err := s.P2P.Connect(r.Context(), addr)
 	if err != nil {
 		s.Logger.Debugf("debug api: peer connect %s: %v", addr, err)
 		s.Logger.Errorf("unable to connect to peer %s", addr)
@@ -36,7 +36,7 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, peerConnectResponse{
-		Address: bzzAddr.Overlay.String(),
+		Address: address.Overlay.String(),
 	})
 }
 
