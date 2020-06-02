@@ -17,7 +17,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
@@ -346,32 +345,24 @@ func NewBee(o Options) (*Bee, error) {
 					return
 				}
 
-				overlay, err := p2ps.Connect(p2pCtx, addr)
+				bzzAddr, err := p2ps.Connect(p2pCtx, addr)
 				if err != nil {
 					logger.Debugf("connect fail %s: %v", a, err)
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
 
-				bzzAddr, err := bzz.NewAddress(signer, addr, overlay, o.NetworkID)
+				err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
 				if err != nil {
-					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("new bzz address error %s %s: %v", a, overlay, err)
+					_ = p2ps.Disconnect(bzzAddr.Overlay)
+					logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
 
-				err = addressbook.Put(overlay, *bzzAddr)
-				if err != nil {
-					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("addressbook error persisting %s %s: %v", a, overlay, err)
-					logger.Errorf("connect to bootnode %s", a)
-					return
-				}
-
-				if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-					_ = p2ps.Disconnect(overlay)
-					logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
+				if err := topologyDriver.AddPeer(p2pCtx, bzzAddr.Overlay); err != nil {
+					_ = p2ps.Disconnect(bzzAddr.Overlay)
+					logger.Debugf("topology add peer fail %s %s: %v", a, bzzAddr.Overlay, err)
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}

@@ -12,6 +12,7 @@ import (
 	"net"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -309,51 +310,51 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 	return addr.Encapsulate(hostAddr), nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return swarm.Address{}, err
+		return nil, err
 	}
 
 	if _, found := s.peers.overlay(info.ID); found {
-		return swarm.Address{}, p2p.ErrAlreadyConnected
+		return nil, p2p.ErrAlreadyConnected
 	}
 
 	if err := s.conectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
-			return swarm.Address{}, p2p.NewConnectionBackoffError(err, s.conectionBreaker.ClosedUntil())
+			return nil, p2p.NewConnectionBackoffError(err, s.conectionBreaker.ClosedUntil())
 		}
-		return swarm.Address{}, err
+		return nil, err
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.disconnect(info.ID)
-		return swarm.Address{}, err
+		return nil, err
 	}
 
 	i, err := s.handshakeService.Handshake(NewStream(stream))
 	if err != nil {
 		_ = s.disconnect(info.ID)
-		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
+		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
-			return swarm.Address{}, err
+			return nil, err
 		}
 
-		return i.BzzAddress.Overlay, nil
+		return i.BzzAddress, nil
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
-		return swarm.Address{}, err
+		return nil, err
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
-	return i.BzzAddress.Overlay, nil
+	return i.BzzAddress, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
