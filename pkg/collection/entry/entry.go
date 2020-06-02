@@ -7,12 +7,12 @@ package entry
 import (
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/collection"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
-	_ = collection.Entry(&Entry{})
+	_                  = collection.Entry(&Entry{})
 	serializedDataSize = swarm.SectionSize * 2
 )
 
