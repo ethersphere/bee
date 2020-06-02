@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ var (
 )
 
 type binSaturationFunc func(bin, depth uint8, peers *pslice.PSlice) bool
-type binBalanceFunc func(bin uint8, b pslice.MetaBinTree) bool
+type binBalanceFunc func(bin uint8, b *pslice.MetaBinTree) bool
 
 // Options for injecting services to Kademlia.
 type Options struct {
@@ -56,8 +57,8 @@ type Kad struct {
 	balanceFunc       binBalanceFunc
 	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
 	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
-	connectedMetaBins *[]pslice.MetaBinTree //
-	knownMetaBins     *[]pslice.MetaBinTree //
+	connectedMetaBins []*pslice.MetaBinTree //
+	knownMetaBins     []*pslice.MetaBinTree //
 	depth             uint8                 // current neighborhood depth
 	depthMu           sync.RWMutex          // protect depth changes
 	manageC           chan struct{}         // trigger the manage forever loop to connect to new peers
@@ -168,7 +169,7 @@ func (k *Kad) manage() {
 				}
 
 				k.connectedPeers.Add(peer, po)
-				k.connectedMetaBins[po].insert(peer)
+				k.connectedMetaBins[po].Insert(peer)
 
 				k.waitNextMu.Lock()
 				delete(k.waitNext, peer.String())
@@ -195,7 +196,7 @@ func (k *Kad) manage() {
 				if errors.Is(err, errMissingAddressBookEntry) {
 					po := uint8(swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes()))
 					k.knownPeers.Remove(peerToRemove, po)
-					k.knownMetaBins[po].remove(peerToRemove)
+					k.knownMetaBins[po].Remove(peerToRemove)
 
 				} else {
 					k.logger.Errorf("kademlia manage loop iterator: %v", err)
@@ -232,13 +233,13 @@ func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 	return size >= 2
 }
 
-func metaBinBalanced(bin uint8, b pslice.MetaBinTree) bool {
+func metaBinBalanced(bin uint8, b *pslice.MetaBinTree) bool {
 
-	fmt.println("Checking balancedness for Metabin for PO %v", bin)
+	fmt.Println("Checking balancedness for Metabin for PO %v", bin)
 
 	// First, let's initialize the connectedMetaBins for this PO
 
-	return b.completelyNonEmpty()
+	return b.CompletelyNonEmpty()
 }
 
 // recalcDepth calculates and returns the kademlia depth.
@@ -328,7 +329,7 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 
 	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 	k.knownPeers.Add(addr, uint8(po))
-	k.knownMetaBins[po].insert(addr)
+	k.knownMetaBins[po].Insert(addr)
 
 	select {
 	case k.manageC <- struct{}{}:
@@ -342,9 +343,9 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
 	k.knownPeers.Add(addr, po)
-	k.knownMetaBins[po].insert(addr)
+	k.knownMetaBins[po].Insert(addr)
 	k.connectedPeers.Add(addr, po)
-	k.connectedMetaBins[po].insert(addr)
+	k.connectedMetaBins[po].Insert(addr)
 
 	k.waitNextMu.Lock()
 	delete(k.waitNext, addr.String())
@@ -365,7 +366,7 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 func (k *Kad) Disconnected(addr swarm.Address) {
 	po := uint8(swarm.Proximity(k.base.Bytes(), addr.Bytes()))
 	k.connectedPeers.Remove(addr, po)
-	k.knownMetaBins[po].remove(addr)
+	k.knownMetaBins[po].Remove(addr)
 
 	k.waitNextMu.Lock()
 	k.waitNext[addr.String()] = time.Now().Add(timeToRetry)

@@ -42,16 +42,16 @@ type MetaBin struct {
 	Logger   logging.Logger
 }
 
-func NewTreeMap(maxBins, requires int) *[]MetaBinTree {
-	barr := make([]MetaBinTree, maxBins)
+func NewTreeMap(maxBins, requires int) []*MetaBinTree {
+	barr := make([]*MetaBinTree, maxBins)
 	for i := 0; i < maxBins; i++ {
-		barr[i] = MetaBinTree{order: i + 1, required: requires}
+		barr[i] = &MetaBinTree{order: i + 1, required: requires}
 	}
-	return &barr
+	return barr
 
 }
 
-func (b *MetaBinTree) insert(new swarm.Address) *MetaBinTree {
+func (b *MetaBinTree) Insert(new swarm.Address) *MetaBinTree {
 	if b.root == nil {
 		b.root = &MetaBin{order: b.order, required: b.required}
 	}
@@ -59,21 +59,21 @@ func (b *MetaBinTree) insert(new swarm.Address) *MetaBinTree {
 	return b
 }
 
-func (b *MetaBinTree) remove(old swarm.Address) *MetaBinTree {
+func (b *MetaBinTree) Remove(old swarm.Address) *MetaBinTree {
 	if b.root != nil {
 		b.root.remove(old)
 	}
 	return b
 }
 
-func (b *MetaBinTree) metabinSize() int {
+func (b *MetaBinTree) MetaBinSize() int {
 	if b.root != nil {
 		return b.root.metabinSize()
 	}
 	return 0
 }
 
-func (b *MetaBinTree) completelyNonEmpty() bool {
+func (b *MetaBinTree) CompletelyNonEmpty() bool {
 	if b.root != nil {
 		return b.root.completelyNonEmpty()
 	}
@@ -81,17 +81,13 @@ func (b *MetaBinTree) completelyNonEmpty() bool {
 
 }
 
-func (b *MetaBinTree) print() {
+func (b *MetaBinTree) Print() {
 	fmt.Println("\n Printing Metabin for PO: %v \n", b.order-1)
 	if b.root != nil {
 		b.root.print()
 		return
 	}
 	fmt.Println("Empty MetaBinTree")
-}
-
-func (b *MetaBinTree) pv() *MetaBinTree {
-	return b
 }
 
 func (b *MetaBin) insert(new swarm.Address) {
