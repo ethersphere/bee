@@ -5,6 +5,7 @@
 package pslice
 
 import (
+	"fmt"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -41,6 +42,15 @@ type MetaBin struct {
 	Logger   logging.Logger
 }
 
+func NewTreeMap(maxBins, requires int) *[]MetaBinTree {
+	barr := make([]MetaBinTree, maxBins)
+	for i := 0; i < maxBins; i++ {
+		barr[i] = MetaBinTree{order: i + 1, required: requires}
+	}
+	return &barr
+
+}
+
 func (b *MetaBinTree) insert(new swarm.Address) *MetaBinTree {
 	if b.root == nil {
 		b.root = &MetaBin{order: b.order, required: b.required}
@@ -61,6 +71,27 @@ func (b *MetaBinTree) metabinSize() int {
 		return b.root.metabinSize()
 	}
 	return 0
+}
+
+func (b *MetaBinTree) completelyNonEmpty() bool {
+	if b.root != nil {
+		return b.root.completelyNonEmpty()
+	}
+	return false
+
+}
+
+func (b *MetaBinTree) print() {
+	fmt.Println("\n Printing Metabin for PO: %v \n", b.order-1)
+	if b.root != nil {
+		b.root.print()
+		return
+	}
+	fmt.Println("Empty MetaBinTree")
+}
+
+func (b *MetaBinTree) pv() *MetaBinTree {
+	return b
 }
 
 func (b *MetaBin) insert(new swarm.Address) {
@@ -119,4 +150,29 @@ func (b *MetaBin) metabinSize() int {
 		// The reason this shouldn't ever actually happen, is because we either insert to unsorted if R <= 1, or create metabins otherwise
 	}
 	return l0 + l1 + lu
+}
+
+func (b *MetaBin) completelyNonEmpty() bool {
+	if b.required > 1 {
+		return b.b0.completelyNonEmpty() && b.b1.completelyNonEmpty()
+	}
+	if len(b.unsorted) > 0 {
+		return true
+	}
+
+	return false
+
+}
+
+func (b *MetaBin) print() {
+
+	if b.required > 1 {
+		fmt.Print("0")
+		b.b0.print()
+		fmt.Print("1")
+		b.b1.print()
+	}
+	if b.required <= 1 {
+		fmt.Println("\n %v", b.unsorted)
+	}
 }
