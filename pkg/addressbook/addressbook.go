@@ -85,7 +85,7 @@ func (s *store) Overlays() (overlays []swarm.Address, err error) {
 	return overlays, nil
 }
 
-func (s *store) Addresses() (multis []bzz.Address, err error) {
+func (s *store) Addresses() (addresses []bzz.Address, err error) {
 	err = s.store.Iterate(keyPrefix, func(_, value []byte) (stop bool, err error) {
 		entry := &bzz.Address{}
 		err = entry.UnmarshalJSON(value)
@@ -93,12 +93,12 @@ func (s *store) Addresses() (multis []bzz.Address, err error) {
 			return true, err
 		}
 
-		multis = append(multis, *entry)
+		addresses = append(addresses, *entry)
 		return false, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return multis, nil
+	return addresses, nil
 }
