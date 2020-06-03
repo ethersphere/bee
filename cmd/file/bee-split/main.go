@@ -14,6 +14,7 @@ import (
 
 	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -24,14 +25,21 @@ var (
 	port        int    // flag variable, http api port
 	noHttp      bool   // flag variable, skips http api if set
 	ssl         bool   // flag variable, uses https for api if set
+	verbosity string  // flag variable, debug level
+	logger logging.Logger
 )
 
 // Split is the underlying procedure for the CLI command
 func Split(cmd *cobra.Command, args []string) (err error) {
-	var infile io.ReadCloser
+	logger, err = cmdfile.SetLogger(cmd, verbosity)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
 	// if one arg is set, this is the input file
 	// if not, we are reading from standard input
+	var infile io.ReadCloser
 	if len(args) > 0 {
 
 		// get the file length
@@ -119,6 +127,8 @@ Chunks are saved in individual files, and the file names will be the hex address
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
+	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
+
 	err := c.Execute()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())

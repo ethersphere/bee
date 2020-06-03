@@ -9,10 +9,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cobra"
 	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/spf13/cobra"
+	"github.com/ethersphere/bee/pkg/logging"
 )
 
 var (
@@ -21,10 +22,18 @@ var (
 	host         string // flag variable, http api host
 	port         int    // flag variable, http api port
 	ssl          bool   // flag variable, uses https for api if set
+	verbosity string  // flag variable, debug level
+	logger logging.Logger
 )
 
 // Join is the underlying procedure for the CLI command
 func Join(cmd *cobra.Command, args []string) (err error) {
+	logger, err = cmdfile.SetLogger(cmd, verbosity)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
 	// if output file is specified, create it if it does not exist
 	var outFile *os.File
 	if outFilePath != "" {
@@ -83,6 +92,7 @@ Will output retrieved data to stdout.`,
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
+	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	err := c.Execute()
 	if err != nil {

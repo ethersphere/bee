@@ -38,7 +38,8 @@ var (
 	noHttp       bool           // flag variable, skips http api if set
 	ssl          bool           // flag variable, uses https for api if set
 	retrieve     bool           // flag variable, if set will resolve and retrieve referenced file
-	logger       logging.Logger = logging.New(os.Stderr, 0)
+	verbosity string  // flag variable, debug level
+	logger       logging.Logger
 )
 
 // getEntry handles retrieving and writing a file from the file entry
@@ -194,6 +195,12 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 
 // Entry is the underlying procedure for the CLI command
 func Entry(cmd *cobra.Command, args []string) (err error) {
+	logger, err = cmdfile.SetLogger(cmd, verbosity)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
 	if retrieve {
 		return getEntry(cmd, args)
 	}
@@ -234,6 +241,7 @@ If --output-dir is set, the retrieved file will be written to the speficied dire
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().BoolVarP(&retrieve, "retrieve", "r", false, "retrieve file from referenced entry")
 	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
+	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	err := c.Execute()
 	if err != nil {

@@ -16,9 +16,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // nopWriteCloser wraps a io.Writer in the same manner as ioutil.NopCloser does
@@ -207,4 +211,25 @@ func JoinReadAll(j file.Joiner, addr swarm.Address, outFile io.Writer) error {
 		return fmt.Errorf("received only %d of %d total bytes", total, l)
 	}
 	return err
+}
+
+func SetLogger(cmd *cobra.Command, verbosityString string) (logger logging.Logger, err error) {
+	v := strings.ToLower(verbosityString)
+	switch v {
+	case "0", "silent":
+		logger = logging.New(ioutil.Discard, 0)
+	case "1", "error":
+		logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
+	case "2", "warn":
+		logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
+	case "3", "info":
+		logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
+	case "4", "debug":
+		logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
+	case "5", "trace":
+		logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
+	default:
+		return nil, fmt.Errorf("unknown verbosity level %q", v)
+	}
+	return logger, nil
 }
