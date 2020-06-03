@@ -9,11 +9,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
 	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -22,8 +22,8 @@ var (
 	host         string // flag variable, http api host
 	port         int    // flag variable, http api port
 	ssl          bool   // flag variable, uses https for api if set
-	verbosity string  // flag variable, debug level
-	logger logging.Logger
+	verbosity    string // flag variable, debug level
+	logger       logging.Logger
 )
 
 // Join is the underlying procedure for the CLI command

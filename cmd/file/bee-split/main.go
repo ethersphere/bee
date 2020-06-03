@@ -25,8 +25,8 @@ var (
 	port        int    // flag variable, http api port
 	noHttp      bool   // flag variable, skips http api if set
 	ssl         bool   // flag variable, uses https for api if set
-	verbosity string  // flag variable, debug level
-	logger logging.Logger
+	verbosity   string // flag variable, debug level
+	logger      logging.Logger
 )
 
 // Split is the underlying procedure for the CLI command

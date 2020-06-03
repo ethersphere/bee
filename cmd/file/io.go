@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // nopWriteCloser wraps a io.Writer in the same manner as ioutil.NopCloser does
@@ -162,8 +162,8 @@ func (a *ApiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.
 // LimitWriteCloser limits the output from the application.
 type LimitWriteCloser struct {
 	io.WriteCloser
-	total     int64
-	limit     int64
+	total int64
+	limit int64
 }
 
 // NewLimitWriteCloser creates a new LimitWriteCloser.

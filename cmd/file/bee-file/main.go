@@ -29,16 +29,16 @@ const (
 )
 
 var (
-	filename     string         // flag variable, filename to use in metadata
-	mimeType     string         // flag variable, mime type to use in metadata
-	outDir       string         // flag variable, output dir for fsStore
-	outFileForce bool           // flag variable, overwrite output file if exists
-	host         string         // flag variable, http api host
-	port         int            // flag variable, http api port
-	noHttp       bool           // flag variable, skips http api if set
-	ssl          bool           // flag variable, uses https for api if set
-	retrieve     bool           // flag variable, if set will resolve and retrieve referenced file
-	verbosity string  // flag variable, debug level
+	filename     string // flag variable, filename to use in metadata
+	mimeType     string // flag variable, mime type to use in metadata
+	outDir       string // flag variable, output dir for fsStore
+	outFileForce bool   // flag variable, overwrite output file if exists
+	host         string // flag variable, http api host
+	port         int    // flag variable, http api port
+	noHttp       bool   // flag variable, skips http api if set
+	ssl          bool   // flag variable, uses https for api if set
+	retrieve     bool   // flag variable, if set will resolve and retrieve referenced file
+	verbosity    string // flag variable, debug level
 	logger       logging.Logger
 )
 
