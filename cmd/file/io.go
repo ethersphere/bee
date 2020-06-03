@@ -16,8 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -157,24 +157,24 @@ func (l *limitReadCloser) Close() error {
 
 // limitWriteCloser limits the output from the application.
 type limitWriteCloser struct {
-	total int64
-	limit int64
-	writer io.Writer
+	total     int64
+	limit     int64
+	writer    io.Writer
 	closeFunc func() error
 }
 
 // NewLimitWriteCloser creates a new limitWriteCloser.
 func NewLimitWriteCloser(w io.Writer, closeFunc func() error, c int64) io.WriteCloser {
 	return &limitWriteCloser{
-		limit: c,
-		writer: w,
+		limit:     c,
+		writer:    w,
 		closeFunc: closeFunc,
 	}
 }
 
 // Write implements io.Writer.
 func (l *limitWriteCloser) Write(b []byte) (int, error) {
-	if l.total + int64(len(b)) > l.limit {
+	if l.total+int64(len(b)) > l.limit {
 		return 0, errors.New("overflow")
 	}
 	c, err := l.writer.Write(b)

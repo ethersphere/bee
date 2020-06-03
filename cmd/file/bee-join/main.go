@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
+	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/swarm"
-	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/spf13/cobra"
 )
 

@@ -7,34 +7,34 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
 	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
 
 const (
-	defaultMimeType = "application/octet-stream"
+	defaultMimeType     = "application/octet-stream"
 	limitMetadataLength = 1024 * 1024
 )
 
 var (
-	filename string
-	mimeType string
-	outDir      string // flag variable, output dir for fsStore
+	filename     string
+	mimeType     string
+	outDir       string // flag variable, output dir for fsStore
 	outFileForce bool   // flag variable, overwrite output file if exists
-	host        string // flag variable, http api host
-	port        int    // flag variable, http api port
-	noHttp      bool   // flag variable, skips http api if set
-	ssl         bool   // flag variable, uses https for api if set
-	retrieve	bool 
+	host         string // flag variable, http api host
+	port         int    // flag variable, http api port
+	noHttp       bool   // flag variable, skips http api if set
+	ssl          bool   // flag variable, uses https for api if set
+	retrieve     bool
 )
 
 // getEntry handles retrieving and writing a file from the file entry
@@ -156,7 +156,7 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 		mimeType = defaultMimeType
 	}
 	metadata := entry.NewMetadata(filename)
-	metadata.MimeType =mimeType
+	metadata.MimeType = mimeType
 
 	// serialize metadata and send it to splitter
 	metadataBytes, err := json.Marshal(metadata)
@@ -197,12 +197,11 @@ func Entry(cmd *cobra.Command, args []string) (err error) {
 	return putEntry(cmd, args)
 }
 
-
 func main() {
 	c := &cobra.Command{
-		Use:   "entry <reference>",
-		Short: "Create a file entry",
-		RunE:	Entry,
+		Use:          "entry <reference>",
+		Short:        "Create a file entry",
+		RunE:         Entry,
 		SilenceUsage: true,
 	}
 

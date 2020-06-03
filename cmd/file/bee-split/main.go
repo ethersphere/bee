@@ -11,8 +11,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/ethersphere/bee/pkg/file/splitter"
 	cmdfile "github.com/ethersphere/bee/cmd/file"
+	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/spf13/cobra"
 )
 
