@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology/test"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 // TestRandomAddressAt checks that RandomAddressAt generates a correct random address
