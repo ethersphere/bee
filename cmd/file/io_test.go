@@ -34,7 +34,9 @@ func TestApiStore(t *testing.T) {
 	storer := mock.NewStorer()
 	ctx := context.Background()
 	srv, addr := newTestServer(t, storer)
-	defer srv.Shutdown(ctx)
+	defer func() {
+		_ = srv.Shutdown(ctx)
+	}()
 
 	srvUrl, err := url.Parse("http://" + addr.String())
 	if err != nil {
