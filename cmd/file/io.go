@@ -21,16 +21,20 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// nopWriteCloser wraps a io.Writer in the same manner as ioutil.NopCloser does
+// with an io.Reader.
 type nopWriteCloser struct {
 	io.Writer
 }
 
+// NopWriteCloser returns a new io.WriteCloser with the given writer as io.Writer.
 func NopWriteCloser(w io.Writer) io.WriteCloser {
 	return &nopWriteCloser{
 		Writer: w,
 	}
 }
 
+// Close implements io.Closer
 func (n *nopWriteCloser) Close() error {
 	return nil
 }
