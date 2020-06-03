@@ -58,12 +58,12 @@ func TestAddPeer(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		statestore := mockstate.NewStateStore()
 		ab := addressbook.New(statestore)
-		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			if !addr.Equal(underlay) {
 				t.Fatalf("expected multiaddr %s, got %s", addr, underlay)
 			}
 
-			return overlay, nil
+			return bzzAddr, nil
 		}))
 
 		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
@@ -87,9 +87,9 @@ func TestAddPeer(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		statestore := mockstate.NewStateStore()
 		ab := addressbook.New(statestore)
-		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			t.Fatal("should not be called")
-			return swarm.Address{}, nil
+			return nil, nil
 		}))
 
 		fullDriver := full.New(discovery, ab, p2p, logger, overlay)
@@ -114,9 +114,9 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			t.Fatal("should not be called")
-			return swarm.Address{}, nil
+			return nil, nil
 		}), p2pmock.WithPeersFunc(func() []p2p.Peer {
 			return connectedPeers
 		}))
@@ -156,12 +156,12 @@ func TestAddPeer(t *testing.T) {
 		statestore := mockstate.NewStateStore()
 		ab := addressbook.New(statestore)
 
-		p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			if !addr.Equal(underlay) {
 				t.Fatalf("expected multiaddr %s, got %s", addr.String(), underlay)
 			}
 
-			return overlay, nil
+			return bzzAddr, nil
 		}), p2pmock.WithPeersFunc(func() []p2p.Peer {
 			return connectedPeers
 		}))
@@ -199,6 +199,10 @@ func TestAddPeer(t *testing.T) {
 func TestClosestPeer(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	baseOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+	bzzAddr := &bzz.Address{
+		Overlay: baseOverlay,
+	}
+
 	connectedPeers := []p2p.Peer{
 		{
 			Address: swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000"), // binary 1000 -> po 0 to base
@@ -215,8 +219,8 @@ func TestClosestPeer(t *testing.T) {
 	statestore := mockstate.NewStateStore()
 	ab := addressbook.New(statestore)
 
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
-		return baseOverlay, nil
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+		return bzzAddr, nil
 	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
 		return connectedPeers
 	}))

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -16,7 +17,7 @@ import (
 
 type Service struct {
 	addProtocolFunc func(p2p.ProtocolSpec) error
-	connectFunc     func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+	connectFunc     func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	disconnectFunc  func(overlay swarm.Address) error
 	peersFunc       func() []p2p.Peer
 	setNotifierFunc func(topology.Notifier)
@@ -29,7 +30,7 @@ func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
 	})
 }
 
-func WithConnectFunc(f func(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)) Option {
+func WithConnectFunc(f func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)) Option {
 	return optionFunc(func(s *Service) {
 		s.connectFunc = f
 	})
@@ -74,9 +75,9 @@ func (s *Service) AddProtocol(spec p2p.ProtocolSpec) error {
 	return s.addProtocolFunc(spec)
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	if s.connectFunc == nil {
-		return swarm.Address{}, errors.New("function Connect not configured")
+		return nil, errors.New("function Connect not configured")
 	}
 	return s.connectFunc(ctx, addr)
 }
