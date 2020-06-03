@@ -160,7 +160,6 @@ type LimitWriteCloser struct {
 	io.WriteCloser
 	total     int64
 	limit     int64
-	closeFunc func() error
 }
 
 // NewLimitWriteCloser creates a new LimitWriteCloser.
