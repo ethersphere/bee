@@ -35,7 +35,7 @@ var (
 	outFileForce bool   // flag variable, overwrite output file if exists
 	host         string // flag variable, http api host
 	port         int    // flag variable, http api port
-	noHttp       bool   // flag variable, skips http api if set
+	useHttp      bool   // flag variable, skips http api if not set
 	ssl          bool   // flag variable, uses https for api if set
 	retrieve     bool   // flag variable, if set will resolve and retrieve referenced file
 	verbosity    string // flag variable, debug level
@@ -141,14 +141,10 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 		store := cmdfile.NewFsStore(outDir)
 		stores.Add(store)
 	}
-	if !noHttp {
+	if useHttp {
 		store := cmdfile.NewApiStore(host, port, ssl)
 		stores.Add(store)
 	}
-
-	s := splitter.NewSimpleSplitter(stores)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// create metadata object, with defaults for missing values
 	if filename == "" {
@@ -165,6 +161,14 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
+	logger.Debugf("metadata contents: %s", metadataBytes)
+
+	// set up splitter to process the metadata
+	s := splitter.NewSimpleSplitter(stores)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// first add metadata
 	metadataBuf := bytes.NewBuffer(metadataBytes)
 	metadataReader := io.LimitReader(metadataBuf, int64(len(metadataBytes)))
 	metadataReadCloser := ioutil.NopCloser(metadataReader)
@@ -240,7 +244,7 @@ If --output-dir is set, the retrieved file will be written to the speficied dire
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().BoolVarP(&retrieve, "retrieve", "r", false, "retrieve file from referenced entry")
-	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
+	c.Flags().BoolVar(&useHttp, "http", false, "save entry to bee http api")
 	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	err := c.Execute()

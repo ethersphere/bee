@@ -23,7 +23,7 @@ var (
 	inputLength int64  // flag variable, limit of data input
 	host        string // flag variable, http api host
 	port        int    // flag variable, http api port
-	noHttp      bool   // flag variable, skips http api if set
+	useHttp     bool   // flag variable, skips http api if not set
 	ssl         bool   // flag variable, uses https for api if set
 	verbosity   string // flag variable, debug level
 	logger      logging.Logger
@@ -84,7 +84,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		store := cmdfile.NewFsStore(outdir)
 		stores.Add(store)
 	}
-	if !noHttp {
+	if useHttp {
 		store := cmdfile.NewApiStore(host, port, ssl)
 		stores.Add(store)
 	}
@@ -126,7 +126,7 @@ Chunks are saved in individual files, and the file names will be the hex address
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
-	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
+	c.Flags().BoolVar(&useHttp, "http", false, "save chunks to bee http api")
 	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	err := c.Execute()
