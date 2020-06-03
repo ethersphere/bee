@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -22,19 +24,19 @@ import (
 
 const (
 	defaultMimeType     = "application/octet-stream"
-	limitMetadataLength = 1024 * 1024
+	limitMetadataLength = swarm.ChunkSize
 )
 
 var (
-	filename     string
-	mimeType     string
+	filename     string // flag variable, filename to use in metadata
+	mimeType     string // flag variable, mime type to use in metadata
 	outDir       string // flag variable, output dir for fsStore
 	outFileForce bool   // flag variable, overwrite output file if exists
 	host         string // flag variable, http api host
 	port         int    // flag variable, http api port
 	noHttp       bool   // flag variable, skips http api if set
 	ssl          bool   // flag variable, uses https for api if set
-	retrieve     bool
+	retrieve     bool   // flag variable, if set will resolve and retrieve referenced file
 )
 
 // getEntry handles retrieving and writing a file from the file entry
@@ -49,9 +51,9 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	// initialize interface with HTTP API
 	store := cmdfile.NewApiStore(host, port, ssl)
 
-	// TODO: need to limit writer
 	buf := bytes.NewBuffer(nil)
-	limitBuf := cmdfile.NewLimitWriteCloser(buf, func() error { return nil }, limitMetadataLength)
+	writeCloser := cmdfile.NopWriteCloser(buf)
+	limitBuf := cmdfile.NewLimitWriteCloser(writeCloser, limitMetadataLength)
 	j := joiner.NewSimpleJoiner(store)
 	err = cmdfile.JoinReadAll(j, addr, limitBuf)
 	if err != nil {
@@ -164,8 +166,9 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 	metadataBuf := bytes.NewBuffer(metadataBytes)
-	metadataReader := cmdfile.NewLimitReadCloser(metadataBuf, func() error { return nil }, int64(len(metadataBytes)))
-	metadataAddr, err := s.Split(ctx, metadataReader, int64(len(metadataBytes)))
+	metadataReader := io.LimitReader(metadataBuf, int64(len(metadataBytes)))
+	metadataReadCloser := ioutil.NopCloser(metadataReader)
+	metadataAddr, err := s.Split(ctx, metadataReadCloser, int64(len(metadataBytes)))
 	if err != nil {
 		return err
 	}
@@ -178,8 +181,10 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 	fileEntryBuf := bytes.NewBuffer(fileEntryBytes)
-	fileEntryReader := cmdfile.NewLimitReadCloser(fileEntryBuf, func() error { return nil }, int64(len(fileEntryBytes)))
-	fileEntryAddr, err := s.Split(ctx, fileEntryReader, int64(len(fileEntryBytes)))
+	fileEntryReader := io.LimitReader(fileEntryBuf, int64(len(fileEntryBytes)))
+	//fileEntryReader := cmdfile.NewLimitReadCloser(fileEntryBuf, func() error { return nil }, int64(len(fileEntryBytes)))
+	fileEntryReadCloser := ioutil.NopCloser(fileEntryReader)
+	fileEntryAddr, err := s.Split(ctx, fileEntryReadCloser, int64(len(fileEntryBytes)))
 	if err != nil {
 		return err
 	}

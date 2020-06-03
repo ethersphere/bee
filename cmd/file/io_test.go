@@ -127,8 +127,8 @@ func TestTeeStore(t *testing.T) {
 func TestLimitWriter(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	data := []byte("foo")
-	closer := ioutil.NopCloser(buf).Close
-	w := cmdfile.NewLimitWriteCloser(buf, closer, int64(len(data)))
+	writeCloser := cmdfile.NopWriteCloser(buf)
+	w := cmdfile.NewLimitWriteCloser(writeCloser, int64(len(data)))
 	c, err := w.Write(data)
 	if err != nil {
 		t.Fatal(err)

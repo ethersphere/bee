@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 
 	cmdfile "github.com/ethersphere/bee/cmd/file"
@@ -54,13 +55,16 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		infile = cmdfile.NewLimitReadCloser(f, f.Close, inputLength)
+		infile := io.LimitReader(f, inputLength)
+		infile = ioutil.NopCloser(infile)
 	} else {
 		// this simple splitter is too stupid to handle open-ended input, sadly
 		if inputLength == 0 {
 			return errors.New("must specify length of input on stdin")
 		}
-		infile = cmdfile.NewLimitReadCloser(os.Stdin, func() error { return nil }, inputLength)
+		stdinReader := io.LimitReader(os.Stdin, inputLength)
+		infile = ioutil.NopCloser(stdinReader)
+		//infile = cmdfile.NewLimitReadCloser(stdinReadCloser, inputLength)
 	}
 
 	// add the fsStore and/or apiStore, depending on flags

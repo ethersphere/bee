@@ -21,6 +21,20 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func NopWriteCloser(w io.Writer) io.WriteCloser {
+	return &nopWriteCloser{
+		Writer: w,
+	}
+}
+
+func (n *nopWriteCloser) Close() error {
+	return nil
+}
+
 // putGetter wraps both storage.Putter and storage.Getter interfaces
 type putGetter interface {
 	storage.Putter
@@ -137,39 +151,19 @@ func (a *ApiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.
 	return ch, nil
 }
 
-// LimitReadCloser wraps the input to the application to limit the input to the given count flag.
-type LimitReadCloser struct {
-	io.Reader
-	closeFunc func() error
-}
-
-// NewLimitReadCloser creates a new LimitReadCloser.
-func NewLimitReadCloser(r io.Reader, closeFunc func() error, c int64) io.ReadCloser {
-	return &LimitReadCloser{
-		Reader:    io.LimitReader(r, c),
-		closeFunc: closeFunc,
-	}
-}
-
-// Close implements io.Closer.
-func (l *LimitReadCloser) Close() error {
-	return l.closeFunc()
-}
-
 // LimitWriteCloser limits the output from the application.
 type LimitWriteCloser struct {
+	io.WriteCloser
 	total     int64
 	limit     int64
-	writer    io.Writer
 	closeFunc func() error
 }
 
 // NewLimitWriteCloser creates a new LimitWriteCloser.
-func NewLimitWriteCloser(w io.Writer, closeFunc func() error, c int64) io.WriteCloser {
+func NewLimitWriteCloser(w io.WriteCloser, c int64) io.WriteCloser {
 	return &LimitWriteCloser{
+		WriteCloser:    w,
 		limit:     c,
-		writer:    w,
-		closeFunc: closeFunc,
 	}
 }
 
@@ -178,14 +172,9 @@ func (l *LimitWriteCloser) Write(b []byte) (int, error) {
 	if l.total+int64(len(b)) > l.limit {
 		return 0, errors.New("overflow")
 	}
-	c, err := l.writer.Write(b)
+	c, err := l.WriteCloser.Write(b)
 	l.total += int64(c)
 	return c, err
-}
-
-// Close implements io.Closer.
-func (l *LimitWriteCloser) Close() error {
-	return l.closeFunc()
 }
 
 // Join reads all output from the provided joiner.
