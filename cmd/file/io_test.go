@@ -68,7 +68,6 @@ func TestApiStore(t *testing.T) {
 	if !ch.Equal(chResult) {
 		t.Fatal("chunk mismatch")
 	}
-
 }
 
 func TestFsStore(t *testing.T) {
@@ -186,6 +185,7 @@ func newMockJoiner(l int64) file.Joiner {
 }
 
 func newTestServer(t *testing.T, storer storage.Storer) (*http.Server, net.Addr) {
+	t.Helper()
 	s := api.New(api.Options{
 		Storer: storer,
 		Logger: logging.New(os.Stdout, 6),
@@ -193,14 +193,15 @@ func newTestServer(t *testing.T, storer storage.Storer) (*http.Server, net.Addr)
 	srv := &http.Server{
 		Handler: s,
 	}
+
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	go func() {
 		err := srv.Serve(l)
-		if err != nil {
-			t.Log(err)
+		if err != nil && err != http.ErrServerClosed {
+			t.Error(err)
 		}
 	}()
 	return srv, l.Addr()
