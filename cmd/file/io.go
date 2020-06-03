@@ -27,23 +27,23 @@ type putGetter interface {
 	storage.Getter
 }
 
-// teeStore provides a storage.Putter that can put to multiple underlying storage.Putters.
-type teeStore struct {
+// TeeStore provides a storage.Putter that can put to multiple underlying storage.Putters.
+type TeeStore struct {
 	putters []storage.Putter
 }
 
-// NewTeeStore creates a new teeStore.
-func NewTeeStore() *teeStore {
-	return &teeStore{}
+// NewTeeStore creates a new TeeStore.
+func NewTeeStore() *TeeStore {
+	return &TeeStore{}
 }
 
 // Add adds a storage.Putter.
-func (t *teeStore) Add(putter storage.Putter) {
+func (t *TeeStore) Add(putter storage.Putter) {
 	t.putters = append(t.putters, putter)
 }
 
 // Put implements storage.Putter.
-func (t *teeStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+func (t *TeeStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, putter := range t.putters {
 		_, err := putter.Put(ctx, mode, chs...)
 		if err != nil {
@@ -53,21 +53,21 @@ func (t *teeStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.C
 	return nil, nil
 }
 
-// fsStore provides a storage.Putter that writes chunks directly to the filesystem.
+// FsStore provides a storage.Putter that writes chunks directly to the filesystem.
 // Each chunk is a separate file, where the hex address of the chunk is the file name.
-type fsStore struct {
+type FsStore struct {
 	path string
 }
 
-// NewFsStore creates a new fsStore.
+// NewFsStore creates a new FsStore.
 func NewFsStore(path string) storage.Putter {
-	return &fsStore{
+	return &FsStore{
 		path: path,
 	}
 }
 
 // Put implements storage.Putter.
-func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+func (f *FsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
 		chunkPath := filepath.Join(f.path, ch.Address().String())
 		err := ioutil.WriteFile(chunkPath, ch.Data(), 0o666)
@@ -78,12 +78,12 @@ func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 	return nil, nil
 }
 
-// apiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
-type apiStore struct {
+// ApiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
+type ApiStore struct {
 	baseUrl string
 }
 
-// NewApiStore creates a new apiStore.
+// NewApiStore creates a new ApiStore.
 func NewApiStore(host string, port int, ssl bool) putGetter {
 	scheme := "http"
 	if ssl {
@@ -94,13 +94,13 @@ func NewApiStore(host string, port int, ssl bool) putGetter {
 		Scheme: scheme,
 		Path:   "bzz-chunk",
 	}
-	return &apiStore{
+	return &ApiStore{
 		baseUrl: u.String(),
 	}
 }
 
 // Put implements storage.Putter.
-func (a *apiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+func (a *ApiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	c := http.DefaultClient
 	for _, ch := range chs {
 		addr := ch.Address().String()
@@ -118,7 +118,7 @@ func (a *apiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.C
 }
 
 // Get implements storage.Getter.
-func (a *apiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.Address) (ch swarm.Chunk, err error) {
+func (a *ApiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.Address) (ch swarm.Chunk, err error) {
 	addressHex := address.String()
 	url := strings.Join([]string{a.baseUrl, addressHex}, "/")
 	res, err := http.DefaultClient.Get(url)
@@ -136,36 +136,36 @@ func (a *apiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.
 	return ch, nil
 }
 
-// limitReadCloser wraps the input to the application to limit the input to the given count flag.
-type limitReadCloser struct {
+// LimitReadCloser wraps the input to the application to limit the input to the given count flag.
+type LimitReadCloser struct {
 	io.Reader
 	closeFunc func() error
 }
 
-// NewLimitReadCloser creates a new limitReadCloser.
+// NewLimitReadCloser creates a new LimitReadCloser.
 func NewLimitReadCloser(r io.Reader, closeFunc func() error, c int64) io.ReadCloser {
-	return &limitReadCloser{
+	return &LimitReadCloser{
 		Reader:    io.LimitReader(r, c),
 		closeFunc: closeFunc,
 	}
 }
 
 // Close implements io.Closer.
-func (l *limitReadCloser) Close() error {
+func (l *LimitReadCloser) Close() error {
 	return l.closeFunc()
 }
 
-// limitWriteCloser limits the output from the application.
-type limitWriteCloser struct {
+// LimitWriteCloser limits the output from the application.
+type LimitWriteCloser struct {
 	total     int64
 	limit     int64
 	writer    io.Writer
 	closeFunc func() error
 }
 
-// NewLimitWriteCloser creates a new limitWriteCloser.
+// NewLimitWriteCloser creates a new LimitWriteCloser.
 func NewLimitWriteCloser(w io.Writer, closeFunc func() error, c int64) io.WriteCloser {
-	return &limitWriteCloser{
+	return &LimitWriteCloser{
 		limit:     c,
 		writer:    w,
 		closeFunc: closeFunc,
@@ -173,7 +173,7 @@ func NewLimitWriteCloser(w io.Writer, closeFunc func() error, c int64) io.WriteC
 }
 
 // Write implements io.Writer.
-func (l *limitWriteCloser) Write(b []byte) (int, error) {
+func (l *LimitWriteCloser) Write(b []byte) (int, error) {
 	if l.total+int64(len(b)) > l.limit {
 		return 0, errors.New("overflow")
 	}
@@ -183,7 +183,7 @@ func (l *limitWriteCloser) Write(b []byte) (int, error) {
 }
 
 // Close implements io.Closer.
-func (l *limitWriteCloser) Close() error {
+func (l *LimitWriteCloser) Close() error {
 	return l.closeFunc()
 }
 
