@@ -219,15 +219,15 @@ func SetLogger(cmd *cobra.Command, verbosityString string) (logger logging.Logge
 	case "0", "silent":
 		logger = logging.New(ioutil.Discard, 0)
 	case "1", "error":
-		logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
+		logger = logging.New(cmd.OutOrStderr(), logrus.ErrorLevel)
 	case "2", "warn":
-		logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
+		logger = logging.New(cmd.OutOrStderr(), logrus.WarnLevel)
 	case "3", "info":
-		logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
+		logger = logging.New(cmd.OutOrStderr(), logrus.InfoLevel)
 	case "4", "debug":
-		logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
+		logger = logging.New(cmd.OutOrStderr(), logrus.DebugLevel)
 	case "5", "trace":
-		logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
+		logger = logging.New(cmd.OutOrStderr(), logrus.TraceLevel)
 	default:
 		return nil, fmt.Errorf("unknown verbosity level %q", v)
 	}

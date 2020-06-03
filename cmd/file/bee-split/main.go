@@ -31,6 +31,12 @@ var (
 
 // Split is the underlying procedure for the CLI command
 func Split(cmd *cobra.Command, args []string) (err error) {
+	logger, err = cmdfile.SetLogger(cmd, verbosity)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
 	// if one arg is set, this is the input file
 	// if not, we are reading from standard input
 	var infile io.ReadCloser
@@ -59,6 +65,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		}
 		fileReader := io.LimitReader(f, inputLength)
 		infile = ioutil.NopCloser(fileReader)
+		logger.Debugf("using %d bytes from file %s as input", fileLength, args[0])
 	} else {
 		// this simple splitter is too stupid to handle open-ended input, sadly
 		if inputLength == 0 {
@@ -66,6 +73,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		}
 		stdinReader := io.LimitReader(os.Stdin, inputLength)
 		infile = ioutil.NopCloser(stdinReader)
+		logger.Debugf("using %d bytes from standard input", inputLength)
 	}
 
 	// add the fsStore and/or apiStore, depending on flags
@@ -77,10 +85,12 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		}
 		store := cmdfile.NewFsStore(outdir)
 		stores.Add(store)
+		logger.Debugf("using directory %s for output", outdir)
 	}
 	if useHttp {
 		store := cmdfile.NewApiStore(host, port, ssl)
 		stores.Add(store)
+		logger.Debugf("using bee http (ssl=%v) api on %s:%d for output", ssl, host, port)
 	}
 
 	// split and rule
