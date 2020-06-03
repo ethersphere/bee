@@ -96,18 +96,18 @@ func NewApiStore(host string, port int, ssl bool) putGetter {
 		Path:   "bzz-chunk",
 	}
 	return &ApiStore{
+		Client: http.DefaultClient,
 		baseUrl: u.String(),
 	}
 }
 
 // Put implements storage.Putter.
 func (a *ApiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	c := http.DefaultClient
 	for _, ch := range chs {
 		addr := ch.Address().String()
 		buf := bytes.NewReader(ch.Data())
 		url := strings.Join([]string{a.baseUrl, addr}, "/")
-		res, err := c.Post(url, "application/octet-stream", buf)
+		res, err := a.Client.Post(url, "application/octet-stream", buf)
 		if err != nil {
 			return nil, err
 		}

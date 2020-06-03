@@ -9,8 +9,7 @@ import (
 	"context"
 	"io"
 	"io/ioutil"
-	"net"
-	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -33,22 +32,14 @@ const (
 func TestApiStore(t *testing.T) {
 	storer := mock.NewStorer()
 	ctx := context.Background()
-	srv, addr := newTestServer(t, storer)
-	defer func() {
-		_ = srv.Shutdown(ctx)
-	}()
+	srvUrl := newTestServer(t, storer)
 
-	srvUrl, err := url.Parse("http://" + addr.String())
+	host := srvUrl.Hostname()
+	port, err := strconv.Atoi(srvUrl.Port())
 	if err != nil {
 		t.Fatal(err)
 	}
-	srvHost := srvUrl.Hostname()
-	srvPort, err := strconv.Atoi(srvUrl.Port())
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := cmdfile.NewApiStore(srvHost, srvPort, false)
-	t.Log(a)
+	a := cmdfile.NewApiStore(host, port, false)
 
 	chunkAddr := swarm.MustParseHexAddress(hashOfFoo)
 	chunkData := []byte("foo")
@@ -184,25 +175,16 @@ func newMockJoiner(l int64) file.Joiner {
 	}
 }
 
-func newTestServer(t *testing.T, storer storage.Storer) (*http.Server, net.Addr) {
+func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	t.Helper()
 	s := api.New(api.Options{
-		Storer: storer,
-		Logger: logging.New(os.Stdout, 6),
+		Storer:   storer,
+		Logger:   logging.New(ioutil.Discard, 0),
 	})
-	srv := &http.Server{
-		Handler: s,
-	}
-
-	l, err := net.Listen("tcp", ":0")
+	ts := httptest.NewServer(s)
+	srvUrl, err := url.Parse(ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		err := srv.Serve(l)
-		if err != nil && err != http.ErrServerClosed {
-			t.Error(err)
-		}
-	}()
-	return srv, l.Addr()
+	return srvUrl
 }
