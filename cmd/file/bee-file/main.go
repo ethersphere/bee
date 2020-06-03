@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
@@ -28,15 +29,16 @@ const (
 )
 
 var (
-	filename     string // flag variable, filename to use in metadata
-	mimeType     string // flag variable, mime type to use in metadata
-	outDir       string // flag variable, output dir for fsStore
-	outFileForce bool   // flag variable, overwrite output file if exists
-	host         string // flag variable, http api host
-	port         int    // flag variable, http api port
-	noHttp       bool   // flag variable, skips http api if set
-	ssl          bool   // flag variable, uses https for api if set
-	retrieve     bool   // flag variable, if set will resolve and retrieve referenced file
+	filename     string         // flag variable, filename to use in metadata
+	mimeType     string         // flag variable, mime type to use in metadata
+	outDir       string         // flag variable, output dir for fsStore
+	outFileForce bool           // flag variable, overwrite output file if exists
+	host         string         // flag variable, http api host
+	port         int            // flag variable, http api port
+	noHttp       bool           // flag variable, skips http api if set
+	ssl          bool           // flag variable, uses https for api if set
+	retrieve     bool           // flag variable, if set will resolve and retrieve referenced file
+	logger       logging.Logger = logging.New(os.Stderr, 0)
 )
 
 // getEntry handles retrieving and writing a file from the file entry
@@ -64,14 +66,12 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	fmt.Println(e)
 
 	buf = bytes.NewBuffer(nil)
 	err = cmdfile.JoinReadAll(j, e.Metadata(), buf)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s\n\n", buf.Bytes())
 
 	// retrieve metadata
 	metaData := &entry.Metadata{}
@@ -79,6 +79,8 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
+	logger.Debugf("Filename: %s", metaData.Filename)
+	logger.Debugf("MIME-type: %s", metaData.MimeType)
 
 	if outDir == "" {
 		outDir = "."
@@ -89,8 +91,6 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 	outFilePath := filepath.Join(outDir, metaData.Filename)
-	mimeType := metaData.MimeType
-	fmt.Fprintf(os.Stderr, "mime type %s", mimeType)
 
 	// create output dir if not exist
 	if outDir != "." {
@@ -115,7 +115,6 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 	defer outFile.Close()
 
-	fmt.Fprintf(os.Stderr, "reference %s", e.Reference())
 	err = cmdfile.JoinReadAll(j, e.Reference(), outFile)
 	if err != nil {
 		return err

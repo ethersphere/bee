@@ -166,8 +166,8 @@ type LimitWriteCloser struct {
 // NewLimitWriteCloser creates a new LimitWriteCloser.
 func NewLimitWriteCloser(w io.WriteCloser, c int64) io.WriteCloser {
 	return &LimitWriteCloser{
-		WriteCloser:    w,
-		limit:     c,
+		WriteCloser: w,
+		limit:       c,
 	}
 }
 
