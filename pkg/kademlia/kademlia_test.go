@@ -27,8 +27,8 @@ import (
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/test"
 )
 
 func init() {
