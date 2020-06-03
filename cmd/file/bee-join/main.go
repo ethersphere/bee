@@ -28,12 +28,6 @@ var (
 
 // Join is the underlying procedure for the CLI command
 func Join(cmd *cobra.Command, args []string) (err error) {
-	logger, err = cmdfile.SetLogger(cmd, verbosity)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
 	// if output file is specified, create it if it does not exist
 	var outFile *os.File
 	if outFilePath != "" {
