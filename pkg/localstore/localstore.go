@@ -177,6 +177,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	if db.capacity == 0 {
 		db.capacity = defaultCapacity
 	}
+	db.logger.Info("setting db capacity to :", db.capacity)
 	if maxParallelUpdateGC > 0 {
 		db.updateGCSem = make(chan struct{}, maxParallelUpdateGC)
 	}
