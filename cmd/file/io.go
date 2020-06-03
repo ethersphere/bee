@@ -80,7 +80,7 @@ func (f *FsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 
 // ApiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
 type ApiStore struct {
-	Client *http.Client
+	Client  *http.Client
 	baseUrl string
 }
 
