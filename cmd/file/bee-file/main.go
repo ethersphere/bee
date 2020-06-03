@@ -8,11 +8,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"encoding/json"
 	"os"
 	"path/filepath"
 
 	cmdfile "github.com/ethersphere/bee/cmd/file"
-	"github.com/ethersphere/bee/pkg/collection"
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -65,7 +65,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	fmt.Println(e)
 
 	buf = bytes.NewBuffer(nil)
-	err = cmdfile.JoinReadAll(j, e.Metadata(collection.FilenameMimeType), buf)
+	err = cmdfile.JoinReadAll(j, e.Metadata(), buf)
 	if err != nil {
 		return err
 	}
@@ -73,9 +73,18 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 
 	// retrieve metadata
 	metaData := &entry.Metadata{}
-	err = metaData.UnmarshalBinary(buf.Bytes())
+	err = json.Unmarshal(buf.Bytes(), metaData)
 	if err != nil {
 		return err
+	}
+
+	if outDir == "" {
+		outDir = "."
+	} else {
+		err := os.MkdirAll(outDir, 0o777) // skipcq: GSC-G301
+		if err != nil {
+			return err
+		}
 	}
 	outFilePath := filepath.Join(outDir, metaData.Filename)
 	mimeType := metaData.MimeType
@@ -146,10 +155,11 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	if mimeType == "" {
 		mimeType = defaultMimeType
 	}
-	metadata := entry.NewMetadata(filename).WithMimeType(mimeType)
+	metadata := entry.NewMetadata(filename)
+	metadata.MimeType =mimeType
 
 	// serialize metadata and send it to splitter
-	metadataBytes, err := metadata.MarshalBinary()
+	metadataBytes, err := json.Marshal(metadata)
 	if err != nil {
 		return err
 	}
@@ -162,8 +172,7 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 
 	// create entry from given reference and metadata,
 	// serialize and send to splitter
-	fileEntry := entry.New(addr)
-	fileEntry.SetMetadata(metadataAddr)
+	fileEntry := entry.New(addr, metadataAddr)
 	fileEntryBytes, err := fileEntry.MarshalBinary()
 	if err != nil {
 		return err
@@ -200,7 +209,7 @@ func main() {
 	c.Flags().StringVar(&filename, "filename", "", "filename to use in entry")
 	c.Flags().StringVar(&mimeType, "mime-type", "", "mime-type to use in collection")
 	c.Flags().BoolVarP(&outFileForce, "force", "f", false, "overwrite existing output file")
-	c.Flags().StringVarP(&outDir, "output-dir", "d", ".", "save directory")
+	c.Flags().StringVarP(&outDir, "output-dir", "d", "", "save directory")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
