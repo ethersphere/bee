@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
@@ -16,7 +17,7 @@ import (
 // Service provides methods to handle p2p Peers and Protocols.
 type Service interface {
 	AddProtocol(ProtocolSpec) error
-	Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error)
+	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	Disconnect(overlay swarm.Address) error
 	Peers() []Peer
 	SetNotifier(topology.Notifier)

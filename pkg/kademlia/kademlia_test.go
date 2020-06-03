@@ -444,11 +444,11 @@ func newTestKademlia(connCounter *int32, f func(bin, depth uint8, peers *pslice.
 }
 
 func p2pMock(counter *int32) p2p.Service {
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 		if counter != nil {
 			_ = atomic.AddInt32(counter, 1)
 		}
-		return swarm.ZeroAddress, nil
+		return nil, nil
 	}))
 
 	return p2ps
