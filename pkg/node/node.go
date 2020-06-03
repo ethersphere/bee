@@ -360,9 +360,9 @@ func NewBee(o Options) (*Bee, error) {
 					return
 				}
 
-				if err := topologyDriver.AddPeer(p2pCtx, bzzAddr.Overlay); err != nil {
+				if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
 					_ = p2ps.Disconnect(bzzAddr.Overlay)
-					logger.Debugf("topology add peer fail %s %s: %v", a, bzzAddr.Overlay, err)
+					logger.Debugf("topology connected fail %s %s: %v", a, bzzAddr.Overlay, err)
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
