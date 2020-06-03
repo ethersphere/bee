@@ -29,7 +29,7 @@ const (
 	hashOfFoo = "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 )
 
-// TestApiStore verifies that the api store layer does not distort data, and that same 
+// TestApiStore verifies that the api store layer does not distort data, and that same
 // data successfully posted can be retrieved from http backend.
 func TestApiStore(t *testing.T) {
 	storer := mock.NewStorer()

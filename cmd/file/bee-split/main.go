@@ -55,8 +55,8 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		infile := io.LimitReader(f, inputLength)
-		infile = ioutil.NopCloser(infile)
+		fileReader := io.LimitReader(f, inputLength)
+		infile = ioutil.NopCloser(fileReader)
 	} else {
 		// this simple splitter is too stupid to handle open-ended input, sadly
 		if inputLength == 0 {
@@ -64,7 +64,6 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		}
 		stdinReader := io.LimitReader(os.Stdin, inputLength)
 		infile = ioutil.NopCloser(stdinReader)
-		//infile = cmdfile.NewLimitReadCloser(stdinReadCloser, inputLength)
 	}
 
 	// add the fsStore and/or apiStore, depending on flags

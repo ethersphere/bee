@@ -182,7 +182,6 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 	fileEntryBuf := bytes.NewBuffer(fileEntryBytes)
 	fileEntryReader := io.LimitReader(fileEntryBuf, int64(len(fileEntryBytes)))
-	//fileEntryReader := cmdfile.NewLimitReadCloser(fileEntryBuf, func() error { return nil }, int64(len(fileEntryBytes)))
 	fileEntryReadCloser := ioutil.NopCloser(fileEntryReader)
 	fileEntryAddr, err := s.Split(ctx, fileEntryReadCloser, int64(len(fileEntryBytes)))
 	if err != nil {
@@ -214,10 +213,10 @@ Example:
 	> 94434d3312320fab70428c39b79dffb4abc3dbedf3e1562384a61ceaf8a7e36b
 	$ bee-file --output-dir /tmp 94434d3312320fab70428c39b79dffb4abc3dbedf3e1562384a61ceaf8a7e36b
 	$ cat /tmp/bar.txt
-	
+
 Creating a file entry:
 
-The default file name is the hex representation of the swarm hash passed as argument, and the default mime-type is application/octet-stream. Both can be explicitly set with --filename and --mime-type respectively. If --output-dir is given, the metadata and entry chunks are written to the specified directory. 
+The default file name is the hex representation of the swarm hash passed as argument, and the default mime-type is application/octet-stream. Both can be explicitly set with --filename and --mime-type respectively. If --output-dir is given, the metadata and entry chunks are written to the specified directory.
 
 Resolving a file entry:
 
