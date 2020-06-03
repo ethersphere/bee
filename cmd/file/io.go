@@ -96,7 +96,7 @@ func NewApiStore(host string, port int, ssl bool) putGetter {
 		Path:   "bzz-chunk",
 	}
 	return &ApiStore{
-		Client: http.DefaultClient,
+		Client:  http.DefaultClient,
 		baseUrl: u.String(),
 	}
 }

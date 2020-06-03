@@ -178,8 +178,8 @@ func newMockJoiner(l int64) file.Joiner {
 func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	t.Helper()
 	s := api.New(api.Options{
-		Storer:   storer,
-		Logger:   logging.New(ioutil.Discard, 0),
+		Storer: storer,
+		Logger: logging.New(ioutil.Discard, 0),
 	})
 	ts := httptest.NewServer(s)
 	srvUrl, err := url.Parse(ts.URL)
