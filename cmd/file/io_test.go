@@ -7,6 +7,7 @@ package file_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"io/ioutil"
 	"os"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/file"
 	cmdfile "github.com/ethersphere/bee/cmd/file"
 )
 
@@ -149,6 +151,36 @@ func TestLimitWriter(t *testing.T) {
 	_, err = w.Write(data[:1])
 	if err == nil {
 		t.Fatal("expected overflow error")
+	}
+}
+
+func TestJoinReadAll(t *testing.T) {
+	var dataLength int64 = swarm.ChunkSize+2
+	j := newMockJoiner(dataLength)
+	buf := bytes.NewBuffer(nil)
+	err := cmdfile.JoinReadAll(j, swarm.ZeroAddress, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataLength != int64(len(buf.Bytes())) {
+		t.Fatalf("expected length %d, got %d", dataLength, len(buf.Bytes()))
+	}
+}
+
+type mockJoiner struct {
+	l int64
+}
+
+func (j *mockJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataLength int64, err error) {
+	data := make([]byte, j.l)
+	buf := bytes.NewBuffer(data)
+	readCloser := ioutil.NopCloser(buf)
+	return readCloser, j.l, nil
+}
+
+func newMockJoiner(l int64) file.Joiner {
+	return &mockJoiner{
+		l: l,
 	}
 }
 
