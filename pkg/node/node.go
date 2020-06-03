@@ -42,7 +42,6 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
@@ -330,7 +329,6 @@ func NewBee(o Options) (*Bee, error) {
 			Pingpong:       pingPong,
 			Logger:         logger,
 			Tracer:         tracer,
-			Addressbook:    addressbook,
 			TopologyDriver: topologyDriver,
 			Storer:         storer,
 		})
@@ -366,87 +364,53 @@ func NewBee(o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	overlays, err := addressbook.Overlays()
+	addresses, err := addressbook.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("addressbook overlays: %w", err)
 	}
 
 	var count int32
 	var wg sync.WaitGroup
-	jobsC := make(chan struct{}, 16)
-	for _, o := range overlays {
-		jobsC <- struct{}{}
-		wg.Add(1)
-		go func(overlay swarm.Address) {
-			defer func() {
-				<-jobsC
-			}()
 
+	// add the peers to topology and allow it to connect independently
+	for _, o := range addresses {
+		_ = topologyDriver.AddPeer(p2pCtx, o.Overlay)
+	}
+
+	// Connect bootnodes (?? they would probably be persisted with the other nodes to the address book on shutdown anyway)
+	for _, a := range o.Bootnodes {
+		wg.Add(1)
+		go func(a string) {
 			defer wg.Done()
-			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-				logger.Debugf("topology add peer fail %s: %v", overlay, err)
-				logger.Warningf("topology add peer %s", overlay)
+			addr, err := ma.NewMultiaddr(a)
+			if err != nil {
+				logger.Debugf("multiaddress fail %s: %v", a, err)
+				logger.Warningf("connect to bootnode %s", a)
 				return
 			}
-
-			atomic.AddInt32(&count, 1)
-		}(o)
+			if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+				logger.Tracef("connecting to bootnode %s", addr)
+				_, err = p2ps.Connect(p2pCtx, addr, true)
+				if err != nil {
+					if !errors.Is(err, p2p.ErrAlreadyConnected) {
+						logger.Debugf("connect fail %s: %v", addr, err)
+						logger.Warningf("connect to bootnode %s", addr)
+					}
+					return false, nil
+				}
+				logger.Tracef("connected to bootnode %s", addr)
+				c := atomic.AddInt32(&count, 1)
+				// connect to max 3 bootnodes
+				return c > 3, nil
+			}); err != nil {
+				logger.Debugf("discover fail %s: %v", a, err)
+				logger.Warningf("discover to bootnode %s", a)
+				return
+			}
+		}(a)
 	}
 
 	wg.Wait()
-
-	// Connect bootnodes if no nodes from the addressbook was sucesufully added to topology
-	if count == 0 {
-		for _, a := range o.Bootnodes {
-			wg.Add(1)
-			go func(a string) {
-				defer wg.Done()
-				addr, err := ma.NewMultiaddr(a)
-				if err != nil {
-					logger.Debugf("multiaddress fail %s: %v", a, err)
-					logger.Warningf("connect to bootnode %s", a)
-					return
-				}
-				var count int
-				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-					logger.Tracef("connecting to peer %s", addr)
-					bzzAddr, err := p2ps.Connect(p2pCtx, addr)
-					if err != nil {
-						if !errors.Is(err, p2p.ErrAlreadyConnected) {
-							logger.Debugf("connect fail %s: %v", addr, err)
-							logger.Warningf("connect to bootnode %s", addr)
-						}
-						return false, nil
-					}
-					logger.Tracef("connected to peer %s", addr)
-
-					err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
-					if err != nil {
-						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("addressbook error persisting %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Warningf("connect to bootnode %s", addr)
-						return false, nil
-					}
-
-					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
-						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("topology connected fail %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Warningf("connect to bootnode %s", addr)
-						return false, nil
-					}
-					count++
-					// connect to max 3 bootnodes
-					return count > 3, nil
-				}); err != nil {
-					logger.Debugf("discover fail %s: %v", a, err)
-					logger.Warningf("discover to bootnode %s", a)
-					return
-				}
-			}(a)
-		}
-
-		wg.Wait()
-	}
 
 	return b, nil
 }

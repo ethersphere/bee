@@ -45,7 +45,7 @@ func TestHeaders(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err != nil {
+	if _, err := s2.Connect(ctx, addr, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -92,7 +92,7 @@ func TestHeaders_empty(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err != nil {
+	if _, err := s2.Connect(ctx, addr, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +154,7 @@ func TestHeadler(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err != nil {
+	if _, err := s2.Connect(ctx, addr, false); err != nil {
 		t.Fatal(err)
 	}
 

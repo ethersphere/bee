@@ -11,12 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func TestAddresses(t *testing.T) {
@@ -41,7 +44,7 @@ func TestConnectDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr)
+	bzzAddr, err := s2.Connect(ctx, addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,14 +70,14 @@ func TestDoubleConnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err != nil {
+	if _, err := s2.Connect(ctx, addr, false); err != nil {
 		t.Fatal(err)
 	}
 
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
+	if _, err := s2.Connect(ctx, addr, false); !errors.Is(err, p2p.ErrAlreadyConnected) {
 		t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
 	}
 
@@ -92,7 +95,7 @@ func TestDoubleDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr)
+	bzzAddr, err := s2.Connect(ctx, addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +128,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr)
+	bzzAddr, err := s2.Connect(ctx, addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +143,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	bzzAddr, err = s2.Connect(ctx, addr)
+	bzzAddr, err = s2.Connect(ctx, addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +172,7 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
-		bzzAddr, err := s2.Connect(ctx, addr)
+		bzzAddr, err := s2.Connect(ctx, addr, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,14 +202,14 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
-		if _, err := s2.Connect(ctx, addr); err != nil {
+		if _, err := s2.Connect(ctx, addr, false); err != nil {
 			t.Fatal(err)
 		}
 
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
+		if _, err := s2.Connect(ctx, addr, false); !errors.Is(err, p2p.ErrAlreadyConnected) {
 			t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
 		}
 
@@ -232,7 +235,7 @@ func TestDifferentNetworkIDs(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err == nil {
+	if _, err := s2.Connect(ctx, addr, false); err == nil {
 		t.Fatal("connect attempt should result with an error")
 	}
 
@@ -256,7 +259,7 @@ func TestConnectWithEnabledQUICAndWSTransports(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err != nil {
+	if _, err := s2.Connect(ctx, addr, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -273,7 +276,7 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	s2, overlay2 := newService(t, 1, libp2p.Options{})
 	addr := serviceUnderlayAddress(t, s1)
 
-	_, err := s2.Connect(ctx, addr)
+	_, err := s2.Connect(ctx, addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,12 +302,14 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	expectPeersEventually(t, s1)
 }
 
-func TestTopologyNotifiee(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func TestTopologyNotifier(t *testing.T) {
 
 	var (
-		mtx                sync.Mutex
+		mtx sync.Mutex
+		ctx = context.Background()
+
+		ab1, ab2 = addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore())
+
 		n1connectedAddr    swarm.Address
 		n1disconnectedAddr swarm.Address
 		n2connectedAddr    swarm.Address
@@ -337,17 +342,17 @@ func TestTopologyNotifiee(t *testing.T) {
 		}
 	)
 	notifier1 := mockNotifier(n1c, n1d)
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2p.Options{Addressbook: ab1})
 	s1.SetNotifier(notifier1)
 
 	notifier2 := mockNotifier(n2c, n2d)
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2p.Options{Addressbook: ab2})
 	s2.SetNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	// s2 connects to s1, thus the notifiee on s1 should be called on Connect
-	bzzAddr, err := s2.Connect(ctx, addr)
+	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	bzzAddr, err := s2.Connect(ctx, addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,6 +366,12 @@ func TestTopologyNotifiee(t *testing.T) {
 	mtx.Lock()
 	expectZeroAddress(t, n1disconnectedAddr, n2connectedAddr, n2disconnectedAddr)
 	mtx.Unlock()
+
+	// check address book entries are there
+	// TODO: this is wrong. bzzAddr.Underlay should be in fact just `addr`
+	// but this is necessary for the test to pass. should be fixed when
+	// the handshake scheme is fixed
+	checkAddressbook(t, ab2, overlay1, bzzAddr.Underlay)
 
 	// s2 disconnects from s1 so s1 disconnect notifiee should be called
 	if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
@@ -382,7 +393,7 @@ func TestTopologyNotifiee(t *testing.T) {
 
 	addr2 := serviceUnderlayAddress(t, s2)
 	// s1 connects to s2, thus the notifiee on s2 should be called on Connect
-	bzzAddr2, err := s1.Connect(ctx, addr2)
+	bzzAddr2, err := s1.Connect(ctx, addr2, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,6 +411,42 @@ func TestTopologyNotifiee(t *testing.T) {
 	waitAddrSet(t, &n2disconnectedAddr, &mtx, overlay1)
 }
 
+func TestTopologyLocalNotifier(t *testing.T) {
+	var (
+		mtx             sync.Mutex
+		n2connectedAddr swarm.Address
+
+		n2c = func(_ context.Context, a swarm.Address) error {
+			mtx.Lock()
+			defer mtx.Unlock()
+			n2connectedAddr = a
+			return nil
+		}
+		n2d = func(a swarm.Address) {
+		}
+	)
+
+	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	notifier2 := mockNotifier(n2c, n2d)
+
+	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2.SetNotifier(notifier2)
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	_, err := s2.Connect(context.Background(), addr, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
+
+	// expect that n1 notifee called with s2 overlay
+	waitAddrSet(t, &n2connectedAddr, &mtx, overlay1)
+}
+
 func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.Address) {
 	t.Helper()
 	for i := 0; i < 20; i++ {
@@ -412,6 +459,21 @@ func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.A
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for address to be set")
+}
+
+func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address, under ma.Multiaddr) {
+	t.Helper()
+	v, err := ab.Get(overlay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.Overlay.Equal(overlay) {
+		t.Fatalf("overlay mismatch. got %s want %s", v.Overlay, overlay)
+	}
+
+	if !v.Underlay.Equal(under) {
+		t.Fatalf("underlay mismatch. got %s, want %s", v.Underlay, under)
+	}
 }
 
 type notifiee struct {

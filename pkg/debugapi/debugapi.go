@@ -7,7 +7,6 @@ package debugapi
 import (
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -35,8 +34,7 @@ type Options struct {
 	Overlay        swarm.Address
 	P2P            p2p.Service
 	Pingpong       pingpong.Interface
-	Addressbook    addressbook.GetPutter
-	TopologyDriver topology.Notifier
+	TopologyDriver topology.PeerAdder
 	Storer         storage.Storer
 	Logger         logging.Logger
 	Tracer         *tracing.Tracer

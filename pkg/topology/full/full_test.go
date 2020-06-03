@@ -58,7 +58,7 @@ func TestAddPeer(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		statestore := mockstate.NewStateStore()
 		ab := addressbook.New(statestore)
-		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(_ context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
 			if !addr.Equal(underlay) {
 				t.Fatalf("expected multiaddr %s, got %s", addr, underlay)
 			}
@@ -87,7 +87,7 @@ func TestAddPeer(t *testing.T) {
 		discovery := mock.NewDiscovery()
 		statestore := mockstate.NewStateStore()
 		ab := addressbook.New(statestore)
-		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
 			t.Fatal("should not be called")
 			return nil, nil
 		}))
@@ -114,7 +114,7 @@ func TestAddPeer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+		p2p := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
 			t.Fatal("should not be called")
 			return nil, nil
 		}), p2pmock.WithPeersFunc(func() []p2p.Peer {
@@ -156,7 +156,7 @@ func TestAddPeer(t *testing.T) {
 		statestore := mockstate.NewStateStore()
 		ab := addressbook.New(statestore)
 
-		p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+		p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
 			if !addr.Equal(underlay) {
 				t.Fatalf("expected multiaddr %s, got %s", addr.String(), underlay)
 			}
@@ -219,7 +219,7 @@ func TestClosestPeer(t *testing.T) {
 	statestore := mockstate.NewStateStore()
 	ab := addressbook.New(statestore)
 
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
 		return bzzAddr, nil
 	}), p2pmock.WithPeersFunc(func() []p2p.Peer {
 		return connectedPeers

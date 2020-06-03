@@ -11,13 +11,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	mockstore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -38,13 +36,10 @@ type testServerOptions struct {
 
 type testServer struct {
 	Client         *http.Client
-	Addressbook    addressbook.GetPutter
 	TopologyDriver topology.Driver
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *testServer {
-	statestore := mockstore.NewStateStore()
-	addrbook := addressbook.New(statestore)
 	topologyDriver := mock.NewTopologyDriver(o.TopologyOpts...)
 
 	s := debugapi.New(debugapi.Options{
@@ -53,7 +48,6 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		Pingpong:       o.Pingpong,
 		Tags:           o.Tags,
 		Logger:         logging.New(ioutil.Discard, 0),
-		Addressbook:    addrbook,
 		Storer:         o.Storer,
 		TopologyDriver: topologyDriver,
 	})
@@ -71,8 +65,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		}),
 	}
 	return &testServer{
-		Client:      client,
-		Addressbook: addrbook,
+		Client: client,
 	}
 }
 
