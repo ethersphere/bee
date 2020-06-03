@@ -199,9 +199,9 @@ func Entry(cmd *cobra.Command, args []string) (err error) {
 
 func main() {
 	c := &cobra.Command{
-		Use:          "entry <reference>",
-		Short:        "Create or resolve a file entry",
-		Long:	`Creates a file entry, or retrieve the data referenced by the entry and its metadata.
+		Use:   "entry <reference>",
+		Short: "Create or resolve a file entry",
+		Long: `Creates a file entry, or retrieve the data referenced by the entry and its metadata.
 
 Example:
 
