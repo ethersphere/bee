@@ -5,18 +5,13 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/spf13/cobra"
 )
 
@@ -31,41 +26,6 @@ var (
 // apiStore provies a storage.Getter that retrieves chunks from swarm through the HTTP chunk API.
 type apiStore struct {
 	baseUrl string
-}
-
-// newApiStore creates a new apiStore
-func newApiStore(host string, port int, ssl bool) storage.Getter {
-	scheme := "http"
-	if ssl {
-		scheme += "s"
-	}
-	u := &url.URL{
-		Host:   fmt.Sprintf("%s:%d", host, port),
-		Scheme: scheme,
-		Path:   "bzz-chunk",
-	}
-	return &apiStore{
-		baseUrl: u.String(),
-	}
-}
-
-// Get implements storage.Getter
-func (a *apiStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.Address) (ch swarm.Chunk, err error) {
-	addressHex := address.String()
-	url := strings.Join([]string{a.baseUrl, addressHex}, "/")
-	res, err := http.DefaultClient.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("chunk %s not found", addressHex)
-	}
-	chunkData, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	ch = swarm.NewChunk(address, chunkData)
-	return ch, nil
 }
 
 // Join is the underlying procedure for the CLI command
@@ -105,36 +65,11 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// initialize interface with HTTP API
-	store := newApiStore(host, port, ssl)
+	store := cmdfile.NewApiStore(host, port, ssl)
 
 	// create the join and get its data reader
 	j := joiner.NewSimpleJoiner(store)
-	r, l, err := j.Join(context.Background(), addr)
-	if err != nil {
-		return err
-	}
-
-	// join, rinse, repeat until done
-	data := make([]byte, swarm.ChunkSize)
-	var total int64
-	for i := int64(0); i < l; i += swarm.ChunkSize {
-		cr, err := r.Read(data)
-		if err != nil {
-			return err
-		}
-		total += int64(cr)
-		cw, err := outFile.Write(data[:cr])
-		if err != nil {
-			return err
-		}
-		if cw != cr {
-			return fmt.Errorf("short wrote %d of %d for chunk %d", cw, cr, i)
-		}
-	}
-	if total != l {
-		return fmt.Errorf("received only %d of %d total bytes", total, l)
-	}
-	return nil
+	return cmdfile.JoinReadAll(j, addr, outFile)
 }
 
 func main() {
