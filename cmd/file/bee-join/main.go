@@ -23,11 +23,6 @@ var (
 	ssl          bool   // flag variable, uses https for api if set
 )
 
-// apiStore provies a storage.Getter that retrieves chunks from swarm through the HTTP chunk API.
-type apiStore struct {
-	baseUrl string
-}
-
 // Join is the underlying procedure for the CLI command
 func Join(cmd *cobra.Command, args []string) (err error) {
 	// if output file is specified, create it if it does not exist

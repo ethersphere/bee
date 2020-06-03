@@ -200,7 +200,24 @@ func Entry(cmd *cobra.Command, args []string) (err error) {
 func main() {
 	c := &cobra.Command{
 		Use:          "entry <reference>",
-		Short:        "Create a file entry",
+		Short:        "Create or resolve a file entry",
+		Long:	`Creates a file entry, or retrieve the data referenced by the entry and its metadata.
+
+Example:
+
+	$ bee-file --mime-type text/plain --filename foo.txt 2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48
+	> 94434d3312320fab70428c39b79dffb4abc3dbedf3e1562384a61ceaf8a7e36b
+	$ bee-file --output-dir /tmp 94434d3312320fab70428c39b79dffb4abc3dbedf3e1562384a61ceaf8a7e36b
+	$ cat /tmp/bar.txt
+	
+Creating a file entry:
+
+The default file name is the hex representation of the swarm hash passed as argument, and the default mime-type is application/octet-stream. Both can be explicitly set with --filename and --mime-type respectively. If --output-dir is given, the metadata and entry chunks are written to the specified directory. 
+
+Resolving a file entry:
+
+If --output-dir is set, the retrieved file will be written to the speficied directory. Otherwise it will be written to the current directory. Use -f to force overwriting an existing file.`,
+
 		RunE:         Entry,
 		SilenceUsage: true,
 	}
