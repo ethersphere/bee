@@ -9,21 +9,21 @@ import (
 	"context"
 	"io"
 	"io/ioutil"
-	"os"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/logging"
+	cmdfile "github.com/ethersphere/bee/cmd/file"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/file"
-	cmdfile "github.com/ethersphere/bee/cmd/file"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -98,7 +98,6 @@ func TestFsStore(t *testing.T) {
 	}
 }
 
-
 func TestTeeStore(t *testing.T) {
 	storeFee := mock.NewStorer()
 	storeFi := mock.NewStorer()
@@ -155,7 +154,7 @@ func TestLimitWriter(t *testing.T) {
 }
 
 func TestJoinReadAll(t *testing.T) {
-	var dataLength int64 = swarm.ChunkSize+2
+	var dataLength int64 = swarm.ChunkSize + 2
 	j := newMockJoiner(dataLength)
 	buf := bytes.NewBuffer(nil)
 	err := cmdfile.JoinReadAll(j, swarm.ZeroAddress, buf)
@@ -186,8 +185,8 @@ func newMockJoiner(l int64) file.Joiner {
 
 func newTestServer(t *testing.T, storer storage.Storer) (*http.Server, net.Addr) {
 	s := api.New(api.Options{
-		Storer:   storer,
-		Logger:   logging.New(os.Stdout, 6),
+		Storer: storer,
+		Logger: logging.New(os.Stdout, 6),
 	})
 	srv := &http.Server{
 		Handler: s,
