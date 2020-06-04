@@ -19,6 +19,7 @@ import (
 	mockstore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/multiformats/go-multiaddr"
@@ -30,6 +31,7 @@ type testServerOptions struct {
 	P2P          p2p.Service
 	Storer       storage.Storer
 	TopologyOpts []mock.Option
+	Tags         *tags.Tags
 }
 
 type testServer struct {
@@ -46,6 +48,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	s := debugapi.New(debugapi.Options{
 		Overlay:        o.Overlay,
 		P2P:            o.P2P,
+		Tags:           o.Tags,
 		Logger:         logging.New(ioutil.Discard, 0),
 		Addressbook:    addrbook,
 		Storer:         o.Storer,
@@ -73,6 +76,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 func newBZZTestServer(t *testing.T, o testServerOptions) *http.Client {
 	s := api.New(api.Options{
 		Storer: o.Storer,
+		Tags:   o.Tags,
 		Logger: logging.New(ioutil.Discard, 0),
 	})
 	ts := httptest.NewServer(s)
