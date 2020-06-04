@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	cmdfile "github.com/ethersphere/bee/cmd/file"
+	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"

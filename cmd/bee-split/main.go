@@ -12,7 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	cmdfile "github.com/ethersphere/bee/cmd/file"
+	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/spf13/cobra"
