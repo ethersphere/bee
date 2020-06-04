@@ -58,9 +58,11 @@ type Kad struct {
 	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
 	waitNext       map[string]time.Time  // sanction connections to a peer, key is overlay string and value is time to next retry
 	waitNextMu     sync.Mutex            // synchronize map
-	logger         logging.Logger        // logger
-	quit           chan struct{}         // quit channel
-	done           chan struct{}         // signal that `manage` has quit
+	peerSig        []chan struct{}
+	peerSigMtx     sync.Mutex
+	logger         logging.Logger // logger
+	quit           chan struct{}  // quit channel
+	done           chan struct{}  // signal that `manage` has quit
 }
 
 // New returns a new Kademlia.
@@ -154,6 +156,8 @@ func (k *Kad) manage() {
 				k.depthMu.Unlock()
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
+
+				k.notifyPeerSig()
 
 				select {
 				case <-k.quit:
@@ -315,6 +319,8 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	k.depth = k.recalcDepth()
 	k.depthMu.Unlock()
 
+	k.notifyPeerSig()
+
 	select {
 	case k.manageC <- struct{}{}:
 	default:
@@ -337,6 +343,22 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	select {
 	case k.manageC <- struct{}{}:
 	default:
+	}
+	k.notifyPeerSig()
+}
+
+func (k *Kad) notifyPeerSig() {
+	k.peerSigMtx.Lock()
+	defer k.peerSigMtx.Unlock()
+
+	for _, c := range k.peerSig {
+		// Every peerSig channel has a buffer capacity of 1,
+		// so every receiver will get the signal even if the
+		// select statement has the default case to avoid blocking.
+		select {
+		case c <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -374,6 +396,34 @@ func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	}
 
 	return closest, nil
+}
+
+// SubscribePeersChange returns the channel that signals when the connected peers
+// set changes. Returned function is safe to be called multiple times.
+func (k *Kad) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+	channel := make(chan struct{}, 1)
+	var closeOnce sync.Once
+
+	k.peerSigMtx.Lock()
+	defer k.peerSigMtx.Unlock()
+
+	k.peerSig = append(k.peerSig, channel)
+
+	unsubscribe = func() {
+		k.peerSigMtx.Lock()
+		defer k.peerSigMtx.Unlock()
+
+		for i, c := range k.peerSig {
+			if c == channel {
+				k.peerSig = append(k.peerSig[:i], k.peerSig[i+1:]...)
+				break
+			}
+		}
+
+		closeOnce.Do(func() { close(channel) })
+	}
+
+	return channel, unsubscribe
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.

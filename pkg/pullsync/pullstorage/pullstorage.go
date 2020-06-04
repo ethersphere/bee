@@ -24,6 +24,8 @@ var (
 type Storer interface {
 	// IntervalChunks collects chunk for a requested interval.
 	IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chunks []swarm.Address, topmost uint64, err error)
+	// Cursors gets the last BinID for every bin in the local storage
+	Cursors(ctx context.Context) ([]uint64, error)
 	// Get chunks.
 	Get(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) ([]swarm.Chunk, error)
 	// Put chunks.
@@ -87,6 +89,19 @@ LOOP:
 	}
 
 	return chs, topmost, nil
+}
+
+// Cursors gets the last BinID for every bin in the local storage
+func (s *ps) Cursors(ctx context.Context) (curs []uint64, err error) {
+	curs = make([]uint64, 16)
+	for i := uint8(0); i < 16; i++ {
+		binID, err := s.Storer.LastPullSubscriptionBinID(i)
+		if err != nil {
+			return nil, err
+		}
+		curs[i] = binID
+	}
+	return curs, nil
 }
 
 // Get chunks.

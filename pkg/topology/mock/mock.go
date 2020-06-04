@@ -79,6 +79,10 @@ func (d *mock) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err erro
 	return d.closestPeer, d.closestPeerErr
 }
 
+func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+	return c, unsubscribe
+}
+
 func (d *mock) MarshalJSON() ([]byte, error) {
 	return d.marshalJSONFunc()
 }

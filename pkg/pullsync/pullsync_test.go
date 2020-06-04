@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -179,6 +180,55 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 	_, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
 		t.Fatalf("expected ErrUnsolicitedChunk but got %v", err)
+	}
+}
+
+func TestGetCursors(t *testing.T) {
+	defer func(i int) {
+		*pullsync.MaxPage = i
+	}(*pullsync.MaxPage)
+	*pullsync.MaxPage = 5
+	var (
+		mockCursors = []uint64{100, 101, 102, 103}
+		ps, _       = newPullSync(nil, mock.WithCursors(mockCursors))
+		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, _ = newPullSync(recorder)
+	)
+
+	curs, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(curs) != len(mockCursors) {
+		t.Fatalf("length mismatch got %d want %d", len(curs), len(mockCursors))
+	}
+
+	for i, v := range mockCursors {
+		if curs[i] != v {
+			t.Errorf("cursor mismatch. index %d want %d got %d", i, v, curs[i])
+		}
+	}
+}
+
+func TestGetCursorsError(t *testing.T) {
+	defer func(i int) {
+		*pullsync.MaxPage = i
+	}(*pullsync.MaxPage)
+	*pullsync.MaxPage = 5
+	var (
+		e           = errors.New("erring")
+		ps, _       = newPullSync(nil, mock.WithCursorsErr(e))
+		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, _ = newPullSync(recorder)
+	)
+
+	_, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
+	if err == nil {
+		t.Fatal("expected error but got none")
+	}
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expect error '%v' but got '%v'", e, err)
 	}
 }
 
