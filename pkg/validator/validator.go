@@ -30,8 +30,7 @@ type ContentAddressValidator struct {
 // New constructs a new ContentAddressValidator
 func NewContentAddressValidator() swarm.ChunkValidator {
 
-	return &ContentAddressValidator{
-	}
+	return &ContentAddressValidator{}
 }
 
 // Validate performs the validation check
