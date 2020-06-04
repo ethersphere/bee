@@ -8,12 +8,10 @@ package pullsync;
 
 option go_package = "pb";
 
-message Syn {
-  bytes Cursors = 1;
-}
+message Syn {}
 
 message Ack {
-  bytes Cursors = 1;
+  repeated uint64 Cursors = 1;
 }
 
 message GetRange {

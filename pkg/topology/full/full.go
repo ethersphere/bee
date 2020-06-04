@@ -155,6 +155,11 @@ func (d *driver) Disconnected(swarm.Address) {
 	// TODO: implement if necessary
 }
 
+func (d *driver) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+	//TODO implement if necessary
+	return c, unsubscribe
+}
+
 func (d *driver) MarshalJSON() ([]byte, error) {
 	var peers []string
 	for p := range d.receivedPeers {

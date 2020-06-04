@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -22,9 +23,10 @@ import (
 )
 
 const (
-	protocolName    = "pullsync"
-	protocolVersion = "1.0.0"
-	streamName      = "pullsync"
+	protocolName     = "pullsync"
+	protocolVersion  = "1.0.0"
+	streamName       = "pullsync"
+	cursorStreamName = "cursors"
 )
 
 var (
@@ -34,11 +36,17 @@ var (
 // how many maximum chunks in a batch
 var maxPage = 50
 
+type Interface interface {
+	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error)
+	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
+}
+
 type Syncer struct {
 	streamer p2p.Streamer
 	logger   logging.Logger
 	storage  pullstorage.Storer
 
+	Interface
 	io.Closer
 }
 
@@ -65,6 +73,10 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
+			},
+			{
+				Name:    cursorStreamName,
+				Handler: s.cursorHandler,
 			},
 		},
 	}
@@ -225,6 +237,50 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 		}
 	}
 	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
+}
+
+func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error) {
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
+	if err != nil {
+		return nil, fmt.Errorf("new stream: %w", err)
+	}
+	defer stream.Close()
+
+	w, r := protobuf.NewWriterAndReader(stream)
+	syn := &pb.Syn{}
+	if err = w.WriteMsgWithContext(ctx, syn); err != nil {
+		return nil, fmt.Errorf("write syn: %w", err)
+	}
+
+	var ack pb.Ack
+	if err = r.ReadMsgWithContext(ctx, &ack); err != nil {
+		return nil, fmt.Errorf("read ack: %w", err)
+	}
+
+	return ack.Cursors, nil
+}
+
+func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
+
+	var syn pb.Syn
+	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
+		return fmt.Errorf("read syn: %w", err)
+	}
+
+	var ack pb.Ack
+	ints, err := s.storage.Cursors(ctx)
+	if err != nil {
+		_ = stream.FullClose()
+		return err
+	}
+	ack.Cursors = ints
+	if err = w.WriteMsgWithContext(ctx, &ack); err != nil {
+		return fmt.Errorf("write ack: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Syncer) Close() error {
