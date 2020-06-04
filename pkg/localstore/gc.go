@@ -79,7 +79,6 @@ func (db *DB) collectGarbageWorker() {
 // the rest of the garbage as the batch size limit is reached.
 // This function is called in collectGarbageWorker.
 func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
-	fmt.Println("Starting GC")
 	db.metrics.GCCounter.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeCollectGarbage, time.Now())
 	defer func() {
@@ -116,7 +115,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 
 		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
-		fmt.Println("GCing item ", hex.EncodeToString(item.Address))
 
 		yes, err := db.pinIndex.Has(item)
 		if err == nil && yes {
@@ -196,7 +194,6 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 			return false, nil
 		}
 		if ok {
-			fmt.Println("Excluding a item from GC ", hex.EncodeToString(item.Address))
 			err = db.gcIndex.DeleteInBatch(batch, item)
 			if err != nil {
 				return false, nil

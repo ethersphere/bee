@@ -18,7 +18,9 @@ package localstore
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/syndtr/goleveldb/leveldb"
@@ -160,6 +162,7 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 	// add new entry to gc index ONLY if it is not present in pinIndex
 	ok, err := db.pinIndex.Has(item)
 	if err != nil {
+		fmt.Println("mode_get: Not adding in gcIndex", hex.EncodeToString(item.Address))
 		return err
 	}
 	if !ok {

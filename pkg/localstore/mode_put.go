@@ -18,7 +18,9 @@ package localstore
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -341,6 +343,7 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 	// add new entry to gc index ONLY if it is not present in pinIndex
 	ok, err := db.pinIndex.Has(item)
 	if err != nil {
+		fmt.Println("mode_put: Not adding in gcIndex", hex.EncodeToString(item.Address))
 		return 0, err
 	}
 	if !ok {
