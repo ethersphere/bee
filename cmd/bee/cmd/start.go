@@ -93,7 +93,7 @@ func (c *command) initStartCmd() (err error) {
 
 			b, err := node.NewBee(node.Options{
 				DataDir:            c.config.GetString(optionNameDataDir),
-				DbCapacity:         c.config.GetUint64(optionNameDBCapacity),
+				DBCapacity:         c.config.GetUint64(optionNameDBCapacity),
 				Password:           password,
 				APIAddr:            c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr:       debugAPIAddr,

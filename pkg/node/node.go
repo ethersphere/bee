@@ -59,7 +59,7 @@ type Bee struct {
 
 type Options struct {
 	DataDir            string
-	DbCapacity         uint64
+	DBCapacity         uint64
 	Password           string
 	APIAddr            string
 	DebugAPIAddr       string
@@ -193,7 +193,7 @@ func NewBee(o Options) (*Bee, error) {
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
-		Capacity: o.DbCapacity,
+		Capacity: o.DBCapacity,
 	}
 	storer, err = localstore.New(path, address.Bytes(), lo, logger)
 	if err != nil {
