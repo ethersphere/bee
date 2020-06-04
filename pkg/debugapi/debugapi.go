@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -35,6 +36,7 @@ type Options struct {
 	TopologyDriver topology.Notifier
 	Storer         storage.Storer
 	Logger         logging.Logger
+	Tags           *tags.Tags
 }
 
 func New(o Options) Service {

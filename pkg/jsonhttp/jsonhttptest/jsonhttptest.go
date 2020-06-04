@@ -35,8 +35,8 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 	}
 }
 
-func ResponseDirectWithHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
-	response interface{}, headers http.Header) {
+func ResponseDirectSendHeadersAndReceiveHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
+	response interface{}, headers http.Header) http.Header {
 	t.Helper()
 
 	resp := request(t, client, method, url, body, responseCode, headers)
@@ -56,6 +56,8 @@ func ResponseDirectWithHeaders(t *testing.T, client *http.Client, method, url st
 	if !bytes.Equal(got, want) {
 		t.Errorf("got response %s, want %s", string(got), string(want))
 	}
+
+	return resp.Header
 }
 
 func ResponseUnmarshal(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {

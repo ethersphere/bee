@@ -7,6 +7,7 @@ package pusher_test
 import (
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/pkg/tags"
 	"io/ioutil"
 	"sync"
 	"testing"
@@ -23,7 +24,7 @@ import (
 )
 
 // no of times to retry to see if we have received response from pushsync
-var noOfRetries = 10
+var noOfRetries = 20
 
 // Wrap the actual storer to intercept the modeSet that the pusher will call when a valid receipt is received
 type Store struct {
@@ -58,11 +59,16 @@ func TestSendChunkToPushSync(t *testing.T) {
 		}
 		return receipt, nil
 	})
-
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	mtag := tags.NewTags()
+	tag, err := mtag.Create("name", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag.Address = chunk.Address()
+	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,10 +103,16 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	mtag := tags.NewTags()
+	tag, err := mtag.Create("name", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag.Address = chunk.Address()
+	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,10 +150,16 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return nil, nil
 	})
 
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	mtag := tags.NewTags()
+	tag, err := mtag.Create("name", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag.Address = chunk.Address()
+	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +187,7 @@ func createChunk() swarm.Chunk {
 	return swarm.NewChunk(chunkAddress, chunkData)
 }
 
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*pusher.Service, *Store) {
+func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, tag *tags.Tags, mockOpts ...mock.Option) (*pusher.Service, *Store) {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)
@@ -183,7 +201,8 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 		modeSetMu: &sync.Mutex{},
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
-	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, PeerSuggester: peerSuggester, Logger: logger})
+
+	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, Tags: tag, PushSyncer: pushSyncService, PeerSuggester: peerSuggester, Logger: logger})
 	return pusherService, pusherStorer
 }
 

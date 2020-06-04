@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 )
 
 var _ storage.Storer = (*MockStorer)(nil)
@@ -23,6 +24,7 @@ type MockStorer struct {
 	pinnedCounter []uint64        // and its respective counter. These are stored as slices to preserve the order.
 	pinSetMu      sync.Mutex
 	validator     swarm.ChunkValidator
+	tags          *tags.Tags
 }
 
 func NewStorer() storage.Storer {
@@ -33,13 +35,14 @@ func NewStorer() storage.Storer {
 	}
 }
 
-func NewValidatingStorer(v swarm.ChunkValidator) *MockStorer {
+func NewValidatingStorer(v swarm.ChunkValidator, tags *tags.Tags) *MockStorer {
 	return &MockStorer{
 		store:     make(map[string][]byte),
 		modeSet:   make(map[string]storage.ModeSet),
 		modeSetMu: sync.Mutex{},
 		pinSetMu:  sync.Mutex{},
 		validator: v,
+		tags:      tags,
 	}
 }
 
@@ -59,8 +62,19 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 			}
 		}
 		m.store[ch.Address().String()] = ch.Data()
+		yes, err := m.Has(ctx, ch.Address())
+		if err != nil {
+			exist = append(exist, false)
+			continue
+		}
+		if yes {
+			exist = append(exist, true)
+		} else {
+			exist = append(exist, false)
+		}
+
 	}
-	return nil, nil
+	return exist, nil
 }
 
 func (m *MockStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) (ch []swarm.Chunk, err error) {
