@@ -33,7 +33,6 @@ var (
 func Split(cmd *cobra.Command, args []string) (err error) {
 	logger, err = cmdfile.SetLogger(cmd, verbosity)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
@@ -103,7 +102,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// output the resulting hash
-	fmt.Println(addr)
+	cmd.Println(addr)
 	return nil
 }
 
@@ -133,6 +132,7 @@ Chunks are saved in individual files, and the file names will be the hex address
 	c.Flags().BoolVar(&useHttp, "http", false, "save chunks to bee http api")
 	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
+	c.SetOutput(c.OutOrStdout())
 	err := c.Execute()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())

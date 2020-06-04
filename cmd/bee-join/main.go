@@ -30,7 +30,6 @@ var (
 func Join(cmd *cobra.Command, args []string) (err error) {
 	logger, err = cmdfile.SetLogger(cmd, verbosity)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
@@ -96,6 +95,7 @@ Will output retrieved data to stdout.`,
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
+	c.SetOutput(c.OutOrStdout())
 	err := c.Execute()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())

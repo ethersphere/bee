@@ -72,7 +72,8 @@ func (t *TeeStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.C
 			return nil, err
 		}
 	}
-	return nil, nil
+	exist = make([]bool, len(chs))
+	return exist, nil
 }
 
 // FsStore provides a storage.Putter that writes chunks directly to the filesystem.
@@ -97,7 +98,8 @@ func (f *FsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 			return nil, err
 		}
 	}
-	return nil, nil
+	exist = make([]bool, len(chs))
+	return exist, nil
 }
 
 // ApiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
@@ -137,7 +139,8 @@ func (a *ApiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.C
 			return nil, fmt.Errorf("upload failed: %v", res.Status)
 		}
 	}
-	return nil, nil
+	exist = make([]bool, len(chs))
+	return exist, nil
 }
 
 // Get implements storage.Getter.
@@ -184,7 +187,7 @@ func (l *LimitWriteCloser) Write(b []byte) (int, error) {
 	return c, err
 }
 
-// Join reads all output from the provided joiner.
+// JoinReadAll reads all output from the provided joiner.
 func JoinReadAll(j file.Joiner, addr swarm.Address, outFile io.Writer) error {
 	r, l, err := j.Join(context.Background(), addr)
 	if err != nil {
@@ -210,7 +213,7 @@ func JoinReadAll(j file.Joiner, addr swarm.Address, outFile io.Writer) error {
 	if total != l {
 		return fmt.Errorf("received only %d of %d total bytes", total, l)
 	}
-	return err
+	return nil
 }
 
 func SetLogger(cmd *cobra.Command, verbosityString string) (logger logging.Logger, err error) {

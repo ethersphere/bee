@@ -116,12 +116,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 	defer outFile.Close()
 
-	err = cmdfile.JoinReadAll(j, e.Reference(), outFile)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return cmdfile.JoinReadAll(j, e.Reference(), outFile)
 }
 
 // putEntry creates a new file entry with the given reference.
@@ -165,8 +160,7 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 
 	// set up splitter to process the metadata
 	s := splitter.NewSimpleSplitter(stores)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	// first add metadata
 	metadataBuf := bytes.NewBuffer(metadataBytes)
@@ -193,7 +187,7 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// output reference to file entry
-	fmt.Println(fileEntryAddr)
+	cmd.Println(fileEntryAddr)
 	return nil
 }
 
@@ -247,6 +241,7 @@ If --output-dir is set, the retrieved file will be written to the speficied dire
 	c.Flags().BoolVar(&useHttp, "http", false, "save entry to bee http api")
 	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
+	c.SetOutput(c.OutOrStdout())
 	err := c.Execute()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
