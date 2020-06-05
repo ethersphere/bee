@@ -5,21 +5,16 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
-	"strings"
 
+	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -28,125 +23,22 @@ var (
 	inputLength int64  // flag variable, limit of data input
 	host        string // flag variable, http api host
 	port        int    // flag variable, http api port
-	noHttp      bool   // flag variable, skips http api if set
+	useHttp     bool   // flag variable, skips http api if not set
 	ssl         bool   // flag variable, uses https for api if set
+	verbosity   string // flag variable, debug level
+	logger      logging.Logger
 )
-
-// teeStore provides a storage.Putter that can put to multiple underlying storage.Putters
-type teeStore struct {
-	putters []storage.Putter
-}
-
-// newTeeStore creates a new teeStore
-func newTeeStore() *teeStore {
-	return &teeStore{}
-}
-
-// Add adds a storage.Putter
-func (t *teeStore) Add(putter storage.Putter) {
-	t.putters = append(t.putters, putter)
-}
-
-// Put implements storage.Putter
-func (t *teeStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	for _, putter := range t.putters {
-		_, err := putter.Put(ctx, mode, chs...)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return nil, nil
-}
-
-// fsStore provides a storage.Putter that writes chunks directly to the filesystem.
-// Each chunk is a separate file, where the hex address of the chunk is the file name.
-type fsStore struct {
-	path string
-}
-
-// newFsStore creates a new fsStore
-func newFsStore(path string) storage.Putter {
-	return &fsStore{
-		path: path,
-	}
-}
-
-// Put implements storage.Putter
-func (f *fsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	for _, ch := range chs {
-		chunkPath := filepath.Join(f.path, ch.Address().String())
-		err := ioutil.WriteFile(chunkPath, ch.Data(), 0o666)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return nil, nil
-}
-
-// apiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
-type apiStore struct {
-	baseUrl string
-}
-
-// newApiStore creates a new apiStor
-func newApiStore(host string, port int, ssl bool) storage.Putter {
-	scheme := "http"
-	if ssl {
-		scheme += "s"
-	}
-	u := &url.URL{
-		Host:   fmt.Sprintf("%s:%d", host, port),
-		Scheme: scheme,
-		Path:   "bzz-chunk",
-	}
-	return &apiStore{
-		baseUrl: u.String(),
-	}
-}
-
-// Put implements storage.Putter
-func (a *apiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	c := http.DefaultClient
-	for _, ch := range chs {
-		addr := ch.Address().String()
-		buf := bytes.NewReader(ch.Data())
-		url := strings.Join([]string{a.baseUrl, addr}, "/")
-		res, err := c.Post(url, "application/octet-stream", buf)
-		if err != nil {
-			return nil, err
-		}
-		if res.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("upload failed: %v", res.Status)
-		}
-	}
-	return nil, nil
-}
-
-// limitReadCloser wraps the input to the application to limit the input to the given count flag.
-type limitReadCloser struct {
-	io.Reader
-	closeFunc func() error
-}
-
-// newLimitReadCloser creates a new limitReadCloser.
-func newLimitReadCloser(r io.Reader, closeFunc func() error, c int64) io.ReadCloser {
-	return &limitReadCloser{
-		Reader:    io.LimitReader(r, c),
-		closeFunc: closeFunc,
-	}
-}
-
-// Close implements io.Closer
-func (l *limitReadCloser) Close() error {
-	return l.closeFunc()
-}
 
 // Split is the underlying procedure for the CLI command
 func Split(cmd *cobra.Command, args []string) (err error) {
-	var infile io.ReadCloser
+	logger, err = cmdfile.SetLogger(cmd, verbosity)
+	if err != nil {
+		return err
+	}
 
 	// if one arg is set, this is the input file
 	// if not, we are reading from standard input
+	var infile io.ReadCloser
 	if len(args) > 0 {
 
 		// get the file length
@@ -170,28 +62,34 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		infile = newLimitReadCloser(f, f.Close, inputLength)
+		fileReader := io.LimitReader(f, inputLength)
+		infile = ioutil.NopCloser(fileReader)
+		logger.Debugf("using %d bytes from file %s as input", fileLength, args[0])
 	} else {
 		// this simple splitter is too stupid to handle open-ended input, sadly
 		if inputLength == 0 {
 			return errors.New("must specify length of input on stdin")
 		}
-		infile = newLimitReadCloser(os.Stdin, func() error { return nil }, inputLength)
+		stdinReader := io.LimitReader(os.Stdin, inputLength)
+		infile = ioutil.NopCloser(stdinReader)
+		logger.Debugf("using %d bytes from standard input", inputLength)
 	}
 
 	// add the fsStore and/or apiStore, depending on flags
-	stores := newTeeStore()
+	stores := cmdfile.NewTeeStore()
 	if outdir != "" {
 		err := os.MkdirAll(outdir, 0o777) // skipcq: GSC-G301
 		if err != nil {
 			return err
 		}
-		store := newFsStore(outdir)
+		store := cmdfile.NewFsStore(outdir)
 		stores.Add(store)
+		logger.Debugf("using directory %s for output", outdir)
 	}
-	if !noHttp {
-		store := newApiStore(host, port, ssl)
+	if useHttp {
+		store := cmdfile.NewApiStore(host, port, ssl)
 		stores.Add(store)
+		logger.Debugf("using bee http (ssl=%v) api on %s:%d for output", ssl, host, port)
 	}
 
 	// split and rule
@@ -204,7 +102,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// output the resulting hash
-	fmt.Println(addr)
+	cmd.Println(addr)
 	return nil
 }
 
@@ -231,7 +129,10 @@ Chunks are saved in individual files, and the file names will be the hex address
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
-	c.Flags().BoolVar(&noHttp, "no-http", false, "skip http put")
+	c.Flags().BoolVar(&useHttp, "http", false, "save chunks to bee http api")
+	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
+
+	c.SetOutput(c.OutOrStdout())
 	err := c.Execute()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
