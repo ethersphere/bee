@@ -86,9 +86,11 @@ func (s *Service) chunksWorker() {
 			t, err := s.tag.GetByAddress(ch.Address())
 			if err != nil {
 				s.logger.Debugf("pusher: get tag by address %s: %v", ch.Address(), err)
-				continue
+				//continue // // until bzz api implements tags dont continue here
+			} else {
+				// update the tags only if we get it
+				t.Inc(tags.StateSent)
 			}
-			t.Inc(tags.StateSent)
 
 			// Later when we process receipt, get the receipt and process it
 			// for now ignoring the receipt and checking only for error
@@ -137,9 +139,12 @@ func (s *Service) setChunkAsSynced(ctx context.Context, addr swarm.Address) {
 		ta, err := s.tag.GetByAddress(addr)
 		if err != nil {
 			s.logger.Debugf("pusher: get tag by address %s: %v", addr, err)
-			return
+			// return  // until bzz api implements tags dont retunrn here
+		} else {
+			// update the tags only if we get it
+			ta.Inc(tags.StateSynced)
 		}
-		ta.Inc(tags.StateSynced)
+
 	}
 }
 
