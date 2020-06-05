@@ -30,7 +30,7 @@ var (
 func Join(cmd *cobra.Command, args []string) (err error) {
 	logger, err = cmdfile.SetLogger(cmd, verbosity)
 	if err != nil {
-		os.Exit(1)
+		return err
 	}
 
 	// if output file is specified, create it if it does not exist

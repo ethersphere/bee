@@ -33,7 +33,7 @@ var (
 func Split(cmd *cobra.Command, args []string) (err error) {
 	logger, err = cmdfile.SetLogger(cmd, verbosity)
 	if err != nil {
-		os.Exit(1)
+		return err
 	}
 
 	// if one arg is set, this is the input file
