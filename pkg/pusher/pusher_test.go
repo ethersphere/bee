@@ -7,11 +7,12 @@ package pusher_test
 import (
 	"context"
 	"errors"
-	"github.com/ethersphere/bee/pkg/tags"
 	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/tags"
 
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -65,6 +66,50 @@ func TestSendChunkToPushSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	tag.Address = chunk.Address()
+	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
+	defer storer.Close()
+
+	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check is the chunk is set as synced in the DB.
+	for i := 0; i < noOfRetries; i++ {
+		// Give some time for chunk to be pushed and receipt to be received
+		time.Sleep(10 * time.Millisecond)
+
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Close()
+}
+
+// TestSendChunkToPushSyncWithoutTag is similar to TestSendChunkToPushSync, excep that the tags are not
+// present to simulate bzz api withotu splitter condition
+func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
+	chunk := createChunk()
+
+	// create a trigger  and a closestpeer
+	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
+
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		receipt := &pushsync.Receipt{
+			Address: swarm.NewAddress(chunk.Address().Bytes()),
+		}
+		return receipt, nil
+	})
+	mtag := tags.NewTags()
+	_, err := mtag.Create("name", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
@@ -158,6 +203,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	tag.Address = chunk.Address()
 	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
+	defer p.Close()
 
 	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -177,7 +223,6 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
-	p.Close()
 }
 
 func createChunk() swarm.Chunk {
