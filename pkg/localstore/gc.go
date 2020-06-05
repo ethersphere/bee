@@ -17,7 +17,6 @@
 package localstore
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -116,10 +115,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
 
-		yes, err := db.pinIndex.Has(item)
-		if err == nil && yes {
-			fmt.Println("GCing pinned item ", hex.EncodeToString(item.Address))
-		}
 		// delete from retrieve, pull, gc
 		err = db.retrievalDataIndex.DeleteInBatch(batch, item)
 		if err != nil {

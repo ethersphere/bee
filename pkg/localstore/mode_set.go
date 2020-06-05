@@ -18,9 +18,7 @@ package localstore
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/syndtr/goleveldb/leveldb"
@@ -186,7 +184,6 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr swar
 
 	ok, err := db.pinIndex.Has(item)
 	if err != nil {
-		fmt.Println("mode_set: Not adding in gcIndex", hex.EncodeToString(item.Address))
 		return 0, err
 	}
 	if !ok {
@@ -328,7 +325,6 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 	// Add in gcIndex only if this chunk is not pinned
 	ok, err := db.pinIndex.Has(item)
 	if err != nil {
-		fmt.Println("mode_set: Not adding in gcIndex", hex.EncodeToString(item.Address))
 		return 0, err
 	}
 	if !ok {
