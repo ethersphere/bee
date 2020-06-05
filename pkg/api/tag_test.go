@@ -214,7 +214,7 @@ func TestTags(t *testing.T) {
 			tagToVerify.Stored != finalTag.Stored ||
 			tagToVerify.Sent != finalTag.Seen ||
 			tagToVerify.Synced != finalTag.Synced {
-			t.Fatalf("Invalid counters")
+			t.Fatalf("got tag %+v, want %+v", tagToVerify, finalTag)
 		}
 	})
 }
