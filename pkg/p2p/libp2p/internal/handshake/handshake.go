@@ -195,7 +195,7 @@ func (s *Service) Disconnected(_ network.Network, c network.Conn) {
 }
 
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr, peerID.Pretty()))
+	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.Pretty()))
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack, remoteMA []byte) (*bzz.Address, error) {
