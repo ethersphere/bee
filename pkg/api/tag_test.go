@@ -209,12 +209,20 @@ func TestTags(t *testing.T) {
 		finalTag := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagResourceUUid(uuid1), nil, http.StatusOK, &finalTag)
 
-		if tagToVerify.Total != finalTag.Total ||
-			tagToVerify.Seen != finalTag.Seen ||
-			tagToVerify.Stored != finalTag.Stored ||
-			tagToVerify.Sent != finalTag.Seen ||
-			tagToVerify.Synced != finalTag.Synced {
-			t.Fatalf("Invalid counters")
+		if tagToVerify.Total != finalTag.Total {
+			t.Errorf("tag total count mismatch. got %d want %d", tagToVerify.Total, finalTag.Total)
+		}
+		if tagToVerify.Seen != finalTag.Seen {
+			t.Errorf("tag seen count mismatch. got %d want %d", tagToVerify.Seen, finalTag.Seen)
+		}
+		if tagToVerify.Stored != finalTag.Stored {
+			t.Errorf("tag stored count mismatch. got %d want %d", tagToVerify.Stored, finalTag.Stored)
+		}
+		if tagToVerify.Sent != finalTag.Sent {
+			t.Errorf("tag sent count mismatch. got %d want %d", tagToVerify.Sent, finalTag.Sent)
+		}
+		if tagToVerify.Synced != finalTag.Synced {
+			t.Errorf("tag synced count mismatch. got %d want %d", tagToVerify.Synced, finalTag.Synced)
 		}
 	})
 }
