@@ -35,9 +35,12 @@ type addressJSON struct {
 }
 
 func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64) (*Address, error) {
-	networkIDBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(networkIDBytes, networkID)
-	signature, err := signer.Sign(append(underlay.Bytes(), networkIDBytes...))
+	underlayBinary, err := underlay.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	signature, err := signer.Sign(generateSignData(underlayBinary, overlay.Bytes(), networkID))
 	if err != nil {
 		return nil, err
 	}
@@ -50,9 +53,7 @@ func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Addre
 }
 
 func ParseAddress(underlay, overlay, signature []byte, networkID uint64) (*Address, error) {
-	networkIDBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(networkIDBytes, networkID)
-	recoveredPK, err := crypto.Recover(signature, append(underlay, networkIDBytes...))
+	recoveredPK, err := crypto.Recover(signature, generateSignData(underlay, overlay, networkID))
 	if err != nil {
 		return nil, ErrInvalidAddress
 	}
@@ -72,6 +73,13 @@ func ParseAddress(underlay, overlay, signature []byte, networkID uint64) (*Addre
 		Overlay:   swarm.NewAddress(overlay),
 		Signature: signature,
 	}, nil
+}
+
+func generateSignData(underlay, overlay []byte, networkID uint64) []byte {
+	networkIDBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(networkIDBytes, networkID)
+	signData := append(underlay, overlay...)
+	return append(signData, networkIDBytes...)
 }
 
 func (a *Address) Equal(b *Address) bool {
