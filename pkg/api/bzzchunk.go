@@ -6,6 +6,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -81,8 +82,12 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("bzz-chunk: read chunk data error")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
-
 	}
+
+	span := len(data)
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(span))
+	data = append(b, data...)
 
 	seen, err := s.Storer.Put(ctx, storage.ModePutUpload, swarm.NewChunk(address, data))
 	if err != nil {
@@ -141,5 +146,5 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
-	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()))
+	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()[8:]))
 }

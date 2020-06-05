@@ -28,7 +28,7 @@ func TestTags(t *testing.T) {
 		tagResourceUUid      = func(uuid uint64) string { return "/bzz-tag/uuid/" + strconv.FormatUint(uuid, 10) }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
-		mockValidator        = validator.NewMockValidator(validHash, validContent)
+		mockValidator        = validator.NewMockValidator(validHash, append(newSpan(uint64(len(validContent))), validContent...))
 		tag                  = tags.NewTags()
 		mockValidatingStorer = mock.NewValidatingStorer(mockValidator, tag)
 		mockPusher           = mp.NewMockPusher(tag)
@@ -98,7 +98,7 @@ func TestTags(t *testing.T) {
 		// Add asecond valid contentto validator
 		secondValidHash := swarm.MustParseHexAddress("deadbeaf")
 		secondValidContent := []byte("123456")
-		mockValidator.AddPair(secondValidHash, secondValidContent)
+		mockValidator.AddPair(secondValidHash, append(newSpan(uint64(len(secondValidContent))), secondValidContent...))
 
 		sentHheaders = make(http.Header)
 		sentHheaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(ta.Uid), 10))
