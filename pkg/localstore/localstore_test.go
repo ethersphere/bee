@@ -57,6 +57,16 @@ func init() {
 	}
 }
 
+func TestDBCapacity(t *testing.T) {
+	lo := Options{
+		Capacity: 500,
+	}
+	db := newTestDB(t, &lo)
+	if db.capacity != 500 {
+		t.Fatal("could not set db capacity")
+	}
+}
+
 // TestDB validates if the chunk can be uploaded and
 // correctly retrieved.
 func TestDB(t *testing.T) {

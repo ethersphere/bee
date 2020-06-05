@@ -16,17 +16,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
-
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 )
 
 func (c *command) initStartCmd() (err error) {
 
 	const (
 		optionNameDataDir            = "data-dir"
+		optionNameDBCapacity         = "db-capacity"
 		optionNamePassword           = "password"
 		optionNamePasswordFile       = "password-file"
 		optionNameAPIAddr            = "api-addr"
@@ -93,6 +93,7 @@ func (c *command) initStartCmd() (err error) {
 
 			b, err := node.NewBee(node.Options{
 				DataDir:            c.config.GetString(optionNameDataDir),
+				DBCapacity:         c.config.GetUint64(optionNameDBCapacity),
 				Password:           password,
 				APIAddr:            c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr:       debugAPIAddr,
@@ -150,6 +151,7 @@ func (c *command) initStartCmd() (err error) {
 	}
 
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
+	cmd.Flags().Uint64(optionNameDBCapacity, 5000000, "db capacity in chunks")
 	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, ":8080", "HTTP API listen address")
