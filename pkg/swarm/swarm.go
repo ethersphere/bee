@@ -100,6 +100,7 @@ type Chunk interface {
 	WithPinCounter(p uint64) Chunk
 	TagID() uint32
 	WithTagID(t uint32) Chunk
+	Equal(Chunk) bool
 }
 
 type chunk struct {
@@ -142,8 +143,12 @@ func (c *chunk) TagID() uint32 {
 	return c.tagID
 }
 
-func (self *chunk) String() string {
-	return fmt.Sprintf("Address: %v Chunksize: %v", self.addr.String(), len(self.sdata))
+func (c *chunk) String() string {
+	return fmt.Sprintf("Address: %v Chunksize: %v", c.addr.String(), len(c.sdata))
+}
+
+func (c *chunk) Equal(cp Chunk) bool {
+	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
 }
 
 type ChunkValidator interface {
