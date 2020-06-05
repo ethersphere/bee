@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -32,7 +33,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		invalidHash          = swarm.MustParseHexAddress("bbccdd")
 		validContent         = []byte("bbaatt")
 		invalidContent       = []byte("bbaattss")
-		mockValidator        = validator.NewMockValidator(validHash, validContent)
+		mockValidator        = validator.NewMockValidator(validHash, append(newSpan(uint64(len(validContent))), validContent...))
 		tag                  = tags.NewTags()
 		mockValidatingStorer = mock.NewValidatingStorer(mockValidator, tag)
 		client               = newTestServer(t, testServerOptions{
@@ -135,4 +136,10 @@ func request(t *testing.T, client *http.Client, method string, resource string, 
 		t.Fatalf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
 	}
 	return resp
+}
+
+func newSpan(size uint64) []byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, size)
+	return b
 }
