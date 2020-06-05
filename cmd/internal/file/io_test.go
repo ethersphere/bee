@@ -194,7 +194,7 @@ func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	s := api.New(api.Options{
 		Storer: storer,
 		Logger: logging.New(ioutil.Discard, 0),
-		Tags: tags.NewTags(),
+		Tags:   tags.NewTags(),
 	})
 	ts := httptest.NewServer(s)
 	srvUrl, err := url.Parse(ts.URL)
