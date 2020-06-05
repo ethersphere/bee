@@ -68,9 +68,9 @@ func New(overlay swarm.Address, signer crypto.Signer, networkID uint64, lighNode
 	}, nil
 }
 
-func (s *Service) Handshake(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remotePeerID libp2ppeer.ID) (i *Info, err error) {
+func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	fullRemoteMA, err := buildFullMA(remoteMultiaddr, remotePeerID)
+	fullRemoteMA, err := buildFullMA(peerMultiaddr, peerID)
 	if err != nil {
 		return nil, err
 	}
