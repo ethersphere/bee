@@ -61,6 +61,7 @@ type Options struct {
 	PrivateKey  *ecdsa.PrivateKey
 	DisableWS   bool
 	DisableQUIC bool
+	LightNode   bool
 	Addressbook addressbook.Putter
 	Logger      logging.Logger
 	Tracer      *tracing.Tracer
@@ -156,13 +157,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	// todo: handle different underlays
-	underlay, err := buildUnderlayAddress(h.Addrs()[1], h.ID())
-	if err != nil {
-		return nil, fmt.Errorf("build host multiaddress: %w", err)
-	}
-
-	handshakeService, err := handshake.New(overlay, underlay, signer, networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, signer, networkID, o.LightNode, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -192,7 +187,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// handshake
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		i, err := s.handshakeService.Handle(NewStream(stream), peerID)
+		i, err := s.handshakeService.Handle(NewStream(stream), stream.Conn().RemoteMultiaddr(), peerID)
 		if err != nil {
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
@@ -334,7 +329,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, err
 	}
 
-	i, err := s.handshakeService.Handshake(NewStream(stream))
+	i, err := s.handshakeService.Handshake(NewStream(stream), stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
 		_ = s.disconnect(info.ID)
 		return nil, fmt.Errorf("handshake: %w", err)
