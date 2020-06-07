@@ -186,7 +186,6 @@ func (l *LimitWriteCloser) Write(b []byte) (int, error) {
 	return c, err
 }
 
-
 func SetLogger(cmd *cobra.Command, verbosityString string) (logger logging.Logger, err error) {
 	v := strings.ToLower(verbosityString)
 	switch v {

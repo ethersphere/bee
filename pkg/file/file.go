@@ -6,8 +6,8 @@
 package file
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
