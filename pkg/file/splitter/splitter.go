@@ -9,10 +9,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter/internal"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -37,12 +39,14 @@ func NewSimpleSplitter(putter storage.Putter) file.Splitter {
 func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength int64) (addr swarm.Address, err error) {
 	j := internal.NewSimpleSplitterJob(ctx, s.putter, dataLength)
 
+	logger := logging.New(os.Stderr, 5)
 	var total int64
 	data := make([]byte, swarm.ChunkSize)
 	var eof bool
 	for !eof {
 		c, err := r.Read(data)
 		total += int64(c)
+		logger.Debugf("data %d %d, %x", total, c, data[:c])
 		if err != nil {
 			if err == io.EOF {
 				if total < dataLength {
