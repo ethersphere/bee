@@ -8,6 +8,7 @@ package joiner
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -26,6 +27,21 @@ func NewSimpleJoiner(getter storage.Getter) file.Joiner {
 	return &simpleJoiner{
 		getter: getter,
 	}
+}
+
+func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSize int64, err error) {
+	// retrieve the root chunk to read the total data length the be retrieved
+	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(rootChunk.Data()) < 8 {
+		return 0, errors.New("invalid content chunk")
+	}
+
+	dataLength := binary.LittleEndian.Uint64(rootChunk.Data())
+	return int64(dataLength), nil
 }
 
 // Join implements the file.Joiner interface.

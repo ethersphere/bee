@@ -19,7 +19,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -187,34 +186,6 @@ func (l *LimitWriteCloser) Write(b []byte) (int, error) {
 	return c, err
 }
 
-// JoinReadAll reads all output from the provided joiner.
-func JoinReadAll(j file.Joiner, addr swarm.Address, outFile io.Writer) error {
-	r, l, err := j.Join(context.Background(), addr)
-	if err != nil {
-		return err
-	}
-	// join, rinse, repeat until done
-	data := make([]byte, swarm.ChunkSize)
-	var total int64
-	for i := int64(0); i < l; i += swarm.ChunkSize {
-		cr, err := r.Read(data)
-		if err != nil {
-			return err
-		}
-		total += int64(cr)
-		cw, err := outFile.Write(data[:cr])
-		if err != nil {
-			return err
-		}
-		if cw != cr {
-			return fmt.Errorf("short wrote %d of %d for chunk %d", cw, cr, i)
-		}
-	}
-	if total != l {
-		return fmt.Errorf("received only %d of %d total bytes", total, l)
-	}
-	return nil
-}
 
 func SetLogger(cmd *cobra.Command, verbosityString string) (logger logging.Logger, err error) {
 	v := strings.ToLower(verbosityString)
