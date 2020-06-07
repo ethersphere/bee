@@ -12,9 +12,9 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
-	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -26,13 +26,13 @@ type rawPostResponse struct {
 func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-       data, err := ioutil.ReadAll(r.Body)
-       if err != nil {
-               s.Logger.Debugf("raw: read error: %v", err)
-	       s.Logger.Error("raw: read error")
-               jsonhttp.InternalServerError(w, "cannot read request")
-               return
-       }
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		s.Logger.Debugf("raw: read error: %v", err)
+		s.Logger.Error("raw: read error")
+		jsonhttp.InternalServerError(w, "cannot read request")
+		return
+	}
 
 	s.Logger.Errorf("Content length %d", r.ContentLength)
 	sp := splitter.NewSimpleSplitter(s.Storer)
