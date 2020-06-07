@@ -150,7 +150,6 @@ func TestLimitWriter(t *testing.T) {
 	}
 }
 
-
 // newTestServer creates an http server to serve the bee http api endpoints.
 func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	t.Helper()
