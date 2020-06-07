@@ -60,7 +60,7 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		sumCounts:  make([]int, levelBufferLimit),
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
-		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit),
+		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit*2),
 	}
 }
 

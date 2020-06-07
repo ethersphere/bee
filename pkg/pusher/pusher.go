@@ -85,7 +85,7 @@ func (s *Service) chunksWorker() {
 
 			t, err := s.tag.GetByAddress(ch.Address())
 			if err != nil {
-				s.logger.Debugf("pusher: get tag by address %s: %v", ch.Address(), err)
+				s.logger.Tracef("pusher: get tag by address %s: %v", ch.Address(), err)
 				//continue // // until bzz api implements tags dont continue here
 			} else {
 				// update the tags only if we get it

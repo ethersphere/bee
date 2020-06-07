@@ -5,9 +5,7 @@
 package api
 
 import (
-	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -26,19 +24,9 @@ type rawPostResponse struct {
 func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		s.Logger.Debugf("raw: read error: %v", err)
-		s.Logger.Error("raw: read error")
-		jsonhttp.InternalServerError(w, "cannot read request")
-		return
-	}
-
 	s.Logger.Errorf("Content length %d", r.ContentLength)
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	bodyReader := bytes.NewReader(data)
-	bodyReadCloser := ioutil.NopCloser(bodyReader)
-	address, err := sp.Split(ctx, bodyReadCloser, r.ContentLength)
+	address, err := sp.Split(ctx, r.Body, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("raw: split error %s: %v", address, err)
 		s.Logger.Error("raw: split error")
