@@ -46,7 +46,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 	for !eof {
 		c, err := r.Read(data)
 		total += int64(c)
-		logger.Debugf("data %d %d, %x", total, c, data[:c])
+		logger.Debugf("data %d %d", total, c)
 		if err != nil {
 			if err == io.EOF {
 				if total < dataLength {

@@ -9,9 +9,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -64,22 +64,26 @@ func TestChunkBuffer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = <-errC
+	timer := time.NewTimer(time.Millisecond)
+	select {
+		case err = <-errC:
+		case <-timer.C:
+		t.Fatal("timeout")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestUnalignedReads(t *testing.T) {
-	t.Skip("fix chunk buffer first")
+func TestUnalignedSplit(t *testing.T) {
 	var (
 		storer storage.Storer = mock.NewStorer()
-		dataLen int64 = swarm.ChunkSize+42
+		dataLen int64 = swarm.ChunkSize+32
 		logger = logging.New(os.Stderr, 5)
+		chunkBuffer = splitter.NewChunkBuffer()
 		expectAddrHex = "73759673a52c1f1707cbb61337645f4fcbd209cdc53d7e2cedaaa9f44df61285"
 	)
 
-	r, w := io.Pipe()
 	sp := splitter.NewSimpleSplitter(storer)
 	ctx := context.Background()
 
@@ -91,37 +95,56 @@ func TestUnalignedReads(t *testing.T) {
 
 	doneC := make(chan swarm.Address)
 	go func() {
-		addr, err := sp.Split(ctx, r, dataLen)
+		addr, err := sp.Split(ctx, chunkBuffer, dataLen)
 		if err != nil {
 			t.Fatal(err)
 		}
 		doneC <- addr
 		close(doneC)
 	}()
+
 	contentBuf := bytes.NewReader(content)
+	cursor := 0
 	data := make([]byte, swarm.ChunkSize-2)
-	_, _ = contentBuf.Read(data)
-	logger.Debugf("writing %x", data)
-	c, err := w.Write(data)
+	c, err := contentBuf.Read(data)
 	if err != nil {
 		t.Fatal(err)
 	}
+	logger.Debugf("writing %d", c)
+	c, err = chunkBuffer.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor += swarm.ChunkSize+2
+
 	data = make([]byte, 4)
-	_, _ = contentBuf.Read(data)
-	c, err = w.Write(data)
+	_, err = contentBuf.Read(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = make([]byte, 40)
-	_, _ = contentBuf.Read(data)
-	c, err = w.Write(data)
+	c, err = chunkBuffer.Write(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = w.Close()
+	cursor += c
+
+	data = make([]byte, 30)
+	_, err = contentBuf.Read(data)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	c, err = chunkBuffer.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor += c
+
+	err = chunkBuffer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	logger.Debugf("wrote %d", c)
 	addr := <-doneC
 	expectAddr := swarm.MustParseHexAddress(expectAddrHex)
