@@ -11,6 +11,12 @@ API compatibility will be guaranteed when version 1.0 is released, but not befor
 
 ## Install
 
+Prerequisites for installing bee from source are:
+
+- Go - download the latest release from https://golang.org/dl
+- git - download from https://git-scm.com/ or install with your package manager
+- make
+
 Installing from source by checking the git repository:
 
 ```sh
@@ -78,7 +84,7 @@ An example configuration for the first node would be:
 ```yaml
 api-addr: :8081
 p2p-addr: :7071
-debug-api-addr: :6061
+debug-api-addr: 127.0.0.1:6061
 enable-debug-api: true
 data-dir: /tmp/bee/node1
 password: some pass phze
@@ -93,7 +99,7 @@ For example, file `node2.yaml` should have this content:
 ```yaml
 api-addr: :8082
 p2p-addr: :7072
-debug-api-addr: :6062
+debug-api-addr: 127.0.0.1:6062
 enable-debug-api: true
 data-dir: /tmp/bee/node2
 password: some pass phze
@@ -124,11 +130,13 @@ bee --config node4.yaml start --bootnode /ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2L
 
 ## Getting node addresses
 
-Every node can provide its overlay address and underlay addresses by reading the logs when the node starts or through Debug API:
+Every node can provide its overlay address and underlay addresses by reading the logs when the node starts or through Debug API. For example, for the node 1 started with configuration above:
 
 ```sh
-curl localhost:6060/addresses
+curl localhost:6061/addresses
 ```
+
+Debug API is not started by default and has to be explicitly enabled with `--enable-debug-api --debug-api-addr: 127.0.0.1:6061` command line flags or options.
 
 It will return a response with addresses:
 
@@ -151,6 +159,8 @@ To check if two nodes are connected and to see the round trip time for message e
 ```sh
 curl localhost:6062/addresses
 ```
+
+Make sure that Debug API is enabled and address configured as in examples above.
 
 And use that address in the API call on another node, for example, local node 1:
 
