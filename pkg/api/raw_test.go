@@ -21,9 +21,9 @@ import (
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 
-// TestBzz tests that the data upload api responds as expected when uploading,
+// TestRaw tests that the data upload api responds as expected when uploading,
 // downloading and requesting a resource that cannot be found.
-func TestBzz(t *testing.T) {
+func TestRaw(t *testing.T) {
 	var (
 	       resource   = "/bzz-raw"
 		expHash = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
