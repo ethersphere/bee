@@ -544,7 +544,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 	pinnedChunks := make([]swarm.Address, 0)
 
 	// upload random chunks above db capacity to see if chunks are still pinned
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 200; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -560,7 +560,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 			pinnedChunks = append(pinnedChunks, rch.Address())
 		}
 	}
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 200; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -571,7 +571,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 200; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -592,7 +592,6 @@ func TestPinAfterMultiGC(t *testing.T) {
 		}
 		gotChunk, err := db.Get(context.Background(), storage.ModeGetRequest, swarm.NewAddress(outItem.Address))
 		if err != nil {
-			fmt.Println("Pinned chunk missing ", addr)
 			t.Fatal(err)
 		}
 		if !gotChunk.Address().Equal(swarm.NewAddress(addr.Bytes())) {
