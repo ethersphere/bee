@@ -32,7 +32,7 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		data := make([]byte, swarm.ChunkSize)
 		for {
-			c, err := r.Body.Read(data)
+			cr, err := r.Body.Read(data)
 			var end bool
 			if err != nil {
 				if err != io.EOF {
@@ -40,9 +40,14 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				end = true
 			}
-			c, err = chunkBuffer.Write(data[:c])
+			cw, err := chunkBuffer.Write(data[:cr])
 			if err != nil {
 				s.Logger.Debugf("raw: chunk buffer %v", err)
+				end = true
+			}
+			if cr != cw {
+				s.Logger.Debugf("raw: read %d != write %d %v", cr, cw, err)
+				end = true
 			}
 			if end {
 				err = chunkBuffer.Close()
