@@ -6,6 +6,7 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -25,8 +27,34 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	s.Logger.Errorf("Content length %d", r.ContentLength)
+
+	chunkBuffer := file.NewChunkBuffer()
+	go func() {
+		data := make([]byte, swarm.ChunkSize)
+		for {
+			c, err := r.Body.Read(data)
+			var end bool
+			if err != nil {
+				if err != io.EOF {
+					s.Logger.Errorf("raw: body read %v", err)
+				}
+				end = true
+			}
+			c, err = chunkBuffer.Write(data[:c])
+			if err != nil {
+				s.Logger.Debugf("raw: chunk buffer %v", err)
+			}
+			if end {
+				err = chunkBuffer.Close()
+				if err != nil {
+					s.Logger.Errorf("raw: close %v", err)
+				}
+				return
+			}
+		}
+	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	address, err := sp.Split(ctx, r.Body, r.ContentLength)
+	address, err := sp.Split(ctx, chunkBuffer, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("raw: split error %s: %v", address, err)
 		s.Logger.Error("raw: split error")
@@ -52,6 +80,12 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	dataSize, err := j.Size(ctx, address)
 	if err != nil {
+		if err == storage.ErrNotFound {
+			s.Logger.Debugf("raw: not found %s: %v", address, err)
+			s.Logger.Error("raw: not found")
+			jsonhttp.NotFound(w, "chunk not found")
+			return
+		}
 		s.Logger.Debugf("raw: invalid root chunk %s: %v", address, err)
 		s.Logger.Error("raw: invalid root chunk")
 		jsonhttp.BadRequest(w, "invalid root chunk")
