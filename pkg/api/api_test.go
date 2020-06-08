@@ -34,7 +34,7 @@ func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 		Pingpong: o.Pingpong,
 		Tags:     o.Tags,
 		Storer:   o.Storer,
-		Logger:  o.Logger,
+		Logger:   o.Logger,
 	})
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
