@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
@@ -128,13 +129,16 @@ func TestUnalignedSplit(t *testing.T) {
 	sp := splitter.NewSimpleSplitter(storer)
 	ctx := context.Background()
 	doneC := make(chan swarm.Address)
+	errC := make(chan error)
 	go func() {
 		addr, err := sp.Split(ctx, chunkBuffer, dataLen)
 		if err != nil {
-			t.Fatal(err)
+			errC <- err
+		} else {
+			doneC <- addr
 		}
-		doneC <- addr
 		close(doneC)
+		close(errC)
 	}()
 
 	contentBuf := bytes.NewReader(content)
@@ -158,9 +162,17 @@ func TestUnalignedSplit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	addr := <-doneC
-	expectAddr := swarm.MustParseHexAddress(expectAddrHex)
-	if !expectAddr.Equal(addr) {
-		t.Fatalf("addr mismatch, expected %s, got %s", expectAddr, addr)
+	timer := time.NewTimer(time.Millisecond * 100)
+	select {
+	case addr := <-doneC:
+		expectAddr := swarm.MustParseHexAddress(expectAddrHex)
+		if !expectAddr.Equal(addr) {
+			t.Fatalf("addr mismatch, expected %s, got %s", expectAddr, addr)
+		}
+	case err := <-errC:
+		t.Fatal(err)
+	case <-timer.C:
+		t.Fatal("timeout")
 	}
+
 }

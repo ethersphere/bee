@@ -38,7 +38,10 @@ func (c *ChunkBuffer) Write(b []byte) (int, error) {
 	copy(c.data[c.cursor:], b)
 	c.cursor += len(b)
 	if c.cursor >= swarm.ChunkSize {
-		c.writer.Write(c.data[:swarm.ChunkSize])
+		_, err := c.writer.Write(c.data[:swarm.ChunkSize])
+		if err != nil {
+			return len(b), err
+		}
 		c.cursor -= swarm.ChunkSize
 		copy(c.data, c.data[swarm.ChunkSize:])
 	}
