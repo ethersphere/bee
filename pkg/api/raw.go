@@ -23,44 +23,42 @@ type rawPostResponse struct {
 	Hash swarm.Address `json:"hash"`
 }
 
+// rawUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	chunkBuffer := file.NewChunkBuffer()
+	chunkPipe := file.NewChunkPipe()
 	go func() {
 		data := make([]byte, swarm.ChunkSize)
-		c, err := io.CopyBuffer(chunkBuffer, r.Body, data)
+		c, err := io.CopyBuffer(chunkPipe, r.Body, data)
 		if err != nil {
 			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
 			s.Logger.Error("raw: read count mismatch")
-			jsonhttp.BadGateway(w, "error adding file")
 			return
 		}
 		if c != r.ContentLength {
 			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
 			s.Logger.Error("raw: read count mismatch")
-			jsonhttp.BadGateway(w, "file add incomplete")
 			return
 		}
-		err = chunkBuffer.Close()
+		err = chunkPipe.Close()
 		if err != nil {
-			s.Logger.Errorf("raw: close %v", err)
-			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
-			s.Logger.Error("raw: read count mismatch")
-			jsonhttp.InternalServerError(w, "error finishing file upload")
+			s.Logger.Errorf("raw: incomplete file write close %v", err)
+			s.Logger.Error("raw: incomplete file write close")
 		}
 	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	address, err := sp.Split(ctx, chunkBuffer, r.ContentLength)
+	address, err := sp.Split(ctx, chunkPipe, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("raw: split error %s: %v", address, err)
 		s.Logger.Error("raw: split error")
-		jsonhttp.BadRequest(w, "split error")
+		jsonhttp.BadGateway(w, "file upload error")
 		return
 	}
 	jsonhttp.OK(w, rawPostResponse{Hash: address})
 }
 
+// rawGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 	addressHex := mux.Vars(r)["address"]
 	ctx := r.Context()

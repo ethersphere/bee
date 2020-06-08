@@ -109,29 +109,34 @@ func TestSplitThreeLevels(t *testing.T) {
 	}
 }
 
+// TestUnalignedSplit tests that correct hash is generated regarless of
+// individual write sizes at the source of the data.
 func TestUnalignedSplit(t *testing.T) {
 	var (
-		storer      storage.Storer = mock.NewStorer()
-		chunkBuffer                = file.NewChunkBuffer()
+		storer    storage.Storer = mock.NewStorer()
+		chunkPipe                = file.NewChunkPipe()
 	)
 
-	// see pkg/file/testing/vector.go
+	// test vector taken from pkg/file/testing/vector.go
 	var (
 		dataLen       int64 = swarm.ChunkSize*2 + 32
 		expectAddrHex       = "61416726988f77b874435bdd89a419edc3861111884fd60e8adf54e2f299efd6"
 		g                   = mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	)
+
+	// generate test vector data content
 	content, err := g.SequentialBytes(int(dataLen))
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// perform the split in a separate thread
 	sp := splitter.NewSimpleSplitter(storer)
 	ctx := context.Background()
 	doneC := make(chan swarm.Address)
 	errC := make(chan error)
 	go func() {
-		addr, err := sp.Split(ctx, chunkBuffer, dataLen)
+		addr, err := sp.Split(ctx, chunkPipe, dataLen)
 		if err != nil {
 			errC <- err
 		} else {
@@ -141,27 +146,28 @@ func TestUnalignedSplit(t *testing.T) {
 		close(errC)
 	}()
 
+	// perform the writes in unaligned bursts
+	writeSizes := []int{swarm.ChunkSize - 40, 40 + 32, swarm.ChunkSize}
 	contentBuf := bytes.NewReader(content)
 	cursor := 0
-	writeSizes := []int{swarm.ChunkSize - 40, 40 + 32, swarm.ChunkSize}
 	for _, writeSize := range writeSizes {
 		data := make([]byte, writeSize)
 		_, err = contentBuf.Read(data)
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, err := chunkBuffer.Write(data)
+		c, err := chunkPipe.Write(data)
 		if err != nil {
 			t.Fatal(err)
 		}
 		cursor += c
 	}
-
-	err = chunkBuffer.Close()
+	err = chunkPipe.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// read and hopefully not weep
 	timer := time.NewTimer(time.Millisecond * 100)
 	select {
 	case addr := <-doneC:

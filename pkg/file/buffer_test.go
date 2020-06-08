@@ -13,8 +13,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestChunkBuffer(t *testing.T) {
-	buf := file.NewChunkBuffer()
+// TestChunkPipe verifies that the reads are correctly buffered for
+// two unaligned writes across two chunks.
+func TestChunkPipe(t *testing.T) {
+	buf := file.NewChunkPipe()
 
 	errC := make(chan error)
 	go func() {

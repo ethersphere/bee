@@ -14,27 +14,32 @@ const (
 	maxBufferSize = swarm.ChunkSize * 2
 )
 
-type ChunkBuffer struct {
+// ChunkPipe ensures that only the last read is smaller than the chunk size,
+// regardless of size of individual writes.
+type ChunkPipe struct {
 	io.ReadCloser
 	writer io.WriteCloser
 	data   []byte
 	cursor int
 }
 
-func NewChunkBuffer() io.ReadWriteCloser {
+// Creates a new ChunkPipe
+func NewChunkPipe() io.ReadWriteCloser {
 	r, w := io.Pipe()
-	return &ChunkBuffer{
+	return &ChunkPipe{
 		ReadCloser: r,
 		writer:     w,
 		data:       make([]byte, maxBufferSize),
 	}
 }
 
-func (c *ChunkBuffer) Read(b []byte) (int, error) {
+// Read implements io.Reader
+func (c *ChunkPipe) Read(b []byte) (int, error) {
 	return c.ReadCloser.Read(b)
 }
 
-func (c *ChunkBuffer) Write(b []byte) (int, error) {
+// Writer implements io.Writer
+func (c *ChunkPipe) Write(b []byte) (int, error) {
 	copy(c.data[c.cursor:], b)
 	c.cursor += len(b)
 	if c.cursor >= swarm.ChunkSize {
@@ -48,7 +53,8 @@ func (c *ChunkBuffer) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (c *ChunkBuffer) Close() error {
+// Closer implements io.Closer
+func (c *ChunkPipe) Close() error {
 	if c.cursor > 0 {
 		_, err := c.writer.Write(c.data[:c.cursor])
 		if err != nil {
