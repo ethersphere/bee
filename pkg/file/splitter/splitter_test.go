@@ -5,6 +5,7 @@
 package splitter_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -104,5 +105,62 @@ func TestSplitThreeLevels(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestUnalignedSplit(t *testing.T) {
+	var (
+		storer storage.Storer = mock.NewStorer()
+		chunkBuffer = file.NewChunkBuffer()
+	)
+
+	// see pkg/file/testing/vector.go
+	var (
+		dataLen int64 = swarm.ChunkSize*2+32
+		expectAddrHex = "61416726988f77b874435bdd89a419edc3861111884fd60e8adf54e2f299efd6"
+		g = mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	)
+	content, err := g.SequentialBytes(int(dataLen))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sp := splitter.NewSimpleSplitter(storer)
+	ctx := context.Background()
+	doneC := make(chan swarm.Address)
+	go func() {
+		addr, err := sp.Split(ctx, chunkBuffer, dataLen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		doneC <- addr
+		close(doneC)
+	}()
+
+	contentBuf := bytes.NewReader(content)
+	cursor := 0
+	writeSizes := []int{swarm.ChunkSize-40, 40+32, swarm.ChunkSize}
+	for _, writeSize := range writeSizes {
+		data := make([]byte, writeSize)
+		_, err = contentBuf.Read(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := chunkBuffer.Write(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cursor += c
+	}
+
+	err = chunkBuffer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addr := <-doneC
+	expectAddr := swarm.MustParseHexAddress(expectAddrHex)
+	if !expectAddr.Equal(addr) {
+		t.Fatalf("addr mismatch, expected %s, got %s", expectAddr, addr)
 	}
 }
