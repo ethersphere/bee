@@ -85,7 +85,7 @@ func (s *Service) chunksWorker() {
 
 			t, err := s.tag.GetByAddress(ch.Address())
 			if err != nil {
-				s.logger.Tracef("pusher: get tag by address %s: %v", ch.Address(), err)
+				s.logger.Debugf("pusher: get tag by address %s: %v", ch.Address(), err)
 				//continue // // until bzz api implements tags dont continue here
 			} else {
 				// update the tags only if we get it
@@ -96,7 +96,7 @@ func (s *Service) chunksWorker() {
 			// for now ignoring the receipt and checking only for error
 			_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 			if err != nil {
-				s.logger.Debugf("pusher: error while sending chunk or receiving receipt: %v", err)
+				s.logger.Errorf("pusher: error while sending chunk or receiving receipt: %v", err)
 				continue
 			}
 

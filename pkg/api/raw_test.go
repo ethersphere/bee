@@ -60,7 +60,7 @@ func TestRaw(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodGet, resource+"/abcd", nil, http.StatusNotFound, jsonhttp.StatusResponse{
-			Message: "chunk not found",
+			Message: "not found",
 			Code:    http.StatusNotFound,
 		})
 	})

@@ -78,7 +78,7 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 		if err == storage.ErrNotFound {
 			s.Logger.Debugf("raw: not found %s: %v", address, err)
 			s.Logger.Error("raw: not found")
-			jsonhttp.NotFound(w, "chunk not found")
+			jsonhttp.NotFound(w, "not found")
 			return
 		}
 		s.Logger.Debugf("raw: invalid root chunk %s: %v", address, err)
