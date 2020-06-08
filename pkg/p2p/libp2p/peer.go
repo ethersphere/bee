@@ -118,13 +118,14 @@ func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (swarm.Address, bool) {
 
 func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	r.mu.Lock()
-	overlay := r.overlays[peerID]
+	overlay, found := r.overlays[peerID]
 	delete(r.overlays, peerID)
 	delete(r.underlays, overlay.ByteString())
 	delete(r.connections, peerID)
 	r.mu.Unlock()
 
-	if r.disconnecter != nil && !overlay.IsZero() {
+	// if overlay was not found disconnect handler should not be signaled.
+	if r.disconnecter != nil && found {
 		r.disconnecter.Disconnected(overlay)
 	}
 }
