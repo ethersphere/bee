@@ -55,6 +55,5 @@ func (c *ChunkBuffer) Close() error {
 			return err
 		}
 	}
-	c.writer.Close()
-	return nil
+	return c.writer.Close()
 }
