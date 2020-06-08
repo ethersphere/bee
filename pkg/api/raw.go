@@ -26,36 +26,28 @@ type rawPostResponse struct {
 func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	s.Logger.Errorf("Content length %d", r.ContentLength)
-
 	chunkBuffer := file.NewChunkBuffer()
 	go func() {
 		data := make([]byte, swarm.ChunkSize)
-		for {
-			cr, err := r.Body.Read(data)
-			var end bool
-			if err != nil {
-				if err != io.EOF {
-					s.Logger.Errorf("raw: body read %v", err)
-				}
-				end = true
-			}
-			cw, err := chunkBuffer.Write(data[:cr])
-			if err != nil {
-				s.Logger.Debugf("raw: chunk buffer %v", err)
-				end = true
-			}
-			if cr != cw {
-				s.Logger.Debugf("raw: read %d != write %d %v", cr, cw, err)
-				end = true
-			}
-			if end {
-				err = chunkBuffer.Close()
-				if err != nil {
-					s.Logger.Errorf("raw: close %v", err)
-				}
-				return
-			}
+		c, err := io.CopyBuffer(chunkBuffer, r.Body, data)
+		if err != nil {
+			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
+			s.Logger.Error("raw: read count mismatch")
+			jsonhttp.BadGateway(w, "error adding file")
+			return
+		}
+		if c != r.ContentLength {
+			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
+			s.Logger.Error("raw: read count mismatch")
+			jsonhttp.BadGateway(w, "file add incomplete")
+			return
+		}
+		err = chunkBuffer.Close()
+		if err != nil {
+			s.Logger.Errorf("raw: close %v", err)
+			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
+			s.Logger.Error("raw: read count mismatch")
+			jsonhttp.InternalServerError(w, "error finishing file upload")
 		}
 	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
