@@ -110,15 +110,15 @@ func TestSplitThreeLevels(t *testing.T) {
 
 func TestUnalignedSplit(t *testing.T) {
 	var (
-		storer storage.Storer = mock.NewStorer()
-		chunkBuffer = file.NewChunkBuffer()
+		storer      storage.Storer = mock.NewStorer()
+		chunkBuffer                = file.NewChunkBuffer()
 	)
 
 	// see pkg/file/testing/vector.go
 	var (
-		dataLen int64 = swarm.ChunkSize*2+32
-		expectAddrHex = "61416726988f77b874435bdd89a419edc3861111884fd60e8adf54e2f299efd6"
-		g = mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+		dataLen       int64 = swarm.ChunkSize*2 + 32
+		expectAddrHex       = "61416726988f77b874435bdd89a419edc3861111884fd60e8adf54e2f299efd6"
+		g                   = mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	)
 	content, err := g.SequentialBytes(int(dataLen))
 	if err != nil {
@@ -139,7 +139,7 @@ func TestUnalignedSplit(t *testing.T) {
 
 	contentBuf := bytes.NewReader(content)
 	cursor := 0
-	writeSizes := []int{swarm.ChunkSize-40, 40+32, swarm.ChunkSize}
+	writeSizes := []int{swarm.ChunkSize - 40, 40 + 32, swarm.ChunkSize}
 	for _, writeSize := range writeSizes {
 		data := make([]byte, writeSize)
 		_, err = contentBuf.Read(data)

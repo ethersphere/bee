@@ -35,7 +35,7 @@ func TestChunkBuffer(t *testing.T) {
 		}
 		errC <- nil
 	}()
-	data := [swarm.ChunkSize-2]byte{}
+	data := [swarm.ChunkSize - 2]byte{}
 	c, err := buf.Write(data[:])
 	if err != nil {
 		t.Fatal(err)
@@ -58,12 +58,11 @@ func TestChunkBuffer(t *testing.T) {
 
 	timer := time.NewTimer(time.Millisecond)
 	select {
-		case err = <-errC:
-		case <-timer.C:
+	case err = <-errC:
+	case <-timer.C:
 		t.Fatal("timeout")
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
 }
-

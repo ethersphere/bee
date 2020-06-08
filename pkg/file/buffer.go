@@ -17,7 +17,7 @@ const (
 type ChunkBuffer struct {
 	io.ReadCloser
 	writer io.WriteCloser
-	data []byte
+	data   []byte
 	cursor int
 }
 
@@ -25,8 +25,8 @@ func NewChunkBuffer() io.ReadWriteCloser {
 	r, w := io.Pipe()
 	return &ChunkBuffer{
 		ReadCloser: r,
-		writer: w,
-		data: make([]byte, maxBufferSize),
+		writer:     w,
+		data:       make([]byte, maxBufferSize),
 	}
 }
 
