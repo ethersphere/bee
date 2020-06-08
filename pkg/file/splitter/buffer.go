@@ -5,9 +5,7 @@
 package splitter
 
 import (
-	"fmt"
 	"io"
-	"os"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -48,5 +46,12 @@ func (c *ChunkBuffer) Write(b []byte) (int, error) {
 }
 
 func (c *ChunkBuffer) Close() error {
+	if c.cursor > 0 {
+		_, err := c.writer.Write(c.data[:c.cursor])
+		if err != nil {
+			return err
+		}
+	}
+	c.writer.Close()
 	return nil
 }

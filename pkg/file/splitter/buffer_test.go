@@ -34,6 +34,13 @@ func TestChunkBuffer(t *testing.T) {
 		if c != swarm.ChunkSize {
 			errC <- fmt.Errorf("short read %d", c)
 		}
+		c, err = buf.Read(data)
+		if c != 2 {
+			errC <- fmt.Errorf("read expected 2, got %d", c)
+		}
+		if err != nil {
+			errC <- err
+		}
 		errC <- nil
 	}()
 	data := [swarm.ChunkSize-2]byte{}
@@ -50,6 +57,11 @@ func TestChunkBuffer(t *testing.T) {
 	}
 	if c != 4 {
 		t.Fatalf("short write")
+	}
+
+	err = buf.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	err = <-errC
