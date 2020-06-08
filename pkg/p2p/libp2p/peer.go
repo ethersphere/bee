@@ -124,7 +124,7 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	delete(r.connections, peerID)
 	r.mu.Unlock()
 
-	if r.disconnecter != nil {
+	if r.disconnecter != nil && !overlay.IsZero() {
 		r.disconnecter.Disconnected(overlay)
 	}
 }
