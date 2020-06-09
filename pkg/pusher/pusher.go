@@ -6,7 +6,6 @@ package pusher
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -97,9 +96,7 @@ func (s *Service) chunksWorker() {
 			// for now ignoring the receipt and checking only for error
 			_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 			if err != nil {
-				if !errors.Is(err, topology.ErrNotFound) {
-					s.logger.Errorf("pusher: error while sending chunk or receiving receipt: %v", err)
-				}
+				s.logger.Debugf("pusher: error while sending chunk or receiving receipt: %v", err)
 				continue
 			}
 
