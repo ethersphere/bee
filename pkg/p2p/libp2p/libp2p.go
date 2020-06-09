@@ -12,12 +12,14 @@ import (
 	"net"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
@@ -49,7 +51,7 @@ type Service struct {
 	handshakeService *handshake.Service
 	addressbook      addressbook.Putter
 	peers            *peerRegistry
-	peerHandler      func(context.Context, swarm.Address) error
+	topologyNotifier topology.Notifier
 	conectionBreaker breaker.Interface
 	logger           logging.Logger
 	tracer           *tracing.Tracer
@@ -59,6 +61,7 @@ type Options struct {
 	PrivateKey  *ecdsa.PrivateKey
 	DisableWS   bool
 	DisableQUIC bool
+	LightNode   bool
 	Addressbook addressbook.Putter
 	Logger      logging.Logger
 	Tracer      *tracing.Tracer
@@ -154,7 +157,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, h.ID(), signer, networkID, o.Logger)
+	handshakeService, err := handshake.New(overlay, signer, networkID, o.LightNode, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -184,7 +187,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// handshake
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
-		i, err := s.handshakeService.Handle(NewStream(stream), peerID)
+		i, err := s.handshakeService.Handle(NewStream(stream), stream.Conn().RemoteMultiaddr(), peerID)
 		if err != nil {
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
@@ -192,21 +195,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
+		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 			_ = stream.Close()
 			return
 		}
 
 		_ = stream.Close()
-		remoteMultiaddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", stream.Conn().RemoteMultiaddr().String(), peerID.Pretty()))
-		if err != nil {
-			s.logger.Debugf("multiaddr error: handle %s: %v", peerID, err)
-			s.logger.Errorf("unable to connect with peer %v", peerID)
-			_ = s.disconnect(peerID)
-			return
-		}
 
-		err = s.addressbook.Put(i.Overlay, remoteMultiaddr)
+		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
 			s.logger.Errorf("unable to persist peer %v", peerID)
@@ -214,14 +210,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if s.peerHandler != nil {
-			if err := s.peerHandler(ctx, i.Overlay); err != nil {
-				s.logger.Debugf("peerhandler error: %s: %v", peerID, err)
+		if s.topologyNotifier != nil {
+			if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
+				s.logger.Debugf("topology notifier: %s: %v", peerID, err)
 			}
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("peer %s connected", i.Overlay)
+		s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -286,66 +282,74 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() (addrs []ma.Multiaddr, err error) {
+func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
+	for _, addr := range s.host.Addrs() {
+		a, err := buildUnderlayAddress(addr, s.host.ID())
+		if err != nil {
+			return nil, err
+		}
+
+		addreses = append(addreses, a)
+	}
+
+	return addreses, nil
+}
+
+func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	// Build host multiaddress
-	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", s.host.ID().Pretty()))
+	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.Pretty()))
 	if err != nil {
 		return nil, err
 	}
 
-	// Now we can build a full multiaddress to reach this host
-	// by encapsulating both addresses:
-	for _, addr := range s.host.Addrs() {
-		addrs = append(addrs, addr.Encapsulate(hostAddr))
-	}
-	return addrs, nil
+	return addr.Encapsulate(hostAddr), nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (overlay swarm.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return swarm.Address{}, err
+		return nil, err
 	}
 
 	if _, found := s.peers.overlay(info.ID); found {
-		return swarm.Address{}, p2p.ErrAlreadyConnected
+		return nil, p2p.ErrAlreadyConnected
 	}
 
 	if err := s.conectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
-			return swarm.Address{}, p2p.NewConnectionBackoffError(err, s.conectionBreaker.ClosedUntil())
+			return nil, p2p.NewConnectionBackoffError(err, s.conectionBreaker.ClosedUntil())
 		}
-		return swarm.Address{}, err
+		return nil, err
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.disconnect(info.ID)
-		return swarm.Address{}, err
+		return nil, err
 	}
 
-	i, err := s.handshakeService.Handshake(NewStream(stream))
+	i, err := s.handshakeService.Handshake(NewStream(stream), stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
 		_ = s.disconnect(info.ID)
-		return swarm.Address{}, fmt.Errorf("handshake: %w", err)
+		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), i.Overlay); exists {
+	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
-			return swarm.Address{}, err
+			return nil, err
 		}
 
-		return i.Overlay, nil
+		return i.BzzAddress, nil
 	}
 
 	if err := helpers.FullClose(stream); err != nil {
-		return swarm.Address{}, err
+		return nil, err
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("peer %s connected", i.Overlay)
-	return i.Overlay, nil
+	s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
+	return i.BzzAddress, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
@@ -361,7 +365,6 @@ func (s *Service) disconnect(peerID libp2ppeer.ID) error {
 	if err := s.host.Network().ClosePeer(peerID); err != nil {
 		return err
 	}
-
 	s.peers.remove(peerID)
 	return nil
 }
@@ -370,8 +373,9 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetPeerAddedHandler(h func(context.Context, swarm.Address) error) {
-	s.peerHandler = h
+func (s *Service) SetNotifier(n topology.Notifier) {
+	s.topologyNotifier = n
+	s.peers.setDisconnecter(n)
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {

@@ -26,12 +26,12 @@ import (
 func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address) {
 	t.Helper()
 
-	privateKey, err := crypto.GenerateSecp256k1Key()
+	swarmKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	overlay = crypto.NewOverlayAddress(privateKey.PublicKey, networkID)
+	overlay = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID)
 
 	addr := ":0"
 
@@ -44,8 +44,17 @@ func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Ser
 		o.Addressbook = addressbook.New(statestore)
 	}
 
+	if o.PrivateKey == nil {
+		libp2pKey, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		o.PrivateKey = libp2pKey
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(privateKey), networkID, overlay, addr, o)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +91,7 @@ func expectPeers(t *testing.T, s *libp2p.Service, addrs ...swarm.Address) {
 }
 
 // expectPeersEventually validates that peers with addresses are connected with
-// retires. It is supposed to be used to validate asynchronous connecting on the
+// retries. It is supposed to be used to validate asynchronous connecting on the
 // peer that is connected to.
 func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Address) {
 	t.Helper()
@@ -111,6 +120,15 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 		want := addrs[i]
 		if !got.Address.Equal(want) {
 			t.Errorf("got %v peer %s, want %s", i, got.Address, want)
+		}
+	}
+}
+
+func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
+	t.Helper()
+	for i, a := range addrs {
+		if !a.Equal(swarm.ZeroAddress) {
+			t.Fatalf("address did not equal zero address. index %d", i)
 		}
 	}
 }

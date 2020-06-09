@@ -6,14 +6,17 @@ package debugapi_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // TestPinChunkHandler checks for pinning, unpinning and listing of chunks.
@@ -24,14 +27,17 @@ func TestPinChunkHandler(t *testing.T) {
 	resource := func(addr swarm.Address) string { return "/bzz-chunk/" + addr.String() }
 	hash := swarm.MustParseHexAddress("aabbcc")
 	data := []byte("bbaatt")
-	mockValidator := validator.NewMockValidator(hash, data)
-	mockValidatingStorer := mock.NewValidatingStorer(mockValidator)
+	mockValidator := validator.NewMockValidator(hash, append(newSpan(uint64(len(data))), data...))
+	tag := tags.NewTags()
+	mockValidatingStorer := mock.NewValidatingStorer(mockValidator, tag)
 	debugTestServer := newTestServer(t, testServerOptions{
 		Storer: mockValidatingStorer,
+		Tags:   tag,
 	})
 	// This server is used to store chunks
 	bzzTestServer := newBZZTestServer(t, testServerOptions{
 		Storer: mockValidatingStorer,
+		Tags:   tag,
 	})
 
 	// bad chunk address
@@ -78,9 +84,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check is the chunk is pinned once
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":1}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
+			Address:    swarm.MustParseHexAddress("aabbcc"),
+			PinCounter: 1,
 		})
 
 	})
@@ -93,9 +99,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check is the chunk is pinned twice
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":2}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
+			Address:    swarm.MustParseHexAddress("aabbcc"),
+			PinCounter: 2,
 		})
 	})
 
@@ -107,9 +113,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check is the chunk is pinned once
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":1}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
+			Address:    swarm.MustParseHexAddress("aabbcc"),
+			PinCounter: 1,
 		})
 	})
 
@@ -121,9 +127,9 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 
 		// Check if the chunk is removed from the pinIndex
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Message: "pin chunks: leveldb: not found",
-			Code:    http.StatusInternalServerError,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusNotFound, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusNotFound),
+			Code:    http.StatusNotFound,
 		})
 	})
 
@@ -143,7 +149,7 @@ func TestPinChunkHandler(t *testing.T) {
 		// post another chunk
 		hash2 := swarm.MustParseHexAddress("ddeeff")
 		data2 := []byte("eagle")
-		mockValidator.AddPair(hash2, data2)
+		mockValidator.AddPair(hash2, append(newSpan(uint64(len(data2))), data2...))
 		jsonhttptest.ResponseDirect(t, bzzTestServer, http.MethodPost, resource(hash2), bytes.NewReader(data2), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -153,10 +159,23 @@ func TestPinChunkHandler(t *testing.T) {
 			Code:    http.StatusOK,
 		})
 
-		jsonhttptest.ResponseDirectWithJson(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: `{"Address":"aabbcc","PinCounter":1},{"Address":"ddeeff","PinCounter":1}`,
-			Code:    http.StatusOK,
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", nil, http.StatusOK, debugapi.ListPinnedChunksResponse{
+			Chunks: []debugapi.PinnedChunk{
+				{
+					Address:    swarm.MustParseHexAddress("aabbcc"),
+					PinCounter: 1,
+				},
+				{
+					Address:    swarm.MustParseHexAddress("ddeeff"),
+					PinCounter: 1,
+				},
+			},
 		})
-
 	})
+}
+
+func newSpan(size uint64) []byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, size)
+	return b
 }

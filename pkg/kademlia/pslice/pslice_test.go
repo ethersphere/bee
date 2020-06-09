@@ -10,7 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology/test"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 // TestShallowestEmpty tests that ShallowestEmpty functionality works correctly.
@@ -304,8 +304,7 @@ func testIterator(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iteratio
 }
 
 func chkLen(t *testing.T, ps *pslice.PSlice, l int) {
-	pp := pslice.PSlicePeers(ps)
-	if lp := len(pp); lp != l {
+	if lp := ps.Length(); lp != l {
 		t.Fatalf("length mismatch, want %d got %d", l, lp)
 	}
 }

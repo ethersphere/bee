@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
+	"github.com/ethersphere/bee/pkg/kademlia"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
@@ -37,7 +38,7 @@ import (
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology/full"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
@@ -60,6 +61,7 @@ type Bee struct {
 
 type Options struct {
 	DataDir            string
+	DBCapacity         uint64
 	Password           string
 	APIAddr            string
 	DebugAPIAddr       string
@@ -134,8 +136,9 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
+	signer := crypto.NewDefaultSigner(swarmPrivateKey)
 
-	p2ps, err := libp2p.New(p2pCtx, crypto.NewDefaultSigner(swarmPrivateKey), o.NetworkID, address, o.Addr, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, o.Addr, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
 		DisableWS:   o.DisableWS,
 		DisableQUIC: o.DisableQUIC,
@@ -162,6 +165,7 @@ func NewBee(o Options) (*Bee, error) {
 	hive := hive.New(hive.Options{
 		Streamer:    p2ps,
 		AddressBook: addressbook,
+		NetworkID:   o.NetworkID,
 		Logger:      logger,
 	})
 
@@ -169,10 +173,10 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("hive service: %w", err)
 	}
 
-	topologyDriver := full.New(hive, addressbook, p2ps, logger, address)
+	topologyDriver := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Logger: logger})
 	b.topologyCloser = topologyDriver
 	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
-	p2ps.SetPeerAddedHandler(topologyDriver.AddPeer)
+	p2ps.SetNotifier(topologyDriver)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)
@@ -190,8 +194,10 @@ func NewBee(o Options) (*Bee, error) {
 	if o.DataDir != "" {
 		path = filepath.Join(o.DataDir, "localstore")
 	}
-
-	storer, err = localstore.New(path, address.Bytes(), nil, logger)
+	lo := &localstore.Options{
+		Capacity: o.DBCapacity,
+	}
+	storer, err = localstore.New(path, address.Bytes(), lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
@@ -203,6 +209,11 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:      storer,
 		Logger:      logger,
 	})
+	tag := tags.NewTags()
+
+	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
+		return nil, fmt.Errorf("retrieval service: %w", err)
+	}
 
 	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
 
@@ -221,6 +232,7 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:        storer,
 		PeerSuggester: topologyDriver,
 		PushSyncer:    pushSyncProtocol,
+		Tags:          tag,
 		Logger:        logger,
 	})
 	b.pusherCloser = pushSyncPusher
@@ -230,6 +242,7 @@ func NewBee(o Options) (*Bee, error) {
 		// API server
 		apiService = api.New(api.Options{
 			Pingpong: pingPong,
+			Tags:     tag,
 			Storer:   ns,
 			Logger:   logger,
 			Tracer:   tracer,
@@ -316,7 +329,6 @@ func NewBee(o Options) (*Bee, error) {
 
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-				_ = p2ps.Disconnect(overlay)
 				logger.Debugf("topology add peer fail %s: %v", overlay, err)
 				logger.Errorf("topology add peer %s", overlay)
 				return
@@ -342,26 +354,26 @@ func NewBee(o Options) (*Bee, error) {
 				}
 				var count int
 				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-					overlay, err := p2ps.Connect(p2pCtx, addr)
+					bzzAddr, err := p2ps.Connect(p2pCtx, addr)
 					if err != nil {
 						logger.Debugf("connect fail %s: %v", a, err)
 						logger.Errorf("connect to bootnode %s", a)
 						return false, nil
 					}
 
-					err = addressbook.Put(overlay, addr)
+					err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
 					if err != nil {
-						_ = p2ps.Disconnect(overlay)
-						logger.Debugf("addressboook error persisting %s %s: %v", a, overlay, err)
-						logger.Errorf("persisting node %s", a)
-						return false, nil
+						_ = p2ps.Disconnect(bzzAddr.Overlay)
+						logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
+						logger.Errorf("connect to bootnode %s", a)
+						return
 					}
 
-					if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-						_ = p2ps.Disconnect(overlay)
-						logger.Debugf("topology add peer fail %s %s: %v", a, overlay, err)
+					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
+						_ = p2ps.Disconnect(bzzAddr.Overlay)
+						logger.Debugf("topology connected fail %s %s: %v", a, bzzAddr.Overlay, err)
 						logger.Errorf("connect to bootnode %s", a)
-						return false, nil
+						return
 					}
 					count++
 					// connect to max 3 bootnodes

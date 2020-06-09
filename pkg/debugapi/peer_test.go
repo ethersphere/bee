@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/bzz"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
@@ -24,15 +26,30 @@ import (
 func TestConnect(t *testing.T) {
 	underlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS"
 	errorUnderlay := "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkw88cjH2orYrB6fDui4eUNdmgkwnDM8W681UbfsPgM9QY"
-	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testErr := errors.New("test error")
 
+	privateKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	overlay := crypto.NewOverlayAddress(privateKey.PublicKey, 0)
+	underlama, err := ma.NewMultiaddr(underlay)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bzzAddress, err := bzz.NewAddress(crypto.NewDefaultSigner(privateKey), underlama, overlay, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	testServer := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			if addr.String() == errorUnderlay {
-				return swarm.Address{}, testErr
+				return nil, testErr
 			}
-			return overlay, nil
+			return bzzAddress, nil
 		})),
 	})
 
@@ -41,9 +58,9 @@ func TestConnect(t *testing.T) {
 			Address: overlay.String(),
 		})
 
-		multia, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && underlay != multia.String() {
-			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
+		bzzAddr, err := testServer.Addressbook.Get(overlay)
+		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(&bzzAddr) {
+			t.Fatalf("found wrong underlay.  expected: %+v, found: %+v", bzzAddress, bzzAddr)
 		}
 	})
 
@@ -64,11 +81,11 @@ func TestConnect(t *testing.T) {
 	t.Run("error - add peer", func(t *testing.T) {
 		disconnectCalled := false
 		testServer := newTestServer(t, testServerOptions{
-			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (swarm.Address, error) {
+			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 				if addr.String() == errorUnderlay {
-					return swarm.Address{}, testErr
+					return nil, testErr
 				}
-				return overlay, nil
+				return bzzAddress, nil
 			}), mock.WithDisconnectFunc(func(addr swarm.Address) error {
 				disconnectCalled = true
 				return nil
@@ -81,15 +98,16 @@ func TestConnect(t *testing.T) {
 			Message: testErr.Error(),
 		})
 
-		multia, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && underlay != multia.String() {
-			t.Fatalf("found wrong underlay.  expected: %s, found: %s", underlay, multia.String())
+		bzzAddr, err := testServer.Addressbook.Get(overlay)
+		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(&bzzAddr) {
+			t.Fatalf("found wrong underlay.  expected: %+v, found: %+v", bzzAddress, bzzAddr)
 		}
 
 		if !disconnectCalled {
 			t.Fatalf("disconnect not called.")
 		}
 	})
+
 }
 
 func TestDisconnect(t *testing.T) {
@@ -143,7 +161,6 @@ func TestDisconnect(t *testing.T) {
 
 func TestPeer(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-
 	testServer := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithPeersFunc(func() []p2p.Peer {
 			return []p2p.Peer{{Address: overlay}}

@@ -116,7 +116,7 @@ func TestPinInfo(t *testing.T) {
 		}
 		_, err = db.PinInfo(swarm.NewAddress(chunk.Address().Bytes()))
 		if err != nil {
-			if !errors.Is(err, leveldb.ErrNotFound) {
+			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
 			}
 		}

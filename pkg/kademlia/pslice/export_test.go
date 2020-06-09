@@ -4,12 +4,6 @@
 
 package pslice
 
-import "github.com/ethersphere/bee/pkg/swarm"
-
-func PSlicePeers(p *PSlice) []swarm.Address {
-	return p.peers
-}
-
 func PSliceBins(p *PSlice) []uint {
 	return p.bins
 }
