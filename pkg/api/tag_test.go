@@ -23,7 +23,6 @@ import (
 func TestTags(t *testing.T) {
 	var (
 		resource             = func(addr swarm.Address) string { return "/bzz-chunk/" + addr.String() }
-		tagResourceAddress   = func(addr swarm.Address) string { return "/bzz-tag/addr/" + addr.String() }
 		tagResourceUidCreate = func(name string) string { return "/bzz-tag/name/" + name }
 		tagResourceUUid      = func(uuid uint64) string { return "/bzz-tag/uuid/" + strconv.FormatUint(uuid, 10) }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
@@ -143,34 +142,6 @@ func TestTags(t *testing.T) {
 		}
 	})
 
-	t.Run("get-tag-using-address", func(t *testing.T) {
-		// Get a tag
-		ta := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagResourceUidCreate("file.jpg"), nil, http.StatusOK, &ta)
-
-		if ta.Name != "file.jpg" {
-			t.Fatalf("tagname is not the same that we sent")
-		}
-
-		// Now upload a chunk and see if we receive a tag with the same uid
-		sentHheaders := make(http.Header)
-		sentHheaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(ta.Uid), 10))
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		}, sentHheaders)
-
-		uuid := isTagFoundInResponse(t, rcvdHeaders, &ta)
-
-		// Request the tag and see if the UUID is the same
-		rtag := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagResourceAddress(validHash), nil, http.StatusOK, &rtag)
-
-		if uuid != uint64(rtag.Uid) {
-			t.Fatalf("Invalid uuid response")
-		}
-	})
-
 	t.Run("get-tag-using-uuid", func(t *testing.T) {
 		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
@@ -197,11 +168,11 @@ func TestTags(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = mockPusher.SendChunk(validHash)
+		err = mockPusher.SendChunk(uint32(uuid1))
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = mockPusher.RcvdReceipt(validHash)
+		err = mockPusher.RcvdReceipt(uint32(uuid1))
 		if err != nil {
 			t.Fatal(err)
 		}

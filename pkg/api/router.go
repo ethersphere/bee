@@ -49,10 +49,6 @@ func (s *server) setupRouting() {
 		"POST": http.HandlerFunc(s.CreateTag),
 	})
 
-	router.Handle("/bzz-tag/addr/{addr}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTagInfoUsingAddress),
-	})
-
 	router.Handle("/bzz-tag/uuid/{uuid}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getTagInfoUsingUUid),
 	})

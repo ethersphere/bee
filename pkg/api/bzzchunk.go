@@ -114,7 +114,6 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tag.Address = address
 	w.Header().Set(TagHeaderUid, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
 	jsonhttp.OK(w, nil)
