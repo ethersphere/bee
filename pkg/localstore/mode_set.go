@@ -21,10 +21,11 @@ import (
 	"errors"
 	"time"
 
+	"github.com/syndtr/goleveldb/leveldb"
+
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Set updates database indexes for
@@ -180,11 +181,18 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr swar
 	if err != nil {
 		return 0, err
 	}
-	err = db.gcIndex.PutInBatch(batch, item)
+
+	ok, err := db.pinIndex.Has(item)
 	if err != nil {
 		return 0, err
 	}
-	gcSizeChange++
+	if !ok {
+		err = db.gcIndex.PutInBatch(batch, item)
+		if err != nil {
+			return 0, err
+		}
+		gcSizeChange++
+	}
 
 	return gcSizeChange, nil
 }
