@@ -5,6 +5,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,17 +28,25 @@ type rawPostResponse struct {
 // rawUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	responseObject, err := s.splitUpload(ctx, r.Body, r.ContentLength)
+	if err != nil {
+		jsonhttp.BadGateway(w, err.Error())
+		return
+	}
+	jsonhttp.OK(w, responseObject)
+}
 
+func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (interface{}, error) {
 	chunkPipe := file.NewChunkPipe()
 	go func() {
 		data := make([]byte, swarm.ChunkSize)
-		c, err := io.CopyBuffer(chunkPipe, r.Body, data)
+		c, err := io.CopyBuffer(chunkPipe, r, data)
 		if err != nil {
 			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
 			s.Logger.Error("raw: read count mismatch")
 			return
 		}
-		if c != r.ContentLength {
+		if c != l {
 			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
 			s.Logger.Error("raw: read count mismatch")
 			return
@@ -48,14 +58,13 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	address, err := sp.Split(ctx, chunkPipe, r.ContentLength)
+	address, err := sp.Split(ctx, chunkPipe, l)
 	if err != nil {
 		s.Logger.Debugf("raw: split error %s: %v", address, err)
 		s.Logger.Error("raw: split error")
-		jsonhttp.BadGateway(w, "file upload error")
-		return
+		return errors.New("upload error"), nil
 	}
-	jsonhttp.OK(w, rawPostResponse{Hash: address})
+	return rawPostResponse{Hash: address}, nil
 }
 
 // rawGetHandler handles retrieval of raw binary data of arbitrary length.
