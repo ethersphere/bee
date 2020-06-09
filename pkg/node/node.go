@@ -366,18 +366,19 @@ func NewBee(o Options) (*Bee, error) {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
 						logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
 						logger.Errorf("connect to bootnode %s", a)
-						return
+						return false, nil
 					}
 
 					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
 						logger.Debugf("topology connected fail %s %s: %v", a, bzzAddr.Overlay, err)
 						logger.Errorf("connect to bootnode %s", a)
-						return
+						return false, nil
 					}
 					count++
 					// connect to max 3 bootnodes
-					return count > 3, nil
+					// using DNS discovery one node is discovered twice (TCP and UDP)
+					return count > 6, nil
 				}); err != nil {
 					logger.Debugf("connect fail %s: %v", a, err)
 					logger.Errorf("connect to bootnode %s", a)
