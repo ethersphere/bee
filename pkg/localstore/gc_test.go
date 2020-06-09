@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -538,13 +537,13 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 
 func TestPinAfterMultiGC(t *testing.T) {
 	db := newTestDB(t, &Options{
-		Capacity: 100,
+		Capacity: 10,
 	})
 
 	pinnedChunks := make([]swarm.Address, 0)
 
 	// upload random chunks above db capacity to see if chunks are still pinned
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 20; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -560,7 +559,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 			pinnedChunks = append(pinnedChunks, rch.Address())
 		}
 	}
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 20; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -571,7 +570,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 20; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -634,82 +633,72 @@ func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
 	})
 	closed = db.close
 
-	rch := generateTestRandomChunk()
-	for i := 0; i < 20; i++ {
-		ch := generateTestRandomChunk()
-
-		// pin a chunk in between
-		if i == 5 {
-			_, err := db.Put(context.Background(), storage.ModePutUpload, rch)
-			if err != nil {
-				t.Fatal(err)
-			}
-			err = db.Set(context.Background(), storage.ModeSetPin, rch.Address())
-			if err != nil {
-				t.Fatal(err)
-			}
+	pinnedChunks := addRandomChunks(t, 5, db, true)
+	rand1Chunks := addRandomChunks(t, 15, db, false)
+	for _, ch := range pinnedChunks {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, ch := range rand1Chunks {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
+		if err != nil {
+			// ignore the chunks that are GCd
 			continue
 		}
+	}
 
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+	rand2Chunks := addRandomChunks(t, 20, db, false)
+	for _, ch := range rand2Chunks {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = db.Set(context.Background(), storage.ModeSetAccess, ch.Address())
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
-		if err != nil {
-			t.Fatal(err)
+			// ignore the chunks that are GCd
+			continue
 		}
 	}
 
-	_, err := db.Get(context.Background(), storage.ModeGetRequest, rch.Address())
-	if err != nil {
-		fmt.Println("Pinned chunk missing ", rch.Address())
-		t.Fatal(err)
-	}
+	rand3Chunks := addRandomChunks(t, 20, db, false)
 
-	addRandomChunks(t, 20, db)
-
-	_, err = db.Get(context.Background(), storage.ModeGetRequest, rch.Address())
-	if err != nil {
-		fmt.Println("Pinned chunk missing ", rch.Address())
-		t.Fatal(err)
-	}
-
-	addRandomChunks(t, 20, db)
-
-	_, err = db.Get(context.Background(), storage.ModeGetRequest, rch.Address())
-	if err != nil {
-		fmt.Println("Pinned chunk missing ", rch.Address())
-		t.Fatal(err)
+	for _, ch := range rand3Chunks {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
+		if err != nil {
+			// ignore the chunks that are GCd
+			continue
+		}
 	}
 
 	// check if the pinned chunk is present after GC
-	gotChunk, err := db.Get(context.Background(), storage.ModeGetRequest, rch.Address())
-	if err != nil {
-		t.Fatal("Pinned chunk missing ", err)
-	}
-	if !gotChunk.Address().Equal(rch.Address()) {
-		t.Fatal("Pinned chunk is not equal to got chunk")
+	for _, ch := range pinnedChunks {
+		gotChunk, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
+		if err != nil {
+			t.Fatal("Pinned chunk missing ", err)
+		}
+		if !gotChunk.Address().Equal(ch.Address()) {
+			t.Fatal("Pinned chunk address is not equal to got chunk")
+		}
+
+		if !bytes.Equal(gotChunk.Data(), ch.Data()) {
+			t.Fatal("Pinned chunk data is not equal to got chunk")
+		}
 	}
 
 }
 
-func addRandomChunks(t *testing.T, count int, db *DB) {
+func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
+	var chunks []swarm.Chunk
 	for i := 0; i < count; i++ {
 		ch := generateTestRandomChunk()
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
+		if pin {
+			err = db.Set(context.Background(), storage.ModeSetPin, ch.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
 		if err != nil {
 			t.Fatal(err)
@@ -722,6 +711,7 @@ func addRandomChunks(t *testing.T, count int, db *DB) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
+		chunks = append(chunks, ch)
 	}
+	return chunks
 }
