@@ -56,7 +56,6 @@ func WithLateReply(r int) Option {
 	return optionFunc(func(p *PullSyncMock) {
 		p.lateReply = true
 		p.lateReads = r
-		p.lateCond = sync.NewCond(new(sync.Mutex))
 	})
 }
 
@@ -106,7 +105,8 @@ type PullSyncMock struct {
 
 func NewPullSync(opts ...Option) *PullSyncMock {
 	s := &PullSyncMock{
-		quit: make(chan struct{}),
+		lateCond: sync.NewCond(new(sync.Mutex)),
+		quit:     make(chan struct{}),
 	}
 	for _, v := range opts {
 		v.apply(s)
@@ -220,6 +220,8 @@ func (p *PullSyncMock) Broadcast() {
 }
 
 func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, error) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
 	p.getCursorsPeers = append(p.getCursorsPeers, peer)
 	return p.cursors, nil
 }
@@ -249,6 +251,8 @@ func (p *PullSyncMock) LiveSyncCalls(peer swarm.Address) (res []SyncCall) {
 }
 
 func (p *PullSyncMock) CursorsCalls(peer swarm.Address) bool {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
 	for _, v := range p.getCursorsPeers {
 		if v.Equal(peer) {
 			return true

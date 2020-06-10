@@ -6,7 +6,6 @@ package puller_test
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"os"
 	"runtime"
@@ -308,6 +307,7 @@ func TestPeerMovesWithinDepth(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger() // depth 3
 	time.Sleep(100 * time.Millisecond)
+	pullsync.Broadcast()
 
 	// tells all the running live syncs to get topmost 1
 	// e.g. they should all seal the interval now
@@ -477,7 +477,7 @@ func TestPeerMoveAround(t *testing.T) {
 
 	// tells all the running live syncs to get topmost 1
 	// e.g. they should all seal the interval now
-	fmt.Println("triggering topmost 1")
+	//fmt.Println("triggering topmost 1")
 	pullsync.TriggerTopmost(1)
 	time.Sleep(100 * time.Millisecond)
 
@@ -640,7 +640,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := mockk.NewMockKademlia(ops.kad...)
-	logger := logging.New(os.Stdout, 6)
+	logger := logging.New(os.Stdout, 0)
 
 	o := puller.Options{
 		Topology:   kad,

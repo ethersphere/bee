@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pullsync"
@@ -101,7 +100,7 @@ func (p *Puller) manage() {
 	for {
 		select {
 		case <-p.peersC:
-			fmt.Println("manage got signal")
+			//fmt.Println("manage got signal")
 			// get all peers from kademlia
 			// iterate on entire bin at once (get all peers first)
 			// check how many intervals we synced with all of them
@@ -165,11 +164,11 @@ func (p *Puller) manage() {
 				panic(err)
 			}
 
-			fmt.Println("manage peers to sync", peersToSync)
+			//fmt.Println("manage peers to sync", peersToSync)
 			for _, v := range peersToSync {
 				p.syncPeer(ctx, v.addr, v.po, depth)
 			}
-			fmt.Println("manage peers to recalc", peersToRecalc)
+			//fmt.Println("manage peers to recalc", peersToRecalc)
 
 			for _, v := range peersToRecalc {
 				p.recalcPeer(ctx, v.addr, v.po, depth)
@@ -207,7 +206,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 		for i := uint8(0); i < d; i++ {
 			dontWant = append(dontWant, i)
 		}
-		spew.Dump("we are within depth", "depth", d, "want", want, "dont want", dontWant)
+		//spew.Dump("we are within depth", "depth", d, "want", want, "dont want", dontWant)
 
 		for _, bin := range want {
 			// question: do we want to have the separate cancel funcs per live/hist
@@ -218,21 +217,21 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 				cur := c[bin]
 				binCtx, cancel := context.WithCancel(ctx)
 				syncCtx.binCancelFuncs[uint8(bin)] = cancel
-				fmt.Println("starting sync on recalc", "bin", bin)
+				//fmt.Println("starting sync on recalc", "bin", bin)
 				go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
 				go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
 			} else {
-				fmt.Println("recalc sync already running", bin)
+				//fmt.Println("recalc sync already running", bin)
 			}
 		}
 		for _, bin := range dontWant {
 			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
 				// we have sync running on this bin, cancel it
-				fmt.Println("cancelling context within depth", "bin", bin)
+				//fmt.Println("cancelling context within depth", "bin", bin)
 				c()
 				delete(syncCtx.binCancelFuncs, bin)
 			} else {
-				fmt.Println("nothing to cancel for bin", bin)
+				//fmt.Println("nothing to cancel for bin", bin)
 			}
 		}
 	} else {
@@ -249,7 +248,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 			dontWant = append(dontWant, i)
 		}
 
-		spew.Dump("outside depth want", "depth", d, want, "dont want", dontWant)
+		//spew.Dump("outside depth want", "depth", d, want, "dont want", dontWant)
 
 		if _, ok := syncCtx.binCancelFuncs[want]; !ok {
 			// if there's no bin cancel func it means there's no
@@ -264,7 +263,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 		for _, bin := range dontWant {
 			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
 				// we have sync running on this bin, cancel it
-				fmt.Println("cancelling context", "bin", bin)
+				//fmt.Println("cancelling context", "bin", bin)
 				c()
 				delete(syncCtx.binCancelFuncs, bin)
 			}
@@ -378,7 +377,8 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if top == 0 {
-			fmt.Println("top zero", "bin", bin, "from", from)
+			//fmt.Println("top zero", "bin", bin, "from", from)
+			return
 			panic(err)
 		}
 		p.logger.Tracef("liveSyncWorker peer %s synced bin %d from %d to %d", peer, bin, from, top)
