@@ -5,6 +5,8 @@
 package puller_test
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"os"
 	"runtime"
@@ -268,16 +270,15 @@ func TestPeerMovedOutOfDepth(t *testing.T) {
 }
 
 // TestPeerMovedIntoDepth starts syncing with a peer then gradually moves the
-// peer into depth. The peer starts only live syncing due to the 0 cursors provided by the mock,
+// depth deeper, but peer stays within depth. The peer starts only live syncing due to the 0 cursors provided by the mock,
 // and the test verifies that only the correct bins are syncing by starting to feed the workers with
 // replies that will seal certain intervals on the bins which are still expected to sync
-func TestPeerMovedIntoDepth(t *testing.T) {
+func TestPeerWithinDepth(t *testing.T) {
 	var (
 		addr           = test.RandomAddress()
 		cursors        = []uint64{0, 0, 0, 0, 0}
 		interval       = "[[1 1]]"
-		emptyInterval  = "[]"
-		binsNotSyncing = []uint8{0, 1, 2} // only bins 3,4 are expected to sync
+		binsNotSyncing = []uint8{1, 2} // only bins 3,4 are expected to sync
 		binsSyncing    = []uint8{3, 4}
 	)
 
@@ -304,8 +305,9 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	time.Sleep(100 * time.Millisecond)
-	//kad.Trigger()
+	kad.Trigger()
+	kad.Trigger()
+	time.Sleep(300 * time.Millisecond)
 
 	// tells all the running live syncs to get topmost 1
 	// e.g. they should all seal the interval now
@@ -314,10 +316,11 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 
 	// check the intervals
 	for _, b := range binsSyncing {
+		fmt.Println("checing bin", b)
 		checkIntervals(t, st, addr, interval, b)
 	}
 	for _, b := range binsNotSyncing {
-		checkIntervals(t, st, addr, emptyInterval, b)
+		checkNotFound(t, st, addr, b)
 	}
 }
 
@@ -325,14 +328,30 @@ func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, exp
 	t.Helper()
 
 	key := puller.PeerIntervalKey(addr, bin)
+	fmt.Println(key)
 	i := &intervalstore.Intervals{}
 	err := s.Get(key, i)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("error getting interval for bin %d: %v", bin, err)
 	}
 	if v := i.String(); v != expInterval {
 		t.Fatalf("got unexpected interval: %s, want %s", v, expInterval)
 	}
+}
+
+func checkNotFound(t *testing.T, s storage.StateStorer, addr swarm.Address, bin uint8) {
+	t.Helper()
+
+	key := puller.PeerIntervalKey(addr, bin)
+	i := &intervalstore.Intervals{}
+	err := s.Get(key, i)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatal(err)
+		}
+		return
+	}
+	t.Fatal("wanted error but got none")
 }
 
 func checkCalls(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
