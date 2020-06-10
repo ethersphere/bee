@@ -40,7 +40,7 @@ func TestChunkPipe(t *testing.T) {
 
 	// choose data lengths outside chunk boundaries
 	data := make([]byte, swarm.ChunkSize-2)
-	c, err := buf.Write(data[:])
+	c, err := buf.Write(data)
 	if err != nil {
 		t.Fatal(err)
 	}
