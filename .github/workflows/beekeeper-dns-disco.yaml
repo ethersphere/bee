@@ -27,7 +27,7 @@ jobs:
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
       - name: Set testing cluster
-        run: ./beeinfra.sh install --dns-disco --local --test -r "${REPLICA}"
+        run: ./beeinfra.sh install --dns-disco --local -r "${REPLICA}"
       - name: Test fullconnectivity
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pingpong
