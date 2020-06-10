@@ -6,6 +6,7 @@ package mock
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -132,9 +133,10 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		p.lateCond.L.Lock()
 		defer p.lateCond.L.Unlock()
 
-		for p.lateTop != 0 {
+		for p.lateTop == 0 {
 			p.lateCond.Wait()
 		}
+		fmt.Println("topmost broadcasting")
 		select {
 		case <-p.quit:
 			return
