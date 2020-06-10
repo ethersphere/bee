@@ -298,6 +298,15 @@ func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
 }
 
 func (s *Service) AdvertisableAddress(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
+	hostAddresses, err := s.Addresses()
+	if err != nil {
+		return nil, err
+	}
+
+	return advertisableAddress(observedAddress, hostAddresses)
+}
+
+func advertisableAddress(observedAddress ma.Multiaddr, hostAddresses []ma.Multiaddr) (ma.Multiaddr, error) {
 	observableAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedAddress)
 	if err != nil {
 		return nil, err
@@ -310,12 +319,8 @@ func (s *Service) AdvertisableAddress(observedAddress ma.Multiaddr) (ma.Multiadd
 		return observedAddress, nil
 	}
 
-	hostAddresses, err := s.Addresses()
-	if err != nil {
-		return nil, err
-	}
 	// observervedAddressShort is an obaserved address without port
-	observervedAddressShort := strings.Join(append(observedAddrSplit[:4], observedAddrSplit[4:]...), "/")
+	observervedAddressShort := strings.Join(append(observedAddrSplit[:4], observedAddrSplit[5:]...), "/")
 
 	for _, a := range hostAddresses {
 		asplit := strings.Split(a.String(), "/")
@@ -323,7 +328,7 @@ func (s *Service) AdvertisableAddress(observedAddress ma.Multiaddr) (ma.Multiadd
 			continue
 		}
 
-		if strings.Join(append(asplit[:4], asplit[4:]...), "/") != observervedAddressShort {
+		if strings.Join(append(asplit[:4], asplit[5:]...), "/") != observervedAddressShort {
 			continue
 		}
 
