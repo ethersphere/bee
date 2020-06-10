@@ -68,7 +68,7 @@ type Options struct {
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string,
-	o Options) (*Service, error) {
+	o Options) (p2p.Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
@@ -157,11 +157,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(overlay, signer, networkID, o.LightNode, o.Logger)
-	if err != nil {
-		return nil, fmt.Errorf("handshake service: %w", err)
-	}
-
 	peerRegistry := newPeerRegistry()
 	s := &Service{
 		ctx:              ctx,
@@ -169,13 +164,19 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2pPeerstore:  libp2pPeerstore,
 		metrics:          newMetrics(),
 		networkID:        networkID,
-		handshakeService: handshakeService,
 		peers:            peerRegistry,
 		addressbook:      o.Addressbook,
 		logger:           o.Logger,
 		tracer:           o.Tracer,
-		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // todo: fill non-default options
+		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 	}
+
+	handshakeService, err := handshake.New(signer, s, overlay, networkID, o.LightNode, o.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("handshake service: %w", err)
+	}
+
+	s.handshakeService = handshakeService
 
 	// Construct protocols.
 	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
@@ -293,6 +294,10 @@ func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
 	}
 
 	return addreses, nil
+}
+
+func (s *Service) AdvertisableAddress(observedAdddress ma.Multiaddr) (ma.Multiaddr, error) {
+	return nil, errors.New("todo")
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {

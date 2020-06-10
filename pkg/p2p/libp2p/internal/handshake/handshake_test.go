@@ -77,7 +77,9 @@ func TestHandshake(t *testing.T) {
 		Light:      false,
 	}
 
-	handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+	aaddresser := &AdvertisableAddresser{}
+
+	handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +96,11 @@ func TestHandshake(t *testing.T) {
 				ObservedUnderlay: node1maBinary,
 			},
 			Ack: &pb.Ack{
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
+				Address: &pb.BzzAddress{
+					Underlay:  node2maBinary,
+					Overlay:   node2BzzAddress.Overlay.Bytes(),
+					Signature: node2BzzAddress.Signature,
+				},
 				NetworkID: networkID,
 				Light:     false,
 			},
@@ -109,8 +114,27 @@ func TestHandshake(t *testing.T) {
 		}
 
 		testInfo(t, *res, node2Info)
-		if err := r.ReadMsg(&pb.Ack{}); err != nil {
+
+		var syn pb.Syn
+		if err := r.ReadMsg(&syn); err != nil {
 			t.Fatal(err)
+		}
+
+		if !bytes.Equal(syn.ObservedUnderlay, node2maBinary) {
+			t.Fatal("bad syn")
+		}
+
+		var ack pb.Ack
+		if err := r.ReadMsg(&ack); err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(ack.Address.Overlay, node1BzzAddress.Overlay.Bytes()) ||
+			!bytes.Equal(ack.Address.Underlay, node1maBinary) ||
+			!bytes.Equal(ack.Address.Signature, node1BzzAddress.Signature) ||
+			ack.NetworkID != networkID ||
+			ack.Light != false {
+			t.Fatal("bad ack")
 		}
 	})
 
@@ -159,8 +183,11 @@ func TestHandshake(t *testing.T) {
 				ObservedUnderlay: node1maBinary,
 			},
 			Ack: &pb.Ack{
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
+				Address: &pb.BzzAddress{
+					Underlay:  node2maBinary,
+					Overlay:   node2BzzAddress.Overlay.Bytes(),
+					Signature: node2BzzAddress.Signature,
+				},
 				NetworkID: networkID,
 				Light:     false,
 			},
@@ -191,8 +218,11 @@ func TestHandshake(t *testing.T) {
 				ObservedUnderlay: node1maBinary,
 			},
 			Ack: &pb.Ack{
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
+				Address: &pb.BzzAddress{
+					Underlay:  node2maBinary,
+					Overlay:   node2BzzAddress.Overlay.Bytes(),
+					Signature: node2BzzAddress.Signature,
+				},
 				NetworkID: 5,
 				Light:     false,
 			},
@@ -222,8 +252,11 @@ func TestHandshake(t *testing.T) {
 				ObservedUnderlay: node1maBinary,
 			},
 			Ack: &pb.Ack{
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: []byte("invalid"),
+				Address: &pb.BzzAddress{
+					Underlay:  node2maBinary,
+					Overlay:   node2BzzAddress.Overlay.Bytes(),
+					Signature: node1BzzAddress.Signature,
+				},
 				NetworkID: networkID,
 				Light:     false,
 			},
@@ -242,7 +275,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - OK", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -259,8 +292,11 @@ func TestHandshake(t *testing.T) {
 		}
 
 		if err := w.WriteMsg(&pb.Ack{
-			Overlay:   node2BzzAddress.Overlay.Bytes(),
-			Signature: node2BzzAddress.Signature,
+			Address: &pb.BzzAddress{
+				Underlay:  node2maBinary,
+				Overlay:   node2BzzAddress.Overlay.Bytes(),
+				Signature: node2BzzAddress.Signature,
+			},
 			NetworkID: networkID,
 			Light:     false,
 		}); err != nil {
@@ -284,7 +320,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatalf("got bad syn")
 		}
 
-		bzzAddress, err := bzz.ParseAddress(node1maBinary, got.Ack.Overlay, got.Ack.Signature, got.Ack.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.NetworkID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -296,7 +332,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -315,7 +351,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - write error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -342,7 +378,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - ack read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +407,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - networkID mismatch ", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -388,8 +424,11 @@ func TestHandshake(t *testing.T) {
 		}
 
 		if err := w.WriteMsg(&pb.Ack{
-			Overlay:   node2BzzAddress.Overlay.Bytes(),
-			Signature: node2BzzAddress.Signature,
+			Address: &pb.BzzAddress{
+				Underlay:  node2maBinary,
+				Overlay:   node2BzzAddress.Overlay.Bytes(),
+				Signature: node2BzzAddress.Signature,
+			},
 			NetworkID: 5,
 			Light:     false,
 		}); err != nil {
@@ -407,7 +446,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - duplicate handshake", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -424,8 +463,11 @@ func TestHandshake(t *testing.T) {
 		}
 
 		if err := w.WriteMsg(&pb.Ack{
-			Overlay:   node2BzzAddress.Overlay.Bytes(),
-			Signature: node2BzzAddress.Signature,
+			Address: &pb.BzzAddress{
+				Underlay:  node2maBinary,
+				Overlay:   node2BzzAddress.Overlay.Bytes(),
+				Signature: node2BzzAddress.Signature,
+			},
 			NetworkID: networkID,
 			Light:     false,
 		}); err != nil {
@@ -449,7 +491,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatalf("got bad syn")
 		}
 
-		bzzAddress, err := bzz.ParseAddress(node1maBinary, got.Ack.Overlay, got.Ack.Signature, got.Ack.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.NetworkID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -466,7 +508,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - invalid ack", func(t *testing.T) {
-		handshakeService, err := handshake.New(node1Info.BzzAddress.Overlay, signer1, networkID, false, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -483,8 +525,11 @@ func TestHandshake(t *testing.T) {
 		}
 
 		if err := w.WriteMsg(&pb.Ack{
-			Overlay:   node2BzzAddress.Overlay.Bytes(),
-			Signature: []byte("wrong signature"),
+			Address: &pb.BzzAddress{
+				Underlay:  node2maBinary,
+				Overlay:   node2BzzAddress.Overlay.Bytes(),
+				Signature: node1BzzAddress.Signature,
+			},
 			NetworkID: networkID,
 			Light:     false,
 		}); err != nil {
@@ -504,4 +549,21 @@ func testInfo(t *testing.T, got, want handshake.Info) {
 	if !got.BzzAddress.Equal(want.BzzAddress) || got.Light != want.Light {
 		t.Fatalf("got info %+v, want %+v", got, want)
 	}
+}
+
+type AdvertisableAddresser struct {
+	advertisableAddress ma.Multiaddr
+	err                 error
+}
+
+func (a *AdvertisableAddresser) AdvertisableAddress(observedAdddress ma.Multiaddr) (ma.Multiaddr, error) {
+	if a.err != nil {
+		return nil, a.err
+	}
+
+	if a.advertisableAddress != nil {
+		return a.advertisableAddress, nil
+	}
+
+	return observedAdddress, nil
 }
