@@ -274,6 +274,47 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
+	t.Run("Handshake - error advertisablea address", func(t *testing.T) {
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		testError := errors.New("test error")
+		aaddresser.err = testError
+		defer func() {
+			aaddresser.err = nil
+		}()
+
+		w, _ := protobuf.NewWriterAndReader(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			Syn: &pb.Syn{
+				ObservedUnderlay: node1maBinary,
+			},
+			Ack: &pb.Ack{
+				Address: &pb.BzzAddress{
+					Underlay:  node2maBinary,
+					Overlay:   node2BzzAddress.Overlay.Bytes(),
+					Signature: node2BzzAddress.Signature,
+				},
+				NetworkID: networkID,
+				Light:     false,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		if err != testError {
+			t.Fatal("expected error")
+		}
+
+		if res != nil {
+			t.Fatal("expected nil res")
+		}
+
+	})
+
 	t.Run("Handle - OK", func(t *testing.T) {
 		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 		if err != nil {
@@ -539,6 +580,39 @@ func TestHandshake(t *testing.T) {
 		_, err = handshakeService.Handle(stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
 		if err != handshake.ErrInvalidAck {
 			t.Fatalf("expected %s, got %s", handshake.ErrInvalidAck, err)
+		}
+	})
+
+	t.Run("Handle - advertisable error", func(t *testing.T) {
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		testError := errors.New("test error")
+		aaddresser.err = testError
+		defer func() {
+			aaddresser.err = nil
+		}()
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			ObservedUnderlay: node1maBinary,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handle(stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		if err != testError {
+			t.Fatal("expected error")
+		}
+
+		if res != nil {
+			t.Fatal("expected nil res")
 		}
 	})
 }
