@@ -67,10 +67,8 @@ func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (int
 		response.Code = http.StatusInternalServerError
 		err = fmt.Errorf("%s: %v", response.Message, err)
 		return response, err
-	} else {
-		err = fmt.Errorf("%s: %v", response.Message, err)
-		return rawPostResponse{Hash: address}, nil
 	}
+	return rawPostResponse{Hash: address}, nil
 }
 
 // rawGetHandler handles retrieval of raw binary data of arbitrary length.
