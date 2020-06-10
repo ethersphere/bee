@@ -6,6 +6,9 @@ package file_test
 
 import (
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,60 +16,105 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+var (
+	dataWrites = [][]int{
+		[]int{swarm.ChunkSize - 2}, // short
+		[]int{swarm.ChunkSize - 2, 4}, // short, over
+		[]int{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 6}, // short, over, short
+		[]int{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 4}, // short, over, onononon
+		[]int{swarm.ChunkSize, 2, swarm.ChunkSize -4}, // on, short, short
+		[]int{swarm.ChunkSize, 2, swarm.ChunkSize -2}, // on, short, on
+		[]int{swarm.ChunkSize, 2, swarm.ChunkSize}, // on, short, over
+		[]int{swarm.ChunkSize, 2, swarm.ChunkSize -2, 4}, // on, short, on, short
+		[]int{swarm.ChunkSize, swarm.ChunkSize}, // on, on
+	}
+)
+
 // TestChunkPipe verifies that the reads are correctly buffered for
-// two unaligned writes across two chunks.
+// various write length combinations.
 func TestChunkPipe(t *testing.T) {
+	for i := range dataWrites {
+		t.Run(fmt.Sprintf("%d", i), testChunkPipe)
+	}
+}
+
+func testChunkPipe(t *testing.T) {
+	paramString := strings.Split(t.Name(), "/")
+	dataWriteIdx, err := strconv.ParseInt(paramString[1], 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	buf := file.NewChunkPipe()
 
-	errC := make(chan error)
+	sizeC := make(chan int, 255)
+	errC := make(chan error, 1)
 	go func() {
 		data := make([]byte, swarm.ChunkSize)
-		c, err := buf.Read(data)
-		if err != nil {
-			errC <- err
+		for {
+			// get buffered chunkpipe read
+			c, err := buf.Read(data)
+			sizeC <- c
+			if err != nil {
+				close(sizeC)
+				errC <- err
+				return
+			}
+
+			// only the last read should be smaller than chunk size
+			if c < swarm.ChunkSize {
+				close(sizeC)
+				errC <- nil
+				return
+			}
 		}
-		if c != swarm.ChunkSize {
-			errC <- fmt.Errorf("short read %d", c)
-		}
-		c, err = buf.Read(data)
-		if c != 2 {
-			errC <- fmt.Errorf("read expected 2, got %d", c)
-		}
-		if err != nil {
-			errC <- err
-		}
-		errC <- nil
 	}()
 
-	// choose data lengths outside chunk boundaries
-	data := make([]byte, swarm.ChunkSize-2)
-	c, err := buf.Write(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c != len(data) {
-		t.Fatalf("short write")
-	}
-	c, err = buf.Write(data[:4])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c != 4 {
-		t.Fatalf("short write")
+	// do the writes
+	dataWrite := dataWrites[dataWriteIdx]
+	writeTotal := 0
+	for _, l := range dataWrite {
+		data := make([]byte, l)
+		c, err := buf.Write(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c != l {
+			t.Fatalf("short write")
+		}
+		writeTotal += l
 	}
 
+	// finish up (last unfinished chunk write will be flushed)
 	err = buf.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// receive the writes
+	// err may or may not be EOF, depending on whether writes end on 
+	// chunk boundary
 	timer := time.NewTimer(time.Second)
+	readTotal := 0
+OUTER:
+	for {
 	select {
-	case err = <-errC:
-	case <-timer.C:
-		t.Fatal("timeout")
+		case c := <-sizeC:
+			readTotal += c
+		case err = <-errC:
+			if err != nil {
+				if err != io.EOF {
+					t.Fatal(err)
+				}
+			}
+			break OUTER
+		case <-timer.C:
+			t.Fatal("timeout")
+		}
 	}
-	if err != nil {
-		t.Fatal(err)
+
+	// check that the write amounts match
+	if readTotal != writeTotal {
+		t.Fatalf("expected read %d, got %d", readTotal, writeTotal)
 	}
+
 }

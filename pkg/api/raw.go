@@ -106,6 +106,5 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Errorf("raw: data write %s: %v", address, err)
 		s.Logger.Error("raw: data input error")
-		return
 	}
 }
