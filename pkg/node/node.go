@@ -205,7 +205,6 @@ func NewBee(o Options) (*Bee, error) {
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
 		ChunkPeerer: topologyDriver,
-		Storer:      storer,
 		Logger:      logger,
 	})
 	tag := tags.NewTags()
@@ -215,6 +214,8 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+
+	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
 		Streamer:      p2ps,
