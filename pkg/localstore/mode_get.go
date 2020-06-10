@@ -21,10 +21,11 @@ import (
 	"errors"
 	"time"
 
+	"github.com/syndtr/goleveldb/leveldb"
+
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Get returns a chunk from the database. If the chunk is
@@ -155,11 +156,19 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 	if err != nil {
 		return err
 	}
-	// add new entry to gc index
-	err = db.gcIndex.PutInBatch(batch, item)
+
+	// add new entry to gc index ONLY if it is not present in pinIndex
+	ok, err := db.pinIndex.Has(item)
 	if err != nil {
 		return err
 	}
+	if !ok {
+		err = db.gcIndex.PutInBatch(batch, item)
+		if err != nil {
+			return err
+		}
+	}
+
 	return db.shed.WriteBatch(batch)
 }
 

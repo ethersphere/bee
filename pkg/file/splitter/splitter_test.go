@@ -5,8 +5,10 @@
 package splitter_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
@@ -105,4 +107,78 @@ func TestSplitThreeLevels(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// TestUnalignedSplit tests that correct hash is generated regarless of
+// individual write sizes at the source of the data.
+func TestUnalignedSplit(t *testing.T) {
+	var (
+		storer    storage.Storer = mock.NewStorer()
+		chunkPipe                = file.NewChunkPipe()
+	)
+
+	// test vector taken from pkg/file/testing/vector.go
+	var (
+		dataLen       int64 = swarm.ChunkSize*2 + 32
+		expectAddrHex       = "61416726988f77b874435bdd89a419edc3861111884fd60e8adf54e2f299efd6"
+		g                   = mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	)
+
+	// generate test vector data content
+	content, err := g.SequentialBytes(int(dataLen))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// perform the split in a separate thread
+	sp := splitter.NewSimpleSplitter(storer)
+	ctx := context.Background()
+	doneC := make(chan swarm.Address)
+	errC := make(chan error)
+	go func() {
+		addr, err := sp.Split(ctx, chunkPipe, dataLen)
+		if err != nil {
+			errC <- err
+		} else {
+			doneC <- addr
+		}
+		close(doneC)
+		close(errC)
+	}()
+
+	// perform the writes in unaligned bursts
+	writeSizes := []int{swarm.ChunkSize - 40, 40 + 32, swarm.ChunkSize}
+	contentBuf := bytes.NewReader(content)
+	cursor := 0
+	for _, writeSize := range writeSizes {
+		data := make([]byte, writeSize)
+		_, err = contentBuf.Read(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := chunkPipe.Write(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cursor += c
+	}
+	err = chunkPipe.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read and hopefully not weep
+	timer := time.NewTimer(time.Millisecond * 100)
+	select {
+	case addr := <-doneC:
+		expectAddr := swarm.MustParseHexAddress(expectAddrHex)
+		if !expectAddr.Equal(addr) {
+			t.Fatalf("addr mismatch, expected %s, got %s", expectAddr, addr)
+		}
+	case err := <-errC:
+		t.Fatal(err)
+	case <-timer.C:
+		t.Fatal("timeout")
+	}
+
 }
