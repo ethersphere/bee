@@ -18,15 +18,15 @@ import (
 
 var (
 	dataWrites = [][]int{
-		[]int{swarm.ChunkSize - 2}, // short
-		[]int{swarm.ChunkSize - 2, 4}, // short, over
-		[]int{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 6}, // short, over, short
-		[]int{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 4}, // short, over, onononon
-		[]int{swarm.ChunkSize, 2, swarm.ChunkSize -4}, // on, short, short
-		[]int{swarm.ChunkSize, 2, swarm.ChunkSize -2}, // on, short, on
-		[]int{swarm.ChunkSize, 2, swarm.ChunkSize}, // on, short, over
-		[]int{swarm.ChunkSize, 2, swarm.ChunkSize -2, 4}, // on, short, on, short
-		[]int{swarm.ChunkSize, swarm.ChunkSize}, // on, on
+		{swarm.ChunkSize - 2},                         // short
+		{swarm.ChunkSize - 2, 4},                      // short, over
+		{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 6}, // short, over, short
+		{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 4}, // short, over, onononon
+		{swarm.ChunkSize, 2, swarm.ChunkSize - 4},     // on, short, short
+		{swarm.ChunkSize, 2, swarm.ChunkSize - 2},     // on, short, on
+		{swarm.ChunkSize, 2, swarm.ChunkSize},         // on, short, over
+		{swarm.ChunkSize, 2, swarm.ChunkSize - 2, 4},  // on, short, on, short
+		{swarm.ChunkSize, swarm.ChunkSize},            // on, on
 	}
 )
 
@@ -91,13 +91,13 @@ func testChunkPipe(t *testing.T) {
 	}
 
 	// receive the writes
-	// err may or may not be EOF, depending on whether writes end on 
+	// err may or may not be EOF, depending on whether writes end on
 	// chunk boundary
 	timer := time.NewTimer(time.Second)
 	readTotal := 0
 OUTER:
 	for {
-	select {
+		select {
 		case c := <-sizeC:
 			readTotal += c
 		case err = <-errC:
