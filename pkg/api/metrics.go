@@ -38,12 +38,6 @@ func newMetrics() metrics {
 			Help:      "Histogram of API response durations.",
 			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
-		PingRequestCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "ping_request_count",
-			Help:      "Number HTTP API ping requests.",
-		}),
 	}
 }
 
