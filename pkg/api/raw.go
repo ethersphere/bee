@@ -103,7 +103,7 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	c, err := file.JoinReadAll(j, address, w)
-	if err != nil && c == 0{
+	if err != nil && c == 0 {
 		s.Logger.Errorf("raw: data write %s: %v", address, err)
 		s.Logger.Error("raw: data input error")
 		jsonhttp.InternalServerError(w, "retrieval fail")

@@ -70,7 +70,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	buf = bytes.NewBuffer(nil)
-	err = file.JoinReadAll(j, e.Metadata(), buf)
+	_, err = file.JoinReadAll(j, e.Metadata(), buf)
 	if err != nil {
 		return err
 	}
@@ -116,8 +116,8 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 	defer outFile.Close()
-
-	return file.JoinReadAll(j, e.Reference(), outFile)
+	_, err = file.JoinReadAll(j, e.Reference(), outFile)
+	return err
 }
 
 // putEntry creates a new file entry with the given reference.
