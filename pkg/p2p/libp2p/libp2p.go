@@ -297,6 +297,10 @@ func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
 	return addreses, nil
 }
 
+// AdvertisableAddress checks if there is a possible better advertasible underlay then the provided observed address
+// this is used to determine the underlay address to be sent through handshake protokol.
+// In some NAT situations, for example in the case when nodes are behind upnp, observer might send the observed address with a wrong port.
+// In this case, we compare this address to addresses provided by host, which might have (if there are mappings available in nat manager) a same address but with the true port.
 func (s *Service) AdvertisableAddress(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
 	hostAddresses, err := s.Addresses()
 	if err != nil {
