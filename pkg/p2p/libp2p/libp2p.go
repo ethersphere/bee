@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
@@ -68,7 +69,7 @@ type Options struct {
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string,
-	o Options) (p2p.Service, error) {
+	o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
@@ -296,8 +297,49 @@ func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
 	return addreses, nil
 }
 
-func (s *Service) AdvertisableAddress(observedAdddress ma.Multiaddr) (ma.Multiaddr, error) {
-	return nil, errors.New("todo")
+func (s *Service) AdvertisableAddress(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
+	observableAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	observedAddrSplit := strings.Split(observableAddrInfo.Addrs[0].String(), "/")
+
+	// if address is not in a form of '/ipversion/ip/protocol/port/...` don't compare to addresses and return it
+	if len(observedAddrSplit) < 5 {
+		return observedAddress, nil
+	}
+
+	hostAddresses, err := s.Addresses()
+	if err != nil {
+		return nil, err
+	}
+	// observervedAddressShort is an obaserved address without port
+	observervedAddressShort := strings.Join(append(observedAddrSplit[:4], observedAddrSplit[4:]...), "/")
+
+	for _, a := range hostAddresses {
+		asplit := strings.Split(a.String(), "/")
+		if len(asplit) != len(observedAddrSplit) {
+			continue
+		}
+
+		if strings.Join(append(asplit[:4], asplit[4:]...), "/") != observervedAddressShort {
+			continue
+		}
+
+		if asplit[4] != observedAddrSplit[4] {
+			advertisableAddress, err := buildUnderlayAddress(a, observableAddrInfo.ID)
+			if err != nil {
+				continue
+			}
+
+			fmt.Println("DEBUG - found advertisable address", advertisableAddress.String())
+			return advertisableAddress, nil
+		}
+	}
+
+	fmt.Println("DEBUG - did not find new advertisable address returning: ", observedAddress.String())
+	return observedAddress, nil
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
