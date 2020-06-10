@@ -39,16 +39,19 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 
 	var total int64
 	data := make([]byte, swarm.ChunkSize)
-	for {
+	var eof bool
+	for !eof {
 		c, err := r.Read(data)
+		total += int64(c)
 		if err != nil {
 			if err == io.EOF {
 				if total < dataLength {
-					return swarm.ZeroAddress, fmt.Errorf("splitter only received %d bytes of data, expected %d bytes", total, dataLength)
+					return swarm.ZeroAddress, fmt.Errorf("splitter only received %d bytes of data, expected %d bytes", total+int64(c), dataLength)
 				}
-				break
+				eof = true
+			} else {
+				return swarm.ZeroAddress, err
 			}
-			return swarm.ZeroAddress, err
 		}
 		cc, err := j.Write(data[:c])
 		if err != nil {
@@ -57,7 +60,6 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 		if cc < c {
 			return swarm.ZeroAddress, fmt.Errorf("write count to file hasher component %d does not match read count %d", cc, c)
 		}
-		total += int64(c)
 	}
 
 	sum := j.Sum(nil)

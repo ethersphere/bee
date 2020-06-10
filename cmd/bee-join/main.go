@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
+	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -74,7 +75,8 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 
 	// create the join and get its data reader
 	j := joiner.NewSimpleJoiner(store)
-	return cmdfile.JoinReadAll(j, addr, outFile)
+	_, err = file.JoinReadAll(j, addr, outFile)
+	return err
 }
 
 func main() {

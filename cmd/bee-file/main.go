@@ -16,6 +16,7 @@ import (
 
 	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/collection/entry"
+	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -58,7 +59,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	writeCloser := cmdfile.NopWriteCloser(buf)
 	limitBuf := cmdfile.NewLimitWriteCloser(writeCloser, limitMetadataLength)
 	j := joiner.NewSimpleJoiner(store)
-	err = cmdfile.JoinReadAll(j, addr, limitBuf)
+	_, err = file.JoinReadAll(j, addr, limitBuf)
 	if err != nil {
 		return err
 	}
@@ -69,7 +70,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	buf = bytes.NewBuffer(nil)
-	err = cmdfile.JoinReadAll(j, e.Metadata(), buf)
+	_, err = file.JoinReadAll(j, e.Metadata(), buf)
 	if err != nil {
 		return err
 	}
@@ -115,8 +116,8 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 	defer outFile.Close()
-
-	return cmdfile.JoinReadAll(j, e.Reference(), outFile)
+	_, err = file.JoinReadAll(j, e.Reference(), outFile)
+	return err
 }
 
 // putEntry creates a new file entry with the given reference.
