@@ -25,7 +25,7 @@ var _ keystore.Service = (*Service)(nil)
 
 const (
 	keyHeaderKDF = "scrypt"
-	keyVersion   = 1
+	keyVersion   = 3
 
 	scryptN     = 1 << 15
 	scryptR     = 8
@@ -33,7 +33,9 @@ const (
 	scryptDKLen = 32
 )
 
+// This format is compatible with Ethereum JSON v3 key file format.
 type encryptedKey struct {
+	Address string    `json:"address"`
 	Crypto  keyCripto `json:"crypto"`
 	Version int       `json:"version"`
 }
@@ -66,6 +68,7 @@ func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(encryptedKey{
+		Address: hex.EncodeToString(crypto.NewEthereumAddress(k.PublicKey)),
 		Crypto:  *kc,
 		Version: keyVersion,
 	})
