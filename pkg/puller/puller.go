@@ -81,7 +81,8 @@ func (p *Puller) pollTopology() {
 	for {
 		select {
 		case <-c:
-			time.Sleep(10 * time.Millisecond)
+			fmt.Println("got trigger")
+			//time.Sleep(10 * time.Millisecond)
 			p.peersC <- struct{}{}
 		case <-p.quit:
 			return
@@ -97,9 +98,11 @@ type peer struct {
 func (p *Puller) manage() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	defer func() { fmt.Println("manage quit") }()
 	for {
 		select {
 		case <-p.peersC:
+			fmt.Println("manage got signal")
 			// get all peers from kademlia
 			// iterate on entire bin at once (get all peers first)
 			// check how many intervals we synced with all of them
@@ -116,7 +119,6 @@ func (p *Puller) manage() {
 				peersToRecalc []peer
 			)
 			p.syncPeersMtx.Lock()
-			defer p.syncPeersMtx.Unlock()
 
 			err := p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 				bp := p.syncPeers[po]
@@ -168,6 +170,8 @@ func (p *Puller) manage() {
 			for _, v := range peersToRecalc {
 				p.recalcPeer(ctx, v.addr, v.po)
 			}
+			p.syncPeersMtx.Unlock()
+
 		case <-p.quit:
 			return
 		}
@@ -175,6 +179,7 @@ func (p *Puller) manage() {
 }
 
 func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8) {
+	p.logger.Debugf("puller recalculating peer %s po %d", peer, po)
 	syncCtx := p.syncPeers[po][peer.String()]
 
 	syncCtx.Lock()
@@ -216,6 +221,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8) {
 		for _, bin := range dontWant {
 			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
 				// we have sync running on this bin, cancel it
+				fmt.Println("cancelling context")
 				c()
 				delete(syncCtx.binCancelFuncs, bin)
 			}
@@ -249,6 +255,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8) {
 		for _, bin := range dontWant {
 			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
 				// we have sync running on this bin, cancel it
+				fmt.Println("cancelling context")
 				c()
 				delete(syncCtx.binCancelFuncs, bin)
 			}
@@ -313,8 +320,10 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	for {
 		select {
 		case <-p.quit:
+			p.logger.Debugf("histSyncWorker quitting on shutdown. peer %s bin %d cur %d", peer, bin, cur)
 			return
 		case <-ctx.Done():
+			p.logger.Debugf("histSyncWorker context cancelled. peer %s bin %d cur %d", peer, bin, cur)
 			return
 		default:
 		}

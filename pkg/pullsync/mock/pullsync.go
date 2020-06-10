@@ -134,19 +134,28 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		defer p.lateCond.L.Unlock()
 
 		for p.lateTop == 0 {
+			select {
+			case <-p.quit:
+				return
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			default:
+			}
 			p.lateCond.Wait()
 		}
-		fmt.Println("topmost broadcasting")
 		select {
 		case <-p.quit:
 			return
+		case <-ctx.Done():
+			return 0, ctx.Err()
 		default:
 		}
 		p.lateReads--
+		top := p.lateTop
 		if p.lateReads == 0 {
 			p.lateTop = 0
 		}
-		return p.lateTop, nil
+		return top, nil
 	}
 
 	if isLive && p.blockLiveSync {
@@ -248,10 +257,12 @@ func (p *PullSyncMock) TriggerTopmost(t uint64) {
 	p.lateCond.L.Lock()
 	defer p.lateCond.L.Unlock()
 	p.lateTop = t
+	fmt.Printf("triggerring topmost with %d, reads %d", p.lateTop, p.lateReads)
 	p.lateCond.Broadcast()
 }
 
 func (p *PullSyncMock) Close() error {
+	fmt.Println("shutting down mock")
 	close(p.quit)
 	p.lateCond.L.Lock()
 	defer p.lateCond.L.Unlock()

@@ -285,7 +285,7 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(
 				mockk.AddrTuple{A: addr, P: 3}, // po is 3, depth is 2, so we're in depth
-			), mockk.WithDepthCalls(0, 1, 2, 3), // peer moved from out of depth to depth
+			), mockk.WithDepthCalls(0, 1, 2, 3, 3, 3, 3), // peer moved from out of depth to depth
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLateReply(2)},
 		// not sure if this is correct but it should at least flake. problem is we must either limit
@@ -305,7 +305,7 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
-	kad.Trigger()
+	//kad.Trigger()
 
 	// tells all the running live syncs to get topmost 1
 	// e.g. they should all seal the interval now
@@ -453,7 +453,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := mockk.NewMockKademlia(ops.kad...)
-	logger := logging.New(os.Stdout, 5)
+	logger := logging.New(os.Stdout, 6)
 
 	o := puller.Options{
 		Topology:   kad,
