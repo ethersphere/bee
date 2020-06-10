@@ -32,7 +32,7 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Debugf("raw: %v", err)
 		o := responseObject.(jsonhttp.StatusResponse)
-		jsonhttp.Respond(w, o.Code, o) 
+		jsonhttp.Respond(w, o.Code, o)
 	} else {
 		jsonhttp.OK(w, responseObject)
 	}
