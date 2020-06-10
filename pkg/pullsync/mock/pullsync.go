@@ -6,10 +6,12 @@ package mock
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"sync"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -45,6 +47,13 @@ func WithLiveSyncReplies(r ...uint64) Option {
 	})
 }
 
+// the list of SyncReply is not ordered
+func WithExactLiveSyncReplies(r ...SyncReply) Option {
+	return optionFunc(func(p *PullSyncMock) {
+		p.liveSyncExactReplies = r
+	})
+}
+
 const limit = 50
 
 type SyncCall struct {
@@ -54,15 +63,32 @@ type SyncCall struct {
 	Live     bool
 }
 
+type SyncReply struct {
+	bin     uint8
+	from    uint64
+	topmost uint64
+	block   bool
+}
+
+func NewReply(bin uint8, from, top uint64, block bool) SyncReply {
+	return SyncReply{
+		bin:     bin,
+		from:    from,
+		topmost: top,
+		block:   block,
+	}
+}
+
 type PullSyncMock struct {
-	mtx             sync.Mutex
-	syncCalls       []SyncCall
-	cursors         []uint64
-	getCursorsPeers []swarm.Address
-	autoReply       bool
-	blockLiveSync   bool
-	liveSyncReplies []uint64
-	liveSyncCalls   int
+	mtx                  sync.Mutex
+	syncCalls            []SyncCall
+	cursors              []uint64
+	getCursorsPeers      []swarm.Address
+	autoReply            bool
+	blockLiveSync        bool
+	liveSyncReplies      []uint64
+	liveSyncCalls        int
+	liveSyncExactReplies []SyncReply
 
 	quit chan struct{}
 }
@@ -95,6 +121,39 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		<-p.quit
 		return 0, io.EOF
 	}
+
+	if isLive && len(p.liveSyncExactReplies) > 0 {
+		var (
+			sr    SyncReply
+			found bool
+		)
+		spew.Dump(p.liveSyncExactReplies)
+		for i, v := range p.liveSyncExactReplies {
+			if v.bin == bin && v.from == from {
+				sr = v
+				found = true
+				fmt.Println("found entry", "from", from, "bin", bin)
+				p.liveSyncExactReplies = append(p.liveSyncExactReplies[:i], p.liveSyncExactReplies[i+1:]...)
+				fmt.Println("removed entry*************************************", i)
+				spew.Dump(p.liveSyncExactReplies)
+			}
+			if found {
+				break
+			}
+		}
+		p.mtx.Unlock()
+		if !found {
+
+			fmt.Println("not found entry", "from", from, "bin", bin)
+			panic("not found")
+		}
+		if sr.block {
+			<-p.quit
+			return
+		}
+		return sr.topmost, nil
+	}
+
 	if isLive && len(p.liveSyncReplies) > 0 {
 		if p.liveSyncCalls >= len(p.liveSyncReplies) {
 			p.mtx.Unlock()

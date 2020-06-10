@@ -76,7 +76,7 @@ func TestOneSync(t *testing.T) {
 	waitSyncCalled(t, pullsync, addr2, true)
 }
 
-func TestSyncFlow_Live(t *testing.T) {
+func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 	addr := test.RandomAddress()
 	const max = math.MaxUint64
 
@@ -93,13 +93,13 @@ func TestSyncFlow_Live(t *testing.T) {
 		expLiveCalls []c    // expected live sync calls
 	}{
 		{
-			name: "cursor 0, 1 chunk on live", cursors: []uint64{0, 0},
+			name: "cursor 0, 1 chunk on live", cursors: []uint64{0, 0, 0},
 			intervals:    "[[1 1]]",
 			liveReplies:  []uint64{1},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max)},
 		},
 		{
-			name: "cursor 0 - calls 1-1, 2-5, 6-10", cursors: []uint64{0, 0},
+			name: "cursor 0 - calls 1-1, 2-5, 6-10", cursors: []uint64{0, 0, 0},
 			intervals:    "[[1 10]]",
 			liveReplies:  []uint64{1, 5, 10},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max), call(1, 6, max), call(1, 11, max)},
@@ -127,12 +127,12 @@ func TestSyncFlow_Live(t *testing.T) {
 			checkCalls(t, tc.expLiveCalls, pullsync.LiveSyncCalls(addr))
 
 			// check the intervals
-			checkIntervals(t, st, addr, tc.intervals)
+			checkIntervals(t, st, addr, tc.intervals, 1)
 		})
 	}
 }
 
-func TestSyncFlow_Historical(t *testing.T) {
+func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 	addr := test.RandomAddress()
 
 	call := func(b uint8, f, t uint64) c {
@@ -147,7 +147,7 @@ func TestSyncFlow_Historical(t *testing.T) {
 		expLiveCalls []c      // expected live sync calls
 	}{
 		{
-			name: "1,1 - 1 call", cursors: []uint64{0, 1},
+			name: "1,1 - 1 call", cursors: []uint64{0, 1, 3}, //the third cursor is to make sure we dont get a request for a bin we dont need
 			intervals:    "[[1 1]]",
 			expCalls:     []c{call(1, 1, 1)},
 			expLiveCalls: []c{call(1, 2, math.MaxUint64)},
@@ -207,7 +207,68 @@ func TestSyncFlow_Historical(t *testing.T) {
 			checkCalls(t, tc.expLiveCalls, pullsync.LiveSyncCalls(addr))
 
 			// check the intervals
-			checkIntervals(t, st, addr, tc.intervals)
+			checkIntervals(t, st, addr, tc.intervals, 1)
+		})
+	}
+}
+
+func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
+	addr := test.RandomAddress()
+	const max = math.MaxUint64
+
+	call := func(b uint8, f, t uint64) c {
+		return c{b: b, f: f, t: t}
+	}
+
+	reply := func(b uint8, f, top uint64, block bool) mockps.SyncReply {
+		return mockps.NewReply(b, f, top, block)
+	}
+
+	for _, tc := range []struct {
+		name         string   // name of test
+		cursors      []uint64 // mocked cursors to be exchanged from peer
+		liveReplies  []mockps.SyncReply
+		intervals    string // expected intervals on pivot
+		expCalls     []c    // expected historical sync calls
+		expLiveCalls []c    // expected live sync calls
+	}{
+		{
+			name: "cursor 0, 1 chunk on live", cursors: []uint64{0, 0, 0, 0, 0},
+			intervals:    "[[1 1]]",
+			liveReplies:  []mockps.SyncReply{reply(2, 1, 1, false), reply(2, 2, 0, true), reply(3, 1, 1, false), reply(3, 2, 0, true), reply(4, 1, 1, false), reply(4, 2, 0, true)},
+			expLiveCalls: []c{call(2, 1, max), call(2, 2, max), call(3, 1, max), call(3, 2, max), call(4, 1, max), call(4, 2, max)},
+		},
+		//{
+		//name: "cursor 0 - calls 1-1, 2-5, 6-10", cursors: []uint64{0, 0, 0},
+		//intervals:    "[[1 10]]",
+		//liveReplies:  []uint64{1, 5, 10},
+		//expLiveCalls: []c{call(1, 1, max), call(1, 2, max), call(1, 6, max), call(1, 11, max)},
+		//},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, st, kad, pullsync := newPuller(opts{
+				kad: []mockk.Option{
+					mockk.WithEachPeerRevCalls(
+						mockk.AddrTuple{A: addr, P: 3}, // po is 3, depth is 2, so we're in depth
+					), mockk.WithDepth(2),
+				},
+				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithExactLiveSyncReplies(tc.liveReplies...)},
+			})
+			defer pullsync.Close()
+
+			runtime.Gosched()
+			time.Sleep(100 * time.Millisecond)
+
+			kad.Trigger()
+			waitCursorsCalled(t, pullsync, addr, false)
+			waitLiveSyncCalled(t, pullsync, addr, false)
+			time.Sleep(100 * time.Millisecond)
+
+			checkCalls(t, tc.expCalls, pullsync.SyncCalls(addr)) // hist always empty
+			checkCallsUnordered(t, tc.expLiveCalls, pullsync.LiveSyncCalls(addr))
+
+			// check the intervals
+			checkIntervals(t, st, addr, tc.intervals, 2)
 		})
 	}
 }
@@ -220,10 +281,10 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 
 }
 
-func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string) {
+func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
 	t.Helper()
 
-	key := puller.PeerIntervalKey(addr, 1)
+	key := puller.PeerIntervalKey(addr, bin)
 	i := &intervalstore.Intervals{}
 	err := s.Get(key, i)
 	if err != nil {
@@ -251,6 +312,32 @@ func checkCalls(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
 		}
 		if tt := calls[i].To; tt != v.t {
 			t.Errorf("to mismatch. got %d want %d index %d", tt, v.t, i)
+		}
+	}
+}
+
+// this is needed since there are several goroutines checking the calls,
+// so the call list in the test is no longer expected to be in order
+func checkCallsUnordered(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
+	t.Helper()
+
+	exp := len(expCalls)
+	if l := len(calls); l != exp {
+		t.Fatalf("expected %d calls but got %d. calls: %v", exp, l, calls)
+	}
+
+	isIn := func(vv c, calls []mockps.SyncCall) bool {
+		for _, v := range calls {
+			if v.Bin == vv.b && v.From == vv.f && v.To == vv.t {
+				return true
+			}
+		}
+		return false
+	}
+
+	for i, v := range expCalls {
+		if !isIn(v, calls) {
+			t.Fatalf("call %d not found", i)
 		}
 	}
 }

@@ -202,7 +202,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8) {
 
 	// start historical
 	for bin, cur := range c {
-		if bin == 0 {
+		if bin == 0 || uint8(bin) < d || cur == 0 {
 			continue
 		}
 		binCtx, cancel := context.WithCancel(ctx)
@@ -212,7 +212,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8) {
 
 	// start live
 	for bin, cur := range c {
-		if bin == 0 {
+		if bin == 0 || uint8(bin) < d {
 			continue
 		}
 		binCtx, cancel := context.WithCancel(ctx)
@@ -241,14 +241,14 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			<-time.After(30 * time.Second)
 			continue
 		}
-		p.logger.Tracef("histSyncWorker peer %s bin %d next interval %d cursor %d", peer, bin, s, cur)
+		p.logger.Debugf("histSyncWorker peer %s bin %d next interval %d cursor %d", peer, bin, s, cur)
 		if s > cur {
-			syncCtx := p.syncPeers[bin][peer.String()]
-			syncCtx.Lock()
-			f := syncCtx.histCancelFuncs[bin]
-			f()
-			delete(syncCtx.histCancelFuncs, bin)
-			syncCtx.Unlock()
+			//syncCtx := p.syncPeers[bin][peer.String()]
+			//syncCtx.Lock()
+			//f := syncCtx.histCancelFuncs[bin]
+			//f()
+			//delete(syncCtx.histCancelFuncs, bin)
+			//syncCtx.Unlock()
 			p.logger.Debugf("histSyncWorker finished syncing bin %d, cursor %d", bin, cur)
 			return
 		}
