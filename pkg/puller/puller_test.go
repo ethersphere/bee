@@ -269,11 +269,13 @@ func TestPeerMovedOutOfDepth(t *testing.T) {
 
 }
 
-// TestPeerMovedIntoDepth starts syncing with a peer then gradually moves the
+// TestPeerMovesWithinDepth starts syncing with a peer then gradually moves the
 // depth deeper, but peer stays within depth. The peer starts only live syncing due to the 0 cursors provided by the mock,
 // and the test verifies that only the correct bins are syncing by starting to feed the workers with
-// replies that will seal certain intervals on the bins which are still expected to sync
-func TestPeerWithinDepth(t *testing.T) {
+// replies that will seal certain intervals on the bins which are still expected to sync.
+// Context cancellation when recalculating the peer is expected in order to terminate the
+// unwanted sync streams.
+func TestPeerMovesWithinDepth(t *testing.T) {
 	var (
 		addr           = test.RandomAddress()
 		cursors        = []uint64{0, 0, 0, 0, 0}
@@ -305,9 +307,7 @@ func TestPeerWithinDepth(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	kad.Trigger()
-	kad.Trigger()
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// tells all the running live syncs to get topmost 1
 	// e.g. they should all seal the interval now
