@@ -44,8 +44,8 @@ func testChunkPipe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	buf := file.NewChunkPipe()
 
+	buf := file.NewChunkPipe()
 	sizeC := make(chan int, 255)
 	errC := make(chan error, 1)
 	go func() {
@@ -95,26 +95,21 @@ func testChunkPipe(t *testing.T) {
 	// chunk boundary
 	timer := time.NewTimer(time.Second)
 	readTotal := 0
-OUTER:
 	for {
 		select {
 		case c := <-sizeC:
 			readTotal += c
+			if readTotal == writeTotal {
+				return
+			}
 		case err = <-errC:
 			if err != nil {
 				if err != io.EOF {
 					t.Fatal(err)
 				}
 			}
-			break OUTER
 		case <-timer.C:
 			t.Fatal("timeout")
 		}
 	}
-
-	// check that the write amounts match
-	if readTotal != writeTotal {
-		t.Fatalf("expected read %d, got %d", readTotal, writeTotal)
-	}
-
 }
