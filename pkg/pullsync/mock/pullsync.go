@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -136,16 +135,17 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		for p.lateTop == 0 {
 			select {
 			case <-p.quit:
-				return
+				return 0, context.Canceled
 			case <-ctx.Done():
 				return 0, ctx.Err()
 			default:
 			}
 			p.lateCond.Wait()
 		}
+
 		select {
 		case <-p.quit:
-			return
+			return 0, context.Canceled
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		default:
@@ -215,6 +215,10 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 	return to, nil
 }
 
+func (p *PullSyncMock) Broadcast() {
+	p.lateCond.Broadcast()
+}
+
 func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, error) {
 	p.getCursorsPeers = append(p.getCursorsPeers, peer)
 	return p.cursors, nil
@@ -257,12 +261,10 @@ func (p *PullSyncMock) TriggerTopmost(t uint64) {
 	p.lateCond.L.Lock()
 	defer p.lateCond.L.Unlock()
 	p.lateTop = t
-	fmt.Printf("triggerring topmost with %d, reads %d", p.lateTop, p.lateReads)
 	p.lateCond.Broadcast()
 }
 
 func (p *PullSyncMock) Close() error {
-	fmt.Println("shutting down mock")
 	close(p.quit)
 	p.lateCond.L.Lock()
 	defer p.lateCond.L.Unlock()

@@ -288,7 +288,7 @@ func TestPeerMovesWithinDepth(t *testing.T) {
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(
 				mockk.AddrTuple{A: addr, P: 3}, // po is 3, depth is 2, so we're in depth
-			), mockk.WithDepthCalls(0, 1, 2, 3, 3, 3, 3), // peer moved from out of depth to depth
+			), mockk.WithDepthCalls(0, 1, 2, 3), // peer moved from out of depth to depth
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLateReply(2)},
 		// not sure if this is correct but it should at least flake. problem is we must either limit
@@ -300,13 +300,13 @@ func TestPeerMovesWithinDepth(t *testing.T) {
 	runtime.Gosched()
 	time.Sleep(100 * time.Millisecond)
 
-	kad.Trigger()
+	kad.Trigger() // depth 1
 	waitCursorsCalled(t, pullsync, addr, false)
 	waitLiveSyncCalled(t, pullsync, addr, false)
 	time.Sleep(100 * time.Millisecond)
-	kad.Trigger()
+	kad.Trigger() // depth 2
 	time.Sleep(100 * time.Millisecond)
-	kad.Trigger()
+	kad.Trigger() // depth 3
 	time.Sleep(100 * time.Millisecond)
 
 	// tells all the running live syncs to get topmost 1
@@ -316,9 +316,176 @@ func TestPeerMovesWithinDepth(t *testing.T) {
 
 	// check the intervals
 	for _, b := range binsSyncing {
-		fmt.Println("checing bin", b)
 		checkIntervals(t, st, addr, interval, b)
 	}
+
+	for _, b := range binsNotSyncing {
+		checkNotFound(t, st, addr, b)
+	}
+}
+
+func TestPeerMovesOutOfDepth(t *testing.T) {
+	var (
+		addr           = test.RandomAddress()
+		cursors        = []uint64{0, 0, 0, 0, 0}
+		interval       = "[[1 1]]"
+		binsNotSyncing = []uint8{1, 2, 4} // only bins 3,4 are expected to sync
+		binsSyncing    = []uint8{3}
+	)
+
+	_, st, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(
+				mockk.AddrTuple{A: addr, P: 3}, // po is 3
+			), mockk.WithDepthCalls(0, 1, 2, 3, 4), // peer moved out of depth (d 4 po 3)
+		},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLateReply(2)},
+		// not sure if this is correct but it should at least flake. problem is we must either limit
+		// the number of replies for the new topmost value, or introduce specific replies, which is going
+		// to be a possible pain
+	})
+	defer pullsync.Close()
+
+	runtime.Gosched()
+	time.Sleep(100 * time.Millisecond)
+
+	kad.Trigger() // depth 1
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitLiveSyncCalled(t, pullsync, addr, false)
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // depth 2
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // depth 3
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // depth 4
+	time.Sleep(100 * time.Millisecond)
+
+	// tells all the running live syncs to get topmost 1
+	// e.g. they should all seal the interval now
+	pullsync.TriggerTopmost(1)
+	time.Sleep(100 * time.Millisecond)
+
+	// check the intervals
+	for _, b := range binsSyncing {
+		//fmt.Println("checking bin syncing", b)
+		checkIntervals(t, st, addr, interval, b)
+	}
+
+	for _, b := range binsNotSyncing {
+		checkNotFound(t, st, addr, b)
+	}
+}
+
+func TestPeerMovesOutOfDepthThenBackIn(t *testing.T) {
+	var (
+		addr           = test.RandomAddress()
+		cursors        = []uint64{0, 0, 0, 0, 0}
+		interval       = "[[1 1]]"
+		binsNotSyncing = []uint8{1, 2} // only bins 3,4 are expected to sync
+		binsSyncing    = []uint8{3, 4}
+	)
+
+	_, st, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(
+				mockk.AddrTuple{A: addr, P: 3}, // po is 3
+			), mockk.WithDepthCalls(0, 1, 2, 3, 4, 3), // peer moved out of depth (d 4 po 3)
+		},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLateReply(2)},
+		// not sure if this is correct but it should at least flake. problem is we must either limit
+		// the number of replies for the new topmost value, or introduce specific replies, which is going
+		// to be a possible pain
+	})
+	defer pullsync.Close()
+
+	runtime.Gosched()
+	time.Sleep(100 * time.Millisecond)
+
+	kad.Trigger() // depth 1
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitLiveSyncCalled(t, pullsync, addr, false)
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // depth 2
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // depth 3
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // depth 4
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // depth 3
+	time.Sleep(100 * time.Millisecond)
+
+	// tells all the running live syncs to get topmost 1
+	// e.g. they should all seal the interval now
+	pullsync.TriggerTopmost(1)
+	time.Sleep(100 * time.Millisecond)
+
+	// check the intervals
+	for _, b := range binsSyncing {
+		//fmt.Println("checking bin syncing", b)
+		checkIntervals(t, st, addr, interval, b)
+	}
+
+	for _, b := range binsNotSyncing {
+		checkNotFound(t, st, addr, b)
+	}
+}
+
+func TestPeerMoveAround(t *testing.T) {
+	var (
+		addr           = test.RandomAddress()
+		cursors        = []uint64{0, 0, 0, 0, 0}
+		interval       = "[[1 1]]"
+		binsNotSyncing = []uint8{1}
+		binsSyncing    = []uint8{3, 2, 4}
+	)
+
+	_, st, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(
+				mockk.AddrTuple{A: addr, P: 3}, // po is 3, depth is 2, so we're in depth
+			), mockk.WithDepthCalls(0, 1, 2, 0, 2), // peer moved from out of depth to depth
+		},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLateReply(3)},
+		// not sure if this is correct but it should at least flake. problem is we must either limit
+		// the number of replies for the new topmost value, or introduce specific replies, which is going
+		// to be a possible pain
+	})
+	defer pullsync.Close()
+
+	runtime.Gosched()
+	time.Sleep(100 * time.Millisecond)
+
+	kad.Trigger() // 1
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitLiveSyncCalled(t, pullsync, addr, false)
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger() // 2
+	pullsync.Broadcast()
+	time.Sleep(100 * time.Millisecond)
+	pullsync.Broadcast()
+	kad.Trigger() // 0
+	time.Sleep(100 * time.Millisecond)
+	pullsync.Broadcast()
+	kad.Trigger() // 2
+	time.Sleep(100 * time.Millisecond)
+	pullsync.Broadcast()
+	//kad.Trigger() // 3
+	time.Sleep(100 * time.Millisecond)
+	//kad.Trigger() // 4
+	time.Sleep(100 * time.Millisecond)
+	pullsync.Broadcast()
+
+	// tells all the running live syncs to get topmost 1
+	// e.g. they should all seal the interval now
+	fmt.Println("triggering topmost 1")
+	pullsync.TriggerTopmost(1)
+	time.Sleep(100 * time.Millisecond)
+
+	// check the intervals
+	for _, b := range binsSyncing {
+		checkIntervals(t, st, addr, interval, b)
+	}
+
 	for _, b := range binsNotSyncing {
 		checkNotFound(t, st, addr, b)
 	}
@@ -328,20 +495,18 @@ func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, exp
 	t.Helper()
 
 	key := puller.PeerIntervalKey(addr, bin)
-	fmt.Println(key)
 	i := &intervalstore.Intervals{}
 	err := s.Get(key, i)
 	if err != nil {
 		t.Fatalf("error getting interval for bin %d: %v", bin, err)
 	}
 	if v := i.String(); v != expInterval {
-		t.Fatalf("got unexpected interval: %s, want %s", v, expInterval)
+		t.Fatalf("got unexpected interval: %s, want %s bin %d", v, expInterval, bin)
 	}
 }
 
 func checkNotFound(t *testing.T, s storage.StateStorer, addr swarm.Address, bin uint8) {
 	t.Helper()
-
 	key := puller.PeerIntervalKey(addr, bin)
 	i := &intervalstore.Intervals{}
 	err := s.Get(key, i)
@@ -351,7 +516,10 @@ func checkNotFound(t *testing.T, s storage.StateStorer, addr swarm.Address, bin 
 		}
 		return
 	}
-	t.Fatal("wanted error but got none")
+	if i.String() == "[]" {
+		return
+	}
+	t.Fatalf("wanted error but got none. bin %d", bin)
 }
 
 func checkCalls(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
