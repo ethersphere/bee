@@ -37,10 +37,10 @@ type Splitter interface {
 }
 
 // JoinReadAll reads all output from the provided joiner.
-func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer) error {
+func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer) (int64, error) {
 	r, l, err := j.Join(context.Background(), addr)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	// join, rinse, repeat until done
 	data := make([]byte, swarm.ChunkSize)
@@ -48,19 +48,19 @@ func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer) error {
 	for i := int64(0); i < l; i += swarm.ChunkSize {
 		cr, err := r.Read(data)
 		if err != nil {
-			return err
+			return total, err
 		}
 		total += int64(cr)
 		cw, err := outFile.Write(data[:cr])
 		if err != nil {
-			return err
+			return total, err
 		}
 		if cw != cr {
-			return fmt.Errorf("short wrote %d of %d for chunk %d", cw, cr, i)
+			return total, fmt.Errorf("short wrote %d of %d for chunk %d", cw, cr, i)
 		}
 	}
 	if total != l {
-		return fmt.Errorf("received only %d of %d total bytes", total, l)
+		return total, fmt.Errorf("received only %d of %d total bytes", total, l)
 	}
-	return nil
+	return total, nil
 }

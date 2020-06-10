@@ -59,7 +59,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	writeCloser := cmdfile.NopWriteCloser(buf)
 	limitBuf := cmdfile.NewLimitWriteCloser(writeCloser, limitMetadataLength)
 	j := joiner.NewSimpleJoiner(store)
-	err = file.JoinReadAll(j, addr, limitBuf)
+	_, err = file.JoinReadAll(j, addr, limitBuf)
 	if err != nil {
 		return err
 	}

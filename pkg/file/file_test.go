@@ -93,13 +93,17 @@ func TestJoinReadAll(t *testing.T) {
 	var dataLength int64 = swarm.ChunkSize + 2
 	j := newMockJoiner(dataLength)
 	buf := bytes.NewBuffer(nil)
-	err := file.JoinReadAll(j, swarm.ZeroAddress, buf)
+	c, err := file.JoinReadAll(j, swarm.ZeroAddress, buf)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if dataLength != c {
+		t.Fatalf("expected readall return length %d, got %d", dataLength, c)
 	}
 	if dataLength != int64(len(buf.Bytes())) {
 		t.Fatalf("expected length %d, got %d", dataLength, len(buf.Bytes()))
 	}
+
 }
 
 // mockJoiner is an implementation of file,Joiner that short-circuits that returns
