@@ -279,7 +279,6 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 		emptyInterval  = "[]"
 		binsNotSyncing = []uint8{0, 1, 2} // only bins 3,4 are expected to sync
 		binsSyncing    = []uint8{3, 4}
-		//expLiveCalls   = []c{call(2, 1, max), call(2, 2, max), call(3, 1, max), call(3, 2, max), call(4, 1, max), call(4, 2, max)}
 	)
 
 	_, st, kad, pullsync := newPuller(opts{
@@ -289,6 +288,9 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 			), mockk.WithDepthCalls(0, 1, 2, 3), // peer moved from out of depth to depth
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLateReply(2)},
+		// not sure if this is correct but it should at least flake. problem is we must either limit
+		// the number of replies for the new topmost value, or introduce specific replies, which is going
+		// to be a possible pain
 	})
 	defer pullsync.Close()
 
@@ -308,6 +310,7 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 	// tells all the running live syncs to get topmost 1
 	// e.g. they should all seal the interval now
 	pullsync.TriggerTopmost(1)
+	time.Sleep(100 * time.Millisecond)
 
 	// check the intervals
 	for _, b := range binsSyncing {
@@ -316,7 +319,6 @@ func TestPeerMovedIntoDepth(t *testing.T) {
 	for _, b := range binsNotSyncing {
 		checkIntervals(t, st, addr, emptyInterval, b)
 	}
-
 }
 
 func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
