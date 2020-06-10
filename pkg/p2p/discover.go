@@ -15,14 +15,7 @@ import (
 
 func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (stop bool, err error)) (stopped bool, err error) {
 	if comp, _ := ma.SplitFirst(addr); comp.Protocol().Name != "dnsaddr" {
-		stop, err := f(addr)
-		if err != nil {
-			return false, err
-		}
-		if stop {
-			return true, nil
-		}
-		return false, nil
+		return f(addr)
 	}
 
 	dnsResolver := madns.DefaultResolver
