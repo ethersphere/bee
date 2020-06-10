@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package api_test
+package debugapi_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -36,39 +36,39 @@ func TestPingpong(t *testing.T) {
 		return rtt, nil
 	})
 
-	client := newTestServer(t, testServerOptions{
+	ts := newTestServer(t, testServerOptions{
 		Pingpong: pingpongService,
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+peerID.String(), nil, http.StatusOK, api.PingpongResponse{
+		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/"+peerID.String(), nil, http.StatusOK, debugapi.PingpongResponse{
 			RTT: rtt.String(),
 		})
 	})
 
 	t.Run("peer not found", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+unknownPeerID.String(), nil, http.StatusNotFound, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/"+unknownPeerID.String(), nil, http.StatusNotFound, jsonhttp.StatusResponse{
 			Code:    http.StatusNotFound,
 			Message: "peer not found",
 		})
 	})
 
 	t.Run("invalid peer address", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Code:    http.StatusBadRequest,
 			Message: "invalid peer address",
 		})
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, "/pingpong/"+errorPeerID.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/"+errorPeerID.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: http.StatusText(http.StatusInternalServerError), // do not leak internal error
 		})
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/pingpong/"+peerID.String(), nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodGet, "/pingpong/"+peerID.String(), nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
 			Code:    http.StatusMethodNotAllowed,
 			Message: http.StatusText(http.StatusMethodNotAllowed),
 		})

@@ -23,14 +23,17 @@ type testServerOptions struct {
 	Pingpong pingpong.Interface
 	Storer   storage.Storer
 	Tags     *tags.Tags
+	Logger   logging.Logger
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *http.Client {
+	if o.Logger == nil {
+		o.Logger = logging.New(ioutil.Discard, 0)
+	}
 	s := api.New(api.Options{
-		Pingpong: o.Pingpong,
-		Tags:     o.Tags,
-		Storer:   o.Storer,
-		Logger:   logging.New(ioutil.Discard, 0),
+		Tags:   o.Tags,
+		Storer: o.Storer,
+		Logger: o.Logger,
 	})
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)

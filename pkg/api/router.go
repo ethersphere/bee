@@ -28,16 +28,12 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	router.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.pingpongHandler),
+	router.Handle("/bzz-raw", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.rawUploadHandler),
 	})
 
-	router.Handle("/bzz", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.bzzUploadHandler),
-	})
-
-	router.Handle("/bzz/{address}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.bzzGetHandler),
+	router.Handle("/bzz-raw/{address}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.rawGetHandler),
 	})
 
 	router.Handle("/bzz-chunk/{addr}", jsonhttp.MethodHandler{

@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pusher"
@@ -205,7 +206,6 @@ func NewBee(o Options) (*Bee, error) {
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
 		ChunkPeerer: topologyDriver,
-		Storer:      storer,
 		Logger:      logger,
 	})
 	tag := tags.NewTags()
@@ -215,6 +215,8 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+
+	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
 		Streamer:      p2ps,
@@ -240,11 +242,10 @@ func NewBee(o Options) (*Bee, error) {
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Pingpong: pingPong,
-			Tags:     tag,
-			Storer:   ns,
-			Logger:   logger,
-			Tracer:   tracer,
+			Tags:   tag,
+			Storer: ns,
+			Logger: logger,
+			Tracer: tracer,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
@@ -273,7 +274,9 @@ func NewBee(o Options) (*Bee, error) {
 		debugAPIService := debugapi.New(debugapi.Options{
 			Overlay:        address,
 			P2P:            p2ps,
+			Pingpong:       pingPong,
 			Logger:         logger,
+			Tracer:         tracer,
 			Addressbook:    addressbook,
 			TopologyDriver: topologyDriver,
 			Storer:         storer,
@@ -351,25 +354,35 @@ func NewBee(o Options) (*Bee, error) {
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
+				var count int
+				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+					bzzAddr, err := p2ps.Connect(p2pCtx, addr)
+					if err != nil {
+						logger.Debugf("connect fail %s: %v", a, err)
+						logger.Errorf("connect to bootnode %s", a)
+						return false, nil
+					}
 
-				bzzAddr, err := p2ps.Connect(p2pCtx, addr)
-				if err != nil {
+					err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
+					if err != nil {
+						_ = p2ps.Disconnect(bzzAddr.Overlay)
+						logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
+						logger.Errorf("connect to bootnode %s", a)
+						return false, nil
+					}
+
+					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
+						_ = p2ps.Disconnect(bzzAddr.Overlay)
+						logger.Debugf("topology connected fail %s %s: %v", a, bzzAddr.Overlay, err)
+						logger.Errorf("connect to bootnode %s", a)
+						return false, nil
+					}
+					count++
+					// connect to max 3 bootnodes
+					// using DNS discovery one node is discovered twice (TCP and UDP)
+					return count > 6, nil
+				}); err != nil {
 					logger.Debugf("connect fail %s: %v", a, err)
-					logger.Errorf("connect to bootnode %s", a)
-					return
-				}
-
-				err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
-				if err != nil {
-					_ = p2ps.Disconnect(bzzAddr.Overlay)
-					logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
-					logger.Errorf("connect to bootnode %s", a)
-					return
-				}
-
-				if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
-					_ = p2ps.Disconnect(bzzAddr.Overlay)
-					logger.Debugf("topology connected fail %s %s: %v", a, bzzAddr.Overlay, err)
 					logger.Errorf("connect to bootnode %s", a)
 					return
 				}
