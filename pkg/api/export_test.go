@@ -6,6 +6,6 @@ package api
 
 type (
 	PingpongResponse = pingpongResponse
-	BzzPostResponse  = bzzPostResponse
+	RawPostResponse  = rawPostResponse
 	TagResponse      = tagResponse
 )
