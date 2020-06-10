@@ -60,28 +60,6 @@ func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (s *server) getTagInfoUsingAddress(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["addr"]
-	address, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.Logger.Debugf("bzz-tag: parse chunk address %s: %v", addr, err)
-		s.Logger.Error("bzz-tag: parse chunk address")
-		jsonhttp.BadRequest(w, "invalid chunk address")
-		return
-	}
-
-	tag, err := s.Tags.GetByAddress(address)
-	if err != nil {
-		s.Logger.Debugf("bzz-tag: tag not present %s : %v, ", address.String(), err)
-		s.Logger.Error("bzz-tag: tag not present")
-		jsonhttp.InternalServerError(w, "tag not present")
-		return
-	}
-
-	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, newTagResponse(tag))
-}
-
 func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
 	uidStr := mux.Vars(r)["uuid"]
 

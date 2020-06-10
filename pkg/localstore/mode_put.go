@@ -338,12 +338,18 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 		return 0, err
 	}
 
-	err = db.gcIndex.PutInBatch(batch, item)
+	// add new entry to gc index ONLY if it is not present in pinIndex
+	ok, err := db.pinIndex.Has(item)
 	if err != nil {
 		return 0, err
 	}
-
-	gcSizeChange++
+	if !ok {
+		err = db.gcIndex.PutInBatch(batch, item)
+		if err != nil {
+			return 0, err
+		}
+		gcSizeChange++
+	}
 
 	return gcSizeChange, nil
 }
