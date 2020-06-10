@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pullsync"
@@ -163,8 +164,94 @@ func (p *Puller) manage() {
 			for _, v := range peersToSync {
 				p.syncPeer(ctx, v.addr, v.po)
 			}
+
+			for _, v := range peersToRecalc {
+				p.recalcPeer(ctx, v.addr, v.po)
+			}
 		case <-p.quit:
 			return
+		}
+	}
+}
+
+func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8) {
+	syncCtx := p.syncPeers[po][peer.String()]
+
+	syncCtx.Lock()
+	defer syncCtx.Unlock()
+
+	p.cursorsMtx.Lock()
+	c := p.cursors[peer.String()]
+	p.cursorsMtx.Unlock()
+
+	d := p.topology.NeighborhoodDepth()
+	binCtx, cancel := context.WithCancel(ctx)
+
+	if po >= d {
+		// within depth
+		var want, dontWant []uint8
+
+		for i := d; i < bins; i++ {
+			want = append(want, i)
+		}
+		for i := uint8(0); i < d; i++ {
+			dontWant = append(dontWant, i)
+		}
+		spew.Dump("we are within depth", "want", want, "dont want", dontWant)
+
+		for _, bin := range want {
+			// question: do we want to have the separate cancel funcs per live/hist
+			// for known whether syncing is running on that bin/stream? could be some race here
+			if _, ok := syncCtx.binCancelFuncs[bin]; !ok {
+				// if there's no bin cancel func it means there's no
+				// sync running on this bin. start syncing both hist and live
+				cur := c[bin]
+
+				syncCtx.binCancelFuncs[po] = cancel
+
+				go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
+				go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
+			}
+		}
+		for _, bin := range dontWant {
+			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
+				// we have sync running on this bin, cancel it
+				c()
+				delete(syncCtx.binCancelFuncs, bin)
+			}
+		}
+	} else {
+		// outside of depth
+		var (
+			want     = po
+			dontWant []uint8
+		)
+
+		for i := uint8(0); i < bins; i++ {
+			if i == want {
+				continue
+			}
+			dontWant = append(dontWant, i)
+		}
+
+		spew.Dump("outside depth want", want, "dont want", dontWant)
+
+		if _, ok := syncCtx.binCancelFuncs[want]; !ok {
+			// if there's no bin cancel func it means there's no
+			// sync running on this bin. start syncing both hist and live
+			cur := c[want]
+
+			syncCtx.binCancelFuncs[po] = cancel
+
+			go p.histSyncWorker(binCtx, peer, uint8(want), cur)
+			go p.liveSyncWorker(binCtx, peer, uint8(want), cur)
+		}
+		for _, bin := range dontWant {
+			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
+				// we have sync running on this bin, cancel it
+				c()
+				delete(syncCtx.binCancelFuncs, bin)
+			}
 		}
 	}
 }
@@ -191,18 +278,15 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8) {
 	defer syncCtx.Unlock()
 
 	d := p.topology.NeighborhoodDepth()
+	binCtx, cancel := context.WithCancel(ctx)
+	syncCtx.binCancelFuncs[po] = cancel
 
 	// peer outside depth?
 	if po < d {
 		cur, bin := c[po], po
 		// start just one bin for historical and live
-		hbinCtx, hcancel := context.WithCancel(ctx)
-		syncCtx.histCancelFuncs[po] = hcancel
-
-		go p.histSyncWorker(hbinCtx, peer, uint8(bin), cur)
-		lbinCtx, lcancel := context.WithCancel(ctx)
-		syncCtx.liveCancelFuncs[po] = lcancel
-		go p.liveSyncWorker(lbinCtx, peer, uint8(bin), cur)
+		go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
+		go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
 
 		return
 	}
@@ -212,8 +296,6 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8) {
 		if bin == 0 || uint8(bin) < d || cur == 0 {
 			continue
 		}
-		binCtx, cancel := context.WithCancel(ctx)
-		syncCtx.histCancelFuncs[po] = cancel
 		go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
 	}
 
@@ -222,8 +304,6 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8) {
 		if bin == 0 || uint8(bin) < d {
 			continue
 		}
-		binCtx, cancel := context.WithCancel(ctx)
-		syncCtx.liveCancelFuncs[po] = cancel
 		go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
 	}
 }
@@ -351,15 +431,13 @@ func peerIntervalKey(peer swarm.Address, bin uint8) string {
 }
 
 type syncPeer struct {
-	histCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
-	liveCancelFuncs map[uint8]func() // slice of context cancel funcs for live sync. index is bin
+	binCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
 
 	sync.Mutex
 }
 
 func newSyncPeer() *syncPeer {
 	return &syncPeer{
-		histCancelFuncs: make(map[uint8]func(), bins),
-		liveCancelFuncs: make(map[uint8]func(), bins),
+		binCancelFuncs: make(map[uint8]func(), bins),
 	}
 }
