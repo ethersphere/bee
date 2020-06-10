@@ -30,7 +30,7 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	responseObject, err := s.splitUpload(ctx, r.Body, r.ContentLength)
 	if err != nil {
-		jsonhttp.BadGateway(w, err.Error())
+		jsonhttp.InternalServerError(w, err.Error())
 		return
 	}
 	jsonhttp.OK(w, responseObject)
@@ -39,11 +39,11 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (interface{}, error) {
 	chunkPipe := file.NewChunkPipe()
 	go func() {
-		data := make([]byte, swarm.ChunkSize)
-		c, err := io.CopyBuffer(chunkPipe, r, data)
+		buf := make([]byte, swarm.ChunkSize)
+		c, err := io.CopyBuffer(chunkPipe, r, buf)
 		if err != nil {
-			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
-			s.Logger.Error("raw: read count mismatch")
+			s.Logger.Debugf("raw: io error %d: %v", c, err)
+			s.Logger.Error("raw: io error")
 			return
 		}
 		if c != l {
@@ -84,7 +84,7 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	dataSize, err := j.Size(ctx, address)
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			s.Logger.Debugf("raw: not found %s: %v", address, err)
 			s.Logger.Error("raw: not found")
 			jsonhttp.NotFound(w, "not found")
@@ -102,7 +102,6 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Errorf("raw: data write %s: %v", address, err)
 		s.Logger.Error("raw: data input error")
-		jsonhttp.BadRequest(w, "failed to retrieve data")
 		return
 	}
 }

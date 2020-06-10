@@ -37,7 +37,9 @@ func TestChunkPipe(t *testing.T) {
 		}
 		errC <- nil
 	}()
-	data := [swarm.ChunkSize - 2]byte{}
+
+	// choose data lengths outside chunk boundaries
+	data := make([]byte, swarm.ChunkSize-2)
 	c, err := buf.Write(data[:])
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +60,7 @@ func TestChunkPipe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	timer := time.NewTimer(time.Millisecond)
+	timer := time.NewTimer(time.Second)
 	select {
 	case err = <-errC:
 	case <-timer.C:

@@ -8,7 +8,7 @@ package joiner
 import (
 	"context"
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"io"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -36,8 +36,9 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSiz
 		return 0, err
 	}
 
-	if len(rootChunk.Data()) < 8 {
-		return 0, errors.New("invalid content chunk")
+	chunkLength := rootChunk.Data()
+	if len(chunkLength) < 8 {
+		return 0, fmt.Errorf("invalid chunk content of %d bytes", chunkLength)
 	}
 
 	dataLength := binary.LittleEndian.Uint64(rootChunk.Data())

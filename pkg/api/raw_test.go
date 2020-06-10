@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -31,7 +30,7 @@ func TestRaw(t *testing.T) {
 		client     = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(),
-			Logger: logging.New(os.Stderr, 5),
+			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
