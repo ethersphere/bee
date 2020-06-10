@@ -316,7 +316,7 @@ func TestPeerMovesWithinDepth(t *testing.T) {
 
 	// check the intervals
 	for _, b := range binsSyncing {
-		checkIntervals(t, st, addr, interval, b)
+		checkIntervals(t, st, addr, interval, b) //getting error here
 	}
 
 	for _, b := range binsNotSyncing {
@@ -421,8 +421,7 @@ func TestPeerMovesOutOfDepthThenBackIn(t *testing.T) {
 
 	// check the intervals
 	for _, b := range binsSyncing {
-		//fmt.Println("checking bin syncing", b)
-		checkIntervals(t, st, addr, interval, b)
+		checkIntervals(t, st, addr, interval, b) // getting errors here
 	}
 
 	for _, b := range binsNotSyncing {
@@ -483,7 +482,7 @@ func TestPeerMoveAround(t *testing.T) {
 
 	// check the intervals
 	for _, b := range binsSyncing {
-		checkIntervals(t, st, addr, interval, b)
+		checkIntervals(t, st, addr, interval, b) // getting errors here
 	}
 
 	for _, b := range binsNotSyncing {
