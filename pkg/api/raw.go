@@ -30,10 +30,12 @@ func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	responseObject, err := s.splitUpload(ctx, r.Body, r.ContentLength)
 	if err != nil {
-		jsonhttp.InternalServerError(w, err.Error())
-		return
+		s.Logger.Debugf("raw: %v", err)
+		o := responseObject.(jsonhttp.StatusResponse)
+		jsonhttp.Respond(w, o.Code, o) 
+	} else {
+		jsonhttp.OK(w, responseObject)
 	}
-	jsonhttp.OK(w, responseObject)
 }
 
 func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (interface{}, error) {
@@ -42,29 +44,33 @@ func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (int
 		buf := make([]byte, swarm.ChunkSize)
 		c, err := io.CopyBuffer(chunkPipe, r, buf)
 		if err != nil {
-			s.Logger.Debugf("raw: io error %d: %v", c, err)
-			s.Logger.Error("raw: io error")
+			s.Logger.Debugf("split upload: io error %d: %v", c, err)
+			s.Logger.Error("io error")
 			return
 		}
 		if c != l {
-			s.Logger.Debugf("raw: read count mismatch %d: %v", c, err)
-			s.Logger.Error("raw: read count mismatch")
+			s.Logger.Debugf("split upload: read count mismatch %d: %v", c, err)
+			s.Logger.Error("read count mismatch")
 			return
 		}
 		err = chunkPipe.Close()
 		if err != nil {
-			s.Logger.Errorf("raw: incomplete file write close %v", err)
-			s.Logger.Error("raw: incomplete file write close")
+			s.Logger.Errorf("split upload: incomplete file write close %v", err)
+			s.Logger.Error("incomplete file write close")
 		}
 	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
 	address, err := sp.Split(ctx, chunkPipe, l)
+	var response jsonhttp.StatusResponse
 	if err != nil {
-		s.Logger.Debugf("raw: split error %s: %v", address, err)
-		s.Logger.Error("raw: split error")
-		return errors.New("upload error"), nil
+		response.Message = "upload error"
+		response.Code = http.StatusInternalServerError
+		err = fmt.Errorf("%s: %v", response.Message, err)
+		return response, err
+	} else {
+		err = fmt.Errorf("%s: %v", response.Message, err)
+		return rawPostResponse{Hash: address}, nil
 	}
-	return rawPostResponse{Hash: address}, nil
 }
 
 // rawGetHandler handles retrieval of raw binary data of arbitrary length.
