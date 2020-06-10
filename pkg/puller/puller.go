@@ -110,8 +110,10 @@ func (p *Puller) manage() {
 			depth := p.topology.NeighborhoodDepth()
 
 			// we defer the actual start of syncing to get out of the iterator first
-			var peersToSync []peer
-
+			var (
+				peersToSync   []peer
+				peersToRecalc []peer
+			)
 			p.syncPeersMtx.Lock()
 			defer p.syncPeersMtx.Unlock()
 
@@ -127,11 +129,15 @@ func (p *Puller) manage() {
 						return false, true, nil // skip to next bin
 					}
 
+					// not yet syncing, start
 					if _, ok := bp[peerAddr.String()]; !ok {
 						bp[peerAddr.String()] = newSyncPeer()
 						peerEntry := peer{addr: peerAddr, po: po}
 						peersToSync = append(peersToSync, peerEntry)
-						// not yet syncing, start
+					} else {
+						// already syncing, recalc
+						peerEntry := peer{addr: peerAddr, po: po}
+						peersToRecalc = append(peersToRecalc, peerEntry)
 					}
 				case po >= depth:
 					//	within depth, sync everything >= depth
@@ -142,6 +148,8 @@ func (p *Puller) manage() {
 						peersToSync = append(peersToSync, peerEntry)
 					} else {
 						// already syncing, recalc
+						peerEntry := peer{addr: peerAddr, po: po}
+						peersToRecalc = append(peersToRecalc, peerEntry)
 					}
 				}
 
@@ -155,7 +163,6 @@ func (p *Puller) manage() {
 			for _, v := range peersToSync {
 				p.syncPeer(ctx, v.addr, v.po)
 			}
-
 		case <-p.quit:
 			return
 		}

@@ -32,13 +32,21 @@ func WithDepth(d uint8) Option {
 	})
 }
 
+func WithDepthCalls(d ...uint8) Option {
+	return optionFunc(func(m *Mock) {
+		m.depthReplies = d
+	})
+}
+
 type Mock struct {
-	mtx         sync.Mutex
-	peers       []swarm.Address
-	eachPeerRev []AddrTuple
-	depth       uint8
-	trigs       []chan struct{}
-	trigMtx     sync.Mutex
+	mtx          sync.Mutex
+	peers        []swarm.Address
+	eachPeerRev  []AddrTuple
+	depth        uint8
+	depthReplies []uint8
+	depthCalls   int
+	trigs        []chan struct{}
+	trigMtx      sync.Mutex
 }
 
 func NewMockKademlia(o ...Option) *Mock {
@@ -94,6 +102,13 @@ func (m *Mock) EachPeerRev(f topology.EachPeerFunc) error {
 }
 
 func (m *Mock) NeighborhoodDepth() uint8 {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	m.depthCalls++
+	if len(m.depthReplies) > 0 {
+		return m.depthReplies[m.depthCalls]
+	}
 	return m.depth
 }
 

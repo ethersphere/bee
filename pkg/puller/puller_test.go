@@ -22,6 +22,18 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/test"
 )
 
+const max = math.MaxUint64
+
+var (
+	call = func(b uint8, f, t uint64) c {
+		return c{b: b, f: f, t: t}
+	}
+
+	reply = func(b uint8, f, top uint64, block bool) mockps.SyncReply {
+		return mockps.NewReply(b, f, top, block)
+	}
+)
+
 // test that adding one peer start syncing
 func TestStartSync(t *testing.T) {
 	var (
@@ -80,10 +92,6 @@ func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 	addr := test.RandomAddress()
 	const max = math.MaxUint64
 
-	call := func(b uint8, f, t uint64) c {
-		return c{b: b, f: f, t: t}
-	}
-
 	for _, tc := range []struct {
 		name         string   // name of test
 		cursors      []uint64 // mocked cursors to be exchanged from peer
@@ -134,10 +142,6 @@ func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 
 func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 	addr := test.RandomAddress()
-
-	call := func(b uint8, f, t uint64) c {
-		return c{b: b, f: f, t: t}
-	}
 
 	for _, tc := range []struct {
 		name         string   // name of test
@@ -216,14 +220,6 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 	addr := test.RandomAddress()
 	const max = math.MaxUint64
 
-	call := func(b uint8, f, t uint64) c {
-		return c{b: b, f: f, t: t}
-	}
-
-	reply := func(b uint8, f, top uint64, block bool) mockps.SyncReply {
-		return mockps.NewReply(b, f, top, block)
-	}
-
 	for _, tc := range []struct {
 		name         string   // name of test
 		cursors      []uint64 // mocked cursors to be exchanged from peer
@@ -238,12 +234,6 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			liveReplies:  []mockps.SyncReply{reply(2, 1, 1, false), reply(2, 2, 0, true), reply(3, 1, 1, false), reply(3, 2, 0, true), reply(4, 1, 1, false), reply(4, 2, 0, true)},
 			expLiveCalls: []c{call(2, 1, max), call(2, 2, max), call(3, 1, max), call(3, 2, max), call(4, 1, max), call(4, 2, max)},
 		},
-		//{
-		//name: "cursor 0 - calls 1-1, 2-5, 6-10", cursors: []uint64{0, 0, 0},
-		//intervals:    "[[1 10]]",
-		//liveReplies:  []uint64{1, 5, 10},
-		//expLiveCalls: []c{call(1, 1, max), call(1, 2, max), call(1, 6, max), call(1, 11, max)},
-		//},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, st, kad, pullsync := newPuller(opts{
@@ -277,7 +267,55 @@ func TestPeerMovedOutOfDepth(t *testing.T) {
 
 }
 
+// TestPeerMovedIntoDepth starts syncing with a peer then gradually moves the
+// peer into depth. The peer starts only live syncing due to the 0 cursors provided by the mock,
+// and the test verifies that only the correct bins are syncing by starting to feed the workers with
+// replies that will seal certain intervals on the bins which are still expected to sync
 func TestPeerMovedIntoDepth(t *testing.T) {
+	var (
+		addr           = test.RandomAddress()
+		cursors        = []uint64{0, 0, 0, 0, 0}
+		interval       = "[[1 1]]"
+		emptyInterval  = "[]"
+		binsNotSyncing = []uint8{0, 1, 2} // only bins 3,4 are expected to sync
+		binsSyncing    = []uint8{3, 4}
+		//expLiveCalls   = []c{call(2, 1, max), call(2, 2, max), call(3, 1, max), call(3, 2, max), call(4, 1, max), call(4, 2, max)}
+	)
+
+	_, st, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(
+				mockk.AddrTuple{A: addr, P: 3}, // po is 3, depth is 2, so we're in depth
+			), mockk.WithDepthCalls(0, 1, 2, 3), // peer moved from out of depth to depth
+		},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLateReply(2)},
+	})
+	defer pullsync.Close()
+
+	runtime.Gosched()
+	time.Sleep(100 * time.Millisecond)
+
+	kad.Trigger()
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitLiveSyncCalled(t, pullsync, addr, false)
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+
+	// tells all the running live syncs to get topmost 1
+	// e.g. they should all seal the interval now
+	pullsync.TriggerTopmost(1)
+
+	// check the intervals
+	for _, b := range binsSyncing {
+		checkIntervals(t, st, addr, interval, b)
+	}
+	for _, b := range binsNotSyncing {
+		checkIntervals(t, st, addr, emptyInterval, b)
+	}
 
 }
 
@@ -414,7 +452,6 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := mockk.NewMockKademlia(ops.kad...)
 	logger := logging.New(os.Stdout, 5)
-	//logger := logging.New(ioutil.Discard, 0)
 
 	o := puller.Options{
 		Topology:   kad,

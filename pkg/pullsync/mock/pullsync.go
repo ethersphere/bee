@@ -6,12 +6,10 @@ package mock
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"math"
 	"sync"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -54,6 +52,14 @@ func WithExactLiveSyncReplies(r ...SyncReply) Option {
 	})
 }
 
+func WithLateReply(r int) Option {
+	return optionFunc(func(p *PullSyncMock) {
+		p.lateReply = true
+		p.lateReads = r
+		p.lateCond = sync.NewCond(new(sync.Mutex))
+	})
+}
+
 const limit = 50
 
 type SyncCall struct {
@@ -90,6 +96,11 @@ type PullSyncMock struct {
 	liveSyncCalls        int
 	liveSyncExactReplies []SyncReply
 
+	lateReply bool
+	lateCond  *sync.Cond
+	lateReads int
+	lateTop   uint64
+
 	quit chan struct{}
 }
 
@@ -115,6 +126,27 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 	}
 	p.mtx.Lock()
 	p.syncCalls = append(p.syncCalls, call)
+
+	if isLive && p.lateReply {
+		p.mtx.Unlock()
+		p.lateCond.L.Lock()
+		defer p.lateCond.L.Unlock()
+
+		for p.lateTop != 0 {
+			p.lateCond.Wait()
+		}
+		select {
+		case <-p.quit:
+			return
+		default:
+		}
+		p.lateReads--
+		if p.lateReads == 0 {
+			p.lateTop = 0
+		}
+		return p.lateTop, nil
+	}
+
 	if isLive && p.blockLiveSync {
 		// don't response, wait for context cancel
 		p.mtx.Unlock()
@@ -127,15 +159,11 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 			sr    SyncReply
 			found bool
 		)
-		spew.Dump(p.liveSyncExactReplies)
 		for i, v := range p.liveSyncExactReplies {
 			if v.bin == bin && v.from == from {
 				sr = v
 				found = true
-				fmt.Println("found entry", "from", from, "bin", bin)
 				p.liveSyncExactReplies = append(p.liveSyncExactReplies[:i], p.liveSyncExactReplies[i+1:]...)
-				fmt.Println("removed entry*************************************", i)
-				spew.Dump(p.liveSyncExactReplies)
 			}
 			if found {
 				break
@@ -143,8 +171,6 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		}
 		p.mtx.Unlock()
 		if !found {
-
-			fmt.Println("not found entry", "from", from, "bin", bin)
 			panic("not found")
 		}
 		if sr.block {
@@ -216,8 +242,19 @@ func (p *PullSyncMock) CursorsCalls(peer swarm.Address) bool {
 	return false
 }
 
+func (p *PullSyncMock) TriggerTopmost(t uint64) {
+	p.lateCond.L.Lock()
+	defer p.lateCond.L.Unlock()
+	p.lateTop = t
+	p.lateCond.Broadcast()
+}
+
 func (p *PullSyncMock) Close() error {
 	close(p.quit)
+	p.lateCond.L.Lock()
+	defer p.lateCond.L.Unlock()
+	p.lateTop = 1
+	p.lateCond.Broadcast()
 	return nil
 }
 
