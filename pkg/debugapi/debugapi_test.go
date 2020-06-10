@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/pingpong"
 	mockstore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -29,6 +30,7 @@ import (
 type testServerOptions struct {
 	Overlay      swarm.Address
 	P2P          p2p.Service
+	Pingpong     pingpong.Interface
 	Storer       storage.Storer
 	TopologyOpts []mock.Option
 	Tags         *tags.Tags
@@ -48,6 +50,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	s := debugapi.New(debugapi.Options{
 		Overlay:        o.Overlay,
 		P2P:            o.P2P,
+		Pingpong:       o.Pingpong,
 		Tags:           o.Tags,
 		Logger:         logging.New(ioutil.Discard, 0),
 		Addressbook:    addrbook,

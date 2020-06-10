@@ -50,6 +50,10 @@ func (s *server) setupRouting() {
 		web.FinalHandlerFunc(s.statusHandler),
 	))
 
+	router.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.pingpongHandler),
+	})
+
 	router.Handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})

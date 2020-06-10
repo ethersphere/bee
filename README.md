@@ -162,10 +162,10 @@ curl localhost:6062/addresses
 
 Make sure that Debug API is enabled and address configured as in examples above.
 
-And use that address in the API call on another node, for example, local node 1:
+And use that address in the Debug API call on another node, for example, local node 1:
 
 ```sh
-curl -XPOST localhost:8081/pingpong/d4440baf2d79e481c3c6fd93a2014d2e6fe0386418829439f26d13a8253d04f1
+curl -XPOST localhost:6061/pingpong/d4440baf2d79e481c3c6fd93a2014d2e6fe0386418829439f26d13a8253d04f1
 ```
 
 ## Generating protobuf
