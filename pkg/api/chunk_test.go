@@ -120,7 +120,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 }
 
-func request(t *testing.T, client *http.Client, method string, resource string, body io.Reader, responseCode int) *http.Response {
+func request(t *testing.T, client *http.Client, method, resource string, body io.Reader, responseCode int) *http.Response {
 	t.Helper()
 
 	req, err := http.NewRequest(method, resource, body)
