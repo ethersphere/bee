@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-const bins = 5
+const bins = 16
 
 type Options struct {
 	StateStore storage.StateStorer
@@ -77,12 +77,18 @@ func (p *Puller) pollTopology() {
 	// todo: this should become into some falling-edge filter, since this is till rising edge
 	// ie. reset a timer every time we get a notification on the channel, then once a certain timeout
 	// passes we trigger the peersC channel
+	dur := time.Duration(100 * time.Millisecond)
+	t := time.NewTimer(dur)
+	t.Stop()
 	for {
 		select {
 		case <-c:
-			time.Sleep(10 * time.Millisecond)
+			t.Reset(dur)
+		case <-t.C:
+			t.Stop()
 			p.peersC <- struct{}{}
 		case <-p.quit:
+			t.Stop()
 			return
 		}
 	}
@@ -257,6 +263,10 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 }
 
 func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8, d uint8) {
+	syncCtx := p.syncPeers[po][peer.String()]
+	syncCtx.Lock()
+	defer syncCtx.Unlock()
+
 	p.cursorsMtx.Lock()
 	c, ok := p.cursors[peer.String()]
 	p.cursorsMtx.Unlock()
@@ -264,6 +274,8 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8, d u
 	if !ok {
 		cursors, err := p.syncer.GetCursors(ctx, peer)
 		if err != nil {
+			p.logger.Errorf("error getting cursors: %v", err)
+			return
 			// remove from syncing peers list, trigger channel to find some other peer
 			// maybe blacklist for some time
 		}
@@ -272,13 +284,8 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8, d u
 		p.cursorsMtx.Unlock()
 		c = cursors
 	}
-	syncCtx := p.syncPeers[po][peer.String()]
-
-	syncCtx.Lock()
-	defer syncCtx.Unlock()
-
 	// peer outside depth?
-	if po < d {
+	if po < d && po > 0 {
 		cur, bin := c[po], po
 		// start just one bin for historical and live
 		binCtx, cancel := context.WithCancel(ctx)

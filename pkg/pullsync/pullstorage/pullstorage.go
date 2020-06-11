@@ -7,7 +7,9 @@ package pullstorage
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -16,6 +18,9 @@ var (
 	_ Storer = (*ps)(nil)
 	// ErrDbClosed is used to signal the underlying database was closed
 	ErrDbClosed = errors.New("db closed")
+
+	// after how long to return a non-empty batch
+	batchTimeout = time.Duration(500 * time.Millisecond)
 )
 
 // Storer is a thin wrapper around storage.Storer.
@@ -39,20 +44,32 @@ type Storer interface {
 // ps wraps storage.Storer.
 type ps struct {
 	storage.Storer
+	logger logging.Logger
 }
 
 // New returns a new pullstorage Storer instance.
-func New(storer storage.Storer) Storer {
-	return &ps{storer}
+func New(storer storage.Storer, l logging.Logger) Storer {
+	return &ps{
+		Storer: storer,
+		logger: l,
+	}
 }
 
 // IntervalChunks collects chunk for a requested interval.
 func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
 	// call iterator, iterate either until upper bound or limit reached
 	// return addresses, topmost is the topmost bin ID
-
+	var (
+		timer  *time.Timer
+		timerC <-chan time.Time
+	)
 	ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
-	defer stop()
+	defer func(start time.Time) {
+		stop()
+		if timer != nil {
+			timer.Stop()
+		}
+	}(time.Now())
 
 	var nomore bool
 
@@ -64,13 +81,26 @@ LOOP:
 				nomore = true
 				break LOOP
 			}
+			s.logger.Tracef("pullstorage got chunk bin %d f %d t %d addr %s binid %d", bin, from, to, v.Address.String(), v.BinID)
 			chs = append(chs, v.Address)
 			if v.BinID > topmost {
 				topmost = v.BinID
 			}
 			limit--
+			if timer == nil {
+				timer = time.NewTimer(batchTimeout)
+			} else {
+				if !timer.Stop() {
+					<-timer.C
+				}
+				timer.Reset(batchTimeout)
+			}
+			timerC = timer.C
 		case <-ctx.Done():
 			return nil, 0, ctx.Err()
+		case <-timerC:
+			// return batch if new chunks are not received after some time
+			break LOOP
 		}
 	}
 

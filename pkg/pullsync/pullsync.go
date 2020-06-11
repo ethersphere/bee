@@ -154,7 +154,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		delete(wantChunks, addr.String())
-
+		s.logger.Tracef("pull sync putting chunk %s", addr.String())
 		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
 			return 0, fmt.Errorf("delivery put: %w", err)
 		}
@@ -166,17 +166,18 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
-
 	var rn pb.GetRange
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
 		return fmt.Errorf("read get range: %w", err)
 	}
+	s.logger.Debugf("got range peer %s request %s", p.Address.String(), rn.String())
 
 	// make an offer to the upstream peer in return for the requested range
-	offer, err := s.makeOffer(ctx, rn)
+	offer, addrs, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
+	s.logger.Debugf("writing offer with context: %s", offer.String())
 
 	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
 		return fmt.Errorf("write offer: %w", err)
@@ -197,6 +198,9 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 	if err != nil {
 		return fmt.Errorf("process want: %w", err)
 	}
+	if len(chs) == 0 {
+		return s.setChunks(ctx, addrs...)
+	}
 	for _, v := range chs {
 		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data()}
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
@@ -204,21 +208,27 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 		}
 	}
 	time.Sleep(100 * time.Millisecond) //because of test, getting EOF w/o
-	return nil
+	return s.setChunks(ctx, addrs...)
+}
+
+func (s *Syncer) setChunks(ctx context.Context, addrs ...swarm.Address) error {
+	return s.storage.Set(ctx, storage.ModeSetSyncPull, addrs...)
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
-func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, err error) {
+func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, addrs []swarm.Address, err error) {
+	s.logger.Debugf("syncer make offer for bin %d from %d to %d maxpage %d", rn.Bin, rn.From, rn.To, maxPage)
 	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
 	if err != nil {
-		return o, err
+		return o, nil, err
 	}
 	o = new(pb.Offer)
 	o.Topmost = top
+	o.Hashes = make([]byte, 0)
 	for _, v := range chs {
 		o.Hashes = append(o.Hashes, v.Bytes()...)
 	}
-	return o, nil
+	return o, chs, nil
 }
 
 // processWant compares a received Want to a sent Offer and returns
@@ -240,6 +250,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 }
 
 func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error) {
+	s.logger.Debugf("syncer get cursors from peer %s", peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -256,6 +267,8 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, 
 	if err = r.ReadMsgWithContext(ctx, &ack); err != nil {
 		return nil, fmt.Errorf("read ack: %w", err)
 	}
+
+	s.logger.Debugf("syncer peer %s cursors %s", peer, ack.Cursors)
 
 	return ack.Cursors, nil
 }
@@ -276,6 +289,7 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		return err
 	}
 	ack.Cursors = ints
+	s.logger.Debugf("syncer writing cursors peer %s curs %s message %s", p.Address.String(), ints, ack.String())
 	if err = w.WriteMsgWithContext(ctx, &ack); err != nil {
 		return fmt.Errorf("write ack: %w", err)
 	}
