@@ -6,7 +6,7 @@ require (
 	github.com/btcsuite/btcd v0.20.1-beta
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/coreos/go-semver v0.3.0
-	github.com/davecgh/go-spew v1.1.1
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ethersphere/bmt v0.1.1
 	github.com/gogo/protobuf v1.3.1
 	github.com/gorilla/handlers v1.4.2

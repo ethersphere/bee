@@ -31,6 +31,9 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/puller"
+	"github.com/ethersphere/bee/pkg/pullsync"
+	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -57,6 +60,8 @@ type Bee struct {
 	localstoreCloser io.Closer
 	topologyCloser   io.Closer
 	pusherCloser     io.Closer
+	pullerCloser     io.Closer
+	pullSyncCloser   io.Closer
 }
 
 type Options struct {
@@ -237,6 +242,27 @@ func NewBee(o Options) (*Bee, error) {
 		Logger:        logger,
 	})
 	b.pusherCloser = pushSyncPusher
+
+	pullStorage := pullstorage.New(storer, logger)
+
+	pullSync := pullsync.New(pullsync.Options{
+		Streamer: p2ps,
+		Storage:  pullStorage,
+		Logger:   logger,
+	})
+	b.pullSyncCloser = pullSync
+
+	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {
+		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	}
+
+	puller := puller.New(puller.Options{
+		StateStore: stateStore,
+		Topology:   topologyDriver,
+		PullSync:   pullSync,
+		Logger:     logger,
+	})
+	b.pullerCloser = puller
 
 	var apiService api.Service
 	if o.APIAddr != "" {
@@ -419,6 +445,14 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.pusherCloser.Close(); err != nil {
 		return fmt.Errorf("pusher: %w", err)
+	}
+
+	if err := b.pullerCloser.Close(); err != nil {
+		return fmt.Errorf("puller: %w", err)
+	}
+
+	if err := b.pullSyncCloser.Close(); err != nil {
+		return fmt.Errorf("pull sync: %w", err)
 	}
 
 	b.p2pCancel()

@@ -142,6 +142,10 @@ func TestIntervalChunks_Blocking(t *testing.T) {
 	}
 }
 
+func TestIntervalChunks_ChunksAndTimeout(t *testing.T) {
+	t.Fatal("todo return 1 chunk after timeout of 1 second")
+}
+
 func TestIntervalChunks_DbShutdown(t *testing.T) {
 	ps, db := newPullStorage(t, mock.WithPartialInterval(true))
 

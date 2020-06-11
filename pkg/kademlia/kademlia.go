@@ -399,6 +399,16 @@ func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	return closest, nil
 }
 
+// EachPeer iterates from closest bin to farthest
+func (k *Kad) EachPeer(f topology.EachPeerFunc) error {
+	return k.connectedPeers.EachBin(f)
+}
+
+// EachPeerRev iterates from farthest bin to closest
+func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
+	return k.connectedPeers.EachBinRev(f)
+}
+
 // SubscribePeersChange returns the channel that signals when the connected peers
 // set changes. Returned function is safe to be called multiple times.
 func (k *Kad) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
