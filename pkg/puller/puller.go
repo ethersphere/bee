@@ -74,7 +74,7 @@ func (p *Puller) pollTopology() {
 	defer unsubscribe()
 
 	// this is to dampen the amount of peer change notification we get
-	//todo: this should become into some falling-edge filter, since this is till rising edge
+	// todo: this should become into some falling-edge filter, since this is till rising edge
 	// ie. reset a timer every time we get a notification on the channel, then once a certain timeout
 	// passes we trigger the peersC channel
 	for {
@@ -96,11 +96,9 @@ type peer struct {
 func (p *Puller) manage() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	defer func() { fmt.Println("manage quit") }()
 	for {
 		select {
 		case <-p.peersC:
-			//fmt.Println("manage got signal")
 			// get all peers from kademlia
 			// iterate on entire bin at once (get all peers first)
 			// check how many intervals we synced with all of them
@@ -127,11 +125,8 @@ func (p *Puller) manage() {
 					// and only with one peer (or some other const)
 
 					// if we are already syncing with someone then move on to next
-					//if len(bp) > 0 {
-					//return false, true, nil // skip to next bin
-					//}
-
 					// not yet syncing, start
+
 					if _, ok := bp[peerAddr.String()]; !ok {
 						if syncing < 1 {
 							bp[peerAddr.String()] = newSyncPeer()
@@ -164,11 +159,9 @@ func (p *Puller) manage() {
 				panic(err)
 			}
 
-			//fmt.Println("manage peers to sync", peersToSync)
 			for _, v := range peersToSync {
 				p.syncPeer(ctx, v.addr, v.po, depth)
 			}
-			//fmt.Println("manage peers to recalc", peersToRecalc)
 
 			for _, v := range peersToRecalc {
 				p.recalcPeer(ctx, v.addr, v.po, depth)
@@ -182,7 +175,6 @@ func (p *Puller) manage() {
 }
 
 func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d uint8) {
-	p.logger.Debug("****************************************")
 	p.logger.Debugf("puller recalculating peer %s po %d depth %d", peer, po, d)
 	syncCtx := p.syncPeers[po][peer.String()]
 
@@ -206,7 +198,6 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 		for i := uint8(0); i < d; i++ {
 			dontWant = append(dontWant, i)
 		}
-		//spew.Dump("we are within depth", "depth", d, "want", want, "dont want", dontWant)
 
 		for _, bin := range want {
 			// question: do we want to have the separate cancel funcs per live/hist
@@ -221,18 +212,13 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 					go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
 				}
 				go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
-			} else {
-				//fmt.Println("recalc sync already running", bin)
 			}
 		}
 		for _, bin := range dontWant {
 			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
 				// we have sync running on this bin, cancel it
-				//fmt.Println("cancelling context within depth", "bin", bin)
 				c()
 				delete(syncCtx.binCancelFuncs, bin)
-			} else {
-				//fmt.Println("nothing to cancel for bin", bin)
 			}
 		}
 	} else {
@@ -249,22 +235,20 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 			dontWant = append(dontWant, i)
 		}
 
-		//spew.Dump("outside depth want", "depth", d, want, "dont want", dontWant)
-
 		if _, ok := syncCtx.binCancelFuncs[want]; !ok {
 			// if there's no bin cancel func it means there's no
 			// sync running on this bin. start syncing both hist and live
 			cur := c[want]
 			binCtx, cancel := context.WithCancel(ctx)
 			syncCtx.binCancelFuncs[po] = cancel
-
-			go p.histSyncWorker(binCtx, peer, uint8(want), cur)
+			if cur > 0 {
+				go p.histSyncWorker(binCtx, peer, uint8(want), cur)
+			}
 			go p.liveSyncWorker(binCtx, peer, uint8(want), cur)
 		}
 		for _, bin := range dontWant {
 			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
 				// we have sync running on this bin, cancel it
-				//fmt.Println("cancelling context", "bin", bin)
 				c()
 				delete(syncCtx.binCancelFuncs, bin)
 			}

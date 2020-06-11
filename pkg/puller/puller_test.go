@@ -407,6 +407,7 @@ func TestPeerMovesOutOfDepthThenBackIn(t *testing.T) {
 	}
 }
 
+// TestMovePeerAround moves the peer from depth outside of depth then back into depth
 func TestMovePeerAround(t *testing.T) {
 	var (
 		addr           = test.RandomAddress()
@@ -418,7 +419,7 @@ func TestMovePeerAround(t *testing.T) {
 			reply(3, 1, 1, false),
 			reply(4, 1, 1, false),
 		}
-		depths = []uint8{0, 1, 2, 3, 4, 3}
+		depths = []uint8{0, 1, 2, 3, 4, 4, 0, 3}
 	)
 
 	puller, st, kad, pullsync := newPuller(opts{
