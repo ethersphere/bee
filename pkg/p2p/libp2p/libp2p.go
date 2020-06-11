@@ -33,6 +33,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
+	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-tcp-transport"
 	ws "github.com/libp2p/go-ws-transport"
 	ma "github.com/multiformats/go-multiaddr"
@@ -44,6 +45,7 @@ var (
 )
 
 type Service struct {
+	NATManager       basichost.NATManager
 	ctx              context.Context
 	host             host.Host
 	libp2pPeerstore  peerstore.Peerstore
@@ -113,11 +115,15 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	security := libp2p.DefaultSecurity
 	libp2pPeerstore := pstoremem.NewPeerstore()
 
+	var natManager basichost.NATManager
+
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
-		// Attempt to open ports using uPNP for NATed hosts.
-		libp2p.NATPortMap(),
+		libp2p.NATManager(func(n network.Network) basichost.NATManager {
+			natManager = basichost.NewNATManager(n)
+			return natManager
+		}),
 		// Use dedicated peerstore instead the global DefaultPeerstore
 		libp2p.Peerstore(libp2pPeerstore),
 	}
@@ -160,6 +166,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	peerRegistry := newPeerRegistry()
 	s := &Service{
+		NATManager:       natManager,
 		ctx:              ctx,
 		host:             h,
 		libp2pPeerstore:  libp2pPeerstore,
@@ -311,39 +318,35 @@ func (s *Service) AdvertisableAddress(observedAddress ma.Multiaddr) (ma.Multiadd
 }
 
 func advertisableAddress(observedAddress ma.Multiaddr, hostAddresses []ma.Multiaddr) (ma.Multiaddr, error) {
-	observableAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedAddress)
-	if err != nil {
-		return nil, err
-	}
-
-	observedAddrSplit := strings.Split(observableAddrInfo.Addrs[0].String(), "/")
+	observedAddrSplit := strings.Split(observedAddress.String(), "/")
 
 	// if address is not in a form of '/ipversion/ip/protocol/port/...` don't compare to addresses and return it
 	if len(observedAddrSplit) < 5 {
 		return observedAddress, nil
 	}
 
+	observedAddressPort := observedAddrSplit[4]
+
 	// observervedAddressShort is an obaserved address without port
 	observervedAddressShort := strings.Join(append(observedAddrSplit[:4], observedAddrSplit[5:]...), "/")
 
 	for _, a := range hostAddresses {
+		fmt.Println("DEBUG - host addr", a.String())
 		asplit := strings.Split(a.String(), "/")
+
 		if len(asplit) != len(observedAddrSplit) {
 			continue
 		}
+
+		aport := asplit[4]
 
 		if strings.Join(append(asplit[:4], asplit[5:]...), "/") != observervedAddressShort {
 			continue
 		}
 
-		if asplit[4] != observedAddrSplit[4] {
-			advertisableAddress, err := buildUnderlayAddress(a, observableAddrInfo.ID)
-			if err != nil {
-				continue
-			}
-
-			fmt.Println("DEBUG - found advertisable address", advertisableAddress.String())
-			return advertisableAddress, nil
+		if aport != observedAddressPort {
+			fmt.Println("DEBUG - found advertisable address", a.String())
+			return a, nil
 		}
 	}
 
