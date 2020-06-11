@@ -6,6 +6,7 @@ package mock
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -59,6 +60,13 @@ func WithLateReply(r int) Option {
 	})
 }
 
+func WithLateSyncReply(r ...SyncReply) Option {
+	return optionFunc(func(p *PullSyncMock) {
+		p.lateReply = true
+		p.lateSyncReplies = r
+	})
+}
+
 const limit = 50
 
 type SyncCall struct {
@@ -95,10 +103,11 @@ type PullSyncMock struct {
 	liveSyncCalls        int
 	liveSyncExactReplies []SyncReply
 
-	lateReply bool
-	lateCond  *sync.Cond
-	lateReads int
-	lateTop   uint64
+	lateReply       bool
+	lateCond        *sync.Cond
+	lateReads       int
+	lateTop         uint64
+	lateSyncReplies []SyncReply
 
 	quit chan struct{}
 }
@@ -150,6 +159,22 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 			return 0, ctx.Err()
 		default:
 		}
+
+		for _, v := range p.lateSyncReplies {
+			if v.bin == bin && v.from == from {
+				if v.block {
+					select {
+					case <-p.quit:
+						return 0, context.Canceled
+					case <-ctx.Done():
+						return 0, ctx.Err()
+					}
+				}
+				return v.topmost, nil
+			}
+		}
+		fmt.Println("did not find element for bin", bin)
+		return 0, context.Canceled
 		p.lateReads--
 		top := p.lateTop
 		if p.lateReads == 0 {

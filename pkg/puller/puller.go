@@ -217,8 +217,9 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 				cur := c[bin]
 				binCtx, cancel := context.WithCancel(ctx)
 				syncCtx.binCancelFuncs[uint8(bin)] = cancel
-				//fmt.Println("starting sync on recalc", "bin", bin)
-				go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
+				if cur > 0 {
+					go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
+				}
 				go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
 			} else {
 				//fmt.Println("recalc sync already running", bin)
@@ -377,7 +378,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if top == 0 {
-			//fmt.Println("top zero", "bin", bin, "from", from)
 			return
 			panic(err)
 		}
