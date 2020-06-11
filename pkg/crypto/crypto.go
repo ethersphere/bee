@@ -45,7 +45,7 @@ func DecodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 	return (*ecdsa.PrivateKey)(privk), nil
 }
 
-// NewEthereumAddress returns a bunary representation of ethereum blockchain address.
+// NewEthereumAddress returns a binary representation of ethereum blockchain address.
 // This function is based on github.com/ethereum/go-ethereum/crypto.PubkeyToAddress.
 func NewEthereumAddress(p ecdsa.PublicKey) []byte {
 	if p.X == nil || p.Y == nil {
