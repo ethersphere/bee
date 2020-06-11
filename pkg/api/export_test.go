@@ -5,6 +5,6 @@
 package api
 
 type (
-	RawPostResponse = rawPostResponse
-	TagResponse     = tagResponse
+	BytesPostResponse = bytesPostResponse
+	TagResponse       = tagResponse
 )

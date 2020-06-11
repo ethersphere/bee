@@ -23,7 +23,7 @@ import (
 // invalid chunk address case etc. This test case has to be run in sequence and
 // it assumes some state of the DB before another case is run.
 func TestPinChunkHandler(t *testing.T) {
-	resource := func(addr swarm.Address) string { return "/bzz-chunk/" + addr.String() }
+	resource := func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 	hash := swarm.MustParseHexAddress("aabbcc")
 	data := []byte("bbaatt")
 	mockValidator := validator.NewMockValidator(hash, data)

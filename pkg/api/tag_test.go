@@ -22,7 +22,7 @@ import (
 
 func TestTags(t *testing.T) {
 	var (
-		resource             = func(addr swarm.Address) string { return "/bzz-chunk/" + addr.String() }
+		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		tagResourceUidCreate = func(name string) string { return "/bzz-tag/name/" + name }
 		tagResourceUUid      = func(uuid uint64) string { return "/bzz-tag/uuid/" + strconv.FormatUint(uuid, 10) }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
