@@ -393,6 +393,19 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 func (p *Puller) Close() error {
 	close(p.quit)
+	p.syncPeersMtx.Lock()
+	defer p.syncPeersMtx.Unlock()
+	for i := 0; i < bins; i++ {
+		binPeers := p.syncPeers[i]
+		for _, peer := range binPeers {
+			peer.Lock()
+			for _, f := range peer.binCancelFuncs {
+				f()
+			}
+			peer.Unlock()
+		}
+	}
+
 	return nil
 }
 
