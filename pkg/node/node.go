@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -151,9 +152,13 @@ func NewBee(o Options) (*Bee, error) {
 	b.p2pService = p2ps
 
 	// wait for nat manager to init
-	logger.Info("waiting for NAT manager to initialize")
-	<-p2ps.NATManager().Ready()
-	logger.Info("NAT manager initialized")
+	logger.Info("initializing NAT manager")
+	select {
+	case <-p2ps.NATManager().Ready():
+		logger.Info("NAT manager initialized")
+	case <-time.After(10 * time.Second):
+		logger.Error("Nat manager init timeout")
+	}
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
