@@ -140,8 +140,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if _, ok := wantChunks[addr.String()]; !ok {
 			return 0, ErrUnsolicitedChunk
 		}
-		panic("delete")
-		//delete()
+
+		delete(wantChunks, addr.String())
 
 		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
 			return 0, fmt.Errorf("delivery put: %w", err)
