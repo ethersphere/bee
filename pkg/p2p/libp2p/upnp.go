@@ -16,7 +16,7 @@ type UpnpAddressResolver struct {
 	host host.Host
 }
 
-// Resolve checks if there is a possible better advertasible underlay then the provided observed address.
+// Resolve checks if there is a possible better advertisable underlay then the provided observed address.
 // In some NAT situations, for example in the case when nodes are behind upnp, observer might send the observed address with a wrong port.
 // In this case, observed address is compared to addresses provided by host, and if there is a same address but with different port, that one is used as advertisable address instead of provided observed one.
 // TODO: this is a quickfix and it will be improved in the future
