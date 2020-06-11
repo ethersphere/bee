@@ -153,7 +153,7 @@ func NewBee(o Options) (*Bee, error) {
 	// wait for nat manager to init
 	logger.Info("waiting for NAT manager to initialize")
 	<-p2ps.NATManager().Ready()
-	fmt.Println("NAT manager initialized")
+	logger.Info("NAT manager initialized")
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
