@@ -17,10 +17,9 @@ type UpnpAddressResolver struct {
 	host host.Host
 }
 
-// AdvertisableAddress checks if there is a possible better advertasible underlay then the provided observed addres.s
-// This is used to determine the underlay address to be sent through handshake protokol.
+// Resolve checks if there is a possible better advertasible underlay then the provided observed address.
 // In some NAT situations, for example in the case when nodes are behind upnp, observer might send the observed address with a wrong port.
-// In this case, we compare this address to addresses provided by host, which might have (if there are mappings available in nat manager) a same address but with the true port.
+// In this case, observed address is compared to addresses provided by host, and if there is a same address but with different port, that one is used as advertisable address instead of provided observed one.
 // TODO: this is a quickfix and it will be improved in the future
 func (r *UpnpAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
 	observableAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedAddress)
