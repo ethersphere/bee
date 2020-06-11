@@ -150,10 +150,10 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.p2pService = p2ps
 
-	fmt.Println("waiting for nat manager to init")
 	// wait for nat manager to init
-	<-p2ps.NATManager.Ready()
-	fmt.Println("waiting for nat manager to init finished")
+	logger.Info("waiting for NAT manager to initialize")
+	<-p2ps.NATManager().Ready()
+	fmt.Println("NAT manager initialized")
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{

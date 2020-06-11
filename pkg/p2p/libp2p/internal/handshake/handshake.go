@@ -44,13 +44,13 @@ var (
 	ErrInvalidSyn = errors.New("invalid syn")
 )
 
-type AdvertisableAddresser interface {
-	AdvertisableAddress(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
+type AdvertisableAddressResolver interface {
+	Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
 type Service struct {
 	signer                crypto.Signer
-	advertisableAddresser AdvertisableAddresser
+	advertisableAddresser AdvertisableAddressResolver
 	overlay               swarm.Address
 	lightNode             bool
 	networkID             uint64
@@ -61,7 +61,7 @@ type Service struct {
 	network.Notifiee // handshake service can be the receiver for network.Notify
 }
 
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddresser, overlay swarm.Address, networkID uint64, lighNode bool, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, lighNode bool, logger logging.Logger) (*Service, error) {
 	return &Service{
 		signer:                signer,
 		advertisableAddresser: advertisableAddresser,
@@ -107,7 +107,7 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, ErrInvalidSyn
 	}
 
-	advertisableUnderlay, err := s.advertisableAddresser.AdvertisableAddress(observedUnderlay)
+	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 		return nil, ErrInvalidSyn
 	}
 
-	advertisableUnderlay, err := s.advertisableAddresser.AdvertisableAddress(observedUnderlay)
+	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
 	if err != nil {
 		return nil, err
 	}

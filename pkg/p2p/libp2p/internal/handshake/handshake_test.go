@@ -77,7 +77,7 @@ func TestHandshake(t *testing.T) {
 		Light:      false,
 	}
 
-	aaddresser := &AdvertisableAddresser{}
+	aaddresser := &AdvertisableAddresserMock{}
 
 	handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, logger)
 	if err != nil {
@@ -625,12 +625,12 @@ func testInfo(t *testing.T, got, want handshake.Info) {
 	}
 }
 
-type AdvertisableAddresser struct {
+type AdvertisableAddresserMock struct {
 	advertisableAddress ma.Multiaddr
 	err                 error
 }
 
-func (a *AdvertisableAddresser) AdvertisableAddress(observedAdddress ma.Multiaddr) (ma.Multiaddr, error) {
+func (a *AdvertisableAddresserMock) Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error) {
 	if a.err != nil {
 		return nil, a.err
 	}

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
@@ -45,9 +44,9 @@ var (
 )
 
 type Service struct {
-	NATManager       basichost.NATManager
 	ctx              context.Context
 	host             host.Host
+	natManager       basichost.NATManager
 	libp2pPeerstore  peerstore.Peerstore
 	metrics          metrics
 	networkID        uint64
@@ -164,11 +163,19 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	handshakeService, err := handshake.New(signer, &UpnpAddressResolver{
+		host: h,
+	}, overlay, networkID, o.LightNode, o.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("handshake service: %w", err)
+	}
+
 	peerRegistry := newPeerRegistry()
 	s := &Service{
-		NATManager:       natManager,
 		ctx:              ctx,
 		host:             h,
+		natManager:       natManager,
+		handshakeService: handshakeService,
 		libp2pPeerstore:  libp2pPeerstore,
 		metrics:          newMetrics(),
 		networkID:        networkID,
@@ -178,14 +185,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		tracer:           o.Tracer,
 		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 	}
-
-	handshakeService, err := handshake.New(signer, s, overlay, networkID, o.LightNode, o.Logger)
-	if err != nil {
-		return nil, fmt.Errorf("handshake service: %w", err)
-	}
-
-	s.handshakeService = handshakeService
-
 	// Construct protocols.
 	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
 	matcher, err := s.protocolSemverMatcher(id)
@@ -304,54 +303,8 @@ func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
 	return addreses, nil
 }
 
-// AdvertisableAddress checks if there is a possible better advertasible underlay then the provided observed address
-// this is used to determine the underlay address to be sent through handshake protokol.
-// In some NAT situations, for example in the case when nodes are behind upnp, observer might send the observed address with a wrong port.
-// In this case, we compare this address to addresses provided by host, which might have (if there are mappings available in nat manager) a same address but with the true port.
-func (s *Service) AdvertisableAddress(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
-	hostAddresses, err := s.Addresses()
-	if err != nil {
-		return nil, err
-	}
-
-	return advertisableAddress(observedAddress, hostAddresses)
-}
-
-func advertisableAddress(observedAddress ma.Multiaddr, hostAddresses []ma.Multiaddr) (ma.Multiaddr, error) {
-	observedAddrSplit := strings.Split(observedAddress.String(), "/")
-
-	// if address is not in a form of '/ipversion/ip/protocol/port/...` don't compare to addresses and return it
-	if len(observedAddrSplit) < 5 {
-		return observedAddress, nil
-	}
-
-	observedAddressPort := observedAddrSplit[4]
-
-	// observervedAddressShort is an obaserved address without port
-	observervedAddressShort := strings.Join(append(observedAddrSplit[:4], observedAddrSplit[5:]...), "/")
-
-	for _, a := range hostAddresses {
-		fmt.Println("DEBUG - host addr", a.String())
-		asplit := strings.Split(a.String(), "/")
-
-		if len(asplit) != len(observedAddrSplit) {
-			continue
-		}
-
-		aport := asplit[4]
-
-		if strings.Join(append(asplit[:4], asplit[5:]...), "/") != observervedAddressShort {
-			continue
-		}
-
-		if aport != observedAddressPort {
-			fmt.Println("DEBUG - found advertisable address", a.String())
-			return a, nil
-		}
-	}
-
-	fmt.Println("DEBUG - did not find new advertisable address returning: ", observedAddress.String())
-	return observedAddress, nil
+func (s *Service) NATManager() basichost.NATManager {
+	return s.natManager
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
