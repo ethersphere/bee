@@ -5,7 +5,6 @@
 package libp2p
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/libp2p/go-libp2p-core/host"
@@ -40,7 +39,6 @@ func (r *UpnpAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiadd
 	observervedAddressShort := strings.Join(append(observedAddrSplit[:4], observedAddrSplit[5:]...), "/")
 
 	for _, a := range r.host.Addrs() {
-		fmt.Println("DEBUG - host addr", a.String())
 		asplit := strings.Split(a.String(), "/")
 		if len(asplit) != len(observedAddrSplit) {
 			continue
@@ -57,11 +55,9 @@ func (r *UpnpAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiadd
 				continue
 			}
 
-			fmt.Println("DEBUG - found advertisable address", aaddress.String())
 			return aaddress, nil
 		}
 	}
 
-	fmt.Println("DEBUG - did not find new advertisable address returning: ", observedAddress.String())
 	return observedAddress, nil
 }
