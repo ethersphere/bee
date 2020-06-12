@@ -121,7 +121,7 @@ func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		mr, err := s.storeMeta(ctx, metadataBytes)
 		if err != nil {
 			s.Logger.Debugf("bzz-file: metadata store: %v, file name %s", err, fileName)
-			s.Logger.Error("bzz-file: metadata store ")
+			s.Logger.Error("bzz-file: metadata store")
 			jsonhttp.InternalServerError(w, "could not store metadata")
 			return
 		}
@@ -138,7 +138,7 @@ func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		er, err := s.storeMeta(ctx, fileEntryBytes)
 		if err != nil {
 			s.Logger.Debugf("bzz-file: entry store: %v, file name %s", err, fileName)
-			s.Logger.Error("bzz-file: entry store ")
+			s.Logger.Error("bzz-file: entry store")
 			jsonhttp.InternalServerError(w, "could not store entry")
 			return
 		}
