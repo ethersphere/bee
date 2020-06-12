@@ -396,6 +396,8 @@ func NewBee(o Options) (*Bee, error) {
 }
 
 func (b *Bee) Shutdown(ctx context.Context) error {
+	errs := new(multiError)
+
 	var eg errgroup.Group
 	if b.apiServer != nil {
 		eg.Go(func() error {
@@ -414,33 +416,64 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		return err
+		errs.add(err)
 	}
 
 	if err := b.pusherCloser.Close(); err != nil {
-		return fmt.Errorf("pusher: %w", err)
+		errs.add(fmt.Errorf("pusher: %w", err))
 	}
 
 	b.p2pCancel()
 	if err := b.p2pService.Close(); err != nil {
-		return fmt.Errorf("p2p server: %w", err)
+		errs.add(fmt.Errorf("p2p server: %w", err))
 	}
 
 	if err := b.tracerCloser.Close(); err != nil {
-		return fmt.Errorf("tracer: %w", err)
+		errs.add(fmt.Errorf("tracer: %w", err))
 	}
 
 	if err := b.stateStoreCloser.Close(); err != nil {
-		return fmt.Errorf("statestore: %w", err)
+		errs.add(fmt.Errorf("statestore: %w", err))
 	}
 
 	if err := b.localstoreCloser.Close(); err != nil {
-		return fmt.Errorf("localstore: %w", err)
+		errs.add(fmt.Errorf("localstore: %w", err))
 	}
 
 	if err := b.topologyCloser.Close(); err != nil {
-		return fmt.Errorf("topology driver: %w", err)
+		errs.add(fmt.Errorf("topology driver: %w", err))
 	}
 
-	return b.errorLogWriter.Close()
+	if err := b.errorLogWriter.Close(); err != nil {
+		errs.add(fmt.Errorf("error log writer: %w", err))
+	}
+
+	if errs.hasErrors() {
+		return errs
+	}
+
+	return nil
+}
+
+type multiError struct {
+	errors []error
+}
+
+func (e *multiError) Error() string {
+	if len(e.errors) == 0 {
+		return ""
+	}
+	s := e.errors[0].Error()
+	for _, err := range e.errors[1:] {
+		s += "; " + err.Error()
+	}
+	return s
+}
+
+func (e *multiError) add(err error) {
+	e.errors = append(e.errors, err)
+}
+
+func (e *multiError) hasErrors() bool {
+	return len(e.errors) > 0
 }
