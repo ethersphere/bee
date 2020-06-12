@@ -1,0 +1,192 @@
+openapi: 3.0.0
+info:
+  version: '0.9.6'
+  title: 'Common Data Types'
+  description: |
+    \*****bzzz*****
+externalDocs:
+  description: Common Data Types used for Swarm Interfaces
+  url: https://swarm-guide.readthedocs.io/en/latest/
+
+paths: {}
+components:
+  schemas:
+
+    Address:
+      type: object
+      properties:
+        Address:
+          $ref: '#/components/schemas/BzzAddress'
+
+    Addresses:
+      type: object
+      properties:
+        overlay:
+          $ref: '#/components/schemas/BzzAddress'
+        underlay:
+          type: array
+          items:
+            type: string
+
+    BzzAddress:
+      type: string
+      pattern: '^[A-Fa-f0-9]{64}$'
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+
+    BzzChunksPinned:
+      type: object
+      properties:
+        chunks:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              pinCounter:
+                type: number
+
+    BzzTopology:
+      type: object
+      properties:
+        baseAddr:
+          $ref: '#/components/schemas/BzzAddress'
+        population:
+          type: number
+        connected:
+          type: number
+        timestamp:
+          type: string
+        nnLowWatermark:
+          type: number
+        depth:
+          type: number
+        bins:
+          type: array
+          items:
+            type: object
+            properties:
+              population:
+                type: number
+              connected:
+                type: number
+              disconnectedPeers:
+                type: object
+              connectedPeers:
+                type: object
+
+    DateTime:
+      type: string
+      format: date-time
+      pattern: '^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+\d{2}:\d{2})$'
+      example: "2020-06-11T11:26:42.6969797+02:00"
+
+    Hash:
+      type: object
+      properties:
+        hash:
+          $ref: '#/components/schemas/BzzAddress'
+
+    NewTagResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        split:
+          type: integer
+        seen:
+          type: integer
+        stored:
+          type: integer
+        sent:
+          type: integer
+        synced:
+          type: integer
+        uid:
+          $ref: '#/components/schemas/UUid'
+        anonymous:
+          type: boolean
+        name:
+          type: string
+        address:
+          type: string
+        startedAt:
+          $ref: '#/components/schemas/DateTime'
+    
+    MultiAddress:
+      type: string
+
+    Msd5:
+      type: string
+      pattern: '^\d*\.\d{4}ms$'
+      example: "5.0018ms"
+
+    Peers:
+      type: object
+      properties:
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+
+    PinningState:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/BzzAddress'
+        pinCounter:
+          type: number
+
+    ProblemDetails:
+      type: string
+
+    Response:
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+
+    RttMs:
+      type: object
+      properties:
+        rtt:
+          $ref: '#/components/schemas/Msd5'
+
+    Status:
+      type: object
+      properties:
+        status:
+          type: string
+
+    TagName:
+      type: string
+
+
+    UUid:
+      type: string
+      pattern: '^[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}$'
+      example: "123e4567-e89b-12d3-a456-426614174000"
+
+  responses:
+    '400':
+      description: Bad request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    '500':
+      description: Internal Server Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    
+
