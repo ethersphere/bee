@@ -17,16 +17,17 @@ package swarm
 // binary representation of the x^y.
 //
 // (0 farthest, 255 closest, 256 self)
-func Proximity(one, other []byte) (ret int) {
-	b := (MaxPO-1)/8 + 1
-	if b > len(one) {
-		b = len(one)
+func Proximity(one, other []byte) (ret uint8) {
+	b := MaxPO/8 + 1
+	l := uint8(len(one))
+	if b > l {
+		b = l
 	}
-	m := 8
-	for i := 0; i < b; i++ {
+	var m uint8 = 8
+	for i := uint8(0); i < b; i++ {
 		oxo := one[i] ^ other[i]
-		for j := 0; j < m; j++ {
-			if (oxo>>uint8(7-j))&0x01 != 0 {
+		for j := uint8(0); j < m; j++ {
+			if (oxo>>(7-j))&0x01 != 0 {
 				return i*8 + j
 			}
 		}

@@ -74,7 +74,7 @@ func TestShallowestEmpty(t *testing.T) {
 		},
 	} {
 		for _, v := range peers[tc.removePo] {
-			po := uint8(swarm.Proximity(base.Bytes(), v.Bytes()))
+			po := swarm.Proximity(base.Bytes(), v.Bytes())
 			ps.Remove(v, po)
 		}
 		sd, none := ps.ShallowestEmpty()

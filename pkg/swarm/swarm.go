@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	SectionSize = 32
-	Branches    = 128
-	ChunkSize   = SectionSize * Branches
-	HashSize    = 32
-	MaxPO       = 16
+	SectionSize       = 32
+	Branches          = 128
+	ChunkSize         = SectionSize * Branches
+	HashSize          = 32
+	MaxPO       uint8 = 15
 )
 
 // Address represents an address in Swarm metric space of
