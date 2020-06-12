@@ -116,7 +116,7 @@ func NewApiStore(host string, port int, ssl bool) putGetter {
 	u := &url.URL{
 		Host:   fmt.Sprintf("%s:%d", host, port),
 		Scheme: scheme,
-		Path:   "bzz-chunk",
+		Path:   "chunks",
 	}
 	return &ApiStore{
 		Client:  http.DefaultClient,
