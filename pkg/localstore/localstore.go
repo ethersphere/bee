@@ -441,7 +441,7 @@ func (db *DB) Close() (err error) {
 // po computes the proximity order between the address
 // and database base key.
 func (db *DB) po(addr swarm.Address) (bin uint8) {
-	return uint8(swarm.Proximity(db.baseKey, addr.Bytes()))
+	return swarm.Proximity(db.baseKey, addr.Bytes())
 }
 
 // DebugIndices returns the index sizes for all indexes in localstore
