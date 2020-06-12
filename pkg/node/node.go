@@ -152,13 +152,17 @@ func NewBee(o Options) (*Bee, error) {
 	b.p2pService = p2ps
 
 	// wait for nat manager to init
-	logger.Info("initializing NAT manager")
+	logger.Debug("initializing NAT manager")
 	select {
 	case <-p2ps.NATManager().Ready():
-		logger.Info("NAT manager initialized")
+		logger.Debug("NAT manager initialized")
 	case <-time.After(10 * time.Second):
-		logger.Error("Nat manager init timeout")
+		logger.Warning("NAT manager init timeout")
 	}
+
+	// this is magic sleep to give NAT time to sync the mappings
+	// this is a hack, kind of alchemy and should be improved
+	time.Sleep(3 * time.Second)
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{

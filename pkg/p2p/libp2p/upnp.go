@@ -5,6 +5,7 @@
 package libp2p
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/libp2p/go-libp2p-core/host"
@@ -24,6 +25,10 @@ func (r *UpnpAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiadd
 	observableAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedAddress)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(observableAddrInfo.Addrs) < 1 {
+		return nil, errors.New("invalid observed address")
 	}
 
 	observedAddrSplit := strings.Split(observableAddrInfo.Addrs[0].String(), "/")
