@@ -38,6 +38,15 @@ func (s *server) setupRouting() {
 	handle(router, "/bytes", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.bytesUploadHandler),
 	})
+
+	handle(router,"/bzz-file", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.bzzFileUploadHandler),
+	})
+
+	handle(router,"/bzz-file/{addr}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.bzzFileDownloadHandler),
+	})
+
 	handle(router, "/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.bytesGetHandler),
 	})

@@ -7,9 +7,13 @@ package jsonhttptest
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
+	"strconv"
 	"testing"
 )
 
@@ -33,6 +37,79 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 	if !bytes.Equal(got, want) {
 		t.Errorf("got response %s, want %s", string(got), string(want))
 	}
+}
+
+func ResponseDirectWithMultiPart(t *testing.T, client *http.Client, method, url, fileName string, data []byte,
+	responseCode int, response interface{}) http.Header {
+	body := bytes.NewBuffer(nil)
+	mw := multipart.NewWriter(body)
+	hdr := make(textproto.MIMEHeader)
+	hdr.Set("Content-Disposition", fmt.Sprintf("form-data; name=%q", fileName))
+	hdr.Set("Content-Type", http.DetectContentType(data))
+	hdr.Set("Content-Length", strconv.FormatInt(int64(len(data)), 10))
+	part, err := mw.CreatePart(hdr)
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = io.Copy(part, bytes.NewReader(data))
+	if err != nil {
+		t.Error(err)
+	}
+	err = mw.Close()
+	if err != nil {
+		t.Error(err)
+	}
+
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		t.Error(err)
+	}
+	req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%q", mw.Boundary()))
+
+	res, err := client.Do(req)
+	if err != nil {
+		t.Error(err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != responseCode {
+		t.Errorf("got response status %s, want %v %s", res.Status, responseCode, http.StatusText(responseCode))
+	}
+
+	got, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = bytes.TrimSpace(got)
+
+	want, err := json.Marshal(response)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Errorf("got response %s, want %s", string(got), string(want))
+	}
+
+	return res.Header
+}
+func ResponseDirectCheckBinaryResponse(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,
+	response []byte, headers http.Header) http.Header {
+	t.Helper()
+
+	resp := request(t, client, method, url, body, responseCode, headers)
+	defer resp.Body.Close()
+
+	got, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = bytes.TrimSpace(got)
+
+	if !bytes.Equal(got, response) {
+		t.Errorf("got response %s, want %s", string(got), string(response))
+	}
+	return resp.Header
 }
 
 func ResponseDirectSendHeadersAndReceiveHeaders(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int,

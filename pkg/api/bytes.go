@@ -28,17 +28,17 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	responseObject, err := s.splitUpload(ctx, r.Body, r.ContentLength)
+	address, err := s.splitUpload(ctx, r.Body, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
 		o := responseObject.(jsonhttp.StatusResponse)
 		jsonhttp.Respond(w, o.Code, o)
 	} else {
-		jsonhttp.OK(w, responseObject)
+		jsonhttp.OK(w, &rawPostResponse{Hash: address})
 	}
 }
 
-func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (interface{}, error) {
+func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (swarm.Address, error) {
 	chunkPipe := file.NewChunkPipe()
 	go func() {
 		buf := make([]byte, swarm.ChunkSize)
@@ -66,7 +66,7 @@ func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (int
 		response.Message = "upload error"
 		response.Code = http.StatusInternalServerError
 		err = fmt.Errorf("%s: %v", response.Message, err)
-		return response, err
+		return swarm.ZeroAddress, err
 	}
 	return bytesPostResponse{Reference: address}, nil
 }
