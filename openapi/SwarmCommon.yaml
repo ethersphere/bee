@@ -44,7 +44,7 @@ components:
               address:
                 type: string
               pinCounter:
-                type: number
+                type: integer
 
     BzzTopology:
       type: object
@@ -52,24 +52,24 @@ components:
         baseAddr:
           $ref: '#/components/schemas/BzzAddress'
         population:
-          type: number
+          type: integer
         connected:
-          type: number
+          type: integer
         timestamp:
           type: string
         nnLowWatermark:
-          type: number
+          type: integer
         depth:
-          type: number
+          type: integer
         bins:
           type: array
           items:
             type: object
             properties:
               population:
-                type: number
+                type: integer
               connected:
-                type: number
+                type: integer
               disconnectedPeers:
                 type: object
               connectedPeers:
@@ -135,7 +135,7 @@ components:
         address:
           $ref: '#/components/schemas/BzzAddress'
         pinCounter:
-          type: number
+          type: integer
 
     ProblemDetails:
       type: string
