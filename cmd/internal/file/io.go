@@ -82,7 +82,7 @@ type FsStore struct {
 }
 
 // NewFsStore creates a new FsStore.
-func NewFsStore(path string) storage.Putter {
+func NewFsStore(path string) putGetter {
 	return &FsStore{
 		path: path,
 	}
@@ -99,6 +99,16 @@ func (f *FsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 	}
 	exist = make([]bool, len(chs))
 	return exist, nil
+}
+
+// Get implements storage.Getter.
+func (f *FsStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.Address) (ch swarm.Chunk, err error) {
+	chunkPath := filepath.Join(f.path, address.String())
+	data, err := ioutil.ReadFile(chunkPath)
+	if err != nil {
+		return nil, err
+	}
+	return swarm.NewChunk(address, data), nil
 }
 
 // ApiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
