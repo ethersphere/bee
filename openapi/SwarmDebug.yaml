@@ -272,8 +272,7 @@ paths:
         '200':
           description: Auto generated using Swagger Inspector
           content:
-            application/json; charset=utf-8:
+            application/json:
               schema:
-                type: string
-              examples: {}
+                $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
     
