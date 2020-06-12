@@ -21,16 +21,16 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type rawPostResponse struct {
-	Hash swarm.Address `json:"hash"`
+type bytesPostResponse struct {
+	Reference swarm.Address `json:"reference"`
 }
 
-// rawUploadHandler handles upload of raw binary data of arbitrary length.
-func (s *server) rawUploadHandler(w http.ResponseWriter, r *http.Request) {
+// bytesUploadHandler handles upload of raw binary data of arbitrary length.
+func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	responseObject, err := s.splitUpload(ctx, r.Body, r.ContentLength)
 	if err != nil {
-		s.Logger.Debugf("raw: %v", err)
+		s.Logger.Debugf("bytes upload: %v", err)
 		o := responseObject.(jsonhttp.StatusResponse)
 		jsonhttp.Respond(w, o.Code, o)
 	} else {
@@ -68,18 +68,18 @@ func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (int
 		err = fmt.Errorf("%s: %v", response.Message, err)
 		return response, err
 	}
-	return rawPostResponse{Hash: address}, nil
+	return bytesPostResponse{Reference: address}, nil
 }
 
-// rawGetHandler handles retrieval of raw binary data of arbitrary length.
-func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
+// bytesGetHandler handles retrieval of raw binary data of arbitrary length.
+func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	addressHex := mux.Vars(r)["address"]
 	ctx := r.Context()
 
 	address, err := swarm.ParseHexAddress(addressHex)
 	if err != nil {
-		s.Logger.Debugf("raw: parse address %s: %v", addressHex, err)
-		s.Logger.Error("raw: parse address error")
+		s.Logger.Debugf("bytes: parse address %s: %v", addressHex, err)
+		s.Logger.Error("bytes: parse address error")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
 	}
@@ -89,13 +89,13 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 	dataSize, err := j.Size(ctx, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Debugf("raw: not found %s: %v", address, err)
-			s.Logger.Error("raw: not found")
+			s.Logger.Debugf("bytes: not found %s: %v", address, err)
+			s.Logger.Error("bytes: not found")
 			jsonhttp.NotFound(w, "not found")
 			return
 		}
-		s.Logger.Debugf("raw: invalid root chunk %s: %v", address, err)
-		s.Logger.Error("raw: invalid root chunk")
+		s.Logger.Debugf("bytes: invalid root chunk %s: %v", address, err)
+		s.Logger.Error("bytes: invalid root chunk")
 		jsonhttp.BadRequest(w, "invalid root chunk")
 		return
 	}
@@ -104,8 +104,8 @@ func (s *server) rawGetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	c, err := file.JoinReadAll(j, address, w)
 	if err != nil && c == 0 {
-		s.Logger.Errorf("raw: data write %s: %v", address, err)
-		s.Logger.Error("raw: data input error")
+		s.Logger.Errorf("bytes: data write %s: %v", address, err)
+		s.Logger.Error("bytes: data input error")
 		jsonhttp.InternalServerError(w, "retrieval fail")
 	}
 }
