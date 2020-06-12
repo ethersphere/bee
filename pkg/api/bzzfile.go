@@ -226,18 +226,20 @@ func (s *server) storeMeta(ctx context.Context, dataBytes []byte) (swarm.Address
 	dataBuf := bytes.NewBuffer(dataBytes)
 	dataReader := io.LimitReader(dataBuf, int64(len(dataBytes)))
 	dataReadCloser := ioutil.NopCloser(dataReader)
-	dataAddr, err := s.splitUpload(ctx, dataReadCloser, int64(len(dataBytes)))
+	o, err := s.splitUpload(ctx, dataReadCloser, int64(len(dataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	return dataAddr, nil
+	bytesResp := o.(bytesPostResponse)
+	return bytesResp.Reference, nil
 }
 
 // storePartData stores file data belonging to one of the part of multipart.
 func (s *server) storePartData(ctx context.Context, part *multipart.Part, l uint64) (swarm.Address, error) {
-	dataAddr, err := s.splitUpload(ctx, part, int64(l))
+	o, err := s.splitUpload(ctx, part, int64(l))
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	return dataAddr, nil
+	bytesResp := o.(bytesPostResponse)
+	return bytesResp.Reference, nil
 }
