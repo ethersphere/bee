@@ -7,6 +7,7 @@ package libp2p_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -40,6 +41,52 @@ func TestNewStream(t *testing.T) {
 	}
 	if err := stream.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestNewStreamMulti is a regression test to see that we trigger
+// the right handler when multiple streams are registered under
+// a single protocol.
+func TestNewStreamMulti(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	var (
+		h1calls, h2calls int32
+		h1               = func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
+			_ = atomic.AddInt32(&h1calls, 1)
+			return nil
+		}
+		h2 = func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
+			_ = atomic.AddInt32(&h2calls, 1)
+			return nil
+		}
+	)
+	s2, _ := newService(t, 1, libp2p.Options{})
+
+	if err := s1.AddProtocol(newTestMultiProtocol(h1, h2)); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if atomic.LoadInt32(&h1calls) != 1 {
+		t.Fatal("handler should have been called but wasnt")
+	}
+	if atomic.LoadInt32(&h2calls) > 0 {
+		t.Fatal("handler should not have been called")
 	}
 }
 
@@ -166,9 +213,10 @@ func TestDisconnectError(t *testing.T) {
 }
 
 const (
-	testProtocolName    = "testing"
-	testProtocolVersion = "2.3.4"
-	testStreamName      = "messages"
+	testProtocolName     = "testing"
+	testProtocolVersion  = "2.3.4"
+	testStreamName       = "messages"
+	testSecondStreamName = "cookies"
 )
 
 func newTestProtocol(h p2p.HandlerFunc) p2p.ProtocolSpec {
@@ -179,6 +227,23 @@ func newTestProtocol(h p2p.HandlerFunc) p2p.ProtocolSpec {
 			{
 				Name:    testStreamName,
 				Handler: h,
+			},
+		},
+	}
+}
+
+func newTestMultiProtocol(h1, h2 p2p.HandlerFunc) p2p.ProtocolSpec {
+	return p2p.ProtocolSpec{
+		Name:    testProtocolName,
+		Version: testProtocolVersion,
+		StreamSpecs: []p2p.StreamSpec{
+			{
+				Name:    testStreamName,
+				Handler: h1,
+			},
+			{
+				Name:    testSecondStreamName,
+				Handler: h2,
 			},
 		},
 	}
