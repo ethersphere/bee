@@ -35,7 +35,7 @@ func TestBzz(t *testing.T) {
 	)
 	t.Run("simple-upload", func(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, simpleResource(), bytes.NewReader(simpleData), http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "not a mutlipart/form-data",
+			Message: "invalid content-type header",
 			Code:    http.StatusBadRequest,
 		}, nil)
 	})

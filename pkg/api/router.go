@@ -35,18 +35,16 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
+	handle(router, "/files", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.fileUploadHandler),
+	})
+	handle(router, "/files/{addr}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.fileDownloadHandler),
+	})
+
 	handle(router, "/bytes", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.bytesUploadHandler),
 	})
-
-	handle(router, "/files", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.bzzFileUploadHandler),
-	})
-
-	handle(router, "/files/{addr}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.bzzFileDownloadHandler),
-	})
-
 	handle(router, "/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.bytesGetHandler),
 	})
