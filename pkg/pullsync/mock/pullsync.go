@@ -96,9 +96,8 @@ type PullSyncMock struct {
 	liveSyncCalls        int
 	liveSyncExactReplies []SyncReply
 
-	lateReply bool
-	lateCond  *sync.Cond
-	//lateReads       int
+	lateReply       bool
+	lateCond        *sync.Cond
 	lateTop         uint64
 	lateSyncReplies []SyncReply
 
@@ -116,7 +115,7 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 	return s
 }
 
-func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from uint64, to uint64) (topmost uint64, err error) {
+func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error) {
 	isLive := to == math.MaxUint64
 
 	call := SyncCall{
@@ -168,12 +167,6 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		}
 		fmt.Println("did not find element for bin", bin)
 		return 0, context.Canceled
-		//p.lateReads--
-		//top := p.lateTop
-		//if p.lateReads == 0 {
-		//p.lateTop = 0
-		//}
-		//return top, nil
 	}
 
 	if isLive && p.blockLiveSync {

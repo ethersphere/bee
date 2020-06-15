@@ -181,7 +181,7 @@ func (p *Puller) manage() {
 	}
 }
 
-func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d uint8) {
+func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
 	p.logger.Debugf("puller recalculating peer %s po %d depth %d", peer, po, d)
 	syncCtx := p.syncPeers[po][peer.String()]
 
@@ -263,7 +263,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 	}
 }
 
-func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8, d uint8) {
+func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
 	syncCtx := p.syncPeers[po][peer.String()]
 	syncCtx.Lock()
 	defer syncCtx.Unlock()

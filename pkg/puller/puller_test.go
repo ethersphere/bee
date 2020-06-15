@@ -30,9 +30,7 @@ var (
 		return c{b: b, f: f, t: t}
 	}
 
-	reply = func(b uint8, f, top uint64, block bool) mockps.SyncReply {
-		return mockps.NewReply(b, f, top, block)
-	}
+	reply = mockps.NewReply // alias to make code more readable
 )
 
 // test that adding one peer start syncing
