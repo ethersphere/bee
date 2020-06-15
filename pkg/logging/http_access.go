@@ -92,7 +92,7 @@ func (l *responseLogger) Flush() {
 func (l *responseLogger) CloseNotify() <-chan bool {
 	// staticcheck SA1019 CloseNotifier interface is required by gorilla compress handler
 	// nolint:staticcheck
-	return l.w.(http.CloseNotifier).CloseNotify()
+	return l.w.(http.CloseNotifier).CloseNotify() // skipcq: SCC-SA1019
 }
 
 func (l *responseLogger) Push(target string, opts *http.PushOptions) error {
