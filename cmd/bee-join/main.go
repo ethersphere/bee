@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,7 @@ var (
 	host         string // flag variable, http api host
 	port         int    // flag variable, http api port
 	ssl          bool   // flag variable, uses https for api if set
+	indir        string // flag variable, directory to retrieve chunks from
 	verbosity    string // flag variable, debug level
 	logger       logging.Logger
 )
@@ -70,8 +72,14 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	// initialize interface with HTTP API
-	store := cmdfile.NewApiStore(host, port, ssl)
+	// initialize interface with backend store
+	// either from directory if set, or HTTP API if not set
+	var store storage.Getter
+	if indir != "" {
+		store = cmdfile.NewFsStore(indir)
+	} else {
+		store = cmdfile.NewApiStore(host, port, ssl)
+	}
 
 	// create the join and get its data reader
 	j := joiner.NewSimpleJoiner(store)
@@ -95,6 +103,7 @@ Will output retrieved data to stdout.`,
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
 	c.Flags().IntVar(&port, "port", 8080, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
+	c.Flags().StringVarP(&indir, "input-dir", "i", "", "retrieve chunks from directory")
 	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 
 	c.SetOutput(c.OutOrStdout())
