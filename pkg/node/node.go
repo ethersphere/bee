@@ -124,7 +124,7 @@ func NewBee(o Options) (*Bee, error) {
 	if created {
 		logger.Debugf("new libp2p key created")
 	} else {
-		logger.Debugf("using exising libp2p key")
+		logger.Debugf("using existing libp2p key")
 	}
 
 	var stateStore storage.StateStorer
