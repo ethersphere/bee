@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"mime"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -23,8 +24,8 @@ import (
 
 func TestBzz(t *testing.T) {
 	var (
-		simpleResource  = func() string { return "/file" }
-		addressResource = func(addr string) string { return "/file/" + addr }
+		simpleResource  = func() string { return "/files" }
+		addressResource = func(addr string) string { return "/files/" + addr }
 		simpleData      = []byte("this is a simple text")
 		mockStorer      = mock.NewStorer()
 		client          = newTestServer(t, testServerOptions{
@@ -43,9 +44,18 @@ func TestBzz(t *testing.T) {
 	t.Run("simple-upload", func(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "295673cf7aa55d119dd6f82528c91d45b53dd63dc2e4ca4abf4ed8b3a0788085"
-		_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, "", api.FileUploadResponse{
+		rcvdHeader := jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, "", api.FileUploadResponse{
 			Reference: swarm.MustParseHexAddress(rootHash),
 		})
+
+		sizeStr := rcvdHeader.Get("Content-Length")
+		size, err := strconv.ParseUint(sizeStr, 10, 32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if size > uint64(10) {
+			t.Fatal("Invalid content size")
+		}
 
 	})
 

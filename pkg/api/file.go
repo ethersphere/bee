@@ -146,7 +146,6 @@ func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.InternalServerError(w, "could not store entry")
 			return
 		}
-
 		w.Header().Set("ETag", fmt.Sprintf("%q", er.String()))
 		jsonhttp.OK(w, &FileUploadResponse{Reference: er})
 	}
@@ -243,8 +242,7 @@ func (s *server) bzzFileDownloadHandler(w http.ResponseWriter, r *http.Request) 
 // storeMeta is used to store metadata information as a whole.
 func (s *server) storeMeta(ctx context.Context, dataBytes []byte) (swarm.Address, error) {
 	dataBuf := bytes.NewBuffer(dataBytes)
-	dataReader := io.LimitReader(dataBuf, int64(len(dataBytes)))
-	dataReadCloser := ioutil.NopCloser(dataReader)
+	dataReadCloser := ioutil.NopCloser(dataBuf)
 	o, err := s.splitUpload(ctx, dataReadCloser, int64(len(dataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, err
