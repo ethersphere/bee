@@ -42,8 +42,8 @@ func (n *nopWriteCloser) Close() error {
 	return nil
 }
 
-// putGetter wraps both storage.Putter and storage.Getter interfaces
-type putGetter interface {
+// PutGetter wraps both storage.Putter and storage.Getter interfaces
+type PutGetter interface {
 	storage.Putter
 	storage.Getter
 }
@@ -82,7 +82,7 @@ type FsStore struct {
 }
 
 // NewFsStore creates a new FsStore.
-func NewFsStore(path string) storage.Putter {
+func NewFsStore(path string) PutGetter {
 	return &FsStore{
 		path: path,
 	}
@@ -101,6 +101,16 @@ func (f *FsStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Ch
 	return exist, nil
 }
 
+// Get implements storage.Getter.
+func (f *FsStore) Get(ctx context.Context, mode storage.ModeGet, address swarm.Address) (ch swarm.Chunk, err error) {
+	chunkPath := filepath.Join(f.path, address.String())
+	data, err := ioutil.ReadFile(chunkPath)
+	if err != nil {
+		return nil, err
+	}
+	return swarm.NewChunk(address, data), nil
+}
+
 // ApiStore provies a storage.Putter that adds chunks to swarm through the HTTP chunk API.
 type ApiStore struct {
 	Client  *http.Client
@@ -108,7 +118,7 @@ type ApiStore struct {
 }
 
 // NewApiStore creates a new ApiStore.
-func NewApiStore(host string, port int, ssl bool) putGetter {
+func NewApiStore(host string, port int, ssl bool) PutGetter {
 	scheme := "http"
 	if ssl {
 		scheme += "s"
