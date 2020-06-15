@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -21,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -37,8 +39,8 @@ type FileUploadResponse struct {
 func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	contentType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if contentType != MultiPartFormData {
-		s.Logger.Debugf("bzz-file: no mutlipart: %v", err)
-		s.Logger.Error("bzz-file: no mutlipart")
+		s.Logger.Debugf("file: no mutlipart: %v", err)
+		s.Logger.Error("file: no mutlipart")
 		jsonhttp.BadRequest(w, "not a mutlipart/form-data")
 		return
 	}
@@ -49,79 +51,81 @@ func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			s.Logger.Debugf("bzz-file: read mutlipart: %v", err)
-			s.Logger.Error("bzz-file: read mutlipart")
+			s.Logger.Debugf("file: read mutlipart: %v", err)
+			s.Logger.Error("file: read mutlipart")
 			jsonhttp.BadRequest(w, "error reading a mutlipart/form-data")
 			return
 		}
 
-		ctx := context.Background()
-
-		// find file size
-		fileSizeString := part.Header.Get("Content-Length")
-		if fileSizeString == "" {
-			s.Logger.Debugf("bzz-file: content length: %v", err)
-			s.Logger.Error("bzz-file: content length")
-			jsonhttp.BadRequest(w, "content length header missing")
-			return
-		}
-		fileSize, err := strconv.ParseUint(fileSizeString, 10, 64)
-		if err != nil {
-			s.Logger.Debugf("bzz-file: content length: %v", err)
-			s.Logger.Error("bzz-file: content length")
-			jsonhttp.BadRequest(w, "error parsing content length")
-			return
-		}
-
-		// first store the file and get its reference
-		fr, err := s.storePartData(ctx, part, fileSize)
-		if err != nil {
-			s.Logger.Debugf("bzz-file: file store: %v,", err)
-			s.Logger.Error("bzz-file: file store")
-			jsonhttp.InternalServerError(w, "could not store file data")
-			return
-		}
+		ctx := r.Context()
 
 		// try to find filename
 		// 1) in part header params
 		// 2) as formname
-		// 3) file reference hash
+		// 3) file reference hash (after uploading the file)
 		fileName := part.FileName()
 		if fileName == "" {
 			fileName = part.FormName()
 		}
-		if fileName == "" {
-			fileName = fr.String()
-		}
-		m := entry.NewMetadata(fileName)
 
 		// then find out content type
 		contentType := part.Header.Get("Content-Type")
+		reader := bufio.NewReader(part)
 		if contentType == "" {
-			reader := bufio.NewReader(part)
 			buf, err := reader.Peek(512)
-			if err != nil {
-				s.Logger.Debugf("bzz-file: read content type: %v, file name %s", err, fileName)
-				s.Logger.Error("bzz-file: read content type")
+			if err != nil && err != io.EOF {
+				s.Logger.Debugf("file: read content type: %v, file name %s", err, fileName)
+				s.Logger.Error("file: read content type")
 				jsonhttp.BadRequest(w, "error reading content type")
 				return
 			}
 			contentType = http.DetectContentType(buf)
 		}
-		m.MimeType = contentType
 
-		// Store the metadata and get its reference
+		// find file size
+		fileSizeString := part.Header.Get("Content-Length")
+		if fileSizeString == "" {
+			s.Logger.Debugf("file: content length: %v", err)
+			s.Logger.Error("file: content length")
+			jsonhttp.BadRequest(w, "content length header missing")
+			return
+		}
+		fileSize, err := strconv.ParseUint(fileSizeString, 10, 64)
+		if err != nil {
+			s.Logger.Debugf("file: content length: %v", err)
+			s.Logger.Error("file: content length")
+			jsonhttp.BadRequest(w, "error parsing content length")
+			return
+		}
+
+		// first store the file and get its reference
+		fr, err := s.storePartData(ctx, reader, fileSize)
+		if err != nil {
+			s.Logger.Debugf("file: file store: %v,", err)
+			s.Logger.Error("file: file store")
+			jsonhttp.InternalServerError(w, "could not store file data")
+			return
+		}
+
+		// If filename is still empty, use the file hash the filename
+		if fileName == "" {
+			fileName = fr.String()
+		}
+
+		// then store the metadata and get its reference
+		m := entry.NewMetadata(fileName)
+		m.MimeType = contentType
 		metadataBytes, err := json.Marshal(m)
 		if err != nil {
-			s.Logger.Debugf("bzz-file: metadata marshall: %v, file name %s", err, fileName)
-			s.Logger.Error("bzz-file: metadata marshall")
+			s.Logger.Debugf("file: metadata marshall: %v, file name %s", err, fileName)
+			s.Logger.Error("file: metadata marshall")
 			jsonhttp.InternalServerError(w, "metadata marshall error")
 			return
 		}
 		mr, err := s.storeMeta(ctx, metadataBytes)
 		if err != nil {
-			s.Logger.Debugf("bzz-file: metadata store: %v, file name %s", err, fileName)
-			s.Logger.Error("bzz-file: metadata store")
+			s.Logger.Debugf("file: metadata store: %v, file name %s", err, fileName)
+			s.Logger.Error("file: metadata store")
 			jsonhttp.InternalServerError(w, "could not store metadata")
 			return
 		}
@@ -130,15 +134,15 @@ func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		entrie := entry.New(fr, mr)
 		fileEntryBytes, err := entrie.MarshalBinary()
 		if err != nil {
-			s.Logger.Debugf("bzz-file: entry marshall: %v, file name %s", err, fileName)
-			s.Logger.Error("bzz-file: entry marshall")
+			s.Logger.Debugf("file: entry marshall: %v, file name %s", err, fileName)
+			s.Logger.Error("file: entry marshall")
 			jsonhttp.InternalServerError(w, "entry marshall error")
 			return
 		}
 		er, err := s.storeMeta(ctx, fileEntryBytes)
 		if err != nil {
-			s.Logger.Debugf("bzz-file: entry store: %v, file name %s", err, fileName)
-			s.Logger.Error("bzz-file: entry store")
+			s.Logger.Debugf("file: entry store: %v, file name %s", err, fileName)
+			s.Logger.Error("file: entry store")
 			jsonhttp.InternalServerError(w, "could not store entry")
 			return
 		}
@@ -153,8 +157,8 @@ func (s *server) bzzFileDownloadHandler(w http.ResponseWriter, r *http.Request) 
 	addr := mux.Vars(r)["addr"]
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("bzz-file: parse file address %s: %v", addr, err)
-		s.Logger.Error("bzz-file: parse file address")
+		s.Logger.Debugf("file: parse file address %s: %v", addr, err)
+		s.Logger.Error("file: parse file address")
 		jsonhttp.BadRequest(w, "invalid file address")
 		return
 	}
@@ -164,16 +168,16 @@ func (s *server) bzzFileDownloadHandler(w http.ResponseWriter, r *http.Request) 
 	buf := bytes.NewBuffer(nil)
 	_, err = file.JoinReadAll(j, address, buf)
 	if err != nil {
-		s.Logger.Debugf("bzz-file: read entry %s: %v", addr, err)
-		s.Logger.Error("bzz-file: read entry")
+		s.Logger.Debugf("file: read entry %s: %v", addr, err)
+		s.Logger.Error("file: read entry")
 		jsonhttp.InternalServerError(w, "error reading entry")
 		return
 	}
 	e := &entry.Entry{}
 	err = e.UnmarshalBinary(buf.Bytes())
 	if err != nil {
-		s.Logger.Debugf("bzz-file: unmarshall entry %s: %v", addr, err)
-		s.Logger.Error("bzz-file: unmarshall entry")
+		s.Logger.Debugf("file: unmarshall entry %s: %v", addr, err)
+		s.Logger.Error("file: unmarshall entry")
 		jsonhttp.InternalServerError(w, "error unmarshalling entry")
 		return
 	}
@@ -192,32 +196,47 @@ func (s *server) bzzFileDownloadHandler(w http.ResponseWriter, r *http.Request) 
 	buf = bytes.NewBuffer(nil)
 	_, err = file.JoinReadAll(j, e.Metadata(), buf)
 	if err != nil {
-		s.Logger.Debugf("bzz-file: read metadata %s: %v", addr, err)
-		s.Logger.Error("bzz-file: read netadata")
+		s.Logger.Debugf("file: read metadata %s: %v", addr, err)
+		s.Logger.Error("file: read netadata")
 		jsonhttp.InternalServerError(w, "error reading metadata")
 		return
 	}
 	metaData := &entry.Metadata{}
 	err = json.Unmarshal(buf.Bytes(), metaData)
 	if err != nil {
-		s.Logger.Debugf("bzz-file: unmarshall metadata %s: %v", addr, err)
-		s.Logger.Error("bzz-file: unmarshall metadata")
+		s.Logger.Debugf("file: unmarshall metadata %s: %v", addr, err)
+		s.Logger.Error("file: unmarshall metadata")
 		jsonhttp.InternalServerError(w, "error unmarshalling metadata")
 		return
 	}
 
 	// send the file data back in the response
-	outBuffer := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, e.Reference(), outBuffer)
+	dataSize, err := j.Size(r.Context(), address)
 	if err != nil {
-		s.Logger.Debugf("bzz-file: data read %s: %v", addr, err)
-		s.Logger.Error("bzz-file: data read")
+		if errors.Is(err, storage.ErrNotFound) {
+			s.Logger.Debugf("file: not found %s: %v", address, err)
+			s.Logger.Error("file: not found")
+			jsonhttp.NotFound(w, "not found")
+			return
+		}
+		s.Logger.Debugf("file: invalid root chunk %s: %v", address, err)
+		s.Logger.Error("file: invalid root chunk")
+		jsonhttp.BadRequest(w, "invalid root chunk")
+		return
+	}
+
+	outBuffer := bytes.NewBuffer(nil)
+	c, err := file.JoinReadAll(j, e.Reference(), outBuffer)
+	if err != nil && c == 0 {
+		s.Logger.Debugf("file: data read %s: %v", addr, err)
+		s.Logger.Error("file: data read")
 		jsonhttp.InternalServerError(w, "error reading data")
 		return
 	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", e.Reference()))
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename))
 	w.Header().Set("Content-Type", metaData.MimeType)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	_, _ = io.Copy(w, outBuffer)
 }
 
@@ -235,8 +254,9 @@ func (s *server) storeMeta(ctx context.Context, dataBytes []byte) (swarm.Address
 }
 
 // storePartData stores file data belonging to one of the part of multipart.
-func (s *server) storePartData(ctx context.Context, part *multipart.Part, l uint64) (swarm.Address, error) {
-	o, err := s.splitUpload(ctx, part, int64(l))
+func (s *server) storePartData(ctx context.Context, part *bufio.Reader, l uint64) (swarm.Address, error) {
+	buf := ioutil.NopCloser(io.Reader(part))
+	o, err := s.splitUpload(ctx, buf, int64(l))
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}

@@ -23,8 +23,8 @@ import (
 
 func TestBzz(t *testing.T) {
 	var (
-		simpleResource  = func() string { return "/bzz-file" }
-		addressResource = func(addr string) string { return "/bzz-file/" + addr }
+		simpleResource  = func() string { return "/file" }
+		addressResource = func(addr string) string { return "/file/" + addr }
 		simpleData      = []byte("this is a simple text")
 		mockStorer      = mock.NewStorer()
 		client          = newTestServer(t, testServerOptions{
@@ -43,15 +43,16 @@ func TestBzz(t *testing.T) {
 	t.Run("simple-upload", func(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "295673cf7aa55d119dd6f82528c91d45b53dd63dc2e4ca4abf4ed8b3a0788085"
-		_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, api.FileUploadResponse{
+		_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, "", api.FileUploadResponse{
 			Reference: swarm.MustParseHexAddress(rootHash),
 		})
+
 	})
 
 	t.Run("check-content-type-detection", func(t *testing.T) {
 		fileName := "my-pictures.jpeg"
-		rootHash := "602a37afed59ddc84746e17f090474502d24e4a6125714918c19e771c40b4477"
-		_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, api.FileUploadResponse{
+		rootHash := "f2e761160deda91c1fbfab065a5abf530b0766b3e102b51fbd626ba37c3bc581"
+		_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, "image/jpeg; charset=utf-8", api.FileUploadResponse{
 			Reference: swarm.MustParseHexAddress(rootHash),
 		})
 
@@ -63,6 +64,9 @@ func TestBzz(t *testing.T) {
 		}
 		if params["filename"] != fileName {
 			t.Fatal("Invalid file name detected")
+		}
+		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
+			t.Fatal("Invalid content type detected")
 		}
 	})
 
@@ -80,7 +84,7 @@ func TestBzz(t *testing.T) {
 		</body>
 		</html>`
 
-		rcvdHeader := jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, []byte(sampleHtml), http.StatusOK, api.FileUploadResponse{
+		rcvdHeader := jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, []byte(sampleHtml), http.StatusOK, "", api.FileUploadResponse{
 			Reference: swarm.MustParseHexAddress(rootHash),
 		})
 

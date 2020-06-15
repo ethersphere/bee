@@ -40,12 +40,12 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 }
 
 func ResponseDirectWithMultiPart(t *testing.T, client *http.Client, method, url, fileName string, data []byte,
-	responseCode int, response interface{}) http.Header {
+	responseCode int, contentType string, response interface{}) http.Header {
 	body := bytes.NewBuffer(nil)
 	mw := multipart.NewWriter(body)
 	hdr := make(textproto.MIMEHeader)
 	hdr.Set("Content-Disposition", fmt.Sprintf("form-data; name=%q", fileName))
-	hdr.Set("Content-Type", http.DetectContentType(data))
+	hdr.Set("Content-Type", contentType)
 	hdr.Set("Content-Length", strconv.FormatInt(int64(len(data)), 10))
 	part, err := mw.CreatePart(hdr)
 	if err != nil {
