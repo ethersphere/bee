@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"mime"
 	"net/http"
-	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -44,19 +43,9 @@ func TestBzz(t *testing.T) {
 	t.Run("simple-upload", func(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "295673cf7aa55d119dd6f82528c91d45b53dd63dc2e4ca4abf4ed8b3a0788085"
-		rcvdHeader := jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, "", api.FileUploadResponse{
+		_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, simpleResource(), fileName, simpleData, http.StatusOK, "", api.FileUploadResponse{
 			Reference: swarm.MustParseHexAddress(rootHash),
 		})
-
-		sizeStr := rcvdHeader.Get("Content-Length")
-		size, err := strconv.ParseUint(sizeStr, 10, 32)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if size > uint64(10) {
-			t.Fatal("Invalid content size")
-		}
-
 	})
 
 	t.Run("check-content-type-detection", func(t *testing.T) {
