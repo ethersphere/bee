@@ -44,19 +44,19 @@ var (
 )
 
 type Service struct {
-	ctx              context.Context
-	host             host.Host
-	natManager       basichost.NATManager
-	libp2pPeerstore  peerstore.Peerstore
-	metrics          metrics
-	networkID        uint64
-	handshakeService *handshake.Service
-	addressbook      addressbook.Putter
-	peers            *peerRegistry
-	topologyNotifier topology.Notifier
-	conectionBreaker breaker.Interface
-	logger           logging.Logger
-	tracer           *tracing.Tracer
+	ctx               context.Context
+	host              host.Host
+	natManager        basichost.NATManager
+	libp2pPeerstore   peerstore.Peerstore
+	metrics           metrics
+	networkID         uint64
+	handshakeService  *handshake.Service
+	addressbook       addressbook.Putter
+	peers             *peerRegistry
+	topologyNotifier  topology.Notifier
+	connectionBreaker breaker.Interface
+	logger            logging.Logger
+	tracer            *tracing.Tracer
 }
 
 type Options struct {
@@ -172,18 +172,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	peerRegistry := newPeerRegistry()
 	s := &Service{
-		ctx:              ctx,
-		host:             h,
-		natManager:       natManager,
-		handshakeService: handshakeService,
-		libp2pPeerstore:  libp2pPeerstore,
-		metrics:          newMetrics(),
-		networkID:        networkID,
-		peers:            peerRegistry,
-		addressbook:      o.Addressbook,
-		logger:           o.Logger,
-		tracer:           o.Tracer,
-		conectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
+		ctx:               ctx,
+		host:              h,
+		natManager:        natManager,
+		handshakeService:  handshakeService,
+		libp2pPeerstore:   libp2pPeerstore,
+		metrics:           newMetrics(),
+		networkID:         networkID,
+		peers:             peerRegistry,
+		addressbook:       o.Addressbook,
+		logger:            o.Logger,
+		tracer:            o.Tracer,
+		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 	}
 	// Construct protocols.
 	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
@@ -328,9 +328,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, p2p.ErrAlreadyConnected
 	}
 
-	if err := s.conectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
-			return nil, p2p.NewConnectionBackoffError(err, s.conectionBreaker.ClosedUntil())
+			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
 		}
 		return nil, err
 	}
