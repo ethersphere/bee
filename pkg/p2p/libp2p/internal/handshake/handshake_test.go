@@ -306,7 +306,8 @@ func TestHandshake(t *testing.T) {
 
 		res, err := handshakeService.Handshake(stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
 		if err != testError {
-			t.Fatal("expected error")
+			t.Fatalf("expected error %v got %v", testError, err)
+
 		}
 
 		if res != nil {
