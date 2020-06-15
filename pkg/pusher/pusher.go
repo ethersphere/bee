@@ -141,7 +141,7 @@ func (s *Service) setChunkAsSynced(ctx context.Context, addr swarm.Address) {
 		s.metrics.TotalChunksSynced.Inc()
 		ta, err := s.tag.GetByAddress(addr)
 		if err != nil {
-			if !errors.Is(err, tags.TagNotFoundErr) {
+			if !errors.Is(err, tags.ErrNotFound) {
 				s.logger.Debugf("pusher: get tag by address %s: %v", addr, err)
 			}
 			// return  // until bzz api implements tags dont retunrn here
