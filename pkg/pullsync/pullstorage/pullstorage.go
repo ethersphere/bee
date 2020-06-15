@@ -20,7 +20,7 @@ var (
 	ErrDbClosed = errors.New("db closed")
 
 	// after how long to return a non-empty batch
-	batchTimeout = time.Duration(500 * time.Millisecond)
+	batchTimeout = 500 * time.Millisecond
 )
 
 // Storer is a thin wrapper around storage.Storer.

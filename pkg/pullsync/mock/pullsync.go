@@ -96,9 +96,9 @@ type PullSyncMock struct {
 	liveSyncCalls        int
 	liveSyncExactReplies []SyncReply
 
-	lateReply       bool
-	lateCond        *sync.Cond
-	lateReads       int
+	lateReply bool
+	lateCond  *sync.Cond
+	//lateReads       int
 	lateTop         uint64
 	lateSyncReplies []SyncReply
 
@@ -168,12 +168,12 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		}
 		fmt.Println("did not find element for bin", bin)
 		return 0, context.Canceled
-		p.lateReads--
-		top := p.lateTop
-		if p.lateReads == 0 {
-			p.lateTop = 0
-		}
-		return top, nil
+		//p.lateReads--
+		//top := p.lateTop
+		//if p.lateReads == 0 {
+		//p.lateTop = 0
+		//}
+		//return top, nil
 	}
 
 	if isLive && p.blockLiveSync {

@@ -314,7 +314,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 				}
 			}
 
-			if topmost != uint64(tc.top) {
+			if topmost != tc.top {
 				t.Fatalf("topmost mismatch, got %d want %d", topmost, tc.top)
 			}
 

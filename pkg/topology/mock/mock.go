@@ -83,6 +83,20 @@ func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }
 
+func (_ *mock) NeighborhoodDepth() uint8 {
+	return 0
+}
+
+// EachPeer iterates from closest bin to farthest
+func (_ *mock) EachPeer(_ topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
+// EachPeerRev iterates from farthest bin to closest
+func (_ *mock) EachPeerRev(_ topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
 func (d *mock) MarshalJSON() ([]byte, error) {
 	return d.marshalJSONFunc()
 }

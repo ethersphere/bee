@@ -69,7 +69,6 @@ func TestOneSync(t *testing.T) {
 
 func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 	addr := test.RandomAddress()
-	const max = math.MaxUint64
 
 	for _, tc := range []struct {
 		name         string   // name of test

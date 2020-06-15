@@ -77,7 +77,8 @@ func (p *Puller) pollTopology() {
 	// todo: this should become into some falling-edge filter, since this is till rising edge
 	// ie. reset a timer every time we get a notification on the channel, then once a certain timeout
 	// passes we trigger the peersC channel
-	dur := time.Duration(100 * time.Millisecond)
+	dur := 100 * time.Millisecond
+
 	t := time.NewTimer(dur)
 	t.Stop()
 	for {
@@ -213,11 +214,11 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 				// sync running on this bin. start syncing both hist and live
 				cur := c[bin]
 				binCtx, cancel := context.WithCancel(ctx)
-				syncCtx.binCancelFuncs[uint8(bin)] = cancel
+				syncCtx.binCancelFuncs[bin] = cancel
 				if cur > 0 {
-					go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
+					go p.histSyncWorker(binCtx, peer, bin, cur)
 				}
-				go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
+				go p.liveSyncWorker(binCtx, peer, bin, cur)
 			}
 		}
 		for _, bin := range dontWant {
@@ -248,9 +249,9 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po uint8, d
 			binCtx, cancel := context.WithCancel(ctx)
 			syncCtx.binCancelFuncs[po] = cancel
 			if cur > 0 {
-				go p.histSyncWorker(binCtx, peer, uint8(want), cur)
+				go p.histSyncWorker(binCtx, peer, want, cur)
 			}
-			go p.liveSyncWorker(binCtx, peer, uint8(want), cur)
+			go p.liveSyncWorker(binCtx, peer, want, cur)
 		}
 		for _, bin := range dontWant {
 			if c, ok := syncCtx.binCancelFuncs[bin]; ok {
@@ -290,8 +291,10 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po uint8, d u
 		// start just one bin for historical and live
 		binCtx, cancel := context.WithCancel(ctx)
 		syncCtx.binCancelFuncs[po] = cancel
-		go p.histSyncWorker(binCtx, peer, uint8(bin), cur)
-		go p.liveSyncWorker(binCtx, peer, uint8(bin), cur)
+		if cur > 0 {
+			go p.histSyncWorker(binCtx, peer, bin, cur)
+		}
+		go p.liveSyncWorker(binCtx, peer, bin, cur)
 
 		return
 	}
@@ -338,14 +341,18 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		start := time.Now()
-		top, err := p.syncer.SyncInterval(ctx, peer, uint8(bin), s, cur)
+		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
 			p.logger.Debugf("histSyncWorker error syncing interval. peer %s, bin %d, cursor %d, err %v", peer.String(), bin, cur, err)
 			return
 		}
 		took := time.Since(start)
 		p.logger.Tracef("histSyncWorker peer %s bin %d synced interval from %d to %d. took %s", peer, bin, s, top, took)
-		p.addPeerInterval(peer, bin, s, top)
+		err = p.addPeerInterval(peer, bin, s, top)
+		if err != nil {
+			p.logger.Debugf("error persisting interval for peer, quitting")
+			return
+		}
 	}
 }
 
@@ -369,7 +376,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if top == 0 {
-			return
 			panic(err)
 		}
 		p.logger.Tracef("liveSyncWorker peer %s synced bin %d from %d to %d", peer, bin, from, top)
