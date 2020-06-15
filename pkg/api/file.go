@@ -16,6 +16,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
@@ -68,11 +69,13 @@ func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 			fileName = part.FormName()
 		}
 
+		var reader io.ReadCloser
+
 		// then find out content type
 		contentType := part.Header.Get("Content-Type")
-		reader := bufio.NewReader(part)
 		if contentType == "" {
-			buf, err := reader.Peek(512)
+			br := bufio.NewReader(part)
+			buf, err := br.Peek(512)
 			if err != nil && err != io.EOF {
 				s.Logger.Debugf("file: read content type: %v, file name %s", err, fileName)
 				s.Logger.Error("file: read content type")
@@ -80,22 +83,46 @@ func (s *server) bzzFileUploadHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			contentType = http.DetectContentType(buf)
+			reader = ioutil.NopCloser(br)
+		} else {
+			reader = part
 		}
 
-		// find file size
-		fileSizeString := part.Header.Get("Content-Length")
-		if fileSizeString == "" {
-			s.Logger.Debugf("file: content length: %v", err)
-			s.Logger.Error("file: content length")
-			jsonhttp.BadRequest(w, "content length header missing")
-			return
-		}
-		fileSize, err := strconv.ParseUint(fileSizeString, 10, 64)
-		if err != nil {
-			s.Logger.Debugf("file: content length: %v", err)
-			s.Logger.Error("file: content length")
-			jsonhttp.BadRequest(w, "error parsing content length")
-			return
+		var fileSize uint64
+		if contentLength := part.Header.Get("Content-Length"); contentLength != "" {
+			fileSize, err = strconv.ParseUint(contentLength, 10, 64)
+			if err != nil {
+				s.Logger.Debugf("file: content length: %v", err)
+				s.Logger.Error("file: content length")
+				jsonhttp.BadRequest(w, "invalid content length header")
+				return
+			}
+		} else {
+			// copy the part to a tmp file to get its size
+			tmp, err := ioutil.TempFile("", "bee-multipart")
+			if err != nil {
+				s.Logger.Debugf("file: create temporary file: %v", err)
+				s.Logger.Error("file: create temporary file")
+				jsonhttp.InternalServerError(w, nil)
+				return
+			}
+			defer os.Remove(tmp.Name())
+			defer tmp.Close()
+			n, err := io.Copy(tmp, part)
+			if err != nil {
+				s.Logger.Debugf("file: write temporary file: %v", err)
+				s.Logger.Error("file: write temporary file")
+				jsonhttp.InternalServerError(w, nil)
+				return
+			}
+			if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+				s.Logger.Debugf("file: seek to beginning of temporary file: %v", err)
+				s.Logger.Error("file: seek to beginning of temporary file")
+				jsonhttp.InternalServerError(w, nil)
+				return
+			}
+			fileSize = uint64(n)
+			reader = tmp
 		}
 
 		// first store the file and get its reference
@@ -252,9 +279,8 @@ func (s *server) storeMeta(ctx context.Context, dataBytes []byte) (swarm.Address
 }
 
 // storePartData stores file data belonging to one of the part of multipart.
-func (s *server) storePartData(ctx context.Context, part *bufio.Reader, l uint64) (swarm.Address, error) {
-	buf := ioutil.NopCloser(io.Reader(part))
-	o, err := s.splitUpload(ctx, buf, int64(l))
+func (s *server) storePartData(ctx context.Context, r io.ReadCloser, l uint64) (swarm.Address, error) {
+	o, err := s.splitUpload(ctx, r, int64(l))
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
