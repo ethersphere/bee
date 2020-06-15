@@ -5,9 +5,9 @@
 package debugapi
 
 import (
+	crand "crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
@@ -52,7 +52,15 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	if name == "" {
-		name = fmt.Sprintf("tag-%v-%v", time.Now().UnixNano(), rand.Int())
+		b := make([]byte, 4)
+		_, err := crand.Read(b)
+		if err != nil {
+			s.Logger.Debugf("create tag: read random bytes %v", err)
+			s.Logger.Errorf("create tag: read random bytes error")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+		name = fmt.Sprintf("tag-%v-%x", time.Now().UnixNano(), b)
 	}
 
 	tag, err := s.Tags.Create(name, 0, false)
