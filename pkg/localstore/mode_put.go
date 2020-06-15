@@ -204,13 +204,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 		return false, 0, err
 	}
 	if exists {
-		if db.putToGCCheck(item.Address) {
-			gcSizeChange, err = db.setGC(batch, item)
-			if err != nil {
-				return false, 0, err
-			}
-		}
-		return true, gcSizeChange, nil
+		return true, 0, nil
 	}
 	anonymous := false
 	if db.tags != nil && item.Tag != 0 {
@@ -241,19 +235,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 		}
 	}
 
-	if db.putToGCCheck(item.Address) {
-
-		// TODO: this might result in an edge case where a node
-		// that has very little storage and uploads using an anonymous
-		// upload will have some of the content GCd before being able
-		// to sync it
-		gcSizeChange, err = db.setGC(batch, item)
-		if err != nil {
-			return false, 0, err
-		}
-	}
-
-	return false, gcSizeChange, nil
+	return false, 0, nil
 }
 
 // putSync adds an Item to the batch by updating required indexes:
@@ -266,14 +248,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 		return false, 0, err
 	}
 	if exists {
-		if db.putToGCCheck(item.Address) {
-			gcSizeChange, err = db.setGC(batch, item)
-			if err != nil {
-				return false, 0, err
-			}
-		}
-
-		return true, gcSizeChange, nil
+		return true, 0, nil
 	}
 
 	item.StoreTimestamp = now()
@@ -288,17 +263,6 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	err = db.pullIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
-	}
-
-	if db.putToGCCheck(item.Address) {
-		// TODO: this might result in an edge case where a node
-		// that has very little storage and uploads using an anonymous
-		// upload will have some of the content GCd before being able
-		// to sync it
-		gcSizeChange, err = db.setGC(batch, item)
-		if err != nil {
-			return false, 0, err
-		}
 	}
 
 	return false, gcSizeChange, nil
