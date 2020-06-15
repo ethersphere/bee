@@ -125,7 +125,33 @@ func TestIntervalChunks_GetChunksLater(t *testing.T) {
 	if topmost != exp {
 		t.Fatalf("expected topmost %d but got %d", exp, topmost)
 	}
+}
 
+// Get some descriptors, but then let the iterator time out and return just the stuff we got in the beginning
+func TestIntervalChunks_NoChunksLater(t *testing.T) {
+	desc := someDescriptors(0, 2)
+	ps, db := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
+
+	go func() {
+		<-time.After(600 * time.Millisecond)
+		// add chunks to subscribe pull on the storage mock
+		db.MorePull(someDescriptors(1, 3, 4)...)
+	}()
+
+	addrs, topmost, err := ps.IntervalChunks(context.Background(), 0, 0, 5, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if l := len(addrs); l != 2 {
+		t.Fatalf("want %d addrs but got %d", 2, l)
+	}
+
+	// highest chunk we sent had BinID 3
+	exp := uint64(3)
+	if topmost != exp {
+		t.Fatalf("expected topmost %d but got %d", exp, topmost)
+	}
 }
 
 func TestIntervalChunks_Blocking(t *testing.T) {
@@ -145,10 +171,6 @@ func TestIntervalChunks_Blocking(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-}
-
-func TestIntervalChunks_ChunksAndTimeout(t *testing.T) {
-	t.Fatal("todo return 1 chunk after timeout of 1 second")
 }
 
 func TestIntervalChunks_DbShutdown(t *testing.T) {
