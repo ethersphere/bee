@@ -274,7 +274,7 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("Handshake - error advertisablea address", func(t *testing.T) {
+	t.Run("Handshake - error advertisable address", func(t *testing.T) {
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
 		stream1 := mock.NewStream(&buffer1, &buffer2)
