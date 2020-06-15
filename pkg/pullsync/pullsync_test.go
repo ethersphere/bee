@@ -8,8 +8,12 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"io"
+	"io/ioutil"
 	"testing"
+	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/pullsync"
@@ -50,19 +54,14 @@ func init() {
 // Expected behavior is that an offer message with the requested
 // To value is returned to the requester, but offer.Hashes is empty.
 func TestIncoming_WantEmptyInterval(t *testing.T) {
-	defer func(i int) {
-		*pullsync.MaxPage = i
-	}(*pullsync.MaxPage)
-	*pullsync.MaxPage = 5
-
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp([]swarm.Address{}, mockTopmost, nil))
+		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp([]swarm.Address{}, mockTopmost, nil))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder)
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 1, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,16 +73,13 @@ func TestIncoming_WantEmptyInterval(t *testing.T) {
 	if clientDb.PutCalls() > 0 {
 		t.Fatal("too many puts")
 	}
+
+	waitSet(t, serverDb, 0)
 }
 func TestIncoming_WantNone(t *testing.T) {
-	defer func(i int) {
-		*pullsync.MaxPage = i
-	}(*pullsync.MaxPage)
-	*pullsync.MaxPage = 5
-
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(chunks...))
 	)
@@ -99,17 +95,14 @@ func TestIncoming_WantNone(t *testing.T) {
 	if clientDb.PutCalls() > 0 {
 		t.Fatal("too many puts")
 	}
+
+	waitSet(t, serverDb, 1)
 }
 
 func TestIncoming_WantOne(t *testing.T) {
-	defer func(i int) {
-		*pullsync.MaxPage = i
-	}(*pullsync.MaxPage)
-	*pullsync.MaxPage = 5
-
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 	)
@@ -128,17 +121,13 @@ func TestIncoming_WantOne(t *testing.T) {
 	if clientDb.PutCalls() > 1 {
 		t.Fatal("too many puts")
 	}
+	waitSet(t, serverDb, 1)
 }
 
 func TestIncoming_WantAll(t *testing.T) {
-	defer func(i int) {
-		*pullsync.MaxPage = i
-	}(*pullsync.MaxPage)
-	*pullsync.MaxPage = 5
-
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder)
 	)
@@ -157,14 +146,10 @@ func TestIncoming_WantAll(t *testing.T) {
 	if p := clientDb.PutCalls(); p != 5 {
 		t.Fatalf("want %d puts but got %d", 5, p)
 	}
+	waitSet(t, serverDb, 1)
 }
 
 func TestIncoming_UnsolicitedChunk(t *testing.T) {
-	defer func(i int) {
-		*pullsync.MaxPage = i
-	}(*pullsync.MaxPage)
-	*pullsync.MaxPage = 5
-
 	evilAddr := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000666")
 	evilData := []byte{0x66, 0x66, 0x66}
 	evil := swarm.NewChunk(evilAddr, evilData)
@@ -179,6 +164,47 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 	_, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
 		t.Fatalf("expected ErrUnsolicitedChunk but got %v", err)
+	}
+}
+
+func TestGetCursors(t *testing.T) {
+	var (
+		mockCursors = []uint64{100, 101, 102, 103}
+		ps, _       = newPullSync(nil, mock.WithCursors(mockCursors))
+		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, _ = newPullSync(recorder)
+	)
+
+	curs, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(curs) != len(mockCursors) {
+		t.Fatalf("length mismatch got %d want %d", len(curs), len(mockCursors))
+	}
+
+	for i, v := range mockCursors {
+		if curs[i] != v {
+			t.Errorf("cursor mismatch. index %d want %d got %d", i, v, curs[i])
+		}
+	}
+}
+
+func TestGetCursorsError(t *testing.T) {
+	var (
+		e           = errors.New("erring")
+		ps, _       = newPullSync(nil, mock.WithCursorsErr(e))
+		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, _ = newPullSync(recorder)
+	)
+
+	_, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
+	if err == nil {
+		t.Fatal("expected error but got none")
+	}
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expect error '%v' but got '%v'", e, err)
 	}
 }
 
@@ -197,5 +223,23 @@ func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 
 func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.PullStorage) {
 	storage := mock.NewPullStorage(o...)
-	return pullsync.New(pullsync.Options{Streamer: s, Storage: storage}), storage
+	logger := logging.New(ioutil.Discard, 0)
+	return pullsync.New(pullsync.Options{Streamer: s, Storage: storage, Logger: logger}), storage
+}
+
+func waitSet(t *testing.T, db *mock.PullStorage, v int) {
+	time.Sleep(10 * time.Millisecond) // give leeway for the case where v==0
+	var s int
+	for i := 0; i < 10; i++ {
+		s = db.SetCalls()
+		switch {
+		case s > v:
+			t.Fatalf("too many Set calls: got %d want %d", s, v)
+		case s == v:
+			return
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	t.Fatalf("timed out waiting for set to be called. got %d calls want %d", s, v)
 }

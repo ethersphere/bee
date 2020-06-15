@@ -96,7 +96,7 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 			}
 		}
 		m.store[ch.Address().String()] = ch.Data()
-		yes, err := m.Has(ctx, ch.Address())
+		yes, err := m.has(ctx, ch.Address())
 		if err != nil {
 			exist = append(exist, false)
 			continue
@@ -115,12 +115,15 @@ func (m *MockStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs .
 	panic("not implemented") // TODO: Implement
 }
 
+func (m *MockStorer) has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
+	_, has := m.store[addr.String()]
+	return has, nil
+}
+
 func (m *MockStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-
-	_, has := m.store[addr.String()]
-	return has, nil
+	return m.has(ctx, addr)
 }
 
 func (m *MockStorer) HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error) {

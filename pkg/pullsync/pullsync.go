@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -22,9 +23,10 @@ import (
 )
 
 const (
-	protocolName    = "pullsync"
-	protocolVersion = "1.0.0"
-	streamName      = "pullsync"
+	protocolName     = "pullsync"
+	protocolVersion  = "1.0.0"
+	streamName       = "pullsync"
+	cursorStreamName = "cursors"
 )
 
 var (
@@ -34,11 +36,17 @@ var (
 // how many maximum chunks in a batch
 var maxPage = 50
 
+type Interface interface {
+	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error)
+	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
+}
+
 type Syncer struct {
 	streamer p2p.Streamer
 	logger   logging.Logger
 	storage  pullstorage.Storer
 
+	Interface
 	io.Closer
 }
 
@@ -66,11 +74,13 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 				Name:    streamName,
 				Handler: s.handler,
 			},
+			{
+				Name:    cursorStreamName,
+				Handler: s.cursorHandler,
+			},
 		},
 	}
 }
-
-const hashSize = 32
 
 // SyncInterval syncs a requested interval from the given peer.
 // It returns the BinID of highest chunk that was synced from the given interval.
@@ -81,7 +91,13 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.FullClose()
+			return
+		}
+		_ = stream.Close()
+	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
@@ -95,6 +111,10 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		return 0, fmt.Errorf("read offer: %w", err)
 	}
 
+	if len(offer.Hashes)%swarm.HashSize != 0 {
+		return 0, fmt.Errorf("inconsistent hash length")
+	}
+
 	// empty interval (no chunks present in interval).
 	// return the end of the requested range as topmost.
 	if len(offer.Hashes) == 0 {
@@ -102,7 +122,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	var (
-		bvLen      = len(offer.Hashes) / hashSize
+		bvLen      = len(offer.Hashes) / swarm.HashSize
 		wantChunks = make(map[string]struct{})
 		ctr        = 0
 	)
@@ -112,8 +132,13 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		return 0, fmt.Errorf("new bitvector: %w", err)
 	}
 
-	for i := 0; i < len(offer.Hashes); i += hashSize {
-		a := swarm.NewAddress(offer.Hashes[i : i+hashSize])
+	for i := 0; i < len(offer.Hashes); i += swarm.HashSize {
+		a := swarm.NewAddress(offer.Hashes[i : i+swarm.HashSize])
+		if a.Equal(swarm.ZeroAddress) {
+			// i'd like to have this around to see we don't see any of these in the logs
+			s.logger.Errorf("syncer got a zero address hash on offer")
+			return 0, fmt.Errorf("zero address on offer")
+		}
 		have, err := s.storage.Has(ctx, a)
 		if err != nil {
 			return 0, fmt.Errorf("storage has: %w", err)
@@ -121,14 +146,20 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if !have {
 			wantChunks[a.String()] = struct{}{}
 			ctr++
-			bv.Set(i / hashSize)
+			bv.Set(i / swarm.HashSize)
 		}
 	}
+	fmt.Println("sending want", len(bv.Bytes()))
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
 		return 0, fmt.Errorf("write want: %w", err)
 	}
+
+	// if ctr is zero, it means we don't want any chunk in the batch
+	// thus, the following loop will not get executed and the method
+	// returns immediately with the topmost value on the offer, which
+	// will seal the interval and request the next one
 
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
@@ -142,7 +173,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		delete(wantChunks, addr.String())
-
+		s.logger.Tracef("pull sync putting chunk %s", addr.String())
 		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
 			return 0, fmt.Errorf("delivery put: %w", err)
 		}
@@ -159,12 +190,14 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
 		return fmt.Errorf("read get range: %w", err)
 	}
+	s.logger.Debugf("got range peer %s request %s", p.Address.String(), rn.String())
 
 	// make an offer to the upstream peer in return for the requested range
-	offer, err := s.makeOffer(ctx, rn)
+	offer, addrs, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
+	s.logger.Debugf("writing offer with context: %s", offer.String())
 
 	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
 		return fmt.Errorf("write offer: %w", err)
@@ -181,50 +214,118 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 		return fmt.Errorf("read want: %w", err)
 	}
 
+	// empty bitvector implies downstream peer does not want
+	// any chunks (it has them already). mark chunks as synced
+	if len(want.BitVector) == 0 {
+		return s.setChunks(ctx, addrs...)
+	}
+
 	chs, err := s.processWant(ctx, offer, &want)
 	if err != nil {
 		return fmt.Errorf("process want: %w", err)
 	}
+
 	for _, v := range chs {
 		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data()}
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
 			return fmt.Errorf("write delivery: %w", err)
 		}
 	}
-	time.Sleep(100 * time.Millisecond) //because of test, getting EOF w/o
+
+	err = s.setChunks(ctx, addrs...)
+	if err != nil {
+		return err
+	}
+
+	time.Sleep(50 * time.Millisecond) //because of test, getting EOF w/o
 	return nil
 }
 
+func (s *Syncer) setChunks(ctx context.Context, addrs ...swarm.Address) error {
+	return s.storage.Set(ctx, storage.ModeSetSyncPull, addrs...)
+}
+
 // makeOffer tries to assemble an offer for a given requested interval.
-func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, err error) {
+func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, addrs []swarm.Address, err error) {
+	s.logger.Tracef("syncer make offer for bin %d from %d to %d maxpage %d", rn.Bin, rn.From, rn.To, maxPage)
 	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
 	if err != nil {
-		return o, err
+		return o, nil, err
 	}
 	o = new(pb.Offer)
 	o.Topmost = top
+	o.Hashes = make([]byte, 0)
 	for _, v := range chs {
 		o.Hashes = append(o.Hashes, v.Bytes()...)
 	}
-	return o, nil
+	return o, chs, nil
 }
 
 // processWant compares a received Want to a sent Offer and returns
 // the appropriate chunks from the local store.
 func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]swarm.Chunk, error) {
-	l := len(o.Hashes) / hashSize
+	l := len(o.Hashes) / swarm.HashSize
 	bv, err := bitvector.NewFromBytes(w.BitVector, l)
 	if err != nil {
 		return nil, err
 	}
 
 	var addrs []swarm.Address
-	for i := 0; i < len(o.Hashes); i += hashSize {
-		if bv.Get(i / hashSize) {
-			addrs = append(addrs, swarm.NewAddress(o.Hashes[i:i+hashSize]))
+	for i := 0; i < len(o.Hashes); i += swarm.HashSize {
+		if bv.Get(i / swarm.HashSize) {
+			a := swarm.NewAddress(o.Hashes[i : i+swarm.HashSize])
+			addrs = append(addrs, a)
 		}
 	}
 	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
+}
+
+func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error) {
+	s.logger.Debugf("syncer get cursors from peer %s", peer)
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
+	if err != nil {
+		return nil, fmt.Errorf("new stream: %w", err)
+	}
+	defer stream.Close()
+
+	w, r := protobuf.NewWriterAndReader(stream)
+	syn := &pb.Syn{}
+	if err = w.WriteMsgWithContext(ctx, syn); err != nil {
+		return nil, fmt.Errorf("write syn: %w", err)
+	}
+
+	var ack pb.Ack
+	if err = r.ReadMsgWithContext(ctx, &ack); err != nil {
+		return nil, fmt.Errorf("read ack: %w", err)
+	}
+
+	s.logger.Debugf("syncer peer %s cursors %s", peer, ack.Cursors)
+
+	return ack.Cursors, nil
+}
+
+func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
+
+	var syn pb.Syn
+	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
+		return fmt.Errorf("read syn: %w", err)
+	}
+
+	var ack pb.Ack
+	ints, err := s.storage.Cursors(ctx)
+	if err != nil {
+		_ = stream.FullClose()
+		return err
+	}
+	ack.Cursors = ints
+	s.logger.Debugf("syncer writing cursors peer %s curs %s message %s", p.Address.String(), ints, ack.String())
+	if err = w.WriteMsgWithContext(ctx, &ack); err != nil {
+		return fmt.Errorf("write ack: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Syncer) Close() error {

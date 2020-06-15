@@ -151,8 +151,27 @@ func (d *driver) Connected(ctx context.Context, addr swarm.Address) error {
 	return d.AddPeer(ctx, addr)
 }
 
-func (d *driver) Disconnected(swarm.Address) {
+func (_ *driver) Disconnected(swarm.Address) {
 	// TODO: implement if necessary
+}
+
+func (_ *driver) NeighborhoodDepth() uint8 {
+	return 0
+}
+
+// EachPeer iterates from closest bin to farthest
+func (_ *driver) EachPeer(_ topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
+// EachPeerRev iterates from farthest bin to closest
+func (_ *driver) EachPeerRev(_ topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (_ *driver) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+	//TODO implement if necessary
+	return c, unsubscribe
 }
 
 func (d *driver) MarshalJSON() ([]byte, error) {

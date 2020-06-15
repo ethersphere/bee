@@ -88,7 +88,7 @@ func NewDB(path string) (db *DB, err error) {
 }
 
 // Put wraps LevelDB Put method to increment metrics counter.
-func (db *DB) Put(key []byte, value []byte) (err error) {
+func (db *DB) Put(key, value []byte) (err error) {
 	err = db.ldb.Put(key, value, nil)
 	if err != nil {
 		db.metrics.PutFailCounter.Inc()

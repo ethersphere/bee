@@ -47,17 +47,32 @@ func WithEvilChunk(addr swarm.Address, ch swarm.Chunk) Option {
 		p.evilAddr = addr
 		p.evilChunk = ch
 	})
+}
 
+func WithCursors(c []uint64) Option {
+	return optionFunc(func(p *PullStorage) {
+		p.cursors = c
+	})
+}
+
+func WithCursorsErr(e error) Option {
+	return optionFunc(func(p *PullStorage) {
+		p.cursorsErr = e
+	})
 }
 
 type PullStorage struct {
 	mtx         sync.Mutex
 	chunksCalls int
 	putCalls    int
+	setCalls    int
 
 	chunks    map[string][]byte
 	evilAddr  swarm.Address
 	evilChunk swarm.Chunk
+
+	cursors    []uint64
+	cursorsErr error
 
 	intervalChunksResponses []chunksResponse
 }
@@ -84,12 +99,23 @@ func (s *PullStorage) IntervalChunks(_ context.Context, bin uint8, from, to uint
 	return r.chunks, r.topmost, r.err
 }
 
+func (s *PullStorage) Cursors(ctx context.Context) (curs []uint64, err error) {
+	return s.cursors, s.cursorsErr
+}
+
 // PutCalls returns the amount of times Put was called.
 func (s *PullStorage) PutCalls() int {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
 	return s.putCalls
+}
+
+// SetCalls returns the amount of times Set was called.
+func (s *PullStorage) SetCalls() int {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return s.setCalls
 }
 
 // Get chunks.
@@ -123,6 +149,9 @@ func (s *PullStorage) Put(_ context.Context, _ storage.ModePut, chs ...swarm.Chu
 
 // Set chunks.
 func (s *PullStorage) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.setCalls++
 	return nil
 }
 
