@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -150,6 +151,18 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
+
+	// wait for nat manager to init
+	logger.Debug("initializing NAT manager")
+	select {
+	case <-p2ps.NATManager().Ready():
+		// this is magic sleep to give NAT time to sync the mappings
+		// this is a hack, kind of alchemy and should be improved
+		time.Sleep(3 * time.Second)
+		logger.Debug("NAT manager initialized")
+	case <-time.After(10 * time.Second):
+		logger.Warning("NAT manager init timeout")
+	}
 
 	// Construct protocols.
 	pingPong := pingpong.New(pingpong.Options{
