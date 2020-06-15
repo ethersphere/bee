@@ -151,7 +151,7 @@ func (c *command) initStartCmd() (err error) {
 	}
 
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
-	cmd.Flags().Uint64(optionNameDBCapacity, 5000000, "db capacity in chunks")
+	cmd.Flags().Uint64(optionNameDBCapacity, 5000000, "db capacity in chunks, multiply by 4096 to get bytes")
 	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, ":8080", "HTTP API listen address")
