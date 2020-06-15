@@ -42,8 +42,8 @@ func (n *nopWriteCloser) Close() error {
 	return nil
 }
 
-// putGetter wraps both storage.Putter and storage.Getter interfaces
-type putGetter interface {
+// PutGetter wraps both storage.Putter and storage.Getter interfaces
+type PutGetter interface {
 	storage.Putter
 	storage.Getter
 }
@@ -82,7 +82,7 @@ type FsStore struct {
 }
 
 // NewFsStore creates a new FsStore.
-func NewFsStore(path string) putGetter {
+func NewFsStore(path string) PutGetter {
 	return &FsStore{
 		path: path,
 	}
@@ -118,7 +118,7 @@ type ApiStore struct {
 }
 
 // NewApiStore creates a new ApiStore.
-func NewApiStore(host string, port int, ssl bool) putGetter {
+func NewApiStore(host string, port int, ssl bool) PutGetter {
 	scheme := "http"
 	if ssl {
 		scheme += "s"
