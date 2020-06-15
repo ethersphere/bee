@@ -196,7 +196,7 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	for _, addr := range addrs {
-		logger.Infof("p2p address: %s", addr)
+		logger.Debugf("p2p address: %s", addr)
 	}
 
 	var (
