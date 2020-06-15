@@ -13,13 +13,18 @@ message Syn {
 }
 
 message Ack {
-    bytes Overlay = 1;
-    bytes Signature = 2;
-    uint64 NetworkID = 3;
-    bool Light = 4;
+    BzzAddress Address = 1;
+    uint64 NetworkID = 2;
+    bool Light = 3;
 }
 
 message SynAck {
     Syn Syn = 1;
     Ack Ack = 2;
+}
+
+message BzzAddress {
+    bytes Underlay = 1;
+    bytes Signature = 2;
+    bytes Overlay = 3;
 }
