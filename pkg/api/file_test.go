@@ -33,7 +33,7 @@ func TestBzz(t *testing.T) {
 			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
-	t.Run("simple-upload", func(t *testing.T) {
+	t.Run("invalid-content-type", func(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, simpleResource(), bytes.NewReader(simpleData), http.StatusBadRequest, jsonhttp.StatusResponse{
 			Message: "invalid content-type header",
 			Code:    http.StatusBadRequest,
