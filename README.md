@@ -136,7 +136,7 @@ Every node can provide its overlay address and underlay addresses by reading the
 curl localhost:6061/addresses
 ```
 
-Debug API is not started by default and has to be explicitly enabled with `--enable-debug-api --debug-api-addr: 127.0.0.1:6061` command line flags or options.
+Debug API is not started by default and has to be explicitly enabled with `--enable-debug-api --debug-api-addr 127.0.0.1:6061` command line flags or options.
 
 It will return a response with addresses:
 
