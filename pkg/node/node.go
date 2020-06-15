@@ -111,10 +111,10 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	address := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, o.NetworkID)
 	if created {
-		logger.Info("new swarm key created")
+		logger.Infof("new swarm network address created: %s", address)
+	} else {
+		logger.Infof("using existing swarm network address: %s", address)
 	}
-
-	logger.Infof("address: %s", address)
 
 	// Construct P2P service.
 	libp2pPrivateKey, created, err := keyStore.Key("libp2p", o.Password)
@@ -122,7 +122,9 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("libp2p key: %w", err)
 	}
 	if created {
-		logger.Infof("new libp2p key created")
+		logger.Debugf("new libp2p key created")
+	} else {
+		logger.Debugf("using exising libp2p key")
 	}
 
 	var stateStore storage.StateStorer
