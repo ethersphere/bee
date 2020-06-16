@@ -75,6 +75,45 @@ api-addr: 127.0.0.1:8085
 data-dir: /data/bees/bee5
 ```
 
+## File upload
+
+File can be uploaded by making an HTTP request like this one:
+
+```sh
+curl -F file=@kitten.jpg http://localhost:8080/files
+```
+
+Curl will make a properly encoded `multipart/form-data` request sending the filename, content type and file content to the bee API, and it will return a response with the reference to the uploaded file:
+
+```json
+{"reference":"3b2791985f102fe645d1ebd7f51e522d277098fcd86526674755f762084b94ee"}
+```
+
+This reference is just an example, it will differ for every uploaded file.
+
+To download a file, open an URL with that reference `http://localhost:8080/files/3b2791985f102fe645d1ebd7f51e522d277098fcd86526674755f762084b94ee`.
+
+If you need to specify manually content type or filename during upload:
+
+```sh
+curl -H "Content-Type: image/x-jpeg" --data-binary @kitten.jpg localhost:8081/files?name=cat.jpg
+```
+
+The same response with file reference is returned.
+
+To avoid uploading with command line tools, this HTML file can be opened in the browser and used to select and submit a file:
+
+```html
+<form action="http://localhost:8080/files" method="post" enctype="multipart/form-data">
+ <div>
+   <input type="file" name="file">
+ </div>
+ <div>
+   <button>Upload</button>
+ </div>
+</form>
+```
+
 ## Starting more bee nodes locally with debugging
 
 It is possible to start multiple, persistent, completely independent, bee nodes on a single running operating system. This can be achieved with less complexity with prepared configuration files for every node.
