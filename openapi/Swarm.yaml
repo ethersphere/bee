@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  version: 0.9.6
+  version: 0.1.0
   title: Swarm API
   description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations'
 security:
@@ -33,7 +33,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Hash'
+                $ref: 'SwarmCommon.yaml#/components/schemas/Reference'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -168,7 +168,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Hash'
+                $ref: 'SwarmCommon.yaml#/components/schemas/Reference'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '500':

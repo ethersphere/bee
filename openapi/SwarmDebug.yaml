@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  version: 0.9.6
+  version: 0.1.0
   title: Swarm Debug API
   description: >-
     A list of the currently provided debug interfaces to interact with the swarm
