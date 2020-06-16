@@ -115,7 +115,7 @@ The first node address will be used for other nodes to discover themselves. It i
 bee --config node1.yaml start
 ```
 
-When the node starts it will print out some of its `p2p addresses` in a multiaddress form like this: `/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM`. This address is the `bootnonde address`.
+When the node starts it will print out some of its `p2p addresses` in a multiaddress form like this: `/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAm2LXfYsY9pXtgGdQ8oPb3bAkxwpfBE6AMzcscH1UkQLZM`. This address is the `bootnode address`.
 
 ### Starting other nodes
 
