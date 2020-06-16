@@ -158,10 +158,7 @@ paths:
             schema:
               type: string
               format: binary
-          application/x-tar:
-            schema:
-              type: string
-              format: binary
+          
       responses:
         '200':
           description: Ok
@@ -204,10 +201,7 @@ paths:
               schema:
                 type: string
                 format: binary
-            application/x-tar:
-              schema:
-                type: string
-                format: binary
+                
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '404':
