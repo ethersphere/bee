@@ -27,45 +27,40 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	responseObject, err := s.splitUpload(ctx, r.Body, r.ContentLength)
+	address, err := s.splitUpload(ctx, r.Body, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
-		var response jsonhttp.StatusResponse
-		response.Message = "upload error"
-		response.Code = http.StatusInternalServerError
-		jsonhttp.Respond(w, response.Code, response)
-	} else {
-		jsonhttp.OK(w, responseObject)
+		jsonhttp.InternalServerError(w, nil)
+		return
 	}
+	jsonhttp.OK(w, bytesPostResponse{
+		Reference: address,
+	})
 }
 
-func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (interface{}, error) {
+func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
 	chunkPipe := file.NewChunkPipe()
 	go func() {
 		buf := make([]byte, swarm.ChunkSize)
 		c, err := io.CopyBuffer(chunkPipe, r, buf)
 		if err != nil {
 			s.Logger.Debugf("split upload: io error %d: %v", c, err)
-			s.Logger.Error("io error")
+			s.Logger.Error("split upload: io error")
 			return
 		}
 		if c != l {
 			s.Logger.Debugf("split upload: read count mismatch %d: %v", c, err)
-			s.Logger.Error("read count mismatch")
+			s.Logger.Error("split upload: read count mismatch")
 			return
 		}
 		err = chunkPipe.Close()
 		if err != nil {
-			s.Logger.Errorf("split upload: incomplete file write close %v", err)
-			s.Logger.Error("incomplete file write close")
+			s.Logger.Debugf("split upload: incomplete file write close %v", err)
+			s.Logger.Error("split upload: incomplete file write close")
 		}
 	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	address, err := sp.Split(ctx, chunkPipe, l)
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-	return bytesPostResponse{Reference: address}, nil
+	return sp.Split(ctx, chunkPipe, l)
 }
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
