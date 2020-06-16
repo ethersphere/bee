@@ -21,34 +21,6 @@ servers:
         description: Base address of the local Swarm node debug API
 
 paths:
-
-  '/pingpong/{peer-id}':
-    post:
-      summary: Try connection to node
-      tags:
-        - Swarm Debug Endpoints
-      parameters:
-        - in: path
-          name: peer-id
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
-          required: true
-          description: Bzz address of peer
-      responses:
-        '200':
-          description: Returns round trip time for given peer
-          content:
-            application/json:
-              schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/RttMs'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
-        default:
-          description: Default response
   
   '/addresses':
     get:
@@ -67,74 +39,6 @@ paths:
         default:
           description: Default response
 
-  '/connect/{multiAddress}':
-    post:
-      summary: Connect to address
-      tags:
-        - Swarm Debug Endpoints
-      parameters:
-        - in: path
-          allowReserved: true
-          name: multiAddress
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/MultiAddress'
-          required: true
-          description: Bzz address of content
-      responses:
-        '200':
-          description: Returns overlay address of connected peer
-          content:
-            application/json:
-              schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Address'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
-        default:
-          description: Default response
-
-  '/peers':
-    get:
-      summary: Get a list of peers
-      tags:
-        - Swarm Debug Endpoints
-      responses:
-        '200':
-          description: Returns overlay addresses of connected peers
-          content:
-            application/json:
-              schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Peers'
-        default:
-          description: Default response
-
-  '/peers/{address}':
-    delete:
-      summary: Remove peer
-      tags:
-        - Swarm Debug Endpoints
-      parameters:
-        - in: path
-          name: address
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
-          required: true
-          description: Bzz address of peer    
-      responses:
-        '200':
-          description: Disconnected peer
-          content:
-            application/json:
-              schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
-        default:
-          description: Default response
-          
   '/chunks/{address}':
     get:
       summary: Get chunk address
@@ -160,6 +64,7 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         default:
           description: Default response
+  
   '/chunks-pin/{address}':
     parameters:
         - in: path
@@ -202,8 +107,6 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         default:
           description: Default response
-        default:
-          description: Default response
     get:
       summary: Get pinning status of chunk with given address
       tags:
@@ -219,6 +122,7 @@ paths:
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+  
   '/chunks-pin/':
     get:
       summary: Get list of pinned chunks
@@ -235,6 +139,34 @@ paths:
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+  
+  '/connect/{multiAddress}':
+    post:
+      summary: Connect to address
+      tags:
+        - Swarm Debug Endpoints
+      parameters:
+        - in: path
+          allowReserved: true
+          name: multiAddress
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/MultiAddress'
+          required: true
+          description: Bzz address of content
+      responses:
+        '200':
+          description: Returns overlay address of connected peer
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Address'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
   '/health':
     get:
       summary: Get health of node
@@ -249,6 +181,77 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         default:
           description: Default response
+  
+  '/peers':
+    get:
+      summary: Get a list of peers
+      tags:
+        - Swarm Debug Endpoints
+      responses:
+        '200':
+          description: Returns overlay addresses of connected peers
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Peers'
+        default:
+          description: Default response
+
+  '/peers/{address}':
+    delete:
+      summary: Remove peer
+      tags:
+        - Swarm Debug Endpoints
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+          required: true
+          description: Bzz address of peer    
+      responses:
+        '200':
+          description: Disconnected peer
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+  
+  '/pingpong/{peer-id}':
+    post:
+      summary: Try connection to node
+      tags:
+        - Swarm Debug Endpoints
+      parameters:
+        - in: path
+          name: peer-id
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+          required: true
+          description: Bzz address of peer
+      responses:
+        '200':
+          description: Returns round trip time for given peer
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/RttMs'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+  
+  
   '/readiness':
     get:
       summary: Get readiness state of node
@@ -263,6 +266,57 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         default:
           description: Default response
+  
+  '/tags':
+    post:
+      summary: 'Create Tag'
+      tags: 
+        - 'Endpoints on local swarm node'
+      parameters:
+        - in: path
+          name: name
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/TagName'
+          required: true
+          description: Tagname
+      responses:
+        '200':
+          description: New Tag Info
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/tags/{uuid}':
+    get:
+      summary: 'Get Tag information using UUid'
+      tags: 
+        - 'Endpoints on local swarm node'
+      parameters:
+        - in: path
+          name: uuid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/UUid'
+          required: true
+          description: UUid
+      responses:
+        '200':
+          description: Tag info
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
   '/topology':
     get:
       description: Get topology of known network

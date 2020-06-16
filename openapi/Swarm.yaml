@@ -16,7 +16,7 @@ servers:
         description: Base address of the local swarm node API
 paths:
   
-  '/bzz-raw':
+  '/bytes':
     post:
       summary: 'Upload data'
       tags: 
@@ -39,7 +39,7 @@ paths:
         default:
           description: Default response
 
-  '/bzz-raw/{address}':
+  '/bytes/{address}':
     get:
       summary: 'Get addressed data'
       tags: 
@@ -52,6 +52,13 @@ paths:
           required: true
           description: Bzz address of content
       responses:
+        '200':
+          description: Ok
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '404':
@@ -61,7 +68,7 @@ paths:
         default:
           description: Default response
           
-  '/bzz-chunk/{addr}':
+  '/chunks/{addr}':
     get:
       summary: 'Get Chunk'
       tags: 
@@ -89,8 +96,6 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-
-  '/bzz-chunk':
     post:
       summary: 'Upload Chunk'
       tags: 
@@ -108,6 +113,12 @@ paths:
             type: boolean
           required: false
           description: Represents the pinning state of the chunk
+        - in: path
+          name: addr
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+          required: true
+          description: Bzz address of chunk   
       requestBody:
         content:
           application/octet-stream:
@@ -128,52 +139,82 @@ paths:
         default:
           description: Default response
 
-  '/bzz-tag/name/{name}':
+  '/files':
     post:
-      summary: 'Create Tag'
+      summary: 'Upload data'
       tags: 
         - 'Endpoints on local swarm node'
-      parameters:
-        - in: path
-          name: name
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/TagName'
-          required: true
-          description: Tagname
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                file:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+          file:
+            schema:
+              type: string
+              format: binary
+          application/x-tar:
+            schema:
+              type: string
+              format: binary
       responses:
         '200':
-          description: New Tag Info
+          description: Ok
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
-        default:
-          description: Default response
-
-  '/bzz-tag/uuid/{uuid}':
-    get:
-      summary: 'Get Tag information using UUid'
-      tags: 
-        - 'Endpoints on local swarm node'
-      parameters:
-        - in: path
-          name: uuid
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/UUid'
-          required: true
-          description: UUid
-      responses:
-        '200':
-          description: Tag info
-          content:
-            application/json:
-              schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
+                $ref: 'SwarmCommon.yaml#/components/schemas/Hash'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+
+  '/files/{address}':
+    get:
+      summary: 'Get addressed data'
+      tags: 
+        - 'Endpoints on local swarm node'
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+          required: true
+          description: Bzz address of content
+      responses:
+        '200':
+          description: Ok
+          content:
+            multipart/form-data:
+              schema:
+                properties:
+                  file:
+                    type: array
+                    items:
+                      type: string
+                      format: binary
+            file:
+              schema:
+                type: string
+                format: binary
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+          
+  

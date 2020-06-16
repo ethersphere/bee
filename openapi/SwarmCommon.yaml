@@ -62,8 +62,8 @@ components:
         depth:
           type: integer
         bins:
-          type: array
-          items:
+          type: object
+          additionalProperties:
             type: object
             properties:
               population:
@@ -139,6 +139,12 @@ components:
 
     ProblemDetails:
       type: string
+    
+    Reference:
+      type: object
+      properties:
+        reference:
+          $ref: '#/components/schemas/BzzAddress'
 
     Response:
       type: object
