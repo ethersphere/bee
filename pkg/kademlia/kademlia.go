@@ -249,24 +249,26 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 			return nil
 		}
 
+		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
 		retryTime := time.Now().Add(timeToRetry)
 		var e *p2p.ConnectionBackoffError
-		if errors.As(err, &e) {
-			retryTime = e.TryAfter()
-		}
-
-		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
 		k.waitNextMu.Lock()
 		failedAttempts := 0
-		info, ok := k.waitNext[peer.String()]
-		if ok {
-			failedAttempts = info.failedAttempts + 1
+		if errors.As(err, &e) {
+			retryTime = e.TryAfter()
+		} else {
+			info, ok := k.waitNext[peer.String()]
+			if ok {
+				failedAttempts = info.failedAttempts
+			}
+
+			failedAttempts++
 		}
 
 		if failedAttempts > maxConnAttempts {
 			delete(k.waitNext, peer.String())
 			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debug("could not remove peer from addressbook: %s", peer.String())
+				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 			}
 		} else {
 			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
