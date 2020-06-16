@@ -166,7 +166,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	if db.capacity == 0 {
 		db.capacity = defaultCapacity
 	}
-	db.logger.Infof("database capacity: %d chunks, %d bytes, %.2f megabytes.", db.capacity, db.capacity*swarm.ChunkSize, float64(db.capacity*swarm.ChunkSize)*9.5367431640625e-7)
+	db.logger.Infof("database capacity: %d chunks (approximately %0.1fMB)", db.capacity, float64(db.capacity*swarm.ChunkSize)*9.5367431640625e-7)
 	if maxParallelUpdateGC > 0 {
 		db.updateGCSem = make(chan struct{}, maxParallelUpdateGC)
 	}
