@@ -20,11 +20,11 @@ import (
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 
-// TestRaw tests that the data upload api responds as expected when uploading,
+// TestBytes tests that the data upload api responds as expected when uploading,
 // downloading and requesting a resource that cannot be found.
-func TestRaw(t *testing.T) {
+func TestBytes(t *testing.T) {
 	var (
-		resource   = "/bzz-raw"
+		resource   = "/bytes"
 		expHash    = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
 		mockStorer = mock.NewStorer()
 		client     = newTestServer(t, testServerOptions{
@@ -40,8 +40,8 @@ func TestRaw(t *testing.T) {
 	}
 
 	t.Run("upload", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource, bytes.NewReader(content), http.StatusOK, api.RawPostResponse{
-			Hash: swarm.MustParseHexAddress(expHash),
+		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource, bytes.NewReader(content), http.StatusOK, api.BytesPostResponse{
+			Reference: swarm.MustParseHexAddress(expHash),
 		})
 	})
 

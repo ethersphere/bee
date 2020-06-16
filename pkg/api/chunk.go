@@ -23,10 +23,10 @@ import (
 )
 
 // Presence of this header means that it needs to be tagged using the uid
-const TagHeaderUid = "x-swarm-tag-uid"
+const TagHeaderUid = "swarm-tag-uid"
 
 // Presence of this header in the HTTP request indicates the chunk needs to be pinned.
-const PinHeaderName = "x-swarm-pin"
+const PinHeaderName = "swarm-pin"
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["addr"]
@@ -34,8 +34,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: parse chunk address %s: %v", addr, err)
-		s.Logger.Error("bzz-chunk: parse chunk address")
+		s.Logger.Debugf("chunk upload: parse chunk address %s: %v", addr, err)
+		s.Logger.Error("chunk upload: parse chunk address")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
@@ -47,8 +47,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 		tag, err = s.Tags.Create(tagName, 0, false)
 		if err != nil {
-			s.Logger.Debugf("bzz-chunk: tag creation error: %v, addr %s", err, address)
-			s.Logger.Error("bzz-chunk: tag creation error")
+			s.Logger.Debugf("chunk upload: tag creation error: %v, addr %s", err, address)
+			s.Logger.Error("chunk upload: tag creation error")
 			jsonhttp.InternalServerError(w, "cannot create tag")
 			return
 		}
@@ -56,16 +56,16 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		// if the tag uid header is present, then use the tag sent
 		tagUid, err := strconv.ParseUint(tagUidStr, 10, 32)
 		if err != nil {
-			s.Logger.Debugf("bzz-chunk: parse taguid %s: %v", tagUidStr, err)
-			s.Logger.Error("bzz-chunk: parse taguid")
+			s.Logger.Debugf("chunk upload: parse taguid %s: %v", tagUidStr, err)
+			s.Logger.Error("chunk upload: parse taguid")
 			jsonhttp.BadRequest(w, "invalid taguid")
 			return
 		}
 
 		tag, err = s.Tags.Get(uint32(tagUid))
 		if err != nil {
-			s.Logger.Debugf("bzz-chunk: tag get error: %v, addr %s", err, address)
-			s.Logger.Error("bzz-chunk: tag get error")
+			s.Logger.Debugf("chunk upload: tag get error: %v, addr %s", err, address)
+			s.Logger.Error("chunk upload: tag get error")
 			jsonhttp.InternalServerError(w, "cannot create tag")
 			return
 		}
@@ -77,8 +77,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: read chunk data error: %v, addr %s", err, address)
-		s.Logger.Error("bzz-chunk: read chunk data error")
+		s.Logger.Debugf("chunk upload: read chunk data error: %v, addr %s", err, address)
+		s.Logger.Error("chunk upload: read chunk data error")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 
@@ -86,8 +86,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	seen, err := s.Storer.Put(ctx, storage.ModePutUpload, swarm.NewChunk(address, data))
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: chunk write error: %v, addr %s", err, address)
-		s.Logger.Error("bzz-chunk: chunk write error")
+		s.Logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, address)
+		s.Logger.Error("chunk upload: chunk write error")
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
 	} else if len(seen) > 0 && seen[0] {
@@ -102,8 +102,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if pinHeaderValues != "" && strings.ToLower(pinHeaderValues) == "true" {
 		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
 		if err != nil {
-			s.Logger.Debugf("bzz-chunk: chunk pinning error: %v, addr %s", err, address)
-			s.Logger.Error("bzz-chunk: chunk pinning error")
+			s.Logger.Debugf("chunk upload: chunk pinning error: %v, addr %s", err, address)
+			s.Logger.Error("chunk upload: chunk pinning error")
 			jsonhttp.InternalServerError(w, "cannot pin chunk")
 			return
 		}
@@ -120,8 +120,8 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: parse chunk address %s: %v", addr, err)
-		s.Logger.Error("bzz-chunk: parse chunk address error")
+		s.Logger.Debugf("chunk: parse chunk address %s: %v", addr, err)
+		s.Logger.Error("chunk: parse chunk address error")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
@@ -129,13 +129,13 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	chunk, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Trace("bzz-chunk: chunk not found. addr %s", address)
+			s.Logger.Trace("chunk: chunk not found. addr %s", address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		s.Logger.Debugf("bzz-chunk: chunk read error: %v ,addr %s", err, address)
-		s.Logger.Error("bzz-chunk: chunk read error")
+		s.Logger.Debugf("chunk: chunk read error: %v ,addr %s", err, address)
+		s.Logger.Error("chunk: chunk read error")
 		jsonhttp.InternalServerError(w, "chunk read error")
 		return
 	}

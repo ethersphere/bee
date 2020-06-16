@@ -99,7 +99,7 @@ func TestDB_SubscribePull(t *testing.T) {
 	// to validate the number of addresses received by the subscription
 	errChan := make(chan error)
 
-	for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
+	for bin := uint8(0); bin <= swarm.MaxPO; bin++ {
 		ch, stop := db.SubscribePull(ctx, bin, 0, 0)
 		defer stop()
 
@@ -148,7 +148,7 @@ func TestDB_SubscribePull_multiple(t *testing.T) {
 	// start a number of subscriptions
 	// that all of them will write every address error to errChan
 	for j := 0; j < subsCount; j++ {
-		for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
+		for bin := uint8(0); bin <= swarm.MaxPO; bin++ {
 			ch, stop := db.SubscribePull(ctx, bin, 0, 0)
 			defer stop()
 
@@ -232,7 +232,7 @@ func TestDB_SubscribePull_since(t *testing.T) {
 	// to validate the number of addresses received by the subscription
 	errChan := make(chan error)
 
-	for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
+	for bin := uint8(0); bin <= swarm.MaxPO; bin++ {
 		since, ok := first[bin]
 		if !ok {
 			continue
@@ -308,7 +308,7 @@ func TestDB_SubscribePull_until(t *testing.T) {
 	// to validate the number of addresses received by the subscription
 	errChan := make(chan error)
 
-	for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
+	for bin := uint8(0); bin <= swarm.MaxPO; bin++ {
 		until, ok := last[bin]
 		if !ok {
 			continue
@@ -392,7 +392,7 @@ func TestDB_SubscribePull_sinceAndUntil(t *testing.T) {
 	// to validate the number of addresses received by the subscription
 	errChan := make(chan error)
 
-	for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
+	for bin := uint8(0); bin <= swarm.MaxPO; bin++ {
 		since, ok := upload1[bin]
 		if ok {
 			// start from the next uploaded chunk
@@ -477,7 +477,7 @@ func TestDB_SubscribePull_rangeOnRemovedChunks(t *testing.T) {
 	// signals that there were valid bins for this check to ensure test validity
 	var checkedBins int
 	// subscribe to every bin and validate returned values
-	for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
+	for bin := uint8(0); bin <= swarm.MaxPO; bin++ {
 		// do not subscribe to bins that do not have chunks
 		if len(chunks[bin]) == 0 {
 			continue
@@ -645,7 +645,7 @@ func TestDB_LastPullSubscriptionBinID(t *testing.T) {
 		}
 
 		// check
-		for bin := uint8(0); bin <= uint8(swarm.MaxPO); bin++ {
+		for bin := uint8(0); bin <= swarm.MaxPO; bin++ {
 			want, ok := last[bin]
 			got, err := db.LastPullSubscriptionBinID(bin)
 			if ok {

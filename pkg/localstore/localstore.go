@@ -118,8 +118,6 @@ type DB struct {
 	// are done
 	collectGarbageWorkerDone chan struct{}
 
-	putToGCCheck func([]byte) bool
-
 	// wait for all subscriptions to finish before closing
 	// underlaying BadgerDB to prevent possible panics from
 	// iterators
@@ -138,10 +136,6 @@ type Options struct {
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
-	// PutSetCheckFunc is a function called after a Put of a chunk
-	// to verify whether that chunk needs to be Set and added to
-	// garbage collection index too
-	PutToGCCheck func([]byte) bool
 }
 
 // New returns a new DB.  All fields and indexes are initialized
@@ -155,10 +149,6 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		}
 	}
 
-	if o.PutToGCCheck == nil {
-		o.PutToGCCheck = func(_ []byte) bool { return false }
-	}
-
 	db = &DB{
 		capacity: o.Capacity,
 		baseKey:  baseKey,
@@ -170,7 +160,6 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		collectGarbageTrigger:    make(chan struct{}, 1),
 		close:                    make(chan struct{}),
 		collectGarbageWorkerDone: make(chan struct{}),
-		putToGCCheck:             o.PutToGCCheck,
 		metrics:                  newMetrics(),
 		logger:                   logger,
 	}
@@ -441,7 +430,7 @@ func (db *DB) Close() (err error) {
 // po computes the proximity order between the address
 // and database base key.
 func (db *DB) po(addr swarm.Address) (bin uint8) {
-	return uint8(swarm.Proximity(db.baseKey, addr.Bytes()))
+	return swarm.Proximity(db.baseKey, addr.Bytes())
 }
 
 // DebugIndices returns the index sizes for all indexes in localstore

@@ -12,4 +12,5 @@ type (
 	AddressesResponse        = addressesResponse
 	PinnedChunk              = pinnedChunk
 	ListPinnedChunksResponse = listPinnedChunksResponse
+	TagResponse              = tagResponse
 )
