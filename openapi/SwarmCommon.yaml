@@ -118,8 +118,8 @@ components:
 
     Msd5:
       type: string
-      pattern: '^\d*\.\d{4}ms$'
-      example: "5.0018ms"
+      #pattern: '^\d*\.\d{4}ms$'
+      #example: "5.0018ms"
 
     Peers:
       type: object
