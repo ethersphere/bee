@@ -5,5 +5,6 @@
 package api
 
 type (
-	BytesPostResponse = bytesPostResponse
+	BytesPostResponse  = bytesPostResponse
+	FileUploadResponse = fileUploadResponse
 )
