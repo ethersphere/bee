@@ -265,7 +265,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 
 		if failedAttempts > maxConnAttempts {
 			delete(k.waitNext, peer.String())
-			k.addressBook.Remove(peer)
+			if err := k.addressBook.Remove(peer); err != nil {
+				k.logger.Debug("could not remove peer from addressbook: %s", peer.String())
+			}
 		} else {
 			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
 		}
