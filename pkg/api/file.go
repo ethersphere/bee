@@ -67,8 +67,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		// 1) in part header params
 		// 2) as formname
 		// 3) file reference hash (after uploading the file)
-		fileName = part.FileName()
-		if fileName == "" {
+		if fileName = part.FileName(); fileName == "" {
 			fileName = part.FormName()
 		}
 
