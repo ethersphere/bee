@@ -67,6 +67,7 @@ type Options struct {
 	APIAddr            string
 	DebugAPIAddr       string
 	Addr               string
+	NATAddr            string
 	DisableWS          bool
 	DisableQUIC        bool
 	NetworkID          uint64
@@ -143,6 +144,7 @@ func NewBee(o Options) (*Bee, error) {
 
 	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, o.Addr, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
+		NATAddr:     o.NATAddr,
 		DisableWS:   o.DisableWS,
 		DisableQUIC: o.DisableQUIC,
 		Addressbook: addressbook,
@@ -154,16 +156,18 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.p2pService = p2ps
 
-	// wait for nat manager to init
-	logger.Debug("initializing NAT manager")
-	select {
-	case <-p2ps.NATManager().Ready():
-		// this is magic sleep to give NAT time to sync the mappings
-		// this is a hack, kind of alchemy and should be improved
-		time.Sleep(3 * time.Second)
-		logger.Debug("NAT manager initialized")
-	case <-time.After(10 * time.Second):
-		logger.Warning("NAT manager init timeout")
+	if natManager := p2ps.NATManager(); natManager != nil {
+		// wait for nat manager to init
+		logger.Debug("initializing NAT manager")
+		select {
+		case <-natManager.Ready():
+			// this is magic sleep to give NAT time to sync the mappings
+			// this is a hack, kind of alchemy and should be improved
+			time.Sleep(3 * time.Second)
+			logger.Debug("NAT manager initialized")
+		case <-time.After(10 * time.Second):
+			logger.Warning("NAT manager init timeout")
+		}
 	}
 
 	// Construct protocols.
