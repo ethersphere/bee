@@ -114,6 +114,8 @@ To avoid uploading with command line tools, this HTML file can be opened in the 
 </form>
 ```
 
+And download a file in the browser can be done by entering the URL `<API_address>/files/{reference}` in the address bar, where API_address is by default `http://localhost:8080` and reference is the reference value from the returned JSON response.
+
 ## Starting more bee nodes locally with debugging
 
 It is possible to start multiple, persistent, completely independent, bee nodes on a single running operating system. This can be achieved with less complexity with prepared configuration files for every node.
