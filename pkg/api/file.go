@@ -27,7 +27,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-const multipartFormDataContentType = "multipart/form-data"
+const multipartFormDataMediaType = "multipart/form-data"
 
 type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
@@ -37,11 +37,11 @@ type fileUploadResponse struct {
 // - multipart http message
 // - other content types as complete file body
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
-	contentTypeHeader := r.Header.Get("Content-Type")
-	contentType, params, err := mime.ParseMediaType(contentTypeHeader)
+	contentType := r.Header.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		s.Logger.Debugf("file upload: parse content type header %q: %v", contentTypeHeader, err)
-		s.Logger.Errorf("file upload: parse content type header %q", contentTypeHeader)
+		s.Logger.Debugf("file upload: parse content type header %q: %v", contentType, err)
+		s.Logger.Errorf("file upload: parse content type header %q", contentType)
 		jsonhttp.BadRequest(w, "invalid content-type header")
 		return
 	}
@@ -51,7 +51,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var fileName, contentLength string
 	var fileSize uint64
 
-	if contentType == multipartFormDataContentType {
+	if mediaType == multipartFormDataMediaType {
 		mr := multipart.NewReader(r.Body, params["boundary"])
 
 		// read only the first part, as only one file upload is supported
@@ -140,7 +140,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If filename is still empty, use the file hash the filename
+	// If filename is still empty, use the file hash as the filename
 	if fileName == "" {
 		fileName = fr.String()
 	}
