@@ -243,15 +243,15 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// send the file data back in the response
-	dataSize, err := j.Size(r.Context(), address)
+	dataSize, err := j.Size(r.Context(), e.Reference())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Debugf("file download: not found %s: %v", address, err)
+			s.Logger.Debugf("file download: not found %s: %v", e.Reference(), err)
 			s.Logger.Errorf("file download: not found %s", addr)
 			jsonhttp.NotFound(w, "not found")
 			return
 		}
-		s.Logger.Debugf("file download: invalid root chunk %s: %v", address, err)
+		s.Logger.Debugf("file download: invalid root chunk %s: %v", e.Reference(), err)
 		s.Logger.Errorf("file download: invalid root chunk %s", addr)
 		jsonhttp.BadRequest(w, "invalid root chunk")
 		return
@@ -260,8 +260,8 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	outBuffer := bytes.NewBuffer(nil)
 	c, err := file.JoinReadAll(j, e.Reference(), outBuffer)
 	if err != nil && c == 0 {
-		s.Logger.Debugf("file download: data read %s: %v", addr, err)
-		s.Logger.Errorf("file download: data read %s", addr)
+		s.Logger.Debugf("file download: data join %s: %v", addr, err)
+		s.Logger.Errorf("file download: data join %s", addr)
 		jsonhttp.InternalServerError(w, "error reading data")
 		return
 	}
@@ -269,5 +269,8 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename))
 	w.Header().Set("Content-Type", metaData.MimeType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	_, _ = io.Copy(w, outBuffer)
+	if _, err = io.Copy(w, outBuffer); err != nil {
+		s.Logger.Debugf("file download: data read %s: %v", addr, err)
+		s.Logger.Errorf("file download: data read %s", addr)
+	}
 }
