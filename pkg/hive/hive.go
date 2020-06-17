@@ -99,7 +99,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 
 		if addr == nil {
-			s.logger.Debugf("Peer not found %s", p)
+			s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
 			continue
 		}
 
