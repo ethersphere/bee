@@ -266,8 +266,36 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 	}
 }
 
-func TestPeerMovedOutOfDepth(t *testing.T) {
+func TestPeerDisconnected(t *testing.T) {
+	cursors := []uint64{0, 0}
+	addr := test.RandomAddress()
 
+	p, _, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(
+				mockk.AddrTuple{A: addr, P: 1},
+			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
+		},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
+	})
+	t.Cleanup(func() {
+		p.Close()
+		pullsync.Close()
+	})
+
+	runtime.Gosched()
+	time.Sleep(50 * time.Millisecond)
+
+	kad.Trigger()
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitLiveSyncCalled(t, pullsync, addr, false)
+	kad.ResetPeers()
+	kad.Trigger()
+	time.Sleep(50 * time.Millisecond)
+
+	if puller.IsSyncing(p, addr) {
+		t.Fatalf("peer is syncing but shouldnt")
+	}
 }
 
 func TestDepthChange(t *testing.T) {

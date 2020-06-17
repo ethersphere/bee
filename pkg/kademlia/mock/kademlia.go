@@ -163,6 +163,13 @@ func (m *Mock) Trigger() {
 	}
 }
 
+func (m *Mock) ResetPeers() {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.peers = nil
+	m.eachPeerRev = nil
+}
+
 func (m *Mock) Close() error {
 	panic("not implemented") // TODO: Implement
 }

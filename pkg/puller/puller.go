@@ -483,3 +483,19 @@ func newSyncPeer(addr swarm.Address) *syncPeer {
 		binCancelFuncs: make(map[uint8]func(), bins),
 	}
 }
+
+func isSyncing(p *Puller, addr swarm.Address) bool {
+	// this is needed for testing purposes in order
+	// to verify that a peer is no longer syncing on
+	// disconnect
+	p.syncPeersMtx.Lock()
+	defer p.syncPeersMtx.Unlock()
+	for _, bin := range p.syncPeers {
+		for peer, _ := range bin {
+			if addr.String() == peer {
+				return true
+			}
+		}
+	}
+	return false
+}
