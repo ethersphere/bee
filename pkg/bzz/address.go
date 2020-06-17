@@ -126,25 +126,5 @@ func (a *Address) String() string {
 // ShortString returns shortened versions of overlay and underlay address in a format: [shortOver..., shortUnder...]
 // It can be used for logging
 func (a *Address) ShortString() string {
-	return fmt.Sprintf("[Overlay: %s..., Underlay: %s...]", a.ShortOverlay(), a.ShortUnderlay())
-}
-
-// ShortOverlay returns shortened version of Overlay address
-// It can be used for logging
-func (a *Address) ShortOverlay() string {
-	if oaddr := a.Overlay.String(); len(oaddr) >= 16 {
-		return oaddr[:16]
-	} else {
-		return oaddr
-	}
-}
-
-// ShortUnderlay returns shortened version of Underlay address
-// It can be used for logging
-func (a *Address) ShortUnderlay() string {
-	if uaddr := a.Underlay.String(); len(uaddr) >= 16 {
-		return uaddr[:16]
-	} else {
-		return uaddr
-	}
+	return fmt.Sprintf("[Overlay: %s..., Underlay: %s...]", a.Overlay.String(), a.Underlay.String())
 }
