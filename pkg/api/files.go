@@ -30,6 +30,7 @@ import (
 
 const (
 	MultiPartFormData = "multipart/form-data"
+	EncryptHeader     = "swarm-encrypt"
 )
 
 type FileUploadResponse struct {

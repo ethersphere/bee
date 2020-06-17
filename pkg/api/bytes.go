@@ -61,7 +61,7 @@ func (s *server) splitUpload(ctx context.Context, r io.ReadCloser, l int64) (int
 		}
 	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	address, err := sp.Split(ctx, chunkPipe, l)
+	address, err := sp.Split(ctx, chunkPipe, l, false)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}

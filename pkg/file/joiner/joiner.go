@@ -11,21 +11,25 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner/internal"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/crypto/sha3"
 )
 
 // simpleJoiner wraps a non-optimized implementation of file.Joiner.
 type simpleJoiner struct {
-	getter storage.Getter
+	getter  storage.Getter
+	refSize int64
 }
 
 // NewSimpleJoiner creates a new simpleJoiner.
 func NewSimpleJoiner(getter storage.Getter) file.Joiner {
 	return &simpleJoiner{
-		getter: getter,
+		getter:  getter,
+		refSize: int64(swarm.HashSize),
 	}
 }
 
@@ -66,4 +70,49 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 
 	r := internal.NewSimpleJoinerJob(ctx, s.getter, rootChunk)
 	return r, int64(spanLength), nil
+}
+
+func (s *simpleJoiner) DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
+	if len(chunkData) < 8 {
+		return nil, fmt.Errorf("Invalid ChunkData, min length 8 got %v", len(chunkData))
+	}
+
+	decryptedSpan, decryptedData, err := s.decrypt(chunkData, encryptionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// removing extra bytes which were just added for padding
+	length := uint64(len(decryptedSpan))
+	for length > swarm.ChunkSize {
+		length = length + (swarm.ChunkSize - 1)
+		length = length / swarm.ChunkSize
+		length *= uint64(s.refSize)
+	}
+
+	c := make([]byte, length+8)
+	copy(c[:8], decryptedSpan)
+	copy(c[8:], decryptedData[:length])
+
+	return c, nil
+}
+
+func (s *simpleJoiner) decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
+	encryptedSpan, err := s.newSpanEncryption(key).Encrypt(chunkData[:8])
+	if err != nil {
+		return nil, nil, err
+	}
+	encryptedData, err := s.newDataEncryption(key).Encrypt(chunkData[8:])
+	if err != nil {
+		return nil, nil, err
+	}
+	return encryptedSpan, encryptedData, nil
+}
+
+func (s *simpleJoiner) newSpanEncryption(key encryption.Key) encryption.Encryption {
+	return encryption.New(key, 0, uint32(swarm.ChunkSize/s.refSize), sha3.NewLegacyKeccak256)
+}
+
+func (s *simpleJoiner) newDataEncryption(key encryption.Key) encryption.Encryption {
+	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

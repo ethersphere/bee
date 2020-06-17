@@ -53,7 +53,7 @@ func testSplitThenJoin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
-	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)))
+	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)), false)
 	if err != nil {
 		t.Fatal(err)
 	}
