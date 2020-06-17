@@ -120,7 +120,7 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 }
 
 func (a *Address) String() string {
-	return fmt.Sprintf("Underlay: %v, Overlay %v, Signature %x", a.Underlay, a.Overlay, a.Signature)
+	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x]", a.Underlay, a.Overlay, a.Signature)
 }
 
 // ShortString returns shortened versions of bzz address in a format: [Overlay, Underlay]
