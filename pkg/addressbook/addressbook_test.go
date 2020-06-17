@@ -22,7 +22,6 @@ func TestInMem(t *testing.T) {
 	run(t, func(t *testing.T) addressbook.Interface {
 		store := mock.NewStateStore()
 		book := addressbook.New(store)
-
 		return book
 	})
 }
@@ -56,13 +55,17 @@ func run(t *testing.T, f bookFunc) {
 		t.Fatal(err)
 	}
 
-	_, err = store.Get(addr2)
-	if err == nil {
-		t.Fatal("value found in store but should not have been")
+	if !bzzAddr.Equal(v) {
+		t.Fatalf("expectted: %s, want %s", v, multiaddr)
 	}
 
-	if !bzzAddr.Equal(&v) {
-		t.Fatalf("value retrieved from store not equal to original stored address: %v, want %v", v, multiaddr)
+	notFound, err := store.Get(addr2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if notFound != nil {
+		t.Fatalf("expected nil got %s", v)
 	}
 
 	overlays, err := store.Overlays()

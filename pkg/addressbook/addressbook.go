@@ -30,7 +30,7 @@ type GetPutter interface {
 }
 
 type Getter interface {
-	Get(overlay swarm.Address) (addr bzz.Address, err error)
+	Get(overlay swarm.Address) (addr *bzz.Address, err error)
 }
 
 type Putter interface {
@@ -51,12 +51,16 @@ func New(storer storage.StateStorer) Interface {
 	}
 }
 
-func (s *store) Get(overlay swarm.Address) (bzz.Address, error) {
+func (s *store) Get(overlay swarm.Address) (*bzz.Address, error) {
 	key := keyPrefix + overlay.String()
-	v := bzz.Address{}
+	v := &bzz.Address{}
 	err := s.store.Get(key, &v)
 	if err != nil {
-		return bzz.Address{}, err
+		if err == storage.ErrNotFound {
+			return nil, nil
+		}
+
+		return nil, err
 	}
 	return v, nil
 }

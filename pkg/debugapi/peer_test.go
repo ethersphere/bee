@@ -59,7 +59,7 @@ func TestConnect(t *testing.T) {
 		})
 
 		bzzAddr, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(&bzzAddr) {
+		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(bzzAddr) {
 			t.Fatalf("found wrong underlay.  expected: %+v, found: %+v", bzzAddress, bzzAddr)
 		}
 	})
@@ -99,7 +99,7 @@ func TestConnect(t *testing.T) {
 		})
 
 		bzzAddr, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(&bzzAddr) {
+		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(bzzAddr) {
 			t.Fatalf("found wrong underlay.  expected: %+v, found: %+v", bzzAddress, bzzAddr)
 		}
 

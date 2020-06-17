@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
@@ -136,15 +135,15 @@ func (k *Kad) manage() {
 				if err != nil {
 					// either a peer is not known in the address book, in which case it
 					// should be removed, or that some severe I/O problem is at hand
-
-					if errors.Is(err, storage.ErrNotFound) {
-						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
-						peerToRemove = peer
-						return false, false, errMissingAddressBookEntry
-					}
-
 					return false, false, err
 				}
+
+				if bzzAddr == nil {
+					k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
+					peerToRemove = peer
+					return false, false, errMissingAddressBookEntry
+				}
+
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
 
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
