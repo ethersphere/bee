@@ -77,13 +77,13 @@ data-dir: /data/bees/bee5
 
 ## File upload
 
-File can be uploaded by making an HTTP request like this one:
+A file can be uploaded by making an HTTP request like this one:
 
 ```sh
 curl -F file=@kitten.jpg http://localhost:8080/files
 ```
 
-Curl will make a properly encoded `multipart/form-data` request sending the filename, content type and file content to the bee API, and it will return a response with the reference to the uploaded file:
+`curl` will form a `multipart/form-data` request with the filename, content type and file content to the `bee` API, returning a response with the reference to the uploaded file:
 
 ```json
 {"reference":"3b2791985f102fe645d1ebd7f51e522d277098fcd86526674755f762084b94ee"}
@@ -91,9 +91,9 @@ Curl will make a properly encoded `multipart/form-data` request sending the file
 
 This reference is just an example, it will differ for every uploaded file.
 
-To download a file, open an URL with that reference `http://localhost:8080/files/3b2791985f102fe645d1ebd7f51e522d277098fcd86526674755f762084b94ee`.
+To download or view the file, open an URL with that reference in your browser or through your favorite command line tool:  `http://localhost:8080/files/3b2791985f102fe645d1ebd7f51e522d277098fcd86526674755f762084b94ee`.
 
-If you need to specify manually content type or filename during upload:
+In case you'd like to manually specify the content type during upload, you could do so using a query string parameter:
 
 ```sh
 curl -H "Content-Type: image/x-jpeg" --data-binary @kitten.jpg localhost:8081/files?name=cat.jpg
