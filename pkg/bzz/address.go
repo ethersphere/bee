@@ -123,7 +123,7 @@ func (a *Address) String() string {
 	return fmt.Sprintf("Underlay: %v, Overlay %v, Signature %x", a.Underlay, a.Overlay, a.Signature)
 }
 
-// ShortString returns shortened versions of overlay and underlay address in a format: [shortOver..., shortUnder...]
+// ShortString returns shortened versions of bzz address in a format: [Overlay..., Underlay...]
 // It can be used for logging
 func (a *Address) ShortString() string {
 	return fmt.Sprintf("[Overlay: %s..., Underlay: %s...]", a.Overlay.String(), a.Underlay.String())
