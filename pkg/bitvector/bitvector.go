@@ -29,14 +29,14 @@ type BitVector struct {
 }
 
 // New creates a new bit vector with the given length
-func New(l int) (bv *BitVector, err error) {
+func New(l int) (*BitVector, error) {
 	return NewFromBytes(make([]byte, l/8+1), l)
 }
 
 // NewFromBytes creates a bit vector from the passed byte slice.
 //
 // Leftmost bit in byte slice becomes leftmost bit in bit vector
-func NewFromBytes(b []byte, l int) (bv *BitVector, err error) {
+func NewFromBytes(b []byte, l int) (*BitVector, error) {
 	if l <= 0 {
 		return nil, errInvalidLength
 	}

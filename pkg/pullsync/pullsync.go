@@ -149,7 +149,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			bv.Set(i / swarm.HashSize)
 		}
 	}
-	fmt.Println("sending want", len(bv.Bytes()))
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {

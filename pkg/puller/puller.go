@@ -97,13 +97,32 @@ func (p *Puller) manage() {
 
 			// we defer the actual start of syncing to get out of the iterator first
 			var (
-				peersToSync   []peer
-				peersToRecalc []peer
+				peersToSync       []peer
+				peersToRecalc     []peer
+				peersDisconnected = make(map[string]peer)
 			)
+
 			p.syncPeersMtx.Lock()
 
-			err := p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+			// make a map of all peers we're syncing with, then remove from it
+			// the entries we get from kademlia  in the iterator, this way we
+			// know which peers are no longer there anymore (disconnected) thus
+			// should be removed from the syncPeer bin.
+			for po, bin := range p.syncPeers {
+				for peerAddr, v := range bin {
+					pe := peer{addr: v.address, po: uint8(po)}
+					peersDisconnected[peerAddr] = pe
+				}
+			}
+
+			// EachPeerRev in this case will never return an error, since the content of the callback
+			// never returns an error. In case in the future changes are made to the callback in a
+			// way that it returns an error - the value must be checked.
+			_ = p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 				bp := p.syncPeers[po]
+				if _, ok := bp[peerAddr.String()]; ok {
+					delete(peersDisconnected, peerAddr.String())
+				}
 				syncing := len(bp)
 				switch {
 				case po < depth:
@@ -111,7 +130,7 @@ func (p *Puller) manage() {
 					if _, ok := bp[peerAddr.String()]; !ok {
 						if syncing < shallowBinPeers {
 							// peer not syncing yet and we still need more peers in this bin
-							bp[peerAddr.String()] = newSyncPeer()
+							bp[peerAddr.String()] = newSyncPeer(peerAddr)
 							peerEntry := peer{addr: peerAddr, po: po}
 							peersToSync = append(peersToSync, peerEntry)
 						}
@@ -124,7 +143,7 @@ func (p *Puller) manage() {
 					// within depth, sync everything >= depth
 					if _, ok := bp[peerAddr.String()]; !ok {
 						// we're not syncing with this peer yet, start doing so
-						bp[peerAddr.String()] = newSyncPeer()
+						bp[peerAddr.String()] = newSyncPeer(peerAddr)
 						peerEntry := peer{addr: peerAddr, po: po}
 						peersToSync = append(peersToSync, peerEntry)
 					} else {
@@ -137,10 +156,6 @@ func (p *Puller) manage() {
 				return false, false, nil
 			})
 
-			if err != nil {
-				panic(err)
-			}
-
 			for _, v := range peersToSync {
 				p.syncPeer(ctx, v.addr, v.po, depth)
 			}
@@ -148,12 +163,31 @@ func (p *Puller) manage() {
 			for _, v := range peersToRecalc {
 				p.recalcPeer(ctx, v.addr, v.po, depth)
 			}
+
+			for _, v := range peersDisconnected {
+				p.disconnectPeer(ctx, v.addr, v.po)
+			}
+
 			p.syncPeersMtx.Unlock()
 
 		case <-p.quit:
 			return
 		}
 	}
+}
+
+func (p *Puller) disconnectPeer(ctx context.Context, peer swarm.Address, po uint8) {
+	p.logger.Debugf("puller disconnect cleanup peer %s po %d", peer, po)
+	syncCtx := p.syncPeers[po][peer.String()] // disconnectPeer is called under lock, this is safe
+
+	syncCtx.Lock()
+	defer syncCtx.Unlock()
+
+	for _, f := range syncCtx.binCancelFuncs {
+		f()
+	}
+
+	delete(p.syncPeers[po], peer.String())
 }
 
 func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
@@ -437,13 +471,15 @@ func peerIntervalKey(peer swarm.Address, bin uint8) string {
 }
 
 type syncPeer struct {
+	address        swarm.Address
 	binCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
 
 	sync.Mutex
 }
 
-func newSyncPeer() *syncPeer {
+func newSyncPeer(addr swarm.Address) *syncPeer {
 	return &syncPeer{
+		address:        addr,
 		binCancelFuncs: make(map[uint8]func(), bins),
 	}
 }
