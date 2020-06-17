@@ -19,6 +19,7 @@ var _ Interface = (*store)(nil)
 
 type Interface interface {
 	GetPutter
+	Remover
 	Overlays() ([]swarm.Address, error)
 	Addresses() ([]bzz.Address, error)
 }
@@ -34,6 +35,10 @@ type Getter interface {
 
 type Putter interface {
 	Put(overlay swarm.Address, addr bzz.Address) (err error)
+}
+
+type Remover interface {
+	Remove(overlay swarm.Address) error
 }
 
 type store struct {
@@ -59,6 +64,10 @@ func (s *store) Get(overlay swarm.Address) (bzz.Address, error) {
 func (s *store) Put(overlay swarm.Address, addr bzz.Address) (err error) {
 	key := keyPrefix + overlay.String()
 	return s.store.Put(key, &addr)
+}
+
+func (s *store) Remove(overlay swarm.Address) error {
+	return s.store.Delete(keyPrefix + overlay.String())
 }
 
 func (s *store) Overlays() (overlays []swarm.Address, err error) {
