@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -86,34 +87,44 @@ func (a *Address) Equal(b *Address) bool {
 	return a.Overlay.Equal(b.Overlay) && a.Underlay.Equal(b.Underlay) && bytes.Equal(a.Signature, b.Signature)
 }
 
-func (p *Address) MarshalJSON() ([]byte, error) {
+func (a *Address) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&addressJSON{
-		Overlay:   p.Overlay.String(),
-		Underlay:  p.Underlay.String(),
-		Signature: base64.StdEncoding.EncodeToString(p.Signature),
+		Overlay:   a.Overlay.String(),
+		Underlay:  a.Underlay.String(),
+		Signature: base64.StdEncoding.EncodeToString(a.Signature),
 	})
 }
 
-func (p *Address) UnmarshalJSON(b []byte) error {
+func (a *Address) UnmarshalJSON(b []byte) error {
 	v := &addressJSON{}
 	err := json.Unmarshal(b, v)
 	if err != nil {
 		return err
 	}
 
-	a, err := swarm.ParseHexAddress(v.Overlay)
+	addr, err := swarm.ParseHexAddress(v.Overlay)
 	if err != nil {
 		return err
 	}
 
-	p.Overlay = a
+	a.Overlay = addr
 
 	m, err := ma.NewMultiaddr(v.Underlay)
 	if err != nil {
 		return err
 	}
 
-	p.Underlay = m
-	p.Signature, err = base64.StdEncoding.DecodeString(v.Signature)
+	a.Underlay = m
+	a.Signature, err = base64.StdEncoding.DecodeString(v.Signature)
 	return err
+}
+
+func (a *Address) String() string {
+	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x]", a.Underlay, a.Overlay, a.Signature)
+}
+
+// ShortString returns shortened versions of bzz address in a format: [Overlay, Underlay]
+// It can be used for logging
+func (a *Address) ShortString() string {
+	return fmt.Sprintf("[Overlay: %s, Underlay: %s]", a.Overlay.String(), a.Underlay.String())
 }

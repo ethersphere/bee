@@ -75,6 +75,47 @@ api-addr: 127.0.0.1:8085
 data-dir: /data/bees/bee5
 ```
 
+## File upload
+
+A file can be uploaded by making an HTTP request like this one:
+
+```sh
+curl -F file=@kitten.jpg http://localhost:8080/files
+```
+
+`curl` will form a `multipart/form-data` request with the filename, content type and file content to the `bee` API, returning a response with the reference to the uploaded file:
+
+```json
+{"reference":"3b2791985f102fe645d1ebd7f51e522d277098fcd86526674755f762084b94ee"}
+```
+
+This reference is just an example, it will differ for every uploaded file.
+
+To download or view the file, open an URL with that reference in your browser or through your favorite command line tool:  `http://localhost:8080/files/3b2791985f102fe645d1ebd7f51e522d277098fcd86526674755f762084b94ee`.
+
+In case you'd like to manually specify the content type during upload, you could do so using a query string parameter:
+
+```sh
+curl -H "Content-Type: image/x-jpeg" --data-binary @kitten.jpg localhost:8081/files?name=cat.jpg
+```
+
+The same response with file reference is returned.
+
+To avoid uploading with command line tools, this HTML file can be opened in the browser and used to select and submit a file:
+
+```html
+<form action="http://localhost:8080/files" method="post" enctype="multipart/form-data">
+ <div>
+   <input type="file" name="file">
+ </div>
+ <div>
+   <button>Upload</button>
+ </div>
+</form>
+```
+
+And download a file in the browser can be done by entering the URL `<API_address>/files/{reference}` in the address bar, where API_address is by default `http://localhost:8080` and reference is the reference value from the returned JSON response.
+
 ## Starting more bee nodes locally with debugging
 
 It is possible to start multiple, persistent, completely independent, bee nodes on a single running operating system. This can be achieved with less complexity with prepared configuration files for every node.

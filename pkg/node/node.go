@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -67,6 +68,7 @@ type Options struct {
 	APIAddr            string
 	DebugAPIAddr       string
 	Addr               string
+	NATAddr            string
 	DisableWS          bool
 	DisableQUIC        bool
 	NetworkID          uint64
@@ -143,6 +145,7 @@ func NewBee(o Options) (*Bee, error) {
 
 	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, o.Addr, libp2p.Options{
 		PrivateKey:  libp2pPrivateKey,
+		NATAddr:     o.NATAddr,
 		DisableWS:   o.DisableWS,
 		DisableQUIC: o.DisableQUIC,
 		Addressbook: addressbook,
@@ -154,16 +157,18 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.p2pService = p2ps
 
-	// wait for nat manager to init
-	logger.Debug("initializing NAT manager")
-	select {
-	case <-p2ps.NATManager().Ready():
-		// this is magic sleep to give NAT time to sync the mappings
-		// this is a hack, kind of alchemy and should be improved
-		time.Sleep(3 * time.Second)
-		logger.Debug("NAT manager initialized")
-	case <-time.After(10 * time.Second):
-		logger.Warning("NAT manager init timeout")
+	if natManager := p2ps.NATManager(); natManager != nil {
+		// wait for nat manager to init
+		logger.Debug("initializing NAT manager")
+		select {
+		case <-natManager.Ready():
+			// this is magic sleep to give NAT time to sync the mappings
+			// this is a hack, kind of alchemy and should be improved
+			time.Sleep(3 * time.Second)
+			logger.Debug("NAT manager initialized")
+		case <-time.After(10 * time.Second):
+			logger.Warning("NAT manager init timeout")
+		}
 	}
 
 	// Construct protocols.
@@ -371,34 +376,37 @@ func NewBee(o Options) (*Bee, error) {
 				}
 				var count int
 				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+					logger.Tracef("connecting to peer %s", addr)
 					bzzAddr, err := p2ps.Connect(p2pCtx, addr)
 					if err != nil {
-						logger.Debugf("connect fail %s: %v", a, err)
-						logger.Errorf("connect to bootnode %s", a)
+						if !errors.Is(err, p2p.ErrAlreadyConnected) {
+							logger.Debugf("connect fail %s: %v", addr, err)
+							logger.Errorf("connect to bootnode %s", addr)
+						}
 						return false, nil
 					}
+					logger.Tracef("connected to peer %s", addr)
 
 					err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
 					if err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", a)
+						logger.Debugf("addressbook error persisting %s %s: %v", addr, bzzAddr.Overlay, err)
+						logger.Errorf("connect to bootnode %s", addr)
 						return false, nil
 					}
 
 					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("topology connected fail %s %s: %v", a, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", a)
+						logger.Debugf("topology connected fail %s %s: %v", addr, bzzAddr.Overlay, err)
+						logger.Errorf("connect to bootnode %s", addr)
 						return false, nil
 					}
 					count++
 					// connect to max 3 bootnodes
-					// using DNS discovery one node is discovered twice (TCP and UDP)
-					return count > 6, nil
+					return count > 3, nil
 				}); err != nil {
-					logger.Debugf("connect fail %s: %v", a, err)
-					logger.Errorf("connect to bootnode %s", a)
+					logger.Debugf("discover fail %s: %v", a, err)
+					logger.Errorf("discover to bootnode %s", a)
 					return
 				}
 			}(a)

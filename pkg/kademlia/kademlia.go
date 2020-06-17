@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	maxBins        = 16
-	nnLowWatermark = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	maxBins         = 16
+	nnLowWatermark  = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	maxConnAttempts = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 )
 
 var (
@@ -56,11 +57,16 @@ type Kad struct {
 	depth          uint8                 // current neighborhood depth
 	depthMu        sync.RWMutex          // protect depth changes
 	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
-	waitNext       map[string]time.Time  // sanction connections to a peer, key is overlay string and value is time to next retry
+	waitNext       map[string]retryInfo  // sanction connections to a peer, key is overlay string and value is a retry information
 	waitNextMu     sync.Mutex            // synchronize map
 	logger         logging.Logger        // logger
 	quit           chan struct{}         // quit channel
 	done           chan struct{}         // signal that `manage` has quit
+}
+
+type retryInfo struct {
+	tryAfter       time.Time
+	failedAttempts int
 }
 
 // New returns a new Kademlia.
@@ -78,7 +84,7 @@ func New(o Options) *Kad {
 		connectedPeers: pslice.New(maxBins),
 		knownPeers:     pslice.New(maxBins),
 		manageC:        make(chan struct{}, 1),
-		waitNext:       make(map[string]time.Time),
+		waitNext:       make(map[string]retryInfo),
 		logger:         o.Logger,
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
@@ -91,26 +97,31 @@ func New(o Options) *Kad {
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
-	var peerToRemove swarm.Address
+	var (
+		peerToRemove swarm.Address
+		start        time.Time
+	)
+
 	defer close(k.done)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-k.quit
 		cancel()
 	}()
-
 	for {
 		select {
 		case <-k.quit:
 			return
 		case <-k.manageC:
+			start = time.Now()
+
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
 
 				k.waitNextMu.Lock()
-				if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next) {
+				if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
 					k.waitNextMu.Unlock()
 					return false, false, nil
 				}
@@ -138,8 +149,8 @@ func (k *Kad) manage() {
 
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 				if err != nil {
-					k.logger.Debugf("error connecting to peer from kademlia %s %+v: %v", peer, bzzAddr, err)
-					k.logger.Errorf("connecting to peer %s: %v", peer, err)
+					k.logger.Debugf("error connecting to peer from kademlia %s: %v", bzzAddr.String(), err)
+					k.logger.Errorf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
 					// continue to next
 					return false, false, nil
 				}
@@ -166,6 +177,7 @@ func (k *Kad) manage() {
 				// be made before checking the next peer, so we iterate to next
 				return false, false, nil
 			})
+			k.logger.Tracef("kademlia iterator took %s to finish", time.Since(start))
 
 			if err != nil {
 				if errors.Is(err, errMissingAddressBookEntry) {
@@ -242,12 +254,33 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			return nil
 		}
-		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
-		k.waitNextMu.Lock()
-		k.waitNext[peer.String()] = time.Now().Add(timeToRetry)
-		k.waitNextMu.Unlock()
 
-		// TODO: somehow keep track of attempts and at some point forget about the peer
+		k.logger.Debugf("error connecting to peer %s: %v", peer, err)
+		retryTime := time.Now().Add(timeToRetry)
+		var e *p2p.ConnectionBackoffError
+		k.waitNextMu.Lock()
+		failedAttempts := 0
+		if errors.As(err, &e) {
+			retryTime = e.TryAfter()
+		} else {
+			info, ok := k.waitNext[peer.String()]
+			if ok {
+				failedAttempts = info.failedAttempts
+			}
+
+			failedAttempts++
+		}
+
+		if failedAttempts > maxConnAttempts {
+			delete(k.waitNext, peer.String())
+			if err := k.addressBook.Remove(peer); err != nil {
+				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
+			}
+		} else {
+			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
+		}
+
+		k.waitNextMu.Unlock()
 		return err
 	}
 
@@ -329,7 +362,7 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	k.connectedPeers.Remove(addr, po)
 
 	k.waitNextMu.Lock()
-	k.waitNext[addr.String()] = time.Now().Add(timeToRetry)
+	k.waitNext[addr.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()

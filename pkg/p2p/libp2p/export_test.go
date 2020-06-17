@@ -19,3 +19,7 @@ func (s *Service) HandshakeService() *handshake.Service {
 func (s *Service) NewStreamForPeerID(peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
 	return s.newStreamForPeerID(context.Background(), peerID, protocolName, protocolVersion, streamName)
 }
+
+type StaticAddressResolver = staticAddressResolver
+
+var NewStaticAddressResolver = newStaticAddressResolver

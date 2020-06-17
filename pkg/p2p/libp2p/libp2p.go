@@ -61,6 +61,7 @@ type Service struct {
 
 type Options struct {
 	PrivateKey  *ecdsa.PrivateKey
+	NATAddr     string
 	DisableWS   bool
 	DisableQUIC bool
 	LightNode   bool
@@ -119,12 +120,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
-		libp2p.NATManager(func(n network.Network) basichost.NATManager {
-			natManager = basichost.NewNATManager(n)
-			return natManager
-		}),
 		// Use dedicated peerstore instead the global DefaultPeerstore
 		libp2p.Peerstore(libp2pPeerstore),
+	}
+
+	if o.NATAddr == "" {
+		opts = append(opts,
+			libp2p.NATManager(func(n network.Network) basichost.NATManager {
+				natManager = basichost.NewNATManager(n)
+				return natManager
+			}),
+		)
 	}
 
 	if o.PrivateKey != nil {
@@ -163,9 +169,19 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(signer, &UpnpAddressResolver{
-		host: h,
-	}, overlay, networkID, o.LightNode, o.Logger)
+	var advertisableAddresser handshake.AdvertisableAddressResolver
+	if o.NATAddr == "" {
+		advertisableAddresser = &UpnpAddressResolver{
+			host: h,
+		}
+	} else {
+		advertisableAddresser, err = newStaticAddressResolver(o.NATAddr)
+		if err != nil {
+			return nil, fmt.Errorf("static nat: %w", err)
+		}
+	}
+
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.LightNode, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -225,7 +241,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
+		s.logger.Infof("successfully connected to peer %s", i.BzzAddress.ShortString())
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -361,7 +377,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("peer %s connected", i.BzzAddress.Overlay)
+	s.logger.Infof("successfully connected to peer %s", i.BzzAddress.ShortString())
 	return i.BzzAddress, nil
 }
 
