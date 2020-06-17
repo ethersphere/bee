@@ -491,7 +491,7 @@ func isSyncing(p *Puller, addr swarm.Address) bool {
 	p.syncPeersMtx.Lock()
 	defer p.syncPeersMtx.Unlock()
 	for _, bin := range p.syncPeers {
-		for peer, _ := range bin {
+		for peer := range bin {
 			if addr.String() == peer {
 				return true
 			}

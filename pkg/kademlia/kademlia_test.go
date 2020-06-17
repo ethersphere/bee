@@ -521,7 +521,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	}
 
 	t.Run("single subscription", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
@@ -533,7 +533,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("single subscription, remove peer", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
@@ -548,7 +548,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("multiple subscriptions", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
 
 		c1, u1 := kad.SubscribePeersChange()
 		defer u1()
@@ -565,7 +565,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("multiple changes", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
@@ -586,7 +586,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("no depth change", func(t *testing.T) {
-		_, kad, _, _, _ := newTestKademlia(nil, nil)
+		_, kad, _, _, _ := newTestKademlia(nil, nil, nil)
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
