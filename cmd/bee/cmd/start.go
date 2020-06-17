@@ -40,6 +40,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameBootnodes          = "bootnode"
 		optionNameNetworkID          = "network-id"
 		optionCORSAllowedOrigins     = "cors-allowed-origins"
+		optionWelcomeMessage         = "welcome-message"
 		optionNameTracingEnabled     = "tracing"
 		optionNameTracingEndpoint    = "tracing-endpoint"
 		optionNameTracingServiceName = "tracing-service-name"
@@ -105,6 +106,7 @@ func (c *command) initStartCmd() (err error) {
 				DisableWS:          c.config.GetBool(optionNameP2PDisableWS),
 				DisableQUIC:        c.config.GetBool(optionNameP2PDisableQUIC),
 				NetworkID:          c.config.GetUint64(optionNameNetworkID),
+				WelcomeMessage:     c.config.GetString(optionWelcomeMessage),
 				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
 				CORSAllowedOrigins: c.config.GetStringSlice(optionCORSAllowedOrigins),
 				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
@@ -173,6 +175,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
+	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 
 	c.root.AddCommand(cmd)
 	return nil

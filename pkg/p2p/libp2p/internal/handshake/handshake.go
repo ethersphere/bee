@@ -24,10 +24,16 @@ import (
 )
 
 const (
-	ProtocolName    = "handshake"
+	// ProtocolName is the text of the name of the handshake protocol.
+	ProtocolName = "handshake"
+	// ProtocolVersion is the current handshake protocol version.
 	ProtocolVersion = "1.0.0"
-	StreamName      = "handshake"
-	messageTimeout  = 5 * time.Second // maximum allowed time for a message to be read or written.
+	// StreamName is the name of the stream used for handshake purposes.
+	StreamName = "handshake"
+	// MessageTimeout is the maximum allowed time for a message to be read or written.
+	MessageTimeout = 5 * time.Second
+	// MaxWelcomeMessageLength is maximum number of characters allowed in the welcome message.
+	MaxWelcomeMessageLength = 140
 )
 
 var (
@@ -44,16 +50,19 @@ var (
 	ErrInvalidSyn = errors.New("invalid syn")
 )
 
+// AdvertisableAddressResolver can Resolve a Multiaddress.
 type AdvertisableAddressResolver interface {
 	Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
+// Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
 	overlay               swarm.Address
 	lightNode             bool
 	networkID             uint64
+	welcomeMessage        string
 	receivedHandshakes    map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu  sync.Mutex
 	logger                logging.Logger
@@ -61,19 +70,32 @@ type Service struct {
 	network.Notifiee // handshake service can be the receiver for network.Notify
 }
 
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, lighNode bool, logger logging.Logger) (*Service, error) {
+// Info contains the information received from the handshake.
+type Info struct {
+	BzzAddress *bzz.Address
+	Light      bool
+}
+
+// New creates a new handshake Service.
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, lighNode bool, welcomeMessage string, logger logging.Logger) (*Service, error) {
+	if len(welcomeMessage) > MaxWelcomeMessageLength {
+		return nil, fmt.Errorf("handshake welcome message length must be less than %d characters", MaxWelcomeMessageLength)
+	}
+
 	return &Service{
 		signer:                signer,
 		advertisableAddresser: advertisableAddresser,
 		overlay:               overlay,
 		networkID:             networkID,
 		lightNode:             lighNode,
+		welcomeMessage:        welcomeMessage,
 		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
 		logger:                logger,
 		Notifiee:              new(network.NoopNotifiee),
 	}, nil
 }
 
+// Handshake initiates a handshake with a peer.
 func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	fullRemoteMA, err := buildFullMA(peerMultiaddr, peerID)
@@ -86,14 +108,14 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, err
 	}
 
-	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Syn{
+	if err := w.WriteMsgWithTimeout(MessageTimeout, &pb.Syn{
 		ObservedUnderlay: fullRemoteMABytes,
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
 
 	var resp pb.SynAck
-	if err := r.ReadMsgWithTimeout(messageTimeout, &resp); err != nil {
+	if err := r.ReadMsgWithTimeout(MessageTimeout, &resp); err != nil {
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
@@ -122,25 +144,31 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, err
 	}
 
-	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Ack{
+	if err := w.WriteMsgWithTimeout(MessageTimeout, &pb.Ack{
 		Address: &pb.BzzAddress{
 			Underlay:  advertisableUnderlayBytes,
 			Overlay:   bzzAddress.Overlay.Bytes(),
 			Signature: bzzAddress.Signature,
 		},
-		NetworkID: s.networkID,
-		Light:     s.lightNode,
+		NetworkID:      s.networkID,
+		Light:          s.lightNode,
+		WelcomeMessage: s.welcomeMessage,
 	}); err != nil {
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
+	if len(resp.Ack.WelcomeMessage) > 0 {
+		s.logger.Infof("peer %s greets you: $s", resp.Ack.Address.String(), resp.Ack.WelcomeMessage)
+	}
 	s.logger.Tracef("handshake finished for peer (outbound) %s", remoteBzzAddress.Overlay.String())
+
 	return &Info{
 		BzzAddress: remoteBzzAddress,
 		Light:      resp.Ack.Light,
 	}, nil
 }
 
+// Handle handles an incoming handshake from a peer.
 func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remotePeerID libp2ppeer.ID) (i *Info, err error) {
 	s.receivedHandshakesMu.Lock()
 	if _, exists := s.receivedHandshakes[remotePeerID]; exists {
@@ -162,7 +190,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 	}
 
 	var syn pb.Syn
-	if err := r.ReadMsgWithTimeout(messageTimeout, &syn); err != nil {
+	if err := r.ReadMsgWithTimeout(MessageTimeout, &syn); err != nil {
 		return nil, fmt.Errorf("read syn message: %w", err)
 	}
 
@@ -186,7 +214,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 		return nil, err
 	}
 
-	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.SynAck{
+	if err := w.WriteMsgWithTimeout(MessageTimeout, &pb.SynAck{
 		Syn: &pb.Syn{
 			ObservedUnderlay: fullRemoteMABytes,
 		},
@@ -196,15 +224,16 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},
-			NetworkID: s.networkID,
-			Light:     s.lightNode,
+			NetworkID:      s.networkID,
+			Light:          s.lightNode,
+			WelcomeMessage: s.welcomeMessage,
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("write synack message: %w", err)
 	}
 
 	var ack pb.Ack
-	if err := r.ReadMsgWithTimeout(messageTimeout, &ack); err != nil {
+	if err := r.ReadMsgWithTimeout(MessageTimeout, &ack); err != nil {
 		return nil, fmt.Errorf("read ack message: %w", err)
 	}
 
@@ -220,6 +249,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 	}, nil
 }
 
+// Disconnected is called when the peer disconnects.
 func (s *Service) Disconnected(_ network.Network, c network.Conn) {
 	s.receivedHandshakesMu.Lock()
 	defer s.receivedHandshakesMu.Unlock()
@@ -241,9 +271,4 @@ func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	}
 
 	return bzzAddress, nil
-}
-
-type Info struct {
-	BzzAddress *bzz.Address
-	Light      bool
 }
