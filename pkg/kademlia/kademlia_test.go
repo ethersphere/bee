@@ -625,7 +625,7 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for connections to be established. got %d want %d", got, exp)
+	t.Fatalf("timed out waiting for counter to reach expected value. got %d want %d", got, exp)
 }
 
 // wait for discovery BroadcastPeers to happen
