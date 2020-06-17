@@ -381,6 +381,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
+	time.Sleep(50 * time.Millisecond)
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr)
 	waitCounter(t, &conns, 1)
@@ -395,6 +396,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
+	time.Sleep(50 * time.Millisecond)
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr1)
 	waitCounter(t, &conns, 1)
@@ -409,6 +411,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
+	time.Sleep(50 * time.Millisecond)
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr2)
 	waitCounter(t, &conns, 1)
