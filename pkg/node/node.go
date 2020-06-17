@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -378,8 +379,10 @@ func NewBee(o Options) (*Bee, error) {
 					logger.Tracef("connecting to peer %s", addr)
 					bzzAddr, err := p2ps.Connect(p2pCtx, addr)
 					if err != nil {
-						logger.Debugf("connect fail %s: %v", addr, err)
-						logger.Errorf("connect to bootnode %s", addr)
+						if !errors.Is(err, p2p.ErrAlreadyConnected) {
+							logger.Debugf("connect fail %s: %v", addr, err)
+							logger.Errorf("connect to bootnode %s", addr)
+						}
 						return false, nil
 					}
 					logger.Tracef("connected to peer %s", addr)
