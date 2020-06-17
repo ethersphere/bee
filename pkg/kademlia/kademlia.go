@@ -91,19 +91,24 @@ func New(o Options) *Kad {
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
-	var peerToRemove swarm.Address
+	var (
+		peerToRemove swarm.Address
+		start        time.Time
+	)
+
 	defer close(k.done)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-k.quit
 		cancel()
 	}()
-
 	for {
 		select {
 		case <-k.quit:
 			return
 		case <-k.manageC:
+			start = time.Now()
+
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
@@ -166,6 +171,7 @@ func (k *Kad) manage() {
 				// be made before checking the next peer, so we iterate to next
 				return false, false, nil
 			})
+			k.logger.Tracef("kademlia iterator took %s to finish", time.Since(start))
 
 			if err != nil {
 				if errors.Is(err, errMissingAddressBookEntry) {
