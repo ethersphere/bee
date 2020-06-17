@@ -356,13 +356,7 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	k.connectedPeers.Remove(addr, po)
 
 	k.waitNextMu.Lock()
-	failedAttempts := 0
-	info, ok := k.waitNext[addr.String()]
-	if ok {
-		failedAttempts = info.failedAttempts + 1
-	}
-
-	k.waitNext[addr.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: failedAttempts}
+	k.waitNext[addr.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()
