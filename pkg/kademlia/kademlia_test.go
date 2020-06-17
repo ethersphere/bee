@@ -351,8 +351,7 @@ func TestAddressBookPrune(t *testing.T) {
 	*kademlia.TimeToRetry = 50 * time.Millisecond
 
 	var (
-		conns, failedConns int32 // how many connect calls were made to the p2p mock
-
+		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, &failedConns, nil)
 	)
 
