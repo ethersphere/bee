@@ -375,33 +375,35 @@ func NewBee(o Options) (*Bee, error) {
 				}
 				var count int
 				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+					logger.Tracef("connecting to peer %s", addr)
 					bzzAddr, err := p2ps.Connect(p2pCtx, addr)
 					if err != nil {
-						logger.Debugf("connect fail %s: %v", a, err)
-						logger.Errorf("connect to bootnode %s", a)
+						logger.Debugf("connect fail %s: %v", addr, err)
+						logger.Errorf("connect to bootnode %s", addr)
 						return false, nil
 					}
+					logger.Tracef("connected to peer %s", addr)
 
 					err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
 					if err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("addressbook error persisting %s %s: %v", a, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", a)
+						logger.Debugf("addressbook error persisting %s %s: %v", addr, bzzAddr.Overlay, err)
+						logger.Errorf("connect to bootnode %s", addr)
 						return false, nil
 					}
 
 					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("topology connected fail %s %s: %v", a, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", a)
+						logger.Debugf("topology connected fail %s %s: %v", addr, bzzAddr.Overlay, err)
+						logger.Errorf("connect to bootnode %s", addr)
 						return false, nil
 					}
 					count++
 					// connect to max 3 bootnodes
 					return count > 3, nil
 				}); err != nil {
-					logger.Debugf("connect fail %s: %v", a, err)
-					logger.Errorf("connect to bootnode %s", a)
+					logger.Debugf("discover fail %s: %v", a, err)
+					logger.Errorf("discover to bootnode %s", a)
 					return
 				}
 			}(a)
