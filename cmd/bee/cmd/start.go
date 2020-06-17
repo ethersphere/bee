@@ -162,7 +162,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")
 	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
-	cmd.Flags().StringSlice(optionNameBootnodes, nil, "initial nodes to connect to")
+	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/bootnode.ethswarm.org"}, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameEnableDebugAPI, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")

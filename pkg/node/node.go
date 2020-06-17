@@ -398,8 +398,7 @@ func NewBee(o Options) (*Bee, error) {
 					}
 					count++
 					// connect to max 3 bootnodes
-					// using DNS discovery one node is discovered twice (TCP and UDP)
-					return count > 6, nil
+					return count > 3, nil
 				}); err != nil {
 					logger.Debugf("connect fail %s: %v", a, err)
 					logger.Errorf("connect to bootnode %s", a)
