@@ -342,7 +342,7 @@ func TestBackoff(t *testing.T) {
 }
 
 func TestAddressBookPrune(t *testing.T) {
-	// test pruning addressbook after succesive failed connect attempts
+	// test pruning addressbook after successive failed connect attempts
 	// cheat and decrease the timer
 	defer func(t time.Duration) {
 		*kademlia.TimeToRetry = t
