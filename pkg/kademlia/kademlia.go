@@ -25,7 +25,7 @@ import (
 const (
 	maxBins         = 16
 	nnLowWatermark  = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
-	maxConnAttempts = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considere non-connectable
+	maxConnAttempts = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 )
 
 var (
