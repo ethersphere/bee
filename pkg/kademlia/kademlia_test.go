@@ -480,6 +480,10 @@ func TestClosestPeer(t *testing.T) {
 			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101, want peer 1
 			expectedPeer: 1,
 		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // want self
+			expectedPeer: -1,
+		},
 	} {
 		peer, err := kad.ClosestPeer(tc.chunkAddress)
 		if err != nil {
