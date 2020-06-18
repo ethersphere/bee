@@ -417,7 +417,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 1)
 
-	p, err = ab.Get(nonConnPeer.Overlay)
+	_, err = ab.Get(nonConnPeer.Overlay)
 	if err != addressbook.ErrNotFound {
 		t.Fatal(err)
 	}
