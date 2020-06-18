@@ -14,8 +14,13 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 )
 
+var sendHeadersTimeout = 10 * time.Second
+
 func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
+
+	ctx, cancel := context.WithTimeout(ctx, sendHeadersTimeout)
+	defer cancel()
 
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headers)); err != nil {
 		return fmt.Errorf("write message: %w", err)
