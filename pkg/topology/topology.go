@@ -49,7 +49,7 @@ type Disconnecter interface {
 }
 
 type ClosestPeerer interface {
-	ClosestPeer(addr swarm.Address, skipPeers []swarm.Address) (peerAddr swarm.Address, err error)
+	ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 type EachPeerer interface {

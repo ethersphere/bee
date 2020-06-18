@@ -87,7 +87,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	// Select the closest peer to forward the chunk
-	peer, err := ps.peerSuggester.ClosestPeer(chunk.Address(), nil)
+	peer, err := ps.peerSuggester.ClosestPeer(chunk.Address())
 	if err != nil {
 		// If i am the closest peer then store the chunk and send receipt
 		if errors.Is(err, topology.ErrWantSelf) {
@@ -212,7 +212,7 @@ func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err e
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	peer, err := ps.peerSuggester.ClosestPeer(ch.Address(), nil)
+	peer, err := ps.peerSuggester.ClosestPeer(ch.Address())
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			// if you are the closest node return a receipt immediately

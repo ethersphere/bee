@@ -113,7 +113,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 
 // ClosestPeer returns the closest connected peer we have in relation to a
 // given chunk address. Returns topology.ErrWantSelf in case base is the closest to the chunk.
-func (d *driver) ClosestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
+func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	connectedPeers := d.p2pService.Peers()
 	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
@@ -122,11 +122,6 @@ func (d *driver) ClosestPeer(addr swarm.Address, skipPeers []swarm.Address) (swa
 	// start checking closest from _self_
 	closest := d.base
 	for _, peer := range connectedPeers {
-		for _, a := range skipPeers {
-			if a.Equal(peer.Address) {
-				continue
-			}
-		}
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Address.Bytes())
 		if err != nil {
 			return swarm.Address{}, err

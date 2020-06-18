@@ -407,22 +407,13 @@ func (k *Kad) notifyPeerSig() {
 }
 
 // ClosestPeer returns the closest peer to a given address.
-func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
+func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
-	closest := swarm.Address{}
+	closest := k.base
 	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		for _, a := range skipPeers {
-			if a.Equal(peer) {
-				return false, false, nil
-			}
-		}
-		if closest.IsZero() {
-			closest = peer
-			return false, false, nil
-		}
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
 		if err != nil {
 			return false, false, err
@@ -443,9 +434,9 @@ func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.
 		return swarm.Address{}, err
 	}
 
-	// check if found
-	if closest.IsZero() {
-		return swarm.Address{}, topology.ErrNotFound
+	// check if self
+	if closest.Equal(k.base) {
+		return swarm.Address{}, topology.ErrWantSelf
 	}
 
 	return closest, nil

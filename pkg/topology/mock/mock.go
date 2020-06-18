@@ -75,7 +75,7 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address, skipPeers []swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
 	return d.closestPeer, d.closestPeerErr
 }
 

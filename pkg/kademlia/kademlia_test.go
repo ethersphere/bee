@@ -256,7 +256,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	connectOne(t, signer, kad, ab, peer)
 
-	p, err := kad.ClosestPeer(addr, nil)
+	p, err := kad.ClosestPeer(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	// disconnect the peer, expect error
 	kad.Disconnected(peer)
-	_, err = kad.ClosestPeer(addr, nil)
+	_, err = kad.ClosestPeer(addr)
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
 	}
@@ -481,7 +481,7 @@ func TestClosestPeer(t *testing.T) {
 			expectedPeer: 1,
 		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress, nil)
+		peer, err := kad.ClosestPeer(tc.chunkAddress)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
