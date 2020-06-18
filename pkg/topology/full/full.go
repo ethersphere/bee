@@ -70,11 +70,10 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	connectedPeers := d.p2pService.Peers()
 	bzzAddress, err := d.addressBook.Get(addr)
 	if err != nil {
+		if err == addressbook.ErrNotFound {
+			return topology.ErrNotFound
+		}
 		return err
-	}
-
-	if bzzAddress == nil {
-		return topology.ErrNotFound
 	}
 
 	if !isConnected(addr, connectedPeers) {

@@ -133,15 +133,14 @@ func (k *Kad) manage() {
 
 				bzzAddr, err := k.addressBook.Get(peer)
 				if err != nil {
+					if err == addressbook.ErrNotFound {
+						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
+						peerToRemove = peer
+						return false, false, errMissingAddressBookEntry
+					}
 					// either a peer is not known in the address book, in which case it
 					// should be removed, or that some severe I/O problem is at hand
 					return false, false, err
-				}
-
-				if bzzAddr == nil {
-					k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
-					peerToRemove = peer
-					return false, false, errMissingAddressBookEntry
 				}
 
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())

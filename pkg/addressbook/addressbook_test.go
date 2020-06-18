@@ -60,7 +60,7 @@ func run(t *testing.T, f bookFunc) {
 	}
 
 	notFound, err := store.Get(addr2)
-	if err != nil {
+	if err != addressbook.ErrNotFound {
 		t.Fatal(err)
 	}
 

@@ -95,12 +95,12 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	for _, p := range peers {
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
-			return err
-		}
+			if err == addressbook.ErrNotFound {
+				s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
+				continue
+			}
 
-		if addr == nil {
-			s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
-			continue
+			return err
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{

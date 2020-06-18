@@ -5,6 +5,7 @@
 package addressbook
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,6 +17,8 @@ import (
 const keyPrefix = "addressbook_entry_"
 
 var _ Interface = (*store)(nil)
+
+var ErrNotFound = errors.New("addressbook: not found")
 
 type Interface interface {
 	GetPutter
@@ -57,7 +60,7 @@ func (s *store) Get(overlay swarm.Address) (*bzz.Address, error) {
 	err := s.store.Get(key, &v)
 	if err != nil {
 		if err == storage.ErrNotFound {
-			return nil, nil
+			return nil, ErrNotFound
 		}
 
 		return nil, err

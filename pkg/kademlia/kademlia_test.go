@@ -418,12 +418,8 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &failedConns, 1)
 
 	p, err = ab.Get(nonConnPeer.Overlay)
-	if err != nil {
+	if err != addressbook.ErrNotFound {
 		t.Fatal(err)
-	}
-
-	if p != nil {
-		t.Fatal("peer found in addressbook")
 	}
 }
 
