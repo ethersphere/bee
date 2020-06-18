@@ -309,7 +309,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 		return nil
 	}
 
-	err := k.discovery.BroadcastPeers(context.Background(), peer, addrs...)
+	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
 		_ = k.p2p.Disconnect(peer)
 	}
