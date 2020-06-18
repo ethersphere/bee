@@ -41,7 +41,7 @@ func TestEncryptDataLongerThanPadding(t *testing.T) {
 
 	data := make([]byte, 4096)
 
-	expectedError := "Data length longer than padding, data length 4096 padding 4095"
+	expectedError := "data length longer than padding, data length 4096 padding 4095"
 
 	_, err := enc.Encrypt(data)
 	if err == nil || err.Error() != expectedError {
@@ -103,7 +103,7 @@ func TestDecryptDataLengthNotEqualsPadding(t *testing.T) {
 
 	data := make([]byte, 4097)
 
-	expectedError := "Data length different than padding, data length 4097 padding 4096"
+	expectedError := "data length different than padding, data length 4097 padding 4096"
 
 	_, err := enc.Decrypt(data)
 	if err == nil || err.Error() != expectedError {
