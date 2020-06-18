@@ -6,7 +6,6 @@ package hive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -97,10 +95,11 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	for _, p := range peers {
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				s.logger.Debugf("Peer not found %s", p)
+			if err == addressbook.ErrNotFound {
+				s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
 				continue
 			}
+
 			return err
 		}
 

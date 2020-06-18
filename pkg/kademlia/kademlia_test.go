@@ -377,7 +377,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !nonConnPeer.Equal(&p) {
+	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
@@ -392,7 +392,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !nonConnPeer.Equal(&p) {
+	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
@@ -407,7 +407,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !nonConnPeer.Equal(&p) {
+	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
@@ -417,13 +417,9 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 1)
 
-	p, err = ab.Get(nonConnPeer.Overlay)
-	if err == nil {
-		t.Fatal("expected not found error")
-	}
-
-	if nonConnPeer.Equal(&p) {
-		t.Fatal("peer found in addressbook")
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if err != addressbook.ErrNotFound {
+		t.Fatal(err)
 	}
 }
 
