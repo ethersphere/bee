@@ -47,11 +47,11 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	peerID := c.RemotePeer()
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	// remove only the related connection,
 	// not eventually newly created one for the same peer
 	if _, ok := r.connections[peerID][c]; !ok {
+		r.mu.Unlock()
 		return
 	}
 
@@ -63,6 +63,8 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	if len(r.connections[peerID]) == 0 {
 		delete(r.connections, peerID)
 	}
+
+	r.mu.Unlock()
 	if r.disconnecter != nil {
 		r.disconnecter.Disconnected(overlay)
 	}
