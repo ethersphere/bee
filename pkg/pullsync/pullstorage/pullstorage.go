@@ -9,7 +9,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -44,14 +43,12 @@ type Storer interface {
 // ps wraps storage.Storer.
 type ps struct {
 	storage.Storer
-	logger logging.Logger
 }
 
 // New returns a new pullstorage Storer instance.
-func New(storer storage.Storer, l logging.Logger) Storer {
+func New(storer storage.Storer) Storer {
 	return &ps{
 		Storer: storer,
-		logger: l,
 	}
 }
 
@@ -81,7 +78,6 @@ LOOP:
 				nomore = true
 				break LOOP
 			}
-			s.logger.Tracef("pullstorage got chunk bin %d f %d t %d addr %s binid %d", bin, from, to, v.Address.String(), v.BinID)
 			chs = append(chs, v.Address)
 			if v.BinID > topmost {
 				topmost = v.BinID

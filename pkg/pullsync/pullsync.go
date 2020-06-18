@@ -172,7 +172,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		delete(wantChunks, addr.String())
-		s.logger.Tracef("pull sync putting chunk %s", addr.String())
+
 		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
 			return 0, fmt.Errorf("delivery put: %w", err)
 		}
@@ -189,14 +189,13 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
 		return fmt.Errorf("read get range: %w", err)
 	}
-	s.logger.Debugf("got range peer %s request %s", p.Address.String(), rn.String())
+	s.logger.Debugf("got range peer %s bin %d from %d to %d", p.Address.String(), rn.Bin, rn.From, rn.To)
 
 	// make an offer to the upstream peer in return for the requested range
 	offer, addrs, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
-	s.logger.Debugf("writing offer with context: %s", offer.String())
 
 	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
 		return fmt.Errorf("write offer: %w", err)
@@ -319,7 +318,6 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		return err
 	}
 	ack.Cursors = ints
-	s.logger.Debugf("syncer writing cursors peer %s curs %s message %s", p.Address.String(), ints, ack.String())
 	if err = w.WriteMsgWithContext(ctx, &ack); err != nil {
 		return fmt.Errorf("write ack: %w", err)
 	}
