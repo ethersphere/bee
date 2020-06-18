@@ -100,7 +100,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		}
 
 		connectedAddrs = append(connectedAddrs, addressee.Address)
-		if err := d.discovery.BroadcastPeers(context.Background(), addressee.Address, addr); err != nil {
+		if err := d.discovery.BroadcastPeers(ctx, addressee.Address, addr); err != nil {
 			return err
 		}
 	}
@@ -109,7 +109,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		return nil
 	}
 
-	return d.discovery.BroadcastPeers(context.Background(), addr, connectedAddrs...)
+	return d.discovery.BroadcastPeers(ctx, addr, connectedAddrs...)
 }
 
 // ClosestPeer returns the closest connected peer we have in relation to a
