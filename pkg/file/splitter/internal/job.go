@@ -9,9 +9,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/encryption"
 	"hash"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -286,10 +286,10 @@ func (s *SimpleSplitterJob) encrypt(chunkData []byte) (encryption.Key, []byte, [
 	return key, encryptedSpan, encryptedData, nil
 }
 
-func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) encryption.Encryption {
-	return encryption.New(key, 0, uint32(chunk.DefaultSize/s.refSize), sha3.NewLegacyKeccak256)
+func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) *encryption.Encryption {
+	return encryption.New(key, 0, uint32(swarm.ChunkSize/s.refSize), sha3.NewLegacyKeccak256)
 }
 
-func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) encryption.Encryption {
-	return encryption.New(key, int(chunk.DefaultSize), 0, sha3.NewLegacyKeccak256)
+func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) *encryption.Encryption {
+	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

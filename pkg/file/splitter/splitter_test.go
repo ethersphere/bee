@@ -194,9 +194,6 @@ func TestEncryption(t *testing.T) {
 		{4096},
 		{4097},
 		{15000},
-		//{(4096 * 128) -1 },
-		//{4096 * 128 },
-		//{(4096 * 128) + 1 },
 	}
 
 	for _, tt := range tests {
@@ -252,7 +249,5 @@ func TestEncryption(t *testing.T) {
 				}
 			}
 		})
-
 	}
-
 }

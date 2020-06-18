@@ -112,13 +112,13 @@ func TestDecryptDataLengthNotEqualsPadding(t *testing.T) {
 }
 
 func TestEncryptDecryptIsIdentity(t *testing.T) {
-	testEncryptDecryptIsIdentity(t, 2048, 0, 2048, 32)
-	testEncryptDecryptIsIdentity(t, 4096, 0, 4096, 32)
-	testEncryptDecryptIsIdentity(t, 4096, 0, 1000, 32)
-	testEncryptDecryptIsIdentity(t, 32, 10, 32, 32)
+	testEncryptDecryptIsIdentity(t, 0, 2048,  2048, 32)
+	testEncryptDecryptIsIdentity(t, 0, 4096,  4096, 32)
+	testEncryptDecryptIsIdentity(t, 0, 4096,  1000, 32)
+	testEncryptDecryptIsIdentity(t, 10, 32,  32, 32)
 }
 
-func testEncryptDecryptIsIdentity(t *testing.T, padding int, initCtr uint32, dataLength int, keyLength int) {
+func testEncryptDecryptIsIdentity(t *testing.T,  initCtr uint32, padding, dataLength, keyLength int) {
 	key := GenerateRandomKey(keyLength)
 	enc := New(key, padding, initCtr, hashFunc)
 

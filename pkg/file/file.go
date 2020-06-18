@@ -13,7 +13,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/swarm/chunk"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -82,9 +81,9 @@ func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, e
 	// removing extra bytes which were just added for padding
 	length := binary.LittleEndian.Uint64(decryptedSpan)
 	//length := uint64(len(decryptedSpan))
-	for length > chunk.DefaultSize {
-		length = length + (chunk.DefaultSize - 1)
-		length = length / chunk.DefaultSize
+	for length > swarm.ChunkSize {
+		length = length + (swarm.ChunkSize - 1)
+		length = length / swarm.ChunkSize
 		length *= uint64(swarm.HashSize + encryption.KeyLength)
 	}
 
@@ -107,10 +106,10 @@ func decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
 	return encryptedSpan, encryptedData, nil
 }
 
-func newSpanEncryption(key encryption.Key) encryption.Encryption {
-	return encryption.New(key, 0, uint32(chunk.DefaultSize/uint64(swarm.HashSize+encryption.KeyLength)), sha3.NewLegacyKeccak256)
+func newSpanEncryption(key encryption.Key) *encryption.Encryption {
+	return encryption.New(key, 0, uint32(swarm.ChunkSize/uint64(swarm.HashSize+encryption.KeyLength)), sha3.NewLegacyKeccak256)
 }
 
-func newDataEncryption(key encryption.Key) encryption.Encryption {
-	return encryption.New(key, int(chunk.DefaultSize), 0, sha3.NewLegacyKeccak256)
+func newDataEncryption(key encryption.Key) *encryption.Encryption {
+	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

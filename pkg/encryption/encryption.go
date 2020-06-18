@@ -28,13 +28,13 @@ const KeyLength = 32
 
 type Key []byte
 
-type Encryption interface {
+type Encryptor interface {
 	Encrypt(data []byte) ([]byte, error)
 	Decrypt(data []byte) ([]byte, error)
 	Reset()
 }
 
-type encryption struct {
+type Encryption struct {
 	key      Key              // the encryption key (hashSize bytes long)
 	keyLen   int              // length of the key = length of blockcipher block
 	padding  int              // encryption will pad the data upto this if > 0
@@ -44,8 +44,8 @@ type encryption struct {
 }
 
 // New constructs a new encryptor/decryptor
-func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) *encryption {
-	return &encryption{
+func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) *Encryption {
+	return &Encryption{
 		key:      key,
 		keyLen:   len(key),
 		padding:  padding,
@@ -55,7 +55,7 @@ func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) *encry
 }
 
 // Encrypt encrypts the data and does padding if specified
-func (e *encryption) Encrypt(data []byte) ([]byte, error) {
+func (e *Encryption) Encrypt(data []byte) ([]byte, error) {
 	length := len(data)
 	outLength := length
 	isFixedPadding := e.padding > 0
@@ -66,61 +66,84 @@ func (e *encryption) Encrypt(data []byte) ([]byte, error) {
 		outLength = e.padding
 	}
 	out := make([]byte, outLength)
-	e.transform(data, out)
+	err := e.transform(data, out)
+	if err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // Decrypt decrypts the data, if padding was used caller must know original length and truncate
-func (e *encryption) Decrypt(data []byte) ([]byte, error) {
+func (e *Encryption) Decrypt(data []byte) ([]byte, error) {
 	length := len(data)
 	if e.padding > 0 && length != e.padding {
 		return nil, fmt.Errorf("Data length different than padding, data length %v padding %v", length, e.padding)
 	}
 	out := make([]byte, length)
-	e.transform(data, out)
+	err := e.transform(data, out)
+	if err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // Reset resets the counter. It is only safe to call after an encryption operation is completed
 // After Reset is called, the Encryption object can be re-used for other data
-func (e *encryption) Reset() {
+func (e *Encryption) Reset() {
 	e.index = 0
 }
 
 // split up input into keylength segments and encrypt sequentially
-func (e *encryption) transform(in, out []byte) {
+func (e *Encryption) transform(in, out []byte) error {
 	inLength := len(in)
 	wg := sync.WaitGroup{}
 	wg.Add((inLength-1)/e.keyLen + 1)
+
 	for i := 0; i < inLength; i += e.keyLen {
+		errs := make(chan error, 1)
 		l := min(e.keyLen, inLength-i)
 		go func(i int, x, y []byte) {
 			defer wg.Done()
-			e.Transcrypt(i, x, y)
+			err := e.Transcrypt(i, x, y)
+			errs <- err
 		}(e.index, in[i:i+l], out[i:i+l])
 		e.index++
+		err := <- errs
+		if err != nil {
+			close((errs))
+			return err
+		}
 	}
 	// pad the rest if out is longer
 	pad(out[inLength:])
 	wg.Wait()
+	return nil
 }
 
 // used for segmentwise transformation
 // if in is shorter than out, padding is used
-func (e *encryption) Transcrypt(i int, in []byte, out []byte) {
+func (e *Encryption) Transcrypt(i int, in, out []byte) error{
 	// first hash key with counter (initial counter + i)
 	hasher := e.hashFunc()
-	hasher.Write(e.key)
+	_, err := hasher.Write(e.key)
+	if err != nil {
+		return err
+	}
 
 	ctrBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(ctrBytes, uint32(i)+e.initCtr)
-	hasher.Write(ctrBytes)
-
+	_, err = hasher.Write(ctrBytes)
+	if err != nil {
+		return err
+	}
 	ctrHash := hasher.Sum(nil)
 	hasher.Reset()
 
 	// second round of hashing for selective disclosure
-	hasher.Write(ctrHash)
+	_, err = hasher.Write(ctrHash)
+	if err != nil {
+		return err
+	}
 	segmentKey := hasher.Sum(nil)
 	hasher.Reset()
 
@@ -131,6 +154,8 @@ func (e *encryption) Transcrypt(i int, in []byte, out []byte) {
 	}
 	// insert padding if out is longer
 	pad(out[inLength:])
+
+	return nil
 }
 
 func pad(b []byte) {
