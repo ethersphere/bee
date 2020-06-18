@@ -263,7 +263,7 @@ func NewBee(o Options) (*Bee, error) {
 	})
 	b.pusherCloser = pushSyncPusher
 
-	pullStorage := pullstorage.New(storer, logger)
+	pullStorage := pullstorage.New(storer)
 
 	pullSync := pullsync.New(pullsync.Options{
 		Streamer: p2ps,

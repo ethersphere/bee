@@ -13,8 +13,8 @@ import (
 )
 
 type AddrTuple struct {
-	A swarm.Address // the peer address
-	P uint8         // the po
+	Addr swarm.Address // the peer address
+	PO   uint8         // the po
 }
 
 func WithEachPeerRevCalls(addrs ...AddrTuple) Option {
@@ -90,7 +90,7 @@ func (m *Mock) EachPeerRev(f topology.EachPeerFunc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, v := range m.eachPeerRev {
-		stop, _, err := f(v.A, v.P)
+		stop, _, err := f(v.Addr, v.PO)
 		if stop {
 			return nil
 		}

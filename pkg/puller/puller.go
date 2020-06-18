@@ -124,8 +124,7 @@ func (p *Puller) manage() {
 					delete(peersDisconnected, peerAddr.String())
 				}
 				syncing := len(bp)
-				switch {
-				case po < depth:
+				if po < depth {
 					// outside of depth, sync peerPO bin only
 					if _, ok := bp[peerAddr.String()]; !ok {
 						if syncing < shallowBinPeers {
@@ -139,7 +138,7 @@ func (p *Puller) manage() {
 						peerEntry := peer{addr: peerAddr, po: po}
 						peersToRecalc = append(peersToRecalc, peerEntry)
 					}
-				case po >= depth:
+				} else {
 					// within depth, sync everything >= depth
 					if _, ok := bp[peerAddr.String()]; !ok {
 						// we're not syncing with this peer yet, start doing so

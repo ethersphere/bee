@@ -54,8 +54,8 @@ func TestOneSync(t *testing.T) {
 	puller, _, kad, pullsync := newPuller(opts{
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(
-				mockk.AddrTuple{A: addr, P: 1},
-				mockk.AddrTuple{A: addr2, P: 1},
+				mockk.AddrTuple{Addr: addr, PO: 1},
+				mockk.AddrTuple{Addr: addr2, PO: 1},
 			), mockk.WithDepth(2),
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
@@ -107,7 +107,7 @@ func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{A: addr, P: 1},
+						mockk.AddrTuple{Addr: addr, PO: 1},
 					), mockk.WithDepth(2),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
@@ -188,7 +188,7 @@ func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{A: addr, P: 1},
+						mockk.AddrTuple{Addr: addr, PO: 1},
 					), mockk.WithDepth(2),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
@@ -241,7 +241,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{A: addr, P: 3}, // po is 3, depth is 2, so we're in depth
+						mockk.AddrTuple{Addr: addr, PO: 3}, // po is 3, depth is 2, so we're in depth
 					), mockk.WithDepth(2),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
@@ -273,7 +273,7 @@ func TestPeerDisconnected(t *testing.T) {
 	p, _, kad, pullsync := newPuller(opts{
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(
-				mockk.AddrTuple{A: addr, P: 1},
+				mockk.AddrTuple{Addr: addr, PO: 1},
 			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
@@ -371,7 +371,7 @@ func TestDepthChange(t *testing.T) {
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{A: addr, P: 3},
+						mockk.AddrTuple{Addr: addr, PO: 3},
 					), mockk.WithDepthCalls(tc.depths...), // peer moved from out of depth to depth
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},

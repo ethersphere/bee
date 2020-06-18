@@ -277,8 +277,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			base, db := newTestDB(t, nil)
-			logger := logging.New(ioutil.Discard, 0)
-			ps := pullstorage.New(db, logger)
+			ps := pullstorage.New(db)
 
 			var chunks []swarm.Chunk
 
@@ -328,8 +327,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 
 func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.MockStorer) {
 	db := mock.NewStorer(o...)
-	logger := logging.New(ioutil.Discard, 0)
-	ps := pullstorage.New(db, logger)
+	ps := pullstorage.New(db)
 
 	return ps, db
 }
