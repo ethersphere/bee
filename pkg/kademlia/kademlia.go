@@ -297,7 +297,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 			return false, false, nil
 		}
 		addrs = append(addrs, connectedPeer)
-		if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
+		if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
 			// we don't want to fail the whole process because of this, keep on gossiping
 			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
 			return false, false, nil
