@@ -108,7 +108,7 @@ func (e *Encryption) transform(in, out []byte) error {
 			errs <- err
 		}(e.index, in[i:i+l], out[i:i+l])
 		e.index++
-		err := <- errs
+		err := <-errs
 		if err != nil {
 			close((errs))
 			return err
@@ -122,7 +122,7 @@ func (e *Encryption) transform(in, out []byte) error {
 
 // used for segmentwise transformation
 // if in is shorter than out, padding is used
-func (e *Encryption) Transcrypt(i int, in, out []byte) error{
+func (e *Encryption) Transcrypt(i int, in, out []byte) error {
 	// first hash key with counter (initial counter + i)
 	hasher := e.hashFunc()
 	_, err := hasher.Write(e.key)

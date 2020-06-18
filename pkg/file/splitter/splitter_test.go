@@ -7,7 +7,6 @@ package splitter_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -180,74 +179,5 @@ func TestUnalignedSplit(t *testing.T) {
 		t.Fatal(err)
 	case <-timer.C:
 		t.Fatal("timeout")
-	}
-}
-
-func TestEncryption(t *testing.T) {
-	var tests = []struct {
-		chunkLength int
-	}{
-		{10},
-		{100},
-		{1000},
-		{4095},
-		{4096},
-		{4097},
-		{15000},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("Encrypt %d bytes", tt.chunkLength), func(t *testing.T) {
-			g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
-			testData, err := g.SequentialBytes(tt.chunkLength)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			store := mock.NewStorer()
-			s := splitter.NewSimpleSplitter(store)
-
-			testDataReader := file.NewSimpleReadCloser(testData)
-			resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), true)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			addr := resultAddress.Bytes()[:swarm.SectionSize]
-			key := resultAddress.Bytes()[swarm.SectionSize : swarm.SectionSize*2]
-
-			rootChunkEncrypted, err := store.Get(context.Background(), storage.ModeGetRequest, swarm.NewAddress(addr))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			rootChunkData, err := file.DecryptChunkData(rootChunkEncrypted.Data(), key)
-
-			rootData := rootChunkData[8:]
-			if tt.chunkLength <= swarm.ChunkSize {
-				if !bytes.Equal(rootData, testData) {
-					t.Fatal("invalid content received")
-				}
-				return
-			} else if tt.chunkLength < (swarm.ChunkSize * swarm.Branches) {
-				j := 0
-				for i := 0; i < len(rootData); i += swarm.SectionSize * 2 {
-					dataAddressBytes := rootData[i : i+(swarm.SectionSize*2)]
-
-					addr := dataAddressBytes[:swarm.SectionSize]
-					key := dataAddressBytes[swarm.SectionSize : swarm.SectionSize*2]
-					encryptedChunk, err := store.Get(context.Background(), storage.ModeGetRequest, swarm.NewAddress(addr))
-					if err != nil {
-						t.Fatal(err)
-					}
-					chunkData, err := file.DecryptChunkData(encryptedChunk.Data(), key)
-					data := chunkData[8:]
-					if !bytes.Equal(data, testData[j:j+len(data)]) {
-						t.Fatal("invalid content received")
-					}
-					j += swarm.ChunkSize
-				}
-			}
-		})
 	}
 }

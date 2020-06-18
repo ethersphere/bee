@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
@@ -27,7 +29,14 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	address, err := s.splitUpload(ctx, r.Body, r.ContentLength)
+
+	var toEncrypt bool
+	encryptStr := r.Header.Get(EncryptHeader)
+	if strings.ToLower(encryptStr) == "true" {
+		toEncrypt = true
+	}
+
+	address, err := s.splitUpload(ctx, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
 		jsonhttp.InternalServerError(w, nil)
@@ -38,7 +47,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
+func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64, toEncrypt bool) (swarm.Address, error) {
 	chunkPipe := file.NewChunkPipe()
 	go func() {
 		buf := make([]byte, swarm.ChunkSize)
@@ -60,7 +69,7 @@ func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64) (swarm.A
 		}
 	}()
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	return sp.Split(ctx, chunkPipe, l,false)
+	return sp.Split(ctx, chunkPipe, l, toEncrypt)
 }
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
@@ -74,6 +83,11 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("bytes: parse address error")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
+	}
+
+	var toDecrypt bool
+	if len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength) {
+		toDecrypt = true
 	}
 
 	j := joiner.NewSimpleJoiner(s.Storer)
@@ -94,7 +108,7 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	c, err := file.JoinReadAll(j, address, w)
+	c, err := file.JoinReadAll(j, address, w, toDecrypt)
 	if err != nil && c == 0 {
 		s.Logger.Errorf("bytes: data write %s: %v", address, err)
 		s.Logger.Error("bytes: data input error")

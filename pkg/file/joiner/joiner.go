@@ -16,20 +16,17 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner/internal"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"golang.org/x/crypto/sha3"
 )
 
 // simpleJoiner wraps a non-optimized implementation of file.Joiner.
 type simpleJoiner struct {
-	getter  storage.Getter
-	refSize int64
+	getter storage.Getter
 }
 
 // NewSimpleJoiner creates a new simpleJoiner.
 func NewSimpleJoiner(getter storage.Getter) file.Joiner {
 	return &simpleJoiner{
-		getter:  getter,
-		refSize: int64(swarm.HashSize),
+		getter: getter,
 	}
 }
 
@@ -53,66 +50,45 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSiz
 //
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
-func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataSize int64, err error) {
+func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataSize int64, err error) {
+	var addr []byte
+	var key encryption.Key
+	if toDecrypt {
+		addr = address.Bytes()[:swarm.HashSize]
+		key = address.Bytes()[swarm.HashSize : swarm.HashSize+encryption.KeyLength]
+	} else {
+		addr = address.Bytes()
+	}
 
 	// retrieve the root chunk to read the total data length the be retrieved
-	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
+	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(addr))
 	if err != nil {
 		return nil, 0, err
 	}
 
+	var chunkData []byte
+	if toDecrypt {
+		originalData, err := internal.DecryptChunkData(rootChunk.Data(), key)
+		if err != nil {
+			return nil, 0, err
+		}
+		chunkData = originalData
+	} else {
+		chunkData = rootChunk.Data()
+	}
+
 	// if this is a single chunk, short circuit to returning just that chunk
-	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
+	spanLength := binary.LittleEndian.Uint64(chunkData[:8])
+	chunkToSend := rootChunk
 	if spanLength <= swarm.ChunkSize {
-		data := rootChunk.Data()[8:]
+		data := chunkData[8:]
 		return file.NewSimpleReadCloser(data), int64(spanLength), nil
 	}
 
-	r := internal.NewSimpleJoinerJob(ctx, s.getter, rootChunk)
+	if toDecrypt {
+		chunkToSend = swarm.NewChunk(swarm.NewAddress(addr), chunkData)
+	}
+
+	r := internal.NewSimpleJoinerJob(ctx, s.getter, chunkToSend, toDecrypt)
 	return r, int64(spanLength), nil
-}
-
-func (s *simpleJoiner) DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
-	if len(chunkData) < 8 {
-		return nil, fmt.Errorf("Invalid ChunkData, min length 8 got %v", len(chunkData))
-	}
-
-	decryptedSpan, decryptedData, err := s.decrypt(chunkData, encryptionKey)
-	if err != nil {
-		return nil, err
-	}
-
-	// removing extra bytes which were just added for padding
-	length := uint64(len(decryptedSpan))
-	for length > swarm.ChunkSize {
-		length = length + (swarm.ChunkSize - 1)
-		length = length / swarm.ChunkSize
-		length *= uint64(s.refSize)
-	}
-
-	c := make([]byte, length+8)
-	copy(c[:8], decryptedSpan)
-	copy(c[8:], decryptedData[:length])
-
-	return c, nil
-}
-
-func (s *simpleJoiner) decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
-	encryptedSpan, err := s.newSpanEncryption(key).Encrypt(chunkData[:8])
-	if err != nil {
-		return nil, nil, err
-	}
-	encryptedData, err := s.newDataEncryption(key).Encrypt(chunkData[8:])
-	if err != nil {
-		return nil, nil, err
-	}
-	return encryptedSpan, encryptedData, nil
-}
-
-func (s *simpleJoiner) newSpanEncryption(key encryption.Key) encryption.Encryption {
-	return encryption.New(key, 0, uint32(swarm.ChunkSize/s.refSize), sha3.NewLegacyKeccak256)
-}
-
-func (s *simpleJoiner) newDataEncryption(key encryption.Key) encryption.Encryption {
-	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

@@ -13,10 +13,12 @@ import (
 	"io/ioutil"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/crypto/sha3"
 )
 
 // SimpleJoinerJob encapsulates a single joiner operation, providing the consumer
@@ -46,10 +48,11 @@ type SimpleJoinerJob struct {
 	closeDoneOnce sync.Once     // make sure done channel is closed only once
 	err           error         // read by the main thread to capture error state of the job
 	logger        logging.Logger
+	toDecrypt     bool // to decrypt the chunks or not
 }
 
 // NewSimpleJoinerJob creates a new simpleJoinerJob.
-func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk swarm.Chunk) *SimpleJoinerJob {
+func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk swarm.Chunk, toDecrypt bool) *SimpleJoinerJob {
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
 	levelCount := file.Levels(int64(spanLength), swarm.SectionSize, swarm.Branches)
 
@@ -60,6 +63,7 @@ func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk sw
 		dataC:      make(chan []byte),
 		doneC:      make(chan struct{}),
 		logger:     logging.New(ioutil.Discard, 0),
+		toDecrypt:  toDecrypt,
 	}
 
 	// startLevelIndex is the root chunk level
@@ -87,7 +91,6 @@ func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk sw
 
 // start processes all chunk references of the root chunk that already has been retrieved.
 func (j *SimpleJoinerJob) start(level int) error {
-
 	// consume the reference at the current cursor position of the chunk level data
 	// and start recursive retrieval down to the underlying data chunks
 	for j.cursors[level] < len(j.data[level]) {
@@ -104,8 +107,15 @@ func (j *SimpleJoinerJob) start(level int) error {
 func (j *SimpleJoinerJob) nextReference(level int) error {
 	data := j.data[level]
 	cursor := j.cursors[level]
+
+	var encryptionKey encryption.Key
 	chunkAddress := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
-	err := j.nextChunk(level-1, chunkAddress)
+	if j.toDecrypt {
+		encryptionKey = make([]byte, encryption.KeyLength)
+		copy(encryptionKey, data[cursor+swarm.SectionSize:cursor+swarm.SectionSize+encryption.KeyLength])
+	}
+
+	err := j.nextChunk(level-1, chunkAddress, encryptionKey)
 	if err != nil {
 		if err == io.EOF {
 			return err
@@ -124,6 +134,9 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 
 	// move the cursor to the next reference
 	j.cursors[level] += swarm.SectionSize
+	if j.toDecrypt {
+		j.cursors[level] += encryption.KeyLength
+	}
 	return nil
 }
 
@@ -132,22 +145,33 @@ func (j *SimpleJoinerJob) nextReference(level int) error {
 // the current chunk is an intermediate chunk.
 // When a data chunk is found it is passed on the dataC channel to be consumed by the
 // io.Reader consumer.
-func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
-
+func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address, key encryption.Key) error {
 	// attempt to retrieve the chunk
 	ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return err
 	}
+
+	var chunkData []byte
+	if j.toDecrypt {
+		decryptedData, err := DecryptChunkData(ch.Data(), key)
+		if err != nil {
+			return fmt.Errorf("error decrypting chunk %v: %v", address, err)
+		}
+		chunkData = decryptedData[8:]
+	} else {
+		chunkData = ch.Data()[8:]
+	}
+
 	j.cursors[level] = 0
-	j.data[level] = ch.Data()[8:]
+	j.data[level] = chunkData
 
 	// any level higher than 0 means the chunk contains references
 	// which must be recursively processed
 	if level > 0 {
 		for j.cursors[level] < len(j.data[level]) {
 			if len(j.data[level]) == j.cursors[level] {
-				j.data[level] = ch.Data()[8:]
+				j.data[level] = chunkData
 				j.cursors[level] = 0
 			}
 			err = j.nextReference(level)
@@ -159,7 +183,7 @@ func (j *SimpleJoinerJob) nextChunk(level int, address swarm.Address) error {
 		// read data and pass to reader only if session is still active
 		// * context cancelled when client has disappeared, timeout etc
 		// * doneC receive when gracefully terminated through Close
-		data := ch.Data()[8:]
+		data := chunkData
 		err = j.sendChunkToReader(data)
 	}
 	return err
@@ -212,4 +236,51 @@ func (j *SimpleJoinerJob) closeDone() {
 	j.closeDoneOnce.Do(func() {
 		close(j.doneC)
 	})
+}
+
+func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
+	if len(chunkData) < 8 {
+		return nil, fmt.Errorf("Invalid ChunkData, min length 8 got %v", len(chunkData))
+	}
+
+	decryptedSpan, decryptedData, err := decrypt(chunkData, encryptionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// removing extra bytes which were just added for padding
+	length := binary.LittleEndian.Uint64(decryptedSpan)
+	refSize := int64(swarm.HashSize + encryption.KeyLength)
+	for length > swarm.ChunkSize {
+		length = length + (swarm.ChunkSize - 1)
+		length = length / swarm.ChunkSize
+		length *= uint64(refSize)
+	}
+
+	c := make([]byte, length+8)
+	copy(c[:8], decryptedSpan)
+	copy(c[8:], decryptedData[:length])
+
+	return c, nil
+}
+
+func decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
+	encryptedSpan, err := newSpanEncryption(key).Encrypt(chunkData[:8])
+	if err != nil {
+		return nil, nil, err
+	}
+	encryptedData, err := newDataEncryption(key).Encrypt(chunkData[8:])
+	if err != nil {
+		return nil, nil, err
+	}
+	return encryptedSpan, encryptedData, nil
+}
+
+func newSpanEncryption(key encryption.Key) *encryption.Encryption {
+	refSize := int64(swarm.HashSize + encryption.KeyLength)
+	return encryption.New(key, 0, uint32(swarm.ChunkSize/refSize), sha3.NewLegacyKeccak256)
+}
+
+func newDataEncryption(key encryption.Key) *encryption.Encryption {
+	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }
