@@ -37,7 +37,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	addressHex := mux.Vars(r)["address"]

@@ -57,7 +57,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 		}
 		cc, err := j.Write(data[:c])
 		if err != nil {
-				splitError := file.NewSplitError(err)
+			splitError := file.NewSplitError(err)
 			return swarm.ZeroAddress, splitError
 		}
 		if cc < c {
