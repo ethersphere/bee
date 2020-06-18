@@ -49,3 +49,23 @@ func (e *HashError) Unwrap() error {
 func (e *HashError) Error() string {
 	return e.err.Error()
 }
+
+
+// SplitError 
+type SplitError struct {
+	err error
+}
+
+func NewSplitError(err error) error {
+	return &SplitError{
+		err: err,
+	}
+}
+
+func (e *SplitError) Unwrap() error {
+	return e.err
+}
+
+func (e *SplitError) Error() string {
+	return e.err.Error()
+}

@@ -5,10 +5,8 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -27,7 +25,8 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	address, err := s.splitUpload(ctx, r.Body, r.ContentLength)
+	sp := splitter.NewSimpleSplitter(s.Storer)
+	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
 		jsonhttp.InternalServerError(w, nil)
@@ -38,30 +37,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
-	chunkPipe := file.NewChunkPipe()
-	go func() {
-		buf := make([]byte, swarm.ChunkSize)
-		c, err := io.CopyBuffer(chunkPipe, r, buf)
-		if err != nil {
-			s.Logger.Debugf("split upload: io error %d: %v", c, err)
-			s.Logger.Error("split upload: io error")
-			return
-		}
-		if c != l {
-			s.Logger.Debugf("split upload: read count mismatch %d: %v", c, err)
-			s.Logger.Error("split upload: read count mismatch")
-			return
-		}
-		err = chunkPipe.Close()
-		if err != nil {
-			s.Logger.Debugf("split upload: incomplete file write close %v", err)
-			s.Logger.Error("split upload: incomplete file write close")
-		}
-	}()
-	sp := splitter.NewSimpleSplitter(s.Storer)
-	return sp.Split(ctx, chunkPipe, l)
-}
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {

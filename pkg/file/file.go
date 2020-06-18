@@ -7,6 +7,7 @@ package file
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -63,4 +64,41 @@ func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer) (int64, error)
 		return total, fmt.Errorf("received only %d of %d total bytes", total, l)
 	}
 	return total, nil
+}
+
+// SplitWriteAll writes all input from provided reader to the provided splitter
+func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64) (swarm.Address, error) {
+	chunkPipe := NewChunkPipe()
+	errC := make(chan error)
+	go func() {
+		buf := make([]byte, swarm.ChunkSize)
+		c, err := io.CopyBuffer(chunkPipe, r, buf)
+		if err != nil {
+			errC <- NewSplitError(err)
+		}
+		if c != l {
+			splitError := errors.New("read count mismatch")
+			errC <- NewSplitError(splitError)
+		}
+		err = chunkPipe.Close()
+		if err != nil {
+			errC <- NewSplitError(err)
+		}
+		close(errC)
+	}()
+
+	addr, err := s.Split(ctx, chunkPipe, l)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	select {
+	case err := <-errC:
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
+	case <-ctx.Done():
+		return swarm.ZeroAddress, ctx.Err()
+	}
+	return addr, nil
 }

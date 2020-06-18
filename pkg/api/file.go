@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -131,7 +132,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// first store the file and get its reference
-	fr, err := s.splitUpload(ctx, reader, int64(fileSize))
+	sp := splitter.NewSimpleSplitter(s.Storer)
+	fr, err := file.SplitWriteAll(ctx, sp, reader, int64(fileSize))
 	if err != nil {
 		s.Logger.Debugf("file upload: file store, file %q: %v", fileName, err)
 		s.Logger.Errorf("file upload: file store, file %q", fileName)
@@ -154,7 +156,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
-	mr, err := s.splitUpload(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+	sp = splitter.NewSimpleSplitter(s.Storer)
+	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		s.Logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
 		s.Logger.Errorf("file upload: metadata store, file %q", fileName)
@@ -171,7 +174,9 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "entry marshal error")
 		return
 	}
-	reference, err := s.splitUpload(ctx, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+
+	sp = splitter.NewSimpleSplitter(s.Storer)
+	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		s.Logger.Debugf("file upload: entry store, file %q: %v", fileName, err)
 		s.Logger.Errorf("file upload: entry store, file %q", fileName)
