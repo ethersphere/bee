@@ -56,7 +56,7 @@ func TestDelivery(t *testing.T) {
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
-	ps := mockPeerSuggester{spFunc: func(_ swarm.Address) (swarm.Address, error) {
+	ps := mockPeerSuggester{spFunc: func(_ swarm.Address, _ []swarm.Address) (swarm.Address, error) {
 		v, err := swarm.ParseHexAddress("9ee7add7")
 		return v, err
 	}}
@@ -75,7 +75,7 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(v, reqData) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
 	}
-	peerID, _ := ps.ClosestPeer(swarm.ZeroAddress)
+	peerID, _ := ps.ClosestPeer(swarm.ZeroAddress, nil)
 	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
@@ -121,9 +121,9 @@ func TestDelivery(t *testing.T) {
 }
 
 type mockPeerSuggester struct {
-	spFunc func(swarm.Address) (swarm.Address, error)
+	spFunc func(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error)
 }
 
-func (v mockPeerSuggester) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
-	return v.spFunc(addr)
+func (v mockPeerSuggester) ClosestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
+	return v.spFunc(addr, skipPeers)
 }

@@ -261,7 +261,7 @@ func TestClosestPeer(t *testing.T) {
 			expectedPeer: -1,
 		},
 	} {
-		peer, err := fullDriver.ClosestPeer(tc.chunkAddress)
+		peer, err := fullDriver.ClosestPeer(tc.chunkAddress, nil)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
