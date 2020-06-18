@@ -49,25 +49,3 @@ func (e *HashError) Unwrap() error {
 func (e *HashError) Error() string {
 	return e.err.Error()
 }
-
-// SplitError should wrap any error returned from the splitter.
-type SplitError struct {
-	err error
-}
-
-// NewSplitError returns a new SplitError instance.
-func NewSplitError(err error) error {
-	return &SplitError{
-		err: err,
-	}
-}
-
-// Unwrap returns an underlying error.
-func (e *SplitError) Unwrap() error {
-	return e.err
-}
-
-// Error implements standard go error interface.
-func (e *SplitError) Error() string {
-	return e.err.Error()
-}

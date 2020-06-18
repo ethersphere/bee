@@ -74,15 +74,14 @@ func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64) (swarm
 		buf := make([]byte, swarm.ChunkSize)
 		c, err := io.CopyBuffer(chunkPipe, r, buf)
 		if err != nil {
-			errC <- NewSplitError(err)
+			errC <- err
 		}
 		if c != l {
-			splitError := errors.New("read count mismatch")
-			errC <- NewSplitError(splitError)
+			errC <- errors.New("read count mismatch")
 		}
 		err = chunkPipe.Close()
 		if err != nil {
-			errC <- NewSplitError(err)
+			errC <- err
 		}
 		close(errC)
 	}()

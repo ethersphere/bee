@@ -46,23 +46,19 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 		if err != nil {
 			if err == io.EOF {
 				if total < dataLength {
-					splitError := file.NewSplitError(fmt.Errorf("splitter only received %d bytes of data, expected %d bytes", total+int64(c), dataLength))
-					return swarm.ZeroAddress, splitError
+					return swarm.ZeroAddress, fmt.Errorf("splitter only received %d bytes of data, expected %d bytes", total+int64(c), dataLength)
 				}
 				eof = true
 			} else {
-				splitError := file.NewSplitError(err)
-				return swarm.ZeroAddress, splitError
+				return swarm.ZeroAddress, err
 			}
 		}
 		cc, err := j.Write(data[:c])
 		if err != nil {
-			splitError := file.NewSplitError(err)
-			return swarm.ZeroAddress, splitError
+			return swarm.ZeroAddress, err
 		}
 		if cc < c {
-			splitError := file.NewSplitError(fmt.Errorf("write count to file hasher component %d does not match read count %d", cc, c))
-			return swarm.ZeroAddress, splitError
+			return swarm.ZeroAddress, fmt.Errorf("write count to file hasher component %d does not match read count %d", cc, c)
 		}
 	}
 
