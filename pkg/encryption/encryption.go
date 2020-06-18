@@ -61,7 +61,7 @@ func (e *Encryption) Encrypt(data []byte) ([]byte, error) {
 	isFixedPadding := e.padding > 0
 	if isFixedPadding {
 		if length > e.padding {
-			return nil, fmt.Errorf("Data length longer than padding, data length %v padding %v", length, e.padding)
+			return nil, fmt.Errorf("data length longer than padding, data length %v padding %v", length, e.padding)
 		}
 		outLength = e.padding
 	}
@@ -77,7 +77,7 @@ func (e *Encryption) Encrypt(data []byte) ([]byte, error) {
 func (e *Encryption) Decrypt(data []byte) ([]byte, error) {
 	length := len(data)
 	if e.padding > 0 && length != e.padding {
-		return nil, fmt.Errorf("Data length different than padding, data length %v padding %v", length, e.padding)
+		return nil, fmt.Errorf("data length different than padding, data length %v padding %v", length, e.padding)
 	}
 	out := make([]byte, length)
 	err := e.transform(data, out)

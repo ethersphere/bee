@@ -240,7 +240,7 @@ func (j *SimpleJoinerJob) closeDone() {
 
 func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
 	if len(chunkData) < 8 {
-		return nil, fmt.Errorf("Invalid ChunkData, min length 8 got %v", len(chunkData))
+		return nil, fmt.Errorf("invalid ChunkData, min length 8 got %v", len(chunkData))
 	}
 
 	decryptedSpan, decryptedData, err := decrypt(chunkData, encryptionKey)
