@@ -501,6 +501,104 @@ func TestClosestPeer(t *testing.T) {
 	}
 }
 
+func TestKademlia_SubscribePeersChange(t *testing.T) {
+
+	testSignal := func(t *testing.T, k *kademlia.Kad, c <-chan struct{}) {
+		t.Helper()
+
+		select {
+		case _, ok := <-c:
+			if !ok {
+				t.Error("closed signal channel")
+			}
+		case <-time.After(1 * time.Second):
+			t.Error("timeout")
+		}
+	}
+
+	t.Run("single subscription", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		addr := test.RandomAddressAt(base, 9)
+		addOne(t, sg, kad, ab, addr)
+
+		testSignal(t, kad, c)
+	})
+
+	t.Run("single subscription, remove peer", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		addr := test.RandomAddressAt(base, 9)
+		addOne(t, sg, kad, ab, addr)
+
+		testSignal(t, kad, c)
+
+		removeOne(kad, addr)
+		testSignal(t, kad, c)
+	})
+
+	t.Run("multiple subscriptions", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c1, u1 := kad.SubscribePeersChange()
+		defer u1()
+
+		c2, u2 := kad.SubscribePeersChange()
+		defer u2()
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+		testSignal(t, kad, c1)
+		testSignal(t, kad, c2)
+	})
+
+	t.Run("multiple changes", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+
+		testSignal(t, kad, c)
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+
+		testSignal(t, kad, c)
+	})
+
+	t.Run("no depth change", func(t *testing.T) {
+		_, kad, _, _, _ := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		select {
+		case _, ok := <-c:
+			if !ok {
+				t.Error("closed signal channel")
+			}
+			t.Error("signal received")
+		case <-time.After(1 * time.Second):
+			// all fine
+		}
+	})
+}
+
 func TestMarshal(t *testing.T) {
 	var (
 		_, kad, ab, _, signer = newTestKademlia(nil, nil, nil)
