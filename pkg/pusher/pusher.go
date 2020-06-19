@@ -91,7 +91,7 @@ func (s *Service) chunksWorker() {
 
 			t, err := s.tag.Get(ch.TagID())
 			if err != nil {
-				s.logger.Debugf("pusher: get tag by uid %s: %v", ch.Address(), err)
+				s.logger.Tracef("pusher: get tag by uid %s: %v", ch.Address(), err)
 				//continue // // until bzz api implements tags, dont continue here
 			}
 
@@ -149,7 +149,7 @@ func (s *Service) setChunkAsSynced(ctx context.Context, addr swarm.Address) {
 		s.metrics.TotalChunksSynced.Inc()
 		uid, err := s.getUidFromPushed(addr.String())
 		if err != nil {
-			s.logger.Debugf("pusher: get uid from pusher: %v", err)
+			s.logger.Tracef("pusher: get uid from pusher: %v", err)
 			return // until bzz api implements tags, dont considers this err fatal
 		}
 		ta, err := s.tag.Get(uid)
