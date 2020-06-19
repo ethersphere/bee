@@ -93,10 +93,6 @@ func (s *Service) chunksWorker() {
 			if err != nil {
 				s.logger.Debugf("pusher: get tag by uid %s: %v", ch.Address(), err)
 				//continue // // until bzz api implements tags, dont continue here
-			} else {
-				// update the tags only if we get it
-				t.Inc(tags.StateSent)
-				s.addUidToPushed(ch.Address().String(), t.Uid)
 			}
 
 			// Later when we process receipt, get the receipt and process it
@@ -107,6 +103,12 @@ func (s *Service) chunksWorker() {
 					s.logger.Errorf("pusher: error while sending chunk or receiving receipt: %v", err)
 				}
 				continue
+			}
+
+			if t != nil {
+				// update the tags only if we get it
+				t.Inc(tags.StateSent)
+				s.addUidToPushed(ch.Address().String(), t.Uid)
 			}
 
 			// set chunk status to synced
