@@ -72,6 +72,7 @@ func (s *Service) chunksWorker() {
 	inflight := make(map[string]struct{})
 	var mtx sync.Mutex
 
+LOOP:
 	for {
 		select {
 		// handle incoming chunks
@@ -148,7 +149,7 @@ func (s *Service) chunksWorker() {
 			if unsubscribe != nil {
 				unsubscribe()
 			}
-			return
+			break LOOP
 		}
 	}
 
