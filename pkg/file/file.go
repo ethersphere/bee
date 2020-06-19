@@ -86,7 +86,7 @@ func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64) (swarm
 		close(errC)
 	}()
 
-	addr, err := s.Split(ctx, chunkPipe, l)
+	addr, err := s.Split(ctx, chunkPipe, l, false)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
