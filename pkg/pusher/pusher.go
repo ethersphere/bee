@@ -68,7 +68,7 @@ func (s *Service) chunksWorker() {
 		cancel()
 	}()
 
-	sem := make(chan struct{}, 5)
+	sem := make(chan struct{}, 10)
 	inflight := make(map[string]struct{})
 	var mtx sync.Mutex
 
@@ -87,6 +87,8 @@ func (s *Service) chunksWorker() {
 				break
 			}
 
+			// postpone a retry only after we've finished processing everything in index
+			timer.Reset(1 * time.Second)
 			chunksInBatch++
 			s.metrics.TotalChunksToBeSentCounter.Inc()
 			select {
