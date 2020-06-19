@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -34,6 +35,7 @@ type Service struct {
 	streamer      p2p.Streamer
 	peerSuggester topology.EachPeerer
 	storer        storage.Storer
+	singleflight  singleflight.Group
 	logger        logging.Logger
 }
 
@@ -72,22 +74,28 @@ const (
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
-	var skipPeers []swarm.Address
-	for i := 0; i < maxPeers; i++ {
-		var peer swarm.Address
-		data, peer, err = s.retrieveChunk(ctx, addr, skipPeers)
-		if err != nil {
-			if peer.IsZero() {
-				return nil, err
+	v, err, _ := s.singleflight.Do(addr.String(), func() (v interface{}, err error) {
+		var skipPeers []swarm.Address
+		for i := 0; i < maxPeers; i++ {
+			var peer swarm.Address
+			data, peer, err = s.retrieveChunk(ctx, addr, skipPeers)
+			if err != nil {
+				if peer.IsZero() {
+					return nil, err
+				}
+				s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
+				skipPeers = append(skipPeers, peer)
+				continue
 			}
-			s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
-			skipPeers = append(skipPeers, peer)
-			continue
+			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
+			return data, nil
 		}
-		s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
-		return data, nil
+		return nil, err
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	return v.([]byte), nil
 }
 
 func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (data []byte, peer swarm.Address, err error) {
