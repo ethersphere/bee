@@ -7,6 +7,8 @@ package pusher
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -25,6 +27,8 @@ type Service struct {
 	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
+	pushed            map[string]uint32 // address to tag Id
+	pushedMu          sync.Mutex
 }
 
 type Options struct {
@@ -46,6 +50,7 @@ func New(o Options) *Service {
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
+		pushed:            make(map[string]uint32),
 	}
 	go service.chunksWorker()
 	return service
@@ -84,13 +89,14 @@ func (s *Service) chunksWorker() {
 			chunksInBatch++
 			s.metrics.TotalChunksToBeSentCounter.Inc()
 
-			t, err := s.tag.GetByAddress(ch.Address())
+			t, err := s.tag.Get(ch.TagID())
 			if err != nil {
-				s.logger.Debugf("pusher: get tag by address %s: %v", ch.Address(), err)
-				//continue // // until bzz api implements tags dont continue here
+				s.logger.Debugf("pusher: get tag by uid %s: %v", ch.Address(), err)
+				//continue // // until bzz api implements tags, dont continue here
 			} else {
 				// update the tags only if we get it
 				t.Inc(tags.StateSent)
+				s.addUidToPushed(ch.Address().String(), t.Uid)
 			}
 
 			// Later when we process receipt, get the receipt and process it
@@ -139,15 +145,21 @@ func (s *Service) setChunkAsSynced(ctx context.Context, addr swarm.Address) {
 		s.metrics.ErrorSettingChunkToSynced.Inc()
 	} else {
 		s.metrics.TotalChunksSynced.Inc()
-		ta, err := s.tag.GetByAddress(addr)
+		uid, err := s.getUidFromPushed(addr.String())
+		if err != nil {
+			s.logger.Debugf("pusher: get uid from pusher: %v", err)
+			return // until bzz api implements tags, dont considers this err fatal
+		}
+		ta, err := s.tag.Get(uid)
 		if err != nil {
 			if !errors.Is(err, tags.ErrNotFound) {
-				s.logger.Debugf("pusher: get tag by address %s: %v", addr, err)
+				s.logger.Debugf("pusher: get tag %s: %v", addr, err)
 			}
 			// return  // until bzz api implements tags dont retunrn here
 		} else {
 			// update the tags only if we get it
 			ta.Inc(tags.StateSynced)
+			s.deleteUidFromPushed(addr.String())
 		}
 
 	}
@@ -162,4 +174,27 @@ func (s *Service) Close() error {
 	case <-time.After(3 * time.Second):
 	}
 	return nil
+}
+
+func (s *Service) addUidToPushed(address string, uid uint32) {
+	s.pushedMu.Lock()
+	defer s.pushedMu.Unlock()
+	s.pushed[address] = uid
+}
+
+func (s *Service) getUidFromPushed(address string) (uint32, error) {
+	s.pushedMu.Lock()
+	defer s.pushedMu.Unlock()
+	if uid, ok := s.pushed[address]; ok {
+		return uid, nil
+	}
+	return 0, fmt.Errorf("uid not present in pushed chunks")
+}
+
+func (s *Service) deleteUidFromPushed(address string) {
+	s.pushedMu.Lock()
+	defer s.pushedMu.Unlock()
+	if _, ok := s.pushed[address]; ok {
+		delete(s.pushed, address)
+	}
 }
