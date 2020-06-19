@@ -69,7 +69,8 @@ func (s *Service) chunksWorker() {
 	}()
 
 	sem := make(chan struct{}, 5)
-	inflight := sync.Map{}
+	inflight := make(map[string]struct{})
+	var mtx sync.Mutex
 
 	for {
 		select {
@@ -96,17 +97,22 @@ func (s *Service) chunksWorker() {
 				}
 				return
 			}
-			if _, ok := inflight.Load(ch.Address().String()); ok {
+			mtx.Lock()
+			if _, ok := inflight[ch.Address().String()]; ok {
+				mtx.Unlock()
 				<-sem
 				continue
 			}
 
-			inflight.Store(ch.Address().String(), struct{}{})
+			inflight[ch.Address().String()] = struct{}{}
+			mtx.Unlock()
 
 			go func(ctx context.Context, ch swarm.Chunk) {
 				defer func() {
 					s.logger.Tracef("pusher pushed chunk %s", ch.Address().String())
-					inflight.Delete(ch.Address().String())
+					mtx.Lock()
+					delete(inflight, ch.Address().String())
+					mtx.Unlock()
 					<-sem
 				}()
 				// Later when we process receipt, get the receipt and process it
