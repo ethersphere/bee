@@ -150,7 +150,7 @@ func TestHandshake(t *testing.T) {
 	t.Run("Handshake - welcome message too long", func(t *testing.T) {
 		const LongMessage = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi consectetur urna ut lorem sollicitudin posuere. Donec sagittis laoreet sapien."
 
-		expectedErr := fmt.Errorf("handshake welcome message length must be less than %d characters", handshake.MaxWelcomeMessageLength)
+		expectedErr := handshake.ErrWelcomeMessageLength
 		_, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, false, LongMessage, logger)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
