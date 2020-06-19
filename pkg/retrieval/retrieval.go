@@ -7,6 +7,7 @@ package retrieval
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -31,14 +32,14 @@ type Interface interface {
 
 type Service struct {
 	streamer      p2p.Streamer
-	peerSuggester topology.ClosestPeerer
+	peerSuggester topology.EachPeerer
 	storer        storage.Storer
 	logger        logging.Logger
 }
 
 type Options struct {
 	Streamer    p2p.Streamer
-	ChunkPeerer topology.ClosestPeerer
+	ChunkPeerer topology.EachPeerer
 	Storer      storage.Storer
 	Logger      logging.Logger
 }
@@ -65,31 +66,99 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
+const (
+	maxPeers             = 10
+	retrieveChunkTimeout = 3 * time.Second
+)
+
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
-	peer, err := s.peerSuggester.ClosestPeer(addr)
-	if err != nil {
-		return nil, fmt.Errorf("get closest: %w", err)
+	var skipPeers []swarm.Address
+	for i := 0; i < maxPeers; i++ {
+		var peer swarm.Address
+		data, peer, err = s.retrieveChunk(ctx, addr, skipPeers)
+		if err != nil {
+			if peer.IsZero() {
+				return nil, err
+			}
+			s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
+			skipPeers = append(skipPeers, peer)
+			continue
+		}
+		s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
+		return data, nil
 	}
+	return nil, err
+}
+
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (data []byte, peer swarm.Address, err error) {
+	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	defer cancel()
+
+	peer, err = s.closestPeer(addr, skipPeers)
+	if err != nil {
+		return nil, peer, fmt.Errorf("get closest: %w", err)
+	}
+	s.logger.Tracef("retrieval: get chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, fmt.Errorf("new stream: %w", err)
+		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
 	defer stream.Close()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	if err := w.WriteMsg(&pb.Request{
+	if err := w.WriteMsgWithContext(ctx, &pb.Request{
 		Addr: addr.Bytes(),
 	}); err != nil {
-		return nil, fmt.Errorf("write request: %w peer %s", err, peer.String())
+		return nil, peer, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
 
 	var d pb.Delivery
-	if err := r.ReadMsg(&d); err != nil {
-		return nil, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
+	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
+		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
 
-	return d.Data, nil
+	return d.Data, peer, nil
+}
+
+func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
+	closest := swarm.Address{}
+	err := s.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		for _, a := range skipPeers {
+			if a.Equal(peer) {
+				return false, false, nil
+			}
+		}
+		if closest.IsZero() {
+			closest = peer
+			return false, false, nil
+		}
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
+		if err != nil {
+			return false, false, err
+		}
+		switch dcmp {
+		case 0:
+			// do nothing
+		case -1:
+			// current peer is closer
+			closest = peer
+		case 1:
+			// closest is already closer to chunk
+			// do nothing
+		}
+		return false, false, nil
+	})
+	if err != nil {
+		return swarm.Address{}, err
+	}
+
+	// check if found
+	if closest.IsZero() {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	return closest, nil
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
