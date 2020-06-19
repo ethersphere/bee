@@ -48,6 +48,9 @@ var (
 
 	// ErrInvalidSyn is returned if observable address in ack is not a valid..
 	ErrInvalidSyn = errors.New("invalid syn")
+
+	// ErrWelcomeMessageLength is return if the welcome message is longer than the maximum length
+	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
 )
 
 // AdvertisableAddressResolver can Resolve a Multiaddress.
@@ -79,7 +82,7 @@ type Info struct {
 // New creates a new handshake Service.
 func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, lighNode bool, welcomeMessage string, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
-		return nil, fmt.Errorf("handshake welcome message length must be less than %d characters", MaxWelcomeMessageLength)
+		return nil, ErrWelcomeMessageLength
 	}
 
 	return &Service{
