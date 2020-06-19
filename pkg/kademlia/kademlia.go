@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
@@ -59,9 +58,11 @@ type Kad struct {
 	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
 	waitNext       map[string]retryInfo  // sanction connections to a peer, key is overlay string and value is a retry information
 	waitNextMu     sync.Mutex            // synchronize map
-	logger         logging.Logger        // logger
-	quit           chan struct{}         // quit channel
-	done           chan struct{}         // signal that `manage` has quit
+	peerSig        []chan struct{}
+	peerSigMtx     sync.Mutex
+	logger         logging.Logger // logger
+	quit           chan struct{}  // quit channel
+	done           chan struct{}  // signal that `manage` has quit
 }
 
 type retryInfo struct {
@@ -134,17 +135,16 @@ func (k *Kad) manage() {
 
 				bzzAddr, err := k.addressBook.Get(peer)
 				if err != nil {
-					// either a peer is not known in the address book, in which case it
-					// should be removed, or that some severe I/O problem is at hand
-
-					if errors.Is(err, storage.ErrNotFound) {
+					if err == addressbook.ErrNotFound {
 						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
 						peerToRemove = peer
 						return false, false, errMissingAddressBookEntry
 					}
-
+					// either a peer is not known in the address book, in which case it
+					// should be removed, or that some severe I/O problem is at hand
 					return false, false, err
 				}
+
 				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
 
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
@@ -166,6 +166,8 @@ func (k *Kad) manage() {
 				k.depthMu.Unlock()
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
+
+				k.notifyPeerSig()
 
 				select {
 				case <-k.quit:
@@ -297,7 +299,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 			return false, false, nil
 		}
 		addrs = append(addrs, connectedPeer)
-		if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
+		if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
 			// we don't want to fail the whole process because of this, keep on gossiping
 			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
 			return false, false, nil
@@ -309,7 +311,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 		return nil
 	}
 
-	err := k.discovery.BroadcastPeers(context.Background(), peer, addrs...)
+	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
 		_ = k.p2p.Disconnect(peer)
 	}
@@ -349,6 +351,8 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	k.depth = k.recalcDepth()
 	k.depthMu.Unlock()
 
+	k.notifyPeerSig()
+
 	select {
 	case k.manageC <- struct{}{}:
 	default:
@@ -371,6 +375,22 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	select {
 	case k.manageC <- struct{}{}:
 	default:
+	}
+	k.notifyPeerSig()
+}
+
+func (k *Kad) notifyPeerSig() {
+	k.peerSigMtx.Lock()
+	defer k.peerSigMtx.Unlock()
+
+	for _, c := range k.peerSig {
+		// Every peerSig channel has a buffer capacity of 1,
+		// so every receiver will get the signal even if the
+		// select statement has the default case to avoid blocking.
+		select {
+		case c <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -408,6 +428,44 @@ func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	}
 
 	return closest, nil
+}
+
+// EachPeer iterates from closest bin to farthest
+func (k *Kad) EachPeer(f topology.EachPeerFunc) error {
+	return k.connectedPeers.EachBin(f)
+}
+
+// EachPeerRev iterates from farthest bin to closest
+func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
+	return k.connectedPeers.EachBinRev(f)
+}
+
+// SubscribePeersChange returns the channel that signals when the connected peers
+// set changes. Returned function is safe to be called multiple times.
+func (k *Kad) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+	channel := make(chan struct{}, 1)
+	var closeOnce sync.Once
+
+	k.peerSigMtx.Lock()
+	defer k.peerSigMtx.Unlock()
+
+	k.peerSig = append(k.peerSig, channel)
+
+	unsubscribe = func() {
+		k.peerSigMtx.Lock()
+		defer k.peerSigMtx.Unlock()
+
+		for i, c := range k.peerSig {
+			if c == channel {
+				k.peerSig = append(k.peerSig[:i], k.peerSig[i+1:]...)
+				break
+			}
+		}
+
+		closeOnce.Do(func() { close(channel) })
+	}
+
+	return channel, unsubscribe
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.

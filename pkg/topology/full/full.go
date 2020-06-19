@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -71,7 +70,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	connectedPeers := d.p2pService.Peers()
 	bzzAddress, err := d.addressBook.Get(addr)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if err == addressbook.ErrNotFound {
 			return topology.ErrNotFound
 		}
 		return err
@@ -100,7 +99,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		}
 
 		connectedAddrs = append(connectedAddrs, addressee.Address)
-		if err := d.discovery.BroadcastPeers(context.Background(), addressee.Address, addr); err != nil {
+		if err := d.discovery.BroadcastPeers(ctx, addressee.Address, addr); err != nil {
 			return err
 		}
 	}
@@ -109,7 +108,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 		return nil
 	}
 
-	return d.discovery.BroadcastPeers(context.Background(), addr, connectedAddrs...)
+	return d.discovery.BroadcastPeers(ctx, addr, connectedAddrs...)
 }
 
 // ClosestPeer returns the closest connected peer we have in relation to a
@@ -151,8 +150,27 @@ func (d *driver) Connected(ctx context.Context, addr swarm.Address) error {
 	return d.AddPeer(ctx, addr)
 }
 
-func (d *driver) Disconnected(swarm.Address) {
+func (_ *driver) Disconnected(swarm.Address) {
 	// TODO: implement if necessary
+}
+
+func (_ *driver) NeighborhoodDepth() uint8 {
+	return 0
+}
+
+// EachPeer iterates from closest bin to farthest
+func (_ *driver) EachPeer(_ topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
+// EachPeerRev iterates from farthest bin to closest
+func (_ *driver) EachPeerRev(_ topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (_ *driver) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+	//TODO implement if necessary
+	return c, unsubscribe
 }
 
 func (d *driver) MarshalJSON() ([]byte, error) {

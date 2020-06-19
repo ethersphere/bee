@@ -377,7 +377,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !nonConnPeer.Equal(&p) {
+	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
@@ -392,7 +392,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !nonConnPeer.Equal(&p) {
+	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
@@ -407,7 +407,7 @@ func TestAddressBookPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !nonConnPeer.Equal(&p) {
+	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
@@ -417,13 +417,9 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 1)
 
-	p, err = ab.Get(nonConnPeer.Overlay)
-	if err == nil {
-		t.Fatal("expected not found error")
-	}
-
-	if nonConnPeer.Equal(&p) {
-		t.Fatal("peer found in addressbook")
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if err != addressbook.ErrNotFound {
+		t.Fatal(err)
 	}
 }
 
@@ -503,6 +499,104 @@ func TestClosestPeer(t *testing.T) {
 			t.Fatalf("peers not equal. got %s expected %s", peer, expected)
 		}
 	}
+}
+
+func TestKademlia_SubscribePeersChange(t *testing.T) {
+
+	testSignal := func(t *testing.T, k *kademlia.Kad, c <-chan struct{}) {
+		t.Helper()
+
+		select {
+		case _, ok := <-c:
+			if !ok {
+				t.Error("closed signal channel")
+			}
+		case <-time.After(1 * time.Second):
+			t.Error("timeout")
+		}
+	}
+
+	t.Run("single subscription", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		addr := test.RandomAddressAt(base, 9)
+		addOne(t, sg, kad, ab, addr)
+
+		testSignal(t, kad, c)
+	})
+
+	t.Run("single subscription, remove peer", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		addr := test.RandomAddressAt(base, 9)
+		addOne(t, sg, kad, ab, addr)
+
+		testSignal(t, kad, c)
+
+		removeOne(kad, addr)
+		testSignal(t, kad, c)
+	})
+
+	t.Run("multiple subscriptions", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c1, u1 := kad.SubscribePeersChange()
+		defer u1()
+
+		c2, u2 := kad.SubscribePeersChange()
+		defer u2()
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+		testSignal(t, kad, c1)
+		testSignal(t, kad, c2)
+	})
+
+	t.Run("multiple changes", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+
+		testSignal(t, kad, c)
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+
+		testSignal(t, kad, c)
+	})
+
+	t.Run("no depth change", func(t *testing.T) {
+		_, kad, _, _, _ := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		select {
+		case _, ok := <-c:
+			if !ok {
+				t.Error("closed signal channel")
+			}
+			t.Error("signal received")
+		case <-time.After(1 * time.Second):
+			// all fine
+		}
+	})
 }
 
 func TestMarshal(t *testing.T) {

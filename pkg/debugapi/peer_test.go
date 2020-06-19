@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	topmock "github.com/ethersphere/bee/pkg/topology/mock"
 	ma "github.com/multiformats/go-multiaddr"
@@ -59,7 +58,10 @@ func TestConnect(t *testing.T) {
 		})
 
 		bzzAddr, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(&bzzAddr) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bzzAddress.Equal(bzzAddr) {
 			t.Fatalf("found wrong underlay.  expected: %+v, found: %+v", bzzAddress, bzzAddr)
 		}
 	})
@@ -99,7 +101,10 @@ func TestConnect(t *testing.T) {
 		})
 
 		bzzAddr, err := testServer.Addressbook.Get(overlay)
-		if err != nil && errors.Is(err, storage.ErrNotFound) && !bzzAddress.Equal(&bzzAddr) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bzzAddress.Equal(bzzAddr) {
 			t.Fatalf("found wrong underlay.  expected: %+v, found: %+v", bzzAddress, bzzAddr)
 		}
 
