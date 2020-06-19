@@ -251,6 +251,8 @@ func (k *Kad) recalcDepth() uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	_, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
