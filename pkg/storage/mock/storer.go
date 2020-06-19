@@ -17,22 +17,50 @@ import (
 var _ storage.Storer = (*MockStorer)(nil)
 
 type MockStorer struct {
-	store         map[string][]byte
-	modeSet       map[string]storage.ModeSet
-	modeSetMu     sync.Mutex
-	pinnedAddress []swarm.Address // Stores the pinned address
-	pinnedCounter []uint64        // and its respective counter. These are stored as slices to preserve the order.
-	pinSetMu      sync.Mutex
-	validator     swarm.ChunkValidator
-	tags          *tags.Tags
+	store           map[string][]byte
+	modeSet         map[string]storage.ModeSet
+	modeSetMu       sync.Mutex
+	pinnedAddress   []swarm.Address // Stores the pinned address
+	pinnedCounter   []uint64        // and its respective counter. These are stored as slices to preserve the order.
+	pinSetMu        sync.Mutex
+	subpull         []storage.Descriptor
+	partialInterval bool
+	validator       swarm.ChunkValidator
+	tags            *tags.Tags
+	morePull        chan struct{}
+	mtx             sync.Mutex
+	quit            chan struct{}
 }
 
-func NewStorer() storage.Storer {
-	return &MockStorer{
+func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
+	return optionFunc(func(m *MockStorer) {
+		m.subpull = make([]storage.Descriptor, len(chs))
+		for i, v := range chs {
+			m.subpull[i] = v
+		}
+	})
+}
+
+func WithPartialInterval(v bool) Option {
+	return optionFunc(func(m *MockStorer) {
+		m.partialInterval = v
+	})
+}
+
+func NewStorer(opts ...Option) *MockStorer {
+	s := &MockStorer{
 		store:     make(map[string][]byte),
 		modeSet:   make(map[string]storage.ModeSet),
 		modeSetMu: sync.Mutex{},
+		morePull:  make(chan struct{}),
+		quit:      make(chan struct{}),
 	}
+
+	for _, v := range opts {
+		v.apply(s)
+	}
+
+	return s
 }
 
 func NewValidatingStorer(v swarm.ChunkValidator, tags *tags.Tags) *MockStorer {
@@ -47,6 +75,9 @@ func NewValidatingStorer(v swarm.ChunkValidator, tags *tags.Tags) *MockStorer {
 }
 
 func (m *MockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	v, has := m.store[addr.String()]
 	if !has {
 		return nil, storage.ErrNotFound
@@ -55,6 +86,9 @@ func (m *MockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.A
 }
 
 func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	for _, ch := range chs {
 		if m.validator != nil {
 			if !m.validator.Validate(ch) {
@@ -62,7 +96,7 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 			}
 		}
 		m.store[ch.Address().String()] = ch.Data()
-		yes, err := m.Has(ctx, ch.Address())
+		yes, err := m.has(ctx, ch.Address())
 		if err != nil {
 			exist = append(exist, false)
 			continue
@@ -81,9 +115,15 @@ func (m *MockStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs .
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *MockStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
+func (m *MockStorer) has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
 	_, has := m.store[addr.String()]
 	return has, nil
+}
+
+func (m *MockStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.has(ctx, addr)
 }
 
 func (m *MockStorer) HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error) {
@@ -148,8 +188,72 @@ func (m *MockStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since uint64, until uint64) (c <-chan storage.Descriptor, stop func()) {
-	panic("not implemented") // TODO: Implement
+func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (<-chan storage.Descriptor, <-chan struct{}, func()) {
+	c := make(chan storage.Descriptor)
+	done := make(chan struct{})
+	stop := func() {
+		close(done)
+	}
+	go func() {
+		defer close(c)
+		m.mtx.Lock()
+		for _, ch := range m.subpull {
+			select {
+			case c <- ch:
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-m.quit:
+				return
+			}
+		}
+		m.mtx.Unlock()
+
+		if m.partialInterval {
+			// block since we're at the top of the bin and waiting for new chunks
+			select {
+			case <-done:
+				return
+			case <-m.quit:
+				return
+			case <-ctx.Done():
+				return
+			case <-m.morePull:
+
+			}
+		}
+
+		m.mtx.Lock()
+		defer m.mtx.Unlock()
+
+		// iterate on what we have in the iterator
+		for _, ch := range m.subpull {
+			select {
+			case c <- ch:
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-m.quit:
+				return
+			}
+		}
+
+	}()
+	return c, m.quit, stop
+}
+
+func (m *MockStorer) MorePull(d ...storage.Descriptor) {
+	// clear out what we already have in subpull
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	m.subpull = make([]storage.Descriptor, len(d))
+	for i, v := range d {
+		m.subpull[i] = v
+	}
+	close(m.morePull)
 }
 
 func (m *MockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
@@ -184,5 +288,13 @@ func (m *MockStorer) PinInfo(address swarm.Address) (uint64, error) {
 }
 
 func (m *MockStorer) Close() error {
-	panic("not implemented") // TODO: Implement
+	close(m.quit)
+	return nil
 }
+
+type Option interface {
+	apply(*MockStorer)
+}
+type optionFunc func(*MockStorer)
+
+func (f optionFunc) apply(r *MockStorer) { f(r) }

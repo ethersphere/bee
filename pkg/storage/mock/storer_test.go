@@ -3,8 +3,9 @@ package mock_test
 import (
 	"bytes"
 	"context"
-	"github.com/ethersphere/bee/pkg/tags"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/tags"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -41,11 +42,10 @@ func TestMockStorer(t *testing.T) {
 
 	if chunk, err := s.Get(ctx, storage.ModeGetRequest, keyFound); err != nil {
 		t.Fatalf("expected no error but got: %v", err)
-	} else {
-		if !bytes.Equal(chunk.Data(), valueFound) {
-			t.Fatalf("expected value %s but got %s", valueFound, chunk.Data())
-		}
+	} else if !bytes.Equal(chunk.Data(), valueFound) {
+		t.Fatalf("expected value %s but got %s", valueFound, chunk.Data())
 	}
+
 	has, err := s.Has(ctx, keyFound)
 	if err != nil {
 		t.Fatal(err)
@@ -83,10 +83,8 @@ func TestMockValidatingStorer(t *testing.T) {
 
 	if chunk, err := s.Get(ctx, storage.ModeGetRequest, validAddress); err != nil {
 		t.Fatalf("got error on get but expected none: %v", err)
-	} else {
-		if !bytes.Equal(chunk.Data(), validContent) {
-			t.Fatal("stored content not identical to input data")
-		}
+	} else if !bytes.Equal(chunk.Data(), validContent) {
+		t.Fatal("stored content not identical to input data")
 	}
 
 	if _, err := s.Get(ctx, storage.ModeGetRequest, invalidAddress); err == nil {

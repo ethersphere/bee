@@ -20,7 +20,10 @@ var (
 type Driver interface {
 	PeerAdder
 	ClosestPeerer
+	EachPeerer
 	Notifier
+	NeighborhoodDepth() uint8
+	SubscribePeersChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
 }
 
@@ -47,6 +50,13 @@ type Disconnecter interface {
 
 type ClosestPeerer interface {
 	ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
+}
+
+type EachPeerer interface {
+	// EachPeer iterates from closest bin to farthest
+	EachPeer(EachPeerFunc) error
+	// EachPeerRev iterates from farthest bin to closest
+	EachPeerRev(EachPeerFunc) error
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO
