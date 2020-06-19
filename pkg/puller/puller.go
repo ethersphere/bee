@@ -350,13 +350,11 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.logger.Debugf("histSyncWorker finished syncing bin %d, cursor %d", bin, cur)
 			return
 		}
-		start := time.Now()
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
 			p.logger.Debugf("histSyncWorker error syncing interval. peer %s, bin %d, cursor %d, err %v", peer.String(), bin, cur, err)
 			return
 		}
-		took := time.Since(start)
 		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
 			p.logger.Debugf("error persisting interval for peer, quitting")
