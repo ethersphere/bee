@@ -143,7 +143,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (sw
 		}
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
 		if err != nil {
-			return false, false, err
+			return false, false, fmt.Errorf("distance compare error. addr %s closest %s peer %s: %w", addr.String(), closest.String(), peer.String(), err)
 		}
 		switch dcmp {
 		case 0:
