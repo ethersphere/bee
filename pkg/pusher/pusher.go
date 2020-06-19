@@ -194,7 +194,5 @@ func (s *Service) getUidFromPushed(address string) (uint32, error) {
 func (s *Service) deleteUidFromPushed(address string) {
 	s.pushedMu.Lock()
 	defer s.pushedMu.Unlock()
-	if _, ok := s.pushed[address]; ok {
-		delete(s.pushed, address)
-	}
+	delete(s.pushed, address)
 }
