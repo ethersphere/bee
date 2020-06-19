@@ -149,7 +149,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Check if the receipt is valid
 	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		return errors.New("invalid receipt from peer %s", peer.String())
+		return fmt.Errorf("invalid receipt from peer %s", peer.String())
 	}
 
 	// pass back the received receipt in the previously received stream
@@ -244,7 +244,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	// Check if the receipt is valid
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		return nil, errors.New("invalid receipt. peer %s", peer.String())
+		return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
 	}
 
 	rec := &Receipt{
