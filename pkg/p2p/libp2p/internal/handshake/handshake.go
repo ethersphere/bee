@@ -30,10 +30,9 @@ const (
 	ProtocolVersion = "1.0.0"
 	// StreamName is the name of the stream used for handshake purposes.
 	StreamName = "handshake"
-	// MessageTimeout is the maximum allowed time for a message to be read or written.
-	MessageTimeout = 5 * time.Second
 	// MaxWelcomeMessageLength is maximum number of characters allowed in the welcome message.
 	MaxWelcomeMessageLength = 140
+	messageTimeout          = 5 * time.Second
 )
 
 var (
@@ -111,14 +110,14 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, err
 	}
 
-	if err := w.WriteMsgWithTimeout(MessageTimeout, &pb.Syn{
+	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Syn{
 		ObservedUnderlay: fullRemoteMABytes,
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
 
 	var resp pb.SynAck
-	if err := r.ReadMsgWithTimeout(MessageTimeout, &resp); err != nil {
+	if err := r.ReadMsgWithTimeout(messageTimeout, &resp); err != nil {
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
@@ -147,7 +146,7 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, err
 	}
 
-	if err := w.WriteMsgWithTimeout(MessageTimeout, &pb.Ack{
+	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Ack{
 		Address: &pb.BzzAddress{
 			Underlay:  advertisableUnderlayBytes,
 			Overlay:   bzzAddress.Overlay.Bytes(),
@@ -161,7 +160,7 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 	}
 
 	if len(resp.Ack.WelcomeMessage) > 0 {
-		s.logger.Infof("peer %s greets you: $s", resp.Ack.Address.String(), resp.Ack.WelcomeMessage)
+		s.logger.Infof("peer [%s] greets you: %s", remoteBzzAddress.Overlay.String(), resp.Ack.WelcomeMessage)
 	}
 	s.logger.Tracef("handshake finished for peer (outbound) %s", remoteBzzAddress.Overlay.String())
 
@@ -193,7 +192,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 	}
 
 	var syn pb.Syn
-	if err := r.ReadMsgWithTimeout(MessageTimeout, &syn); err != nil {
+	if err := r.ReadMsgWithTimeout(messageTimeout, &syn); err != nil {
 		return nil, fmt.Errorf("read syn message: %w", err)
 	}
 
@@ -217,7 +216,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 		return nil, err
 	}
 
-	if err := w.WriteMsgWithTimeout(MessageTimeout, &pb.SynAck{
+	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.SynAck{
 		Syn: &pb.Syn{
 			ObservedUnderlay: fullRemoteMABytes,
 		},
@@ -236,7 +235,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 	}
 
 	var ack pb.Ack
-	if err := r.ReadMsgWithTimeout(MessageTimeout, &ack); err != nil {
+	if err := r.ReadMsgWithTimeout(messageTimeout, &ack); err != nil {
 		return nil, fmt.Errorf("read ack message: %w", err)
 	}
 
