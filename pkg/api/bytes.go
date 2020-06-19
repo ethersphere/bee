@@ -30,7 +30,6 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-
 	var toEncrypt bool
 	encryptStr := r.Header.Get(EncryptHeader)
 	if strings.ToLower(encryptStr) == "true" {
@@ -47,7 +46,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Reference: address,
 	})
 }
-
 
 func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64, toEncrypt bool) (swarm.Address, error) {
 	chunkPipe := file.NewChunkPipe()
@@ -73,7 +71,6 @@ func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64, toEncryp
 	sp := splitter.NewSimpleSplitter(s.Storer)
 	return sp.Split(ctx, chunkPipe, l, toEncrypt)
 }
-
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
