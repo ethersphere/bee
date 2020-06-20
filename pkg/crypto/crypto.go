@@ -56,5 +56,7 @@ func NewEthereumAddress(p ecdsa.PublicKey) []byte {
 }
 
 func legacyKeccak256(data []byte) []byte {
-	return sha3.NewLegacyKeccak256().Sum(data)
+	hasher := sha3.NewLegacyKeccak256()
+	hasher.Write(data)
+	return hasher.Sum(nil)
 }
