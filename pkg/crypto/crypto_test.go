@@ -38,7 +38,10 @@ func TestNewAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := crypto.NewOverlayAddress(k.PublicKey, 1)
+	a, err := crypto.NewOverlayAddress(k.PublicKey, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if l := len(a.Bytes()); l != 32 {
 		t.Errorf("got address length %v, want %v", l, 32)
 	}
@@ -74,7 +77,10 @@ func TestNewEthereumAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	address := crypto.NewEthereumAddress(privKey.PublicKey)
+	address, err := crypto.NewEthereumAddress(privKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Equal(address, expectAddress) {
 		t.Fatalf("address mismatch %x %x", address, expectAddress)
 	}
