@@ -19,6 +19,8 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+type requestSourceContextKey struct{}
+
 const (
 	protocolName    = "retrieval"
 	protocolVersion = "1.0.0"
@@ -99,6 +101,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data [
 }
 
 func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (data []byte, peer swarm.Address, err error) {
+	v := ctx.Value(requestSourceContextKey{})
+	if src, ok := v.(string); ok {
+		skipAddr, err := swarm.ParseHexAddress(src)
+		if err == nil {
+			skipPeers = append(skipPeers, skipAddr)
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 
@@ -176,7 +185,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	if err := r.ReadMsg(&req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
-
+	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
 	if err != nil {
 		return fmt.Errorf("get from store: %w peer %s", err, p.Address.String())
