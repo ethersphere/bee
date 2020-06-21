@@ -4,9 +4,10 @@ info:
   title: 'Common Data Types'
   description: |
     \*****bzzz*****
+
 externalDocs:
-  description: Common Data Types used for Swarm Interfaces
-  url: https://swarm-guide.readthedocs.io/en/latest/
+  description: Browse the documentation @ the Swarm Docs
+  url: 'https://swarm-gateways.net/bzz:/d70fb7f255b0f7ab4a0e53c186ca9803636344afde868d8d967167775a682291/'
 
 paths: {}
 components:
@@ -16,23 +17,19 @@ components:
       type: object
       properties:
         Address:
-          $ref: '#/components/schemas/BzzAddress'
+          $ref: '#/components/schemas/SwarmAddress'
 
     Addresses:
       type: object
       properties:
         overlay:
-          $ref: '#/components/schemas/BzzAddress'
+          $ref: '#/components/schemas/SwarmAddress'
         underlay:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/P2PUnderlay'
 
-    BzzAddress:
-      type: string
-      pattern: '^[A-Fa-f0-9]{64}$'
-      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
-
+     
     BzzChunksPinned:
       type: object
       properties:
@@ -50,7 +47,7 @@ components:
       type: object
       properties:
         baseAddr:
-          $ref: '#/components/schemas/BzzAddress'
+          $ref: '#/components/schemas/SwarmAddress'
         population:
           type: integer
         connected:
@@ -81,12 +78,23 @@ components:
       pattern: '^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+\d{2}:\d{2})$'
       example: "2020-06-11T11:26:42.6969797+02:00"
 
+    FileName:
+      type: string
+
     Hash:
       type: object
       properties:
         hash:
-          $ref: '#/components/schemas/BzzAddress'
+          $ref: '#/components/schemas/SwarmAddress'
+   
+    MultiAddress:
+      type: string
 
+    Msd5:
+      type: string
+      #pattern: '^\d*\.\d{4}ms$'
+      example: "5.0018ms"
+    
     NewTagResponse:
       type: object
       properties:
@@ -103,7 +111,7 @@ components:
         synced:
           type: integer
         uid:
-          $ref: '#/components/schemas/UUid'
+          $ref: '#/components/schemas/Uid'
         anonymous:
           type: boolean
         name:
@@ -113,14 +121,10 @@ components:
         startedAt:
           $ref: '#/components/schemas/DateTime'
     
-    MultiAddress:
+    P2PUnderlay:
       type: string
-
-    Msd5:
-      type: string
-      #pattern: '^\d*\.\d{4}ms$'
-      #example: "5.0018ms"
-
+      example: "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAmTm17toLDaPYzRyjKn27iCB76yjKnJ5DjQXneFmifFvaX"
+      
     Peers:
       type: object
       properties:
@@ -133,18 +137,18 @@ components:
       type: object
       properties:
         address:
-          $ref: '#/components/schemas/BzzAddress'
+          $ref: '#/components/schemas/SwarmAddress'
         pinCounter:
           type: integer
 
     ProblemDetails:
       type: string
     
-    Reference:
+    ReferenceResponse:
       type: object
       properties:
         reference:
-          $ref: '#/components/schemas/BzzAddress'
+          $ref: '#/components/schemas/SwarmReference'
 
     Response:
       type: object
@@ -166,14 +170,26 @@ components:
         status:
           type: string
 
+    SwarmAddress:
+      type: string
+      pattern: '^[A-Fa-f0-9]{64}$'
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+    
+    SwarmEncryptedReference:
+      type: string
+      pattern: '^[A-Fa-f0-9]{128}$'
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f2d2810619d29b5dbefd5d74abce25d58b81b251baddb9c3871cf0d6967deaae2"
+
+    SwarmReference:
+      oneOf:
+        - $ref: '#/components/schemas/SwarmAddress'
+        - $ref: '#/components/schemas/SwarmEncryptedReference'
+
     TagName:
       type: string
 
-
-    UUid:
-      type: string
-      pattern: '^[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}$'
-      example: "123e4567-e89b-12d3-a456-426614174000"
+    Uid:
+      type: integer
 
   responses:
     '400':

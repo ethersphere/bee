@@ -3,24 +3,34 @@ info:
   version: 0.1.0
   title: Swarm API
   description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations'
+
 security:
   - {}
+
 externalDocs:
-  description: Read the documentation @ Swarm-guide
-  url: 'https://swarm-guide.readthedocs.io/en/latest/'
+  description: Browse the documentation @ the Swarm Docs
+  url: 'https://swarm-gateways.net/bzz:/d70fb7f255b0f7ab4a0e53c186ca9803636344afde868d8d967167775a682291/'
+
 servers:
+
   - url: '{apiRoot}/v1'
+    variables:
+        apiRoot:
+          default: 'http://localhost:8080'
+          description: Base address of the local bee node main API
+
+  - url: '{apiRoot}'
     variables:
       apiRoot:
         default: 'http://localhost:8080'
-        description: Base address of the local swarm node API
-paths:
+        description: Base address of the local bee node main API
   
+paths:
   '/bytes':
     post:
       summary: 'Upload data'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Endpoints on local bee node'
       requestBody:
         content:
           application/octet-stream:
@@ -33,27 +43,27 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Reference'
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
 
-  '/bytes/{address}':
+  '/bytes/{reference}':
     get:
-      summary: 'Get addressed data'
+      summary: 'Get referenced data'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Endpoints on local bee node'
       parameters:
         - in: path
-          name: address
+          name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
           required: true
-          description: Bzz address of content
+          description: Swarm address reference to content
       responses:
         '200':
-          description: Ok
+          description: Retrieved content specified by reference
           content:
             application/octet-stream:
               schema:
@@ -68,18 +78,18 @@ paths:
         default:
           description: Default response
           
-  '/chunks/{addr}':
+  '/chunks/{reference}':
     get:
       summary: 'Get Chunk'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Endpoints on local bee node'
       parameters:
         - in: path
-          name: addr
+          name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
           required: true
-          description: Bzz address of chunk   
+          description: Swarm address of chunk   
       responses:
         '200':
           description: Retrieved chunk content
@@ -99,14 +109,14 @@ paths:
     post:
       summary: 'Upload Chunk'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Endpoints on local bee node'
       parameters:
         - in: header
           name: swarm-tag-uid
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/UUid'
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
           required: false
-          description: UUid of chunk
+          description: Uid of chunk
         - in: header
           name: swarm-pin
           schema:
@@ -114,11 +124,11 @@ paths:
           required: false
           description: Represents the pinning state of the chunk
         - in: path
-          name: addr
+          name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
           required: true
-          description: Bzz address of chunk   
+          description: Swarm address of chunk   
       requestBody:
         content:
           application/octet-stream:
@@ -131,7 +141,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Hash'
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '500':
@@ -141,9 +151,16 @@ paths:
 
   '/files':
     post:
-      summary: 'Upload data'
+      summary: 'Upload file'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Endpoints on local bee node'
+      parameters:
+        - in: query
+          name: name
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/FileName'
+          required: false
+          description: Filename
       requestBody:
         content:
           multipart/form-data:
@@ -154,18 +171,17 @@ paths:
                   items:
                     type: string
                     format: binary
-          file:
+          application/octet-stream:
             schema:
               type: string
               format: binary
-          
       responses:
         '200':
           description: Ok
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Reference'
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '500':
@@ -173,35 +189,27 @@ paths:
         default:
           description: Default response
 
-  '/files/{address}':
+  '/files/{reference}':
     get:
-      summary: 'Get addressed data'
+      summary: 'Get referenced file'
       tags: 
-        - 'Endpoints on local swarm node'
+        - 'Endpoints on local bee node'
       parameters:
         - in: path
-          name: address
+          name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
           required: true
-          description: Bzz address of content
+          description: Swarm address of content
       responses:
         '200':
           description: Ok
           content:
-            multipart/form-data:
-              schema:
-                properties:
-                  file:
-                    type: array
-                    items:
-                      type: string
-                      format: binary
-            file:
+            application/octet-stream:
               schema:
                 type: string
                 format: binary
-                
+                  
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '404':
@@ -210,5 +218,3 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-          
-  

@@ -1,17 +1,17 @@
 openapi: 3.0.0
 info:
   version: 0.1.0
-  title: Swarm Debug API
+  title: Bee Debug API
   description: >-
-    A list of the currently provided debug interfaces to interact with the swarm
+    A list of the currently provided debug interfaces to interact with the bee
     node
 
 security:
   - {}
 
 externalDocs:
-  description: Browse the documentations @ Swarm-guide
-  url: 'https://swarm-guide.readthedocs.io/en/latest/'
+  description: Browse the documentation @ the Swarm Docs
+  url: 'https://swarm-gateways.net/bzz:/d70fb7f255b0f7ab4a0e53c186ca9803636344afde868d8d967167775a682291/'
 
 servers:
   - url: '{apiRoot}/v1/'
@@ -19,9 +19,7 @@ servers:
       apiRoot:
         default: 'http://localhost:6060'
         description: Base address of the local Swarm node debug API
-
-paths:
-  
+paths:  
   '/addresses':
     get:
       summary: Get overlay and underlay addresses of the node
@@ -41,16 +39,16 @@ paths:
 
   '/chunks/{address}':
     get:
-      summary: Get chunk address
+      summary: Check if chunk at address exists locally
       tags:
         - Swarm Debug Endpoints
       parameters:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
           required: true
-          description: Bzz address of chunk    
+          description: Swarm address of chunk    
       responses:
         '200':
           description: Chunk exists
@@ -70,9 +68,9 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
           required: true
-          description: Bzz address of chunk  
+          description: Swarm address of chunk  
     post:
       summary: Pin chunk with given address
       tags:
@@ -130,7 +128,7 @@ paths:
         - Swarm Debug Endpoints
       responses:
         '200':
-          description: Unpinning chunk with address
+          description: List of pinned chunks
           content:
             application/json:
               schema:
@@ -152,7 +150,7 @@ paths:
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/MultiAddress'
           required: true
-          description: Bzz address of content
+          description: Underlay address of peer
       responses:
         '200':
           description: Returns overlay address of connected peer
@@ -206,9 +204,9 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
           required: true
-          description: Bzz address of peer    
+          description: Swarm address of peer    
       responses:
         '200':
           description: Disconnected peer
@@ -232,9 +230,9 @@ paths:
         - in: path
           name: peer-id
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/BzzAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
           required: true
-          description: Bzz address of peer
+          description: Swarm address of peer
       responses:
         '200':
           description: Returns round trip time for given peer
@@ -271,9 +269,9 @@ paths:
     post:
       summary: 'Create Tag'
       tags: 
-        - 'Endpoints on local swarm node'
+        - Swarm Debug Endpoints
       parameters:
-        - in: path
+        - in: query
           name: name
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/TagName'
@@ -291,18 +289,18 @@ paths:
         default:
           description: Default response
 
-  '/tags/{uuid}':
+  '/tags/{uid}':
     get:
-      summary: 'Get Tag information using UUid'
+      summary: 'Get Tag information using Uid'
       tags: 
-        - 'Endpoints on local swarm node'
+        - Swarm Debug Endpoints
       parameters:
         - in: path
-          name: uuid
+          name: uid
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/UUid'
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
           required: true
-          description: UUid
+          description: Uid
       responses:
         '200':
           description: Tag info
@@ -324,9 +322,10 @@ paths:
         - Swarm Debug Endpoints
       responses:
         '200':
-          description: Auto generated using Swagger Inspector
+          description: Swarm topology of the bee node
           content:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
     
+
