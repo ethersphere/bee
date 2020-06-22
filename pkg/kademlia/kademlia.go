@@ -154,10 +154,7 @@ func (k *Kad) manage() {
 				return true, false, nil // release the iterator and dial outside the callback
 			})
 
-			k.logger.Errorf("iterator returned with err %v,foundcanddiate %t foundPo %d", err, foundCandidate, foundPo)
-
 			if err != nil {
-				k.logger.Error("error not nil")
 				if errors.Is(err, errMissingAddressBookEntry) {
 					po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
 					k.logger.Infof("kademlia pruning peer %s", peerToRemove)
