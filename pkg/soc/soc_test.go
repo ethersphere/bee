@@ -26,7 +26,7 @@ func TestCreateChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privKey)
-	err := u.AddSigner(signer)
+	err = u.AddSigner(signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestUpdateFromChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privKey)
-	err := u.AddSigner(signer)
+	err = u.AddSigner(signer)
 	if err != nil {
 		t.Fatal(err)
 	}

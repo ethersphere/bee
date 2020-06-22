@@ -8,10 +8,10 @@ package validator_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/validator"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/validator"
 )
 
 // TestSocValidator verifies that a given chunk is a valid soc chunk.

@@ -29,6 +29,9 @@ func (v *SocValidator) Validate(ch swarm.Chunk) (valid bool) {
 		return false
 	}
 
-	address := update.Address()
+	address, err := update.Address()
+	if err != nil {
+		return false
+	}
 	return ch.Address().Equal(address)
 }

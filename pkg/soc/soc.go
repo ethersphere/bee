@@ -48,7 +48,6 @@ type Update struct {
 	signature []byte
 	signer    crypto.Signer
 	owner     *Owner
-	ch        swarm.Chunk
 }
 
 // NewUpdate creates a new Update from arbitrary soc id and
@@ -108,17 +107,18 @@ func (s *Update) OwnerAddress() []byte {
 
 // Address returns the soc Chunk address of the update.
 func (s *Update) Address() (swarm.Address, error) {
+	var err error
 	hasher := swarm.NewHasher()
-	_, err := hasher.Write(s.id)
+	_, err = hasher.Write(s.id)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	_, err := hasher.Write(s.owner.address)
+	_, err = hasher.Write(s.owner.address)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
 	addressBytes := hasher.Sum(nil)
-	return swarm.NewAddress(addressBytes)
+	return swarm.NewAddress(addressBytes), nil
 }
 
 // UpdateFromChunk recreates an Update from swarm.Chunk data.
@@ -206,11 +206,11 @@ func (s *Update) CreateChunk() (swarm.Chunk, error) {
 		return nil, err
 	}
 	sha3Hasher := swarm.NewHasher()
-	_, err := sha3Hasher.Write(s.id)
+	_, err = sha3Hasher.Write(s.id)
 	if err != nil {
 		return nil, err
 	}
-	_, err := sha3Hasher.Write(ethereumAddress)
+	_, err = sha3Hasher.Write(ethereumAddress)
 	if err != nil {
 		return nil, err
 	}
