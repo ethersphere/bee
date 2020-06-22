@@ -59,11 +59,19 @@ func TestHandshake(t *testing.T) {
 
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 	signer2 := crypto.NewDefaultSigner(privateKey2)
-	node1BzzAddress, err := bzz.NewAddress(signer1, node1ma, crypto.NewOverlayAddress(privateKey1.PublicKey, networkID), networkID)
+	addr, err := crypto.NewOverlayAddress(privateKey1.PublicKey, networkID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	node2BzzAddress, err := bzz.NewAddress(signer2, node2ma, crypto.NewOverlayAddress(privateKey2.PublicKey, networkID), networkID)
+	node1BzzAddress, err := bzz.NewAddress(signer1, node1ma, addr, networkID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr2, err := crypto.NewOverlayAddress(privateKey2.PublicKey, networkID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node2BzzAddress, err := bzz.NewAddress(signer2, node2ma, addr2, networkID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +588,7 @@ func TestHandshake(t *testing.T) {
 
 		_, err = handshakeService.Handle(stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
 		if err != handshake.ErrInvalidAck {
-			t.Fatalf("expected %s, got %s", handshake.ErrInvalidAck, err)
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
 		}
 	})
 

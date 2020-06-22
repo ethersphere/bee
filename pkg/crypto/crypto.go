@@ -9,6 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec"
@@ -17,12 +18,15 @@ import (
 )
 
 // NewOverlayAddress constructs a Swarm Address from ECDSA private key.
-func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64) swarm.Address {
-	ethAddr := NewEthereumAddress(p)
+func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64) (swarm.Address, error) {
+	ethAddr, err := NewEthereumAddress(p)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
 	netIDBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(netIDBytes, networkID)
 	h := sha3.Sum256(append(ethAddr, netIDBytes...))
-	return swarm.NewAddress(h[:])
+	return swarm.NewAddress(h[:]), nil
 }
 
 // GenerateSecp256k1Key generates an ECDSA private key using
@@ -47,14 +51,24 @@ func DecodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 
 // NewEthereumAddress returns a binary representation of ethereum blockchain address.
 // This function is based on github.com/ethereum/go-ethereum/crypto.PubkeyToAddress.
-func NewEthereumAddress(p ecdsa.PublicKey) []byte {
+func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
 	if p.X == nil || p.Y == nil {
-		return nil
+		return nil, errors.New("invalid public key")
 	}
 	pubBytes := elliptic.Marshal(btcec.S256(), p.X, p.Y)
-	return legacyKeccak256(pubBytes[1:])[12:]
+	pubHash, err := legacyKeccak256(pubBytes[1:])
+	if err != nil {
+		return nil, err
+	}
+	return pubHash[12:], err
 }
 
-func legacyKeccak256(data []byte) []byte {
-	return sha3.NewLegacyKeccak256().Sum(data)
+func legacyKeccak256(data []byte) ([]byte, error) {
+	var err error
+	hasher := sha3.NewLegacyKeccak256()
+	_, err = hasher.Write(data)
+	if err != nil {
+		return nil, err
+	}
+	return hasher.Sum(nil), err
 }
