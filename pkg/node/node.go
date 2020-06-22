@@ -233,7 +233,7 @@ func NewBee(o Options) (*Bee, error) {
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
 	})
-	tag := tags.NewTags()
+	tagger := tags.NewTags()
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
@@ -247,6 +247,7 @@ func NewBee(o Options) (*Bee, error) {
 		Streamer:      p2ps,
 		Storer:        storer,
 		ClosestPeerer: topologyDriver,
+		Tagger:        tagger,
 		Logger:        logger,
 	})
 
@@ -258,7 +259,6 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:        storer,
 		PeerSuggester: topologyDriver,
 		PushSyncer:    pushSyncProtocol,
-		Tags:          tag,
 		Logger:        logger,
 	})
 	b.pusherCloser = pushSyncPusher
@@ -288,7 +288,7 @@ func NewBee(o Options) (*Bee, error) {
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Tags:   tag,
+			Tags:   tagger,
 			Storer: ns,
 			Logger: logger,
 			Tracer: tracer,

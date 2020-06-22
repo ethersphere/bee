@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
@@ -37,6 +38,7 @@ type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Putter
 	peerSuggester topology.ClosestPeerer
+	tagger        *tags.Tags
 	logger        logging.Logger
 	metrics       metrics
 }
@@ -45,6 +47,7 @@ type Options struct {
 	Streamer      p2p.Streamer
 	Storer        storage.Putter
 	ClosestPeerer topology.ClosestPeerer
+	Tagger        *tags.Tags
 	Logger        logging.Logger
 }
 
@@ -55,6 +58,7 @@ func New(o Options) *PushSync {
 		streamer:      o.Streamer,
 		storer:        o.Storer,
 		peerSuggester: o.ClosestPeerer,
+		tagger:        o.Tagger,
 		logger:        o.Logger,
 		metrics:       newMetrics(),
 	}
@@ -134,13 +138,17 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	defer streamer.Close()
 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
-
 	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
 		return fmt.Errorf("forward chunk: %w", err)
 	}
 	receiptRTTTimer := time.Now()
 
-	receipt, err := ps.receiveReceipt(rc)
+	// Most of the times now you wont get a tag because
+	// /bytes and /files API does not implement tags
+	// SO dont print any logs or returning error, if you dont find them
+	t, _ := ps.tagger.Get(chunk.TagID())
+
+	receipt, err := ps.receiveReceipt(rc, t)
 	if err != nil {
 		return fmt.Errorf("receive receipt: %w", err)
 	}
@@ -187,6 +195,16 @@ func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err
 	}
 	ps.metrics.SendChunkTimer.Observe(time.Since(startTimer).Seconds())
 	ps.metrics.ChunksSentCounter.Inc()
+
+	//  if you manage to get a tag, just increment the respective counter
+	t, err := ps.tagger.Get(chunk.TagID())
+	if err == nil && t != nil {
+		// most of the times now you wont get a tag because
+		// /bytes and /files API does not implement tags
+		// SO dont print any logs or returning error, if you dont find them
+		// if you find a tag, increment the respective counter
+		t.Inc(tags.StateSent)
+	}
 	return nil
 }
 
@@ -199,12 +217,17 @@ func (ps *PushSync) sendReceipt(w protobuf.Writer, receipt *pb.Receipt) (err err
 	return nil
 }
 
-func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err error) {
+func (ps *PushSync) receiveReceipt(r protobuf.Reader, t *tags.Tag) (receipt pb.Receipt, err error) {
 	if err := r.ReadMsg(&receipt); err != nil {
 		ps.metrics.ReceiveReceiptErrorCounter.Inc()
 		return receipt, err
 	}
 	ps.metrics.ReceiptsReceivedCounter.Inc()
+
+	// increment the tag only if it is valid
+	if t != nil {
+		t.Inc(tags.StateSynced)
+	}
 	return receipt, nil
 }
 
@@ -235,7 +258,12 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}
 	receiptRTTTimer := time.Now()
 
-	receipt, err := ps.receiveReceipt(r)
+	// most of the times now you wont get a tag because
+	// /bytes and /files API does not implement tags
+	// SO dont print any logs or returning error, if you dont find them
+	t, _ := ps.tagger.Get(ch.TagID())
+
+	receipt, err := ps.receiveReceipt(r, t)
 	if err != nil {
 		return nil, fmt.Errorf("receive receipt: %w", err)
 	}

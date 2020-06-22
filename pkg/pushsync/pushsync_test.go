@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 )
@@ -128,10 +129,12 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	}
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)
+	mtag := tags.NewTags()
 
 	ps := pushsync.New(pushsync.Options{
 		Streamer:      recorder,
 		Storer:        storer,
+		Tagger:        mtag,
 		ClosestPeerer: mockTopology,
 		Logger:        logger,
 	})
