@@ -100,11 +100,9 @@ func New(o Options) *Kad {
 // once they get added or once others leave.
 func (k *Kad) manage() {
 	var (
-		peerToRemove   swarm.Address
-		foundCandidate bool
-		foundPo        uint8
-		candidate      *bzz.Address
-		currentDepth   uint8
+		peerToRemove swarm.Address
+		foundPo      uint8
+		currentDepth uint8
 	)
 
 	defer close(k.done)
@@ -119,6 +117,8 @@ func (k *Kad) manage() {
 			return
 		case <-k.manageC:
 			currentDepth = k.NeighborhoodDepth()
+			foundCandidate := false
+			var candidate *bzz.Address
 
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
@@ -136,12 +136,11 @@ func (k *Kad) manage() {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 				var err error
-				candidate, err = k.addressBook.Get(peer)
+				potentialCandidate, err := k.addressBook.Get(peer)
 				if err != nil {
 					if err == addressbook.ErrNotFound {
 						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
 						peerToRemove = peer
-						foundCandidate = false
 						return false, false, errMissingAddressBookEntry
 					}
 					// either a peer is not known in the address book, in which case it
@@ -150,6 +149,7 @@ func (k *Kad) manage() {
 				}
 
 				foundCandidate = true
+				candidate = potentialCandidate
 				foundPo = po
 				return true, false, nil // release the iterator and dial outside the callback
 			})
