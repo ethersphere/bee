@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/swarm"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
 const (
-	IdSize = 32
+	IdSize        = 32
 	SignatureSize = 65
 )
 
@@ -42,13 +42,13 @@ func NewOwner(address []byte) (*Owner, error) {
 
 // Update wraps a single soc update.
 type Update struct {
-	id Id
-	span int64
-	payload []byte
+	id        Id
+	span      int64
+	payload   []byte
 	signature []byte
-	signer crypto.Signer
-	owner *Owner
-	ch swarm.Chunk
+	signer    crypto.Signer
+	owner     *Owner
+	ch        swarm.Chunk
 }
 
 // NewUpdate creates a new Update from arbitrary soc id and
@@ -58,9 +58,9 @@ type Update struct {
 // of the payload.
 func NewUpdate(id Id, payload []byte) *Update {
 	return &Update{
-		id: id,
+		id:      id,
 		payload: payload,
-		span: int64(len(payload)),
+		span:    int64(len(payload)),
 	}
 }
 
@@ -78,7 +78,7 @@ func (s *Update) WithOwnerAddress(ownerAddress *Owner) *Update {
 	return s
 }
 
-// AddSigner currently sets a single signer for the soc update. 
+// AddSigner currently sets a single signer for the soc update.
 //
 // This method will overwrite any value set with WithOwnerAddress with
 // the address derived from the given signer.
@@ -107,10 +107,16 @@ func (s *Update) OwnerAddress() []byte {
 }
 
 // Address returns the soc Chunk address of the update.
-func (s *Update) Address() swarm.Address {
+func (s *Update) Address() (swarm.Address, error) {
 	hasher := swarm.NewHasher()
-	hasher.Write(s.id)
-	hasher.Write(s.owner.address)
+	_, err := hasher.Write(s.id)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+	_, err := hasher.Write(s.owner.address)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
 	addressBytes := hasher.Sum(nil)
 	return swarm.NewAddress(addressBytes)
 }
@@ -118,18 +124,18 @@ func (s *Update) Address() swarm.Address {
 // UpdateFromChunk recreates an Update from swarm.Chunk data.
 func UpdateFromChunk(ch swarm.Chunk) (*Update, error) {
 	chunkData := ch.Data()
-	minUpdateSize := IdSize+SignatureSize+swarm.SpanSize
+	minUpdateSize := IdSize + SignatureSize + swarm.SpanSize
 	if len(chunkData) < minUpdateSize {
 		return nil, errors.New("less than minimum length")
 	}
 
 	update := &Update{}
 	cursor := 0
-	update.id = chunkData[cursor:cursor+IdSize]
+	update.id = chunkData[cursor : cursor+IdSize]
 	cursor += IdSize
-	update.signature = chunkData[cursor:cursor+SignatureSize]
+	update.signature = chunkData[cursor : cursor+SignatureSize]
 	cursor += SignatureSize
-	spanBytes := chunkData[cursor:cursor+swarm.SpanSize]
+	spanBytes := chunkData[cursor : cursor+swarm.SpanSize]
 	span := binary.LittleEndian.Uint64(spanBytes)
 	update.span = int64(span)
 	cursor += swarm.SpanSize
@@ -200,8 +206,14 @@ func (s *Update) CreateChunk() (swarm.Chunk, error) {
 		return nil, err
 	}
 	sha3Hasher := swarm.NewHasher()
-	sha3Hasher.Write(s.id)
-	sha3Hasher.Write(ethereumAddress)
+	_, err := sha3Hasher.Write(s.id)
+	if err != nil {
+		return nil, err
+	}
+	_, err := sha3Hasher.Write(ethereumAddress)
+	if err != nil {
+		return nil, err
+	}
 	addressBytes := sha3Hasher.Sum(nil)
 	address := swarm.NewAddress(addressBytes)
 

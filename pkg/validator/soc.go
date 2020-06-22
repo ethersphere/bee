@@ -12,7 +12,6 @@ import (
 
 var _ swarm.ChunkValidator = (*SocValidator)(nil)
 
-
 // SocVaildator validates that the address of a given chunk
 // is a single-owner chunk.
 type SocValidator struct {

@@ -26,7 +26,10 @@ func TestCreateChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privKey)
-	u.AddSigner(signer)
+	err := u.AddSigner(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ch, err := u.CreateChunk()
 	if err != nil {
@@ -39,7 +42,7 @@ func TestCreateChunk(t *testing.T) {
 		t.Fatal("id mismatch")
 	}
 	cursor += soc.IdSize
-	signature := chunkData[cursor:cursor+soc.SignatureSize]
+	signature := chunkData[cursor : cursor+soc.SignatureSize]
 	cursor += soc.SignatureSize + swarm.SpanSize
 	if !bytes.Equal(chunkData[cursor:], payload) {
 		t.Fatal("payload mismatch")
@@ -80,8 +83,7 @@ func TestCreateChunk(t *testing.T) {
 	}
 }
 
-
-// TestUpdateFromChunk verifies that valid chunk data deserializes to 
+// TestUpdateFromChunk verifies that valid chunk data deserializes to
 // a fully populated Update object.
 func TestUpdateFromChunk(t *testing.T) {
 	id := make([]byte, 32)
@@ -92,7 +94,10 @@ func TestUpdateFromChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privKey)
-	u.AddSigner(signer)
+	err := u.AddSigner(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ch, err := u.CreateChunk()
 	if err != nil {
@@ -108,7 +113,6 @@ func TestUpdateFromChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 
 	ownerEthereumAddress, err := crypto.NewEthereumAddress(*publicKey)
 	if err != nil {
