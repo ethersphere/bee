@@ -251,6 +251,8 @@ func (k *Kad) recalcDepth() uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	_, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
@@ -339,6 +341,10 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
+	if err := k.announce(ctx, addr); err != nil {
+		return err
+	}
+
 	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
@@ -357,7 +363,8 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	case k.manageC <- struct{}{}:
 	default:
 	}
-	return k.announce(ctx, addr)
+
+	return nil
 }
 
 // Disconnected is called when peer disconnects.

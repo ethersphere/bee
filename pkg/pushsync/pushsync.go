@@ -87,7 +87,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Get the delivery
 	chunk, err := ps.getChunkDelivery(r)
 	if err != nil {
-		return fmt.Errorf("chunk delivery: %w", err)
+		return fmt.Errorf("chunk delivery from peer %s: %w", p.Address.String(), err)
 	}
 
 	// Select the closest peer to forward the chunk
@@ -107,7 +107,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
 			err = ps.sendReceipt(w, receipt)
 			if err != nil {
-				return fmt.Errorf("send receipt: %w", err)
+				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 			return nil
 		}
@@ -133,13 +133,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Forward chunk to closest peer
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return fmt.Errorf("new stream: %w", err)
+		return fmt.Errorf("new stream peer %s: %w", peer.String(), err)
 	}
 	defer streamer.Close()
 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
 	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
-		return fmt.Errorf("forward chunk: %w", err)
+		return fmt.Errorf("forward chunk to peer %s: %w", peer.String(), err)
 	}
 	receiptRTTTimer := time.Now()
 
@@ -150,20 +150,20 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	receipt, err := ps.receiveReceipt(rc, t)
 	if err != nil {
-		return fmt.Errorf("receive receipt: %w", err)
+		return fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
 	// Check if the receipt is valid
 	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		return errors.New("invalid receipt")
+		return fmt.Errorf("invalid receipt from peer %s", peer.String())
 	}
 
 	// pass back the received receipt in the previously received stream
 	err = ps.sendReceipt(w, &receipt)
 	if err != nil {
-		return fmt.Errorf("send receipt: %w", err)
+		return fmt.Errorf("send receipt to peer %s: %w", peer.String(), err)
 	}
 	ps.metrics.ReceiptsSentCounter.Inc()
 
@@ -248,13 +248,13 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, fmt.Errorf("new stream: %w", err)
+		return nil, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 	}
 	defer streamer.Close()
 
 	w, r := protobuf.NewWriterAndReader(streamer)
 	if err := ps.sendChunkDelivery(w, ch); err != nil {
-		return nil, fmt.Errorf("chunk deliver: %w", err)
+		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
 	receiptRTTTimer := time.Now()
 
@@ -265,14 +265,14 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 	receipt, err := ps.receiveReceipt(r, t)
 	if err != nil {
-		return nil, fmt.Errorf("receive receipt: %w", err)
+		return nil, fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
 
 	// Check if the receipt is valid
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		return nil, errors.New("invalid receipt")
+		return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
 	}
 
 	rec := &Receipt{
