@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -99,8 +100,11 @@ func New(o Options) *Kad {
 // once they get added or once others leave.
 func (k *Kad) manage() {
 	var (
-		peerToRemove swarm.Address
-		start        time.Time
+		peerToRemove   swarm.Address
+		foundCandidate bool
+		foundPo        uint8
+		candidate      *bzz.Address
+		currentDepth   uint8
 	)
 
 	defer close(k.done)
@@ -114,7 +118,7 @@ func (k *Kad) manage() {
 		case <-k.quit:
 			return
 		case <-k.manageC:
-			start = time.Now()
+			currentDepth = k.NeighborhoodDepth()
 
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
@@ -128,12 +132,11 @@ func (k *Kad) manage() {
 				}
 				k.waitNextMu.Unlock()
 
-				currentDepth := k.NeighborhoodDepth()
 				if saturated := k.saturationFunc(po, currentDepth, k.connectedPeers); saturated {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
-
-				bzzAddr, err := k.addressBook.Get(peer)
+				var err error
+				candidate, err = k.addressBook.Get(peer)
 				if err != nil {
 					if err == addressbook.ErrNotFound {
 						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
@@ -145,49 +148,64 @@ func (k *Kad) manage() {
 					return false, false, err
 				}
 
-				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-
-				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
-				if err != nil {
-					k.logger.Debugf("error connecting to peer from kademlia %s: %v", bzzAddr.String(), err)
-					k.logger.Errorf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
-					// continue to next
-					return false, false, nil
-				}
-
-				k.connectedPeers.Add(peer, po)
-
-				k.waitNextMu.Lock()
-				delete(k.waitNext, peer.String())
-				k.waitNextMu.Unlock()
-
-				k.depthMu.Lock()
-				k.depth = k.recalcDepth()
-				k.depthMu.Unlock()
-
-				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
-
-				k.notifyPeerSig()
-
-				select {
-				case <-k.quit:
-					return true, false, nil
-				default:
-				}
-
-				// the bin could be saturated or not, so a decision cannot
-				// be made before checking the next peer, so we iterate to next
-				return false, false, nil
+				foundCandidate = true
+				foundPo = po
+				return true, false, nil // release the iterator and dial outside the callback
 			})
-			k.logger.Tracef("kademlia iterator took %s to finish", time.Since(start))
 
 			if err != nil {
 				if errors.Is(err, errMissingAddressBookEntry) {
 					po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
+					k.logger.Tracef("kademlia pruning peer %s", peerToRemove)
 					k.knownPeers.Remove(peerToRemove, po)
 				} else {
 					k.logger.Errorf("kademlia manage loop iterator: %v", err)
 				}
+				continue
+			}
+
+			select {
+			case <-k.quit:
+				return
+			default:
+			}
+
+			if !foundCandidate {
+				continue
+			}
+
+			k.logger.Debugf("kademlia dialing to peer %s", candidate.Overlay.String())
+
+			err = k.connect(ctx, candidate.Overlay, candidate.Underlay, foundPo)
+			if err != nil {
+				k.logger.Debugf("error connecting to peer from kademlia %s: %v", candidate.Overlay.String(), err)
+				k.logger.Errorf("connecting to peer %s: %v", candidate.ShortString(), err)
+				// continue to next
+				select {
+				case k.manageC <- struct{}{}:
+				default:
+				}
+				continue
+			}
+
+			k.connectedPeers.Add(candidate.Overlay, foundPo)
+
+			k.waitNextMu.Lock()
+			delete(k.waitNext, candidate.Overlay.String())
+			k.waitNextMu.Unlock()
+
+			k.depthMu.Lock()
+			k.depth = k.recalcDepth()
+			k.depthMu.Unlock()
+
+			k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", candidate.Overlay, currentDepth, k.NeighborhoodDepth())
+
+			k.notifyPeerSig()
+			foundCandidate = false
+
+			select {
+			case k.manageC <- struct{}{}:
+			default:
 			}
 		}
 	}
@@ -301,11 +319,11 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 			return false, false, nil
 		}
 		addrs = append(addrs, connectedPeer)
-		if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
-			// we don't want to fail the whole process because of this, keep on gossiping
-			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
-			return false, false, nil
-		}
+		go func(ctx context.Context, connectedPeer, peer swarm.Address) {
+			if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
+				k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
+			}
+		}(ctx, connectedPeer, peer)
 		return false, false, nil
 	})
 
