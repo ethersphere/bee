@@ -7,21 +7,15 @@ package validator
 
 import (
 	"encoding/binary"
-	"hash"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
-	"golang.org/x/crypto/sha3"
 )
 
 var _ swarm.ChunkValidator = (*ContentAddressValidator)(nil)
 
-func hashFunc() hash.Hash {
-	return sha3.NewLegacyKeccak256()
-}
-
 // ContentAddressValidator validates that the address of a given chunk
-// is the content address of its contents
+// is the content address of its contents.
 type ContentAddressValidator struct {
 }
 
@@ -31,9 +25,9 @@ func NewContentAddressValidator() swarm.ChunkValidator {
 	return &ContentAddressValidator{}
 }
 
-// Validate performs the validation check
+// Validate performs the validation check.
 func (v *ContentAddressValidator) Validate(ch swarm.Chunk) (valid bool) {
-	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
+	p := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	hasher := bmtlegacy.New(p)
 
 	// prepare data
