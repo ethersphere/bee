@@ -141,6 +141,7 @@ func (k *Kad) manage() {
 					if err == addressbook.ErrNotFound {
 						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
 						peerToRemove = peer
+						foundCandidate = false
 						return false, false, errMissingAddressBookEntry
 					}
 					// either a peer is not known in the address book, in which case it
@@ -153,10 +154,13 @@ func (k *Kad) manage() {
 				return true, false, nil // release the iterator and dial outside the callback
 			})
 
+			k.logger.Errorf("iterator returned with err %v,foundcanddiate %t foundPo %d", err, foundCandidate, foundPo)
+
 			if err != nil {
+				k.logger.Error("error not nil")
 				if errors.Is(err, errMissingAddressBookEntry) {
 					po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
-					k.logger.Tracef("kademlia pruning peer %s", peerToRemove)
+					k.logger.Infof("kademlia pruning peer %s", peerToRemove)
 					k.knownPeers.Remove(peerToRemove, po)
 				} else {
 					k.logger.Errorf("kademlia manage loop iterator: %v", err)
@@ -170,11 +174,11 @@ func (k *Kad) manage() {
 			default:
 			}
 
-			if !foundCandidate {
+			if !foundCandidate || candidate == nil || candidate.Overlay.IsZero() {
 				continue
 			}
 
-			k.logger.Debugf("kademlia dialing to peer %s", candidate.Overlay.String())
+			k.logger.Debugf("kademlia dialing to peer %s", candidate.Overlay.String()) // @pradovic i am getting panics here that's why the check a few lines above
 
 			err = k.connect(ctx, candidate.Overlay, candidate.Underlay, foundPo)
 			if err != nil {
@@ -202,6 +206,7 @@ func (k *Kad) manage() {
 
 			k.notifyPeerSig()
 			foundCandidate = false
+			candidate = nil
 
 			select {
 			case k.manageC <- struct{}{}:
