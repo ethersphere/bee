@@ -24,7 +24,10 @@ func TestBzzAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	overlay := crypto.NewOverlayAddress(privateKey1.PublicKey, 3)
+	overlay, err := crypto.NewOverlayAddress(privateKey1.PublicKey, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 
 	bzzAddress, err := bzz.NewAddress(signer1, node1ma, overlay, 3)
