@@ -284,7 +284,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 	if !ok {
 		cursors, err := p.syncer.GetCursors(ctx, peer)
 		if err != nil {
-			p.logger.Errorf("error getting cursors: %v", err)
+			p.logger.Errorf("error getting cursors from peer %s: %v", peer.String(), err)
 			delete(p.syncPeers[po], peer.String())
 			return
 			// remove from syncing peers list, trigger channel to find some other peer
