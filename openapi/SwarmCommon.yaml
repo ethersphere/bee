@@ -78,6 +78,11 @@ components:
       pattern: '^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+\d{2}:\d{2})$'
       example: "2020-06-11T11:26:42.6969797+02:00"
 
+    Duration:
+      description: Go time.Duration format 
+      type: string
+      example: "5.0018ms"
+
     FileName:
       type: string
 
@@ -89,11 +94,6 @@ components:
    
     MultiAddress:
       type: string
-
-    Duration:
-      description: Go time.Duration format (RFC3339 nano format)
-      type: string
-      example: "5.0018ms"
     
     NewTagResponse:
       type: object
