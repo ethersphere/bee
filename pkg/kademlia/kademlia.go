@@ -58,6 +58,7 @@ type Kad struct {
 	knownPeers     *pslice.PSlice        // both are po aware slice of addresses
 	depth          uint8                 // current neighborhood depth
 	depthMu        sync.RWMutex          // protect depth changes
+	peerChange     chan struct{}         // monitor changes for connect peers list
 	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
 	waitNext       map[string]retryInfo  // sanction connections to a peer, key is overlay string and value is a retry information
 	waitNextMu     sync.Mutex            // synchronize map
@@ -87,6 +88,7 @@ func New(o Options) *Kad {
 		saturationFunc: o.SaturationFunc,
 		connectedPeers: pslice.New(maxBins),
 		knownPeers:     pslice.New(maxBins),
+		peerChange:     make(chan struct{}, 1),
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]retryInfo),
 		logger:         o.Logger,
@@ -95,6 +97,8 @@ func New(o Options) *Kad {
 	}
 
 	go k.manage()
+	go k.pollChanges()
+
 	return k
 }
 
@@ -191,15 +195,9 @@ LOOP:
 
 				k.logger.Debugf("error connecting to peer from kademlia %s: %v", candidate.Overlay.String(), err)
 				k.logger.Errorf("kademlia error connecting to peer %s: %v", candidate.ShortString(), err)
+
 				// continue to next
-				select {
-				case k.manageC <- struct{}{}:
-				default:
-				}
-				continue LOOP
-			}
-			if err = k.announce(ctx, candidate.Overlay); err != nil {
-				k.logger.Errorf("error announcing peer %s: %v", candidate.Overlay.String(), err)
+
 				k.p2p.Disconnect(candidate.Overlay)
 				retryTime := time.Now().Add(timeToRetry)
 				failedAttempts := 0
@@ -228,31 +226,66 @@ LOOP:
 				case k.manageC <- struct{}{}:
 				default:
 				}
-
 				continue LOOP
 			}
 
-			k.logger.Infof("connected to peer successfully %s", candidate.ShortString())
+			//if err = k.announce(ctx, candidate.Overlay); err != nil {
+			//k.logger.Errorf("error announcing peer %s: %v", candidate.Overlay.String(), err)
 
-			k.connectedPeers.Add(candidate.Overlay, foundPo)
+			//k.p2p.Disconnect(candidate.Overlay)
 
-			k.waitNextMu.Lock()
-			delete(k.waitNext, candidate.Overlay.String())
-			k.waitNextMu.Unlock()
+			//retryTime := time.Now().Add(timeToRetry)
+			//failedAttempts := 0
+			//k.waitNextMu.Lock()
+			//info, ok := k.waitNext[candidate.Overlay.String()]
+			//if ok {
+			//failedAttempts = info.failedAttempts
+			//}
 
-			k.depthMu.Lock()
-			k.depth = k.recalcDepth()
-			k.depthMu.Unlock()
+			//failedAttempts++
 
-			k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", candidate.Overlay, currentDepth, k.NeighborhoodDepth())
+			//if failedAttempts > maxConnAttempts {
+			//delete(k.waitNext, candidate.Overlay.String())
+			//k.knownPeers.Remove(candidate.Overlay, foundPo)
+			//if err := k.addressBook.Remove(candidate.Overlay); err != nil {
+			//k.logger.Debugf("could not remove peer from addressbook: %s", candidate.Overlay.String())
+			//}
+			//k.logger.Debugf("kademlia pruned peer from address book %s", candidate.Overlay.String())
+			//} else {
+			//k.waitNext[candidate.Overlay.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
+			//}
 
-			k.notifyPeerSig()
+			//k.waitNextMu.Unlock()
+
+			//select {
+			//case k.manageC <- struct{}{}:
+			//default:
+			//}
+
+			//continue LOOP
+			//}
+
+			//k.logger.Infof("connected to peer successfully %s", candidate.ShortString())
+
+			//k.connectedPeers.Add(candidate.Overlay, foundPo)
+
+			//k.waitNextMu.Lock()
+			//delete(k.waitNext, candidate.Overlay.String())
+			//k.waitNextMu.Unlock()
+
+			//k.depthMu.Lock()
+			//k.depth = k.recalcDepth()
+			//k.depthMu.Unlock()
+
+			//k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", candidate.Overlay, currentDepth, k.NeighborhoodDepth())
+
+			//k.notifyPeerSig()
 			candidate = nil
 
-			select {
-			case k.manageC <- struct{}{}:
-			default:
-			}
+			//select {
+			//case k.manageC <- struct{}{}:
+			//default:
+			//}
 		}
 	}
 }
@@ -371,11 +404,13 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 			return false, false, nil
 		}
 		addrs = append(addrs, connectedPeer)
-		//go func(ctx context.Context, connectedPeer, peer swarm.Address) {
-		if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
-			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
-		}
-		//}(ctx, connectedPeer, peer)
+
+		go func(ctx context.Context, connectedPeer, peer swarm.Address) {
+			if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
+				k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
+			}
+		}(ctx, connectedPeer, peer)
+
 		return false, false, nil
 	})
 
@@ -410,12 +445,30 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 	return nil
 }
 
+func (k *Kad) pollChanges() {
+	for {
+		select {
+		case <-k.peerChange:
+
+			k.depthMu.Lock()
+			k.depth = k.recalcDepth()
+			k.depthMu.Unlock()
+
+			k.notifyPeerSig()
+
+			select {
+			case k.manageC <- struct{}{}:
+			default:
+			}
+
+		case <-k.quit:
+			return
+		}
+	}
+}
+
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
-	if err := k.announce(ctx, addr); err != nil {
-		return err
-	}
-
 	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
@@ -424,16 +477,16 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	delete(k.waitNext, addr.String())
 	k.waitNextMu.Unlock()
 
-	k.depthMu.Lock()
-	k.depth = k.recalcDepth()
-	k.depthMu.Unlock()
-
-	k.notifyPeerSig()
-
 	select {
-	case k.manageC <- struct{}{}:
+	case k.peerChange <- struct{}{}:
 	default:
 	}
+
+	go func() {
+		if err := k.announce(ctx, addr); err != nil {
+			k.logger.Debugf("error announcing peer %s: %v", addr.String(), err)
+		}
+	}()
 
 	return nil
 }
@@ -447,14 +500,11 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	k.waitNext[addr.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
 	k.waitNextMu.Unlock()
 
-	k.depthMu.Lock()
-	k.depth = k.recalcDepth()
-	k.depthMu.Unlock()
 	select {
-	case k.manageC <- struct{}{}:
+	case k.peerChange <- struct{}{}:
 	default:
 	}
-	k.notifyPeerSig()
+
 }
 
 func (k *Kad) notifyPeerSig() {

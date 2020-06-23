@@ -6,6 +6,7 @@ package libp2p
 
 import (
 	"bytes"
+	"context"
 	"sort"
 	"sync"
 
@@ -22,8 +23,8 @@ type peerRegistry struct {
 	connections map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
 	mu          sync.RWMutex
 
-	disconnecter     topology.Disconnecter // peerRegistry notifies topology on peer disconnection
-	network.Notifiee                       // peerRegistry can be the receiver for network.Notify
+	topologyNotifier topology.Notifier // peerRegistry notifies topology on peer connect/disconnect
+	network.Notifiee                   // peerRegistry can be the receiver for network.Notify
 }
 
 func newPeerRegistry() *peerRegistry {
@@ -55,7 +56,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 		return
 	}
 
-	overlay := r.overlays[peerID]
+	overlay, found := r.overlays[peerID]
 	delete(r.overlays, peerID)
 	delete(r.underlays, overlay.ByteString())
 
@@ -64,10 +65,10 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 		delete(r.connections, peerID)
 	}
 
-	r.mu.Unlock()
-	if r.disconnecter != nil {
-		r.disconnecter.Disconnected(overlay)
+	if r.topologyNotifier != nil && found {
+		r.topologyNotifier.Disconnected(overlay)
 	}
+	r.mu.Unlock()
 }
 
 func (r *peerRegistry) peers() []p2p.Peer {
@@ -88,7 +89,12 @@ func (r *peerRegistry) peers() []p2p.Peer {
 func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address) (exists bool) {
 	peerID := c.RemotePeer()
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	defer func() {
+		if r.topologyNotifier != nil {
+			r.topologyNotifier.Connected(context.Background(), overlay)
+		}
+		r.mu.Unlock()
+	}()
 
 	if _, ok := r.connections[peerID]; !ok {
 		r.connections[peerID] = make(map[network.Conn]struct{})
@@ -124,14 +130,14 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	delete(r.overlays, peerID)
 	delete(r.underlays, overlay.ByteString())
 	delete(r.connections, peerID)
-	r.mu.Unlock()
 
 	// if overlay was not found disconnect handler should not be signaled.
-	if r.disconnecter != nil && found {
-		r.disconnecter.Disconnected(overlay)
+	if r.topologyNotifier != nil && found {
+		r.topologyNotifier.Disconnected(overlay)
 	}
+	r.mu.Unlock()
 }
 
-func (r *peerRegistry) setDisconnecter(d topology.Disconnecter) {
-	r.disconnecter = d
+func (r *peerRegistry) setNotifier(d topology.Notifier) {
+	r.topologyNotifier = d
 }

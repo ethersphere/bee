@@ -412,7 +412,7 @@ func (s *Service) Peers() []p2p.Peer {
 
 func (s *Service) SetNotifier(n topology.Notifier) {
 	s.topologyNotifier = n
-	s.peers.setDisconnecter(n)
+	s.peers.setNotifier(n)
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
