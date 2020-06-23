@@ -198,29 +198,29 @@ LOOP:
 
 				// continue to next
 
-				k.p2p.Disconnect(candidate.Overlay)
-				retryTime := time.Now().Add(timeToRetry)
-				failedAttempts := 0
-				k.waitNextMu.Lock()
-				info, ok := k.waitNext[candidate.Overlay.String()]
-				if ok {
-					failedAttempts = info.failedAttempts
-				}
+				// k.p2p.Disconnect(candidate.Overlay)
+				// retryTime := time.Now().Add(timeToRetry)
+				// failedAttempts := 0
+				// k.waitNextMu.Lock()
+				// info, ok := k.waitNext[candidate.Overlay.String()]
+				// if ok {
+				// 	failedAttempts = info.failedAttempts
+				// }
 
-				failedAttempts++
+				// failedAttempts++
 
-				if failedAttempts > maxConnAttempts {
-					delete(k.waitNext, candidate.Overlay.String())
-					k.knownPeers.Remove(candidate.Overlay, foundPo)
-					if err := k.addressBook.Remove(candidate.Overlay); err != nil {
-						k.logger.Debugf("could not remove peer from addressbook: %s", candidate.Overlay.String())
-					}
-					k.logger.Debugf("kademlia pruned peer from address book %s", candidate.Overlay.String())
-				} else {
-					k.waitNext[candidate.Overlay.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
-				}
+				// if failedAttempts > maxConnAttempts {
+				// 	delete(k.waitNext, candidate.Overlay.String())
+				// 	k.knownPeers.Remove(candidate.Overlay, foundPo)
+				// 	if err := k.addressBook.Remove(candidate.Overlay); err != nil {
+				// 		k.logger.Debugf("could not remove peer from addressbook: %s", candidate.Overlay.String())
+				// 	}
+				// 	k.logger.Debugf("kademlia pruned peer from address book %s", candidate.Overlay.String())
+				// } else {
+				// 	k.waitNext[candidate.Overlay.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
+				// }
 
-				k.waitNextMu.Unlock()
+				// k.waitNextMu.Unlock()
 
 				select {
 				case k.manageC <- struct{}{}:
