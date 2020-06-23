@@ -201,6 +201,26 @@ LOOP:
 			if err = k.announce(ctx, candidate.Overlay); err != nil {
 				k.logger.Errorf("error announcing peer %s: %v", candidate.Overlay.String(), err)
 				k.p2p.Disconnect(candidate.Overlay)
+				retryTime := time.Now().Add(timeToRetry)
+				k.waitNextMu.Lock()
+				info, ok := k.waitNext[peer.String()]
+				if ok {
+					failedAttempts = info.failedAttempts
+				}
+
+				failedAttempts++
+
+				if failedAttempts > maxConnAttempts {
+					delete(k.waitNext, peer.String())
+					if err := k.addressBook.Remove(peer); err != nil {
+						k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
+					}
+					k.logger.Debugf("kademlia pruned peer from address book %s", peer.String())
+				} else {
+					k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
+				}
+
+				k.waitNextMu.Unlock()
 
 				select {
 				case k.manageC <- struct{}{}:
