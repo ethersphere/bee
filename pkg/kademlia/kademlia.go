@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -113,6 +114,8 @@ func (k *Kad) manage() {
 		<-k.quit
 		cancel()
 	}()
+
+LOOP:
 	for {
 		select {
 		case <-k.quit:
@@ -160,7 +163,7 @@ func (k *Kad) manage() {
 				} else {
 					k.logger.Errorf("kademlia manage loop iterator: %v", err)
 				}
-				continue
+				continue LOOP
 			}
 
 			select {
@@ -170,7 +173,7 @@ func (k *Kad) manage() {
 			}
 
 			if candidate == nil {
-				continue
+				continue LOOP
 			}
 
 			k.logger.Debugf("kademlia dialing to peer %s", candidate.Overlay.String()) // @pradovic i am getting panics here that's why the check a few lines above
@@ -178,14 +181,16 @@ func (k *Kad) manage() {
 			err = k.connect(ctx, candidate.Overlay, candidate.Underlay, foundPo)
 			if err != nil {
 				k.logger.Debugf("error connecting to peer from kademlia %s: %v", candidate.Overlay.String(), err)
-				k.logger.Errorf("connecting to peer %s: %v", candidate.ShortString(), err)
+				k.logger.Errorf("kademlia error connecting to peer %s: %v", candidate.ShortString(), err)
 				// continue to next
 				select {
 				case k.manageC <- struct{}{}:
 				default:
 				}
-				continue
+				continue LOOP
 			}
+
+			k.logger.Infof("connected to peer successfully %s", candidate.ShortString())
 
 			k.connectedPeers.Add(candidate.Overlay, foundPo)
 
@@ -295,11 +300,13 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 			}
+			k.logger.Debugf("kademlia pruned peer from address book %s", peer.String())
 		} else {
 			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
 		}
 
 		k.waitNextMu.Unlock()
+		k.logger.Errorf("kademlia connect returning error %v", err)
 		return err
 	}
 
@@ -316,11 +323,11 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 			return false, false, nil
 		}
 		addrs = append(addrs, connectedPeer)
-		go func(ctx context.Context, connectedPeer, peer swarm.Address) {
-			if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
-				k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
-			}
-		}(ctx, connectedPeer, peer)
+		//go func(ctx context.Context, connectedPeer, peer swarm.Address) {
+		if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
+			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
+		}
+		//}(ctx, connectedPeer, peer)
 		return false, false, nil
 	})
 
@@ -330,6 +337,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
+		err = fmt.Errorf("broadcast to peer: %w", err)
 		_ = k.p2p.Disconnect(peer)
 	}
 	return err
