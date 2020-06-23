@@ -9,7 +9,7 @@ security:
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
-  url: 'https://swarm-gateways.net/bzz:/d70fb7f255b0f7ab4a0e53c186ca9803636344afde868d8d967167775a682291/'
+  url: 'https://docs.swarm.eth'
 
 servers:
 
@@ -141,7 +141,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '500':

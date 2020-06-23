@@ -7,7 +7,7 @@ info:
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
-  url: 'https://swarm-gateways.net/bzz:/d70fb7f255b0f7ab4a0e53c186ca9803636344afde868d8d967167775a682291/'
+  url: 'https://docs.swarm.eth'
 
 paths: {}
 components:
@@ -90,9 +90,9 @@ components:
     MultiAddress:
       type: string
 
-    Msd5:
+    Duration:
+      description: Go time.Duration format (RFC3339 nano format)
       type: string
-      #pattern: '^\d*\.\d{4}ms$'
       example: "5.0018ms"
     
     NewTagResponse:
@@ -162,7 +162,7 @@ components:
       type: object
       properties:
         rtt:
-          $ref: '#/components/schemas/Msd5'
+          $ref: '#/components/schemas/Duration'
 
     Status:
       type: object
