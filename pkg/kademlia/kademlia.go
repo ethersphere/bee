@@ -103,6 +103,8 @@ func (k *Kad) manage() {
 		peerToRemove swarm.Address
 		foundPo      uint8
 		currentDepth uint8
+		candidate    *bzz.Address
+		err          error
 	)
 
 	defer close(k.done)
@@ -117,10 +119,8 @@ func (k *Kad) manage() {
 			return
 		case <-k.manageC:
 			currentDepth = k.NeighborhoodDepth()
-			foundCandidate := false
-			var candidate *bzz.Address
 
-			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+			err = k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
@@ -136,7 +136,7 @@ func (k *Kad) manage() {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 				var err error
-				potentialCandidate, err := k.addressBook.Get(peer)
+				candidate, err = k.addressBook.Get(peer)
 				if err != nil {
 					if err == addressbook.ErrNotFound {
 						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
@@ -148,8 +148,6 @@ func (k *Kad) manage() {
 					return false, false, err
 				}
 
-				foundCandidate = true
-				candidate = potentialCandidate
 				foundPo = po
 				return true, false, nil // release the iterator and dial outside the callback
 			})
@@ -171,7 +169,7 @@ func (k *Kad) manage() {
 			default:
 			}
 
-			if !foundCandidate || candidate == nil || candidate.Overlay.IsZero() {
+			if candidate == nil {
 				continue
 			}
 
@@ -202,7 +200,6 @@ func (k *Kad) manage() {
 			k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", candidate.Overlay, currentDepth, k.NeighborhoodDepth())
 
 			k.notifyPeerSig()
-			foundCandidate = false
 			candidate = nil
 
 			select {
