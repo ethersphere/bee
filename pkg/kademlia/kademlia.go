@@ -31,6 +31,7 @@ const (
 
 var (
 	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
+	errOverlayMismatch         = errors.New("overlay mismatch")
 	timeToRetry                = 60 * time.Second
 )
 
@@ -180,6 +181,14 @@ LOOP:
 
 			err = k.connect(ctx, candidate.Overlay, candidate.Underlay, foundPo)
 			if err != nil {
+				if errors.Is(err, errOverlayMismatch) {
+					k.logger.Warningf("kademlia overlay mistmatch")
+					k.knownPeers.Remove(candidate.Overlay, foundPo)
+					if err := k.addressBook.Remove(candidate.Overlay); err != nil {
+						k.logger.Debugf("could not remove peer from addressbook: %s", candidate.Overlay.String())
+					}
+				}
+
 				k.logger.Debugf("error connecting to peer from kademlia %s: %v", candidate.Overlay.String(), err)
 				k.logger.Errorf("kademlia error connecting to peer %s: %v", candidate.ShortString(), err)
 				// continue to next
@@ -187,6 +196,17 @@ LOOP:
 				case k.manageC <- struct{}{}:
 				default:
 				}
+				continue LOOP
+			}
+			if err = k.announce(ctx, candidate.Overlay); err != nil {
+				k.logger.Errorf("error announcing peer %s: %v", candidate.Overlay.String(), err)
+				k.p2p.Disconnect(candidate.Overlay)
+
+				select {
+				case k.manageC <- struct{}{}:
+				default:
+				}
+
 				continue LOOP
 			}
 
@@ -273,7 +293,7 @@ func (k *Kad) recalcDepth() uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
-	_, err := k.p2p.Connect(ctx, ma)
+	i, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			return nil
@@ -310,7 +330,13 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 		return err
 	}
 
-	return k.announce(ctx, peer)
+	if !i.Overlay.Equal(peer) {
+		_ = k.p2p.Disconnect(peer)
+		_ = k.p2p.Disconnect(i.Overlay)
+		return errOverlayMismatch
+	}
+
+	return nil
 }
 
 // announce a newly connected peer to our connected peers, but also

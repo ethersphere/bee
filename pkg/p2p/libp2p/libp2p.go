@@ -220,7 +220,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
-			if err = stream.Close(); err != nil {
+			if err = helpers.FullClose(stream); err != nil {
 				s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
 				s.logger.Errorf("unable to handshake with peer %v", peerID)
 				_ = s.disconnect(peerID)
@@ -228,7 +228,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if err = stream.Close(); err != nil {
+		if err = helpers.FullClose(stream); err != nil {
 			s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			_ = s.disconnect(peerID)
@@ -249,7 +249,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("successfully connected to peer %s", i.BzzAddress.ShortString())
+		s.logger.Infof("successfully connected to peer (inbound) %s", i.BzzAddress.ShortString())
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -344,7 +344,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("addr info from p2p addr: %w", err)
 	}
 
 	if _, found := s.peers.overlay(info.ID); found {
@@ -355,13 +355,13 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		if errors.Is(err, breaker.ErrClosed) {
 			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
 		}
-		return nil, err
+		return nil, fmt.Errorf("breaker execute: %w", err)
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.disconnect(info.ID)
-		return nil, err
+		return nil, fmt.Errorf("new stream for peer id: %w", err)
 	}
 
 	i, err := s.handshakeService.Handshake(NewStream(stream), stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
@@ -373,7 +373,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
 			_ = s.disconnect(info.ID)
-			return nil, err
+			return nil, fmt.Errorf("add if not exists: %w", err)
 		}
 
 		return i.BzzAddress, nil
@@ -381,11 +381,11 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	if err := helpers.FullClose(stream); err != nil {
 		_ = s.disconnect(info.ID)
-		return nil, err
+		return nil, fmt.Errorf("full close: %w", err)
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("successfully connected to peer %s", i.BzzAddress.ShortString())
+	s.logger.Infof("successfully connected to peer (outbound) %s", i.BzzAddress.ShortString())
 	return i.BzzAddress, nil
 }
 
