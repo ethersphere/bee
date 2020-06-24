@@ -29,6 +29,7 @@ const (
 
 var (
 	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
+	errOverlayMismatch         = errors.New("overlay mismatch")
 	timeToRetry                = 60 * time.Second
 )
 
@@ -149,6 +150,12 @@ func (k *Kad) manage() {
 
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 				if err != nil {
+					if errors.Is(err, errOverlayMismatch) {
+						k.knownPeers.Remove(peer, po)
+						if err := k.addressBook.Remove(peer); err != nil {
+							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
+						}
+					}
 					k.logger.Debugf("error connecting to peer from kademlia %s: %v", bzzAddr.String(), err)
 					k.logger.Errorf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
 					// continue to next
@@ -253,7 +260,7 @@ func (k *Kad) recalcDepth() uint8 {
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err := k.p2p.Connect(ctx, ma)
+	i, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			return nil
@@ -280,12 +287,19 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 			}
+			k.logger.Debugf("kademlia pruned peer from address book %s", peer.String())
 		} else {
 			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
 		}
 
 		k.waitNextMu.Unlock()
 		return err
+	}
+
+	if !i.Overlay.Equal(peer) {
+		_ = k.p2p.Disconnect(peer)
+		_ = k.p2p.Disconnect(i.Overlay)
+		return errOverlayMismatch
 	}
 
 	return k.announce(ctx, peer)

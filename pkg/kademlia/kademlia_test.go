@@ -44,9 +44,9 @@ var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cT
 // A more in depth testing of the functionality in `manage()` is explicitly
 // tested in TestManage below.
 func TestNeighborhoodDepth(t *testing.T) {
+	bzzAddrMap := make(map[string]ma.Multiaddr)
 	var (
-		conns int32 // how many connect calls were made to the p2p mock
-
+		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
 		peers                    []swarm.Address
 		binEight                 []swarm.Address
@@ -634,6 +634,7 @@ func p2pMock(counter, failedCounter *int32) p2p.Service {
 		if counter != nil {
 			_ = atomic.AddInt32(counter, 1)
 		}
+		bzz.NewAddress()
 		return nil, nil
 	}))
 
