@@ -78,6 +78,7 @@ type Options struct {
 	DisableQUIC        bool
 	NetworkID          uint64
 	Bootnodes          []string
+	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	TracingEnabled     bool
 	TracingEndpoint    string
@@ -291,10 +292,11 @@ func NewBee(o Options) (*Bee, error) {
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Tags:   tag,
-			Storer: ns,
-			Logger: logger,
-			Tracer: tracer,
+			Tags:               tag,
+			Storer:             ns,
+			CORSAllowedOrigins: o.CORSAllowedOrigins,
+			Logger:             logger,
+			Tracer:             tracer,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
@@ -381,7 +383,7 @@ func NewBee(o Options) (*Bee, error) {
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				logger.Debugf("topology add peer fail %s: %v", overlay, err)
-				logger.Warningf("topology add peer fail %s", overlay)
+				logger.Warningf("topology add peer %s", overlay)
 				return
 			}
 
