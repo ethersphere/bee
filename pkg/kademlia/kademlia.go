@@ -23,15 +23,15 @@ import (
 
 const (
 	maxBins         = 16
-	nnLowWatermark  = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
-	maxConnAttempts = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	nnLowWatermark  = 4  // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	maxConnAttempts = 10 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 )
 
 var (
 	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
 	errOverlayMismatch         = errors.New("overlay mismatch")
-	timeToRetry                = 60 * time.Second
-	shortRetry                 = 30 * time.Second
+	timeToRetry                = 20 * time.Second
+	shortRetry                 = 10 * time.Second
 )
 
 type binSaturationFunc func(bin, depth uint8, peers *pslice.PSlice) bool
@@ -115,6 +115,13 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
+		case <-time.After(30 * time.Second):
+			// periodically try to connect to new peers
+			select {
+			case k.manageC <- struct{}{}:
+			default:
+			}
+
 		case <-k.manageC:
 			start = time.Now()
 
@@ -298,8 +305,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 	}
 
 	if !i.Overlay.Equal(peer) {
-		_ = k.p2p.Disconnect(peer)
-		_ = k.p2p.Disconnect(i.Overlay)
+		//_ = k.p2p.Disconnect(peer)
+		//_ = k.p2p.Disconnect(i.Overlay)
 		return errOverlayMismatch
 	}
 
@@ -330,7 +337,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
-		_ = k.p2p.Disconnect(peer)
+		// _ = k.p2p.Disconnect(peer)
 	}
 	return err
 }
