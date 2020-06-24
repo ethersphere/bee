@@ -33,17 +33,17 @@ func New(maxBins int) *PSlice {
 // iterates over all peers from deepest bin to shallowest.
 func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 	s.RLock()
-	defer s.RUnlock()
+	peers, bins := s.peers, s.bins
+	s.RUnlock()
 
-	if len(s.peers) == 0 {
+	if len(peers) == 0 {
 		return nil
 	}
 
-	var binEnd = uint(len(s.peers))
+	var binEnd = uint(len(peers))
 
-	for i := len(s.bins) - 1; i >= 0; i-- {
-		peers := s.peers[s.bins[i]:binEnd]
-		for _, v := range peers {
+	for i := len(bins) - 1; i >= 0; i-- {
+		for _, v := range peers[bins[i]:binEnd] {
 			stop, next, err := pf(v, uint8(i))
 			if err != nil {
 				return err
@@ -55,7 +55,7 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 				break
 			}
 		}
-		binEnd = s.bins[i]
+		binEnd = bins[i]
 	}
 
 	return nil
@@ -64,22 +64,22 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 // EachBinRev iterates over all peers from shallowest bin to deepest.
 func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	s.RLock()
-	defer s.RUnlock()
+	peers, bins := s.peers, s.bins
+	s.RUnlock()
 
-	if len(s.peers) == 0 {
+	if len(peers) == 0 {
 		return nil
 	}
 
 	var binEnd int
-	for i := 0; i <= len(s.bins)-1; i++ {
-		if i == len(s.bins)-1 {
-			binEnd = len(s.peers)
+	for i := 0; i <= len(bins)-1; i++ {
+		if i == len(bins)-1 {
+			binEnd = len(peers)
 		} else {
-			binEnd = int(s.bins[i+1])
+			binEnd = int(bins[i+1])
 		}
 
-		peers := s.peers[s.bins[i]:binEnd]
-		for _, v := range peers {
+		for _, v := range peers[bins[i]:binEnd] {
 			stop, next, err := pf(v, uint8(i))
 			if err != nil {
 				return err
@@ -150,11 +150,17 @@ func (s *PSlice) Add(addr swarm.Address, po uint8) {
 	if e, _ := s.exists(addr); e {
 		return
 	}
-	head := s.peers[:s.bins[po]]
-	tail := append([]swarm.Address{addr}, s.peers[s.bins[po]:]...)
-	s.peers = append(head, tail...)
 
-	s.incDeeper(po)
+	peers, bins := s.copy()
+
+	head := peers[:s.bins[po]]
+	tail := append([]swarm.Address{addr}, peers[s.bins[po]:]...)
+
+	peers = append(head, tail...)
+	s.peers = peers
+
+	incDeeper(bins, po)
+	s.bins = bins
 }
 
 // Remove a peer at a certain PO.
@@ -167,33 +173,46 @@ func (s *PSlice) Remove(addr swarm.Address, po uint8) {
 		return
 	}
 
-	s.peers = append(s.peers[:i], s.peers[i+1:]...)
-	s.decDeeper(po)
+	peers, bins := s.copy()
+
+	peers = append(peers[:i], peers[i+1:]...)
+	s.peers = peers
+
+	decDeeper(bins, po)
+	s.bins = bins
 }
 
 // incDeeper increments the peers slice bin index for proximity order > po for non-empty bins only.
 // Must be called under lock.
-func (s *PSlice) incDeeper(po uint8) {
-	if po > uint8(len(s.bins)) {
+func incDeeper(bins []uint, po uint8) {
+	if po > uint8(len(bins)) {
 		panic("po too high")
 	}
 
-	for i := po + 1; i < uint8(len(s.bins)); i++ {
+	for i := po + 1; i < uint8(len(bins)); i++ {
 		// don't increment if the value in k.bins == len(k.peers)
 		// otherwise the calling context gets an out of bound error
 		// when accessing the slice
-		s.bins[i]++
+		bins[i]++
 	}
 }
 
 // decDeeper decrements the peers slice bin indexes for proximity order > po.
 // Must be called under lock.
-func (s *PSlice) decDeeper(po uint8) {
-	if po > uint8(len(s.bins)) {
+func decDeeper(bins []uint, po uint8) {
+	if po > uint8(len(bins)) {
 		panic("po too high")
 	}
 
-	for i := po + 1; i < uint8(len(s.bins)); i++ {
-		s.bins[i]--
+	for i := po + 1; i < uint8(len(bins)); i++ {
+		bins[i]--
 	}
+}
+
+func (s *PSlice) copy() (peers []swarm.Address, bins []uint) {
+	peers = make([]swarm.Address, len(s.peers))
+	copy(peers, s.peers)
+	bins = make([]uint, len(s.bins))
+	copy(bins, s.bins)
+	return peers, bins
 }
