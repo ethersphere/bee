@@ -143,7 +143,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 	receiptRTTTimer := time.Now()
 
-	// Most of the times now you wont get a tag because
+	//TODO:  Most of the times now you wont get a tag because
 	// /bytes and /files API does not implement tags
 	// SO dont print any logs or returning error, if you dont find them
 	t, _ := ps.tagger.Get(chunk.TagID())
@@ -199,7 +199,7 @@ func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err
 	//  if you manage to get a tag, just increment the respective counter
 	t, err := ps.tagger.Get(chunk.TagID())
 	if err == nil && t != nil {
-		// most of the times now you wont get a tag because
+		// TODO: most of the times now you wont get a tag because
 		// /bytes and /files API does not implement tags
 		// SO dont print any logs or returning error, if you dont find them
 		// if you find a tag, increment the respective counter
