@@ -157,7 +157,7 @@ func (k *Kad) manage() {
 						}
 					}
 					k.logger.Debugf("error connecting to peer from kademlia %s: %v", bzzAddr.String(), err)
-					k.logger.Errorf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
+					k.logger.Warningf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
 					// continue to next
 					return false, false, nil
 				}
