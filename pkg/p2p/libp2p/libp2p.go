@@ -220,7 +220,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
-			if err = stream.Close(); err != nil {
+			if err = helpers.FullClose(stream); err != nil {
 				s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
 				s.logger.Errorf("unable to handshake with peer %v", peerID)
 				_ = s.disconnect(peerID)
@@ -228,7 +228,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if err = stream.Close(); err != nil {
+		if err = helpers.FullClose(stream); err != nil {
 			s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			_ = s.disconnect(peerID)
@@ -442,7 +442,6 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 	// exchange headers
 	if err := sendHeaders(ctx, headers, stream); err != nil {
-		s.logger.Debugf("send headers %s: %w", peerID, err)
 		_ = s.disconnect(peerID)
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
