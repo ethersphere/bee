@@ -113,7 +113,7 @@ LOOP:
 			go func(ctx context.Context, ch swarm.Chunk) {
 				var err error
 				defer func() {
-					if err != nil {
+					if err == nil {
 						s.logger.Tracef("pusher pushed chunk %s", ch.Address().String())
 					}
 					mtx.Lock()

@@ -229,63 +229,7 @@ LOOP:
 				continue LOOP
 			}
 
-			//if err = k.announce(ctx, candidate.Overlay); err != nil {
-			//k.logger.Errorf("error announcing peer %s: %v", candidate.Overlay.String(), err)
-
-			//k.p2p.Disconnect(candidate.Overlay)
-
-			//retryTime := time.Now().Add(timeToRetry)
-			//failedAttempts := 0
-			//k.waitNextMu.Lock()
-			//info, ok := k.waitNext[candidate.Overlay.String()]
-			//if ok {
-			//failedAttempts = info.failedAttempts
-			//}
-
-			//failedAttempts++
-
-			//if failedAttempts > maxConnAttempts {
-			//delete(k.waitNext, candidate.Overlay.String())
-			//k.knownPeers.Remove(candidate.Overlay, foundPo)
-			//if err := k.addressBook.Remove(candidate.Overlay); err != nil {
-			//k.logger.Debugf("could not remove peer from addressbook: %s", candidate.Overlay.String())
-			//}
-			//k.logger.Debugf("kademlia pruned peer from address book %s", candidate.Overlay.String())
-			//} else {
-			//k.waitNext[candidate.Overlay.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
-			//}
-
-			//k.waitNextMu.Unlock()
-
-			//select {
-			//case k.manageC <- struct{}{}:
-			//default:
-			//}
-
-			//continue LOOP
-			//}
-
-			//k.logger.Infof("connected to peer successfully %s", candidate.ShortString())
-
-			//k.connectedPeers.Add(candidate.Overlay, foundPo)
-
-			//k.waitNextMu.Lock()
-			//delete(k.waitNext, candidate.Overlay.String())
-			//k.waitNextMu.Unlock()
-
-			//k.depthMu.Lock()
-			//k.depth = k.recalcDepth()
-			//k.depthMu.Unlock()
-
-			//k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", candidate.Overlay, currentDepth, k.NeighborhoodDepth())
-
-			//k.notifyPeerSig()
 			candidate = nil
-
-			//select {
-			//case k.manageC <- struct{}{}:
-			//default:
-			//}
 		}
 	}
 }
