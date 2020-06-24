@@ -59,6 +59,27 @@ func (s *server) setupRouting() {
 		handlers.CompressHandler,
 		// todo: add recovery handler
 		s.pageviewMetricsHandler,
+		func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if o := r.Header.Get("Origin"); o != "" && (s.CORSAllowedOrigins == nil || containsOrigin(o, s.CORSAllowedOrigins)) {
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Allow-Origin", o)
+					w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method")
+					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+					w.Header().Set("Access-Control-Max-Age", "3600")
+				}
+				h.ServeHTTP(w, r)
+			})
+		},
 		web.FinalHandler(router),
 	)
+}
+
+func containsOrigin(s string, l []string) (ok bool) {
+	for _, e := range l {
+		if e == s || e == "*" {
+			return true
+		}
+	}
+	return false
 }
