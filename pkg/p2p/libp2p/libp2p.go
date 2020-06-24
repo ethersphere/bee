@@ -285,7 +285,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			// exchange headers
 			if err := handleHeaders(ss.Headler, stream); err != nil {
 				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers: %v", p.Name, p.Version, ss.Name, overlay, err)
-				s.logger.Errorf("handle protocol %s/%s: peer %s", p.Name, p.Version, overlay)
 				if err := stream.Close(); err != nil {
 					s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers close stream: %v", p.Name, p.Version, ss.Name, overlay, err)
 				}
