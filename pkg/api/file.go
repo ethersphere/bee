@@ -262,19 +262,30 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outBuffer := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(j, e.Reference(), outBuffer)
-	if err != nil && c == 0 {
+	pr, pw := io.Pipe()
+
+	go func() {
+		_, err := file.JoinReadAll(j, e.Reference(), pw)
+		if err := pw.CloseWithError(err); err != nil {
+			s.Logger.Debugf("file download: data join close %s: %v", addr, err)
+			s.Logger.Errorf("file download: data join close %s", addr)
+		}
+	}()
+
+	bpr := bufio.NewReader(pr)
+
+	if b, err := bpr.Peek(4096); err != nil && err != io.EOF && len(b) == 0 {
 		s.Logger.Debugf("file download: data join %s: %v", addr, err)
 		s.Logger.Errorf("file download: data join %s", addr)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
+
 	w.Header().Set("ETag", fmt.Sprintf("%q", e.Reference()))
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename))
 	w.Header().Set("Content-Type", metaData.MimeType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	if _, err = io.Copy(w, outBuffer); err != nil {
+	if _, err = io.Copy(w, bpr); err != nil {
 		s.Logger.Debugf("file download: data read %s: %v", addr, err)
 		s.Logger.Errorf("file download: data read %s", addr)
 	}
