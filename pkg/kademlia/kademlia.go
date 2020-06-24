@@ -113,6 +113,12 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
+		case <-time.After(30 * time.Second):
+			// periodically try to connect to new peers
+			select {
+			case k.manageC <- struct{}{}:
+			default:
+			}
 		case <-k.manageC:
 			start = time.Now()
 
