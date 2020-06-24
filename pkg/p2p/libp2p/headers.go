@@ -39,8 +39,11 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
+	ctx, cancel := context.WithTimeout(context.Background(), sendHeadersTimeout)
+	defer cancel()
+
 	headers := new(pb.Headers)
-	if err := r.ReadMsgWithTimeout(time.Second, headers); err != nil {
+	if err := r.ReadMsgWithContext(ctx, headers); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
 
@@ -51,7 +54,7 @@ func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
 		h = headler(stream.headers)
 	}
 
-	if err := w.WriteMsgWithTimeout(time.Second, headersP2PToPB(h)); err != nil {
+	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
 	return nil
