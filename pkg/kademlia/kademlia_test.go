@@ -44,7 +44,7 @@ var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cT
 // A more in depth testing of the functionality in `manage()` is explicitly
 // tested in TestManage below.
 func TestNeighborhoodDepth(t *testing.T) {
-	bzzAddrMap := make(map[string]ma.Multiaddr)
+	//bzzAddrMap := make(map[string]swarm.Address)
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
@@ -443,7 +443,7 @@ func TestClosestPeer(t *testing.T) {
 	ab := addressbook.New(mockstate.NewStateStore())
 	var conns int32
 
-	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2pMock(&conns, nil), Logger: logger})
+	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2pMock(ab, &conns, nil), Logger: logger})
 	defer kad.Close()
 
 	pk, _ := crypto.GenerateSecp256k1Key()
@@ -613,10 +613,10 @@ func TestMarshal(t *testing.T) {
 
 func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
-		base   = test.RandomAddress() // base address
-		p2p    = p2pMock(connCounter, failedConnCounter)
+		base   = test.RandomAddress()                       // base address
+		ab     = addressbook.New(mockstate.NewStateStore()) // address book
+		p2p    = p2pMock(ab, connCounter, failedConnCounter)
 		logger = logging.New(ioutil.Discard, 0)                                                                                            // logger
-		ab     = addressbook.New(mockstate.NewStateStore())                                                                                // address book
 		disc   = mock.NewDiscovery()                                                                                                       // mock discovery
 		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f}) // kademlia instance
 	)
@@ -625,7 +625,7 @@ func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth ui
 	return base, kad, ab, disc, beeCrypto.NewDefaultSigner(pk)
 }
 
-func p2pMock(counter, failedCounter *int32) p2p.Service {
+func p2pMock(ab addressbook.Interface, counter, failedCounter *int32) p2p.Service {
 	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 		if addr.Equal(nonConnectableAddress) {
 			_ = atomic.AddInt32(failedCounter, 1)
@@ -634,7 +634,18 @@ func p2pMock(counter, failedCounter *int32) p2p.Service {
 		if counter != nil {
 			_ = atomic.AddInt32(counter, 1)
 		}
-		bzz.NewAddress()
+
+		addresses, err := ab.Addresses()
+		if err != nil {
+			return nil, errors.New("could not fetch addresbook addresses")
+		}
+
+		for _, a := range addresses {
+			if a.Underlay.Equal(addr) {
+				return &a, nil
+			}
+		}
+
 		return nil, nil
 	}))
 
