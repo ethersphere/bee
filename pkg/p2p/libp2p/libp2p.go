@@ -373,7 +373,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
 			_ = s.disconnect(info.ID)
-			return nil, fmt.Errorf("add if not exists: %w", err)
+			return nil, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
 		return i.BzzAddress, nil
