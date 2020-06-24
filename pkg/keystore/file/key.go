@@ -67,8 +67,12 @@ func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	addr, err := crypto.NewEthereumAddress(k.PublicKey)
+	if err != nil {
+		return nil, err
+	}
 	return json.Marshal(encryptedKey{
-		Address: hex.EncodeToString(crypto.NewEthereumAddress(k.PublicKey)),
+		Address: hex.EncodeToString(addr),
 		Crypto:  *kc,
 		Version: keyVersion,
 	})

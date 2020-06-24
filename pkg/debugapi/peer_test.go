@@ -32,7 +32,10 @@ func TestConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	overlay := crypto.NewOverlayAddress(privateKey.PublicKey, 0)
+	overlay, err := crypto.NewOverlayAddress(privateKey.PublicKey, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	underlama, err := ma.NewMultiaddr(underlay)
 	if err != nil {
 		t.Fatal(err)

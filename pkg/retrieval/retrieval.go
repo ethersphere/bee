@@ -16,7 +16,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"golang.org/x/sync/singleflight"
 )
+
+type requestSourceContextKey struct{}
 
 const (
 	protocolName    = "retrieval"
@@ -34,6 +37,7 @@ type Service struct {
 	streamer      p2p.Streamer
 	peerSuggester topology.EachPeerer
 	storer        storage.Storer
+	singleflight  singleflight.Group
 	logger        logging.Logger
 }
 
@@ -72,25 +76,38 @@ const (
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
-	var skipPeers []swarm.Address
-	for i := 0; i < maxPeers; i++ {
-		var peer swarm.Address
-		data, peer, err = s.retrieveChunk(ctx, addr, skipPeers)
-		if err != nil {
-			if peer.IsZero() {
-				return nil, err
+	v, err, _ := s.singleflight.Do(addr.String(), func() (v interface{}, err error) {
+		var skipPeers []swarm.Address
+		for i := 0; i < maxPeers; i++ {
+			var peer swarm.Address
+			data, peer, err = s.retrieveChunk(ctx, addr, skipPeers)
+			if err != nil {
+				if peer.IsZero() {
+					return nil, err
+				}
+				s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
+				skipPeers = append(skipPeers, peer)
+				continue
 			}
-			s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
-			skipPeers = append(skipPeers, peer)
-			continue
+			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
+			return data, nil
 		}
-		s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
-		return data, nil
+		return nil, err
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	return v.([]byte), nil
 }
 
 func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (data []byte, peer swarm.Address, err error) {
+	v := ctx.Value(requestSourceContextKey{})
+	if src, ok := v.(string); ok {
+		skipAddr, err := swarm.ParseHexAddress(src)
+		if err == nil {
+			skipPeers = append(skipPeers, skipAddr)
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 
@@ -135,7 +152,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (sw
 		}
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
 		if err != nil {
-			return false, false, err
+			return false, false, fmt.Errorf("distance compare error. addr %s closest %s peer %s: %w", addr.String(), closest.String(), peer.String(), err)
 		}
 		switch dcmp {
 		case 0:
@@ -168,7 +185,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	if err := r.ReadMsg(&req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
-
+	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
 	if err != nil {
 		return fmt.Errorf("get from store: %w peer %s", err, p.Address.String())
