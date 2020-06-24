@@ -263,6 +263,17 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pr, pw := io.Pipe()
+	defer pr.Close()
+	go func() {
+		ctx := r.Context()
+		<-ctx.Done()
+		if err := ctx.Err(); err != nil {
+			if err := pr.CloseWithError(err); err != nil {
+				s.Logger.Debugf("file download: data join close %s: %v", addr, err)
+				s.Logger.Errorf("file download: data join close %s", addr)
+			}
+		}
+	}()
 
 	go func() {
 		_, err := file.JoinReadAll(j, e.Reference(), pw)
