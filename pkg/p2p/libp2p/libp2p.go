@@ -444,9 +444,8 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 	// exchange headers
 	if err := sendHeaders(ctx, headers, stream); err != nil {
-		s.logger.Debugf("send headers %s: %w", peerID, err)
 		if err := stream.Close(); err != nil {
-			s.logger.Debugf("send headers %s: close stream %w", peerID, err)
+			s.logger.Debugf("send headers %s: close stream %v", peerID, err)
 		}
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
