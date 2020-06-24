@@ -30,6 +30,7 @@ const (
 var (
 	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
 	timeToRetry                = 60 * time.Second
+	shortRetry                 = 30 * time.Second
 )
 
 type binSaturationFunc func(bin, depth uint8, peers *pslice.PSlice) bool
@@ -161,11 +162,11 @@ func (k *Kad) manage() {
 					return false, false, nil
 				}
 
-				k.connectedPeers.Add(peer, po)
-
 				k.waitNextMu.Lock()
-				delete(k.waitNext, peer.String())
+				k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
 				k.waitNextMu.Unlock()
+
+				k.connectedPeers.Add(peer, po)
 
 				k.depthMu.Lock()
 				k.depth = k.recalcDepth()
