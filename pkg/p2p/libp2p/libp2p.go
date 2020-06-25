@@ -60,14 +60,15 @@ type Service struct {
 }
 
 type Options struct {
-	PrivateKey  *ecdsa.PrivateKey
-	NATAddr     string
-	DisableWS   bool
-	DisableQUIC bool
-	LightNode   bool
-	Addressbook addressbook.Putter
-	Logger      logging.Logger
-	Tracer      *tracing.Tracer
+	PrivateKey     *ecdsa.PrivateKey
+	NATAddr        string
+	DisableWS      bool
+	DisableQUIC    bool
+	LightNode      bool
+	WelcomeMessage string
+	Addressbook    addressbook.Putter
+	Logger         logging.Logger
+	Tracer         *tracing.Tracer
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string,
@@ -181,7 +182,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.LightNode, o.Logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.LightNode, o.WelcomeMessage, o.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}

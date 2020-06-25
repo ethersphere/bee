@@ -39,6 +39,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameDebugAPIAddr       = "debug-api-addr"
 		optionNameBootnodes          = "bootnode"
 		optionNameNetworkID          = "network-id"
+		optionWelcomeMessage         = "welcome-message"
 		optionCORSAllowedOrigins     = "cors-allowed-origins"
 		optionNameTracingEnabled     = "tracing"
 		optionNameTracingEndpoint    = "tracing-endpoint"
@@ -121,6 +122,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				DisableWS:          c.config.GetBool(optionNameP2PDisableWS),
 				DisableQUIC:        c.config.GetBool(optionNameP2PDisableQUIC),
 				NetworkID:          c.config.GetUint64(optionNameNetworkID),
+				WelcomeMessage:     c.config.GetString(optionWelcomeMessage),
 				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
 				CORSAllowedOrigins: c.config.GetStringSlice(optionCORSAllowedOrigins),
 				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
@@ -189,6 +191,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
+	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 
 	c.root.AddCommand(cmd)
 	return nil
