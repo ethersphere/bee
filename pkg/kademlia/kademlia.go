@@ -216,7 +216,7 @@ func (k *Kad) manage() {
 // initiate connections to other peers in the bin.
 func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 	// short circuit for bins which are >= depth
-	if bin >= depth {
+	if bin > 0 && bin >= depth {
 		return false
 	}
 
