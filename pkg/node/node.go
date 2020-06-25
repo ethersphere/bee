@@ -292,7 +292,7 @@ func NewBee(o Options) (*Bee, error) {
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Tags:               tag,
+			Tags:               tagger,
 			Storer:             ns,
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			Logger:             logger,
