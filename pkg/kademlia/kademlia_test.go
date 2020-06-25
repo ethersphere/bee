@@ -7,7 +7,6 @@ package kademlia_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"sync/atomic"
@@ -241,11 +240,7 @@ func TestBinSaturation(t *testing.T) {
 	waitCounter(t, &conns, 1)
 
 	// this is in order to hit the `if size < 2` in the saturation func
-	fmt.Printf("disconnecting 1 peer %s", peers[2].String())
 	removeOne(kad, peers[2])
-
-	time.Sleep(1 * time.Second)
-	fmt.Println(kad.String())
 	waitCounter(t, &conns, 1)
 }
 
