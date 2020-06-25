@@ -1,0 +1,214 @@
+openapi: 3.0.0
+info:
+  version: '0.1.0'
+  title: 'Common Data Types'
+  description: |
+    \*****bzzz*****
+
+externalDocs:
+  description: Browse the documentation @ the Swarm Docs
+  url: 'https://docs.swarm.eth'
+
+paths: {}
+components:
+  schemas:
+
+    Address:
+      type: object
+      properties:
+        Address:
+          $ref: '#/components/schemas/SwarmAddress'
+
+    Addresses:
+      type: object
+      properties:
+        overlay:
+          $ref: '#/components/schemas/SwarmAddress'
+        underlay:
+          type: array
+          items:
+            $ref: '#/components/schemas/P2PUnderlay'
+
+     
+    BzzChunksPinned:
+      type: object
+      properties:
+        chunks:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              pinCounter:
+                type: integer
+
+    BzzTopology:
+      type: object
+      properties:
+        baseAddr:
+          $ref: '#/components/schemas/SwarmAddress'
+        population:
+          type: integer
+        connected:
+          type: integer
+        timestamp:
+          type: string
+        nnLowWatermark:
+          type: integer
+        depth:
+          type: integer
+        bins:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              population:
+                type: integer
+              connected:
+                type: integer
+              disconnectedPeers:
+                type: object
+              connectedPeers:
+                type: object
+
+    DateTime:
+      type: string
+      format: date-time
+      pattern: '^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+\d{2}:\d{2})$'
+      example: "2020-06-11T11:26:42.6969797+02:00"
+
+    Duration:
+      description: Go time.Duration format 
+      type: string
+      example: "5.0018ms"
+
+    FileName:
+      type: string
+
+    Hash:
+      type: object
+      properties:
+        hash:
+          $ref: '#/components/schemas/SwarmAddress'
+   
+    MultiAddress:
+      type: string
+    
+    NewTagResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        split:
+          type: integer
+        seen:
+          type: integer
+        stored:
+          type: integer
+        sent:
+          type: integer
+        synced:
+          type: integer
+        uid:
+          $ref: '#/components/schemas/Uid'
+        anonymous:
+          type: boolean
+        name:
+          type: string
+        address:
+          type: string
+        startedAt:
+          $ref: '#/components/schemas/DateTime'
+    
+    P2PUnderlay:
+      type: string
+      example: "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAmTm17toLDaPYzRyjKn27iCB76yjKnJ5DjQXneFmifFvaX"
+      
+    Peers:
+      type: object
+      properties:
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+
+    PinningState:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/SwarmAddress'
+        pinCounter:
+          type: integer
+
+    ProblemDetails:
+      type: string
+    
+    ReferenceResponse:
+      type: object
+      properties:
+        reference:
+          $ref: '#/components/schemas/SwarmReference'
+
+    Response:
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+
+    RttMs:
+      type: object
+      properties:
+        rtt:
+          $ref: '#/components/schemas/Duration'
+
+    Status:
+      type: object
+      properties:
+        status:
+          type: string
+
+    SwarmAddress:
+      type: string
+      pattern: '^[A-Fa-f0-9]{64}$'
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+    
+    SwarmEncryptedReference:
+      type: string
+      pattern: '^[A-Fa-f0-9]{128}$'
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f2d2810619d29b5dbefd5d74abce25d58b81b251baddb9c3871cf0d6967deaae2"
+
+    SwarmReference:
+      oneOf:
+        - $ref: '#/components/schemas/SwarmAddress'
+        - $ref: '#/components/schemas/SwarmEncryptedReference'
+
+    TagName:
+      type: string
+
+    Uid:
+      type: integer
+
+  responses:
+    '400':
+      description: Bad request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    '500':
+      description: Internal Server Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    
+
