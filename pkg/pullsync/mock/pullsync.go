@@ -106,7 +106,7 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 	return s
 }
 
-func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error) {
+func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
 	isLive := to == math.MaxUint64
 
 	call := SyncCall{
@@ -129,9 +129,9 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 
 		select {
 		case <-p.quit:
-			return 0, context.Canceled
+			return 0, 1, context.Canceled
 		case <-ctx.Done():
-			return 0, ctx.Err()
+			return 0, 1, ctx.Err()
 		default:
 		}
 
@@ -150,12 +150,12 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 			if sr.block {
 				select {
 				case <-p.quit:
-					return 0, context.Canceled
+					return 0, 1, context.Canceled
 				case <-ctx.Done():
-					return 0, ctx.Err()
+					return 0, 1, ctx.Err()
 				}
 			}
-			return sr.topmost, nil
+			return sr.topmost, 0, nil
 		}
 		panic("not found")
 	}
@@ -163,7 +163,7 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 	if isLive && p.blockLiveSync {
 		// don't respond, wait for quit
 		<-p.quit
-		return 0, io.EOF
+		return 0, 1, io.EOF
 	}
 
 	if isLive && len(p.liveSyncReplies) > 0 {
@@ -175,7 +175,7 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		v := p.liveSyncReplies[p.liveSyncCalls]
 		p.liveSyncCalls++
 		p.mtx.Unlock()
-		return v, nil
+		return v, 1, nil
 	}
 
 	if p.autoReply {
@@ -184,9 +184,9 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		if t > to {
 			t = to
 		}
-		return t, nil
+		return t, 1, nil
 	}
-	return to, nil
+	return to, 1, nil
 }
 
 func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, error) {
@@ -206,6 +206,10 @@ func (p *PullSyncMock) SyncCalls(peer swarm.Address) (res []SyncCall) {
 		}
 	}
 	return res
+}
+
+func (p *PullSyncMock) CancelRuid(peer swarm.Address, ruid uint32) error {
+	return nil
 }
 
 func (p *PullSyncMock) LiveSyncCalls(peer swarm.Address) (res []SyncCall) {
