@@ -290,7 +290,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 		cursors, err := p.syncer.GetCursors(ctx, peer)
 		if err != nil {
 			if logMore {
-				p.logger.Debugf("error getting cursors: %v", err)
+				p.logger.Debugf("error getting cursors from peer %s: %v", peer.String(), err)
 			}
 			delete(p.syncPeers[po], peer.String())
 			return

@@ -249,7 +249,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Infof("successfully connected to peer %s", i.BzzAddress.ShortString())
+		s.logger.Infof("successfully connected to peer (inbound) %s", i.BzzAddress.ShortString())
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -347,7 +347,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("addr from p2p: %w", err)
 	}
 
 	if _, found := s.peers.overlay(info.ID); found {
@@ -364,7 +364,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.disconnect(info.ID)
-		return nil, err
+		return nil, fmt.Errorf("connect new stream: %w", err)
 	}
 
 	i, err := s.handshakeService.Handshake(NewStream(stream), stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
@@ -376,7 +376,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := helpers.FullClose(stream); err != nil {
 			_ = s.disconnect(info.ID)
-			return nil, err
+			return nil, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
 		return i.BzzAddress, nil
@@ -384,11 +384,11 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	if err := helpers.FullClose(stream); err != nil {
 		_ = s.disconnect(info.ID)
-		return nil, err
+		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Infof("successfully connected to peer %s", i.BzzAddress.ShortString())
+	s.logger.Infof("successfully connected to peer (outbound) %s", i.BzzAddress.ShortString())
 	return i.BzzAddress, nil
 }
 
@@ -428,7 +428,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 	streamlibp2p, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new stream for peerid: %w", err)
 	}
 
 	stream := newStream(streamlibp2p)
