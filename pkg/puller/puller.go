@@ -49,6 +49,7 @@ type Puller struct {
 	cursorsMtx sync.Mutex
 
 	quit chan struct{}
+	wg   sync.WaitGroup
 }
 
 func New(o Options) *Puller {
@@ -62,12 +63,13 @@ func New(o Options) *Puller {
 
 		syncPeers: make([]map[string]*syncPeer, bins),
 		quit:      make(chan struct{}),
+		wg:        sync.WaitGroup{},
 	}
 
 	for i := uint8(0); i < bins; i++ {
 		p.syncPeers[i] = make(map[string]*syncPeer)
 	}
-
+	p.wg.Add(1)
 	go p.manage()
 	return p
 }
@@ -78,11 +80,15 @@ type peer struct {
 }
 
 func (p *Puller) manage() {
+	defer p.wg.Done()
 	c, unsubscribe := p.topology.SubscribePeersChange()
 	defer unsubscribe()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	go func() {
+		<-p.quit
+		cancel()
+	}()
 	for {
 		select {
 		case <-c:
@@ -229,8 +235,10 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 				binCtx, cancel := context.WithCancel(ctx)
 				syncCtx.binCancelFuncs[bin] = cancel
 				if cur > 0 {
+					p.wg.Add(1)
 					go p.histSyncWorker(binCtx, peer, bin, cur)
 				}
+				p.wg.Add(1)
 				go p.liveSyncWorker(binCtx, peer, bin, cur)
 			}
 		}
@@ -263,8 +271,10 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 			binCtx, cancel := context.WithCancel(ctx)
 			syncCtx.binCancelFuncs[po] = cancel
 			if cur > 0 {
+				p.wg.Add(1)
 				go p.histSyncWorker(binCtx, peer, want, cur)
 			}
+			p.wg.Add(1)
 			go p.liveSyncWorker(binCtx, peer, want, cur)
 		}
 		for _, bin := range dontWant {
@@ -310,8 +320,10 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 		binCtx, cancel := context.WithCancel(ctx)
 		syncCtx.binCancelFuncs[po] = cancel
 		if cur > 0 {
+			p.wg.Add(1)
 			go p.histSyncWorker(binCtx, peer, bin, cur) // start historical
 		}
+		p.wg.Add(1)
 		go p.liveSyncWorker(binCtx, peer, bin, cur) // start live
 
 		return
@@ -324,14 +336,17 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 		binCtx, cancel := context.WithCancel(ctx)
 		syncCtx.binCancelFuncs[uint8(bin)] = cancel
 		if cur > 0 {
+			p.wg.Add(1)
 			go p.histSyncWorker(binCtx, peer, uint8(bin), cur) // start historical
 		}
 		// start live
+		p.wg.Add(1)
 		go p.liveSyncWorker(binCtx, peer, uint8(bin), cur) // start live
 	}
 }
 
 func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
+	defer p.wg.Done()
 	if logMore {
 		p.logger.Tracef("histSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
 	}
@@ -387,6 +402,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 }
 
 func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
+	defer p.wg.Done()
 	if logMore {
 		p.logger.Tracef("liveSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
 	}
@@ -431,6 +447,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 }
 
 func (p *Puller) Close() error {
+	p.logger.Info("puller shutting down")
 	close(p.quit)
 	p.syncPeersMtx.Lock()
 	defer p.syncPeersMtx.Unlock()
@@ -443,6 +460,16 @@ func (p *Puller) Close() error {
 			}
 			peer.Unlock()
 		}
+	}
+	cc := make(chan struct{})
+	go func() {
+		defer close(cc)
+		p.wg.Wait()
+	}()
+	select {
+	case <-cc:
+	case <-time.After(10 * time.Second):
+		p.logger.Warning("puller shutting down with running goroutines")
 	}
 
 	return nil
