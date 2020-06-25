@@ -16,6 +16,7 @@ message Ack {
     BzzAddress Address = 1;
     uint64 NetworkID = 2;
     bool Light = 3;
+    string WelcomeMessage  = 99;
 }
 
 message SynAck {

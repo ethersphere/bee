@@ -77,6 +77,7 @@ type Options struct {
 	DisableWS          bool
 	DisableQUIC        bool
 	NetworkID          uint64
+	WelcomeMessage     string
 	Bootnodes          []string
 	CORSAllowedOrigins []string
 	Logger             logging.Logger
@@ -153,13 +154,14 @@ func NewBee(o Options) (*Bee, error) {
 	signer := crypto.NewDefaultSigner(swarmPrivateKey)
 
 	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, o.Addr, libp2p.Options{
-		PrivateKey:  libp2pPrivateKey,
-		NATAddr:     o.NATAddr,
-		DisableWS:   o.DisableWS,
-		DisableQUIC: o.DisableQUIC,
-		Addressbook: addressbook,
-		Logger:      logger,
-		Tracer:      tracer,
+		PrivateKey:     libp2pPrivateKey,
+		NATAddr:        o.NATAddr,
+		DisableWS:      o.DisableWS,
+		DisableQUIC:    o.DisableQUIC,
+		Addressbook:    addressbook,
+		WelcomeMessage: o.WelcomeMessage,
+		Logger:         logger,
+		Tracer:         tracer,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
