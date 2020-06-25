@@ -15,11 +15,11 @@ message Ack {
 }
 
 message Ruid {
-  int32 Ruid = 1;
+  uint32 Ruid = 1;
 }
 
 message Cancel {
-  int32 Ruid = 1;
+  uint32 Ruid = 1;
 }
 
 message GetRange {

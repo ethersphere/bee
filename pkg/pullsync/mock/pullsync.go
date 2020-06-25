@@ -106,7 +106,7 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 	return s
 }
 
-func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid int32, err error) {
+func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
 	isLive := to == math.MaxUint64
 
 	call := SyncCall{
@@ -208,7 +208,7 @@ func (p *PullSyncMock) SyncCalls(peer swarm.Address) (res []SyncCall) {
 	return res
 }
 
-func (p *PullSyncMock) CancelRuid(peer swarm.Address, ruid int32) error {
+func (p *PullSyncMock) CancelRuid(peer swarm.Address, ruid uint32) error {
 	return nil
 }
 

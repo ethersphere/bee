@@ -6,10 +6,11 @@ package pullsync
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -24,18 +25,12 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 const (
 	protocolName     = "pullsync"
 	protocolVersion  = "1.0.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
-
-	logMore = false
 )
 
 var (
@@ -46,9 +41,9 @@ var (
 var maxPage = 50
 
 type Interface interface {
-	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid int32, err error)
+	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error)
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
-	CancelRuid(peer swarm.Address, ruid int32) error
+	CancelRuid(peer swarm.Address, ruid uint32) error
 }
 
 type Syncer struct {
@@ -57,7 +52,7 @@ type Syncer struct {
 	storage  pullstorage.Storer
 
 	ruidMtx sync.Mutex
-	ruidCtx map[int32]func()
+	ruidCtx map[uint32]func()
 
 	Interface
 	io.Closer
@@ -75,7 +70,7 @@ func New(o Options) *Syncer {
 		streamer: o.Streamer,
 		storage:  o.Storage,
 		logger:   o.Logger,
-		ruidCtx:  make(map[int32]func()),
+		ruidCtx:  make(map[uint32]func()),
 	}
 }
 
@@ -104,14 +99,20 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // It returns the BinID of highest chunk that was synced from the given interval.
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
-func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid int32, err error) {
+func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return 0, 0, fmt.Errorf("new stream: %w", err)
 	}
 
 	var ru pb.Ruid
-	ru.Ruid = int32(rand.Int())
+	b := make([]byte, 4)
+	_, err = rand.Read(b)
+	if err != nil {
+		return 0, 0, fmt.Errorf("crypto rand: %w", err)
+	}
+
+	ru.Ruid = binary.BigEndian.Uint32(b)
 	defer func() {
 		if err != nil {
 			_ = stream.FullClose()
@@ -360,7 +361,7 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	return nil
 }
 
-func (s *Syncer) CancelRuid(peer swarm.Address, ruid int32) error {
+func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) error {
 	stream, err := s.streamer.NewStream(context.Background(), peer, nil, protocolName, protocolVersion, cancelStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
