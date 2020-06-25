@@ -50,6 +50,8 @@ type Syncer struct {
 	streamer p2p.Streamer
 	logger   logging.Logger
 	storage  pullstorage.Storer
+	quit     chan struct{}
+	wg       sync.WaitGroup
 
 	ruidMtx sync.Mutex
 	ruidCtx map[uint32]func()
@@ -71,6 +73,8 @@ func New(o Options) *Syncer {
 		storage:  o.Storage,
 		logger:   o.Logger,
 		ruidCtx:  make(map[uint32]func()),
+		wg:       sync.WaitGroup{},
+		quit:     make(chan struct{}),
 	}
 }
 
@@ -113,15 +117,10 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	ru.Ruid = binary.BigEndian.Uint32(b)
-	defer func() {
-		if err != nil {
-			_ = stream.FullClose()
-			return
-		}
-		_ = stream.Close()
-	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
+
 	if err = w.WriteMsgWithContext(ctx, &ru); err != nil {
 		return 0, 0, fmt.Errorf("write ruid: %w", err)
 	}
@@ -220,11 +219,24 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 	s.ruidCtx[ru.Ruid] = cancel
 	s.ruidMtx.Unlock()
 	defer func() {
+		select {
+		case <-s.quit:
+			cancel()
+		case <-ctx.Done():
+		}
 		s.ruidMtx.Lock()
 		delete(s.ruidCtx, ru.Ruid)
 		s.ruidMtx.Unlock()
 	}()
-	defer cancel()
+
+	select {
+	case <-s.quit:
+		return nil
+	default:
+	}
+
+	s.wg.Add(1)
+	defer s.wg.Done()
 
 	var rn pb.GetRange
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
@@ -398,5 +410,17 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 func (s *Syncer) Close() error {
+	s.logger.Info("pull syncer shutting down")
+	close(s.quit)
+	cc := make(chan struct{})
+	go func() {
+		defer close(cc)
+		s.wg.Wait()
+	}()
+	select {
+	case <-cc:
+	case <-time.After(10 * time.Second):
+		s.logger.Warning("pull syncer shutting down with running goroutines")
+	}
 	return nil
 }

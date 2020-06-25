@@ -61,7 +61,7 @@ func TestOneSync(t *testing.T) {
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
 	})
 	defer puller.Close()
-
+	defer pullsync.Close()
 	runtime.Gosched()
 	time.Sleep(10 * time.Millisecond)
 
@@ -193,8 +193,8 @@ func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
 			})
-			defer pullsync.Close()
 			defer puller.Close()
+			defer pullsync.Close()
 			runtime.Gosched()
 			time.Sleep(10 * time.Millisecond)
 
@@ -246,8 +246,8 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
 			})
-			defer pullsync.Close()
 			defer puller.Close()
+			defer pullsync.Close()
 			runtime.Gosched()
 			time.Sleep(100 * time.Millisecond)
 
@@ -279,8 +279,8 @@ func TestPeerDisconnected(t *testing.T) {
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
 	})
 	t.Cleanup(func() {
-		p.Close()
 		pullsync.Close()
+		p.Close()
 	})
 
 	runtime.Gosched()
@@ -376,8 +376,8 @@ func TestDepthChange(t *testing.T) {
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
 			})
-			defer pullsync.Close()
 			defer puller.Close()
+			defer pullsync.Close()
 
 			runtime.Gosched()
 			time.Sleep(100 * time.Millisecond)
