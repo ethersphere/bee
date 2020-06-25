@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bitvector"
@@ -22,11 +24,18 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
 const (
 	protocolName     = "pullsync"
 	protocolVersion  = "1.0.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
+	cancelStreamName = "cancel"
+
+	logMore = false
 )
 
 var (
@@ -46,6 +55,9 @@ type Syncer struct {
 	logger   logging.Logger
 	storage  pullstorage.Storer
 
+	ruidMtx sync.Mutex
+	ruidCtx map[int32]func()
+
 	Interface
 	io.Closer
 }
@@ -62,6 +74,7 @@ func New(o Options) *Syncer {
 		streamer: o.Streamer,
 		storage:  o.Storage,
 		logger:   o.Logger,
+		ruidCtx:  make(map[int32]func()),
 	}
 }
 
@@ -78,6 +91,10 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 				Name:    cursorStreamName,
 				Handler: s.cursorHandler,
 			},
+			{
+				Name:    cancelStreamName,
+				Handler: s.cancelHandler,
+			},
 		},
 	}
 }
@@ -91,8 +108,14 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}
+	var ru pb.Ruid
+	ru.Ruid = int32(rand.Int())
 	defer func() {
 		if err != nil {
+			er := s.cancelRuid(peer, ru.Ruid)
+			if er != nil && logMore {
+				s.logger.Debugf("cancel ruid %d: %v", ru.Ruid, er)
+			}
 			_ = stream.FullClose()
 			return
 		}
@@ -184,6 +207,18 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
+
+	var ru pb.Ruid
+	if err := r.ReadMsgWithContext(ctx, &ru); err != nil {
+		return fmt.Errorf("send ruid: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	s.ruidMtx.Lock()
+	s.ruidCtx[ru.Ruid] = cancel
+	s.ruidMtx.Unlock()
+
+	defer cancel()
 
 	var rn pb.GetRange
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
@@ -317,6 +352,39 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("write ack: %w", err)
 	}
 
+	return nil
+}
+
+func (s *Syncer) cancelRuid(peer swarm.Address, ruid int32) error {
+	stream, err := s.streamer.NewStream(context.Background(), peer, nil, protocolName, protocolVersion, cancelStreamName)
+	if err != nil {
+		return fmt.Errorf("new stream: %w", err)
+	}
+
+	w := protobuf.NewWriter(stream)
+	defer stream.Close()
+
+	var c pb.Cancel
+	c.Ruid = ruid
+	if err := w.WriteMsgWithTimeout(5*time.Second, &c); err != nil {
+		return fmt.Errorf("send cancellation: %w", err)
+	}
+	return nil
+}
+
+// handler handles an incoming request to explicitly cancel a ruid
+func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+	r := protobuf.NewReader(stream)
+	defer stream.Close()
+
+	var c pb.Cancel
+	if err := r.ReadMsgWithContext(ctx, &c); err != nil {
+		return fmt.Errorf("read cancel: %w", err)
+	}
+
+	if cancel, ok := s.ruidCtx[c.Ruid]; ok {
+		cancel()
+	}
 	return nil
 }
 
