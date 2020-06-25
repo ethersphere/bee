@@ -7,6 +7,7 @@ package kademlia_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"sync/atomic"
@@ -160,7 +161,7 @@ func TestManage(t *testing.T) {
 		conns int32 // how many connect calls were made to the p2p mock
 
 		saturationVal  = false
-		saturationFunc = func(bin, depth uint8, peers *pslice.PSlice) bool {
+		saturationFunc = func(bin, depth uint8, peers, connected *pslice.PSlice) bool {
 			return saturationVal
 		}
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc)
@@ -240,7 +241,11 @@ func TestBinSaturation(t *testing.T) {
 	waitCounter(t, &conns, 1)
 
 	// this is in order to hit the `if size < 2` in the saturation func
+	fmt.Printf("disconnecting 1 peer %s", peers[2].String())
 	removeOne(kad, peers[2])
+
+	time.Sleep(1 * time.Second)
+	fmt.Println(kad.String())
 	waitCounter(t, &conns, 1)
 }
 
@@ -610,7 +615,7 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth uint8, peers, connected *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
 		base   = test.RandomAddress()                       // base address
 		ab     = addressbook.New(mockstate.NewStateStore()) // address book
