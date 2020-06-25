@@ -365,10 +365,16 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			}
 			return
 		}
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
+		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
 			if logMore {
 				p.logger.Debugf("histSyncWorker error syncing interval. peer %s, bin %d, cursor %d, err %v", peer.String(), bin, cur, err)
+			}
+			if ruid == 0 {
+				return
+			}
+			if err := p.syncer.CancelRuid(peer, ruid); err != nil && logMore {
+				p.logger.Debugf("histSyncWorker cancel ruid: %v", err)
 			}
 			return
 		}
@@ -399,10 +405,16 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		default:
 		}
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, from, math.MaxUint64)
+		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, math.MaxUint64)
 		if err != nil {
 			if logMore {
 				p.logger.Debugf("liveSyncWorker exit on sync error. peer %s bin %d from %d err %v", peer, bin, from, err)
+			}
+			if ruid == 0 {
+				return
+			}
+			if err := p.syncer.CancelRuid(peer, ruid); err != nil && logMore {
+				p.logger.Debugf("histSyncWorker cancel ruid: %v", err)
 			}
 			return
 		}
