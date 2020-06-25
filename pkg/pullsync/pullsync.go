@@ -218,12 +218,15 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 	s.ruidMtx.Lock()
 	s.ruidCtx[ru.Ruid] = cancel
 	s.ruidMtx.Unlock()
-	defer func() {
+	cc := make(chan struct{})
+	defer close(cc)
+	go func() {
 		select {
 		case <-s.quit:
-			cancel()
 		case <-ctx.Done():
+		case <-cc:
 		}
+		cancel()
 		s.ruidMtx.Lock()
 		delete(s.ruidCtx, ru.Ruid)
 		s.ruidMtx.Unlock()
