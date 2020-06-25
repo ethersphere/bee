@@ -14,11 +14,15 @@ externalDocs:
   url: 'https://docs.swarm.eth'
 
 servers:
-  - url: '{apiRoot}/v1/'
+  - url: 'http://{apiRoot}:{port}'
     variables:
       apiRoot:
-        default: 'http://localhost:6060'
-        description: Base address of the local Swarm node debug API
+        default: 'localhost'
+        description: Base address of the local bee node debug API
+      port:
+        default: 6060
+        description: Service port provided in bee node config
+
 paths:  
   '/addresses':
     get:

@@ -13,17 +13,23 @@ externalDocs:
 
 servers:
 
-  - url: '{apiRoot}/v1'
-    variables:
-        apiRoot:
-          default: 'http://localhost:8080'
-          description: Base address of the local bee node main API
-
-  - url: '{apiRoot}'
+  - url: 'http://{apiRoot}:{port}/v1'
     variables:
       apiRoot:
-        default: 'http://localhost:8080'
+        default: 'localhost'
         description: Base address of the local bee node main API
+      port:
+        default: 8080
+        description: Service port provided in bee node config
+
+  - url: 'http://{apiRoot}:{port}'
+    variables:
+      apiRoot:
+        default: 'localhost'
+        description: Base address of the local bee node main API
+      port:
+        default: 8080
+        description: Service port provided in bee node config
   
 paths:
   '/bytes':
