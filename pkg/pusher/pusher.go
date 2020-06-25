@@ -85,7 +85,7 @@ LOOP:
 			}
 
 			// postpone a retry only after we've finished processing everything in index
-			timer.Reset(1 * time.Second)
+			timer.Reset(retryInterval)
 			chunksInBatch++
 			s.metrics.TotalChunksToBeSentCounter.Inc()
 			select {
@@ -107,8 +107,12 @@ LOOP:
 			mtx.Unlock()
 
 			go func(ctx context.Context, ch swarm.Chunk) {
+				var err error
 				defer func() {
-					s.logger.Tracef("pusher pushed chunk %s", ch.Address().String())
+					if err == nil {
+						// only print this if there was no error while sending the chunk
+						s.logger.Tracef("pusher pushed chunk %s", ch.Address().String())
+					}
 					mtx.Lock()
 					delete(inflight, ch.Address().String())
 					mtx.Unlock()
@@ -116,7 +120,7 @@ LOOP:
 				}()
 				// Later when we process receipt, get the receipt and process it
 				// for now ignoring the receipt and checking only for error
-				_, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
+				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
 					if !errors.Is(err, topology.ErrNotFound) {
 						s.logger.Errorf("pusher: error while sending chunk or receiving receipt: %v", err)

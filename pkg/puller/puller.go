@@ -24,6 +24,7 @@ var (
 
 	// how many peers per bin do we want to sync with outside of depth
 	shallowBinPeers = 2
+	logMore         = false // enable this to get more logging
 )
 
 type Options struct {
@@ -176,7 +177,9 @@ func (p *Puller) manage() {
 }
 
 func (p *Puller) disconnectPeer(ctx context.Context, peer swarm.Address, po uint8) {
-	p.logger.Debugf("puller disconnect cleanup peer %s po %d", peer, po)
+	if logMore {
+		p.logger.Debugf("puller disconnect cleanup peer %s po %d", peer, po)
+	}
 	syncCtx := p.syncPeers[po][peer.String()] // disconnectPeer is called under lock, this is safe
 
 	syncCtx.Lock()
@@ -190,7 +193,9 @@ func (p *Puller) disconnectPeer(ctx context.Context, peer swarm.Address, po uint
 }
 
 func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
-	p.logger.Debugf("puller recalculating peer %s po %d depth %d", peer, po, d)
+	if logMore {
+		p.logger.Debugf("puller recalculating peer %s po %d depth %d", peer, po, d)
+	}
 	syncCtx := p.syncPeers[po][peer.String()] // recalcPeer is called under lock, this is safe
 
 	syncCtx.Lock()
@@ -284,7 +289,9 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 	if !ok {
 		cursors, err := p.syncer.GetCursors(ctx, peer)
 		if err != nil {
-			p.logger.Errorf("error getting cursors: %v", err)
+			if logMore {
+				p.logger.Debugf("error getting cursors from peer %s: %v", peer.String(), err)
+			}
 			delete(p.syncPeers[po], peer.String())
 			return
 			// remove from syncing peers list, trigger channel to find some other peer
@@ -325,14 +332,20 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 }
 
 func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	p.logger.Tracef("histSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
+	if logMore {
+		p.logger.Tracef("histSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
+	}
 	for {
 		select {
 		case <-p.quit:
-			p.logger.Tracef("histSyncWorker quitting on shutdown. peer %s bin %d cur %d", peer, bin, cur)
+			if logMore {
+				p.logger.Tracef("histSyncWorker quitting on shutdown. peer %s bin %d cur %d", peer, bin, cur)
+			}
 			return
 		case <-ctx.Done():
-			p.logger.Tracef("histSyncWorker context cancelled. peer %s bin %d cur %d", peer, bin, cur)
+			if logMore {
+				p.logger.Tracef("histSyncWorker context cancelled. peer %s bin %d cur %d", peer, bin, cur)
+			}
 			return
 		default:
 		}
@@ -347,12 +360,16 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			continue
 		}
 		if s > cur {
-			p.logger.Tracef("histSyncWorker finished syncing bin %d, cursor %d", bin, cur)
+			if logMore {
+				p.logger.Tracef("histSyncWorker finished syncing bin %d, cursor %d", bin, cur)
+			}
 			return
 		}
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
-			p.logger.Debugf("histSyncWorker error syncing interval. peer %s, bin %d, cursor %d, err %v", peer.String(), bin, cur, err)
+			if logMore {
+				p.logger.Debugf("histSyncWorker error syncing interval. peer %s, bin %d, cursor %d, err %v", peer.String(), bin, cur, err)
+			}
 			return
 		}
 		err = p.addPeerInterval(peer, bin, s, top)
@@ -364,21 +381,29 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 }
 
 func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	p.logger.Tracef("liveSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
+	if logMore {
+		p.logger.Tracef("liveSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
+	}
 	from := cur + 1
 	for {
 		select {
 		case <-p.quit:
-			p.logger.Tracef("liveSyncWorker quit on shutdown. peer %s bin %d cur %d", peer, bin, cur)
+			if logMore {
+				p.logger.Tracef("liveSyncWorker quit on shutdown. peer %s bin %d cur %d", peer, bin, cur)
+			}
 			return
 		case <-ctx.Done():
-			p.logger.Tracef("liveSyncWorker context cancelled. peer %s bin %d cur %d", peer, bin, cur)
+			if logMore {
+				p.logger.Tracef("liveSyncWorker context cancelled. peer %s bin %d cur %d", peer, bin, cur)
+			}
 			return
 		default:
 		}
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, from, math.MaxUint64)
 		if err != nil {
-			p.logger.Debugf("liveSyncWorker exit on sync error. peer %s bin %d from %d err %v", peer, bin, from, err)
+			if logMore {
+				p.logger.Debugf("liveSyncWorker exit on sync error. peer %s bin %d from %d err %v", peer, bin, from, err)
+			}
 			return
 		}
 		if top == 0 {

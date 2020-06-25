@@ -29,7 +29,9 @@ const (
 
 var (
 	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
+	errOverlayMismatch         = errors.New("overlay mismatch")
 	timeToRetry                = 60 * time.Second
+	shortRetry                 = 30 * time.Second
 )
 
 type binSaturationFunc func(bin, depth uint8, peers *pslice.PSlice) bool
@@ -113,6 +115,12 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
+		case <-time.After(30 * time.Second):
+			// periodically try to connect to new peers
+			select {
+			case k.manageC <- struct{}{}:
+			default:
+			}
 		case <-k.manageC:
 			start = time.Now()
 
@@ -149,17 +157,23 @@ func (k *Kad) manage() {
 
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 				if err != nil {
+					if errors.Is(err, errOverlayMismatch) {
+						k.knownPeers.Remove(peer, po)
+						if err := k.addressBook.Remove(peer); err != nil {
+							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
+						}
+					}
 					k.logger.Debugf("error connecting to peer from kademlia %s: %v", bzzAddr.String(), err)
-					k.logger.Errorf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
+					k.logger.Warningf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
 					// continue to next
 					return false, false, nil
 				}
 
-				k.connectedPeers.Add(peer, po)
-
 				k.waitNextMu.Lock()
-				delete(k.waitNext, peer.String())
+				k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
 				k.waitNextMu.Unlock()
+
+				k.connectedPeers.Add(peer, po)
 
 				k.depthMu.Lock()
 				k.depth = k.recalcDepth()
@@ -253,7 +267,7 @@ func (k *Kad) recalcDepth() uint8 {
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err := k.p2p.Connect(ctx, ma)
+	i, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			return nil
@@ -280,12 +294,19 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 			}
+			k.logger.Debugf("kademlia pruned peer from address book %s", peer.String())
 		} else {
 			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
 		}
 
 		k.waitNextMu.Unlock()
 		return err
+	}
+
+	if !i.Overlay.Equal(peer) {
+		_ = k.p2p.Disconnect(peer)
+		_ = k.p2p.Disconnect(i.Overlay)
+		return errOverlayMismatch
 	}
 
 	return k.announce(ctx, peer)

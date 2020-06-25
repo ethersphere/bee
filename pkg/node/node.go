@@ -78,6 +78,7 @@ type Options struct {
 	DisableQUIC        bool
 	NetworkID          uint64
 	Bootnodes          []string
+	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	TracingEnabled     bool
 	TracingEndpoint    string
@@ -291,10 +292,11 @@ func NewBee(o Options) (*Bee, error) {
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Tags:   tagger,
-			Storer: ns,
-			Logger: logger,
-			Tracer: tracer,
+			Tags:               tag,
+			Storer:             ns,
+			CORSAllowedOrigins: o.CORSAllowedOrigins,
+			Logger:             logger,
+			Tracer:             tracer,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
@@ -381,7 +383,7 @@ func NewBee(o Options) (*Bee, error) {
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				logger.Debugf("topology add peer fail %s: %v", overlay, err)
-				logger.Errorf("topology add peer %s", overlay)
+				logger.Warningf("topology add peer %s", overlay)
 				return
 			}
 
@@ -400,7 +402,7 @@ func NewBee(o Options) (*Bee, error) {
 				addr, err := ma.NewMultiaddr(a)
 				if err != nil {
 					logger.Debugf("multiaddress fail %s: %v", a, err)
-					logger.Errorf("connect to bootnode %s", a)
+					logger.Warningf("connect to bootnode %s", a)
 					return
 				}
 				var count int
@@ -410,7 +412,7 @@ func NewBee(o Options) (*Bee, error) {
 					if err != nil {
 						if !errors.Is(err, p2p.ErrAlreadyConnected) {
 							logger.Debugf("connect fail %s: %v", addr, err)
-							logger.Errorf("connect to bootnode %s", addr)
+							logger.Warningf("connect to bootnode %s", addr)
 						}
 						return false, nil
 					}
@@ -420,14 +422,14 @@ func NewBee(o Options) (*Bee, error) {
 					if err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
 						logger.Debugf("addressbook error persisting %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", addr)
+						logger.Warningf("connect to bootnode %s", addr)
 						return false, nil
 					}
 
 					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
 						logger.Debugf("topology connected fail %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", addr)
+						logger.Warningf("connect to bootnode %s", addr)
 						return false, nil
 					}
 					count++
@@ -435,7 +437,7 @@ func NewBee(o Options) (*Bee, error) {
 					return count > 3, nil
 				}); err != nil {
 					logger.Debugf("discover fail %s: %v", a, err)
-					logger.Errorf("discover to bootnode %s", a)
+					logger.Warningf("discover to bootnode %s", a)
 					return
 				}
 			}(a)
