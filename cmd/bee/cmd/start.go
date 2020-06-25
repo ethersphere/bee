@@ -71,6 +71,22 @@ func (c *command) initStartCmd() (err error) {
 			default:
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
+			bee := `
+Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
+                \     /                
+            \    o ^ o    /            
+              \ (     ) /              
+   ____________(%%%%%%%)____________   
+  (     /   /  )%%%%%%%(  \   \     )  
+  (___/___/__/           \__\___\___)  
+     (     /  /(%%%%%%%)\  \     )     
+      (__/___/ (%%%%%%%) \___\__)      
+              /(       )\              
+            /   (%%%%%)   \            
+                 (%%%)                 
+                   !                   `
+
+			fmt.Println(string(bee))
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameEnableDebugAPI) {
