@@ -86,7 +86,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
                  (%%%)                 
                    !                   `
 
-			fmt.Println(string(bee))
+			fmt.Println(bee)
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameEnableDebugAPI) {
