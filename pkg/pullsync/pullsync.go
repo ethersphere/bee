@@ -11,8 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -427,15 +425,6 @@ func (s *Syncer) Close() error {
 	case <-cc:
 	case <-time.After(10 * time.Second):
 		s.logger.Warning("pull syncer shutting down with running goroutines")
-		f, _ := ioutil.TempFile("", "goroutine_dump")
-		stat, _ := f.Stat()
-		s.logger.Warningf("puller shutting down with running goroutines, file %s", stat.Name())
-
-		pprof.Lookup("goroutine").WriteTo(f, 2)
-
-		_ = f.Sync()
-		_ = f.Close()
-
 	}
 	return nil
 }
