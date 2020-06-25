@@ -143,12 +143,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 	receiptRTTTimer := time.Now()
 
-	//TODO:  Most of the times now you wont get a tag because
-	// /bytes and /files API does not implement tags
-	// SO dont print any logs or returning error, if you dont find them
-	t, _ := ps.tagger.Get(chunk.TagID())
-
-	receipt, err := ps.receiveReceipt(rc, t)
+	receipt, err := ps.receiveReceipt(rc)
 	if err != nil {
 		return fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}
@@ -195,16 +190,6 @@ func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err
 	}
 	ps.metrics.SendChunkTimer.Observe(time.Since(startTimer).Seconds())
 	ps.metrics.ChunksSentCounter.Inc()
-
-	//  if you manage to get a tag, just increment the respective counter
-	t, err := ps.tagger.Get(chunk.TagID())
-	if err == nil && t != nil {
-		// TODO: most of the times now you wont get a tag because
-		// /bytes and /files API does not implement tags
-		// SO dont print any logs or returning error, if you dont find them
-		// if you find a tag, increment the respective counter
-		t.Inc(tags.StateSent)
-	}
 	return nil
 }
 
@@ -217,17 +202,12 @@ func (ps *PushSync) sendReceipt(w protobuf.Writer, receipt *pb.Receipt) (err err
 	return nil
 }
 
-func (ps *PushSync) receiveReceipt(r protobuf.Reader, t *tags.Tag) (receipt pb.Receipt, err error) {
+func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err error) {
 	if err := r.ReadMsg(&receipt); err != nil {
 		ps.metrics.ReceiveReceiptErrorCounter.Inc()
 		return receipt, err
 	}
 	ps.metrics.ReceiptsReceivedCounter.Inc()
-
-	// increment the tag only if it is valid
-	if t != nil {
-		t.Inc(tags.StateSynced)
-	}
 	return receipt, nil
 }
 
@@ -256,14 +236,14 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	if err := ps.sendChunkDelivery(w, ch); err != nil {
 		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
+	//  if you manage to get a tag, just increment the respective counter
+	t, err := ps.tagger.Get(ch.TagID())
+	if err == nil && t != nil {
+		t.Inc(tags.StateSent)
+	}
+
 	receiptRTTTimer := time.Now()
-
-	// most of the times now you wont get a tag because
-	// /bytes and /files API does not implement tags
-	// SO dont print any logs or returning error, if you dont find them
-	t, _ := ps.tagger.Get(ch.TagID())
-
-	receipt, err := ps.receiveReceipt(r, t)
+	receipt, err := ps.receiveReceipt(r)
 	if err != nil {
 		return nil, fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}
@@ -273,6 +253,11 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
 		return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
+	}
+
+	// If we get the receipt and have a valid tag, set it as synced
+	if t != nil {
+		t.Inc(tags.StateSynced)
 	}
 
 	rec := &Receipt{
