@@ -33,6 +33,9 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/puller"
+	"github.com/ethersphere/bee/pkg/pullsync"
+	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -59,6 +62,8 @@ type Bee struct {
 	localstoreCloser io.Closer
 	topologyCloser   io.Closer
 	pusherCloser     io.Closer
+	pullerCloser     io.Closer
+	pullSyncCloser   io.Closer
 }
 
 type Options struct {
@@ -74,6 +79,7 @@ type Options struct {
 	NetworkID          uint64
 	WelcomeMessage     string
 	Bootnodes          []string
+	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	TracingEnabled     bool
 	TracingEndpoint    string
@@ -112,7 +118,10 @@ func NewBee(o Options) (*Bee, error) {
 	if err != nil {
 		return nil, fmt.Errorf("swarm key: %w", err)
 	}
-	address := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, o.NetworkID)
+	address, err := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, o.NetworkID)
+	if err != nil {
+		return nil, err
+	}
 	if created {
 		logger.Infof("new swarm network address created: %s", address)
 	} else {
@@ -260,14 +269,36 @@ func NewBee(o Options) (*Bee, error) {
 	})
 	b.pusherCloser = pushSyncPusher
 
+	pullStorage := pullstorage.New(storer)
+
+	pullSync := pullsync.New(pullsync.Options{
+		Streamer: p2ps,
+		Storage:  pullStorage,
+		Logger:   logger,
+	})
+	b.pullSyncCloser = pullSync
+
+	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {
+		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	}
+
+	puller := puller.New(puller.Options{
+		StateStore: stateStore,
+		Topology:   topologyDriver,
+		PullSync:   pullSync,
+		Logger:     logger,
+	})
+	b.pullerCloser = puller
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Tags:   tag,
-			Storer: ns,
-			Logger: logger,
-			Tracer: tracer,
+			Tags:               tag,
+			Storer:             ns,
+			CORSAllowedOrigins: o.CORSAllowedOrigins,
+			Logger:             logger,
+			Tracer:             tracer,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
@@ -354,7 +385,7 @@ func NewBee(o Options) (*Bee, error) {
 			defer wg.Done()
 			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
 				logger.Debugf("topology add peer fail %s: %v", overlay, err)
-				logger.Errorf("topology add peer %s", overlay)
+				logger.Warningf("topology add peer %s", overlay)
 				return
 			}
 
@@ -373,7 +404,7 @@ func NewBee(o Options) (*Bee, error) {
 				addr, err := ma.NewMultiaddr(a)
 				if err != nil {
 					logger.Debugf("multiaddress fail %s: %v", a, err)
-					logger.Errorf("connect to bootnode %s", a)
+					logger.Warningf("connect to bootnode %s", a)
 					return
 				}
 				var count int
@@ -383,7 +414,7 @@ func NewBee(o Options) (*Bee, error) {
 					if err != nil {
 						if !errors.Is(err, p2p.ErrAlreadyConnected) {
 							logger.Debugf("connect fail %s: %v", addr, err)
-							logger.Errorf("connect to bootnode %s", addr)
+							logger.Warningf("connect to bootnode %s", addr)
 						}
 						return false, nil
 					}
@@ -393,14 +424,14 @@ func NewBee(o Options) (*Bee, error) {
 					if err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
 						logger.Debugf("addressbook error persisting %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", addr)
+						logger.Warningf("connect to bootnode %s", addr)
 						return false, nil
 					}
 
 					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
 						_ = p2ps.Disconnect(bzzAddr.Overlay)
 						logger.Debugf("topology connected fail %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", addr)
+						logger.Warningf("connect to bootnode %s", addr)
 						return false, nil
 					}
 					count++
@@ -408,7 +439,7 @@ func NewBee(o Options) (*Bee, error) {
 					return count > 3, nil
 				}); err != nil {
 					logger.Debugf("discover fail %s: %v", a, err)
-					logger.Errorf("discover to bootnode %s", a)
+					logger.Warningf("discover to bootnode %s", a)
 					return
 				}
 			}(a)
@@ -446,6 +477,14 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.pusherCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("pusher: %w", err))
+	}
+
+	if err := b.pullerCloser.Close(); err != nil {
+		return fmt.Errorf("puller: %w", err)
+	}
+
+	if err := b.pullSyncCloser.Close(); err != nil {
+		return fmt.Errorf("pull sync: %w", err)
 	}
 
 	b.p2pCancel()

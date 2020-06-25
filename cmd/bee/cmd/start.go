@@ -40,6 +40,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameBootnodes          = "bootnode"
 		optionNameNetworkID          = "network-id"
 		optionWelcomeMessage         = "welcome-message"
+		optionCORSAllowedOrigins     = "cors-allowed-origins"
 		optionNameTracingEnabled     = "tracing"
 		optionNameTracingEndpoint    = "tracing-endpoint"
 		optionNameTracingServiceName = "tracing-service-name"
@@ -107,6 +108,7 @@ func (c *command) initStartCmd() (err error) {
 				NetworkID:          c.config.GetUint64(optionNameNetworkID),
 				WelcomeMessage:     c.config.GetString(optionWelcomeMessage),
 				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
+				CORSAllowedOrigins: c.config.GetStringSlice(optionCORSAllowedOrigins),
 				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:    c.config.GetString(optionNameTracingEndpoint),
 				TracingServiceName: c.config.GetString(optionNameTracingServiceName),
@@ -168,6 +170,7 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().Bool(optionNameEnableDebugAPI, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
+	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")

@@ -57,7 +57,10 @@ func TestBroadcastPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 		signer := crypto.NewDefaultSigner(pk)
-		overlay := crypto.NewOverlayAddress(pk.PublicKey, networkID)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID)
 		if err != nil {
 			t.Fatal(err)

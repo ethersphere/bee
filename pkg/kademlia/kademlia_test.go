@@ -45,8 +45,7 @@ var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cT
 // tested in TestManage below.
 func TestNeighborhoodDepth(t *testing.T) {
 	var (
-		conns int32 // how many connect calls were made to the p2p mock
-
+		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
 		peers                    []swarm.Address
 		binEight                 []swarm.Address
@@ -443,7 +442,7 @@ func TestClosestPeer(t *testing.T) {
 	ab := addressbook.New(mockstate.NewStateStore())
 	var conns int32
 
-	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2pMock(&conns, nil), Logger: logger})
+	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2pMock(ab, &conns, nil), Logger: logger})
 	defer kad.Close()
 
 	pk, _ := crypto.GenerateSecp256k1Key()
@@ -501,6 +500,104 @@ func TestClosestPeer(t *testing.T) {
 	}
 }
 
+func TestKademlia_SubscribePeersChange(t *testing.T) {
+
+	testSignal := func(t *testing.T, k *kademlia.Kad, c <-chan struct{}) {
+		t.Helper()
+
+		select {
+		case _, ok := <-c:
+			if !ok {
+				t.Error("closed signal channel")
+			}
+		case <-time.After(1 * time.Second):
+			t.Error("timeout")
+		}
+	}
+
+	t.Run("single subscription", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		addr := test.RandomAddressAt(base, 9)
+		addOne(t, sg, kad, ab, addr)
+
+		testSignal(t, kad, c)
+	})
+
+	t.Run("single subscription, remove peer", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		addr := test.RandomAddressAt(base, 9)
+		addOne(t, sg, kad, ab, addr)
+
+		testSignal(t, kad, c)
+
+		removeOne(kad, addr)
+		testSignal(t, kad, c)
+	})
+
+	t.Run("multiple subscriptions", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c1, u1 := kad.SubscribePeersChange()
+		defer u1()
+
+		c2, u2 := kad.SubscribePeersChange()
+		defer u2()
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+		testSignal(t, kad, c1)
+		testSignal(t, kad, c2)
+	})
+
+	t.Run("multiple changes", func(t *testing.T) {
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+
+		testSignal(t, kad, c)
+
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, sg, kad, ab, addr)
+		}
+
+		testSignal(t, kad, c)
+	})
+
+	t.Run("no depth change", func(t *testing.T) {
+		_, kad, _, _, _ := newTestKademlia(nil, nil, nil)
+
+		c, u := kad.SubscribePeersChange()
+		defer u()
+
+		select {
+		case _, ok := <-c:
+			if !ok {
+				t.Error("closed signal channel")
+			}
+			t.Error("signal received")
+		case <-time.After(1 * time.Second):
+			// all fine
+		}
+	})
+}
+
 func TestMarshal(t *testing.T) {
 	var (
 		_, kad, ab, _, signer = newTestKademlia(nil, nil, nil)
@@ -515,10 +612,10 @@ func TestMarshal(t *testing.T) {
 
 func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
-		base   = test.RandomAddress() // base address
-		p2p    = p2pMock(connCounter, failedConnCounter)
+		base   = test.RandomAddress()                       // base address
+		ab     = addressbook.New(mockstate.NewStateStore()) // address book
+		p2p    = p2pMock(ab, connCounter, failedConnCounter)
 		logger = logging.New(ioutil.Discard, 0)                                                                                            // logger
-		ab     = addressbook.New(mockstate.NewStateStore())                                                                                // address book
 		disc   = mock.NewDiscovery()                                                                                                       // mock discovery
 		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f}) // kademlia instance
 	)
@@ -527,7 +624,7 @@ func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth ui
 	return base, kad, ab, disc, beeCrypto.NewDefaultSigner(pk)
 }
 
-func p2pMock(counter, failedCounter *int32) p2p.Service {
+func p2pMock(ab addressbook.Interface, counter, failedCounter *int32) p2p.Service {
 	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 		if addr.Equal(nonConnectableAddress) {
 			_ = atomic.AddInt32(failedCounter, 1)
@@ -536,6 +633,18 @@ func p2pMock(counter, failedCounter *int32) p2p.Service {
 		if counter != nil {
 			_ = atomic.AddInt32(counter, 1)
 		}
+
+		addresses, err := ab.Addresses()
+		if err != nil {
+			return nil, errors.New("could not fetch addresbook addresses")
+		}
+
+		for _, a := range addresses {
+			if a.Underlay.Equal(addr) {
+				return &a, nil
+			}
+		}
+
 		return nil, nil
 	}))
 

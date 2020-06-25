@@ -159,7 +159,7 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", remoteBzzAddress.Overlay.String())
+	s.logger.Tracef("handshake finished for peer (outbound) %s", remoteBzzAddress.Overlay.String())
 	if len(resp.Ack.WelcomeMessage) > 0 {
 		s.logger.Infof("peer [%s] greets you: %s", remoteBzzAddress.Overlay.String(), resp.Ack.WelcomeMessage)
 	}
@@ -244,7 +244,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 		return nil, err
 	}
 
-	s.logger.Tracef("handshake finished for peer %s", remoteBzzAddress.Overlay.String())
+	s.logger.Tracef("handshake finished for peer (inbound) %s", remoteBzzAddress.Overlay.String())
 
 	return &Info{
 		BzzAddress: remoteBzzAddress,

@@ -29,7 +29,9 @@ const (
 
 var (
 	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
+	errOverlayMismatch         = errors.New("overlay mismatch")
 	timeToRetry                = 60 * time.Second
+	shortRetry                 = 30 * time.Second
 )
 
 type binSaturationFunc func(bin, depth uint8, peers *pslice.PSlice) bool
@@ -58,9 +60,11 @@ type Kad struct {
 	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
 	waitNext       map[string]retryInfo  // sanction connections to a peer, key is overlay string and value is a retry information
 	waitNextMu     sync.Mutex            // synchronize map
-	logger         logging.Logger        // logger
-	quit           chan struct{}         // quit channel
-	done           chan struct{}         // signal that `manage` has quit
+	peerSig        []chan struct{}
+	peerSigMtx     sync.Mutex
+	logger         logging.Logger // logger
+	quit           chan struct{}  // quit channel
+	done           chan struct{}  // signal that `manage` has quit
 }
 
 type retryInfo struct {
@@ -111,6 +115,12 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
+		case <-time.After(30 * time.Second):
+			// periodically try to connect to new peers
+			select {
+			case k.manageC <- struct{}{}:
+			default:
+			}
 		case <-k.manageC:
 			start = time.Now()
 
@@ -147,23 +157,31 @@ func (k *Kad) manage() {
 
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 				if err != nil {
+					if errors.Is(err, errOverlayMismatch) {
+						k.knownPeers.Remove(peer, po)
+						if err := k.addressBook.Remove(peer); err != nil {
+							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
+						}
+					}
 					k.logger.Debugf("error connecting to peer from kademlia %s: %v", bzzAddr.String(), err)
-					k.logger.Errorf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
+					k.logger.Warningf("connecting to peer %s: %v", bzzAddr.ShortString(), err)
 					// continue to next
 					return false, false, nil
 				}
 
-				k.connectedPeers.Add(peer, po)
-
 				k.waitNextMu.Lock()
-				delete(k.waitNext, peer.String())
+				k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
 				k.waitNextMu.Unlock()
+
+				k.connectedPeers.Add(peer, po)
 
 				k.depthMu.Lock()
 				k.depth = k.recalcDepth()
 				k.depthMu.Unlock()
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
+
+				k.notifyPeerSig()
 
 				select {
 				case <-k.quit:
@@ -247,7 +265,9 @@ func (k *Kad) recalcDepth() uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
-	_, err := k.p2p.Connect(ctx, ma)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	i, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			return nil
@@ -274,12 +294,19 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 			}
+			k.logger.Debugf("kademlia pruned peer from address book %s", peer.String())
 		} else {
 			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
 		}
 
 		k.waitNextMu.Unlock()
 		return err
+	}
+
+	if !i.Overlay.Equal(peer) {
+		_ = k.p2p.Disconnect(peer)
+		_ = k.p2p.Disconnect(i.Overlay)
+		return errOverlayMismatch
 	}
 
 	return k.announce(ctx, peer)
@@ -335,6 +362,10 @@ func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
+	if err := k.announce(ctx, addr); err != nil {
+		return err
+	}
+
 	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
@@ -347,11 +378,14 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	k.depth = k.recalcDepth()
 	k.depthMu.Unlock()
 
+	k.notifyPeerSig()
+
 	select {
 	case k.manageC <- struct{}{}:
 	default:
 	}
-	return k.announce(ctx, addr)
+
+	return nil
 }
 
 // Disconnected is called when peer disconnects.
@@ -369,6 +403,22 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	select {
 	case k.manageC <- struct{}{}:
 	default:
+	}
+	k.notifyPeerSig()
+}
+
+func (k *Kad) notifyPeerSig() {
+	k.peerSigMtx.Lock()
+	defer k.peerSigMtx.Unlock()
+
+	for _, c := range k.peerSig {
+		// Every peerSig channel has a buffer capacity of 1,
+		// so every receiver will get the signal even if the
+		// select statement has the default case to avoid blocking.
+		select {
+		case c <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -406,6 +456,44 @@ func (k *Kad) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 	}
 
 	return closest, nil
+}
+
+// EachPeer iterates from closest bin to farthest
+func (k *Kad) EachPeer(f topology.EachPeerFunc) error {
+	return k.connectedPeers.EachBin(f)
+}
+
+// EachPeerRev iterates from farthest bin to closest
+func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
+	return k.connectedPeers.EachBinRev(f)
+}
+
+// SubscribePeersChange returns the channel that signals when the connected peers
+// set changes. Returned function is safe to be called multiple times.
+func (k *Kad) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+	channel := make(chan struct{}, 1)
+	var closeOnce sync.Once
+
+	k.peerSigMtx.Lock()
+	defer k.peerSigMtx.Unlock()
+
+	k.peerSig = append(k.peerSig, channel)
+
+	unsubscribe = func() {
+		k.peerSigMtx.Lock()
+		defer k.peerSigMtx.Unlock()
+
+		for i, c := range k.peerSig {
+			if c == channel {
+				k.peerSig = append(k.peerSig[:i], k.peerSig[i+1:]...)
+				break
+			}
+		}
+
+		closeOnce.Do(func() { close(channel) })
+	}
+
+	return channel, unsubscribe
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.

@@ -1,0 +1,44 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package pullsync;
+
+option go_package = "pb";
+
+message Syn {}
+
+message Ack {
+  repeated uint64 Cursors = 1;
+}
+
+message Ruid {
+  uint32 Ruid = 1;
+}
+
+message Cancel {
+  uint32 Ruid = 1;
+}
+
+message GetRange {
+  int32 Bin = 1;
+  uint64 From = 2;
+  uint64 To = 3;
+}
+
+message Offer {
+  uint64 Topmost = 1;
+  bytes Hashes = 2;
+}
+
+message Want {
+  bytes BitVector = 1;
+}
+
+message Delivery {
+  bytes Address = 1;
+  bytes Data = 2;
+}
+
