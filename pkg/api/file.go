@@ -296,6 +296,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename))
 	w.Header().Set("Content-Type", metaData.MimeType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
+	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
 	if _, err = io.Copy(w, bpr); err != nil {
 		s.Logger.Debugf("file download: data read %s: %v", addr, err)
 		s.Logger.Errorf("file download: data read %s", addr)
