@@ -219,11 +219,15 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 	s.ruidCtx[ru.Ruid] = cancel
 	s.ruidMtx.Unlock()
 	defer func() {
+		select {
+		case <-s.quit:
+			cancel()
+		case <-ctx.Done():
+		}
 		s.ruidMtx.Lock()
 		delete(s.ruidCtx, ru.Ruid)
 		s.ruidMtx.Unlock()
 	}()
-	defer cancel()
 
 	select {
 	case <-s.quit:
@@ -233,16 +237,6 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 
 	s.wg.Add(1)
 	defer s.wg.Done()
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go func() {
-		select {
-		case <-s.quit:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 
 	var rn pb.GetRange
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
