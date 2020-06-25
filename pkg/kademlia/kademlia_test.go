@@ -160,7 +160,7 @@ func TestManage(t *testing.T) {
 		conns int32 // how many connect calls were made to the p2p mock
 
 		saturationVal  = false
-		saturationFunc = func(bin, depth uint8, peers, connected *pslice.PSlice) bool {
+		saturationFunc = func(bin uint8, peers, connected *pslice.PSlice) bool {
 			return saturationVal
 		}
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc)
@@ -610,7 +610,7 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth uint8, peers, connected *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, peers, connected *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
 		base   = test.RandomAddress()                       // base address
 		ab     = addressbook.New(mockstate.NewStateStore()) // address book

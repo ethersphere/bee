@@ -34,7 +34,7 @@ var (
 	shortRetry                 = 30 * time.Second
 )
 
-type binSaturationFunc func(bin, depth uint8, peers, connected *pslice.PSlice) bool
+type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
 
 // Options for injecting services to Kademlia.
 type Options struct {
@@ -141,7 +141,7 @@ func (k *Kad) manage() {
 				k.waitNextMu.Unlock()
 
 				currentDepth := k.NeighborhoodDepth()
-				if saturated := k.saturationFunc(po, currentDepth, k.knownPeers, k.connectedPeers); saturated {
+				if saturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
@@ -214,7 +214,7 @@ func (k *Kad) manage() {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(bin, depth uint8, peers, connected *pslice.PSlice) bool {
+func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
 	potentialDepth := recalcDepth(peers)
 
 	// short circuit for bins which are >= depth
