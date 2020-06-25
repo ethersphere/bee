@@ -433,3 +433,8 @@ func mockNotifier(c cFunc, d dFunc) topology.Notifier {
 
 type cFunc func(context.Context, swarm.Address) error
 type dFunc func(swarm.Address)
+
+var noopNotifier = mockNotifier(
+	func(_ context.Context, _ swarm.Address) error { return nil },
+	func(_ swarm.Address) {},
+)
