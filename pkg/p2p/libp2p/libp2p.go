@@ -291,9 +291,14 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
+			ctx, cancel := context.WithCancel(s.ctx)
+
+			s.peers.addStream(peerID, streamlibp2p, cancel)
+			defer s.peers.removeStream(peerID, streamlibp2p)
+
 			// tracing: get span tracing context and add it to the context
 			// silently ignore if the peer is not providing tracing
-			ctx, err := s.tracer.WithContextFromHeaders(s.ctx, stream.Headers())
+			ctx, err := s.tracer.WithContextFromHeaders(ctx, stream.Headers())
 			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
 				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: get tracing context: %v", p.Name, p.Version, ss.Name, overlay, err)
 				return
