@@ -275,9 +275,8 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			peerID := streamlibp2p.Conn().RemotePeer()
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
-				// todo: this should never happen
 				_ = s.disconnect(peerID)
-				s.logger.Errorf("overlay address for peer %q not found", peerID)
+				s.logger.Debugf("overlay address for peer %q not found", peerID)
 				return
 			}
 
