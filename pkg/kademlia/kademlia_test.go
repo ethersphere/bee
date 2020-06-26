@@ -160,11 +160,12 @@ func TestManage(t *testing.T) {
 		conns int32 // how many connect calls were made to the p2p mock
 
 		saturationVal  = false
-		saturationFunc = func(bin, depth uint8, peers *pslice.PSlice) bool {
+		saturationFunc = func(bin uint8, peers, connected *pslice.PSlice) bool {
 			return saturationVal
 		}
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc)
 	)
+	defer kad.Close()
 	// first, saturationFunc returns always false, this means that the bin is not saturated,
 	// hence we expect that every peer we add to kademlia will be connected to
 	for i := 0; i < 50; i++ {
@@ -200,11 +201,18 @@ func TestManage(t *testing.T) {
 // be true since depth is increasingly moving deeper, but then we add more peers
 // in shallower depth for the rest of the function to be executed
 func TestBinSaturation(t *testing.T) {
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 2
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
 		peers                    []swarm.Address
 	)
+
+	defer kad.Close()
 
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
@@ -610,7 +618,7 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin, depth uint8, peers *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, peers, connected *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
 		base   = test.RandomAddress()                       // base address
 		ab     = addressbook.New(mockstate.NewStateStore()) // address book

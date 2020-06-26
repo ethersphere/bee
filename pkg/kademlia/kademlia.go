@@ -32,9 +32,10 @@ var (
 	errOverlayMismatch         = errors.New("overlay mismatch")
 	timeToRetry                = 60 * time.Second
 	shortRetry                 = 30 * time.Second
+	saturationPeers            = 4
 )
 
-type binSaturationFunc func(bin, depth uint8, peers *pslice.PSlice) bool
+type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
 
 // Options for injecting services to Kademlia.
 type Options struct {
@@ -127,7 +128,11 @@ func (k *Kad) manage() {
 			}
 		case <-k.manageC:
 			start = time.Now()
-
+			select {
+			case <-k.quit:
+				return
+			default:
+			}
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
@@ -141,7 +146,7 @@ func (k *Kad) manage() {
 				k.waitNextMu.Unlock()
 
 				currentDepth := k.NeighborhoodDepth()
-				if saturated := k.saturationFunc(po, currentDepth, k.connectedPeers); saturated {
+				if saturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
@@ -180,7 +185,7 @@ func (k *Kad) manage() {
 				k.connectedPeers.Add(peer, po)
 
 				k.depthMu.Lock()
-				k.depth = k.recalcDepth()
+				k.depth = recalcDepth(k.connectedPeers)
 				k.depthMu.Unlock()
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
@@ -214,9 +219,11 @@ func (k *Kad) manage() {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
+func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
+	potentialDepth := recalcDepth(peers)
+
 	// short circuit for bins which are >= depth
-	if bin >= depth {
+	if bin >= potentialDepth {
 		return false
 	}
 
@@ -228,31 +235,31 @@ func binSaturated(bin, depth uint8, peers *pslice.PSlice) bool {
 	// gaps measurement)
 
 	size := 0
-	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
+	_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
 		if po == bin {
 			size++
 		}
 		return false, false, nil
 	})
 
-	return size >= 2
+	return size >= saturationPeers
 }
 
 // recalcDepth calculates and returns the kademlia depth.
-func (k *Kad) recalcDepth() uint8 {
+func recalcDepth(peers *pslice.PSlice) uint8 {
 	// handle edge case separately
-	if k.connectedPeers.Length() <= nnLowWatermark {
+	if peers.Length() <= nnLowWatermark {
 		return 0
 	}
 	var (
-		peers                        = uint(0)
+		peersCtr                     = uint(0)
 		candidate                    = uint8(0)
-		shallowestEmpty, noEmptyBins = k.connectedPeers.ShallowestEmpty()
+		shallowestEmpty, noEmptyBins = peers.ShallowestEmpty()
 	)
 
-	_ = k.connectedPeers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
-		peers++
-		if peers >= nnLowWatermark {
+	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
+		peersCtr++
+		if peersCtr >= nnLowWatermark {
 			candidate = po
 			return true, false, nil
 		}
@@ -390,7 +397,7 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()
-	k.depth = k.recalcDepth()
+	k.depth = recalcDepth(k.connectedPeers)
 	k.depthMu.Unlock()
 
 	k.notifyPeerSig()
@@ -413,7 +420,7 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()
-	k.depth = k.recalcDepth()
+	k.depth = recalcDepth(k.connectedPeers)
 	k.depthMu.Unlock()
 	select {
 	case k.manageC <- struct{}{}:
