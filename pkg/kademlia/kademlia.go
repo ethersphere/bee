@@ -335,10 +335,8 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 		// indicating falsely, that the peer connection has timed out.
 		k.wg.Add(1)
 		go func(connectedPeer swarm.Address) {
-			// this method uses the cancellable context from kademlia root, which will be cancelled
-			// on shutdown, so it is safe to create this goroutine with this context even on shutdown
 			defer k.wg.Done()
-			if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
+			if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
 				k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
 			}
 		}(connectedPeer)
