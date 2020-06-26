@@ -237,7 +237,7 @@ func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
 		return false, false, nil
 	})
 
-	return size >= 2
+	return size >= 4
 }
 
 // recalcDepth calculates and returns the kademlia depth.
