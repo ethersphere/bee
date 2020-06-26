@@ -321,12 +321,20 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 		if connectedPeer.Equal(peer) {
 			return false, false, nil
 		}
+
 		addrs = append(addrs, connectedPeer)
-		if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
-			// we don't want to fail the whole process because of this, keep on gossiping
-			k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
-			return false, false, nil
-		}
+
+		// this needs to be in a separate goroutine since a peer we are gossipping to might
+		// be slow and since this function is called with the same context from kademlia connect
+		// function, this might result in the unfortunate situation where we end up on
+		// `err := k.discovery.BroadcastPeers(ctx, peer, addrs...)` with an already expired context
+		// indicating falsely, that the peer connection has timed out.
+		go func(connectedPeer swarm.Address) {
+			if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
+				k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
+			}
+		}(connectedPeer)
+
 		return false, false, nil
 	})
 
@@ -338,6 +346,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 	if err != nil {
 		_ = k.p2p.Disconnect(peer)
 	}
+
 	return err
 }
 
