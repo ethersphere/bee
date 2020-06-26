@@ -81,7 +81,10 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 func (r *peerRegistry) addStream(peerID libp2ppeer.ID, stream network.Stream, cancel context.CancelFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
+	if _, ok := r.streams[peerID]; !ok {
+		// it is possible that an addStream will be called after a disconnect
+		return
+	}
 	r.streams[peerID][stream] = cancel
 }
 
