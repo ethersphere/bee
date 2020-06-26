@@ -739,7 +739,7 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 // wait for discovery BroadcastPeers to happen
 func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...swarm.Address) {
 	t.Helper()
-
+	time.Sleep(50 * time.Millisecond)
 	for i := 0; i < 50; i++ {
 		if d.Broadcasts() > 0 {
 			recs, ok := d.AddresseeRecords(pivot)

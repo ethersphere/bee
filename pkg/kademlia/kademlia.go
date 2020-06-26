@@ -65,6 +65,7 @@ type Kad struct {
 	logger         logging.Logger // logger
 	quit           chan struct{}  // quit channel
 	done           chan struct{}  // signal that `manage` has quit
+	wg             sync.WaitGroup
 }
 
 type retryInfo struct {
@@ -91,8 +92,9 @@ func New(o Options) *Kad {
 		logger:         o.Logger,
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
+		wg:             sync.WaitGroup{},
 	}
-
+	k.wg.Add(1)
 	go k.manage()
 	return k
 }
@@ -105,7 +107,9 @@ func (k *Kad) manage() {
 		start        time.Time
 	)
 
+	defer k.wg.Done()
 	defer close(k.done)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-k.quit
@@ -329,7 +333,11 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 		// function, this might result in the unfortunate situation where we end up on
 		// `err := k.discovery.BroadcastPeers(ctx, peer, addrs...)` with an already expired context
 		// indicating falsely, that the peer connection has timed out.
+		k.wg.Add(1)
 		go func(connectedPeer swarm.Address) {
+			// this method uses the cancellable context from kademlia root, which will be cancelled
+			// on shutdown, so it is safe to create this goroutine with this context even on shutdown
+			defer k.wg.Done()
 			if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
 				k.logger.Debugf("error gossiping peer %s to peer %s: %v", peer, connectedPeer, err)
 			}
@@ -629,11 +637,26 @@ func (k *Kad) String() string {
 
 // Close shuts down kademlia.
 func (k *Kad) Close() error {
+	k.logger.Info("kademlia shutting down")
 	close(k.quit)
+	cc := make(chan struct{})
+
+	go func() {
+		defer close(cc)
+		k.wg.Wait()
+	}()
+
+	select {
+	case <-cc:
+	case <-time.After(10 * time.Second):
+		k.logger.Warning("kademlia shutting down with announce goroutines")
+	}
+
 	select {
 	case <-k.done:
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		k.logger.Warning("kademlia manage loop did not shut down properly")
 	}
+
 	return nil
 }
