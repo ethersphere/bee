@@ -54,11 +54,13 @@ func TestNewStreamMulti(t *testing.T) {
 	s1, overlay1 := newService(t, 1, libp2p.Options{})
 	var (
 		h1calls, h2calls int32
-		h1               = func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
+		h1               = func(_ context.Context, _ p2p.Peer, s p2p.Stream) error {
+			defer s.Close()
 			_ = atomic.AddInt32(&h1calls, 1)
 			return nil
 		}
-		h2 = func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
+		h2 = func(_ context.Context, _ p2p.Peer, s p2p.Stream) error {
+			defer s.Close()
 			_ = atomic.AddInt32(&h2calls, 1)
 			return nil
 		}
@@ -79,7 +81,7 @@ func TestNewStreamMulti(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Close(); err != nil {
+	if err := stream.FullClose(); err != nil {
 		t.Fatal(err)
 	}
 	if atomic.LoadInt32(&h1calls) != 1 {
