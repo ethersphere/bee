@@ -24,8 +24,9 @@ Our documenation is hosted at:
 - https://swarm-gateways.net/bzz:/docs.swarm.eth/
 - https://github.com/ethersphere/docs.github.io
 
+## Contributing
 
-
+Please read the [coding guidelines](CODING.md).
 
 ## License
 
