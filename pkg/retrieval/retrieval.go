@@ -118,7 +118,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest: %w", err)
 	}
-	s.logger.Tracef("retrieval: get chunk %s from peer %s", addr, peer)
+	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, peer, fmt.Errorf("new stream: %w", err)

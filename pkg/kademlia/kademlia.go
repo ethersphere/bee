@@ -153,7 +153,7 @@ func (k *Kad) manage() {
 				bzzAddr, err := k.addressBook.Get(peer)
 				if err != nil {
 					if err == addressbook.ErrNotFound {
-						k.logger.Errorf("failed to get address book entry for peer: %s", peer.String())
+						k.logger.Debugf("failed to get address book entry for peer: %s", peer.String())
 						peerToRemove = peer
 						return false, false, errMissingAddressBookEntry
 					}
