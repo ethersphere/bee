@@ -462,6 +462,9 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
+		if st != nil {
+			_ = st.Close()
+		}
 		if err == multistream.ErrNotSupported || err == multistream.ErrIncorrectVersion {
 			return nil, p2p.NewIncompatibleStreamError(err)
 		}
