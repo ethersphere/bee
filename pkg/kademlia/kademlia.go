@@ -32,6 +32,7 @@ var (
 	errOverlayMismatch         = errors.New("overlay mismatch")
 	timeToRetry                = 60 * time.Second
 	shortRetry                 = 30 * time.Second
+	saturationPeers            = 4
 )
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
@@ -127,7 +128,11 @@ func (k *Kad) manage() {
 			}
 		case <-k.manageC:
 			start = time.Now()
-
+			select {
+			case <-k.quit:
+				return
+			default:
+			}
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
@@ -237,7 +242,7 @@ func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
 		return false, false, nil
 	})
 
-	return size >= 4
+	return size >= saturationPeers
 }
 
 // recalcDepth calculates and returns the kademlia depth.

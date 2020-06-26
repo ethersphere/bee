@@ -200,6 +200,11 @@ func TestManage(t *testing.T) {
 // be true since depth is increasingly moving deeper, but then we add more peers
 // in shallower depth for the rest of the function to be executed
 func TestBinSaturation(t *testing.T) {
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 2
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
