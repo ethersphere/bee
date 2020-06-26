@@ -403,12 +403,13 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read cancel: %w", err)
 	}
 
+	s.ruidMtx.Lock()
+	defer s.ruidMtx.Unlock()
+
 	if cancel, ok := s.ruidCtx[c.Ruid]; ok {
 		cancel()
 	}
-	s.ruidMtx.Lock()
 	delete(s.ruidCtx, c.Ruid)
-	s.ruidMtx.Unlock()
 	return nil
 }
 
