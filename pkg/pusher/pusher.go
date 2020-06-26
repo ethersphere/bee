@@ -127,7 +127,7 @@ LOOP:
 				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
 					if !errors.Is(err, topology.ErrNotFound) {
-						s.logger.Errorf("pusher: error while sending chunk or receiving receipt: %v", err)
+						s.logger.Debugf("pusher: error while sending chunk or receiving receipt: %v", err)
 					}
 					return
 				}
@@ -169,7 +169,7 @@ LOOP:
 	select {
 	case <-closeC:
 	case <-time.After(2 * time.Second):
-		s.logger.Error("pusher shutting down with pending operations")
+		s.logger.Warning("pusher shutting down with pending operations")
 	}
 }
 
