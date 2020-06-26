@@ -165,6 +165,7 @@ func TestManage(t *testing.T) {
 		}
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc)
 	)
+	defer kad.Close()
 	// first, saturationFunc returns always false, this means that the bin is not saturated,
 	// hence we expect that every peer we add to kademlia will be connected to
 	for i := 0; i < 50; i++ {
@@ -210,6 +211,8 @@ func TestBinSaturation(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
 		peers                    []swarm.Address
 	)
+
+	defer kad.Close()
 
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
