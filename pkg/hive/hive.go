@@ -88,9 +88,9 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
+	w := protobuf.NewWriter(stream)
 	defer stream.Close()
 
-	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
 		addr, err := s.addressBook.Get(p)
@@ -114,20 +114,18 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		return fmt.Errorf("write Peers message: %w", err)
 	}
 
-	return stream.FullClose()
+	return nil
 }
 
 func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-	_, r := protobuf.NewWriterAndReader(stream)
+	r := protobuf.NewReader(stream)
+	defer stream.Close()
+
 	var peersReq pb.Peers
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
-		_ = stream.Close()
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	if err := stream.Close(); err != nil {
-		return fmt.Errorf("close stream: %w", err)
-	}
 	for _, newPeer := range peersReq.Peers {
 		bzzAddress, err := bzz.ParseAddress(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
 		if err != nil {
