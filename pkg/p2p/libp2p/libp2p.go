@@ -62,8 +62,8 @@ type Service struct {
 type Options struct {
 	PrivateKey     *ecdsa.PrivateKey
 	NATAddr        string
-	DisableWS      bool
-	DisableQUIC    bool
+	EnableWS       bool
+	EnableQUIC     bool
 	LightNode      bool
 	WelcomeMessage string
 	Addressbook    addressbook.Putter
@@ -95,20 +95,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var listenAddrs []string
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
-		if !o.DisableWS {
+		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 		}
-		if !o.DisableQUIC {
+		if o.EnableQUIC {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/udp/%s/quic", ip4Addr, port))
 		}
 	}
 
 	if ip6Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
-		if !o.DisableWS {
+		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 		}
-		if !o.DisableQUIC {
+		if o.EnableQUIC {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/udp/%s/quic", ip6Addr, port))
 		}
 	}
@@ -144,11 +144,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Transport(tcp.NewTCPTransport),
 	}
 
-	if !o.DisableWS {
+	if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
-	if !o.DisableQUIC {
+	if o.EnableQUIC {
 		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
 	}
 
