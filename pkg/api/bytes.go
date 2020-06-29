@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -15,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
 )
 
@@ -32,6 +35,12 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
+
+	ta := s.createTag(w, r, address)
+	if ta != nil {
+		ta.Address = address
+	}
+
 	jsonhttp.OK(w, bytesPostResponse{
 		Reference: address,
 	})
@@ -74,4 +83,39 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("bytes: data input error")
 		jsonhttp.InternalServerError(w, "retrieval fail")
 	}
+}
+
+func (s *server) createTag(w http.ResponseWriter, r *http.Request, address swarm.Address) *tags.Tag {
+	// if tag header is not there create a new one
+	var tag *tags.Tag
+	tagUidStr := r.Header.Get(TagHeaderUid)
+	if tagUidStr == "" {
+		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
+		var err error
+		tag, err = s.Tags.Create(tagName, 0, false)
+		if err != nil {
+			s.Logger.Debugf("bytes upload: tag creation error: %v, addr %s", err, address)
+			s.Logger.Error("bytes upload: tag creation error")
+			jsonhttp.InternalServerError(w, "cannot create tag")
+			return nil
+		}
+	} else {
+		// if the tag uid header is present, then use the tag sent
+		tagUid, err := strconv.ParseUint(tagUidStr, 10, 32)
+		if err != nil {
+			s.Logger.Debugf("bytes upload: parse taguid %s: %v", tagUidStr, err)
+			s.Logger.Error("bytes upload: parse taguid")
+			jsonhttp.BadRequest(w, "invalid taguid")
+			return nil
+		}
+
+		tag, err = s.Tags.Get(uint32(tagUid))
+		if err != nil {
+			s.Logger.Debugf("bytes upload: tag get error: %v, addr %s", err, address)
+			s.Logger.Error("bytes upload: tag get error")
+			jsonhttp.InternalServerError(w, "cannot create tag")
+			return nil
+		}
+	}
+	return tag
 }

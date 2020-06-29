@@ -183,6 +183,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "could not store entry")
 		return
 	}
+
+	ta := s.createTag(w, r, reference)
+	if ta != nil {
+		ta.Address = reference
+	}
+
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
