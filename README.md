@@ -22,7 +22,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 
 Our documenation is hosted at:
 - https://swarm-gateways.net/bzz:/docs.swarm.eth/
-- https://github.com/ethersphere/docs.github.io
+- https://docs.ethswarm.org
 
 ## Contributing
 
