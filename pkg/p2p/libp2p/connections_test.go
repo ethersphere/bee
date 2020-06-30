@@ -303,7 +303,6 @@ func TestConnectRepeatHandshake(t *testing.T) {
 }
 
 func TestTopologyNotifier(t *testing.T) {
-
 	var (
 		mtx sync.Mutex
 		ctx = context.Background()
@@ -368,10 +367,7 @@ func TestTopologyNotifier(t *testing.T) {
 	mtx.Unlock()
 
 	// check address book entries are there
-	// TODO: this is wrong. bzzAddr.Underlay should be in fact just `addr`
-	// but this is necessary for the test to pass. should be fixed when
-	// the handshake scheme is fixed
-	checkAddressbook(t, ab2, overlay1, bzzAddr.Underlay)
+	checkAddressbook(t, ab2, overlay1, addr)
 
 	// s2 disconnects from s1 so s1 disconnect notifiee should be called
 	if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
