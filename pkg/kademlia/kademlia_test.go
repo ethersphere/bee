@@ -641,7 +641,7 @@ func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, pe
 }
 
 func p2pMock(ab addressbook.Interface, counter, failedCounter *int32) p2p.Service {
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, notify bool) (*bzz.Address, error) {
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
 		if addr.Equal(nonConnectableAddress) {
 			_ = atomic.AddInt32(failedCounter, 1)
 			return nil, errors.New("non reachable node")

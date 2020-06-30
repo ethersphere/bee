@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -370,44 +369,53 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	var count int32
-	var wg sync.WaitGroup
 
 	// add the peers to topology and allow it to connect independently
 	for _, o := range addresses {
-		_ = topologyDriver.AddPeer(p2pCtx, o.Overlay)
+		err = topologyDriver.AddPeer(p2pCtx, o.Overlay)
+		if err != nil {
+			logger.Debugf("topology add peer from addressbook: %v", err)
+		} else {
+			count++
+		}
 	}
 
-	// Connect bootnodes (?? they would probably be persisted with the other nodes to the address book on shutdown anyway)
-	for _, a := range o.Bootnodes {
-		wg.Add(1)
-		go func(a string) {
-			defer wg.Done()
-			addr, err := ma.NewMultiaddr(a)
-			if err != nil {
-				logger.Debugf("multiaddress fail %s: %v", a, err)
-				logger.Warningf("connect to bootnode %s", a)
-				return
-			}
-			if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-				logger.Tracef("connecting to bootnode %s", addr)
-				_, err = p2ps.Connect(p2pCtx, addr, true)
+	var wg sync.WaitGroup
+
+	// Connect bootnodes if the address book is clean
+	if count == 0 {
+		for _, a := range o.Bootnodes {
+			wg.Add(1)
+			go func(a string) {
+				defer wg.Done()
+				addr, err := ma.NewMultiaddr(a)
 				if err != nil {
-					if !errors.Is(err, p2p.ErrAlreadyConnected) {
-						logger.Debugf("connect fail %s: %v", addr, err)
-						logger.Warningf("connect to bootnode %s", addr)
-					}
-					return false, nil
+					logger.Debugf("multiaddress fail %s: %v", a, err)
+					logger.Warningf("connect to bootnode %s", a)
+					return
 				}
-				logger.Tracef("connected to bootnode %s", addr)
-				c := atomic.AddInt32(&count, 1)
-				// connect to max 3 bootnodes
-				return c > 3, nil
-			}); err != nil {
-				logger.Debugf("discover fail %s: %v", a, err)
-				logger.Warningf("discover to bootnode %s", a)
-				return
-			}
-		}(a)
+				var count int
+				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+					logger.Tracef("connecting to bootnode %s", addr)
+					_, err = p2ps.Connect(p2pCtx, addr, true)
+					if err != nil {
+						if !errors.Is(err, p2p.ErrAlreadyConnected) {
+							logger.Debugf("connect fail %s: %v", addr, err)
+							logger.Warningf("connect to bootnode %s", addr)
+						}
+						return false, nil
+					}
+					logger.Tracef("connected to bootnode %s", addr)
+					count++
+					// connect to max 3 bootnodes
+					return count > 3, nil
+				}); err != nil {
+					logger.Debugf("discover fail %s: %v", a, err)
+					logger.Warningf("discover to bootnode %s", a)
+					return
+				}
+			}(a)
+		}
 	}
 
 	wg.Wait()
