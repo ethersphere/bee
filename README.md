@@ -5,18 +5,18 @@
 
 ```
 Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
-                \     /                
-            \    o ^ o    /            
-              \ (     ) /              
-   ____________(%%%%%%%)____________   
-  (     /   /  )%%%%%%%(  \   \     )  
-  (___/___/__/           \__\___\___)  
-     (     /  /(%%%%%%%)\  \     )     
-      (__/___/ (%%%%%%%) \___\__)      
-              /(       )\              
-            /   (%%%%%)   \            
-                 (%%%)                 
-                   !    
+                \     /
+            \    o ^ o    /
+              \ (     ) /
+   ____________(%%%%%%%)____________
+  (     /   /  )%%%%%%%(  \   \     )
+  (___/___/__/           \__\___\___)
+     (     /  /(%%%%%%%)\  \     )
+      (__/___/ (%%%%%%%) \___\__)
+              /(       )\
+            /   (%%%%%)   \
+                 (%%%)
+                   !
 ```
 
 
@@ -27,6 +27,10 @@ Our documenation is hosted at:
 ## Contributing
 
 Please read the [coding guidelines](CODING.md).
+
+## Installing
+
+[Install instructions](https://swarm-gateways.net/bzz:/docs.swarm.eth/bee-docs/installation.html)
 
 ## License
 
