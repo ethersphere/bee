@@ -17,18 +17,28 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/file/lcr"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/langos"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
 const multipartFormDataMediaType = "multipart/form-data"
+
+// The size of buffer used for bufio.Reader on LazyChunkReader passed to
+// http.ServeContent in HandleGetFile.
+// Warning: This value influences the number of chunk requests and chunker join goroutines
+// per file request.
+// Recommended value is 4 times the io.Copy default buffer value which is 32kB.
+const getFileBufferSize = 4 * 32 * 1024
 
 type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
@@ -262,43 +272,12 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pr, pw := io.Pipe()
-	defer pr.Close()
-	go func() {
-		ctx := r.Context()
-		<-ctx.Done()
-		if err := ctx.Err(); err != nil {
-			if err := pr.CloseWithError(err); err != nil {
-				s.Logger.Debugf("file download: data join close %s: %v", addr, err)
-				s.Logger.Errorf("file download: data join close %s", addr)
-			}
-		}
-	}()
+	reader := lcr.Join(r.Context(), e.Reference(), s.Storer, 0)
 
-	go func() {
-		_, err := file.JoinReadAll(j, e.Reference(), pw)
-		if err := pw.CloseWithError(err); err != nil {
-			s.Logger.Debugf("file download: data join close %s: %v", addr, err)
-			s.Logger.Errorf("file download: data join close %s", addr)
-		}
-	}()
-
-	bpr := bufio.NewReader(pr)
-
-	if b, err := bpr.Peek(4096); err != nil && err != io.EOF && len(b) == 0 {
-		s.Logger.Debugf("file download: data join %s: %v", addr, err)
-		s.Logger.Errorf("file download: data join %s", addr)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	w.Header().Set("ETag", fmt.Sprintf("%q", e.Reference()))
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename))
+	w.Header().Set("ETag", fmt.Sprintf("%q", e.Reference()))
 	w.Header().Set("Content-Type", metaData.MimeType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
-	if _, err = io.Copy(w, bpr); err != nil {
-		s.Logger.Debugf("file download: data read %s: %v", addr, err)
-		s.Logger.Errorf("file download: data read %s", addr)
-	}
+	http.ServeContent(w, r, metaData.Filename, time.Now(), langos.NewBufferedReadSeeker(reader, getFileBufferSize))
 }
