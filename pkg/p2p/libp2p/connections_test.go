@@ -44,7 +44,7 @@ func TestConnectDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr, false)
+	bzzAddr, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,14 +70,14 @@ func TestDoubleConnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr, false); err != nil {
+	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if _, err := s2.Connect(ctx, addr, false); !errors.Is(err, p2p.ErrAlreadyConnected) {
+	if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
 		t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
 	}
 
@@ -95,7 +95,7 @@ func TestDoubleDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr, false)
+	bzzAddr, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr, false)
+	bzzAddr, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	bzzAddr, err = s2.Connect(ctx, addr, false)
+	bzzAddr, err = s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
-		bzzAddr, err := s2.Connect(ctx, addr, false)
+		bzzAddr, err := s2.Connect(ctx, addr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,14 +202,14 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
-		if _, err := s2.Connect(ctx, addr, false); err != nil {
+		if _, err := s2.Connect(ctx, addr); err != nil {
 			t.Fatal(err)
 		}
 
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		if _, err := s2.Connect(ctx, addr, false); !errors.Is(err, p2p.ErrAlreadyConnected) {
+		if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
 			t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
 		}
 
@@ -235,7 +235,7 @@ func TestDifferentNetworkIDs(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr, false); err == nil {
+	if _, err := s2.Connect(ctx, addr); err == nil {
 		t.Fatal("connect attempt should result with an error")
 	}
 
@@ -259,7 +259,7 @@ func TestConnectWithEnabledQUICAndWSTransports(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr, false); err != nil {
+	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,7 +276,7 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	s2, overlay2 := newService(t, 1, libp2p.Options{})
 	addr := serviceUnderlayAddress(t, s1)
 
-	_, err := s2.Connect(ctx, addr, false)
+	_, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestTopologyNotifier(t *testing.T) {
 	addr := serviceUnderlayAddress(t, s1)
 
 	// s2 connects to s1, thus the notifier on s1 should be called on Connect
-	bzzAddr, err := s2.Connect(ctx, addr, false)
+	bzzAddr, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestTopologyNotifier(t *testing.T) {
 
 	addr2 := serviceUnderlayAddress(t, s2)
 	// s1 connects to s2, thus the notifiee on s2 should be called on Connect
-	bzzAddr2, err := s1.Connect(ctx, addr2, false)
+	bzzAddr2, err := s1.Connect(ctx, addr2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestTopologyLocalNotifier(t *testing.T) {
 	addr := serviceUnderlayAddress(t, s1)
 
 	// s2 connects to s1, thus the notifier on s1 should be called on Connect
-	_, err := s2.Connect(context.Background(), addr, true)
+	_, err := s2.ConnectNotify(context.Background(), addr)
 	if err != nil {
 		t.Fatal(err)
 	}

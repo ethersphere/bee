@@ -348,7 +348,26 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 	return addr.Encapsulate(hostAddr), nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr, notify bool) (address *bzz.Address, err error) {
+func (s *Service) ConnectNotify(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
+	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
+	if err != nil {
+		return nil, fmt.Errorf("addr from p2p: %w", err)
+	}
+
+	address, err = s.Connect(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	if s.topologyNotifier != nil {
+		if err := s.topologyNotifier.Connected(ctx, address.Overlay); err != nil {
+			_ = s.disconnect(info.ID)
+			return nil, fmt.Errorf("notify topology: %w", err)
+		}
+	}
+	return address, err
+}
+
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
@@ -398,13 +417,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr, notify bool) (
 	if err != nil {
 		_ = s.disconnect(info.ID)
 		return nil, fmt.Errorf("storing bzz address: %w", err)
-	}
-
-	if notify && s.topologyNotifier != nil {
-		if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
-			_ = s.disconnect(info.ID)
-			return nil, fmt.Errorf("notify topology: %w", err)
-		}
 	}
 
 	s.metrics.CreatedConnectionCount.Inc()

@@ -46,7 +46,7 @@ func TestConnect(t *testing.T) {
 	}
 
 	testServer := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
+		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			if addr.String() == errorUnderlay {
 				return nil, testErr
 			}
@@ -58,6 +58,9 @@ func TestConnect(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
 			Address: overlay.String(),
 		})
+		if testServer.P2PMock.ConnectNotifyCalls() != 1 {
+			t.Fatal("connect notify not called")
+		}
 	})
 
 	t.Run("error", func(t *testing.T) {
@@ -76,7 +79,7 @@ func TestConnect(t *testing.T) {
 
 	t.Run("error - add peer", func(t *testing.T) {
 		testServer := newTestServer(t, testServerOptions{
-			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr, _ bool) (*bzz.Address, error) {
+			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 				if addr.String() == errorUnderlay {
 					return nil, testErr
 				}

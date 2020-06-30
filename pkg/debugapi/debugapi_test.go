@@ -14,12 +14,11 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p"
+	mockp2p "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
@@ -27,7 +26,7 @@ import (
 
 type testServerOptions struct {
 	Overlay      swarm.Address
-	P2P          p2p.Service
+	P2P          *mockp2p.Service
 	Pingpong     pingpong.Interface
 	Storer       storage.Storer
 	TopologyOpts []mock.Option
@@ -35,8 +34,8 @@ type testServerOptions struct {
 }
 
 type testServer struct {
-	Client         *http.Client
-	TopologyDriver topology.Driver
+	Client  *http.Client
+	P2PMock *mockp2p.Service
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *testServer {
@@ -65,7 +64,8 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 		}),
 	}
 	return &testServer{
-		Client: client,
+		Client:  client,
+		P2PMock: o.P2P,
 	}
 }
 

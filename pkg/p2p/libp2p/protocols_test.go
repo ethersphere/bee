@@ -31,7 +31,7 @@ func TestNewStream(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr, false); err != nil {
+	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +73,7 @@ func TestNewStreamMulti(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr, false); err != nil {
+	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
@@ -103,7 +103,7 @@ func TestNewStream_errNotSupported(t *testing.T) {
 	addr := serviceUnderlayAddress(t, s1)
 
 	// connect nodes
-	if _, err := s2.Connect(ctx, addr, false); err != nil {
+	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,7 +137,7 @@ func TestNewStream_semanticVersioning(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr, false); err != nil {
+	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
@@ -202,7 +202,7 @@ func TestDisconnectError(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr, false); err != nil {
+	if _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 

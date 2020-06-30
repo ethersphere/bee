@@ -397,7 +397,7 @@ func NewBee(o Options) (*Bee, error) {
 				var count int
 				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
 					logger.Tracef("connecting to bootnode %s", addr)
-					_, err = p2ps.Connect(p2pCtx, addr, true)
+					_, err = p2ps.ConnectNotify(p2pCtx, addr)
 					if err != nil {
 						if !errors.Is(err, p2p.ErrAlreadyConnected) {
 							logger.Debugf("connect fail %s: %v", addr, err)

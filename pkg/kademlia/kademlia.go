@@ -278,7 +278,7 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	i, err := k.p2p.Connect(ctx, ma, false)
+	i, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			return nil

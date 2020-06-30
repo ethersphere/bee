@@ -77,7 +77,7 @@ func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
 	}
 
 	if !isConnected(addr, connectedPeers) {
-		_, err := d.p2pService.Connect(ctx, bzzAddress.Underlay, true)
+		_, err := d.p2pService.Connect(ctx, bzzAddress.Underlay)
 		if err != nil {
 			d.mtx.Lock()
 			delete(d.receivedPeers, addr.ByteString())
