@@ -260,6 +260,7 @@ func TestNotifierHooks(t *testing.T) {
 		peer                     = test.RandomAddressAt(base, 3)
 		addr                     = test.RandomAddressAt(peer, 4) // address which is closer to peer
 	)
+	defer kad.Close()
 
 	connectOne(t, signer, kad, ab, peer)
 
@@ -289,6 +290,7 @@ func TestDiscoveryHooks(t *testing.T) {
 		_, kad, ab, disc, signer = newTestKademlia(&conns, nil, nil)
 		p1, p2, p3               = test.RandomAddress(), test.RandomAddress(), test.RandomAddress()
 	)
+	defer kad.Close()
 
 	// first add a peer from AddPeer, wait for the connection
 	addOne(t, signer, kad, ab, p1)
@@ -319,10 +321,10 @@ func TestBackoff(t *testing.T) {
 	*kademlia.TimeToRetry = 500 * time.Millisecond
 
 	var (
-		conns int32 // how many connect calls were made to the p2p mock
-
+		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
 	)
+	defer kad.Close()
 
 	// add one peer, wait for connection
 	addr := test.RandomAddressAt(base, 1)
@@ -361,6 +363,7 @@ func TestAddressBookPrune(t *testing.T) {
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, &failedConns, nil)
 	)
+	defer kad.Close()
 
 	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, test.RandomAddressAt(base, 1), 0)
 	if err != nil {
@@ -525,6 +528,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 
 	t.Run("single subscription", func(t *testing.T) {
 		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
@@ -537,6 +541,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 
 	t.Run("single subscription, remove peer", func(t *testing.T) {
 		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
@@ -552,6 +557,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 
 	t.Run("multiple subscriptions", func(t *testing.T) {
 		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		defer kad.Close()
 
 		c1, u1 := kad.SubscribePeersChange()
 		defer u1()
@@ -569,6 +575,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 
 	t.Run("multiple changes", func(t *testing.T) {
 		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
@@ -590,6 +597,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 
 	t.Run("no depth change", func(t *testing.T) {
 		_, kad, _, _, _ := newTestKademlia(nil, nil, nil)
+		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
 		defer u()
@@ -607,9 +615,9 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 }
 
 func TestMarshal(t *testing.T) {
-	var (
-		_, kad, ab, _, signer = newTestKademlia(nil, nil, nil)
-	)
+	_, kad, ab, _, signer := newTestKademlia(nil, nil, nil)
+	defer kad.Close()
+
 	a := test.RandomAddress()
 	addOne(t, signer, kad, ab, a)
 	_, err := kad.MarshalJSON()

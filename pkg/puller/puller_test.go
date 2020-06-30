@@ -201,7 +201,7 @@ func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 			kad.Trigger()
 
 			waitCursorsCalled(t, pullsync, addr, false)
-			waitSyncCalled(t, pullsync, addr, false)
+			waitSyncCalledTimes(t, pullsync, addr, len(tc.expCalls))
 
 			// check historical sync calls
 			checkCalls(t, tc.expCalls, pullsync.SyncCalls(addr))
@@ -479,7 +479,7 @@ func checkCallsUnordered(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
 	}
 }
 
-// waitSyncCalled waits until SyncInterval is called on the address given.
+// waitCursorsCalled waits until GetCursors are called on the given address.
 func waitCursorsCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
 	for i := 0; i < 20; i++ {
@@ -537,6 +537,19 @@ func waitSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, i
 	}
 	if invert {
 		return
+	}
+	t.Fatal("timed out waiting for sync")
+}
+
+func waitSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, times int) {
+	t.Helper()
+	for i := 0; i < 15; i++ {
+		v := ps.SyncCalls(addr)
+		if len(v) == times {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for sync")
 }
