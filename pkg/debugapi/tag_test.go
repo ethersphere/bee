@@ -223,11 +223,11 @@ func TestTags(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		chunkAddress := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef")
 		rootBytes := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef").Bytes()
 		rootChunk := make([]byte, 40)
 		copy(rootChunk[:20], rootBytes)
 		copy(rootChunk[20:40], rootBytes)
-		chunkAddress := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef")
 		rootAddress := swarm.MustParseHexAddress("1c44b93806d1b9861c1a3d6f9262e792c68a42718de94b0a871877cb7fa554e5")
 
 		mockValidator.AddPair(chunkAddress, dataChunk)
