@@ -33,15 +33,15 @@ func (c *command) initStartCmd() (err error) {
 		optionNameAPIAddr            = "api-addr"
 		optionNameP2PAddr            = "p2p-addr"
 		optionNameNATAddr            = "nat-addr"
-		optionNameP2PEnableWS        = "p2p-enable-ws"
-		optionNameP2PEnableQUIC      = "p2p-enable-quic"
-		optionNameEnableDebugAPI     = "enable-debug-api"
+		optionNameP2PWSEnable        = "p2p-ws-enable"
+		optionNameP2PQUICEnable      = "p2p-quic-enable"
+		optionNameDebugAPIEnable     = "debug-api-enable"
 		optionNameDebugAPIAddr       = "debug-api-addr"
 		optionNameBootnodes          = "bootnode"
 		optionNameNetworkID          = "network-id"
 		optionWelcomeMessage         = "welcome-message"
 		optionCORSAllowedOrigins     = "cors-allowed-origins"
-		optionNameTracingEnabled     = "tracing"
+		optionNameTracingEnabled     = "tracing-enable"
 		optionNameTracingEndpoint    = "tracing-endpoint"
 		optionNameTracingServiceName = "tracing-service-name"
 		optionNameVerbosity          = "verbosity"
@@ -90,7 +90,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			fmt.Println(bee)
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
-			if !c.config.GetBool(optionNameEnableDebugAPI) {
+			if !c.config.GetBool(optionNameDebugAPIEnable) {
 				debugAPIAddr = ""
 			}
 
@@ -119,8 +119,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				DebugAPIAddr:       debugAPIAddr,
 				Addr:               c.config.GetString(optionNameP2PAddr),
 				NATAddr:            c.config.GetString(optionNameNATAddr),
-				EnableWS:           c.config.GetBool(optionNameP2PEnableWS),
-				EnableQUIC:         c.config.GetBool(optionNameP2PEnableQUIC),
+				EnableWS:           c.config.GetBool(optionNameP2PWSEnable),
+				EnableQUIC:         c.config.GetBool(optionNameP2PQUICEnable),
 				NetworkID:          c.config.GetUint64(optionNameNetworkID),
 				WelcomeMessage:     c.config.GetString(optionWelcomeMessage),
 				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
@@ -180,10 +180,10 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	cmd.Flags().String(optionNameAPIAddr, ":8080", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":7070", "P2P listen address")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
-	cmd.Flags().Bool(optionNameP2PEnableWS, false, "disable P2P WebSocket protocol")
-	cmd.Flags().Bool(optionNameP2PEnableQUIC, false, "disable P2P QUIC protocol")
+	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
+	cmd.Flags().Bool(optionNameP2PQUICEnable, false, "enable P2P QUIC transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/bootnode.ethswarm.org"}, "initial nodes to connect to")
-	cmd.Flags().Bool(optionNameEnableDebugAPI, false, "enable debug HTTP API")
+	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
