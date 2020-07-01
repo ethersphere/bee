@@ -33,5 +33,5 @@ resources:
     cpu: 0.25
 
 beeConfig:
-  enable_debug_api: true
+  debug_api_enable: true
   bootnode: "/dns4/bee-0-headless.bee.svc.cluster.local/tcp/7070/p2p/16Uiu2HAm6i4dFaJt584m2jubyvnieEECgqM2YMpQ9nusXfy8XFzL"
