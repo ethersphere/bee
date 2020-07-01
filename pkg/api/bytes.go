@@ -5,8 +5,10 @@
 package api
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -66,12 +68,19 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	outBuffer := bytes.NewBuffer(nil)
+	c, err := file.JoinReadAll(j, address, outBuffer)
+	if err != nil && c == 0 {
+		s.Logger.Debugf("bytes download: data join %s: %v", address, err)
+		s.Logger.Errorf("bytes download: data join %s", address)
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf("%q", address))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	c, err := file.JoinReadAll(j, address, w)
-	if err != nil && c == 0 {
-		s.Logger.Errorf("bytes: data write %s: %v", address, err)
-		s.Logger.Error("bytes: data input error")
-		jsonhttp.InternalServerError(w, "retrieval fail")
+	if _, err = io.Copy(w, outBuffer); err != nil {
+		s.Logger.Debugf("bytes download: data read %s: %v", address, err)
+		s.Logger.Errorf("bytes download: data read %s", address)
 	}
 }
