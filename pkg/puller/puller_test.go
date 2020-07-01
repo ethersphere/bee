@@ -254,7 +254,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			kad.Trigger()
 			pullsync.TriggerChange()
 			waitCursorsCalled(t, pullsync, addr, false)
-			waitLiveSyncCalled(t, pullsync, addr, false)
+			waitLiveSyncCalledTimes(t, pullsync, addr, len(tc.expLiveCalls))
 			time.Sleep(100 * time.Millisecond)
 
 			checkCalls(t, tc.expCalls, pullsync.SyncCalls(addr)) // hist always empty
@@ -545,6 +545,19 @@ func waitSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Addre
 	t.Helper()
 	for i := 0; i < 15; i++ {
 		v := ps.SyncCalls(addr)
+		if len(v) == times {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for sync")
+}
+
+func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, times int) {
+	t.Helper()
+	for i := 0; i < 15; i++ {
+		v := ps.LiveSyncCalls(addr)
 		if len(v) == times {
 			return
 		}
