@@ -19,10 +19,13 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"gitlab.com/nolash/go-mockbytes"
 )
 
 func TestTags(t *testing.T) {
 	var (
+		bytesResource = "/bytes"
+		//filesResource        = "files"
 		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		tagResourceUidCreate = func(name string) string { return "/tags?name=" + name }
 		tagResourceUUid      = func(uuid uint64) string { return "/tags/" + strconv.FormatUint(uuid, 10) }
@@ -200,6 +203,74 @@ func TestTags(t *testing.T) {
 		}
 		if tagToVerify.Synced != finalTag.Synced {
 			t.Errorf("tag synced count mismatch. got %d want %d", tagToVerify.Synced, finalTag.Synced)
+		}
+	})
+
+	t.Run("file-tag-counters", func(t *testing.T) {
+		// Get a tag using API
+		ta := debugapi.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, ts.Client, http.MethodPost, tagResourceUidCreate("file.jpg"), nil, http.StatusOK, &ta)
+		if ta.Name != "file.jpg" {
+			t.Fatalf("tagname is not the same that we sent")
+		}
+
+		sentHheaders := make(http.Header)
+		sentHheaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(ta.Uid), 10))
+
+		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+		dataChunk, err := g.SequentialBytes(swarm.ChunkSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rootBytes := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef").Bytes()
+		rootChunk := make([]byte, 40)
+		copy(rootChunk[:20], rootBytes)
+		copy(rootChunk[20:40], rootBytes)
+		chunkAddress := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef")
+		rootAddress := swarm.MustParseHexAddress("1c44b93806d1b9861c1a3d6f9262e792c68a42718de94b0a871877cb7fa554e5")
+
+		mockValidator.AddPair(chunkAddress, dataChunk)
+		mockValidator.AddPair(rootAddress, rootChunk)
+
+		content := make([]byte, swarm.ChunkSize*2+(40))
+		copy(content[:swarm.ChunkSize], dataChunk)
+		copy(content[swarm.ChunkSize:], dataChunk)
+		copy(content[swarm.ChunkSize*2:], chunkAddress.Bytes())
+		copy(content[swarm.ChunkSize*2+20:], chunkAddress.Bytes())
+
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, apiClient, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		}, sentHheaders)
+		uuid1 := isTagFoundInResponse(t, rcvdHeaders, nil)
+
+		tagToVerify, err := tag.Get(uint32(uuid1))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if tagToVerify.Uid != ta.Uid {
+			t.Fatalf("Invalid tagid received")
+		}
+
+		finalTag := debugapi.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, ts.Client, http.MethodGet, tagResourceUUid(uuid1), nil, http.StatusOK, &finalTag)
+
+		if finalTag.Total != 3 {
+			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 3)
+		}
+		if finalTag.Seen != 3 {
+			t.Errorf("tag seen count mismatch. got %d want %d", finalTag.Seen, 3)
+		}
+		if finalTag.Stored != 3 {
+			t.Errorf("tag stored count mismatch. got %d want %d", finalTag.Stored, 3)
+		}
+		if finalTag.Sent != 3 {
+			t.Errorf("tag sent count mismatch. got %d want %d", finalTag.Sent, 3)
+		}
+		if finalTag.Synced != 3 {
+			t.Errorf("tag synced count mismatch. got %d want %d", finalTag.Synced, 3)
 		}
 	})
 }

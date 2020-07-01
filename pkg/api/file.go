@@ -51,6 +51,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var reader io.Reader
 	var fileName, contentLength string
 	var fileSize uint64
+	ta := s.createTag(w, r)
 
 	if mediaType == multipartFormDataMediaType {
 		mr := multipart.NewReader(r.Body, params["boundary"])
@@ -132,7 +133,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// first store the file and get its reference
-	sp := splitter.NewSimpleSplitter(s.Storer)
+	sp := splitter.NewSimpleSplitter(s.Storer, ta)
 	fr, err := file.SplitWriteAll(ctx, sp, reader, int64(fileSize))
 	if err != nil {
 		s.Logger.Debugf("file upload: file store, file %q: %v", fileName, err)
@@ -156,7 +157,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
-	sp = splitter.NewSimpleSplitter(s.Storer)
+	sp = splitter.NewSimpleSplitter(s.Storer, ta)
 	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		s.Logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
@@ -175,18 +176,13 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sp = splitter.NewSimpleSplitter(s.Storer)
+	sp = splitter.NewSimpleSplitter(s.Storer, ta)
 	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		s.Logger.Debugf("file upload: entry store, file %q: %v", fileName, err)
 		s.Logger.Errorf("file upload: entry store, file %q", fileName)
 		jsonhttp.InternalServerError(w, "could not store entry")
 		return
-	}
-
-	ta := s.createTag(w, r, reference)
-	if ta != nil {
-		ta.Address = reference
 	}
 
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))

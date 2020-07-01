@@ -28,17 +28,14 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	sp := splitter.NewSimpleSplitter(s.Storer)
+	ta := s.createTag(w, r)
+
+	sp := splitter.NewSimpleSplitter(s.Storer, ta)
 	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
 		jsonhttp.InternalServerError(w, nil)
 		return
-	}
-
-	ta := s.createTag(w, r, address)
-	if ta != nil {
-		ta.Address = address
 	}
 
 	jsonhttp.OK(w, bytesPostResponse{
@@ -85,7 +82,7 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) createTag(w http.ResponseWriter, r *http.Request, address swarm.Address) *tags.Tag {
+func (s *server) createTag(w http.ResponseWriter, r *http.Request) *tags.Tag {
 	// if tag header is not there create a new one
 	var tag *tags.Tag
 	tagUidStr := r.Header.Get(TagHeaderUid)
@@ -94,7 +91,7 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request, address swarm
 		var err error
 		tag, err = s.Tags.Create(tagName, 0, false)
 		if err != nil {
-			s.Logger.Debugf("bytes upload: tag creation error: %v, addr %s", err, address)
+			s.Logger.Debugf("bytes upload: tag creation error: %v", err)
 			s.Logger.Error("bytes upload: tag creation error")
 			jsonhttp.InternalServerError(w, "cannot create tag")
 			return nil
@@ -111,7 +108,7 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request, address swarm
 
 		tag, err = s.Tags.Get(uint32(tagUid))
 		if err != nil {
-			s.Logger.Debugf("bytes upload: tag get error: %v, addr %s", err, address)
+			s.Logger.Debugf("bytes upload: tag get error: %v", err)
 			s.Logger.Error("bytes upload: tag get error")
 			jsonhttp.InternalServerError(w, "cannot create tag")
 			return nil

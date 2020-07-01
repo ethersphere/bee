@@ -172,11 +172,15 @@ func (t *Tag) Done(s State) bool {
 	return err == nil && n == total
 }
 
-// DoneSplit sets total count to SPLIT count and sets the associated swarm hash for this tag
-// is meant to be called when splitter finishes for input streams of unknown size
+// DoneSplit adds the total with the split count and updated the total.
+// This is useful when you use the same tag for a file and its manifest upload
+// Also the Address is updated with the last called address, so the assumption
+// is that the manifest creation will be called last and this will have the root
+// hash of the manifest
 func (t *Tag) DoneSplit(address swarm.Address) int64 {
-	total := atomic.LoadInt64(&t.Split)
-	atomic.StoreInt64(&t.Total, total)
+	split := atomic.LoadInt64(&t.Split)
+	total := atomic.LoadInt64(&t.Total)
+	atomic.StoreInt64(&t.Total, total+split)
 	t.Address = address
 	return total
 }

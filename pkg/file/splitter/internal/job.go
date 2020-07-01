@@ -14,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
+
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
@@ -46,12 +48,13 @@ type SimpleSplitterJob struct {
 	cursors    []int    // section write position, indexed per level
 	hasher     bmt.Hash // underlying hasher used for hashing the tree
 	buffer     []byte   // keeps data and hashes, indexed by cursors
+	tagger     *tags.Tag
 }
 
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, tagger *tags.Tag) *SimpleSplitterJob {
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	return &SimpleSplitterJob{
 		ctx:        ctx,
@@ -61,6 +64,7 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
+		tagger:     tagger,
 	}
 }
 
@@ -73,6 +77,7 @@ func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 	if j.length > j.spanLength {
 		return 0, errors.New("write past span length")
 	}
+	j.tagger.Inc(tags.StateSeen)
 
 	err := j.writeToLevel(0, b)
 	if err != nil {
@@ -148,10 +153,12 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData := append(head, tail...)
 	ch := swarm.NewChunk(addr, chunkData)
+	s.tagger.Inc(tags.StateSplit)
 	_, err = s.putter.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err
 	}
+	s.tagger.Inc(tags.StateStored)
 
 	return ref, nil
 }
