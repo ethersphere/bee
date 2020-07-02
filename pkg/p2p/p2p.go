@@ -17,6 +17,10 @@ import (
 // Service provides methods to handle p2p Peers and Protocols.
 type Service interface {
 	AddProtocol(ProtocolSpec) error
+	// ConnectNotify connects to the given multiaddress and notifies the topology once the
+	// peer has been successfully connected.
+	ConnectNotify(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
+	// Connect to a peer but do not notify topology about the established connection.
 	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	Disconnect(overlay swarm.Address) error
 	Peers() []Peer
