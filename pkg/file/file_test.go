@@ -19,6 +19,7 @@ import (
 	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 )
 
 var (
@@ -44,7 +45,9 @@ func testSplitThenJoin(t *testing.T) {
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
 		store       = mock.NewStorer()
-		s           = splitter.NewSimpleSplitter(store)
+		ta          = tags.NewTags()
+		tg, _       = ta.Create("", 0, false)
+		s           = splitter.NewSimpleSplitter(store, tg)
 		j           = joiner.NewSimpleJoiner(store)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)

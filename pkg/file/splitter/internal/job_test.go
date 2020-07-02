@@ -14,6 +14,7 @@ import (
 	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 )
 
 var (
@@ -31,7 +32,12 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	defer cancel()
 
 	data := []byte("foo")
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
+	ta := tags.NewTags()
+	tg, err := ta.Create("", 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), tg)
 
 	c, err := j.Write(data)
 	if err != nil {
@@ -74,7 +80,12 @@ func testSplitterJobVector(t *testing.T) {
 	data, expect := test.GetVector(t, int(dataIdx))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)))
+	ta := tags.NewTags()
+	tg, err := ta.Create("", 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), tg)
 
 	for i := 0; i < len(data); i += swarm.ChunkSize {
 		l := swarm.ChunkSize

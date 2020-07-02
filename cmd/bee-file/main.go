@@ -21,6 +21,8 @@ import (
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
+
 	"github.com/spf13/cobra"
 )
 
@@ -159,8 +161,13 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 	logger.Debugf("metadata contents: %s", metadataBytes)
 
+	ta := tags.NewTags()
+	tg, err := ta.Create("", 0, false)
+	if err != nil {
+		return err
+	}
 	// set up splitter to process the metadata
-	s := splitter.NewSimpleSplitter(stores)
+	s := splitter.NewSimpleSplitter(stores, tg)
 	ctx := context.Background()
 
 	// first add metadata
