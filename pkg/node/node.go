@@ -363,7 +363,7 @@ func NewBee(o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	addresses, err := addressbook.Addresses()
+	addresses, err := addressbook.Overlays()
 	if err != nil {
 		return nil, fmt.Errorf("addressbook overlays: %w", err)
 	}
@@ -372,7 +372,7 @@ func NewBee(o Options) (*Bee, error) {
 
 	// add the peers to topology and allow it to connect independently
 	for _, o := range addresses {
-		err = topologyDriver.AddPeer(p2pCtx, o.Overlay)
+		err = topologyDriver.AddPeer(p2pCtx, o)
 		if err != nil {
 			logger.Debugf("topology add peer from addressbook: %v", err)
 		} else {

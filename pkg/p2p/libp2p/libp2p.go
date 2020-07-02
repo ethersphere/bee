@@ -356,7 +356,7 @@ func (s *Service) ConnectNotify(ctx context.Context, addr ma.Multiaddr) (address
 
 	address, err = s.Connect(ctx, addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("connect notify: %w", err)
 	}
 	if s.topologyNotifier != nil {
 		if err := s.topologyNotifier.Connected(ctx, address.Overlay); err != nil {
@@ -364,7 +364,7 @@ func (s *Service) ConnectNotify(ctx context.Context, addr ma.Multiaddr) (address
 			return nil, fmt.Errorf("notify topology: %w", err)
 		}
 	}
-	return address, err
+	return address, nil
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {

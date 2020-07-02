@@ -457,18 +457,18 @@ func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.A
 	t.Fatal("timed out waiting for address to be set")
 }
 
-func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address, under ma.Multiaddr) {
+func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address, underlay ma.Multiaddr) {
 	t.Helper()
-	v, err := ab.Get(overlay)
+	addr, err := ab.Get(overlay)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !v.Overlay.Equal(overlay) {
-		t.Fatalf("overlay mismatch. got %s want %s", v.Overlay, overlay)
+	if !addr.Overlay.Equal(overlay) {
+		t.Fatalf("overlay mismatch. got %s want %s", addr.Overlay, overlay)
 	}
 
-	if !v.Underlay.Equal(under) {
-		t.Fatalf("underlay mismatch. got %s, want %s", v.Underlay, under)
+	if !addr.Underlay.Equal(underlay) {
+		t.Fatalf("underlay mismatch. got %s, want %s", addr.Underlay, underlay)
 	}
 }
 
