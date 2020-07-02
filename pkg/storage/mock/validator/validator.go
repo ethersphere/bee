@@ -35,7 +35,7 @@ func (v *MockValidator) Validate(ch swarm.Chunk) (valid bool) {
 	if data, ok := v.addressDataPair[ch.Address().String()]; ok {
 		if bytes.Equal(data, ch.Data()) {
 			return true
-		} else if bytes.Equal(data, ch.Data()[8:]) {
+		} else if len(ch.Data()) > 8 && bytes.Equal(data, ch.Data()[8:]) {
 			return true
 		}
 	}
