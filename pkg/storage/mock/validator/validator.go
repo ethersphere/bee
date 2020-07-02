@@ -6,7 +6,6 @@ package validator
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -33,8 +32,7 @@ func (v *MockValidator) AddPair(address swarm.Address, data []byte) {
 
 // Validate checks the passed chunk for validity
 func (v *MockValidator) Validate(ch swarm.Chunk) (valid bool) {
-	fmt.Println(ch.Address().String())
-	if data, ok := v.addressDataPair[ch.Address().String()]; ok {
+		if data, ok := v.addressDataPair[ch.Address().String()]; ok {
 		if bytes.Equal(data, ch.Data()) {
 			return true
 		} else if bytes.Equal(data, ch.Data()[8:]) {

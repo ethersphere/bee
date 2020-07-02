@@ -186,6 +186,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
+	w.Header().Set(TagHeaderUid, fmt.Sprint(ta.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})

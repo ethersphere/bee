@@ -22,6 +22,10 @@ import (
 	"gitlab.com/nolash/go-mockbytes"
 )
 
+type fileUploadResponse struct {
+	Reference swarm.Address `json:"reference"`
+}
+
 func TestTags(t *testing.T) {
 	var (
 		bytesResource = "/bytes"
@@ -206,7 +210,7 @@ func TestTags(t *testing.T) {
 		}
 	})
 
-	t.Run("file-tag-counters", func(t *testing.T) {
+	t.Run("bytes-tag-counters", func(t *testing.T) {
 		// Get a tag using API
 		ta := debugapi.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, ts.Client, http.MethodPost, tagResourceUidCreate("file.jpg"), nil, http.StatusOK, &ta)
@@ -225,23 +229,20 @@ func TestTags(t *testing.T) {
 
 		chunkAddress := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef")
 		rootBytes := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef").Bytes()
-		rootChunk := make([]byte, 40)
-		copy(rootChunk[:20], rootBytes)
-		copy(rootChunk[20:40], rootBytes)
-		rootAddress := swarm.MustParseHexAddress("1c44b93806d1b9861c1a3d6f9262e792c68a42718de94b0a871877cb7fa554e5")
+		rootChunk := make([]byte, 64)
+		copy(rootChunk[:32], rootBytes)
+		copy(rootChunk[32:], rootBytes)
+		rootAddress := swarm.MustParseHexAddress("5e2a21902f51438be1adbd0e29e1bd34c53a21d3120aefa3c7275129f2f88de9")
 
 		mockValidator.AddPair(chunkAddress, dataChunk)
 		mockValidator.AddPair(rootAddress, rootChunk)
 
-		content := make([]byte, swarm.ChunkSize*2+(40))
-		copy(content[:swarm.ChunkSize], dataChunk)
+		content := make([]byte, swarm.ChunkSize*2)
 		copy(content[swarm.ChunkSize:], dataChunk)
-		copy(content[swarm.ChunkSize*2:], chunkAddress.Bytes())
-		copy(content[swarm.ChunkSize*2+20:], chunkAddress.Bytes())
+		copy(content[:swarm.ChunkSize], dataChunk)
 
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, apiClient, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, apiClient, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, fileUploadResponse{
+			Reference: rootAddress,
 		}, sentHheaders)
 		uuid1 := isTagFoundInResponse(t, rcvdHeaders, nil)
 
@@ -266,12 +267,11 @@ func TestTags(t *testing.T) {
 		if finalTag.Stored != 3 {
 			t.Errorf("tag stored count mismatch. got %d want %d", finalTag.Stored, 3)
 		}
-		if finalTag.Sent != 3 {
-			t.Errorf("tag sent count mismatch. got %d want %d", finalTag.Sent, 3)
+
+		if !finalTag.Address.Equal(rootAddress) {
+			t.Errorf("Address mismatch")
 		}
-		if finalTag.Synced != 3 {
-			t.Errorf("tag synced count mismatch. got %d want %d", finalTag.Synced, 3)
-		}
+
 	})
 }
 

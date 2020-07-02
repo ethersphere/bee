@@ -38,6 +38,8 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set(TagHeaderUid, fmt.Sprint(ta.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
 	jsonhttp.OK(w, bytesPostResponse{
 		Reference: address,
 	})
