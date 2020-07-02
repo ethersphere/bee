@@ -35,6 +35,7 @@ type Stream interface {
 	io.Closer
 	Headers() Headers
 	FullClose() error
+	Reset() error
 }
 
 // ProtocolSpec defines a collection of Stream specifications with handlers.
