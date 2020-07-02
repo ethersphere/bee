@@ -216,7 +216,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if err != nil {
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
-			_ = stream.Reset()
+			_ = handshakeStream.Reset()
 			_ = s.disconnect(peerID)
 			return
 		}
@@ -376,7 +376,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	handshakeStream := NewStream(stream)
 	i, err := s.handshakeService.Handshake(handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
-		_ = stream.Reset()
+		_ = handshakeStream.Reset()
 		_ = s.disconnect(info.ID)
 		return nil, fmt.Errorf("handshake: %w", err)
 	}

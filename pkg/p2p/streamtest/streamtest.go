@@ -235,6 +235,11 @@ func (s *stream) FullClose() error {
 	return nil
 }
 
+func (s *stream) Reset() error {
+	//todo: :implement appropriatly after all protocols are migrated and tested
+	return s.Close()
+}
+
 type record struct {
 	b      []byte
 	c      int
