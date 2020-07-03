@@ -19,19 +19,31 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
+const defaultShallowBinPeers = 2
+
 var (
-	bins = uint8(16)
+	bins = swarm.MaxBins
 
 	// how many peers per bin do we want to sync with outside of depth
-	shallowBinPeers = 2
-	logMore         = false // enable this to get more logging
+	shallowBinPeers = defaultShallowBinPeers
+
+	logMore = false // enable this to get more logging
 )
 
 type Options struct {
-	StateStore storage.StateStorer
-	Topology   topology.Driver
-	PullSync   pullsync.Interface
-	Logger     logging.Logger
+	StateStore      storage.StateStorer
+	Topology        topology.Driver
+	PullSync        pullsync.Interface
+	Logger          logging.Logger
+	Bins            uint8
+	ShallowBinPeers int
+}
+
+func NewOptions() Options {
+	return Options{
+		Bins:            swarm.MaxBins,
+		ShallowBinPeers: defaultShallowBinPeers,
+	}
 }
 
 type Puller struct {
@@ -40,7 +52,8 @@ type Puller struct {
 	statestore  storage.StateStorer
 	intervalMtx sync.Mutex
 	syncer      pullsync.Interface
-	logger      logging.Logger
+
+	logger logging.Logger
 
 	syncPeers    []map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
@@ -53,13 +66,15 @@ type Puller struct {
 }
 
 func New(o Options) *Puller {
+	bins = o.Bins
+	shallowBinPeers = o.ShallowBinPeers
+
 	p := &Puller{
 		statestore: o.StateStore,
 		topology:   o.Topology,
 		syncer:     o.PullSync,
 		logger:     o.Logger,
-
-		cursors: make(map[string][]uint64),
+		cursors:    make(map[string][]uint64),
 
 		syncPeers: make([]map[string]*syncPeer, bins),
 		quit:      make(chan struct{}),

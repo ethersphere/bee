@@ -37,20 +37,14 @@ var (
 // then that adding another peer at the same po
 // does not start another syncing session
 func TestOneSync(t *testing.T) {
-	defer func(b uint8, p int) {
-		*puller.Bins = b
-		*puller.ShallowBinPeers = p
-
-	}(*puller.Bins, *puller.ShallowBinPeers)
-	*puller.Bins = 3
-	*puller.ShallowBinPeers = 1
-
 	var (
-		addr        = test.RandomAddress()
-		addr2       = test.RandomAddress()
-		cursors     = []uint64{1000, 1000, 1000}
-		liveReplies = []uint64{1}
+		addr            = test.RandomAddress()
+		addr2           = test.RandomAddress()
+		cursors         = []uint64{1000, 1000, 1000}
+		liveReplies     = []uint64{1}
+		shallowBinPeers = 1
 	)
+
 	puller, _, kad, pullsync := newPuller(opts{
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(
@@ -58,7 +52,9 @@ func TestOneSync(t *testing.T) {
 				mockk.AddrTuple{Addr: addr2, PO: 1},
 			), mockk.WithDepth(2),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		pullSync:        []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:            3,
+		shallowBinPeers: &shallowBinPeers,
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -75,11 +71,6 @@ func TestOneSync(t *testing.T) {
 }
 
 func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
-	defer func(b uint8) {
-		*puller.Bins = b
-	}(*puller.Bins)
-	*puller.Bins = 5
-
 	addr := test.RandomAddress()
 
 	for _, tc := range []struct {
@@ -111,6 +102,7 @@ func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 					), mockk.WithDepth(2),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
+				bins:     5,
 			})
 			t.Cleanup(func() {
 				pullsync.Close()
@@ -133,11 +125,6 @@ func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 }
 
 func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
-	defer func(b uint8) {
-		*puller.Bins = b
-	}(*puller.Bins)
-	*puller.Bins = 5
-
 	addr := test.RandomAddress()
 
 	for _, tc := range []struct {
@@ -192,6 +179,7 @@ func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 					), mockk.WithDepth(2),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
+				bins:     5,
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -214,13 +202,7 @@ func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 }
 
 func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
-	defer func(b uint8) {
-		*puller.Bins = b
-	}(*puller.Bins)
-	*puller.Bins = 5
-
 	addr := test.RandomAddress()
-	const max = math.MaxUint64
 
 	for _, tc := range []struct {
 		name         string   // name of test
@@ -245,6 +227,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 					), mockk.WithDepth(2),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
+				bins:     5,
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -277,6 +260,7 @@ func TestPeerDisconnected(t *testing.T) {
 			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
+		bins:     5,
 	})
 	t.Cleanup(func() {
 		pullsync.Close()
@@ -299,11 +283,6 @@ func TestPeerDisconnected(t *testing.T) {
 }
 
 func TestDepthChange(t *testing.T) {
-	defer func(b uint8) {
-		*puller.Bins = b
-	}(*puller.Bins)
-	*puller.Bins = 5
-
 	var (
 		addr     = test.RandomAddress()
 		interval = "[[1 1]]"
@@ -375,6 +354,7 @@ func TestDepthChange(t *testing.T) {
 					), mockk.WithDepthCalls(tc.depths...), // peer moved from out of depth to depth
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
+				bins:     5,
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -403,7 +383,6 @@ func TestDepthChange(t *testing.T) {
 
 func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
 	t.Helper()
-
 	key := puller.PeerIntervalKey(addr, bin)
 	i := &intervalstore.Intervals{}
 	err := s.Get(key, i)
@@ -434,7 +413,6 @@ func checkNotFound(t *testing.T, s storage.StateStorer, addr swarm.Address, bin 
 
 func checkCalls(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
 	t.Helper()
-
 	exp := len(expCalls)
 	if l := len(calls); l != exp {
 		t.Fatalf("expected %d calls but got %d. calls: %v", exp, l, calls)
@@ -457,7 +435,6 @@ func checkCalls(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
 // so the call list in the test is no longer expected to be in order
 func checkCallsUnordered(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
 	t.Helper()
-
 	exp := len(expCalls)
 	if l := len(calls); l != exp {
 		t.Fatalf("expected %d calls but got %d. calls: %v", exp, l, calls)
@@ -568,8 +545,10 @@ func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.A
 }
 
 type opts struct {
-	pullSync []mockps.Option
-	kad      []mockk.Option
+	pullSync        []mockps.Option
+	kad             []mockk.Option
+	bins            uint8
+	shallowBinPeers *int
 }
 
 func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *mockps.PullSyncMock) {
@@ -578,11 +557,14 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	kad := mockk.NewMockKademlia(ops.kad...)
 	logger := logging.New(ioutil.Discard, 6)
 
-	o := puller.Options{
-		Topology:   kad,
-		StateStore: s,
-		PullSync:   ps,
-		Logger:     logger,
+	o := puller.NewOptions()
+	o.Topology = kad
+	o.StateStore = s
+	o.PullSync = ps
+	o.Logger = logger
+	o.Bins = ops.bins
+	if ops.shallowBinPeers != nil {
+		o.ShallowBinPeers = *ops.shallowBinPeers
 	}
 	return puller.New(o), s, kad, ps
 }
