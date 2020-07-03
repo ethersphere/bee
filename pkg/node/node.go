@@ -286,6 +286,7 @@ func NewBee(o Options) (*Bee, error) {
 		PullSync:   pullSync,
 		Logger:     logger,
 	})
+
 	b.pullerCloser = puller
 
 	var apiService api.Service
