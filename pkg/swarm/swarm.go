@@ -18,7 +18,7 @@ const (
 	ChunkSize         = SectionSize * Branches
 	HashSize          = 32
 	MaxPO       uint8 = 15
-	MaxBins           = MaxPO + 1
+	MaxBins     uint8 = MaxPO + 1
 )
 
 // Address represents an address in Swarm metric space of
