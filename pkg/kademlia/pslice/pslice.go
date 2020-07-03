@@ -5,7 +5,6 @@
 package pslice
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -25,7 +24,6 @@ type PSlice struct {
 
 // New creates a new PSlice.
 func New(maxBins int) *PSlice {
-	fmt.Println(maxBins)
 	return &PSlice{
 		peers: make([]swarm.Address, 0),
 		bins:  make([]uint, maxBins),

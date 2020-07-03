@@ -572,7 +572,7 @@ func (k *Kad) marshal(indent bool) ([]byte, error) {
 	}
 
 	var infos []binInfo
-	for i := swarm.MaxPO; i >= 0; i-- {
+	for i := int(swarm.MaxPO); i >= 0; i-- {
 		infos = append(infos, binInfo{})
 	}
 
