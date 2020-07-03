@@ -450,11 +450,11 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	if err := b.pullerCloser.Close(); err != nil {
-		return fmt.Errorf("puller: %w", err)
+		errs.add(fmt.Errorf("puller: %w", err))
 	}
 
 	if err := b.pullSyncCloser.Close(); err != nil {
-		return fmt.Errorf("pull sync: %w", err)
+		errs.add(fmt.Errorf("pull sync: %w", err))
 	}
 
 	b.p2pCancel()
