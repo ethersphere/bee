@@ -138,7 +138,7 @@ func (r *LazyChunkReader) ReadAt(b []byte, off int64) (read int, err error) {
 	return len(b), nil
 }
 
-func (r *LazyChunkReader) join(ctx context.Context, b []byte, off int64, eoff int64, depth int, treeSize int64, chunkData []byte, parentWg *sync.WaitGroup, errC chan error, quitC chan bool) {
+func (r *LazyChunkReader) join(ctx context.Context, b []byte, off, eoff int64, depth int, treeSize int64, chunkData []byte, parentWg *sync.WaitGroup, errC chan error, quitC chan bool) {
 	defer parentWg.Done()
 	// find appropriate block level
 	for chunkSize(chunkData) < uint64(treeSize) && depth > r.depth {
