@@ -280,13 +280,13 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	pullerOpts := puller.NewOptions()
-	pullerOpts.StateStore = stateStore
-	pullerOpts.Topology = topologyDriver
-	pullerOpts.PullSync = pullSync
-	pullerOpts.Logger = logger
+	puller := puller.New(puller.Options{
+		StateStore: stateStore,
+		Topology:   topologyDriver,
+		PullSync:   pullSync,
+		Logger:     logger,
+	})
 
-	puller := puller.New(pullerOpts)
 	b.pullerCloser = puller
 
 	var apiService api.Service

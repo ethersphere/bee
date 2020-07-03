@@ -557,12 +557,13 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	kad := mockk.NewMockKademlia(ops.kad...)
 	logger := logging.New(ioutil.Discard, 6)
 
-	o := puller.NewOptions()
-	o.Topology = kad
-	o.StateStore = s
-	o.PullSync = ps
-	o.Logger = logger
-	o.Bins = ops.bins
+	o := puller.Options{
+		Topology:   kad,
+		StateStore: s,
+		PullSync:   ps,
+		Logger:     logger,
+		Bins:       ops.bins,
+	}
 	if ops.shallowBinPeers != nil {
 		o.ShallowBinPeers = *ops.shallowBinPeers
 	}

@@ -22,11 +22,6 @@ import (
 const defaultShallowBinPeers = 2
 
 var (
-	bins = swarm.MaxBins
-
-	// how many peers per bin do we want to sync with outside of depth
-	shallowBinPeers = defaultShallowBinPeers
-
 	logMore = false // enable this to get more logging
 )
 
@@ -37,13 +32,6 @@ type Options struct {
 	Logger          logging.Logger
 	Bins            uint8
 	ShallowBinPeers int
-}
-
-func NewOptions() Options {
-	return Options{
-		Bins:            swarm.MaxBins,
-		ShallowBinPeers: defaultShallowBinPeers,
-	}
 }
 
 type Puller struct {
@@ -63,11 +51,22 @@ type Puller struct {
 
 	quit chan struct{}
 	wg   sync.WaitGroup
+
+	bins            uint8 // how many bins do we support
+	shallowBinPeers int   // how many peers per bin do we want to sync with outside of depth
 }
 
 func New(o Options) *Puller {
-	bins = o.Bins
-	shallowBinPeers = o.ShallowBinPeers
+	var (
+		bins            uint8 = swarm.MaxBins
+		shallowBinPeers int   = defaultShallowBinPeers
+	)
+	if o.Bins != 0 {
+		bins = o.Bins
+	}
+	if o.ShallowBinPeers != 0 {
+		shallowBinPeers = o.ShallowBinPeers
+	}
 
 	p := &Puller{
 		statestore: o.StateStore,
@@ -79,6 +78,9 @@ func New(o Options) *Puller {
 		syncPeers: make([]map[string]*syncPeer, bins),
 		quit:      make(chan struct{}),
 		wg:        sync.WaitGroup{},
+
+		bins:            bins,
+		shallowBinPeers: shallowBinPeers,
 	}
 
 	for i := uint8(0); i < bins; i++ {
@@ -149,9 +151,9 @@ func (p *Puller) manage() {
 				if po < depth {
 					// outside of depth, sync peerPO bin only
 					if _, ok := bp[peerAddr.String()]; !ok {
-						if syncing < shallowBinPeers {
+						if syncing < p.shallowBinPeers {
 							// peer not syncing yet and we still need more peers in this bin
-							bp[peerAddr.String()] = newSyncPeer(peerAddr)
+							bp[peerAddr.String()] = newSyncPeer(peerAddr, p.bins)
 							peerEntry := peer{addr: peerAddr, po: po}
 							peersToSync = append(peersToSync, peerEntry)
 						}
@@ -164,7 +166,7 @@ func (p *Puller) manage() {
 					// within depth, sync everything >= depth
 					if _, ok := bp[peerAddr.String()]; !ok {
 						// we're not syncing with this peer yet, start doing so
-						bp[peerAddr.String()] = newSyncPeer(peerAddr)
+						bp[peerAddr.String()] = newSyncPeer(peerAddr, p.bins)
 						peerEntry := peer{addr: peerAddr, po: po}
 						peersToSync = append(peersToSync, peerEntry)
 					} else {
@@ -230,7 +232,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 		// within depth
 		var want, dontWant []uint8
 
-		for i := d; i < bins; i++ {
+		for i := d; i < p.bins; i++ {
 			if i == 0 {
 				continue
 			}
@@ -272,7 +274,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 			dontWant = []uint8{0} // never want bin 0
 		)
 
-		for i := uint8(0); i < bins; i++ {
+		for i := uint8(0); i < p.bins; i++ {
 			if i == want {
 				continue
 			}
@@ -466,7 +468,7 @@ func (p *Puller) Close() error {
 	close(p.quit)
 	p.syncPeersMtx.Lock()
 	defer p.syncPeersMtx.Unlock()
-	for i := uint8(0); i < bins; i++ {
+	for i := uint8(0); i < p.bins; i++ {
 		binPeers := p.syncPeers[i]
 		for _, peer := range binPeers {
 			peer.Lock()
@@ -549,7 +551,7 @@ type syncPeer struct {
 	sync.Mutex
 }
 
-func newSyncPeer(addr swarm.Address) *syncPeer {
+func newSyncPeer(addr swarm.Address, bins uint8) *syncPeer {
 	return &syncPeer{
 		address:        addr,
 		binCancelFuncs: make(map[uint8]func(), bins),
