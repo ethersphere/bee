@@ -49,6 +49,31 @@ func TestFiles(t *testing.T) {
 		})
 	})
 
+	t.Run("encrypt-decrypt", func(t *testing.T) {
+		fileName := "my-pictures.jpeg"
+		rootHash := "f2e761160deda91c1fbfab065a5abf530b0766b3e102b51fbd626ba37c3bc581"
+		headers := make(http.Header)
+		headers.Add("EncryptHeader", "True")
+		headers.Add("Content-Type", "image/jpeg; charset=utf-8")
+
+		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, api.FileUploadResponse{
+			Reference: swarm.MustParseHexAddress(rootHash),
+		}, headers)
+
+		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
+		cd := rcvdHeader.Get("Content-Disposition")
+		_, params, err := mime.ParseMediaType(cd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if params["filename"] != fileName {
+			t.Fatal("Invalid file name detected")
+		}
+		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
+			t.Fatal("Invalid content type detected")
+		}
+	})
+
 	t.Run("check-content-type-detection", func(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 		rootHash := "f2e761160deda91c1fbfab065a5abf530b0766b3e102b51fbd626ba37c3bc581"
