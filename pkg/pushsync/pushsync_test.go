@@ -98,7 +98,7 @@ func TestPushChunkToClosest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ta1.Sent != 0 || ta1.Synced != 0 {
+	if ta1.Get(tags.StateSent) != 0 || ta1.Get(tags.StateSynced) != 0 {
 		t.Fatalf("tags initialization error")
 	}
 
@@ -122,7 +122,7 @@ func TestPushChunkToClosest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ta2.Sent != 1 {
+	if ta2.Get(tags.StateSent) != 1 {
 		t.Fatalf("tags error")
 	}
 
