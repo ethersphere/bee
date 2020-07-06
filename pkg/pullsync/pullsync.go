@@ -6,9 +6,12 @@ package pullsync
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bitvector"
@@ -27,6 +30,7 @@ const (
 	protocolVersion  = "1.0.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
+	cancelStreamName = "cancel"
 )
 
 var (
@@ -37,14 +41,20 @@ var (
 var maxPage = 50
 
 type Interface interface {
-	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error)
+	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error)
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
+	CancelRuid(peer swarm.Address, ruid uint32) error
 }
 
 type Syncer struct {
 	streamer p2p.Streamer
 	logger   logging.Logger
 	storage  pullstorage.Storer
+	quit     chan struct{}
+	wg       sync.WaitGroup
+
+	ruidMtx sync.Mutex
+	ruidCtx map[uint32]func()
 
 	Interface
 	io.Closer
@@ -62,6 +72,9 @@ func New(o Options) *Syncer {
 		streamer: o.Streamer,
 		storage:  o.Storage,
 		logger:   o.Logger,
+		ruidCtx:  make(map[uint32]func()),
+		wg:       sync.WaitGroup{},
+		quit:     make(chan struct{}),
 	}
 }
 
@@ -78,6 +91,10 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 				Name:    cursorStreamName,
 				Handler: s.cursorHandler,
 			},
+			{
+				Name:    cancelStreamName,
+				Handler: s.cancelHandler,
+			},
 		},
 	}
 }
@@ -86,39 +103,46 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // It returns the BinID of highest chunk that was synced from the given interval.
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
-func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error) {
+func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return 0, fmt.Errorf("new stream: %w", err)
+		return 0, 0, fmt.Errorf("new stream: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			_ = stream.FullClose()
-			return
-		}
-		_ = stream.Close()
-	}()
+
+	var ru pb.Ruid
+	b := make([]byte, 4)
+	_, err = rand.Read(b)
+	if err != nil {
+		return 0, 0, fmt.Errorf("crypto rand: %w", err)
+	}
+
+	ru.Ruid = binary.BigEndian.Uint32(b)
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	defer stream.Close()
+
+	if err = w.WriteMsgWithContext(ctx, &ru); err != nil {
+		return 0, 0, fmt.Errorf("write ruid: %w", err)
+	}
 
 	rangeMsg := &pb.GetRange{Bin: int32(bin), From: from, To: to}
 	if err = w.WriteMsgWithContext(ctx, rangeMsg); err != nil {
-		return 0, fmt.Errorf("write get range: %w", err)
+		return 0, ru.Ruid, fmt.Errorf("write get range: %w", err)
 	}
 
 	var offer pb.Offer
 	if err = r.ReadMsgWithContext(ctx, &offer); err != nil {
-		return 0, fmt.Errorf("read offer: %w", err)
+		return 0, ru.Ruid, fmt.Errorf("read offer: %w", err)
 	}
 
 	if len(offer.Hashes)%swarm.HashSize != 0 {
-		return 0, fmt.Errorf("inconsistent hash length")
+		return 0, ru.Ruid, fmt.Errorf("inconsistent hash length")
 	}
 
 	// empty interval (no chunks present in interval).
 	// return the end of the requested range as topmost.
 	if len(offer.Hashes) == 0 {
-		return offer.Topmost, nil
+		return offer.Topmost, ru.Ruid, nil
 	}
 
 	var (
@@ -129,7 +153,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	bv, err := bitvector.New(bvLen)
 	if err != nil {
-		return 0, fmt.Errorf("new bitvector: %w", err)
+		return 0, ru.Ruid, fmt.Errorf("new bitvector: %w", err)
 	}
 
 	for i := 0; i < len(offer.Hashes); i += swarm.HashSize {
@@ -137,11 +161,11 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
 			s.logger.Errorf("syncer got a zero address hash on offer")
-			return 0, fmt.Errorf("zero address on offer")
+			return 0, ru.Ruid, fmt.Errorf("zero address on offer")
 		}
 		have, err := s.storage.Has(ctx, a)
 		if err != nil {
-			return 0, fmt.Errorf("storage has: %w", err)
+			return 0, ru.Ruid, fmt.Errorf("storage has: %w", err)
 		}
 		if !have {
 			wantChunks[a.String()] = struct{}{}
@@ -152,7 +176,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
-		return 0, fmt.Errorf("write want: %w", err)
+		return 0, ru.Ruid, fmt.Errorf("write want: %w", err)
 	}
 
 	// if ctr is zero, it means we don't want any chunk in the batch
@@ -163,21 +187,21 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, fmt.Errorf("read delivery: %w", err)
+			return 0, ru.Ruid, fmt.Errorf("read delivery: %w", err)
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.String()]; !ok {
-			return 0, ErrUnsolicitedChunk
+			return 0, ru.Ruid, ErrUnsolicitedChunk
 		}
 
 		delete(wantChunks, addr.String())
 
 		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
-			return 0, fmt.Errorf("delivery put: %w", err)
+			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", err)
 		}
 	}
-	return offer.Topmost, nil
+	return offer.Topmost, ru.Ruid, nil
 }
 
 // handler handles an incoming request to sync an interval
@@ -185,11 +209,42 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.Close()
 
+	var ru pb.Ruid
+	if err := r.ReadMsgWithContext(ctx, &ru); err != nil {
+		return fmt.Errorf("send ruid: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	s.ruidMtx.Lock()
+	s.ruidCtx[ru.Ruid] = cancel
+	s.ruidMtx.Unlock()
+	cc := make(chan struct{})
+	defer close(cc)
+	go func() {
+		select {
+		case <-s.quit:
+		case <-ctx.Done():
+		case <-cc:
+		}
+		cancel()
+		s.ruidMtx.Lock()
+		delete(s.ruidCtx, ru.Ruid)
+		s.ruidMtx.Unlock()
+	}()
+
+	select {
+	case <-s.quit:
+		return nil
+	default:
+	}
+
+	s.wg.Add(1)
+	defer s.wg.Done()
+
 	var rn pb.GetRange
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
 		return fmt.Errorf("read get range: %w", err)
 	}
-	s.logger.Debugf("got range peer %s bin %d from %d to %d", p.Address.String(), rn.Bin, rn.From, rn.To)
 
 	// make an offer to the upstream peer in return for the requested range
 	offer, addrs, err := s.makeOffer(ctx, rn)
@@ -245,7 +300,6 @@ func (s *Syncer) setChunks(ctx context.Context, addrs ...swarm.Address) error {
 
 // makeOffer tries to assemble an offer for a given requested interval.
 func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, addrs []swarm.Address, err error) {
-	s.logger.Tracef("syncer make offer for bin %d from %d to %d maxpage %d", rn.Bin, rn.From, rn.To, maxPage)
 	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
 	if err != nil {
 		return o, nil, err
@@ -279,7 +333,6 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 }
 
 func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error) {
-	s.logger.Debugf("syncer get cursors from peer %s", peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -296,8 +349,6 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, 
 	if err = r.ReadMsgWithContext(ctx, &ack); err != nil {
 		return nil, fmt.Errorf("read ack: %w", err)
 	}
-
-	s.logger.Debugf("syncer peer %s cursors %s", peer, ack.Cursors)
 
 	return ack.Cursors, nil
 }
@@ -325,6 +376,55 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	return nil
 }
 
+func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) error {
+	stream, err := s.streamer.NewStream(context.Background(), peer, nil, protocolName, protocolVersion, cancelStreamName)
+	if err != nil {
+		return fmt.Errorf("new stream: %w", err)
+	}
+
+	w := protobuf.NewWriter(stream)
+	defer stream.Close()
+
+	var c pb.Cancel
+	c.Ruid = ruid
+	if err := w.WriteMsgWithTimeout(5*time.Second, &c); err != nil {
+		return fmt.Errorf("send cancellation: %w", err)
+	}
+	return nil
+}
+
+// handler handles an incoming request to explicitly cancel a ruid
+func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+	r := protobuf.NewReader(stream)
+	defer stream.Close()
+
+	var c pb.Cancel
+	if err := r.ReadMsgWithContext(ctx, &c); err != nil {
+		return fmt.Errorf("read cancel: %w", err)
+	}
+
+	s.ruidMtx.Lock()
+	defer s.ruidMtx.Unlock()
+
+	if cancel, ok := s.ruidCtx[c.Ruid]; ok {
+		cancel()
+	}
+	delete(s.ruidCtx, c.Ruid)
+	return nil
+}
+
 func (s *Syncer) Close() error {
+	s.logger.Info("pull syncer shutting down")
+	close(s.quit)
+	cc := make(chan struct{})
+	go func() {
+		defer close(cc)
+		s.wg.Wait()
+	}()
+	select {
+	case <-cc:
+	case <-time.After(10 * time.Second):
+		s.logger.Warning("pull syncer shutting down with running goroutines")
+	}
 	return nil
 }

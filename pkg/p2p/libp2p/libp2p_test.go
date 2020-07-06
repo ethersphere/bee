@@ -31,7 +31,10 @@ func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Ser
 		t.Fatal(err)
 	}
 
-	overlay = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID)
+	overlay, err = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	addr := ":0"
 
@@ -58,6 +61,8 @@ func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Ser
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	s.SetNotifier(noopNotifier)
 
 	t.Cleanup(func() {
 		cancel()

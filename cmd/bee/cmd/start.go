@@ -33,13 +33,15 @@ func (c *command) initStartCmd() (err error) {
 		optionNameAPIAddr            = "api-addr"
 		optionNameP2PAddr            = "p2p-addr"
 		optionNameNATAddr            = "nat-addr"
-		optionNameP2PDisableWS       = "p2p-disable-ws"
-		optionNameP2PDisableQUIC     = "p2p-disable-quic"
-		optionNameEnableDebugAPI     = "enable-debug-api"
+		optionNameP2PWSEnable        = "p2p-ws-enable"
+		optionNameP2PQUICEnable      = "p2p-quic-enable"
+		optionNameDebugAPIEnable     = "debug-api-enable"
 		optionNameDebugAPIAddr       = "debug-api-addr"
 		optionNameBootnodes          = "bootnode"
 		optionNameNetworkID          = "network-id"
-		optionNameTracingEnabled     = "tracing"
+		optionWelcomeMessage         = "welcome-message"
+		optionCORSAllowedOrigins     = "cors-allowed-origins"
+		optionNameTracingEnabled     = "tracing-enable"
 		optionNameTracingEndpoint    = "tracing-endpoint"
 		optionNameTracingServiceName = "tracing-service-name"
 		optionNameVerbosity          = "verbosity"
@@ -70,9 +72,25 @@ func (c *command) initStartCmd() (err error) {
 			default:
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
+			bee := `
+Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
+                \     /                
+            \    o ^ o    /            
+              \ (     ) /              
+   ____________(%%%%%%%)____________   
+  (     /   /  )%%%%%%%(  \   \     )  
+  (___/___/__/           \__\___\___)  
+     (     /  /(%%%%%%%)\  \     )     
+      (__/___/ (%%%%%%%) \___\__)      
+              /(       )\              
+            /   (%%%%%)   \            
+                 (%%%)                 
+                   !                   `
+
+			fmt.Println(bee)
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
-			if !c.config.GetBool(optionNameEnableDebugAPI) {
+			if !c.config.GetBool(optionNameDebugAPIEnable) {
 				debugAPIAddr = ""
 			}
 
@@ -101,10 +119,12 @@ func (c *command) initStartCmd() (err error) {
 				DebugAPIAddr:       debugAPIAddr,
 				Addr:               c.config.GetString(optionNameP2PAddr),
 				NATAddr:            c.config.GetString(optionNameNATAddr),
-				DisableWS:          c.config.GetBool(optionNameP2PDisableWS),
-				DisableQUIC:        c.config.GetBool(optionNameP2PDisableQUIC),
+				EnableWS:           c.config.GetBool(optionNameP2PWSEnable),
+				EnableQUIC:         c.config.GetBool(optionNameP2PQUICEnable),
 				NetworkID:          c.config.GetUint64(optionNameNetworkID),
+				WelcomeMessage:     c.config.GetString(optionWelcomeMessage),
 				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
+				CORSAllowedOrigins: c.config.GetStringSlice(optionCORSAllowedOrigins),
 				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:    c.config.GetString(optionNameTracingEndpoint),
 				TracingServiceName: c.config.GetString(optionNameTracingServiceName),
@@ -160,16 +180,18 @@ func (c *command) initStartCmd() (err error) {
 	cmd.Flags().String(optionNameAPIAddr, ":8080", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":7070", "P2P listen address")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
-	cmd.Flags().Bool(optionNameP2PDisableWS, false, "disable P2P WebSocket protocol")
-	cmd.Flags().Bool(optionNameP2PDisableQUIC, false, "disable P2P QUIC protocol")
+	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
+	cmd.Flags().Bool(optionNameP2PQUICEnable, false, "enable P2P QUIC transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/bootnode.ethswarm.org"}, "initial nodes to connect to")
-	cmd.Flags().Bool(optionNameEnableDebugAPI, false, "enable debug HTTP API")
+	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
+	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
+	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 
 	c.root.AddCommand(cmd)
 	return nil

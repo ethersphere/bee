@@ -34,17 +34,20 @@ type Notifier interface {
 
 type PeerAdder interface {
 	// AddPeer is called when a peer is added to the topology backlog
-	// for further processing by connectivity strategy.
 	AddPeer(ctx context.Context, addr swarm.Address) error
 }
 
 type Connecter interface {
-	// Connected is called when a peer dials in.
+	// Connected is called when a peer dials in, or in case explicit
+	// notification to kademlia on dial out is requested.
 	Connected(context.Context, swarm.Address) error
 }
 
 type Disconnecter interface {
 	// Disconnected is called when a peer disconnects.
+	// The disconnect event can be initiated on the local
+	// node or on the remote node, this handle does not make
+	// any distinctions between either of them.
 	Disconnected(swarm.Address)
 }
 

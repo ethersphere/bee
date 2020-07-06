@@ -26,10 +26,11 @@ type server struct {
 }
 
 type Options struct {
-	Tags   *tags.Tags
-	Storer storage.Storer
-	Logger logging.Logger
-	Tracer *tracing.Tracer
+	Tags               *tags.Tags
+	Storer             storage.Storer
+	CORSAllowedOrigins []string
+	Logger             logging.Logger
+	Tracer             *tracing.Tracer
 }
 
 func New(o Options) Service {
