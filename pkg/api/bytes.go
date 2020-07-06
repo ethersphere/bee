@@ -5,7 +5,7 @@
 package api
 
 import (
-	"context"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -30,13 +30,9 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var toEncrypt bool
-	encryptStr := r.Header.Get(EncryptHeader)
-	if strings.ToLower(encryptStr) == "true" {
-		toEncrypt = true
-	}
-
-	address, err := s.splitUpload(ctx, r.Body, r.ContentLength, toEncrypt)
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
+	sp := splitter.NewSimpleSplitter(s.Storer)
+	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
 		jsonhttp.InternalServerError(w, nil)
@@ -45,31 +41,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, bytesPostResponse{
 		Reference: address,
 	})
-}
-
-func (s *server) splitUpload(ctx context.Context, r io.Reader, l int64, toEncrypt bool) (swarm.Address, error) {
-	chunkPipe := file.NewChunkPipe()
-	go func() {
-		buf := make([]byte, swarm.ChunkSize)
-		c, err := io.CopyBuffer(chunkPipe, r, buf)
-		if err != nil {
-			s.Logger.Debugf("split upload: io error %d: %v", c, err)
-			s.Logger.Error("split upload: io error")
-			return
-		}
-		if c != l {
-			s.Logger.Debugf("split upload: read count mismatch %d: %v", c, err)
-			s.Logger.Error("split upload: read count mismatch")
-			return
-		}
-		err = chunkPipe.Close()
-		if err != nil {
-			s.Logger.Debugf("split upload: incomplete file write close %v", err)
-			s.Logger.Error("split upload: incomplete file write close")
-		}
-	}()
-	sp := splitter.NewSimpleSplitter(s.Storer)
-	return sp.Split(ctx, chunkPipe, l, toEncrypt)
 }
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
@@ -85,13 +56,8 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var toDecrypt bool
-	if len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength) {
-		toDecrypt = true
-	}
-
+	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 	j := joiner.NewSimpleJoiner(s.Storer)
-
 	dataSize, err := j.Size(ctx, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -106,12 +72,19 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	outBuffer := bytes.NewBuffer(nil)
+	c, err := file.JoinReadAll(j, address, outBuffer, toDecrypt)
+	if err != nil && c == 0 {
+		s.Logger.Debugf("bytes download: data join %s: %v", address, err)
+		s.Logger.Errorf("bytes download: data join %s", address)
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf("%q", address))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	c, err := file.JoinReadAll(j, address, w, toDecrypt)
-	if err != nil && c == 0 {
-		s.Logger.Errorf("bytes: data write %s: %v", address, err)
-		s.Logger.Error("bytes: data input error")
-		jsonhttp.InternalServerError(w, "retrieval fail")
+	if _, err = io.Copy(w, outBuffer); err != nil {
+		s.Logger.Debugf("bytes download: data read %s: %v", address, err)
+		s.Logger.Errorf("bytes download: data read %s", address)
 	}
 }
