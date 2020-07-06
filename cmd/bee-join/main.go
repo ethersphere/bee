@@ -83,7 +83,7 @@ func Join(cmd *cobra.Command, args []string) (err error) {
 
 	// create the join and get its data reader
 	j := joiner.NewSimpleJoiner(store)
-	_, err = file.JoinReadAll(j, addr, outFile)
+	_, err = file.JoinReadAll(j, addr, outFile, false)
 	return err
 }
 

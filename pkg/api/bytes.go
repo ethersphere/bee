@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
@@ -27,8 +29,10 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	sp := splitter.NewSimpleSplitter(s.Storer)
-	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength)
+	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
 		jsonhttp.InternalServerError(w, nil)
@@ -52,8 +56,8 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 	j := joiner.NewSimpleJoiner(s.Storer)
-
 	dataSize, err := j.Size(ctx, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -69,7 +73,7 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	outBuffer := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(j, address, outBuffer)
+	c, err := file.JoinReadAll(j, address, outBuffer, toDecrypt)
 	if err != nil && c == 0 {
 		s.Logger.Debugf("bytes download: data join %s: %v", address, err)
 		s.Logger.Errorf("bytes download: data join %s", address)
