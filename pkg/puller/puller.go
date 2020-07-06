@@ -41,7 +41,8 @@ type Puller struct {
 	intervalMtx sync.Mutex
 	syncer      pullsync.Interface
 
-	logger logging.Logger
+	metrics metrics
+	logger  logging.Logger
 
 	syncPeers    []map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
@@ -72,6 +73,7 @@ func New(o Options) *Puller {
 		statestore: o.StateStore,
 		topology:   o.Topology,
 		syncer:     o.PullSync,
+		metrics:    newMetrics(),
 		logger:     o.Logger,
 		cursors:    make(map[string][]uint64),
 
@@ -368,6 +370,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		p.logger.Tracef("histSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
 	}
 	for {
+		p.metrics.HistWorkerIterCounter.Inc()
 		select {
 		case <-p.quit:
 			if logMore {
@@ -384,6 +387,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		s, _, _, err := p.nextPeerInterval(peer, bin)
 		if err != nil {
+			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Debugf("histSyncWorker nextPeerInterval: %v", err)
 			return
 		}
@@ -399,6 +403,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 				p.logger.Debugf("histSyncWorker error syncing interval. peer %s, bin %d, cursor %d, err %v", peer.String(), bin, cur, err)
 			}
 			if ruid == 0 {
+				p.metrics.HistWorkerErrCounter.Inc()
 				return
 			}
 			if err := p.syncer.CancelRuid(peer, ruid); err != nil && logMore {
@@ -408,6 +413,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		}
 		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
+			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Errorf("error persisting interval for peer, quitting")
 			return
 		}
@@ -421,6 +427,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	}
 	from := cur + 1
 	for {
+		p.metrics.LiveWorkerIterCounter.Inc()
 		select {
 		case <-p.quit:
 			if logMore {
@@ -440,6 +447,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 				p.logger.Debugf("liveSyncWorker exit on sync error. peer %s bin %d from %d err %v", peer, bin, from, err)
 			}
 			if ruid == 0 {
+				p.metrics.LiveWorkerErrCounter.Inc()
 				return
 			}
 			if err := p.syncer.CancelRuid(peer, ruid); err != nil && logMore {
@@ -452,6 +460,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		}
 		err = p.addPeerInterval(peer, bin, from, top)
 		if err != nil {
+			p.metrics.LiveWorkerErrCounter.Inc()
 			p.logger.Errorf("liveSyncWorker exit on add peer interval. peer %s bin %d from %d err %v", peer, bin, from, err)
 			return
 		}
