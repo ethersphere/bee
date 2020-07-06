@@ -269,7 +269,7 @@ func TestTags(t *testing.T) {
 		}
 
 		if !finalTag.Address.Equal(rootAddress) {
-			t.Errorf("Address mismatch")
+			t.Errorf("Address mismatch: expected %s got %s", rootAddress.String(), finalTag.Address.String())
 		}
 
 	})

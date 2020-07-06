@@ -66,6 +66,7 @@ type Tag struct {
 	ctx      context.Context  // tracing context
 	span     opentracing.Span // tracing root span
 	spanOnce sync.Once        // make sure we close root span only once
+	totalMu  sync.Mutex
 }
 
 // NewTag creates a new tag, and returns it
@@ -76,6 +77,7 @@ func NewTag(ctx context.Context, uid uint32, s string, total int64, anon bool, t
 		Name:      s,
 		StartedAt: time.Now(),
 		Total:     total,
+		totalMu:   sync.Mutex{},
 	}
 
 	// context here is used only to store the root span `new.upload.tag` within Tag,
@@ -178,6 +180,8 @@ func (t *Tag) Done(s State) bool {
 // is that the manifest creation will be called last and this will have the root
 // hash of the manifest
 func (t *Tag) DoneSplit(address swarm.Address) int64 {
+	t.totalMu.Lock()
+	defer t.totalMu.Unlock()
 	split := atomic.LoadInt64(&t.Split)
 	total := atomic.LoadInt64(&t.Total)
 	atomic.StoreInt64(&t.Total, total+split)

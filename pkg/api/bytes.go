@@ -94,7 +94,7 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) *tags.Tag {
 		tag, err = s.Tags.Create(tagName, 0, false)
 		if err != nil {
 			s.Logger.Debugf("bytes upload: tag creation error: %v", err)
-			s.Logger.Error("bytes upload: tag creation error")
+			s.Logger.Error("bytes upload: tag creation")
 			jsonhttp.InternalServerError(w, "cannot create tag")
 			return nil
 		}
@@ -110,8 +110,8 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) *tags.Tag {
 
 		tag, err = s.Tags.Get(uint32(tagUid))
 		if err != nil {
-			s.Logger.Debugf("bytes upload: tag get error: %v", err)
-			s.Logger.Error("bytes upload: tag get error")
+			s.Logger.Debugf("bytes upload: get tag error: %v", err)
+			s.Logger.Error("bytes upload: get tag")
 			jsonhttp.InternalServerError(w, "cannot create tag")
 			return nil
 		}
