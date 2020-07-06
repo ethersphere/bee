@@ -136,12 +136,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	s.sumCounts[lvl]++
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
-
 	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
-
-	var ref encryption.Key
-	var chunkData []byte
-	data := s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum]
 
 	//perform hashing
 	s.hasher.Reset()
@@ -149,6 +144,11 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var ref encryption.Key
+	var chunkData []byte
+	data := s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum]
+
 	_, err = s.hasher.Write(data)
 	if err != nil {
 		return nil, err

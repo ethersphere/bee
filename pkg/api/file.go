@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	MultiPartFormData = "multipart/form-data"
+	multiPartFormData = "multipart/form-data"
 	EncryptHeader     = "swarm-encrypt"
 )
 
@@ -58,7 +58,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var fileName, contentLength string
 	var fileSize uint64
 
-	if mediaType == MultiPartFormData {
+	if mediaType == multiPartFormData {
 		mr := multipart.NewReader(r.Body, params["boundary"])
 
 		// read only the first part, as only one file upload is supported
