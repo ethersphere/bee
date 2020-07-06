@@ -385,11 +385,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		s, _, _, err := p.nextPeerInterval(peer, bin)
 		if err != nil {
 			p.logger.Debugf("histSyncWorker nextPeerInterval: %v", err)
-			// wait and retry? this is a local error
-			// maybe just quit the peer entirely.
-			// not sure how to do this
-			<-time.After(30 * time.Second)
-			continue
+			return
 		}
 		if s > cur {
 			if logMore {
