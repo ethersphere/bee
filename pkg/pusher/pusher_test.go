@@ -19,6 +19,7 @@ import (
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 )
 
@@ -46,7 +47,6 @@ func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Add
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSyncPush status.
 func TestSendChunkToPushSyncWithTag(t *testing.T) {
-	chunk := createChunk()
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
@@ -58,10 +58,17 @@ func TestSendChunkToPushSyncWithTag(t *testing.T) {
 		}
 		return receipt, nil
 	})
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	mtags, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	ta, err := mtags.Create("test", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := createChunk().WithTagID(ta.Uid)
+
+	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +86,11 @@ func TestSendChunkToPushSyncWithTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	if ta.Synced != 1 {
+		t.Fatalf("tags error")
+	}
+
 	p.Close()
 }
 
@@ -98,7 +110,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
@@ -136,7 +148,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
@@ -177,7 +189,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return nil, nil
 	})
 
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 	defer p.Close()
 
@@ -208,7 +220,7 @@ func createChunk() swarm.Chunk {
 	return swarm.NewChunk(chunkAddress, chunkData).WithTagID(666)
 }
 
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*pusher.Service, *Store) {
+func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)
@@ -216,6 +228,7 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 		t.Fatal(err)
 	}
 
+	mtags := tags.NewTags()
 	pusherStorer := &Store{
 		Storer:    storer,
 		modeSet:   make(map[string]storage.ModeSet),
@@ -223,8 +236,8 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, PeerSuggester: peerSuggester, Logger: logger})
-	return pusherService, pusherStorer
+	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, Tagger: mtags, PeerSuggester: peerSuggester, Logger: logger})
+	return mtags, pusherService, pusherStorer
 }
 
 func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) error {

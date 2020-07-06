@@ -263,6 +263,7 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:        storer,
 		PeerSuggester: topologyDriver,
 		PushSyncer:    pushSyncProtocol,
+		Tagger:        tagger,
 		Logger:        logger,
 	})
 	b.pusherCloser = pushSyncPusher

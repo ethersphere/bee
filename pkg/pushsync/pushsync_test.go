@@ -122,7 +122,7 @@ func TestPushChunkToClosest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ta2.Sent != 1 || ta2.Synced != 1 {
+	if ta2.Sent != 1 {
 		t.Fatalf("tags error")
 	}
 

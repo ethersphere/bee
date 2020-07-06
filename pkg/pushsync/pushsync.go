@@ -255,11 +255,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
 	}
 
-	// If we get the receipt and have a valid tag, set it as synced
-	if t != nil {
-		t.Inc(tags.StateSynced)
-	}
-
 	rec := &Receipt{
 		Address: swarm.NewAddress(receipt.Address),
 	}
