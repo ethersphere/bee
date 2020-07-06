@@ -87,7 +87,7 @@ func TestSendChunkToPushSyncWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ta.Synced != 1 {
+	if ta.Get(tags.StateSynced) != 1 {
 		t.Fatalf("tags error")
 	}
 
