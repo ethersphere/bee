@@ -22,7 +22,7 @@ type Service struct {
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
 	logger            logging.Logger
-	tagger            *tags.Tags
+	tagg              *tags.Tags
 	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
@@ -42,7 +42,7 @@ func New(o Options) *Service {
 	service := &Service{
 		storer:            o.Storer,
 		pushSyncer:        o.PushSyncer,
-		tagger:            o.Tagger,
+		tagg:              o.Tagger,
 		logger:            o.Logger,
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -178,7 +178,7 @@ func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) {
 		s.logger.Errorf("pusher: error setting chunk as synced: %v", err)
 		s.metrics.ErrorSettingChunkToSynced.Inc()
 	}
-	t, err := s.tagger.Get(ch.TagID())
+	t, err := s.tagg.Get(ch.TagID())
 	if err == nil && t != nil {
 		t.Inc(tags.StateSynced)
 	}

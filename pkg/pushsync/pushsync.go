@@ -38,7 +38,7 @@ type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Putter
 	peerSuggester topology.ClosestPeerer
-	tagger        *tags.Tags
+	tagg          *tags.Tags
 	logger        logging.Logger
 	metrics       metrics
 }
@@ -58,7 +58,7 @@ func New(o Options) *PushSync {
 		streamer:      o.Streamer,
 		storer:        o.Storer,
 		peerSuggester: o.ClosestPeerer,
-		tagger:        o.Tagger,
+		tagg:          o.Tagger,
 		logger:        o.Logger,
 		metrics:       newMetrics(),
 	}
@@ -237,7 +237,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
 	//  if you manage to get a tag, just increment the respective counter
-	t, err := ps.tagger.Get(ch.TagID())
+	t, err := ps.tagg.Get(ch.TagID())
 	if err == nil && t != nil {
 		t.Inc(tags.StateSent)
 	}
