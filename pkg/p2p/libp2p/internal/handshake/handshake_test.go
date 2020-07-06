@@ -165,6 +165,29 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
+	t.Run("Handshake - dynamic welcome message too long", func(t *testing.T) {
+		const LongMessage = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi consectetur urna ut lorem sollicitudin posuere. Donec sagittis laoreet sapien."
+
+		expectedErr := handshake.ErrWelcomeMessageLength
+		err := handshakeService.SetWelcomeMessage(LongMessage)
+		if err == nil || err.Error() != expectedErr.Error() {
+			t.Fatal("expected:", expectedErr, "got:", err)
+		}
+	})
+
+	t.Run("Handshake - set welcome message", func(t *testing.T) {
+		const TestMessage = "Hi im the new test message"
+
+		err := handshakeService.SetWelcomeMessage(TestMessage)
+		if err != nil {
+			t.Fatal("Got error:", err)
+		}
+		got := handshakeService.WelcomeMessageSynced()
+		if got != TestMessage {
+			t.Fatal("expected:", TestMessage, ", got:", got)
+		}
+	})
+
 	t.Run("Handshake - Syn write error", func(t *testing.T) {
 		testErr := errors.New("test error")
 		expectedErr := fmt.Errorf("write syn message: %w", testErr)

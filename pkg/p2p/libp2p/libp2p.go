@@ -503,3 +503,13 @@ func (s *Service) Close() error {
 	}
 	return s.host.Close()
 }
+
+// SetWelcomeMessage sets the welcome message for the handshake protocol.
+func (s *Service) SetWelcomeMessage(val string) error {
+	return s.handshakeService.SetWelcomeMessage(val)
+}
+
+// WelcomeMessageSynced returns the synced value of the welcome message.
+func (s *Service) WelcomeMessageSynced() string {
+	return s.handshakeService.WelcomeMessageSynced()
+}
