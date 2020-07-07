@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
@@ -37,6 +38,7 @@ type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Putter
 	peerSuggester topology.ClosestPeerer
+	tagg          *tags.Tags
 	logger        logging.Logger
 	metrics       metrics
 }
@@ -45,6 +47,7 @@ type Options struct {
 	Streamer      p2p.Streamer
 	Storer        storage.Putter
 	ClosestPeerer topology.ClosestPeerer
+	Tagger        *tags.Tags
 	Logger        logging.Logger
 }
 
@@ -55,6 +58,7 @@ func New(o Options) *PushSync {
 		streamer:      o.Streamer,
 		storer:        o.Storer,
 		peerSuggester: o.ClosestPeerer,
+		tagg:          o.Tagger,
 		logger:        o.Logger,
 		metrics:       newMetrics(),
 	}
@@ -134,7 +138,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	defer streamer.Close()
 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
-
 	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
 		return fmt.Errorf("forward chunk to peer %s: %w", peer.String(), err)
 	}
@@ -233,8 +236,13 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	if err := ps.sendChunkDelivery(w, ch); err != nil {
 		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
-	receiptRTTTimer := time.Now()
+	//  if you manage to get a tag, just increment the respective counter
+	t, err := ps.tagg.Get(ch.TagID())
+	if err == nil && t != nil {
+		t.Inc(tags.StateSent)
+	}
 
+	receiptRTTTimer := time.Now()
 	receipt, err := ps.receiveReceipt(r)
 	if err != nil {
 		return nil, fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
