@@ -88,7 +88,9 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.FullClose()
+	defer func() {
+		go stream.FullClose()
+	}()
 
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
