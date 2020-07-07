@@ -20,14 +20,14 @@ import (
 // simpleSplitter wraps a non-optimized implementation of file.Splitter
 type simpleSplitter struct {
 	putter storage.Putter
-	tagger *tags.Tag
+	tagg   *tags.Tag
 }
 
 // NewSimpleSplitter creates a new SimpleSplitter
-func NewSimpleSplitter(putter storage.Putter, tagger *tags.Tag) file.Splitter {
+func NewSimpleSplitter(putter storage.Putter, tagg *tags.Tag) file.Splitter {
 	return &simpleSplitter{
 		putter: putter,
-		tagger: tagger,
+		tagg:   tagg,
 	}
 }
 
@@ -38,7 +38,7 @@ func NewSimpleSplitter(putter storage.Putter, tagger *tags.Tag) file.Splitter {
 //
 // It returns the Swarmhash of the data.
 func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength int64, toEncrypt bool) (addr swarm.Address, err error) {
-	j := internal.NewSimpleSplitterJob(ctx, s.putter, dataLength, toEncrypt)
+	j := internal.NewSimpleSplitterJob(ctx, s.putter, dataLength, s.tagg, toEncrypt)
 	var total int64
 	data := make([]byte, swarm.ChunkSize)
 	var eof bool

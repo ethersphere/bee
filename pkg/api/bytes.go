@@ -11,8 +11,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
@@ -35,7 +35,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ta := s.createTag(w, r)
 
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	sp := splitter.NewSimpleSplitter(s.Storer)
+	sp := splitter.NewSimpleSplitter(s.Storer, ta)
 	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)

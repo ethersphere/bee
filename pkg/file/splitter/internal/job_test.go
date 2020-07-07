@@ -37,7 +37,7 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), tg)
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), tg, false)
 
 	c, err := j.Write(data)
 	if err != nil {
@@ -85,7 +85,7 @@ func testSplitterJobVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), tg)
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), tg, false)
 
 	for i := 0; i < len(data); i += swarm.ChunkSize {
 		l := swarm.ChunkSize

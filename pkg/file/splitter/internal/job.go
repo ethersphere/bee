@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
@@ -49,15 +48,15 @@ type SimpleSplitterJob struct {
 	cursors    []int    // section write position, indexed per level
 	hasher     bmt.Hash // underlying hasher used for hashing the tree
 	buffer     []byte   // keeps data and hashes, indexed by cursors
-	tagger     *tags.Tag
-	toEncrypt  bool     // to encryrpt the chunks or not
+	tagg       *tags.Tag
+	toEncrypt  bool // to encryrpt the chunks or not
 	refSize    int64
 }
 
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, tagger *tags.Tag) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, tagger *tags.Tag, toEncrypt bool) *SimpleSplitterJob {
 	hashSize := swarm.HashSize
 	refSize := int64(hashSize)
 	if toEncrypt {
@@ -72,7 +71,7 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
-		tagger:     tagger,
+		tagg:       tagger,
 		toEncrypt:  toEncrypt,
 		refSize:    refSize,
 	}
@@ -87,7 +86,6 @@ func (j *SimpleSplitterJob) Write(b []byte) (int, error) {
 	if j.length > j.spanLength {
 		return 0, errors.New("write past span length")
 	}
-	j.tagger.Inc(tags.StateSeen)
 
 	err := j.writeToLevel(0, b)
 	if err != nil {
@@ -142,6 +140,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
 	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
+	s.tagg.Inc(tags.StateSeen)
 
 	//perform hashing
 	s.hasher.Reset()
@@ -162,10 +161,10 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	head := make([]byte, 8)
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
-	chunkData := append(head, tail...)
-	//ch := swarm.NewChunk(addr, chunkData)
-	s.tagger.Inc(tags.StateSplit)
-	s.tagger.Inc(tags.TotalChunks)
+	chunkData = append(head, tail...)
+
+	s.tagg.Inc(tags.StateSplit)
+	s.tagg.Inc(tags.TotalChunks)
 
 	// assemble chunk and put in store
 	addr := swarm.NewAddress(ref)
@@ -184,7 +183,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.tagger.Inc(tags.StateStored)
+	s.tagg.Inc(tags.StateStored)
 
 	return append(ch.Address().Bytes(), encryptionKey...), nil
 }

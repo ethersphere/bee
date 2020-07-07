@@ -33,7 +33,7 @@ func TestSplitIncomplete(t *testing.T) {
 	s := splitter.NewSimpleSplitter(store, tg)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
-	_, err := s.Split(context.Background(), testDataReader, 41, false)
+	_, err = s.Split(context.Background(), testDataReader, 41, false)
 	if err == nil {
 		t.Fatalf("expected error on EOF before full length write")
 	}
