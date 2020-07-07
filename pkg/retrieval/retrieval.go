@@ -123,18 +123,20 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if err != nil {
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() { go stream.FullClose() }()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
 		Addr: addr.Bytes(),
 	}); err != nil {
+		_ = stream.Reset()
 		return nil, peer, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
 
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
+		_ = stream.Reset()
 		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
 
@@ -183,20 +185,23 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (sw
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
+	defer stream.FullClose()
 	var req pb.Request
 	if err := r.ReadMsg(&req); err != nil {
+		_ = stream.Reset()
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
 	if err != nil {
+		_ = stream.Reset()
 		return fmt.Errorf("get from store: %w peer %s", err, p.Address.String())
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data: chunk.Data(),
 	}); err != nil {
+		_ = stream.Reset()
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
