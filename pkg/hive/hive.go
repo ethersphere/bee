@@ -127,8 +127,8 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	// close the stream before processing to unblock the sending side
-	// async fullclose because there is no need to wait for conformation,
+	// close the stream before processing in order to unblock the sending side
+	// fullclose is called async because there is no need to wait for conformation,
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
 
