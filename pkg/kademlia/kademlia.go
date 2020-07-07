@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	maxBins         = 16
 	nnLowWatermark  = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	maxConnAttempts = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 )
@@ -86,8 +85,8 @@ func New(o Options) *Kad {
 		addressBook:    o.AddressBook,
 		p2p:            o.P2P,
 		saturationFunc: o.SaturationFunc,
-		connectedPeers: pslice.New(maxBins),
-		knownPeers:     pslice.New(maxBins),
+		connectedPeers: pslice.New(int(swarm.MaxBins)),
+		knownPeers:     pslice.New(int(swarm.MaxBins)),
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]retryInfo),
 		logger:         o.Logger,
@@ -573,7 +572,7 @@ func (k *Kad) marshal(indent bool) ([]byte, error) {
 	}
 
 	var infos []binInfo
-	for i := (maxBins - 1); i >= 0; i-- {
+	for i := int(swarm.MaxPO); i >= 0; i-- {
 		infos = append(infos, binInfo{})
 	}
 

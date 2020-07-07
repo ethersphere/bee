@@ -105,7 +105,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 8)
 
 	// fill the rest up to the bin before last and check that everything works at the edges
-	for i := 10; i < kademlia.MaxBins-1; i++ {
+	for i := 10; i < int(swarm.MaxBins)-1; i++ {
 		addr := test.RandomAddressAt(base, i)
 		addOne(t, signer, kad, ab, addr)
 		waitConn(t, &conns)
