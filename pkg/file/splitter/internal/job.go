@@ -154,6 +154,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	chunkData := append(head, tail...)
 	ch := swarm.NewChunk(addr, chunkData)
 	s.tagger.Inc(tags.StateSplit)
+	s.tagger.Inc(tags.TotalChunks)
 	_, err = s.putter.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err

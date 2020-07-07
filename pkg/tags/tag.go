@@ -174,21 +174,6 @@ func (t *Tag) Done(s State) bool {
 	return err == nil && n == total
 }
 
-// DoneSplit adds the total with the split count and updated the total.
-// This is useful when you use the same tag for a file and its manifest upload
-// Also the Address is updated with the last called address, so the assumption
-// is that the manifest creation will be called last and this will have the root
-// hash of the manifest
-func (t *Tag) DoneSplit(address swarm.Address) int64 {
-	t.totalMu.Lock()
-	defer t.totalMu.Unlock()
-	split := atomic.LoadInt64(&t.Split)
-	total := atomic.LoadInt64(&t.Total)
-	atomic.StoreInt64(&t.Total, total+split)
-	t.Address = address
-	return total
-}
-
 // Status returns the value of state and the total count
 func (t *Tag) Status(state State) (int64, int64, error) {
 	count, seen, total := t.Get(state), atomic.LoadInt64(&t.Seen), atomic.LoadInt64(&t.Total)

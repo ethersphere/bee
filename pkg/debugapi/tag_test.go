@@ -28,8 +28,7 @@ type fileUploadResponse struct {
 
 func TestTags(t *testing.T) {
 	var (
-		bytesResource = "/bytes"
-		//filesResource        = "files"
+		bytesResource        = "/bytes"
 		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		tagResourceUidCreate = func(name string) string { return "/tags?name=" + name }
 		tagResourceUUid      = func(uuid uint64) string { return "/tags/" + strconv.FormatUint(uuid, 10) }

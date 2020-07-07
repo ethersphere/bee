@@ -67,6 +67,5 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 
 	sum := j.Sum(nil)
 	newAddress := swarm.NewAddress(sum)
-	s.tagger.DoneSplit(newAddress)
 	return newAddress, nil
 }

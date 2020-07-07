@@ -185,6 +185,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ta.Address = reference
+
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
 	w.Header().Set(TagHeaderUid, fmt.Sprint(ta.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
