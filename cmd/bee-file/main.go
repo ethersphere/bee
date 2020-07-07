@@ -61,7 +61,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	writeCloser := cmdfile.NopWriteCloser(buf)
 	limitBuf := cmdfile.NewLimitWriteCloser(writeCloser, limitMetadataLength)
 	j := joiner.NewSimpleJoiner(store)
-	_, err = file.JoinReadAll(j, addr, limitBuf)
+	_, err = file.JoinReadAll(j, addr, limitBuf, false)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, e.Metadata(), buf)
+	_, err = file.JoinReadAll(j, e.Metadata(), buf, false)
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 	defer outFile.Close()
-	_, err = file.JoinReadAll(j, e.Reference(), outFile)
+	_, err = file.JoinReadAll(j, e.Reference(), outFile, false)
 	return err
 }
 
@@ -174,7 +174,7 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	metadataBuf := bytes.NewBuffer(metadataBytes)
 	metadataReader := io.LimitReader(metadataBuf, int64(len(metadataBytes)))
 	metadataReadCloser := ioutil.NopCloser(metadataReader)
-	metadataAddr, err := s.Split(ctx, metadataReadCloser, int64(len(metadataBytes)))
+	metadataAddr, err := s.Split(ctx, metadataReadCloser, int64(len(metadataBytes)), false)
 	if err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	fileEntryBuf := bytes.NewBuffer(fileEntryBytes)
 	fileEntryReader := io.LimitReader(fileEntryBuf, int64(len(fileEntryBytes)))
 	fileEntryReadCloser := ioutil.NopCloser(fileEntryReader)
-	fileEntryAddr, err := s.Split(ctx, fileEntryReadCloser, int64(len(fileEntryBytes)))
+	fileEntryAddr, err := s.Split(ctx, fileEntryReadCloser, int64(len(fileEntryBytes)), false)
 	if err != nil {
 		return err
 	}

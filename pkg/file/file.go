@@ -24,7 +24,7 @@ var (
 // returning the length of the data which will be returned.
 // The called can then read the data on the io.Reader that was provided.
 type Joiner interface {
-	Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataLength int64, err error)
+	Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataLength int64, err error)
 	Size(ctx context.Context, address swarm.Address) (dataLength int64, err error)
 }
 
@@ -34,12 +34,12 @@ type Joiner interface {
 // If the dataLength parameter is 0, data is read until io.EOF is encountered.
 // When EOF is received and splitting is done, the resulting Swarm Address is returned.
 type Splitter interface {
-	Split(ctx context.Context, dataIn io.ReadCloser, dataLength int64) (addr swarm.Address, err error)
+	Split(ctx context.Context, dataIn io.ReadCloser, dataLength int64, toEncrypt bool) (addr swarm.Address, err error)
 }
 
 // JoinReadAll reads all output from the provided joiner.
-func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer) (int64, error) {
-	r, l, err := j.Join(context.Background(), addr)
+func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer, toDecrypt bool) (int64, error) {
+	r, l, err := j.Join(context.Background(), addr, toDecrypt)
 	if err != nil {
 		return 0, err
 	}
@@ -67,7 +67,7 @@ func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer) (int64, error)
 }
 
 // SplitWriteAll writes all input from provided reader to the provided splitter
-func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64) (swarm.Address, error) {
+func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64, toEncrypt bool) (swarm.Address, error) {
 	chunkPipe := NewChunkPipe()
 	errC := make(chan error)
 	go func() {
@@ -86,7 +86,7 @@ func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64) (swarm
 		close(errC)
 	}()
 
-	addr, err := s.Split(ctx, chunkPipe, l)
+	addr, err := s.Split(ctx, chunkPipe, l, toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}

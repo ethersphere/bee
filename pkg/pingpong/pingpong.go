@@ -72,7 +72,9 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 	if err != nil {
 		return 0, fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() {
+		go stream.FullClose()
+	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
@@ -100,7 +102,7 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
+	defer stream.FullClose()
 
 	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-handler", s.logger)
 	defer span.Finish()

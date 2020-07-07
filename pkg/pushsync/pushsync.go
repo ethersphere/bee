@@ -38,7 +38,7 @@ type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Putter
 	peerSuggester topology.ClosestPeerer
-	tagger        *tags.Tags
+	tagg          *tags.Tags
 	logger        logging.Logger
 	metrics       metrics
 }
@@ -58,7 +58,7 @@ func New(o Options) *PushSync {
 		streamer:      o.Streamer,
 		storer:        o.Storer,
 		peerSuggester: o.ClosestPeerer,
-		tagger:        o.Tagger,
+		tagg:          o.Tagger,
 		logger:        o.Logger,
 		metrics:       newMetrics(),
 	}
@@ -256,14 +256,14 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	if err := ps.sendChunkDelivery(w, ch); err != nil {
 		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
+	//  if you manage to get a tag, just increment the respective counter
+	t, err := ps.tagg.Get(ch.TagID())
+	if err == nil && t != nil {
+		t.Inc(tags.StateSent)
+	}
+
 	receiptRTTTimer := time.Now()
-
-	// most of the times now you wont get a tag because
-	// /bytes and /files API does not implement tags
-	// SO dont print any logs or returning error, if you dont find them
-	t, _ := ps.tagger.Get(ch.TagID())
-
-	receipt, err := ps.receiveReceipt(r, t)
+	receipt, err := ps.receiveReceipt(r)
 	if err != nil {
 		return nil, fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}

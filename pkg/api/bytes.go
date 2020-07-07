@@ -5,12 +5,16 @@
 package api
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
+	"strings"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
@@ -30,8 +34,9 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ta := s.createTag(w, r)
 
-	sp := splitter.NewSimpleSplitter(s.Storer, ta)
-	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength)
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
+	sp := splitter.NewSimpleSplitter(s.Storer)
+	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
 		jsonhttp.InternalServerError(w, nil)
@@ -60,8 +65,8 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 	j := joiner.NewSimpleJoiner(s.Storer)
-
 	dataSize, err := j.Size(ctx, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -76,13 +81,20 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	outBuffer := bytes.NewBuffer(nil)
+	c, err := file.JoinReadAll(j, address, outBuffer, toDecrypt)
+	if err != nil && c == 0 {
+		s.Logger.Debugf("bytes download: data join %s: %v", address, err)
+		s.Logger.Errorf("bytes download: data join %s", address)
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf("%q", address))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	c, err := file.JoinReadAll(j, address, w)
-	if err != nil && c == 0 {
-		s.Logger.Errorf("bytes: data write %s: %v", address, err)
-		s.Logger.Error("bytes: data input error")
-		jsonhttp.InternalServerError(w, "retrieval fail")
+	if _, err = io.Copy(w, outBuffer); err != nil {
+		s.Logger.Debugf("bytes download: data read %s: %v", address, err)
+		s.Logger.Errorf("bytes download: data read %s", address)
 	}
 }
 

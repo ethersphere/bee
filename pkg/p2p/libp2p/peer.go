@@ -6,6 +6,7 @@ package libp2p
 
 import (
 	"bytes"
+	"context"
 	"sort"
 	"sync"
 
@@ -20,6 +21,7 @@ type peerRegistry struct {
 	underlays   map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
 	overlays    map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
 	connections map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
+	streams     map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
 	mu          sync.RWMutex
 
 	disconnecter     topology.Disconnecter // peerRegistry notifies topology on peer disconnection
@@ -31,6 +33,7 @@ func newPeerRegistry() *peerRegistry {
 		underlays:   make(map[string]libp2ppeer.ID),
 		overlays:    make(map[libp2ppeer.ID]swarm.Address),
 		connections: make(map[libp2ppeer.ID]map[network.Conn]struct{}),
+		streams:     make(map[libp2ppeer.ID]map[network.Stream]context.CancelFunc),
 
 		Notifiee: new(network.NoopNotifiee),
 	}
@@ -64,10 +67,44 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 		delete(r.connections, peerID)
 	}
 
+	for _, cancel := range r.streams[peerID] {
+		cancel()
+	}
+	delete(r.streams, peerID)
+
 	r.mu.Unlock()
 	if r.disconnecter != nil {
 		r.disconnecter.Disconnected(overlay)
 	}
+}
+
+func (r *peerRegistry) addStream(peerID libp2ppeer.ID, stream network.Stream, cancel context.CancelFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.streams[peerID]; !ok {
+		// it is possible that an addStream will be called after a disconnect
+		return
+	}
+	r.streams[peerID][stream] = cancel
+}
+
+func (r *peerRegistry) removeStream(peerID libp2ppeer.ID, stream network.Stream) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	peer, ok := r.streams[peerID]
+	if !ok {
+		return
+	}
+
+	cancel, ok := peer[stream]
+	if !ok {
+		return
+	}
+
+	cancel()
+
+	delete(r.streams[peerID], stream)
 }
 
 func (r *peerRegistry) peers() []p2p.Peer {
@@ -94,6 +131,7 @@ func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address) (ex
 		r.connections[peerID] = make(map[network.Conn]struct{})
 	}
 	r.connections[peerID][c] = struct{}{}
+	r.streams[peerID] = make(map[network.Stream]context.CancelFunc)
 
 	if _, exists := r.underlays[overlay.ByteString()]; !exists {
 		r.underlays[overlay.ByteString()] = peerID
@@ -124,6 +162,10 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	delete(r.overlays, peerID)
 	delete(r.underlays, overlay.ByteString())
 	delete(r.connections, peerID)
+	for _, cancel := range r.streams[peerID] {
+		cancel()
+	}
+	delete(r.streams, peerID)
 	r.mu.Unlock()
 
 	// if overlay was not found disconnect handler should not be signaled.

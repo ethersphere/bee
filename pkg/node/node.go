@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -42,7 +41,6 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/validator"
@@ -74,10 +72,12 @@ type Options struct {
 	DebugAPIAddr       string
 	Addr               string
 	NATAddr            string
-	DisableWS          bool
-	DisableQUIC        bool
+	EnableWS           bool
+	EnableQUIC         bool
 	NetworkID          uint64
+	WelcomeMessage     string
 	Bootnodes          []string
+	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	TracingEnabled     bool
 	TracingEndpoint    string
@@ -152,13 +152,14 @@ func NewBee(o Options) (*Bee, error) {
 	signer := crypto.NewDefaultSigner(swarmPrivateKey)
 
 	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, o.Addr, libp2p.Options{
-		PrivateKey:  libp2pPrivateKey,
-		NATAddr:     o.NATAddr,
-		DisableWS:   o.DisableWS,
-		DisableQUIC: o.DisableQUIC,
-		Addressbook: addressbook,
-		Logger:      logger,
-		Tracer:      tracer,
+		PrivateKey:     libp2pPrivateKey,
+		NATAddr:        o.NATAddr,
+		EnableWS:       o.EnableWS,
+		EnableQUIC:     o.EnableQUIC,
+		Addressbook:    addressbook,
+		WelcomeMessage: o.WelcomeMessage,
+		Logger:         logger,
+		Tracer:         tracer,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -236,7 +237,7 @@ func NewBee(o Options) (*Bee, error) {
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
 	})
-	tagger := tags.NewTags()
+	tagg := tags.NewTags()
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
@@ -250,7 +251,7 @@ func NewBee(o Options) (*Bee, error) {
 		Streamer:      p2ps,
 		Storer:        storer,
 		ClosestPeerer: topologyDriver,
-		Tagger:        tagger,
+		Tagger:        tagg,
 		Logger:        logger,
 	})
 
@@ -262,6 +263,7 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:        storer,
 		PeerSuggester: topologyDriver,
 		PushSyncer:    pushSyncProtocol,
+		Tagger:        tagg,
 		Logger:        logger,
 	})
 	b.pusherCloser = pushSyncPusher
@@ -285,16 +287,18 @@ func NewBee(o Options) (*Bee, error) {
 		PullSync:   pullSync,
 		Logger:     logger,
 	})
+
 	b.pullerCloser = puller
 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Tags:   tagger,
-			Storer: ns,
-			Logger: logger,
-			Tracer: tracer,
+			Tags:               tagg,
+			Storer:             ns,
+			CORSAllowedOrigins: o.CORSAllowedOrigins,
+			Logger:             logger,
+			Tracer:             tracer,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
@@ -326,7 +330,6 @@ func NewBee(o Options) (*Bee, error) {
 			Pingpong:       pingPong,
 			Logger:         logger,
 			Tracer:         tracer,
-			Addressbook:    addressbook,
 			TopologyDriver: topologyDriver,
 			Storer:         storer,
 		})
@@ -362,37 +365,26 @@ func NewBee(o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	overlays, err := addressbook.Overlays()
+	addresses, err := addressbook.Overlays()
 	if err != nil {
 		return nil, fmt.Errorf("addressbook overlays: %w", err)
 	}
 
 	var count int32
-	var wg sync.WaitGroup
-	jobsC := make(chan struct{}, 16)
-	for _, o := range overlays {
-		jobsC <- struct{}{}
-		wg.Add(1)
-		go func(overlay swarm.Address) {
-			defer func() {
-				<-jobsC
-			}()
 
-			defer wg.Done()
-			if err := topologyDriver.AddPeer(p2pCtx, overlay); err != nil {
-				logger.Debugf("topology add peer fail %s: %v", overlay, err)
-				logger.Errorf("topology add peer %s", overlay)
-				return
-			}
-
-			atomic.AddInt32(&count, 1)
-		}(o)
+	// add the peers to topology and allow it to connect independently
+	for _, o := range addresses {
+		err = topologyDriver.AddPeer(p2pCtx, o)
+		if err != nil {
+			logger.Debugf("topology add peer from addressbook: %v", err)
+		} else {
+			count++
+		}
 	}
 
-	wg.Wait()
-
-	// Connect bootnodes if no nodes from the addressbook was sucesufully added to topology
+	// Connect bootnodes if the address book is clean
 	if count == 0 {
+		var wg sync.WaitGroup
 		for _, a := range o.Bootnodes {
 			wg.Add(1)
 			go func(a string) {
@@ -400,47 +392,31 @@ func NewBee(o Options) (*Bee, error) {
 				addr, err := ma.NewMultiaddr(a)
 				if err != nil {
 					logger.Debugf("multiaddress fail %s: %v", a, err)
-					logger.Errorf("connect to bootnode %s", a)
+					logger.Warningf("connect to bootnode %s", a)
 					return
 				}
 				var count int
 				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-					logger.Tracef("connecting to peer %s", addr)
-					bzzAddr, err := p2ps.Connect(p2pCtx, addr)
+					logger.Tracef("connecting to bootnode %s", addr)
+					_, err = p2ps.ConnectNotify(p2pCtx, addr)
 					if err != nil {
 						if !errors.Is(err, p2p.ErrAlreadyConnected) {
 							logger.Debugf("connect fail %s: %v", addr, err)
-							logger.Errorf("connect to bootnode %s", addr)
+							logger.Warningf("connect to bootnode %s", addr)
 						}
 						return false, nil
 					}
-					logger.Tracef("connected to peer %s", addr)
-
-					err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
-					if err != nil {
-						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("addressbook error persisting %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", addr)
-						return false, nil
-					}
-
-					if err := topologyDriver.Connected(p2pCtx, bzzAddr.Overlay); err != nil {
-						_ = p2ps.Disconnect(bzzAddr.Overlay)
-						logger.Debugf("topology connected fail %s %s: %v", addr, bzzAddr.Overlay, err)
-						logger.Errorf("connect to bootnode %s", addr)
-						return false, nil
-					}
+					logger.Tracef("connected to bootnode %s", addr)
 					count++
 					// connect to max 3 bootnodes
 					return count > 3, nil
 				}); err != nil {
 					logger.Debugf("discover fail %s: %v", a, err)
-					logger.Errorf("discover to bootnode %s", a)
+					logger.Warningf("discover to bootnode %s", a)
 					return
 				}
 			}(a)
 		}
-
 		wg.Wait()
 	}
 

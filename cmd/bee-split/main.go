@@ -103,7 +103,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 	s := splitter.NewSimpleSplitter(stores, tg)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	addr, err := s.Split(ctx, infile, inputLength)
+	addr, err := s.Split(ctx, infile, inputLength, false)
 	if err != nil {
 		return err
 	}

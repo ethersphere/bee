@@ -56,13 +56,13 @@ func testSplitThenJoin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
-	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)))
+	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)), false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// then join
-	r, l, err := j.Join(ctx, resultAddress)
+	r, l, err := j.Join(ctx, resultAddress, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestJoinReadAll(t *testing.T) {
 	var dataLength int64 = swarm.ChunkSize + 2
 	j := newMockJoiner(dataLength)
 	buf := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(j, swarm.ZeroAddress, buf)
+	c, err := file.JoinReadAll(j, swarm.ZeroAddress, buf, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ type mockJoiner struct {
 }
 
 // Join implements file.Joiner.
-func (j *mockJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataLength int64, err error) {
+func (j *mockJoiner) Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataLength int64, err error) {
 	data := make([]byte, j.l)
 	buf := bytes.NewBuffer(data)
 	readCloser := ioutil.NopCloser(buf)

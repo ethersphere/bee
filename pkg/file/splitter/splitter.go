@@ -37,9 +37,8 @@ func NewSimpleSplitter(putter storage.Putter, tagger *tags.Tag) file.Splitter {
 // multiple levels of hashing when building the file hash tree.
 //
 // It returns the Swarmhash of the data.
-func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength int64) (addr swarm.Address, err error) {
-	j := internal.NewSimpleSplitterJob(ctx, s.putter, dataLength, s.tagger)
-
+func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength int64, toEncrypt bool) (addr swarm.Address, err error) {
+	j := internal.NewSimpleSplitterJob(ctx, s.putter, dataLength, toEncrypt)
 	var total int64
 	data := make([]byte, swarm.ChunkSize)
 	var eof bool
@@ -52,6 +51,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 					return swarm.ZeroAddress, fmt.Errorf("splitter only received %d bytes of data, expected %d bytes", total+int64(c), dataLength)
 				}
 				eof = true
+				continue
 			} else {
 				return swarm.ZeroAddress, err
 			}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner/internal"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -49,21 +50,45 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSiz
 //
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
-func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataSize int64, err error) {
+func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataSize int64, err error) {
+	var addr []byte
+	var key encryption.Key
+	if toDecrypt {
+		addr = address.Bytes()[:swarm.HashSize]
+		key = address.Bytes()[swarm.HashSize : swarm.HashSize+encryption.KeyLength]
+	} else {
+		addr = address.Bytes()
+	}
 
 	// retrieve the root chunk to read the total data length the be retrieved
-	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
+	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(addr))
 	if err != nil {
 		return nil, 0, err
 	}
 
+	var chunkData []byte
+	if toDecrypt {
+		originalData, err := internal.DecryptChunkData(rootChunk.Data(), key)
+		if err != nil {
+			return nil, 0, err
+		}
+		chunkData = originalData
+	} else {
+		chunkData = rootChunk.Data()
+	}
+
 	// if this is a single chunk, short circuit to returning just that chunk
-	spanLength := binary.LittleEndian.Uint64(rootChunk.Data())
+	spanLength := binary.LittleEndian.Uint64(chunkData[:8])
+	chunkToSend := rootChunk
 	if spanLength <= swarm.ChunkSize {
-		data := rootChunk.Data()[8:]
+		data := chunkData[8:]
 		return file.NewSimpleReadCloser(data), int64(spanLength), nil
 	}
 
-	r := internal.NewSimpleJoinerJob(ctx, s.getter, rootChunk)
+	if toDecrypt {
+		chunkToSend = swarm.NewChunk(swarm.NewAddress(addr), chunkData)
+	}
+
+	r := internal.NewSimpleJoinerJob(ctx, s.getter, chunkToSend, toDecrypt)
 	return r, int64(spanLength), nil
 }

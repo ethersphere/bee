@@ -71,11 +71,14 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	maxPeers             = 10
-	retrieveChunkTimeout = 3 * time.Second
+	maxPeers             = 5
+	retrieveChunkTimeout = 10 * time.Second
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
+	ctx, cancel := context.WithTimeout(ctx, maxPeers*retrieveChunkTimeout)
+	defer cancel()
+
 	v, err, _ := s.singleflight.Do(addr.String(), func() (v interface{}, err error) {
 		var skipPeers []swarm.Address
 		for i := 0; i < maxPeers; i++ {
@@ -115,7 +118,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest: %w", err)
 	}
-	s.logger.Tracef("retrieval: get chunk %s from peer %s", addr, peer)
+	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, peer, fmt.Errorf("new stream: %w", err)
