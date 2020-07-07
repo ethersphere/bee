@@ -193,7 +193,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			stream.FullClose()
+			_ = stream.FullClose()
 		}
 	}()
 	var req pb.Request
