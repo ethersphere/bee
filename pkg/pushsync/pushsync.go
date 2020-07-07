@@ -80,14 +80,19 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 
 // handler handles chunk delivery from other node and forwards to its destination node.
 // If the current node is the destination, it stores in the local store and sends a receipt.
-func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.FullClose()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 
 	// Get the delivery
 	chunk, err := ps.getChunkDelivery(r)
 	if err != nil {
-		_ = stream.Reset()
 		return fmt.Errorf("chunk delivery from peer %s: %w", p.Address.String(), err)
 	}
 
@@ -100,7 +105,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			// Store the chunk in the local store
 			_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
 			if err != nil {
-				_ = stream.Reset()
 				return fmt.Errorf("chunk store: %w", err)
 			}
 			ps.metrics.TotalChunksStoredInDB.Inc()
@@ -109,7 +113,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
 			err = ps.sendReceipt(w, receipt)
 			if err != nil {
-				_ = stream.Reset()
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 			return nil
@@ -124,7 +127,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		// Store the chunk in the local store
 		_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
 		if err != nil {
-			_ = stream.Reset()
 			return fmt.Errorf("chunk store: %w", err)
 		}
 		ps.metrics.TotalChunksStoredInDB.Inc()
@@ -139,18 +141,22 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if err != nil {
 		return fmt.Errorf("new stream peer %s: %w", peer.String(), err)
 	}
-	defer func() { go streamer.FullClose() }()
+	defer func() {
+		if err != nil {
+			_ = streamer.Reset()
+		} else {
+			go streamer.FullClose()
+		}
+	}()
 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
 	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
-		_ = streamer.Reset()
 		return fmt.Errorf("forward chunk to peer %s: %w", peer.String(), err)
 	}
 	receiptRTTTimer := time.Now()
 
 	receipt, err := ps.receiveReceipt(rc)
 	if err != nil {
-		_ = streamer.Reset()
 		return fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
@@ -158,14 +164,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// Check if the receipt is valid
 	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
-		_ = streamer.Reset()
 		return fmt.Errorf("invalid receipt from peer %s", peer.String())
 	}
 
 	// pass back the received receipt in the previously received stream
 	err = ps.sendReceipt(w, &receipt)
 	if err != nil {
-		_ = streamer.Reset()
 		return fmt.Errorf("send receipt to peer %s: %w", peer.String(), err)
 	}
 	ps.metrics.ReceiptsSentCounter.Inc()
