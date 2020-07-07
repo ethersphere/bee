@@ -382,7 +382,7 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	// Connect bootnodes if the address book is clean
-	if count == -1 {
+	if count == 0 {
 		var wg sync.WaitGroup
 		for _, a := range o.Bootnodes {
 			wg.Add(1)
