@@ -13,4 +13,5 @@ type (
 	PinnedChunk              = pinnedChunk
 	ListPinnedChunksResponse = listPinnedChunksResponse
 	TagResponse              = tagResponse
+	WelcomeMessageResponse   = welcomeMessageResponse
 )
