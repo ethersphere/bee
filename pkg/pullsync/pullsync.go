@@ -35,6 +35,8 @@ const (
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
+
+	cancellationTimeout = 5 * time.Second // explicit ruid cancellation message timeout
 )
 
 // how many maximum chunks in a batch
@@ -48,6 +50,7 @@ type Interface interface {
 
 type Syncer struct {
 	streamer p2p.Streamer
+	metrics  metrics
 	logger   logging.Logger
 	storage  pullstorage.Storer
 	quit     chan struct{}
@@ -71,6 +74,7 @@ func New(o Options) *Syncer {
 	return &Syncer{
 		streamer: o.Streamer,
 		storage:  o.Storage,
+		metrics:  newMetrics(),
 		logger:   o.Logger,
 		ruidCtx:  make(map[uint32]func()),
 		wg:       sync.WaitGroup{},
@@ -163,6 +167,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			s.logger.Errorf("syncer got a zero address hash on offer")
 			return 0, ru.Ruid, fmt.Errorf("zero address on offer")
 		}
+		s.metrics.OfferCounter.Inc()
+		s.metrics.DbOpsCounter.Inc()
 		have, err := s.storage.Has(ctx, a)
 		if err != nil {
 			return 0, ru.Ruid, fmt.Errorf("storage has: %w", err)
@@ -170,6 +176,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if !have {
 			wantChunks[a.String()] = struct{}{}
 			ctr++
+			s.metrics.WantCounter.Inc()
 			bv.Set(i / swarm.HashSize)
 		}
 	}
@@ -196,7 +203,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		delete(wantChunks, addr.String())
-
+		s.metrics.DbOpsCounter.Inc()
+		s.metrics.DeliveryCounter.Inc()
 		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
 			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", err)
 		}
@@ -295,6 +303,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 }
 
 func (s *Syncer) setChunks(ctx context.Context, addrs ...swarm.Address) error {
+	s.metrics.DbOpsCounter.Inc()
 	return s.storage.Set(ctx, storage.ModeSetSyncPull, addrs...)
 }
 
@@ -329,6 +338,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			addrs = append(addrs, a)
 		}
 	}
+	s.metrics.DbOpsCounter.Inc()
 	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
 }
 
@@ -363,6 +373,7 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	var ack pb.Ack
+	s.metrics.DbOpsCounter.Inc()
 	ints, err := s.storage.Cursors(ctx)
 	if err != nil {
 		_ = stream.FullClose()
@@ -387,7 +398,7 @@ func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) error {
 
 	var c pb.Cancel
 	c.Ruid = ruid
-	if err := w.WriteMsgWithTimeout(5*time.Second, &c); err != nil {
+	if err := w.WriteMsgWithTimeout(cancellationTimeout, &c); err != nil {
 		return fmt.Errorf("send cancellation: %w", err)
 	}
 	return nil
