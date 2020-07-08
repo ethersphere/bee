@@ -66,7 +66,6 @@ type Tag struct {
 	ctx      context.Context  // tracing context
 	span     opentracing.Span // tracing root span
 	spanOnce sync.Once        // make sure we close root span only once
-	totalMu  sync.Mutex
 }
 
 // NewTag creates a new tag, and returns it
@@ -77,7 +76,6 @@ func NewTag(ctx context.Context, uid uint32, s string, total int64, anon bool, t
 		Name:      s,
 		StartedAt: time.Now(),
 		Total:     total,
-		totalMu:   sync.Mutex{},
 	}
 
 	// context here is used only to store the root span `new.upload.tag` within Tag,
