@@ -365,7 +365,10 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 }
 
 func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	defer p.wg.Done()
+	defer func() {
+		p.wg.Done()
+		p.metrics.HistWorkerDoneCounter.Inc()
+	}()
 	if logMore {
 		p.logger.Tracef("histSyncWorker starting, peer %s bin %d cursor %d", peer, bin, cur)
 	}
