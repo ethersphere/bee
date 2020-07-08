@@ -303,6 +303,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 }
 
 func (s *Syncer) setChunks(ctx context.Context, addrs ...swarm.Address) error {
+	s.metrics.DbOpsCounter.Inc()
 	return s.storage.Set(ctx, storage.ModeSetSyncPull, addrs...)
 }
 
@@ -337,6 +338,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			addrs = append(addrs, a)
 		}
 	}
+	s.metrics.DbOpsCounter.Inc()
 	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
 }
 
@@ -371,6 +373,7 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	var ack pb.Ack
+	s.metrics.DbOpsCounter.Inc()
 	ints, err := s.storage.Cursors(ctx)
 	if err != nil {
 		_ = stream.FullClose()
