@@ -144,9 +144,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		if stream != nil {
-			s.logger.Debugf("##1 Retrieve Chunk stream unexpectedly still open")
-		}
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {
