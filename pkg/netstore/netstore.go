@@ -35,13 +35,13 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// request from network
-			data, err := s.retrieval.RetrieveChunk(ctx, addr)
+			ch, err := s.retrieval.RetrieveChunk(ctx, addr, s.valid)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
 
-			ch = swarm.NewChunk(addr, data)
 			if !s.valid(ch) {
+				// invalid retrieve handling
 				return nil, storage.ErrInvalidChunk
 			}
 
