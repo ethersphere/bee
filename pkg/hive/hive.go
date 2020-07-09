@@ -104,8 +104,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 				s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
 				continue
 			}
-
-			_ = stream.Reset()
 			return err
 		}
 
@@ -117,7 +115,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	}
 
 	if err := w.WriteMsg(&peersRequest); err != nil {
-		_ = stream.Reset()
 		return fmt.Errorf("write Peers message: %w", err)
 	}
 
