@@ -25,11 +25,10 @@ import (
 	"hash"
 	"math/big"
 
-	"github.com/ethersphere/swarm/bmt"
-	"golang.org/x/crypto/sha3"
-
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
+	bmtlegacy "github.com/ethersphere/bmt/legacy"
+	"golang.org/x/crypto/sha3"
 )
 
 // Topic is an alias for a 32 byte fixed-size array which contains an encoding of a message topic
@@ -75,7 +74,7 @@ func NewTopic(topic string) Topic {
 	if err != nil {
 		return tpc
 	}
-	copy(tpc[:], t[:])
+	copy(tpc[:], t)
 	return tpc
 }
 
@@ -83,7 +82,7 @@ func hashFunc() hash.Hash {
 	return sha3.NewLegacyKeccak256()
 }
 
-var hasher *bmt.Hasher
+var hasher *bmtlegacy.Hasher
 
 // NewMessage creates a new Message variable with the given topic and payload
 // it finds a length and nonce for the message according to the given input and maximum payload size
@@ -106,13 +105,13 @@ func NewMessage(topic Topic, payload []byte) (Message, error) {
 
 	// create new Message var and set fields
 	m := new(Message)
-	copy(m.length[:], lengthBuf[:])
+	copy(m.length[:], lengthBuf)
 	m.Topic = topic
 	m.Payload = payload
 	m.padding = padding
 
-	hashPool := bmt.NewTreePool(hashFunc, swarm.Branches, bmt.PoolSize)
-	hasher = bmt.New(hashPool)
+	hashPool := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
+	hasher = bmtlegacy.New(hashPool)
 
 	return *m, nil
 }
@@ -228,7 +227,11 @@ func hashBytes(s []byte) ([]byte, error) {
 		return nil, ErrInvalidHasher
 	}
 	hasher.Reset()
-	hasher.SetSpanBytes(s[:8])
+	span := binary.LittleEndian.Uint64(s[:8])
+	err := hasher.SetSpan(int64(span))
+	if err != nil {
+		return nil, err
+	}
 	if _, err := hasher.Write(s[8:]); err != nil {
 		return nil, err
 	}
