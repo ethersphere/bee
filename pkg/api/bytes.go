@@ -72,9 +72,11 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid root chunk")
 		return
 	}
+	type targetsContextKey string
+	k := targetsContextKey("targets")
 
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), "targets", targets))
+	r = r.WithContext(context.WithValue(r.Context(), k, targets))
 	ctx = r.Context()
 
 	outBuffer := bytes.NewBuffer(nil)

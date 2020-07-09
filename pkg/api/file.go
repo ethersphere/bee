@@ -207,8 +207,11 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
+	type targetsContextKey string
+	k := targetsContextKey("targets")
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), "targets", targets))
+
+	r = r.WithContext(context.WithValue(r.Context(), k, targets))
 
 	// read entry.
 	j := joiner.NewSimpleJoiner(s.Storer)
