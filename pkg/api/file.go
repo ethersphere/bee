@@ -7,6 +7,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -206,11 +207,13 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
+	targets := r.URL.Query().Get("targets")
+	r = r.WithContext(context.WithValue(r.Context(), "targets", targets))
 
 	// read entry.
 	j := joiner.NewSimpleJoiner(s.Storer)
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, address, buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, address, buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("file download: read entry %s: %v", addr, err)
 		s.Logger.Errorf("file download: read entry %s", addr)
@@ -238,7 +241,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Read metadata.
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, e.Metadata(), buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("file download: read metadata %s: %v", addr, err)
 		s.Logger.Errorf("file download: read metadata %s", addr)
@@ -283,7 +286,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	go func() {
-		_, err := file.JoinReadAll(j, e.Reference(), pw, toDecrypt)
+		_, err := file.JoinReadAll(r.Context(), j, e.Reference(), pw, toDecrypt)
 		if err := pw.CloseWithError(err); err != nil {
 			s.Logger.Debugf("file download: data join close %s: %v", addr, err)
 			s.Logger.Errorf("file download: data join close %s", addr)

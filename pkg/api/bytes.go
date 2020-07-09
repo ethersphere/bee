@@ -6,6 +6,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -72,8 +73,12 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targets := r.URL.Query().Get("targets")
+	r = r.WithContext(context.WithValue(r.Context(), "targets", targets))
+	ctx = r.Context()
+
 	outBuffer := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(j, address, outBuffer, toDecrypt)
+	c, err := file.JoinReadAll(ctx, j, address, outBuffer, toDecrypt)
 	if err != nil && c == 0 {
 		s.Logger.Debugf("bytes download: data join %s: %v", address, err)
 		s.Logger.Errorf("bytes download: data join %s", address)

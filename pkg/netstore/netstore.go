@@ -35,6 +35,10 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			data, err := s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
+				// START RECOVERY PROCESS
+				if targets := ctx.Value("targets"); targets != "" {
+					//TODO: ADD RECOVERY PROCESS HERE
+				}
 				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
 
