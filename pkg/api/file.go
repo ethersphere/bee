@@ -36,6 +36,8 @@ const (
 	EncryptHeader     = "swarm-encrypt"
 )
 
+type targetsContextKey struct{}
+
 type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
@@ -207,11 +209,9 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
-	type targetsContextKey string
-	k := targetsContextKey("targets")
 	targets := r.URL.Query().Get("targets")
 
-	r = r.WithContext(context.WithValue(r.Context(), k, targets))
+	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
 
 	// read entry.
 	j := joiner.NewSimpleJoiner(s.Storer)
