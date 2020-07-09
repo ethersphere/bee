@@ -20,19 +20,21 @@ import (
 const (
 	IdSize        = 32
 	SignatureSize = 65
+	AddressSize   = crypto.AddressSize
+	minUpdateSize = IdSize + SignatureSize + swarm.SpanSize
 )
 
 // Id is a soc identifier
 type Id []byte
 
-// Owner is a wrapper that enforces valid length address owner for soc.
+// Owner is a wrapper that enforces valid length address of soc owner.
 type Owner struct {
 	address []byte
 }
 
 // NewOwner creates a new Owner.
 func NewOwner(address []byte) (*Owner, error) {
-	if len(address) != 20 {
+	if len(address) != AddressSize {
 		return nil, fmt.Errorf("invalid address %x", address)
 	}
 	return &Owner{
@@ -124,26 +126,31 @@ func (s *Update) Address() (swarm.Address, error) {
 // UpdateFromChunk recreates an Update from swarm.Chunk data.
 func UpdateFromChunk(ch swarm.Chunk) (*Update, error) {
 	chunkData := ch.Data()
-	minUpdateSize := IdSize + SignatureSize + swarm.SpanSize
 	if len(chunkData) < minUpdateSize {
 		return nil, errors.New("less than minimum length")
 	}
 
+	// add all the data fields
 	update := &Update{}
 	cursor := 0
+
 	update.id = chunkData[cursor : cursor+IdSize]
 	cursor += IdSize
+
 	update.signature = chunkData[cursor : cursor+SignatureSize]
 	cursor += SignatureSize
+
 	spanBytes := chunkData[cursor : cursor+swarm.SpanSize]
 	span := binary.LittleEndian.Uint64(spanBytes)
 	update.span = int64(span)
 	cursor += swarm.SpanSize
+
 	update.payload = chunkData[cursor:]
 
 	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	bmtHasher := bmtlegacy.New(bmtPool)
 
+	// calculate the bmt hash of the update payload
 	err := bmtHasher.SetSpan(int64(span))
 	if err != nil {
 		return nil, err
@@ -154,6 +161,7 @@ func UpdateFromChunk(ch swarm.Chunk) (*Update, error) {
 	}
 	payloadSum := bmtHasher.Sum(nil)
 
+	// recover owner information
 	recoveredPublicKey, err := crypto.Recover(update.signature, payloadSum)
 	if err != nil {
 		return nil, err
@@ -182,6 +190,7 @@ func (s *Update) CreateChunk() (swarm.Chunk, error) {
 	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	bmtHasher := bmtlegacy.New(bmtPool)
 
+	// calculate the bmt hash of the update payload
 	err := bmtHasher.SetSpan(s.span)
 	if err != nil {
 		return nil, err
@@ -192,11 +201,13 @@ func (s *Update) CreateChunk() (swarm.Chunk, error) {
 	}
 	payloadSum := bmtHasher.Sum(nil)
 
+	// sign the update
 	signature, err := s.signer.Sign(payloadSum)
 	if err != nil {
 		return nil, err
 	}
 
+	// generate the soc address
 	publicKey, err := s.signer.PublicKey()
 	if err != nil {
 		return nil, err
@@ -217,6 +228,7 @@ func (s *Update) CreateChunk() (swarm.Chunk, error) {
 	addressBytes := sha3Hasher.Sum(nil)
 	address := swarm.NewAddress(addressBytes)
 
+	// prepare the payload
 	spanBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spanBytes, uint64(s.span))
 	buf := bytes.NewBuffer(nil)
@@ -225,6 +237,7 @@ func (s *Update) CreateChunk() (swarm.Chunk, error) {
 	buf.Write(spanBytes)
 	buf.Write(s.payload)
 
+	// create chunk
 	ch := swarm.NewChunk(address, buf.Bytes())
 	return ch, nil
 }

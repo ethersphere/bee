@@ -35,8 +35,10 @@ func TestCreateChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	chunkData := ch.Data()
 
+	// verify that id, signature, payload is in place
 	cursor := 0
 	if !bytes.Equal(chunkData[cursor:cursor+soc.IdSize], id) {
 		t.Fatal("id mismatch")
@@ -48,6 +50,7 @@ func TestCreateChunk(t *testing.T) {
 		t.Fatal("payload mismatch")
 	}
 
+	// get the public key of the signer that was used
 	publicKey, err := signer.PublicKey()
 	if err != nil {
 		t.Fatal(err)
@@ -57,6 +60,8 @@ func TestCreateChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// calculate the sum of the payload and use it to recover the owner
+	// from the chunk data
 	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	bmtHasher := bmtlegacy.New(bmtPool)
 	err = bmtHasher.SetSpan(int64(len(payload)))
@@ -70,6 +75,7 @@ func TestCreateChunk(t *testing.T) {
 	}
 	payloadSum := bmtHasher.Sum(nil)
 
+	// verify owner match
 	recoveredPublicKey, err := crypto.Recover(signature, payloadSum)
 	if err != nil {
 		t.Fatal(err)
@@ -99,12 +105,8 @@ func TestUpdateFromChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// CreateChunk has already been verified in previous test
 	ch, err := u.CreateChunk()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	publicKey, err := signer.PublicKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +116,12 @@ func TestUpdateFromChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// owner matching means the address was successfully recovered from
+	// payload and signature
+	publicKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
 	ownerEthereumAddress, err := crypto.NewEthereumAddress(*publicKey)
 	if err != nil {
 		t.Fatal(err)
