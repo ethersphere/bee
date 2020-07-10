@@ -18,23 +18,23 @@ binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
 
-.PHONY: binary-file
-binary-file: export CGO_ENABLED=0
-binary-file: dist FORCE
+.PHONY: bee-file
+bee-file: export CGO_ENABLED=0
+bee-file: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-file ./cmd/bee-file
 
-.PHONY: binary-join
-binary-join: export CGO_ENABLED=0
-binary-join: dist FORCE
+.PHONY: bee-join
+bee-join: export CGO_ENABLED=0
+bee-join: dist FORCE
 	$(GO) version
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-join ./cmd/bee-file
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-join ./cmd/bee-join
 
-.PHONY: binary-split
-binary-split: export CGO_ENABLED=0
-binary-split: dist FORCE
+.PHONY: bee-split
+bee-split: export CGO_ENABLED=0
+bee-split: dist FORCE
 	$(GO) version
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-split ./cmd/bee-file
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-split ./cmd/bee-split
 
 dist:
 	mkdir $@
