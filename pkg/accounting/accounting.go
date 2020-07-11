@@ -104,20 +104,22 @@ func (a *Accounting) Add(peer swarm.Address, price int64) error {
 	balance.lock.Lock()
 	defer balance.lock.Unlock()
 
+	nextBalance := balance.balance + price
+
 	if price > 0 {
 		// we gain balannce ith the peer
-		if balance.balance+price > int64(a.disconnectThreshold) {
+		if nextBalance > int64(a.disconnectThreshold) {
 			// peer to much in debt
 			return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 		}
 	}
 
-	err = a.store.Put(a.balanceKey(peer), balance.balance+price)
+	err = a.store.Put(a.balanceKey(peer), nextBalance)
 	if err != nil {
 		return err
 	}
 
-	balance.balance += price
+	balance.balance = nextBalance
 
 	// TODO: try to initiate payment if payment threshold is reached
 	// if balance.balance < -int64(a.paymentThreshold) { }
@@ -134,6 +136,7 @@ func (a *Accounting) Balance(peer swarm.Address) (int64, error) {
 	return peerBalance.balance, nil
 }
 
+// get the balance storage key for the given peer
 func (a *Accounting) balanceKey(peer swarm.Address) string {
 	return fmt.Sprintf("balance_%s", peer.String())
 }

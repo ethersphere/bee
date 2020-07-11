@@ -15,6 +15,12 @@ const (
 	testPrice               = 10
 )
 
+type Booking struct {
+	peer            swarm.Address
+	price           int64
+	expectedBalance int64
+}
+
 func TestAccountingAddBalance(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -38,43 +44,39 @@ func TestAccountingAddBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Add(peer1Addr, testPrice)
-	if err != nil {
-		t.Fatal(err)
+	bookings := []Booking{
+		{peer: peer1Addr, price: 100, expectedBalance: 100},
+		{peer: peer2Addr, price: 200, expectedBalance: 200},
+		{peer: peer1Addr, price: 300, expectedBalance: 400},
+		{peer: peer1Addr, price: -100, expectedBalance: 300},
+		{peer: peer2Addr, price: -1000, expectedBalance: -800},
 	}
 
-	peer1Balance, err := acc.Balance(peer1Addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if peer1Balance != testPrice {
-		t.Fatalf("peer1Balance not equal to price. got %d, wanted %d", peer1Balance, testPrice)
-	}
+	for i, booking := range bookings {
+		if booking.price < 0 {
+			err = acc.Reserve(booking.peer, uint64(booking.price))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 
-	err = acc.Add(peer2Addr, testPrice)
-	if err != nil {
-		t.Fatal(err)
-	}
+		err = acc.Add(booking.peer, booking.price)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	peer2Balance, err := acc.Balance(peer2Addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if peer2Balance != testPrice {
-		t.Fatalf("peer1Balance not equal to price. got %d, wanted %d", peer1Balance, testPrice)
-	}
+		balance, err := acc.Balance(booking.peer)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	err = acc.Add(peer1Addr, testPrice)
-	if err != nil {
-		t.Fatal(err)
-	}
+		if balance != booking.expectedBalance {
+			t.Fatalf("balance for peer %v not as expected after booking %d. got %d, wanted %d", booking.peer.String(), i, balance, booking.expectedBalance)
+		}
 
-	peer1Balance, err = acc.Balance(peer1Addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if peer1Balance != 2*testPrice {
-		t.Fatalf("peer1Balance not equal to price. got %d, wanted %d", peer1Balance, 2*testPrice)
+		if booking.price < 0 {
+			acc.Release(booking.peer, uint64(booking.price))
+		}
 	}
 }
 
