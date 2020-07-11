@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -232,10 +233,18 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.localstoreCloser = storer
 
+	acc := accounting.NewAccounting(accounting.Options{
+		Logger:              logger,
+		Store:               stateStore,
+		DisconnectThreshold: 1000000,
+	})
+
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
+		Accounting:  acc,
+		Pricer:      accounting.NewFixedPricer(address, 10),
 	})
 	tagg := tags.NewTags()
 
