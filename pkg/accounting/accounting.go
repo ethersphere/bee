@@ -108,7 +108,7 @@ func (a *Accounting) Add(peer swarm.Address, price int64) error {
 
 	if price > 0 {
 		// we gain balannce ith the peer
-		if nextBalance > int64(a.disconnectThreshold) {
+		if nextBalance >= int64(a.disconnectThreshold) {
 			// peer to much in debt
 			return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 		}

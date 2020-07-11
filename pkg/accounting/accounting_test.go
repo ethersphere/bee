@@ -1,8 +1,10 @@
 package accounting_test
 
 import (
+	"errors"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"io/ioutil"
@@ -137,5 +139,62 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	if peer2Balance != 2*testPrice {
 		t.Fatalf("peer2Balance not loaded correctly. got %d, wanted %d", peer2Balance, 2*testPrice)
 	}
+}
 
+func TestAccountingReserve(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc := accounting.NewAccounting(accounting.Options{
+		DisconnectThreshold: testDisconnectThreshold,
+		PaymentThreshold:    testPaymentThreshold,
+		Logger:              logger,
+		Store:               store,
+	})
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Reserve(peer1Addr, testDisconnectThreshold-100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Reserve(peer1Addr, 101)
+	if err == nil {
+		t.Fatal("expected error from reserve")
+	}
+}
+
+func TestAccountingDisconnect(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc := accounting.NewAccounting(accounting.Options{
+		DisconnectThreshold: testDisconnectThreshold,
+		PaymentThreshold:    testPaymentThreshold,
+		Logger:              logger,
+		Store:               store,
+	})
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Add(peer1Addr, testDisconnectThreshold)
+	if err == nil {
+		t.Fatal("expected Add to return error")
+	}
+
+	var e *p2p.DisconnectError
+	if !errors.As(err, &e) {
+		t.Fatalf("expected DisconnectError, got %v", err)
+	}
 }
