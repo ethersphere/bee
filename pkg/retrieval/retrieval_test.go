@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -43,10 +44,15 @@ func TestDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	accountingMock := accountingmock.NewAccounting()
+	pricerMock := accountingmock.NewPricer()
+
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(retrieval.Options{
-		Storer: mockStorer,
-		Logger: logger,
+		Storer:     mockStorer,
+		Logger:     logger,
+		Accounting: accountingMock,
+		Pricer:     pricerMock,
 	})
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
@@ -68,6 +74,8 @@ func TestDelivery(t *testing.T) {
 		ChunkPeerer: ps,
 		Storer:      clientMockStorer,
 		Logger:      logger,
+		Accounting:  accountingMock,
+		Pricer:      pricerMock,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
