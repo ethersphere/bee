@@ -18,8 +18,10 @@ type Interface interface {
 	Reserve(peer swarm.Address, price uint64) error
 	// Release releases reserved funds
 	Release(peer swarm.Address, price uint64)
-	// Add applies a balance change to the peers balance
-	Add(peer swarm.Address, price int64) error
+	// Credit the peer with the given price
+	Credit(peer swarm.Address, price uint64) error
+	// Debit the peer with the given price
+	Debit(peer swarm.Address, price uint64) error
 }
 
 type PeerBalance struct {
@@ -94,8 +96,8 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	}
 }
 
-// Add applies a balance change to the peers balance
-func (a *Accounting) Add(peer swarm.Address, price int64) error {
+// Debit the peer with the given price
+func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	balance, err := a.getPeerBalance(peer)
 	if err != nil {
 		return err
@@ -104,15 +106,37 @@ func (a *Accounting) Add(peer swarm.Address, price int64) error {
 	balance.lock.Lock()
 	defer balance.lock.Unlock()
 
-	nextBalance := balance.balance + price
+	nextBalance := balance.balance + int64(price)
 
-	if price > 0 {
-		// we gain balannce ith the peer
-		if nextBalance >= int64(a.disconnectThreshold) {
-			// peer to much in debt
-			return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
-		}
+	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
+
+	if nextBalance >= int64(a.disconnectThreshold) {
+		// peer to much in debt
+		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 	}
+
+	err = a.store.Put(a.balanceKey(peer), nextBalance)
+	if err != nil {
+		return err
+	}
+
+	balance.balance = nextBalance
+	return nil
+}
+
+// Credit the peer with the given price
+func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
+	balance, err := a.getPeerBalance(peer)
+	if err != nil {
+		return err
+	}
+
+	balance.lock.Lock()
+	defer balance.lock.Unlock()
+
+	nextBalance := balance.balance - int64(price)
+
+	a.logger.Infof("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
 	err = a.store.Put(a.balanceKey(peer), nextBalance)
 	if err != nil {

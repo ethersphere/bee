@@ -14,7 +14,7 @@ import (
 const (
 	testDisconnectThreshold = 10000
 	testPaymentThreshold    = 1000
-	testPrice               = 10
+	testPrice               = uint64(10)
 )
 
 type Booking struct {
@@ -60,11 +60,15 @@ func TestAccountingAddBalance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-		}
-
-		err = acc.Add(booking.peer, booking.price)
-		if err != nil {
-			t.Fatal(err)
+			err = acc.Credit(booking.peer, uint64(-booking.price))
+			if err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			err = acc.Debit(booking.peer, uint64(booking.price))
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 
 		balance, err := acc.Balance(booking.peer)
@@ -105,12 +109,14 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Add(peer1Addr, testPrice)
+	peer1DebitAmount := testPrice
+	err = acc.Debit(peer1Addr, peer1DebitAmount)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Add(peer2Addr, 2*testPrice)
+	peer2CreditAmount := 2 * testPrice
+	err = acc.Credit(peer2Addr, peer2CreditAmount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,8 +133,8 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if peer1Balance != testPrice {
-		t.Fatalf("peer1Balance not loaded correctly. got %d, wanted %d", peer1Balance, testPrice)
+	if peer1Balance != int64(peer1DebitAmount) {
+		t.Fatalf("peer1Balance not loaded correctly. got %d, wanted %d", peer1Balance, peer1DebitAmount)
 	}
 
 	peer2Balance, err := acc.Balance(peer2Addr)
@@ -136,8 +142,8 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if peer2Balance != 2*testPrice {
-		t.Fatalf("peer2Balance not loaded correctly. got %d, wanted %d", peer2Balance, 2*testPrice)
+	if peer2Balance != -int64(peer2CreditAmount) {
+		t.Fatalf("peer2Balance not loaded correctly. got %d, wanted %d", peer2Balance, -int64(peer2CreditAmount))
 	}
 }
 
@@ -188,7 +194,7 @@ func TestAccountingDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Add(peer1Addr, testDisconnectThreshold)
+	err = acc.Debit(peer1Addr, testDisconnectThreshold)
 	if err == nil {
 		t.Fatal("expected Add to return error")
 	}
