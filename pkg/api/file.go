@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/common/log"
 )
 
 const (
@@ -43,9 +44,11 @@ type fileUploadResponse struct {
 // - multipart http message
 // - other content types as complete file body
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
+	log.Info("FILE UPLOAD HANDLER")
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
+	log.Info("MEDIA TYPE: ", mediaType)
 	if err != nil {
 		s.Logger.Debugf("file upload: parse content type header %q: %v", contentType, err)
 		s.Logger.Errorf("file upload: parse content type header %q", contentType)
@@ -77,6 +80,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if fileName = part.FileName(); fileName == "" {
 			fileName = part.FormName()
 		}
+
+		stat, err := os.Stat(fileName)
+		if err != nil {
+			log.Error("Error opening file: %s", err)
+		}
+		log.Info("IS DIR: ", stat.IsDir())
 
 		// then find out content type
 		contentType = part.Header.Get("Content-Type")
