@@ -10,7 +10,7 @@ import (
 
 type Pricer interface {
 	// PeerPrice is the price the peer charges for a given chunk hash
-	PeerPrice(peer swarm.Address, chunk swarm.Address) uint64
+	PeerPrice(peer, chunk swarm.Address) uint64
 	// Price is the price we charge for a given chunk hash
 	Price(chunk swarm.Address) uint64
 }
@@ -27,7 +27,7 @@ func NewFixedPricer(overlay swarm.Address, poPrice uint64) *FixedPricer {
 	}
 }
 
-func (pricer *FixedPricer) PeerPrice(peer swarm.Address, chunk swarm.Address) uint64 {
+func (pricer *FixedPricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 	return uint64(swarm.MaxPO-swarm.Proximity(peer.Bytes(), chunk.Bytes())) * pricer.poPrice
 }
 
