@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package accounting_test
 
 import (
@@ -13,16 +17,17 @@ import (
 
 const (
 	testDisconnectThreshold = 10000
-	testPaymentThreshold    = 1000
 	testPrice               = uint64(10)
 )
 
+// Booking represents an accounting action and the expected result afterwards
 type Booking struct {
 	peer            swarm.Address
-	price           int64
+	price           int64 // Credit if <0, Debit otherwise
 	expectedBalance int64
 }
 
+// TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
 func TestAccountingAddBalance(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -31,7 +36,6 @@ func TestAccountingAddBalance(t *testing.T) {
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
-		PaymentThreshold:    testPaymentThreshold,
 		Logger:              logger,
 		Store:               store,
 	})
@@ -86,6 +90,9 @@ func TestAccountingAddBalance(t *testing.T) {
 	}
 }
 
+// TestAccountingAdd_persistentBalances tests that balances are actually persisted
+// It creates an accounting instance, does some accounting
+// Then it creates a new accounting instance with the same store and verifies the balances
 func TestAccountingAdd_persistentBalances(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -94,7 +101,6 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
-		PaymentThreshold:    testPaymentThreshold,
 		Logger:              logger,
 		Store:               store,
 	})
@@ -123,7 +129,6 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 
 	acc = accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
-		PaymentThreshold:    testPaymentThreshold,
 		Logger:              logger,
 		Store:               store,
 	})
@@ -147,6 +152,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	}
 }
 
+// TestAccountingReserve tests that reserve returns an error if the disconnect threshold would be exceeded
 func TestAccountingReserve(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -155,7 +161,6 @@ func TestAccountingReserve(t *testing.T) {
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
-		PaymentThreshold:    testPaymentThreshold,
 		Logger:              logger,
 		Store:               store,
 	})
@@ -176,6 +181,7 @@ func TestAccountingReserve(t *testing.T) {
 	}
 }
 
+// TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.DisconnectError
 func TestAccountingDisconnect(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -184,7 +190,6 @@ func TestAccountingDisconnect(t *testing.T) {
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
-		PaymentThreshold:    testPaymentThreshold,
 		Logger:              logger,
 		Store:               store,
 	})
