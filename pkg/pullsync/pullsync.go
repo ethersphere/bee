@@ -116,7 +116,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			go stream.FullClose()
 		}
 	}()
 
@@ -362,7 +362,7 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			go stream.FullClose()
 		}
 	}()
 
@@ -401,7 +401,6 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	s.metrics.DbOpsCounter.Inc()
 	ints, err := s.storage.Cursors(ctx)
 	if err != nil {
-		_ = stream.Reset()
 		return err
 	}
 	ack.Cursors = ints
@@ -423,7 +422,7 @@ func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) (err error) {
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			go stream.FullClose()
 		}
 	}()
 
