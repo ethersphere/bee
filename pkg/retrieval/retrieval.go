@@ -127,7 +127,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	defer cancel()
 
 	peer, err = s.closestPeer(addr, skipPeers)
-	// reserve ?? calculate ( peer_price(chunk), ) -> release : skip
 
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest: %w", err)
