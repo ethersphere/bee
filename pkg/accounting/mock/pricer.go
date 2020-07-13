@@ -14,7 +14,7 @@ func NewPricer() *MockPricer {
 	return &MockPricer{}
 }
 
-func (pricer *MockPricer) PeerPrice(peer swarm.Address, chunk swarm.Address) uint64 {
+func (pricer *MockPricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 	return 0
 }
 
