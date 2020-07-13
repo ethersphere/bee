@@ -73,7 +73,7 @@ func TestDelivery(t *testing.T) {
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, reqAddr)
 	if err != nil {
-		return
+		t.Fatal(err)
 	}
 	if !bytes.Equal(v, reqData) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
@@ -126,9 +126,9 @@ type mockPeerSuggester struct {
 	eachPeerRevFunc func(f topology.EachPeerFunc) error
 }
 
-func (s mockPeerSuggester) EachPeer(f topology.EachPeerFunc) error {
-	return s.eachPeerRevFunc(f)
-}
-func (s mockPeerSuggester) EachPeerRev(topology.EachPeerFunc) error {
+func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
 	return errors.New("not implemented")
+}
+func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
+	return s.eachPeerRevFunc(f)
 }
