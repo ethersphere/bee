@@ -236,7 +236,6 @@ func NewBee(o Options) (*Bee, error) {
 	acc := accounting.NewAccounting(accounting.Options{
 		Logger:              logger,
 		Store:               stateStore,
-		PaymentThreshold:    1000000,
 		DisconnectThreshold: 1000000,
 	})
 

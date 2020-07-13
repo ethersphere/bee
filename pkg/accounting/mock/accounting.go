@@ -27,6 +27,10 @@ func (ma *MockAccounting) Debit(peer swarm.Address, price uint64) error {
 	return nil
 }
 
+func (ma *MockAccounting) Balance(peer swarm.Address) (int64, error) {
+	return 0, nil
+}
+
 func NewAccounting() *MockAccounting {
 	return &MockAccounting{}
 }
