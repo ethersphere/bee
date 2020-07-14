@@ -48,11 +48,10 @@ type Options struct {
 
 // Accounting is the main implementation of the accounting interface
 type Accounting struct {
-	balancesMu sync.Mutex // mutex for accessing the balances map
-	balances   map[string]*PeerBalance
-	logger     logging.Logger
-	store      storage.StateStorer
-
+	balancesMu          sync.Mutex // mutex for accessing the balances map
+	balances            map[string]*PeerBalance
+	logger              logging.Logger
+	store               storage.StateStorer
 	disconnectThreshold uint64 // the debt threshold at which we will disconnect from a peer
 }
 
@@ -108,6 +107,33 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	}
 }
 
+// Credit increases the balance the peer has with us
+func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
+	balance, err := a.getPeerBalance(peer)
+	if err != nil {
+		return err
+	}
+
+	balance.lock.Lock()
+	defer balance.lock.Unlock()
+
+	nextBalance := balance.balance - int64(price)
+
+	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
+
+	err = a.store.Put(a.balanceKey(peer), nextBalance)
+	if err != nil {
+		return err
+	}
+
+	balance.balance = nextBalance
+
+	// TODO: try to initiate payment if payment threshold is reached
+	// if balance.balance < -int64(a.paymentThreshold) { }
+
+	return nil
+}
+
 // Debit increases the balance we have with the peer
 func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	balance, err := a.getPeerBalance(peer)
@@ -136,33 +162,6 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	return nil
 }
 
-// Credit increases the balance the peer has with us
-func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
-	balance, err := a.getPeerBalance(peer)
-	if err != nil {
-		return err
-	}
-
-	balance.lock.Lock()
-	defer balance.lock.Unlock()
-
-	nextBalance := balance.balance - int64(price)
-
-	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
-
-	err = a.store.Put(a.balanceKey(peer), nextBalance)
-	if err != nil {
-		return err
-	}
-
-	balance.balance = nextBalance
-
-	// TODO: try to initiate payment if payment threshold is reached
-	// if balance.balance < -int64(a.paymentThreshold) { }
-
-	return nil
-}
-
 // Balance returns the current balance for the given peer
 func (a *Accounting) Balance(peer swarm.Address) (int64, error) {
 	peerBalance, err := a.getPeerBalance(peer)
@@ -184,27 +183,30 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	a.balancesMu.Lock()
 	defer a.balancesMu.Unlock()
 
-	peerInfo, ok := a.balances[peer.String()]
+	peerBalance, ok := a.balances[peer.String()]
 	if !ok {
+		// balance not yet in memory, load from state store
 		var balance int64
 		err := a.store.Get(a.balanceKey(peer), &balance)
 		if err == nil {
-			peerInfo = &PeerBalance{
+			peerBalance = &PeerBalance{
 				balance:  balance,
 				reserved: 0,
 			}
 		} else if err == storage.ErrNotFound {
-			peerInfo = &PeerBalance{
+			// no prior records in state store
+			peerBalance = &PeerBalance{
 				balance:  0,
 				reserved: 0,
 			}
 		} else {
+			// other error in state store
 			return nil, err
 		}
 
-		a.balances[peer.String()] = peerInfo
-		return peerInfo, nil
+		a.balances[peer.String()] = peerBalance
+		return peerBalance, nil
 	}
 
-	return peerInfo, nil
+	return peerBalance, nil
 }
