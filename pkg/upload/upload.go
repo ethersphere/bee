@@ -22,11 +22,8 @@ import (
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -34,11 +31,8 @@ const (
 	EncryptHeader     = "swarm-encrypt"
 )
 
-type fileUploadResponse struct {
-	Reference swarm.Address `json:"reference"`
-}
-
-type fileUploadInfo struct {
+// FileUploadInfo contains the data for a file to be uploaded
+type FileUploadInfo struct {
 	fileName    string
 	fileSize    int64
 	contentType string
@@ -46,37 +40,8 @@ type fileUploadInfo struct {
 	reader      io.Reader
 }
 
-// fileUploadHandler uploads the file and its metadata supplied as:
-// - multipart http message
-// - other content types as complete file body
-func uploadFile(w http.ResponseWriter, r *http.Request, s storage.Storer) {
-	logger := logging.New(os.Stdout, logrus.TraceLevel)
-
-	fileInfo, err := getFileInfo(r)
-	if err != nil {
-		logger.Debugf("file upload: get file info, request %v: %v", *r, err)
-		logger.Errorf("file upload: get file info, request %v", *r)
-		jsonhttp.BadRequest(w, "could not extract file info from request")
-		return
-	}
-
-	ctx := r.Context()
-	reference, err := storeFile(ctx, fileInfo, s)
-	if err != nil {
-		logger.Debugf("file upload: store file, request %s: %v", *r, err)
-		logger.Errorf("file upload: store file, request %s", *r)
-		jsonhttp.InternalServerError(w, "could not store file")
-		return
-	}
-
-	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
-	jsonhttp.OK(w, fileUploadResponse{
-		Reference: reference,
-	})
-}
-
-// getFileInfo extracts file info for upload from http request
-func getFileInfo(r *http.Request) (*fileUploadInfo, error) {
+// GetFileUploadInfo extracts file info for upload from HTTP request
+func GetFileUploadInfo(r *http.Request) (*FileUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
@@ -149,7 +114,7 @@ func getFileInfo(r *http.Request) (*fileUploadInfo, error) {
 		reader = tmp
 	}
 
-	return &fileUploadInfo{
+	return &FileUploadInfo{
 		fileName:    fileName,
 		fileSize:    int64(fileSize),
 		contentType: contentType,
@@ -158,8 +123,8 @@ func getFileInfo(r *http.Request) (*fileUploadInfo, error) {
 	}, nil
 }
 
-// storeFile stores the given file and returns its reference
-func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
+// StoreFile stores the given file and returns its reference
+func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)
 	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.fileSize, fileInfo.toEncrypt)
