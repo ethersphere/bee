@@ -309,7 +309,3 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Errorf("file download: data read %s", addr)
 	}
 }
-
-// dirUploadHandler uploads a directory
-func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
-}
