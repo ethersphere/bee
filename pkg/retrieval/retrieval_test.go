@@ -44,19 +44,23 @@ func TestDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountingMock := accountingmock.NewAccounting()
-	pricerMock := accountingmock.NewPricer()
+	serverMockAccounting := accountingmock.NewAccounting()
+
+	price := uint64(10)
+	pricerMock := accountingmock.NewPricer(price, price)
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(retrieval.Options{
 		Storer:     mockStorer,
 		Logger:     logger,
-		Accounting: accountingMock,
+		Accounting: serverMockAccounting,
 		Pricer:     pricerMock,
 	})
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
+
+	clientMockAccounting := accountingmock.NewAccounting()
 
 	// client mock storer does not store any data at this point
 	// but should be checked at at the end of the test for the
@@ -74,7 +78,7 @@ func TestDelivery(t *testing.T) {
 		ChunkPeerer: ps,
 		Storer:      clientMockStorer,
 		Logger:      logger,
-		Accounting:  accountingMock,
+		Accounting:  clientMockAccounting,
 		Pricer:      pricerMock,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
@@ -126,6 +130,16 @@ func TestDelivery(t *testing.T) {
 
 	if len(gotDeliveries) != 1 {
 		t.Fatalf("got too many deliveries. want 1 got %d", len(gotDeliveries))
+	}
+
+	serverBalance, _ := serverMockAccounting.Balance(peerID)
+	if serverBalance != int64(price) {
+		t.Fatalf("unexpected balance on server. want %d got %d", price, serverBalance)
+	}
+
+	clientBalance, _ := clientMockAccounting.Balance(peerID)
+	if clientBalance != -int64(price) {
+		t.Fatalf("unexpected balance on clieent. want %d got %d", -price, clientBalance)
 	}
 
 }
