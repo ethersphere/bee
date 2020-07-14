@@ -10,15 +10,24 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/sha3"
 )
 
 const (
-	SectionSize       = 32
-	Branches          = 128
-	ChunkSize         = SectionSize * Branches
-	HashSize          = 32
-	MaxPO       uint8 = 15
-	MaxBins           = MaxPO + 1
+	SectionSize            = 32
+	Branches               = 128
+	ChunkSize              = SectionSize * Branches
+	HashSize               = 32
+	MaxPO            uint8 = 15
+	MaxBins                = MaxPO + 1
+	SpanSize               = 8
+	TrojanNonceSize        = 32
+	TrojanLengthSize       = 2
+	TrojanTopicSize        = 32
+)
+
+var (
+	NewHasher = sha3.NewLegacyKeccak256
 )
 
 // Address represents an address in Swarm metric space of
@@ -119,7 +128,7 @@ type chunk struct {
 	sdata      []byte
 	pinCounter uint64
 	tagID      uint32
-	chunkType  Type
+	typ        Type
 }
 
 func NewChunk(addr Address, data []byte) Chunk {
@@ -164,11 +173,11 @@ func (c *chunk) Equal(cp Chunk) bool {
 }
 
 func (c *chunk) Type() Type {
-	return c.chunkType
+	return c.typ
 }
 
 func (c *chunk) WithType(t Type) Chunk {
-	c.chunkType = t
+	c.typ = t
 	return c
 }
 

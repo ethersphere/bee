@@ -1,18 +1,6 @@
-// Copyright 2020 The Swarm Authors
-// This file is part of the Swarm library.
-//
-// The Swarm library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The Swarm library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the Swarm library. If not, see <http://www.gnu.org/licenses/>.
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 package trojan
 
@@ -22,13 +10,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash"
 	"math/big"
 
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
-	"golang.org/x/crypto/sha3"
 )
 
 // Topic is an alias for a 32 byte fixed-size array which contains an encoding of a message topic
@@ -50,12 +35,14 @@ type Message struct {
 
 const (
 	// MaxPayloadSize is the maximum allowed payload size for the Message type, in bytes
+	// MaxPayloadSize + Topic + Length + Nonce = Default ChunkSize
+	//    (4030)      +  (32) +   (2)  +  (32) = 4096 Bytes
 	MaxPayloadSize = 4030
 )
 
 var (
 	// ErrPayloadTooBig is returned when a given payload for a Message type is longer than the maximum amount allowed
-	ErrPayloadTooBig = fmt.Errorf("message payload size cannot be greater than %d bytes", MaxPayloadSize)
+	ErrPayloadTooBig = errors.New(fmt.Sprintf("message payload size cannot be greater than %d bytes", MaxPayloadSize))
 
 	// ErrEmptyTargets is returned when the given target list for a trojan chunk is empty
 	ErrEmptyTargets = errors.New("target list cannot be empty")
@@ -63,26 +50,22 @@ var (
 	// ErrVarLenTargets is returned when the given target list for a trojan chunk has addresses of different lengths
 	ErrVarLenTargets = errors.New("target list cannot have targets of different length")
 
-	ErrInvalidHasher = errors.New("hasher pool not initialized")
+	ErrUnMarshallingTrojanMessage = errors.New("trojan message unmarshall error")
 )
 
 // NewTopic creates a new Topic variable with the given input string
 // the input string is taken as a byte slice and hashed
 func NewTopic(topic string) Topic {
 	var tpc Topic
-	t, err := crypto.LegacyKeccak256([]byte(topic))
+	hasher := swarm.NewHasher()
+	_, err := hasher.Write([]byte(topic))
 	if err != nil {
 		return tpc
 	}
-	copy(tpc[:], t)
+	sum := hasher.Sum(nil)
+	copy(tpc[:], sum)
 	return tpc
 }
-
-func hashFunc() hash.Hash {
-	return sha3.NewLegacyKeccak256()
-}
-
-var hasher *bmtlegacy.Hasher
 
 // NewMessage creates a new Message variable with the given topic and payload
 // it finds a length and nonce for the message according to the given input and maximum payload size
@@ -93,8 +76,6 @@ func NewMessage(topic Topic, payload []byte) (Message, error) {
 
 	// get length as array of 2 bytes
 	payloadSize := uint16(len(payload))
-	lengthBuf := make([]byte, 2)
-	binary.BigEndian.PutUint16(lengthBuf, payloadSize)
 
 	// set random bytes as padding
 	paddingLen := MaxPayloadSize - payloadSize
@@ -105,14 +86,10 @@ func NewMessage(topic Topic, payload []byte) (Message, error) {
 
 	// create new Message var and set fields
 	m := new(Message)
-	copy(m.length[:], lengthBuf)
+	binary.BigEndian.PutUint16(m.length[:], payloadSize)
 	m.Topic = topic
 	m.Payload = payload
 	m.padding = padding
-
-	hashPool := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
-	hasher = bmtlegacy.New(hashPool)
-
 	return *m, nil
 }
 
@@ -125,9 +102,7 @@ func (m *Message) Wrap(targets Targets) (swarm.Chunk, error) {
 	}
 
 	span := make([]byte, 8)
-	// 4064 bytes for trojan message + 32 bytes for nonce = 4096 bytes as payload for resulting chunk
 	binary.LittleEndian.PutUint64(span, swarm.ChunkSize)
-
 	return m.toChunk(targets, span)
 }
 
@@ -154,14 +129,14 @@ func IsPotential(c swarm.Chunk) bool {
 
 	data := c.Data()
 	// check for minimum chunk data length
-	// span (8) + nonce (32) + length (2) + topic (32) = 74
-	if len(data) < 74 {
+	trojanChunkMinDataLen := swarm.SpanSize + swarm.TrojanNonceSize + swarm.TrojanTopicSize + swarm.TrojanLengthSize
+	if len(data) < trojanChunkMinDataLen {
 		return false
 	}
 
 	// check for valid trojan message length in bytes #41 and #42
 	messageLen := int(binary.BigEndian.Uint16(data[40:42]))
-	return 74+messageLen <= len(data)
+	return trojanChunkMinDataLen+messageLen <= len(data)
 }
 
 // checkTargets verifies that the list of given targets is non empty and with elements of matching size
@@ -184,7 +159,7 @@ func checkTargets(targets Targets) error {
 // and its data set to the serialization of the trojan chunk fields which correctly hash into the matching address
 func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 	// start out with random nonce
-	nonce := make([]byte, 32)
+	nonce := make([]byte, swarm.TrojanNonceSize)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
@@ -213,19 +188,18 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 		}
 		// else, add 1 to nonce and try again
 		nonceInt.Add(nonceInt, big.NewInt(1))
-		// loop around in case of overflow
-		if nonceInt.BitLen() > 256 {
+		// loop around in case of overflow after 256 bits
+		if nonceInt.BitLen() > (swarm.TrojanNonceSize * 8) {
 			nonceInt = big.NewInt(0)
 		}
-		nonce = padBytes(nonceInt.Bytes()) // pad in case Bytes call is not 32 bytes long
+		nonce = padBytesLeft(nonceInt.Bytes()) // pad in case Bytes call is not 32 bytes long
 	}
 }
 
 // hashBytes hashes the given serialization of chunk fields with the hashing func
 func hashBytes(s []byte) ([]byte, error) {
-	if hasher == nil {
-		return nil, ErrInvalidHasher
-	}
+	hashPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
+	hasher := bmtlegacy.New(hashPool)
 	hasher.Reset()
 	span := binary.LittleEndian.Uint64(s[:8])
 	err := hasher.SetSpan(int64(span))
@@ -248,10 +222,10 @@ func contains(col Targets, elem []byte) bool {
 	return false
 }
 
-// padBytes adds 0s to the given byte slice as left padding,
+// padBytesLeft adds 0s to the given byte slice as left padding,
 // returning this as a new byte slice with a length of exactly 32
 // given param is assumed to be at most 32 bytes long
-func padBytes(b []byte) []byte {
+func padBytesLeft(b []byte) []byte {
 	l := len(b)
 	if l == 32 {
 		return b
@@ -271,13 +245,21 @@ func (m *Message) MarshalBinary() (data []byte, err error) {
 
 // UnmarshalBinary deserializes a message struct
 func (m *Message) UnmarshalBinary(data []byte) (err error) {
-	copy(m.length[:], data[:2])  // first 2 bytes are length
-	copy(m.Topic[:], data[2:34]) // following 32 bytes are topic
+	if len(data) < swarm.TrojanLengthSize+swarm.TrojanTopicSize {
+		return ErrUnMarshallingTrojanMessage
+	}
+
+	copy(m.length[:], data[:swarm.TrojanLengthSize])                                            // first 2 bytes are length
+	copy(m.Topic[:], data[swarm.TrojanLengthSize:swarm.TrojanLengthSize+swarm.TrojanTopicSize]) // following 32 bytes are topic
+
+	length := binary.BigEndian.Uint16(m.length[:])
+	if len(data)-swarm.TrojanLengthSize-swarm.TrojanTopicSize < int(length) {
+		return ErrUnMarshallingTrojanMessage
+	}
 
 	// rest of the bytes are payload and padding
-	length := binary.BigEndian.Uint16(m.length[:])
-	payloadEnd := 34 + length
-	m.Payload = data[34:payloadEnd]
+	payloadEnd := swarm.TrojanLengthSize + swarm.TrojanTopicSize + length
+	m.Payload = data[swarm.TrojanLengthSize+swarm.TrojanTopicSize : payloadEnd]
 	m.padding = data[payloadEnd:]
 	return nil
 }
