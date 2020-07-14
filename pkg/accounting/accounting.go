@@ -20,7 +20,7 @@ var _ Interface = (*Accounting)(nil)
 type Interface interface {
 	// Reserve reserves a portion of the balance for peer
 	// It returns an error if the operation would risk exceeding the disconnect threshold
-	// This should be called (always in combination with release) before a Credit action
+	// This should be called (always in combination with Release) before a Credit action to prevent overspending in case of concurrent requests
 	Reserve(peer swarm.Address, price uint64) error
 	// Release releases reserved funds
 	Release(peer swarm.Address, price uint64)
@@ -91,7 +91,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	balance, err := a.getPeerBalance(peer)
 	if err != nil {
-		a.logger.Error("Releasing balance for peer that is not loaded")
+		a.logger.Error("attempting to release balance for peer that is not loaded")
 		return
 	}
 
@@ -100,7 +100,7 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 
 	if price > balance.reserved {
 		// If Reserve and Release calls are always paired this should never happen
-		a.logger.Error("Releasing more balance than was reserved for peer")
+		a.logger.Error("attempting to release more balance than was reserved for peer")
 		balance.reserved = 0
 	} else {
 		balance.reserved -= price
