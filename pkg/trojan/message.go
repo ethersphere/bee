@@ -42,7 +42,7 @@ const (
 
 var (
 	// ErrPayloadTooBig is returned when a given payload for a Message type is longer than the maximum amount allowed
-	ErrPayloadTooBig = errors.New(fmt.Sprintf("message payload size cannot be greater than %d bytes", MaxPayloadSize))
+	ErrPayloadTooBig = fmt.Errorf("message payload size cannot be greater than %d bytes", MaxPayloadSize)
 
 	// ErrEmptyTargets is returned when the given target list for a trojan chunk is empty
 	ErrEmptyTargets = errors.New("target list cannot be empty")
