@@ -13,7 +13,7 @@ type MockPricer struct {
 	price     uint64
 }
 
-func NewPricer(price uint64, peerPrice uint64) *MockPricer {
+func NewPricer(price, peerPrice uint64) *MockPricer {
 	return &MockPricer{
 		peerPrice: peerPrice,
 		price:     price,
