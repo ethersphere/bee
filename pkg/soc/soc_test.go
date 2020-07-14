@@ -20,7 +20,7 @@ import (
 func TestCreateChunk(t *testing.T) {
 	id := make([]byte, 32)
 	payload := make([]byte, 42)
-	u := soc.NewUpdate(id, payload)
+	u := soc.NewChunk(id, payload)
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -75,8 +75,19 @@ func TestCreateChunk(t *testing.T) {
 	}
 	payloadSum := bmtHasher.Sum(nil)
 
+	sha3Hasher := swarm.NewHasher()
+	_, err = sha3Hasher.Write(payloadSum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sha3Hasher.Write(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toSignBytes := sha3Hasher.Sum(nil)
+
 	// verify owner match
-	recoveredPublicKey, err := crypto.Recover(signature, payloadSum)
+	recoveredPublicKey, err := crypto.Recover(signature, toSignBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,12 +100,12 @@ func TestCreateChunk(t *testing.T) {
 	}
 }
 
-// TestUpdateFromChunk verifies that valid chunk data deserializes to
-// a fully populated Update object.
-func TestUpdateFromChunk(t *testing.T) {
+// TestFromChunk verifies that valid chunk data deserializes to
+// a fully populated Chunk object.
+func TestFromChunk(t *testing.T) {
 	id := make([]byte, 32)
 	payload := make([]byte, 42)
-	u := soc.NewUpdate(id, payload)
+	u := soc.NewChunk(id, payload)
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +122,7 @@ func TestUpdateFromChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	u2, err := soc.UpdateFromChunk(ch)
+	u2, err := soc.FromChunk(ch)
 	if err != nil {
 		t.Fatal(err)
 	}

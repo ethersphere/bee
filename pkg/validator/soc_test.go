@@ -26,7 +26,7 @@ func TestSocValidator(t *testing.T) {
 	signer := crypto.NewDefaultSigner(privKey)
 
 	payload := make([]byte, 42)
-	u := soc.NewUpdate(id, payload)
+	u := soc.NewChunk(id, payload)
 	err = u.AddSigner(signer)
 	if err != nil {
 		t.Fatal(err)
