@@ -66,23 +66,24 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir            string
-	DBCapacity         uint64
-	Password           string
-	APIAddr            string
-	DebugAPIAddr       string
-	Addr               string
-	NATAddr            string
-	EnableWS           bool
-	EnableQUIC         bool
-	NetworkID          uint64
-	WelcomeMessage     string
-	Bootnodes          []string
-	CORSAllowedOrigins []string
-	Logger             logging.Logger
-	TracingEnabled     bool
-	TracingEndpoint    string
-	TracingServiceName string
+	DataDir             string
+	DBCapacity          uint64
+	Password            string
+	APIAddr             string
+	DebugAPIAddr        string
+	Addr                string
+	NATAddr             string
+	EnableWS            bool
+	EnableQUIC          bool
+	NetworkID           uint64
+	WelcomeMessage      string
+	Bootnodes           []string
+	CORSAllowedOrigins  []string
+	Logger              logging.Logger
+	TracingEnabled      bool
+	TracingEndpoint     string
+	TracingServiceName  string
+	DisconnectThreshold uint64
 }
 
 func NewBee(o Options) (*Bee, error) {
@@ -236,7 +237,7 @@ func NewBee(o Options) (*Bee, error) {
 	acc := accounting.NewAccounting(accounting.Options{
 		Logger:              logger,
 		Store:               stateStore,
-		DisconnectThreshold: 1000000,
+		DisconnectThreshold: o.DisconnectThreshold,
 	})
 
 	retrieve := retrieval.New(retrieval.Options{
