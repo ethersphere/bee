@@ -21,7 +21,7 @@ import (
 )
 
 // maximum amount of file tree levels this file hasher component can handle
-// (128 ^ (9 - 1)) * 4096 = 295147905179352825856 bytes
+// (128 ^ (9 - 1)) * 4096 = 295147905179352825856 bytesgit fetch origin
 const levelBufferLimit = 9
 
 // hashFunc is a hasher factory used by the bmt hasher
@@ -68,7 +68,7 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		sumCounts:  make([]int, levelBufferLimit),
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
-		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
+		buffer:     make([]byte, file.ChunkWithSpanSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
 		toEncrypt:  toEncrypt,
 		refSize:    refSize,
 	}
