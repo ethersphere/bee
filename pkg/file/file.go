@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	ChunkWithLengthSize = swarm.ChunkSize + 8
+	ChunkWithSpanSize = swarm.ChunkSize + 8
 )
 
 // Joiner returns file data referenced by the given Swarm Address to the given io.Reader.

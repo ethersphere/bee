@@ -7,10 +7,10 @@ package trojan_test
 import (
 	"bytes"
 	"encoding/binary"
-	"math/big"
 	"reflect"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/file"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
@@ -87,15 +87,15 @@ func TestWrap(t *testing.T) {
 
 	data := c.Data()
 	dataSize := len(data)
-	expectedSize := 8 + swarm.ChunkSize // span + payload
+	expectedSize := file.ChunkWithSpanSize // span + payload
 	if dataSize != expectedSize {
 		t.Fatalf("chunk data has an unexpected size of %d rather than %d", dataSize, expectedSize)
 	}
 
 	span := binary.LittleEndian.Uint64(data[:8])
-	remDataLen := len(data[8:])
-	if int(span) != remDataLen {
-		t.Fatalf("chunk span set to %d, but rest of chunk data is of size %d", span, remDataLen)
+	remainingDataLen := len(data[8:])
+	if int(span) != remainingDataLen {
+		t.Fatalf("chunk span set to %d, but rest of chunk data is of size %d", span, remainingDataLen)
 	}
 
 	dataHash, err := trojan.HashBytes(data)
@@ -145,10 +145,7 @@ func TestPadBytes(t *testing.T) {
 	}
 
 	// simulate toChunk behavior
-	s = []byte{255, 255, 255}
-	i := new(big.Int).SetBytes(s) // byte slice to big.Int
-	i.Add(i, big.NewInt(1))       // add 1 to slice as big.Int
-	s = i.Bytes()                 // []byte{1, 0, 0, 0}
+	s = []byte{1, 0, 0, 0}
 
 	p = trojan.PadBytes(s)
 	e = append(make([]byte, 28), s...) // 28 zeros plus the 4 original bytes

@@ -4,4 +4,5 @@ var (
 	Contains  = contains
 	HashBytes = hashBytes
 	PadBytes  = padBytesLeft
+	IsPotential = isPotential
 )

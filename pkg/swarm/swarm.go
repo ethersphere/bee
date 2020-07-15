@@ -15,16 +15,13 @@ import (
 )
 
 const (
-	SectionSize            = 32
-	Branches               = 128
-	ChunkSize              = SectionSize * Branches
-	HashSize               = 32
-	MaxPO            uint8 = 15
-	MaxBins                = MaxPO + 1
-	SpanSize               = 8
-	TrojanNonceSize        = 32
-	TrojanLengthSize       = 2
-	TrojanTopicSize        = 32
+	SectionSize       = 32
+	Branches          = 128
+	ChunkSize         = SectionSize * Branches
+	HashSize          = 32
+	MaxPO       uint8 = 15
+	MaxBins           = MaxPO + 1
+	SpanSize          = 8
 )
 
 var (

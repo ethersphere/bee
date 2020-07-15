@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
@@ -38,6 +39,10 @@ const (
 	// MaxPayloadSize + Topic + Length + Nonce = Default ChunkSize
 	//    (4030)      +  (32) +   (2)  +  (32) = 4096 Bytes
 	MaxPayloadSize = 4030
+	NonceSize      = 32
+	LengthSize     = 2
+	TopicSize      = 32
+	MinerTimeout   = 2 // seconds
 )
 
 var (
@@ -50,7 +55,11 @@ var (
 	// ErrVarLenTargets is returned when the given target list for a trojan chunk has addresses of different lengths
 	ErrVarLenTargets = errors.New("target list cannot have targets of different length")
 
+	// ErrUnMarshallingTrojanMessage is returned when a trojan message could not be de-serialized
 	ErrUnMarshallingTrojanMessage = errors.New("trojan message unmarshall error")
+
+	// ErrMinerTimeout is returned when mining a new nonce takes more time than swarm.TrojanMinerTimeout seconds
+	ErrMinerTimeout = errors.New("miner timeout error")
 )
 
 // NewTopic creates a new Topic variable with the given input string
@@ -121,7 +130,7 @@ func Unwrap(c swarm.Chunk) (*Message, error) {
 }
 
 // IsPotential returns true if the given chunk is a potential trojan
-func IsPotential(c swarm.Chunk) bool {
+func isPotential(c swarm.Chunk) bool {
 	// chunk must be content-addressed to be trojan
 	if c.Type() != swarm.ContentAddressed {
 		return false
@@ -129,7 +138,7 @@ func IsPotential(c swarm.Chunk) bool {
 
 	data := c.Data()
 	// check for minimum chunk data length
-	trojanChunkMinDataLen := swarm.SpanSize + swarm.TrojanNonceSize + swarm.TrojanTopicSize + swarm.TrojanLengthSize
+	trojanChunkMinDataLen := swarm.SpanSize + NonceSize + TopicSize + LengthSize
 	if len(data) < trojanChunkMinDataLen {
 		return false
 	}
@@ -159,7 +168,7 @@ func checkTargets(targets Targets) error {
 // and its data set to the serialization of the trojan chunk fields which correctly hash into the matching address
 func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 	// start out with random nonce
-	nonce := make([]byte, swarm.TrojanNonceSize)
+	nonce := make([]byte, NonceSize)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
@@ -173,8 +182,7 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 	}
 
 	// hash chunk fields with different nonces until an acceptable one is found
-	// TODO: prevent infinite loop
-	for {
+	for start := time.Now(); ; {
 		s := append(append(span, nonce...), b...) // serialize chunk fields
 		hash1, err := hashBytes(s)
 		if err != nil {
@@ -189,11 +197,16 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 		// else, add 1 to nonce and try again
 		nonceInt.Add(nonceInt, big.NewInt(1))
 		// loop around in case of overflow after 256 bits
-		if nonceInt.BitLen() > (swarm.TrojanNonceSize * 8) {
+		if nonceInt.BitLen() > (NonceSize * swarm.SpanSize) {
+			// Test if timeout after after every 256 iteration
+			if time.Since(start) > (MinerTimeout * time.Second) {
+				break
+			}
 			nonceInt = big.NewInt(0)
 		}
 		nonce = padBytesLeft(nonceInt.Bytes()) // pad in case Bytes call is not 32 bytes long
 	}
+	return nil, ErrMinerTimeout
 }
 
 // hashBytes hashes the given serialization of chunk fields with the hashing func
@@ -245,21 +258,21 @@ func (m *Message) MarshalBinary() (data []byte, err error) {
 
 // UnmarshalBinary deserializes a message struct
 func (m *Message) UnmarshalBinary(data []byte) (err error) {
-	if len(data) < swarm.TrojanLengthSize+swarm.TrojanTopicSize {
+	if len(data) < LengthSize+TopicSize {
 		return ErrUnMarshallingTrojanMessage
 	}
 
-	copy(m.length[:], data[:swarm.TrojanLengthSize])                                            // first 2 bytes are length
-	copy(m.Topic[:], data[swarm.TrojanLengthSize:swarm.TrojanLengthSize+swarm.TrojanTopicSize]) // following 32 bytes are topic
+	copy(m.length[:], data[:LengthSize])                    // first 2 bytes are length
+	copy(m.Topic[:], data[LengthSize:LengthSize+TopicSize]) // following 32 bytes are topic
 
 	length := binary.BigEndian.Uint16(m.length[:])
-	if len(data)-swarm.TrojanLengthSize-swarm.TrojanTopicSize < int(length) {
+	if (len(data) - LengthSize - TopicSize) < int(length) {
 		return ErrUnMarshallingTrojanMessage
 	}
 
 	// rest of the bytes are payload and padding
-	payloadEnd := swarm.TrojanLengthSize + swarm.TrojanTopicSize + length
-	m.Payload = data[swarm.TrojanLengthSize+swarm.TrojanTopicSize : payloadEnd]
+	payloadEnd := LengthSize + TopicSize + length
+	m.Payload = data[LengthSize+TopicSize : payloadEnd]
 	m.padding = data[payloadEnd:]
 	return nil
 }
