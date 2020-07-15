@@ -230,11 +230,11 @@ func (s *stream) Reset() error {
 }
 
 type record struct {
-	b         []byte
-	c         int
-	closed    bool
-	closeOnce sync.Once
-	cond      *sync.Cond
+	b       []byte
+	c       int
+	closed  bool
+	closeMu sync.RWMutex
+	cond    *sync.Cond
 }
 
 func newRecord() *record {
@@ -247,7 +247,7 @@ func (r *record) Read(p []byte) (n int, err error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
-	for r.c == len(r.b) && !r.closed {
+	for r.c == len(r.b) && !r.Closed() {
 		r.cond.Wait()
 	}
 	end := r.c + len(p)
@@ -256,16 +256,17 @@ func (r *record) Read(p []byte) (n int, err error) {
 	}
 	n = copy(p, r.b[r.c:end])
 	r.c += n
-	if r.closed {
+	if r.Closed() {
 		err = io.EOF
 	}
+
 	return n, err
 }
 
 func (r *record) Write(p []byte) (int, error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
-	if r.closed {
+	if r.Closed() {
 		return 0, errors.New("record closed")
 	}
 
@@ -281,14 +282,16 @@ func (r *record) Close() error {
 
 	defer r.cond.Broadcast()
 
-	r.closeOnce.Do(func() {
-		r.closed = true
-	})
+	r.closeMu.Lock()
+	r.closed = true
+	r.closeMu.Unlock()
 
 	return nil
 }
 
 func (r *record) Closed() bool {
+	r.closeMu.RLock()
+	defer r.closeMu.RUnlock()
 	return r.closed
 }
 
