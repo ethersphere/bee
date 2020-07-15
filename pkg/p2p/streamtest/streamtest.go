@@ -182,7 +182,7 @@ type stream struct {
 	headers p2p.Headers
 }
 
-func newStream(in *record, out *record) *stream {
+func newStream(in, out *record) *stream {
 	return &stream{in: in, out: out}
 }
 
@@ -199,16 +199,12 @@ func (s *stream) Headers() p2p.Headers {
 }
 
 func (s *stream) Close() error {
-	if err := s.in.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return s.in.Close()
 }
 
 func (s *stream) FullClose() error {
 	if err := s.Close(); err != nil {
-		s.Reset()
+		_ = s.Reset()
 		return err
 	}
 
@@ -230,11 +226,7 @@ func (s *stream) Reset() error {
 		return err
 	}
 
-	if err := s.out.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return s.out.Close()
 }
 
 type record struct {
