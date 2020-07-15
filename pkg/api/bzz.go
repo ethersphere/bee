@@ -109,7 +109,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entryAddress := entry.Address
+	entryAddress := entry.GetAddress()
 
 	toDecryptEntry := len(entryAddress.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 
@@ -150,7 +150,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	go func() {
-		_, err := file.JoinReadAll(j, entry.Address, pw, toDecrypt)
+		_, err := file.JoinReadAll(j, entryAddress, pw, toDecrypt)
 		if err := pw.CloseWithError(err); err != nil {
 			s.Logger.Debugf("bzz download: data join close %s: %v", entryAddress, err)
 			s.Logger.Errorf("bzz download: data join close %s", entryAddress)
@@ -166,9 +166,9 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("ETag", fmt.Sprintf("%q", entry.Address))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", entry.Filename))
-	w.Header().Set("Content-Type", entry.MimeType)
+	w.Header().Set("ETag", fmt.Sprintf("%q", entryAddress))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", entry.GetName()))
+	w.Header().Set("Content-Type", entry.GetHeaders().Get("Content-Type"))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
 	if _, err = io.Copy(w, bpr); err != nil {

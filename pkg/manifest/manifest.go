@@ -6,6 +6,7 @@ package manifest
 
 import (
 	"errors"
+	"net/http"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -17,12 +18,14 @@ type Parser interface {
 }
 
 type Interface interface {
-	FindEntry(path string) (*Entry, error)
-	Serialize() []byte
+	Add(string, Entry)
+	Remove(string)
+	FindEntry(string) (Entry, error)
+	Serialize() ([]byte, error)
 }
 
-type Entry struct {
-	Address  swarm.Address `json:"address"`
-	Filename string        `json:"filename"`
-	MimeType string        `json:"mimetype"`
+type Entry interface {
+	GetAddress() swarm.Address
+	GetName() string
+	GetHeaders() http.Header
 }

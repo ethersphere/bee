@@ -22,8 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/manifest"
-	mmock "github.com/ethersphere/bee/pkg/manifest/mock"
+	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -36,7 +35,7 @@ func TestBzz(t *testing.T) {
 		sp                  = splitter.NewSimpleSplitter(storer)
 		client              = newTestServer(t, testServerOptions{
 			Storer:         storer,
-			ManifestParser: mmock.NewManifestParser(),
+			ManifestParser: jsonmanifest.NewParser(),
 			Tags:           tags.NewTags(),
 			Logger:         logging.New(ioutil.Discard, 5),
 		})
@@ -70,15 +69,20 @@ func TestBzz(t *testing.T) {
 
 		t.Run("save-manifest", func(t *testing.T) {
 
-			mockManifestInterface := mmock.NewManifestInterface(map[string]manifest.Entry{
-				filePath: {
-					Address:  fileReference,
-					Filename: fileName,
-					MimeType: "text/html; charset=utf-8",
+			jsonManifest := jsonmanifest.NewManifest()
+
+			jsonManifest.Add(filePath, jsonmanifest.JSONEntry{
+				Address: fileReference,
+				Name:    fileName,
+				Headers: http.Header{
+					"Content-Type": {"text/html; charset=utf-8"},
 				},
 			})
 
-			manifestFileBytes := mockManifestInterface.Serialize()
+			manifestFileBytes, err := jsonManifest.Serialize()
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			fr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileBytes), int64(len(manifestFileBytes)), false)
 			if err != nil {
