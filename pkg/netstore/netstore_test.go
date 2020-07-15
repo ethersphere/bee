@@ -111,9 +111,10 @@ type retrievalMock struct {
 	addr      swarm.Address
 }
 
-func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
+func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address, valid func(swarm.Chunk) bool) (chunk swarm.Chunk, err error){
 	r.called = true
 	atomic.AddInt32(&r.callCount, 1)
 	r.addr = addr
-	return chunkData, nil
+	chunk = swarm.NewChunk(addr, chunkData)
+	return chunk, nil
 }

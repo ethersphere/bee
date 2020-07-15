@@ -83,11 +83,11 @@ func TestDelivery(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-	v, err := client.RetrieveChunk(ctx, reqAddr)
+	v, err := client.RetrieveChunk(ctx, reqAddr, FValidate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(v, reqData) {
+	if !bytes.Equal(v.Data(), reqData) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
 	}
 	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
@@ -149,3 +149,6 @@ func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
 func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
 	return s.eachPeerRevFunc(f)
 }
+
+func FValidate(_ swarm.Chunk) bool { return true }
+
