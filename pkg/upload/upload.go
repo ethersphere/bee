@@ -184,8 +184,9 @@ func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 }
 
 // StoreTar stores all files contained in the given tar and returns its reference
-func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
-	var contentKey swarm.Address
+// based on /swarm/api/api/UploadTar
+func StoreTar(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (swarm.Address, error) {
+	var contentKey swarm.Address // how is this determined?
 	// manifestPath := GetURI(r.Context()).Path // ??
 
 	bodyReader := dirInfo.DirReader
@@ -227,12 +228,12 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 			}*/
 
 		if hdr.Name == dirInfo.DefaultPath {
-			contentType := hdr.Xattrs["user.swarm.content-type"]
+			/*contentType := hdr.Xattrs["user.swarm.content-type"]
 			if contentType == "" {
 				contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 			}
 
-			/*entry := &ManifestEntry{
+			entry := &ManifestEntry{
 				Hash:        contentKey.Hex(),
 				Path:        "", // default entry
 				ContentType: contentType,
@@ -240,13 +241,20 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 				Size:        hdr.Size,
 				ModTime:     hdr.ModTime,
 			}
-			contentKey, err = mw.AddEntry(ctx, nil, entry)
-			if err != nil {
-				return nil, fmt.Errorf("error adding default manifest entry from tar stream: %s", err)
+			conctx context.Context,return nil, fmt.Errorf("error adding default manifest entry from tar stream: %s", err)
 			}*/
 
 			defaultPathFound = true
 		}
+
+		fileInfo := &FileUploadInfo{}
+		fileReference, err := StoreFile(ctx, fileInfo, s)
+
+		if err != nil {
+			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %v", err)
+		}
+
+		_ = fileReference // what do we do with each file ref?
 	}
 
 	if dirInfo.DefaultPath != "" && !defaultPathFound {
