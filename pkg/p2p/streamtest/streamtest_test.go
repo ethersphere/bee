@@ -374,7 +374,7 @@ func TestRecorder_resetAfterPartialWrite(t *testing.T) {
 			return fmt.Errorf("flush: %w", err)
 		}
 
-		// deliberately close the stream before the new line character is
+		// deliberately reset the stream before the new line character is
 		// written to the stream
 		if err := stream.Reset(); err != nil {
 			return err
