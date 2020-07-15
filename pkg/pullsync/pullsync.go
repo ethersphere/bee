@@ -35,6 +35,8 @@ const (
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
+
+	cancellationTimeout = 5 * time.Second // explicit ruid cancellation message timeout
 )
 
 // how many maximum chunks in a batch
@@ -48,6 +50,7 @@ type Interface interface {
 
 type Syncer struct {
 	streamer p2p.Streamer
+	metrics  metrics
 	logger   logging.Logger
 	storage  pullstorage.Storer
 	quit     chan struct{}
@@ -71,6 +74,7 @@ func New(o Options) *Syncer {
 	return &Syncer{
 		streamer: o.Streamer,
 		storage:  o.Storage,
+		metrics:  newMetrics(),
 		logger:   o.Logger,
 		ruidCtx:  make(map[uint32]func()),
 		wg:       sync.WaitGroup{},
@@ -108,6 +112,13 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	if err != nil {
 		return 0, 0, fmt.Errorf("new stream: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
 
 	var ru pb.Ruid
 	b := make([]byte, 4)
@@ -119,7 +130,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	ru.Ruid = binary.BigEndian.Uint32(b)
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
 
 	if err = w.WriteMsgWithContext(ctx, &ru); err != nil {
 		return 0, 0, fmt.Errorf("write ruid: %w", err)
@@ -163,6 +173,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			s.logger.Errorf("syncer got a zero address hash on offer")
 			return 0, ru.Ruid, fmt.Errorf("zero address on offer")
 		}
+		s.metrics.OfferCounter.Inc()
+		s.metrics.DbOpsCounter.Inc()
 		have, err := s.storage.Has(ctx, a)
 		if err != nil {
 			return 0, ru.Ruid, fmt.Errorf("storage has: %w", err)
@@ -170,6 +182,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if !have {
 			wantChunks[a.String()] = struct{}{}
 			ctr++
+			s.metrics.WantCounter.Inc()
 			bv.Set(i / swarm.HashSize)
 		}
 	}
@@ -196,7 +209,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		delete(wantChunks, addr.String())
-
+		s.metrics.DbOpsCounter.Inc()
+		s.metrics.DeliveryCounter.Inc()
 		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
 			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", err)
 		}
@@ -205,10 +219,15 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 }
 
 // handler handles an incoming request to sync an interval
-func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
-
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 	var ru pb.Ruid
 	if err := r.ReadMsgWithContext(ctx, &ru); err != nil {
 		return fmt.Errorf("send ruid: %w", err)
@@ -295,6 +314,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) err
 }
 
 func (s *Syncer) setChunks(ctx context.Context, addrs ...swarm.Address) error {
+	s.metrics.DbOpsCounter.Inc()
 	return s.storage.Set(ctx, storage.ModeSetSyncPull, addrs...)
 }
 
@@ -329,15 +349,22 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			addrs = append(addrs, a)
 		}
 	}
+	s.metrics.DbOpsCounter.Inc()
 	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
 }
 
-func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error) {
+func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, err error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	syn := &pb.Syn{}
@@ -350,12 +377,20 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, 
 		return nil, fmt.Errorf("read ack: %w", err)
 	}
 
-	return ack.Cursors, nil
+	retr = ack.Cursors
+
+	return retr, nil
 }
 
-func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 
 	var syn pb.Syn
 	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
@@ -363,9 +398,9 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	var ack pb.Ack
+	s.metrics.DbOpsCounter.Inc()
 	ints, err := s.storage.Cursors(ctx)
 	if err != nil {
-		_ = stream.FullClose()
 		return err
 	}
 	ack.Cursors = ints
@@ -376,27 +411,39 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	return nil
 }
 
-func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) error {
+func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) (err error) {
 	stream, err := s.streamer.NewStream(context.Background(), peer, nil, protocolName, protocolVersion, cancelStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
 
 	w := protobuf.NewWriter(stream)
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
 
 	var c pb.Cancel
 	c.Ruid = ruid
-	if err := w.WriteMsgWithTimeout(5*time.Second, &c); err != nil {
+	if err := w.WriteMsgWithTimeout(cancellationTimeout, &c); err != nil {
 		return fmt.Errorf("send cancellation: %w", err)
 	}
 	return nil
 }
 
 // handler handles an incoming request to explicitly cancel a ruid
-func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	r := protobuf.NewReader(stream)
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 
 	var c pb.Cancel
 	if err := r.ReadMsgWithContext(ctx, &c); err != nil {

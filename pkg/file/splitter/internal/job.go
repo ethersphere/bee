@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -46,12 +47,19 @@ type SimpleSplitterJob struct {
 	cursors    []int    // section write position, indexed per level
 	hasher     bmt.Hash // underlying hasher used for hashing the tree
 	buffer     []byte   // keeps data and hashes, indexed by cursors
+	toEncrypt  bool     // to encryrpt the chunks or not
+	refSize    int64
 }
 
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, toEncrypt bool) *SimpleSplitterJob {
+	hashSize := swarm.HashSize
+	refSize := int64(hashSize)
+	if toEncrypt {
+		refSize += encryption.KeyLength
+	}
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 	return &SimpleSplitterJob{
 		ctx:        ctx,
@@ -60,7 +68,9 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		sumCounts:  make([]int, levelBufferLimit),
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
-		buffer:     make([]byte, file.ChunkWithSpanSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
+		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
+		toEncrypt:  toEncrypt,
+		refSize:    refSize,
 	}
 }
 
@@ -126,34 +136,48 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	s.sumCounts[lvl]++
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
-
 	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
 
-	// perform hashing
+	//perform hashing
 	s.hasher.Reset()
 	err := s.hasher.SetSpan(span)
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.hasher.Write(s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum])
+
+	var ref encryption.Key
+	var chunkData []byte
+	data := s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum]
+
+	_, err = s.hasher.Write(data)
 	if err != nil {
 		return nil, err
 	}
-	ref := s.hasher.Sum(nil)
-
-	// assemble chunk and put in store
-	addr := swarm.NewAddress(ref)
+	ref = s.hasher.Sum(nil)
 	head := make([]byte, 8)
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
-	chunkData := append(head, tail...)
-	ch := swarm.NewChunk(addr, chunkData)
+	chunkData = append(head, tail...)
+
+	// assemble chunk and put in store
+	addr := swarm.NewAddress(ref)
+
+	c := chunkData
+	var encryptionKey encryption.Key
+	if s.toEncrypt {
+		c, encryptionKey, err = s.encryptChunkData(chunkData)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	ch := swarm.NewChunk(addr, c)
 	_, err = s.putter.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err
 	}
 
-	return ref, nil
+	return append(ch.Address().Bytes(), encryptionKey...), nil
 }
 
 // digest returns the calculated digest after a Sum call.
@@ -164,7 +188,11 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 // The method does not check that the final hash actually has been written, so
 // timing is the responsibility of the caller.
 func (s *SimpleSplitterJob) digest() []byte {
-	return s.buffer[:swarm.SectionSize]
+	if s.toEncrypt {
+		return s.buffer[:swarm.SectionSize*2]
+	} else {
+		return s.buffer[:swarm.SectionSize]
+	}
 }
 
 // hashUnfinished hasher the remaining unhashed chunks at the end of each level if
@@ -228,4 +256,40 @@ func (s *SimpleSplitterJob) moveDanglingChunk() error {
 		s.cursors[i] = s.cursors[i+1]
 	}
 	return nil
+}
+
+func (s *SimpleSplitterJob) encryptChunkData(chunkData []byte) ([]byte, encryption.Key, error) {
+	if len(chunkData) < 8 {
+		return nil, nil, fmt.Errorf("invalid data, min length 8 got %v", len(chunkData))
+	}
+
+	key, encryptedSpan, encryptedData, err := s.encrypt(chunkData)
+	if err != nil {
+		return nil, nil, err
+	}
+	c := make([]byte, len(encryptedSpan)+len(encryptedData))
+	copy(c[:8], encryptedSpan)
+	copy(c[8:], encryptedData)
+	return c, key, nil
+}
+
+func (s *SimpleSplitterJob) encrypt(chunkData []byte) (encryption.Key, []byte, []byte, error) {
+	key := encryption.GenerateRandomKey(encryption.KeyLength)
+	encryptedSpan, err := s.newSpanEncryption(key).Encrypt(chunkData[:8])
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	encryptedData, err := s.newDataEncryption(key).Encrypt(chunkData[8:])
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return key, encryptedSpan, encryptedData, nil
+}
+
+func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) *encryption.Encryption {
+	return encryption.New(key, 0, uint32(swarm.ChunkSize/s.refSize), sha3.NewLegacyKeccak256)
+}
+
+func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) *encryption.Encryption {
+	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/tags"
-
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pusher"
@@ -21,6 +19,7 @@ import (
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 )
 
@@ -47,8 +46,7 @@ func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Add
 // TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSyncPush status.
-func TestSendChunkToPushSync(t *testing.T) {
-	chunk := createChunk()
+func TestSendChunkToPushSyncWithTag(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
@@ -60,14 +58,15 @@ func TestSendChunkToPushSync(t *testing.T) {
 		}
 		return receipt, nil
 	})
-	mtag := tags.NewTags()
-	tag, err := mtag.Create("name", 1, false)
+	mtags, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	defer storer.Close()
+
+	ta, err := mtags.Create("test", 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tag.Address = chunk.Address()
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
-	defer storer.Close()
+
+	chunk := createChunk().WithTagID(ta.Uid)
 
 	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -87,6 +86,11 @@ func TestSendChunkToPushSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	if ta.Get(tags.StateSynced) != 1 {
+		t.Fatalf("tags error")
+	}
+
 	p.Close()
 }
 
@@ -105,15 +109,11 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		}
 		return receipt, nil
 	})
-	mtag := tags.NewTags()
-	_, err := mtag.Create("name", 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
+
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
-	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,16 +148,10 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	mtag := tags.NewTags()
-	tag, err := mtag.Create("name", 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tag.Address = chunk.Address()
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
-	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,17 +189,11 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return nil, nil
 	})
 
-	mtag := tags.NewTags()
-	tag, err := mtag.Create("name", 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tag.Address = chunk.Address()
-	p, storer := createPusher(t, triggerPeer, pushSyncService, mtag, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 	defer p.Close()
 
-	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,10 +217,10 @@ func createChunk() swarm.Chunk {
 	// chunk data to upload
 	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 	chunkData := []byte("1234")
-	return swarm.NewChunk(chunkAddress, chunkData)
+	return swarm.NewChunk(chunkAddress, chunkData).WithTagID(666)
 }
 
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, tag *tags.Tags, mockOpts ...mock.Option) (*pusher.Service, *Store) {
+func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)
@@ -240,6 +228,7 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 		t.Fatal(err)
 	}
 
+	mtags := tags.NewTags()
 	pusherStorer := &Store{
 		Storer:    storer,
 		modeSet:   make(map[string]storage.ModeSet),
@@ -247,8 +236,8 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, Tags: tag, PushSyncer: pushSyncService, PeerSuggester: peerSuggester, Logger: logger})
-	return pusherService, pusherStorer
+	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, Tagger: mtags, PeerSuggester: peerSuggester, Logger: logger})
+	return mtags, pusherService, pusherStorer
 }
 
 func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) error {

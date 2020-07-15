@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
@@ -37,6 +38,7 @@ type PushSync struct {
 	streamer      p2p.Streamer
 	storer        storage.Putter
 	peerSuggester topology.ClosestPeerer
+	tagg          *tags.Tags
 	logger        logging.Logger
 	metrics       metrics
 }
@@ -45,6 +47,7 @@ type Options struct {
 	Streamer      p2p.Streamer
 	Storer        storage.Putter
 	ClosestPeerer topology.ClosestPeerer
+	Tagger        *tags.Tags
 	Logger        logging.Logger
 }
 
@@ -55,6 +58,7 @@ func New(o Options) *PushSync {
 		streamer:      o.Streamer,
 		storer:        o.Storer,
 		peerSuggester: o.ClosestPeerer,
+		tagg:          o.Tagger,
 		logger:        o.Logger,
 		metrics:       newMetrics(),
 	}
@@ -76,9 +80,15 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 
 // handler handles chunk delivery from other node and forwards to its destination node.
 // If the current node is the destination, it stores in the local store and sends a receipt.
-func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 
 	// Get the delivery
 	chunk, err := ps.getChunkDelivery(r)
@@ -131,10 +141,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if err != nil {
 		return fmt.Errorf("new stream peer %s: %w", peer.String(), err)
 	}
-	defer streamer.Close()
+	defer func() {
+		if err != nil {
+			_ = streamer.Reset()
+		} else {
+			go streamer.FullClose()
+		}
+	}()
 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
-
 	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
 		return fmt.Errorf("forward chunk to peer %s: %w", peer.String(), err)
 	}
@@ -227,16 +242,23 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	if err != nil {
 		return nil, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 	}
-	defer streamer.Close()
+	defer func() { go streamer.FullClose() }()
 
 	w, r := protobuf.NewWriterAndReader(streamer)
 	if err := ps.sendChunkDelivery(w, ch); err != nil {
+		_ = streamer.Reset()
 		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
-	receiptRTTTimer := time.Now()
+	//  if you manage to get a tag, just increment the respective counter
+	t, err := ps.tagg.Get(ch.TagID())
+	if err == nil && t != nil {
+		t.Inc(tags.StateSent)
+	}
 
+	receiptRTTTimer := time.Now()
 	receipt, err := ps.receiveReceipt(r)
 	if err != nil {
+		_ = streamer.Reset()
 		return nil, fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}
 	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
@@ -244,6 +266,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	// Check if the receipt is valid
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		ps.metrics.InvalidReceiptReceived.Inc()
+		_ = streamer.Reset()
 		return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
 	}
 

@@ -237,7 +237,7 @@ func NewBee(o Options) (*Bee, error) {
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
 	})
-	tag := tags.NewTags()
+	tagg := tags.NewTags()
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
@@ -251,6 +251,7 @@ func NewBee(o Options) (*Bee, error) {
 		Streamer:      p2ps,
 		Storer:        storer,
 		ClosestPeerer: topologyDriver,
+		Tagger:        tagg,
 		Logger:        logger,
 	})
 
@@ -262,7 +263,7 @@ func NewBee(o Options) (*Bee, error) {
 		Storer:        storer,
 		PeerSuggester: topologyDriver,
 		PushSyncer:    pushSyncProtocol,
-		Tags:          tag,
+		Tagger:        tagg,
 		Logger:        logger,
 	})
 	b.pusherCloser = pushSyncPusher
@@ -293,7 +294,7 @@ func NewBee(o Options) (*Bee, error) {
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
-			Tags:               tag,
+			Tags:               tagg,
 			Storer:             ns,
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			Logger:             logger,
@@ -451,11 +452,11 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	if err := b.pullerCloser.Close(); err != nil {
-		return fmt.Errorf("puller: %w", err)
+		errs.add(fmt.Errorf("puller: %w", err))
 	}
 
 	if err := b.pullSyncCloser.Close(); err != nil {
-		return fmt.Errorf("pull sync: %w", err)
+		errs.add(fmt.Errorf("pull sync: %w", err))
 	}
 
 	b.p2pCancel()
