@@ -247,7 +247,13 @@ func StoreTar(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (sw
 			defaultPathFound = true
 		}
 
-		fileInfo := &FileUploadInfo{}
+		fileInfo := &FileUploadInfo{
+			FileName:    hdr.Name, // or hdr.FileInfo().Name() ??
+			FileSize:    hdr.Size,
+			ContentType: contentType,
+			ToEncrypt:   false,      // when could it be true?
+			Reader:      bodyReader, // not sure about this one
+		}
 		fileReference, err := StoreFile(ctx, fileInfo, s)
 
 		if err != nil {
