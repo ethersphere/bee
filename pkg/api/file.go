@@ -197,7 +197,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // TODO: replace fileUploadHandler with this
 func (s *server) uploadFileFromHTTP(w http.ResponseWriter, r *http.Request) {
-	fileInfo, err := upload.GetFileUploadInfo(r)
+	fileInfo, err := upload.GetFileHTTPInfo(r)
 	if err != nil {
 		s.Logger.Debugf("file upload: get file info, request %v: %v", *r, err)
 		s.Logger.Errorf("file upload: get file info, request %v", *r)

@@ -40,8 +40,8 @@ type FileUploadInfo struct {
 	reader      io.Reader
 }
 
-// GetFileUploadInfo extracts file info for upload from HTTP request
-func GetFileUploadInfo(r *http.Request) (*FileUploadInfo, error) {
+// GetFileHTTPInfo extracts file info for upload from HTTP request
+func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
@@ -164,4 +164,19 @@ func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) 
 	}
 
 	return reference, nil
+}
+
+type DirUploadInfo struct {
+	defaultPath string
+	dirReader   io.ReadCloser
+}
+
+func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
+	return &DirUploadInfo{}, nil
+}
+
+// StoreTar stores all files contained in the given tar and returns its reference
+func StoreTar() (swarm.Address, error) {
+
+	return swarm.ZeroAddress, nil
 }
