@@ -6,12 +6,12 @@ package accounting
 
 import (
 	"fmt"
-	"sync"
-
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"strings"
+	"sync"
 )
 
 var _ Interface = (*Accounting)(nil)
@@ -30,6 +30,8 @@ type Interface interface {
 	Debit(peer swarm.Address, price uint64) error
 	// Balance returns the current balance for the given peer
 	Balance(peer swarm.Address) (int64, error)
+	// Balances returns balances for all known peers
+	Balances() (map[string]int64, error)
 }
 
 // PeerBalance holds all relevant accounting information for one peer
@@ -171,6 +173,11 @@ func (a *Accounting) Balance(peer swarm.Address) (int64, error) {
 	return peerBalance.balance, nil
 }
 
+func (a *Accounting) Balances() (map[string]int64, error) {
+	peerBalance, err := a.getPeersBalances()
+	return peerBalance, err
+}
+
 // get the balance storage key for the given peer
 func (a *Accounting) balanceKey(peer swarm.Address) string {
 	return fmt.Sprintf("balance_%s", peer.String())
@@ -209,4 +216,35 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	}
 
 	return peerBalance, nil
+}
+
+func (a *Accounting) getPeersBalances() (map[string]int64, error) {
+	peersBalances := make(map[string]int64)
+
+	for peer, balance := range a.balances {
+		peersBalances[peer] = balance.balance
+	}
+
+	err := a.store.Iterate("balance_", func(key, val []byte) (stop bool, err error) {
+
+		k := string(key)
+		split := strings.SplitAfter(k, "balance_")
+		if len(split) != 2 {
+			return false, fmt.Errorf("invalid overlay key: %s", k)
+		}
+
+		addr, err := swarm.ParseHexAddress(split[1])
+
+		if err != nil {
+			return false, err
+		}
+
+		if val, ok := peersBalances[addr.String()]; !ok {
+			peersBalances[addr.String()] = int64(val)
+		}
+
+		return false, nil
+	})
+
+	return peersBalances, err
 }

@@ -13,25 +13,29 @@ type balanceResponse struct {
 	Balance int64  `json:"balance"`
 }
 
+type balancesResponse struct {
+	Balances []balanceResponse `json: "balances"`
+}
+
 func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 
-	/*
-		ms, ok := s.balancesDriver.(json.Marshaler)
-		if !ok {
-			s.Logger.Error("balances driver cast to json marshaler")
-			jsonhttp.InternalServerError(w, "balances json marshal interface error")
-			return
-		}
+	balances, err := s.Accounting.Balances()
 
-		b, err := ms.MarshalJSON()
-		if err != nil {
-			s.Logger.Errorf("balances marshal to json: %v", err)
-			jsonhttp.InternalServerError(w, err)
-			return
-		}
-		w.Header().Set("Content-Type", jsonhttp.DefaultContentTypeHeader)
-		_, _ = io.Copy(w, bytes.NewBuffer(b))
-	*/
+	if err != nil {
+		s.Logger.Debugf("debug api: balances: %v", err)
+	}
+
+	var balResponses []balanceResponse
+
+	for key, value := range balances {
+		balResponses = append(balResponses, balanceResponse{
+			Peer:    key,
+			Balance: value,
+		})
+	}
+
+	jsonhttp.OK(w, balResponses)
+
 }
 
 func (s *server) balancesPeerHandler(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +46,7 @@ func (s *server) balancesPeerHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
-	//
+
 	balance, err := s.Accounting.Balance(peer)
 
 	if err != nil {
