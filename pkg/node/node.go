@@ -27,6 +27,7 @@ import (
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -290,12 +291,15 @@ func NewBee(o Options) (*Bee, error) {
 
 	b.pullerCloser = puller
 
+	manifestParser := jsonmanifest.NewParser()
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Tags:               tagg,
 			Storer:             ns,
+			ManifestParser:     manifestParser,
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			Logger:             logger,
 			Tracer:             tracer,
