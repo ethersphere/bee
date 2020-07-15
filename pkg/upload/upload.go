@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -31,6 +32,10 @@ import (
 const (
 	multiPartFormData = "multipart/form-data"
 	EncryptHeader     = "swarm-encrypt"
+)
+
+var (
+	logger = logging.New(ioutil.Discard, 1)
 )
 
 // FileUploadInfo contains the data for a file to be uploaded
@@ -175,6 +180,7 @@ type DirUploadInfo struct {
 }
 
 // GetDirHTTPInfo extracts dir info for upload from HTTP request
+// based on ethersphere/swarm/api/api.go/UploadTar
 func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 	defaultPath := r.URL.Query().Get("defaultpath")
 	return &DirUploadInfo{
@@ -184,7 +190,7 @@ func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 }
 
 // StoreTar stores all files contained in the given tar and returns its reference
-// based on /swarm/api/api/UploadTar
+// based on ethersphere/swarm/api/api.go/UploadTar
 func StoreTar(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (swarm.Address, error) {
 	var contentKey swarm.Address // how is this determined?
 	// manifestPath := GetURI(r.Context()).Path // ??
@@ -255,6 +261,7 @@ func StoreTar(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (sw
 			Reader:      bodyReader, // not sure about this one
 		}
 		fileReference, err := StoreFile(ctx, fileInfo, s)
+		logger.Info(fileReference)
 
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %v", err)
