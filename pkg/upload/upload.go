@@ -186,7 +186,7 @@ func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 // StoreTar stores all files contained in the given tar and returns its reference
 func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 	var contentKey swarm.Address
-	// manifestPath := ?
+	// manifestPath := GetURI(r.Context()).Path // ??
 
 	bodyReader := dirInfo.DirReader
 	tr := tar.NewReader(bodyReader)
@@ -207,7 +207,7 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 		}
 
 		// manifestPath := path.Join(manifestPath, hdr.Name)
-		contentType := hdr.Xattrs["user.swarm.content-type"] // ??
+		contentType := hdr.Xattrs["user.swarm.content-type"]
 		if contentType == "" {
 			contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 		}
@@ -227,7 +227,7 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 			}*/
 
 		if hdr.Name == dirInfo.DefaultPath {
-			contentType := hdr.Xattrs["user.swarm.content-type"] // ??
+			contentType := hdr.Xattrs["user.swarm.content-type"]
 			if contentType == "" {
 				contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 			}
@@ -244,6 +244,7 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 			if err != nil {
 				return nil, fmt.Errorf("error adding default manifest entry from tar stream: %s", err)
 			}*/
+
 			defaultPathFound = true
 		}
 	}
