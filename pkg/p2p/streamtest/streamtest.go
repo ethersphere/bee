@@ -67,10 +67,8 @@ func (r *Recorder) SetProtocols(protocols ...p2p.ProtocolSpec) {
 func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	recordIn := newRecord()
 	recordOut := newRecord()
-	closedIn := make(chan struct{})
-	closedOut := make(chan struct{})
-	streamOut := newStream(recordIn, recordOut, closedIn, closedOut)
-	streamIn := newStream(recordOut, recordIn, closedOut, closedIn)
+	streamOut := newStream(recordIn, recordOut)
+	streamIn := newStream(recordOut, recordIn)
 
 	var handler p2p.HandlerFunc
 	var headler p2p.HeadlerFunc
@@ -179,16 +177,13 @@ func (r *Record) setErr(err error) {
 }
 
 type stream struct {
-	in        io.WriteCloser
-	out       io.ReadCloser
-	headers   p2p.Headers
-	cin       chan struct{}
-	cout      chan struct{}
-	closeOnce sync.Once
+	in      *record
+	out     *record
+	headers p2p.Headers
 }
 
-func newStream(in io.WriteCloser, out io.ReadCloser, cin, cout chan struct{}) *stream {
-	return &stream{in: in, out: out, cin: cin, cout: cout}
+func newStream(in *record, out *record) *stream {
+	return &stream{in: in, out: out}
 }
 
 func (s *stream) Read(p []byte) (int, error) {
@@ -204,47 +199,50 @@ func (s *stream) Headers() p2p.Headers {
 }
 
 func (s *stream) Close() error {
-	var e error
-	s.closeOnce.Do(func() {
-		if err := s.in.Close(); err != nil {
-			e = err
-			return
-		}
-		if err := s.out.Close(); err != nil {
-			e = err
-			return
-		}
-
-		close(s.cin)
-	})
-
-	return e
-}
-
-func (s *stream) FullClose() error {
-	if err := s.Close(); err != nil {
+	if err := s.in.Close(); err != nil {
 		return err
-	}
-
-	select {
-	case <-s.cout:
-	case <-time.After(fullCloseTimeout):
-		return ErrStreamFullcloseTimeout
 	}
 
 	return nil
 }
 
+func (s *stream) FullClose() error {
+	if err := s.Close(); err != nil {
+		s.Reset()
+		return err
+	}
+
+	waitStart := time.Now()
+
+	for {
+		if s.out.Closed() {
+			return nil
+		}
+
+		if time.Since(waitStart) >= fullCloseTimeout {
+			return ErrStreamFullcloseTimeout
+		}
+	}
+}
+
 func (s *stream) Reset() error {
-	//todo: :implement appropriately after all protocols are migrated and tested
-	return s.Close()
+	if err := s.in.Close(); err != nil {
+		return err
+	}
+
+	if err := s.out.Close(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type record struct {
-	b      []byte
-	c      int
-	closed bool
-	cond   *sync.Cond
+	b         []byte
+	c         int
+	closed    bool
+	closeOnce sync.Once
+	cond      *sync.Cond
 }
 
 func newRecord() *record {
@@ -275,6 +273,9 @@ func (r *record) Read(p []byte) (n int, err error) {
 func (r *record) Write(p []byte) (int, error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
+	if r.closed {
+		return 0, errors.New("record closed")
+	}
 
 	defer r.cond.Signal()
 
@@ -288,8 +289,15 @@ func (r *record) Close() error {
 
 	defer r.cond.Broadcast()
 
-	r.closed = true
+	r.closeOnce.Do(func() {
+		r.closed = true
+	})
+
 	return nil
+}
+
+func (r *record) Closed() bool {
+	return r.closed
 }
 
 func (r *record) bytes() []byte {

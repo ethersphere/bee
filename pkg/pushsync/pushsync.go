@@ -145,7 +145,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if err != nil {
 			_ = streamer.Reset()
 		} else {
-			go streamer.FullClose()
+			_ = streamer.FullClose()
 		}
 	}()
 
