@@ -151,4 +151,3 @@ func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
 }
 
 func FValidate(_ swarm.Chunk) bool { return true }
-
