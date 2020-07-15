@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/upload"
 )
 
 type dirUploadResponse struct {
@@ -23,13 +24,19 @@ type dirUploadResponse struct {
 // dirUploadHandler uploads a directory
 // for now, adapted from old swarm tar upload code
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
-	defaultPath := r.URL.Query().Get("defaultpath")
-	bodyReader := r.Body
+	dirInfo, err := upload.GetDirHTTPInfo(r)
+	if err != nil {
+		s.Logger.Debugf("dir upload: get dir info, request %v: %v", *r, err)
+		s.Logger.Errorf("dir upload: get dir info, request %v", *r)
+		jsonhttp.BadRequest(w, "could not extract dir info from request")
+		return
+	}
 
 	var contentKey swarm.Address
 	// TODO
 	// manifestPath := ?
 
+	bodyReader := dirInfo.DirReader
 	tr := tar.NewReader(bodyReader)
 	defer bodyReader.Close()
 
@@ -73,7 +80,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			//return nil, fmt.Errorf("error adding manifest entry from tar stream: %s", err)
 		}
-		if hdr.Name == defaultPath {
+		if hdr.Name == dirInfo.DefaultPath {
 			contentType := hdr.Xattrs["user.swarm.content-type"]
 			if contentType == "" {
 				contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
@@ -95,9 +102,9 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 			defaultPathFound = true
 		}
 	}
-	if defaultPath != "" && !defaultPathFound {
+	if dirInfo.DefaultPath != "" && !defaultPathFound {
 		// TODO: should we still return the content key _plus_ the error?
-		jsonhttp.BadRequest(w, fmt.Sprintf("default path %s not found", defaultPath))
+		jsonhttp.BadRequest(w, fmt.Sprintf("default path %s not found", dirInfo.DefaultPath))
 	}
 
 	jsonhttp.OK(w, dirUploadResponse{

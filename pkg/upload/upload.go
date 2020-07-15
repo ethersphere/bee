@@ -33,11 +33,11 @@ const (
 
 // FileUploadInfo contains the data for a file to be uploaded
 type FileUploadInfo struct {
-	fileName    string
-	fileSize    int64
-	contentType string
-	toEncrypt   bool
-	reader      io.Reader
+	FileName    string
+	FileSize    int64
+	ContentType string
+	ToEncrypt   bool
+	Reader      io.Reader
 }
 
 // GetFileHTTPInfo extracts file info for upload from HTTP request
@@ -115,11 +115,11 @@ func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
 	}
 
 	return &FileUploadInfo{
-		fileName:    fileName,
-		fileSize:    int64(fileSize),
-		contentType: contentType,
-		toEncrypt:   toEncrypt,
-		reader:      reader,
+		FileName:    fileName,
+		FileSize:    int64(fileSize),
+		ContentType: contentType,
+		ToEncrypt:   toEncrypt,
+		Reader:      reader,
 	}, nil
 }
 
@@ -127,26 +127,26 @@ func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
 func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)
-	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.fileSize, fileInfo.toEncrypt)
+	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.Reader, fileInfo.FileSize, fileInfo.ToEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file error: %v", err)
 	}
 
 	// if filename is still empty, use the file hash as the filename
-	if fileInfo.fileName == "" {
-		fileInfo.fileName = fr.String()
+	if fileInfo.FileName == "" {
+		fileInfo.FileName = fr.String()
 	}
 
 	// then store the metadata and get its reference
-	m := entry.NewMetadata(fileInfo.fileName)
-	m.MimeType = fileInfo.contentType
+	m := entry.NewMetadata(fileInfo.FileName)
+	m.MimeType = fileInfo.ContentType
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal error: %v", err)
 	}
 
 	sp = splitter.NewSimpleSplitter(s)
-	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), fileInfo.toEncrypt)
+	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), fileInfo.ToEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata error: %v", err)
 	}
@@ -158,7 +158,7 @@ func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) 
 		return swarm.ZeroAddress, fmt.Errorf("entry marhsal error: %v", err)
 	}
 	sp = splitter.NewSimpleSplitter(s)
-	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), fileInfo.toEncrypt)
+	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), fileInfo.ToEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry error: %v", err)
 	}
@@ -166,17 +166,22 @@ func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) 
 	return reference, nil
 }
 
+// DirUploadInfo contains the data for a dir to be uploaded
 type DirUploadInfo struct {
-	defaultPath string
-	dirReader   io.ReadCloser
+	DefaultPath string
+	DirReader   io.ReadCloser
 }
 
+// GetDirHTTPInfo extracts dir info for upload from HTTP request
 func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
-	return &DirUploadInfo{}, nil
+	defaultPath := r.URL.Query().Get("defaultpath")
+	return &DirUploadInfo{
+		DefaultPath: defaultPath,
+		DirReader:   r.Body,
+	}, nil
 }
 
 // StoreTar stores all files contained in the given tar and returns its reference
-func StoreTar() (swarm.Address, error) {
-
+func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 	return swarm.ZeroAddress, nil
 }
