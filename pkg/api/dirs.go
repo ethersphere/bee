@@ -27,7 +27,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reference, err := upload.StoreTar(r.Context(), dirInfo, s.Storer)
+	reference, err := upload.StoreDir(r.Context(), dirInfo, s.Storer)
 	if err != nil {
 		s.Logger.Debugf("dir upload: store dir, request %v: %v", *r, err)
 		s.Logger.Errorf("dir upload: store dir, request %v", *r)

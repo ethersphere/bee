@@ -35,7 +35,7 @@ const (
 )
 
 var (
-	logger = logging.New(ioutil.Discard, 1)
+	logger = logging.New(ioutil.Discard, 1) // temporary
 )
 
 // FileUploadInfo contains the data for a file to be uploaded
@@ -189,9 +189,9 @@ func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 	}, nil
 }
 
-// StoreTar stores all files contained in the given tar and returns its reference
+// StoreDir stores all files contained in the given directory as a tar and returns its reference
 // based on ethersphere/swarm/api/api.go/UploadTar
-func StoreTar(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (swarm.Address, error) {
+func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (swarm.Address, error) {
 	var contentKey swarm.Address // how is this determined?
 	// manifestPath := GetURI(r.Context()).Path // ??
 
@@ -214,7 +214,7 @@ func StoreTar(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (sw
 		}
 
 		// manifestPath := path.Join(manifestPath, hdr.Name)
-		//apparently, `h.Xattrs[key] = value` == `h.PAXRecords["SCHILY.xattr."+key] = value`
+		// apparently, `h.Xattrs[key] = value` == `h.PAXRecords["SCHILY.xattr."+key] = value`
 		contentType := hdr.PAXRecords["SCHILY.xattr."+"user.swarm.content-type"]
 		if contentType == "" {
 			contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
