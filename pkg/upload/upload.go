@@ -186,17 +186,13 @@ func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 // StoreTar stores all files contained in the given tar and returns its reference
 func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 	var contentKey swarm.Address
-	// TODO
 	// manifestPath := ?
 
 	bodyReader := dirInfo.DirReader
 	tr := tar.NewReader(bodyReader)
 	defer bodyReader.Close()
 
-	// TODO: add Bad Request response for non-tar files?
-
 	var defaultPathFound bool
-	// upload (add entry?) each file read in tar
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -206,20 +202,17 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 		}
 
 		// only store regular files
-		// TODO: look into this
-		if !hdr.FileInfo().Mode().IsRegular() {
+		if !hdr.FileInfo().Mode().IsRegular() { // ??
 			continue
 		}
 
-		// add the entry under the path from the request
-		// TODO: skip for now
 		// manifestPath := path.Join(manifestPath, hdr.Name)
-		contentType := hdr.Xattrs["user.swarm.content-type"]
+		contentType := hdr.Xattrs["user.swarm.content-type"] // ??
 		if contentType == "" {
 			contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 		}
 
-		// TODO: skip for now
+		// add the entry under the path from the request
 		/*
 			entry := &ManifestEntry{
 				Path:        manifestPath,
@@ -228,17 +221,17 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 				Size:        hdr.Size,
 				ModTime:     hdr.ModTime,
 			}
-			contentKey, err = mw.AddEntry(ctx, tr, entry)*/
-		if err != nil {
-			//return nil, fmt.Errorf("error adding manifest entry from tar stream: %s", err)
-		}
+			contentKey, err = mw.AddEntry(ctx, tr, entry)
+			if err != nil {
+				return nil, fmt.Errorf("error adding manifest entry from tar stream: %s", err)
+			}*/
+
 		if hdr.Name == dirInfo.DefaultPath {
-			contentType := hdr.Xattrs["user.swarm.content-type"]
+			contentType := hdr.Xattrs["user.swarm.content-type"] // ??
 			if contentType == "" {
 				contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 			}
 
-			// TODO: skip for now
 			/*entry := &ManifestEntry{
 				Hash:        contentKey.Hex(),
 				Path:        "", // default entry
@@ -247,13 +240,14 @@ func StoreTar(dirInfo *DirUploadInfo) (swarm.Address, error) {
 				Size:        hdr.Size,
 				ModTime:     hdr.ModTime,
 			}
-			contentKey, err = mw.AddEntry(ctx, nil, entry)*/
+			contentKey, err = mw.AddEntry(ctx, nil, entry)
 			if err != nil {
-				//return nil, fmt.Errorf("error adding default manifest entry from tar stream: %s", err)
-			}
+				return nil, fmt.Errorf("error adding default manifest entry from tar stream: %s", err)
+			}*/
 			defaultPathFound = true
 		}
 	}
+
 	if dirInfo.DefaultPath != "" && !defaultPathFound {
 		// TODO: should we still return the content key _plus_ the error?
 		return swarm.ZeroAddress, fmt.Errorf("default path %s not found", dirInfo.DefaultPath)
