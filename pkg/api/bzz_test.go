@@ -75,7 +75,7 @@ func TestBzz(t *testing.T) {
 				Address: fileReference,
 				Name:    fileName,
 				Headers: http.Header{
-					"Content-Type": {"text/html; charset=utf-8"},
+					"Content-Type": {"text/html", "charset=utf-8"},
 				},
 			})
 

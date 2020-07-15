@@ -168,9 +168,14 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// include all headers from manifest
 	for name, values := range entry.GetHeaders() {
+		var v string
 		for _, value := range values {
-			w.Header().Add(name, value)
+			if v != "" {
+				v += "; "
+			}
+			v += value
 		}
+		w.Header().Set(name, v)
 	}
 
 	w.Header().Set("ETag", fmt.Sprintf("%q", entryAddress))
