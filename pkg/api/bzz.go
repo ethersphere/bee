@@ -166,9 +166,15 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// include all headers from manifest
+	for name, values := range entry.GetHeaders() {
+		for _, value := range values {
+			w.Header().Add(name, value)
+		}
+	}
+
 	w.Header().Set("ETag", fmt.Sprintf("%q", entryAddress))
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", entry.GetName()))
-	w.Header().Set("Content-Type", entry.GetHeaders().Get("Content-Type"))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
 	if _, err = io.Copy(w, bpr); err != nil {
