@@ -221,8 +221,9 @@ func (s *stream) FullClose() error {
 	}
 }
 
-func (s *stream) Reset() error {
+func (s *stream) Reset() (err error) {
 	if err := s.in.Close(); err != nil {
+		_ = s.out.Close()
 		return err
 	}
 
