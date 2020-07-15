@@ -41,9 +41,9 @@ func NewManifest() *JSONManifest {
 
 func (m *JSONManifest) Add(path string, entry manifest.Entry) {
 	m.Entries[path] = JSONEntry{
-		Address: entry.GetAddress(),
-		Name:    entry.GetName(),
-		Headers: entry.GetHeaders(),
+		Reference: entry.GetReference(),
+		Name:      entry.GetName(),
+		Headers:   entry.GetHeaders(),
 	}
 }
 
@@ -66,13 +66,13 @@ func (m *JSONManifest) Serialize() ([]byte, error) {
 var _ manifest.Entry = (*JSONEntry)(nil)
 
 type JSONEntry struct {
-	Address swarm.Address `json:"address"`
-	Name    string        `json:"name"`
-	Headers http.Header   `json:"headers"`
+	Reference swarm.Address `json:"reference"`
+	Name      string        `json:"name"`
+	Headers   http.Header   `json:"headers"`
 }
 
-func (me JSONEntry) GetAddress() swarm.Address {
-	return me.Address
+func (me JSONEntry) GetReference() swarm.Address {
+	return me.Reference
 }
 
 func (me JSONEntry) GetName() string {

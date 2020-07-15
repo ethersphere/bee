@@ -72,8 +72,8 @@ func TestBzz(t *testing.T) {
 			jsonManifest := jsonmanifest.NewManifest()
 
 			jsonManifest.Add(filePath, jsonmanifest.JSONEntry{
-				Address: fileReference,
-				Name:    fileName,
+				Reference: fileReference,
+				Name:      fileName,
 				Headers: http.Header{
 					"Content-Type": {"text/html", "charset=utf-8"},
 				},

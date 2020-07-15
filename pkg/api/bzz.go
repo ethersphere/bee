@@ -109,7 +109,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entryAddress := entry.GetAddress()
+	entryAddress := entry.GetReference()
 
 	toDecryptEntry := len(entryAddress.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 

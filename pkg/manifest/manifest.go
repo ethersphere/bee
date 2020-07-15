@@ -25,7 +25,7 @@ type Interface interface {
 }
 
 type Entry interface {
-	GetAddress() swarm.Address
+	GetReference() swarm.Address
 	GetName() string
 	GetHeaders() http.Header
 }
