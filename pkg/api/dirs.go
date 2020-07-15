@@ -21,16 +21,14 @@ type dirUploadResponse struct {
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	dirInfo, err := upload.GetDirHTTPInfo(r)
 	if err != nil {
-		s.Logger.Debugf("dir upload: get dir info, request %v: %v", *r, err)
-		s.Logger.Errorf("dir upload: get dir info, request %v", *r)
+		s.Logger.Errorf("dir upload get dir info err: %v", err)
 		jsonhttp.BadRequest(w, "could not extract dir info from request")
 		return
 	}
 
 	reference, err := upload.StoreDir(r.Context(), dirInfo, s.Storer)
 	if err != nil {
-		s.Logger.Debugf("dir upload: store dir, request %v: %v", *r, err)
-		s.Logger.Errorf("dir upload: store dir, request %v", *r)
+		s.Logger.Errorf("dir upload store dir err: %v", err)
 		jsonhttp.InternalServerError(w, "could not store dir")
 		return
 	}
