@@ -27,7 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/upload"
 	"github.com/gorilla/mux"
 )
 
@@ -189,31 +188,6 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "could not store entry")
 		return
 	}
-	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
-	jsonhttp.OK(w, fileUploadResponse{
-		Reference: reference,
-	})
-}
-
-// TODO: replace fileUploadHandler with this
-func (s *server) uploadFileFromHTTP(w http.ResponseWriter, r *http.Request) {
-	fileInfo, err := upload.GetFileHTTPInfo(r)
-	if err != nil {
-		s.Logger.Debugf("file upload: get file info, request %v: %v", *r, err)
-		s.Logger.Errorf("file upload: get file info, request %v", *r)
-		jsonhttp.BadRequest(w, "could not extract file info from request")
-		return
-	}
-
-	ctx := r.Context()
-	reference, err := upload.StoreFile(ctx, fileInfo, s.Storer)
-	if err != nil {
-		s.Logger.Debugf("file upload: store file, request %s: %v", *r, err)
-		s.Logger.Errorf("file upload: store file, request %s", *r)
-		jsonhttp.InternalServerError(w, "could not store file")
-		return
-	}
-
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
