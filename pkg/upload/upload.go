@@ -214,7 +214,8 @@ func StoreTar(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (sw
 		}
 
 		// manifestPath := path.Join(manifestPath, hdr.Name)
-		contentType := hdr.Xattrs["user.swarm.content-type"]
+		//apparently, `h.Xattrs[key] = value` == `h.PAXRecords["SCHILY.xattr."+key] = value`
+		contentType := hdr.PAXRecords["SCHILY.xattr."+"user.swarm.content-type"]
 		if contentType == "" {
 			contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 		}
