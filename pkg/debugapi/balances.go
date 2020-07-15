@@ -60,4 +60,6 @@ func (s *server) balancesPeerHandler(w http.ResponseWriter, r *http.Request) {
 		Balance: balance,
 	})
 
+	//
+
 }
