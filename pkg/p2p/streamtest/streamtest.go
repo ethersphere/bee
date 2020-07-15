@@ -218,6 +218,8 @@ func (s *stream) FullClose() error {
 		if time.Since(waitStart) >= fullCloseTimeout {
 			return ErrStreamFullcloseTimeout
 		}
+
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
