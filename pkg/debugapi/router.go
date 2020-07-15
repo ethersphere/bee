@@ -86,6 +86,12 @@ func (s *server) setupRouting() {
 	router.Handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})
+	router.Handle("/balances", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.balancesHandler),
+	})
+	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.balancesPeerHandler),
+	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
