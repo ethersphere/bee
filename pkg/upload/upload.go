@@ -270,7 +270,7 @@ func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (sw
 
 	if dirInfo.DefaultPath != "" && !defaultPathFound {
 		// TODO: should we still return the content key _plus_ the error?
-		return swarm.ZeroAddress, fmt.Errorf("default path %s not found", dirInfo.DefaultPath)
+		return swarm.ZeroAddress, fmt.Errorf("default path error: %s not found", dirInfo.DefaultPath)
 	}
 
 	return contentKey, nil
