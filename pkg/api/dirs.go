@@ -57,7 +57,7 @@ type DirUploadInfo struct {
 // based on ethersphere/swarm/api/api.go/UploadTar
 func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 	defaultPath := r.URL.Query().Get("defaultpath")
-	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
+	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	return &DirUploadInfo{
 		DefaultPath: defaultPath,
 		DirReader:   r.Body,

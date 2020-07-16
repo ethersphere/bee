@@ -33,7 +33,7 @@ import (
 
 const (
 	multiPartFormData = "multipart/form-data"
-	EncryptHeader     = "swarm-encrypt"
+	encryptHeader     = "swarm-encrypt"
 )
 
 type fileUploadResponse struct {
@@ -44,7 +44,7 @@ type fileUploadResponse struct {
 // - multipart http message
 // - other content types as complete file body
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
-	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
+	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -206,7 +206,7 @@ type FileUploadInfo struct {
 
 // GetFileHTTPInfo extracts file info for upload from HTTP request
 func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
-	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
+	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
