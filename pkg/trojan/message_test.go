@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
@@ -87,7 +86,7 @@ func TestWrap(t *testing.T) {
 
 	data := c.Data()
 	dataSize := len(data)
-	expectedSize := file.ChunkWithSpanSize // span + payload
+	expectedSize := swarm.ChunkWithSpanSize // span + payload
 	if dataSize != expectedSize {
 		t.Fatalf("chunk data has an unexpected size of %d rather than %d", dataSize, expectedSize)
 	}
