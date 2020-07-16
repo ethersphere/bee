@@ -24,8 +24,7 @@ type dirUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-// dirUploadHandler uploads a directory
-// for now, adapted from old swarm tar upload code
+// dirUploadHandler uploads a directory supplied as a tar in an HTTP Request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	dirInfo, err := GetDirHTTPInfo(r)
 	if err != nil {
@@ -54,7 +53,6 @@ type DirUploadInfo struct {
 }
 
 // GetDirHTTPInfo extracts dir info for upload from HTTP request
-// based on ethersphere/swarm/api/api.go/UploadTar
 func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 	defaultPath := r.URL.Query().Get("defaultpath")
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
@@ -66,7 +64,6 @@ func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 }
 
 // StoreDir stores all files contained in the given directory as a tar and returns its reference
-// based on ethersphere/swarm/api/api.go/UploadTar
 func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
 	var contentKey swarm.Address // how is this determined?
 	// manifestPath := GetURI(r.Context()).Path // ??
