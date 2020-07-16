@@ -24,7 +24,9 @@ import (
 )
 
 const (
-	ManifestType = "application/bzz-manifest+json"
+	// ManifestContentType represents content type used for noting that specific
+	// file should be processed as manifest
+	ManifestContentType = "application/bzz-manifest+json"
 )
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +38,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	address, err := swarm.ParseHexAddress(addressHex)
 	if err != nil {
 		s.Logger.Debugf("bzz download: parse address %s: %v", addressHex, err)
-		s.Logger.Error("bzz download: parse address error")
+		s.Logger.Error("bzz download: parse address")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
 	}
@@ -81,7 +83,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// we are expecting manifest Mime type here
-	if ManifestType != metadata.MimeType {
+	if ManifestContentType != metadata.MimeType {
 		jsonhttp.BadRequest(w, "not manifest")
 		return
 	}

@@ -48,11 +48,11 @@ func TestBzz(t *testing.T) {
 		sampleHtml := `<!DOCTYPE html>
 		<html>
 		<body>
-
+	
 		<h1>My First Heading</h1>
-
+	
 		<p>My first paragraph.</p>
-
+	
 		</body>
 		</html>`
 
@@ -60,85 +60,83 @@ func TestBzz(t *testing.T) {
 		var fileReference swarm.Address
 		var manifestFileReference swarm.Address
 
-		t.Run("save-file", func(t *testing.T) {
-			fileReference, err = file.SplitWriteAll(context.Background(), sp, strings.NewReader(sampleHtml), int64(len(sampleHtml)), false)
-			if err != nil {
-				t.Fatal(err)
-			}
+		// save file
+
+		fileReference, err = file.SplitWriteAll(context.Background(), sp, strings.NewReader(sampleHtml), int64(len(sampleHtml)), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// save manifest
+
+		jsonManifest := jsonmanifest.NewManifest()
+
+		jsonManifest.Add(filePath, jsonmanifest.JSONEntry{
+			Reference: fileReference,
+			Name:      fileName,
+			Headers: http.Header{
+				"Content-Type": {"text/html", "charset=utf-8"},
+			},
 		})
 
-		t.Run("save-manifest", func(t *testing.T) {
+		manifestFileBytes, err := jsonManifest.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			jsonManifest := jsonmanifest.NewManifest()
+		fr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileBytes), int64(len(manifestFileBytes)), false)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			jsonManifest.Add(filePath, jsonmanifest.JSONEntry{
-				Reference: fileReference,
-				Name:      fileName,
-				Headers: http.Header{
-					"Content-Type": {"text/html", "charset=utf-8"},
-				},
-			})
+		m := entry.NewMetadata(fileName)
+		m.MimeType = api.ManifestContentType
+		metadataBytes, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			manifestFileBytes, err := jsonManifest.Serialize()
-			if err != nil {
-				t.Fatal(err)
-			}
+		mr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), false)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			fr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileBytes), int64(len(manifestFileBytes)), false)
-			if err != nil {
-				t.Fatal(err)
-			}
+		// now join both references (mr,fr) to create an entry and store it.
+		entrie := entry.New(fr, mr)
+		fileEntryBytes, err := entrie.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			m := entry.NewMetadata(fileName)
-			m.MimeType = api.ManifestType
-			metadataBytes, err := json.Marshal(m)
-			if err != nil {
-				t.Fatal(err)
-			}
+		manifestFileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), false)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			mr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), false)
-			if err != nil {
-				t.Fatal(err)
-			}
+		// read file from manifest path
 
-			// now join both references (mr,fr) to create an entry and store it.
-			entrie := entry.New(fr, mr)
-			fileEntryBytes, err := entrie.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
+		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), filePath), nil, http.StatusOK, []byte(sampleHtml), nil)
+		cd := rcvdHeader.Get("Content-Disposition")
+		_, params, err := mime.ParseMediaType(cd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if params["filename"] != fileName {
+			t.Fatal("Invalid file name detected")
+		}
+		if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", fileReference) {
+			t.Fatal("Invalid ETags header received")
+		}
+		if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
+			t.Fatal("Invalid content type detected")
+		}
 
-			manifestFileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), false)
-			if err != nil {
-				t.Fatal(err)
-			}
+		// check on invalid path
 
-		})
-
-		t.Run("read-file-from-manifest-path", func(t *testing.T) {
-			rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), filePath), nil, http.StatusOK, []byte(sampleHtml), nil)
-			cd := rcvdHeader.Get("Content-Disposition")
-			_, params, err := mime.ParseMediaType(cd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if params["filename"] != fileName {
-				t.Fatal("Invalid file name detected")
-			}
-			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", fileReference) {
-				t.Fatal("Invalid ETags header received")
-			}
-			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
-				t.Fatal("Invalid content type detected")
-			}
-		})
-
-		t.Run("invalid-path", func(t *testing.T) {
-			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-				Message: "invalid path address",
-				Code:    http.StatusBadRequest,
-			}, nil)
-		})
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+			Message: "invalid path address",
+			Code:    http.StatusBadRequest,
+		}, nil)
 
 	})
 
