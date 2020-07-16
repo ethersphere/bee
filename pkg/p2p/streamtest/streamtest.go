@@ -19,6 +19,7 @@ import (
 var (
 	ErrRecordsNotFound        = errors.New("records not found")
 	ErrStreamNotSupported     = errors.New("stream not supported")
+	ErrStreamClosed           = errors.New("stream closed")
 	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
 	fullCloseTimeout          = fullCloseTimeoutDefault // timeout of fullclose
 	fullCloseTimeoutDefault   = 5 * time.Second         // default timeout used for helper function to reset timeout when changed
@@ -270,7 +271,7 @@ func (r *record) Write(p []byte) (int, error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 	if r.Closed() {
-		return 0, errors.New("record closed")
+		return 0, ErrStreamClosed
 	}
 
 	defer r.cond.Signal()
