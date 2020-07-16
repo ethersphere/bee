@@ -20,8 +20,8 @@ const (
 	testPrice               = uint64(10)
 )
 
-// Booking represents an accounting action and the expected result afterwards
-type Booking struct {
+// booking represents an accounting action and the expected result afterwards
+type booking struct {
 	peer            swarm.Address
 	price           int64 // Credit if <0, Debit otherwise
 	expectedBalance int64
@@ -50,7 +50,7 @@ func TestAccountingAddBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bookings := []Booking{
+	bookings := []booking{
 		{peer: peer1Addr, price: 100, expectedBalance: 100},
 		{peer: peer2Addr, price: 200, expectedBalance: 200},
 		{peer: peer1Addr, price: 300, expectedBalance: 400},
@@ -178,6 +178,10 @@ func TestAccountingReserve(t *testing.T) {
 	err = acc.Reserve(peer1Addr, 101)
 	if err == nil {
 		t.Fatal("expected error from reserve")
+	}
+
+	if !errors.Is(err, accounting.ErrOverdraft) {
+		t.Fatalf("expected overdraft error from reserve, got %v", err)
 	}
 }
 

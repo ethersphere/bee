@@ -5,6 +5,7 @@
 package accounting
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -55,6 +56,10 @@ type Accounting struct {
 	disconnectThreshold uint64 // the debt threshold at which we will disconnect from a peer
 }
 
+var (
+	ErrOverdraft = errors.New("attempted overdraft")
+)
+
 // NewAccounting creates a new Accounting instance with the provided options
 func NewAccounting(o Options) *Accounting {
 	return &Accounting{
@@ -79,7 +84,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	// since we pay this we have to reduce this (positive quantity) from the balance
 	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
 	if balance.balance-int64(balance.reserved+price) < -int64(a.disconnectThreshold) {
-		return fmt.Errorf("cannot afford operation with peer %v", peer.String())
+		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
 	balance.reserved += price
@@ -91,7 +96,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	balance, err := a.getPeerBalance(peer)
 	if err != nil {
-		a.logger.Error("attempting to release balance for peer that is not loaded")
+		a.logger.Errorf("cannot release balance for peer: %v", err)
 		return
 	}
 
@@ -121,7 +126,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	err = a.store.Put(a.balanceKey(peer), nextBalance)
+	err = a.store.Put(balanceKey(peer), nextBalance)
 	if err != nil {
 		return err
 	}
@@ -148,17 +153,18 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	if nextBalance >= int64(a.disconnectThreshold) {
-		// peer to much in debt
-		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
-	}
-
-	err = a.store.Put(a.balanceKey(peer), nextBalance)
+	err = a.store.Put(balanceKey(peer), nextBalance)
 	if err != nil {
 		return err
 	}
 
 	balance.balance = nextBalance
+
+	if nextBalance >= int64(a.disconnectThreshold) {
+		// peer to much in debt
+		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
+	}
+
 	return nil
 }
 
@@ -172,7 +178,7 @@ func (a *Accounting) Balance(peer swarm.Address) (int64, error) {
 }
 
 // get the balance storage key for the given peer
-func (a *Accounting) balanceKey(peer swarm.Address) string {
+func balanceKey(peer swarm.Address) string {
 	return fmt.Sprintf("balance_%s", peer.String())
 }
 
@@ -187,7 +193,7 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	if !ok {
 		// balance not yet in memory, load from state store
 		var balance int64
-		err := a.store.Get(a.balanceKey(peer), &balance)
+		err := a.store.Get(balanceKey(peer), &balance)
 		if err == nil {
 			peerBalance = &PeerBalance{
 				balance:  balance,
