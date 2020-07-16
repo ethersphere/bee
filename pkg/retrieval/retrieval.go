@@ -126,6 +126,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 		return nil, peer, fmt.Errorf("get closest: %w", err)
 	}
 
+	// compute the price we pay for this chunk and reserve it for the rest of this function
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 	err = s.accounting.Reserve(peer, chunkPrice)
 	if err != nil {
@@ -159,6 +160,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
 
+	// credit the peer after successful delivery
 	err = s.accounting.Credit(peer, chunkPrice)
 	if err != nil {
 		return nil, peer, err
@@ -232,6 +234,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
+	// compute the price we charge for this chunk and debit it from p's balance
 	chunkPrice := s.pricer.Price(chunk.Address())
 	err = s.accounting.Debit(p.Address, chunkPrice)
 	if err != nil {
