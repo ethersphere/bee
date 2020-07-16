@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -32,10 +31,6 @@ import (
 const (
 	multiPartFormData = "multipart/form-data"
 	EncryptHeader     = "swarm-encrypt"
-)
-
-var (
-	logger = logging.New(ioutil.Discard, 1) // temporary
 )
 
 // FileUploadInfo contains the data for a file to be uploaded
@@ -177,15 +172,18 @@ func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) 
 type DirUploadInfo struct {
 	DefaultPath string
 	DirReader   io.ReadCloser
+	ToEncrypt   bool
 }
 
 // GetDirHTTPInfo extracts dir info for upload from HTTP request
 // based on ethersphere/swarm/api/api.go/UploadTar
 func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
 	defaultPath := r.URL.Query().Get("defaultpath")
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	return &DirUploadInfo{
 		DefaultPath: defaultPath,
 		DirReader:   r.Body,
+		ToEncrypt:   toEncrypt,
 	}, nil
 }
 
@@ -255,14 +253,13 @@ func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer) (sw
 		}
 
 		fileInfo := &FileUploadInfo{
-			FileName:    hdr.Name, // or hdr.FileInfo().Name() ??
+			FileName:    hdr.Name,
 			FileSize:    hdr.Size,
 			ContentType: contentType,
-			ToEncrypt:   false,      // when could it be true?
-			Reader:      bodyReader, // not sure about this one
+			ToEncrypt:   dirInfo.ToEncrypt,
+			Reader:      tr,
 		}
 		fileReference, err := StoreFile(ctx, fileInfo, s)
-		logger.Info(fileReference)
 
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %v", err)
