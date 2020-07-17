@@ -91,43 +91,9 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 			contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 		}
 
-		// add the entry under the path from the request
-		/*
-			entry := &ManifestEntry{
-				Path:        manifestPath,
-				ContentType: contentType,
-				Mode:        hdr.Mode,
-				Size:        hdr.Size,
-				ModTime:     hdr.ModTime,
-			}
-			contentKey, err = mw.AddEntry(ctx, tr, entry)
-			if err != nil {
-				return nil, fmt.Errorf("error adding manifest entry from tar stream: %s", err)
-			}*/
-
-		/*if hdr.Name == dirInfo.defaultPath {
-			contentType := hdr.Xattrs["user.swarm.content-type"]
-			if contentType == "" {
-				contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
-			}
-
-			entry := &ManifestEntry{
-				Hash:        contentKey.Hex(),
-				Path:        "", // default entry
-				ContentType: contentType,
-				Mode:        hdr.Mode,
-				Size:        hdr.Size,
-				ModTime:     hdr.ModTime,
-			}
-			conctx context.Context,return nil, fmt.Errorf("error adding default manifest entry from tar stream: %s", err)
-
-
-			defaultPathFound = true
-		}}*/
-
 		fileInfo := &fileUploadInfo{
 			fileName:    fileName,
-			fileSize:    hdr.Size,
+			fileSize:    hdr.FileInfo().Size(),
 			contentType: contentType,
 			toEncrypt:   dirInfo.toEncrypt,
 			reader:      tr,
@@ -148,6 +114,8 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 
 		logger.Infof("path: %v", path)
 		logger.Infof("fileName: %v", fileName)
+		logger.Infof("filInfoSize: %v", hdr.FileInfo().Size())
+		logger.Infof("fileSize: %v", hdr.Size)
 		logger.Infof("contentType: %v", contentType)
 		logger.Infof("fileReference: %v", fileReference)
 	}
