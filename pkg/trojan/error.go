@@ -16,7 +16,7 @@ var (
 	ErrVarLenTargets = errors.New("target list cannot have targets of different length")
 
 	// ErrUnMarshallingTrojanMessage is returned when a trojan message could not be de-serialized
-	ErrUnMarshallingTrojanMessage = errors.New("trojan message unmarshall error")
+	ErrUnmarshal = errors.New("trojan message unmarshall error")
 
 	// ErrMinerTimeout is returned when mining a new nonce takes more time than swarm.TrojanMinerTimeout seconds
 	ErrMinerTimeout = errors.New("miner timeout error")

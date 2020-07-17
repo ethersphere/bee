@@ -37,7 +37,7 @@ const (
 	// MaxPayloadSize is the maximum allowed payload size for the Message type, in bytes
 	// MaxPayloadSize + Topic + Length + Nonce = Default ChunkSize
 	//    (4030)      +  (32) +   (2)  +  (32) = 4096 Bytes
-	MaxPayloadSize = 4030
+	MaxPayloadSize = swarm.ChunkSize - NonceSize - LengthSize - TopicSize
 	NonceSize      = 32
 	LengthSize     = 2
 	TopicSize      = 32
@@ -207,7 +207,7 @@ func hashBytes(s []byte) ([]byte, error) {
 	return hasher.Sum(nil), nil
 }
 
-// contains returns whether the given collection contains the given elem
+// contains returns whether the given collection contains the given element
 func contains(col Targets, elem []byte) bool {
 	for i := range col {
 		if bytes.Equal(elem, col[i]) {
@@ -241,7 +241,7 @@ func (m *Message) MarshalBinary() (data []byte, err error) {
 // UnmarshalBinary deserializes a message struct
 func (m *Message) UnmarshalBinary(data []byte) (err error) {
 	if len(data) < LengthSize+TopicSize {
-		return ErrUnMarshallingTrojanMessage
+		return ErrUnmarshal
 	}
 
 	copy(m.length[:], data[:LengthSize])                    // first 2 bytes are length
@@ -249,7 +249,7 @@ func (m *Message) UnmarshalBinary(data []byte) (err error) {
 
 	length := binary.BigEndian.Uint16(m.length[:])
 	if (len(data) - LengthSize - TopicSize) < int(length) {
-		return ErrUnMarshallingTrojanMessage
+		return ErrUnmarshal
 	}
 
 	// rest of the bytes are payload and padding

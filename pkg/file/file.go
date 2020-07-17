@@ -14,10 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	ChunkWithSpanSize = swarm.ChunkSize + 8
-)
-
 // Joiner returns file data referenced by the given Swarm Address to the given io.Reader.
 //
 // The call returns when the chunk for the given Swarm Address is found,
