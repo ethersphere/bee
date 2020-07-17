@@ -48,32 +48,28 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // dirUploadInfo contains the data for a directory to be uploaded
 type dirUploadInfo struct {
-	defaultPath string
-	dirReader   io.ReadCloser
-	toEncrypt   bool
+	dirReader io.ReadCloser
+	toEncrypt bool
 }
 
 // getDirHTTPInfo extracts data for a directory to be uploaded from an HTTP request
 func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
-	defaultPath := r.URL.Query().Get("defaultpath")
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	return &dirUploadInfo{
-		defaultPath: defaultPath,
-		dirReader:   r.Body,
-		toEncrypt:   toEncrypt,
+		dirReader: r.Body,
+		toEncrypt: toEncrypt,
 	}, nil
 }
 
 // storeDir stores all files contained in the given directory as a tar and returns its reference
 func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
-	var contentKey swarm.Address // how is this determined?
+	var contentKey swarm.Address
 	manifest := jsonmanifest.NewManifest()
 
 	bodyReader := dirInfo.dirReader
 	tr := tar.NewReader(bodyReader)
 	defer bodyReader.Close()
 
-	var defaultPathFound bool
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -83,7 +79,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		}
 
 		// only store regular files
-		if !hdr.FileInfo().Mode().IsRegular() { // ??
+		if !hdr.FileInfo().Mode().IsRegular() {
 			continue
 		}
 
@@ -109,8 +105,8 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 				return nil, fmt.Errorf("error adding manifest entry from tar stream: %s", err)
 			}*/
 
-		if hdr.Name == dirInfo.defaultPath {
-			/*contentType := hdr.Xattrs["user.swarm.content-type"]
+		/*if hdr.Name == dirInfo.defaultPath {
+			contentType := hdr.Xattrs["user.swarm.content-type"]
 			if contentType == "" {
 				contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
 			}
@@ -124,10 +120,10 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 				ModTime:     hdr.ModTime,
 			}
 			conctx context.Context,return nil, fmt.Errorf("error adding default manifest entry from tar stream: %s", err)
-			}*/
+
 
 			defaultPathFound = true
-		}
+		}}*/
 
 		fileInfo := &fileUploadInfo{
 			fileName:    fileName,
@@ -154,11 +150,6 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		logger.Infof("fileName: %v", fileName)
 		logger.Infof("contentType: %v", contentType)
 		logger.Infof("fileReference: %v", fileReference)
-	}
-
-	if dirInfo.defaultPath != "" && !defaultPathFound {
-		// TODO: should we still return the content key _plus_ the error?
-		return swarm.ZeroAddress, fmt.Errorf("default path error: %s not found", dirInfo.defaultPath)
 	}
 
 	return contentKey, nil
