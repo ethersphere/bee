@@ -210,7 +210,7 @@ type FileUploadInfo struct {
 }
 
 // GetFileHTTPInfo extracts data for a file to be uploaded from an HTTP request
-// this function was extracted from fileUploadHandler code and should eventually replace its current code, along with storeFile
+// this function was extracted from `fileUploadHandler` and should eventually replace its current code, along with `storeFile`
 func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
@@ -293,8 +293,8 @@ func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
 	}, nil
 }
 
-// storeFile stores the given file and returns its reference
-// this function was extracted from fileUploadHandler code and should eventually replace its current code, along with getFileHTTPInfo
+// storeFile uploads the given file and returns its reference
+// this function was extracted from `fileUploadHandler` and should eventually replace its current code, along with `GetFileHTTPInfo`
 func storeFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)

@@ -24,7 +24,7 @@ import (
 
 // dirUploadResponse is returned when an HTTP request to upload a directory as a tar is successful
 type dirUploadResponse struct {
-	Reference swarm.Address `json:"reference"`
+	Reference swarm.Address `json:"reference"` // manifest hash for the uploaded dir
 }
 
 // dirUploadInfo contains the data for a directory to be uploaded
