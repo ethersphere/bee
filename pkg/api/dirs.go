@@ -6,6 +6,7 @@ package api
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -63,7 +64,6 @@ func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 
 // storeDir stores all files contained in the given directory as a tar and returns its reference
 func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
-	var contentKey swarm.Address
 	manifest := jsonmanifest.NewManifest()
 
 	bodyReader := dirInfo.dirReader
@@ -152,5 +152,22 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		logger.Infof("fileReference: %v", fileReference)
 	}
 
-	return contentKey, nil
+	b, err := manifest.Serialize()
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("manifest serialize error: %v", err)
+	}
+	r := bytes.NewReader(b)
+	manifestFileInfo := &fileUploadInfo{
+		fileName:    "manifest.json",
+		fileSize:    r.Size(),
+		contentType: ManifestContentType,
+		toEncrypt:   dirInfo.toEncrypt,
+		reader:      r,
+	}
+	manifestReference, err := storeFile(ctx, manifestFileInfo, s)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("store manifest error: %v", err)
+	}
+
+	return manifestReference, nil
 }
