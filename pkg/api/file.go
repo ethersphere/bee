@@ -40,6 +40,7 @@ const (
 	encryptHeader     = "swarm-encrypt"
 )
 
+// fileUploadResponse is returned when an HTTP request to upload a file is successful
 type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
@@ -201,8 +202,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // fileUploadInfo contains the data for a file to be uploaded
 type fileUploadInfo struct {
-	fileName    string
-	fileSize    int64
+	name        string // file name
+	size        int64  // file size
 	contentType string
 	toEncrypt   bool
 	reader      io.Reader
@@ -284,8 +285,8 @@ func GetFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
 	}
 
 	return &fileUploadInfo{
-		fileName:    fileName,
-		fileSize:    int64(fileSize),
+		name:        fileName,
+		size:        int64(fileSize),
 		contentType: contentType,
 		toEncrypt:   toEncrypt,
 		reader:      reader,
@@ -297,18 +298,18 @@ func GetFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
 func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)
-	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.fileSize, fileInfo.toEncrypt)
+	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, fileInfo.toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file error: %v", err)
 	}
 
 	// if filename is still empty, use the file hash as the filename
-	if fileInfo.fileName == "" {
-		fileInfo.fileName = fr.String()
+	if fileInfo.name == "" {
+		fileInfo.name = fr.String()
 	}
 
 	// then store the metadata and get its reference
-	m := entry.NewMetadata(fileInfo.fileName)
+	m := entry.NewMetadata(fileInfo.name)
 	m.MimeType = fileInfo.contentType
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {

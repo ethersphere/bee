@@ -29,8 +29,8 @@ type dirUploadResponse struct {
 
 // dirUploadInfo contains the data for a directory to be uploaded
 type dirUploadInfo struct {
-	dirReader io.ReadCloser
 	toEncrypt bool
+	reader    io.ReadCloser
 }
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
@@ -58,7 +58,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	return &dirUploadInfo{
-		dirReader: r.Body,
+		reader:    r.Body,
 		toEncrypt: toEncrypt,
 	}, nil
 }
@@ -69,8 +69,8 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 	dirManifest := jsonmanifest.NewManifest()
 
 	// set up HTTP body reader
-	tarReader := tar.NewReader(dirInfo.dirReader)
-	defer dirInfo.dirReader.Close()
+	tarReader := tar.NewReader(dirInfo.reader)
+	defer dirInfo.reader.Close()
 
 	// iterate through the files in the supplied tar
 	for {
@@ -94,8 +94,8 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 
 		// upload file
 		fileInfo := &fileUploadInfo{
-			fileName:    fileName,
-			fileSize:    fileHeader.FileInfo().Size(),
+			name:        fileName,
+			size:        fileHeader.FileInfo().Size(),
 			contentType: contentType,
 			toEncrypt:   dirInfo.toEncrypt,
 			reader:      tarReader,
@@ -137,8 +137,8 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 
 	// then, upload manifest
 	manifestFileInfo := &fileUploadInfo{
-		fileName:    "manifest.json",
-		fileSize:    r.Size(),
+		name:        "manifest.json",
+		size:        r.Size(),
 		contentType: ManifestContentType,
 		toEncrypt:   dirInfo.toEncrypt,
 		reader:      r,
