@@ -173,13 +173,20 @@ func FromChunk(ch swarm.Chunk) (*Soc, error) {
 //
 // This method will fail if no signer has been defined.
 func (s *Soc) ToChunk() (swarm.Chunk, error) {
+	var err error
 	if s.signer == nil {
 		return nil, errors.New("signer missing")
 	}
 
 	h := swarm.NewHasher()
-	h.Write(s.id)
-	h.Write(s.chunk.Address().Bytes())
+	_, err = h.Write(s.id)
+	if err != nil {
+		return nil, err
+	}
+	_, err = h.Write(s.chunk.Address().Bytes())
+	if err != nil {
+		return nil, err
+	}
 	toSignBytes := h.Sum(nil)
 
 	// sign the chunk
