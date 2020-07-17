@@ -101,21 +101,17 @@ func TestCreateChunk(t *testing.T) {
 // TestFromChunk verifies that valid chunk data deserializes to
 // a fully populated Chunk object.
 func TestFromChunk(t *testing.T) {
-	id := make([]byte, 32)
-	payload := make([]byte, 42)
-	u := soc.NewSoc(id, payload)
+
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privKey)
-	err = u.AddSigner(signer)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	// CreateChunk has already been verified in previous test
-	ch, err := u.CreateChunk()
+	id := make([]byte, 32)
+
+	payload := []byte("foo")
+	ch, err := newTestSocChunk(id, payload, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
