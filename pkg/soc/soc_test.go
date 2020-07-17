@@ -43,7 +43,7 @@ func newTestChunk(payload []byte) (swarm.Chunk, error) {
 }
 
 func newTestSocChunk(id soc.Id, ch swarm.Chunk, signer crypto.Signer) (swarm.Chunk, error) {
-	s := soc.NewSoc(id, ch)
+	s := soc.New(id, ch)
 	err := s.AddSigner(signer)
 	if err != nil {
 		return nil, err

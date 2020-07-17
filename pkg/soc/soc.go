@@ -51,18 +51,29 @@ type Soc struct {
 	signature []byte
 	signer    crypto.Signer
 	owner     *Owner
-	chunk     swarm.Chunk
+	Chunk     swarm.Chunk
 }
 
-// NewSoc creates a new Soc from arbitrary soc id and
+// NewChunk is a convenience function to create a single-owner chunk ready to be sent
+// on the network.
+func NewChunk(id Id, ch swarm.Chunk, signer crypto.Signer) (swarm.Chunk, error) {
+	s := New(id, ch)
+	err := s.AddSigner(signer)
+	if err != nil {
+		return nil, err
+	}
+	return s.ToChunk()
+}
+
+// New creates a new Soc representation from arbitrary soc id and
 // a content-addressed chunk.
 //
 // By default the span of the soc data is set to the length
 // of the payload.
-func NewSoc(id Id, ch swarm.Chunk) *Soc {
+func New(id Id, ch swarm.Chunk) *Soc {
 	return &Soc{
 		id:    id,
-		chunk: ch,
+		Chunk: ch,
 	}
 }
 
@@ -105,7 +116,7 @@ func (s *Soc) Address() (swarm.Address, error) {
 	return CreateAddress(s.id, s.owner)
 }
 
-// FromChunk recreates an Chunk from swarm.Chunk data.
+// FromChunk recreates an Soc representation from swarm.Chunk data.
 func FromChunk(ch swarm.Chunk) (*Soc, error) {
 	chunkData := ch.Data()
 	if len(chunkData) < minChunkSize {
@@ -163,15 +174,14 @@ func FromChunk(ch swarm.Chunk) (*Soc, error) {
 		return nil, err
 	}
 	sch.owner = owner
-	sch.chunk = swarm.NewChunk(address, chunkWithSpanData)
+	sch.Chunk = swarm.NewChunk(address, chunkWithSpanData)
 
 	return sch, nil
 }
 
-// CreateChunk creates a new chunk with signed payload ready for submission to the swarm network
-// from the given chunk data.
+// ToChunk generates a signed chunk payload ready for submission to the swarm network.
 //
-// This method will fail if no signer has been defined.
+// The method will fail if no signer has been added.
 func (s *Soc) ToChunk() (swarm.Chunk, error) {
 	var err error
 	if s.signer == nil {
@@ -183,7 +193,7 @@ func (s *Soc) ToChunk() (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = h.Write(s.chunk.Address().Bytes())
+	_, err = h.Write(s.Chunk.Address().Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +209,7 @@ func (s *Soc) ToChunk() (swarm.Chunk, error) {
 	buf := bytes.NewBuffer(nil)
 	buf.Write(s.id)
 	buf.Write(signature)
-	buf.Write(s.chunk.Data())
+	buf.Write(s.Chunk.Data())
 
 	// create chunk
 	socAddress, err := s.Address()
