@@ -176,8 +176,13 @@ func (s *Soc) CreateChunk() (swarm.Chunk, error) {
 		return nil, errors.New("signer missing")
 	}
 
-	payloadSum := s.chunk.Address().Bytes()
-	toSignBytes := append(s.id, payloadSum...)
+	h := swarm.NewHasher()
+	h.Write(s.id)
+	h.Write(s.chunk.Address().Bytes())
+	toSignBytes := h.Sum(nil)
+
+	//payloadSum := s.chunk.Address().Bytes()
+	//toSignBytes := append(s.id, payloadSum...)
 	fmt.Printf("\nsigning:\n%v\n", toSignBytes)
 
 	// sign the update
