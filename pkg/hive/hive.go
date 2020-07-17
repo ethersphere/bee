@@ -83,13 +83,18 @@ func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Add
 	s.peerHandler = h
 }
 
-func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) error {
+func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.FullClose()
-
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
@@ -99,8 +104,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 				s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
 				continue
 			}
-
-			_ = stream.Reset()
 			return err
 		}
 
@@ -112,7 +115,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	}
 
 	if err := w.WriteMsg(&peersRequest); err != nil {
-		_ = stream.Reset()
 		return fmt.Errorf("write Peers message: %w", err)
 	}
 
