@@ -93,7 +93,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		contentType := mime.TypeByExtension(filepath.Ext(fileHeader.Name))
 
 		// upload file
-		fileInfo := &fileUploadInfo{
+		fileInfo := &FileUploadInfo{
 			name:        fileName,
 			size:        fileHeader.FileInfo().Size(),
 			contentType: contentType,
@@ -136,7 +136,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 	r := bytes.NewReader(b)
 
 	// then, upload manifest
-	manifestFileInfo := &fileUploadInfo{
+	manifestFileInfo := &FileUploadInfo{
 		name:        "manifest.json",
 		size:        r.Size(),
 		contentType: ManifestContentType,

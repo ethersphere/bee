@@ -200,8 +200,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// fileUploadInfo contains the data for a file to be uploaded
-type fileUploadInfo struct {
+// FileUploadInfo contains the data for a file to be uploaded
+type FileUploadInfo struct {
 	name        string // file name
 	size        int64  // file size
 	contentType string
@@ -211,7 +211,7 @@ type fileUploadInfo struct {
 
 // GetFileHTTPInfo extracts data for a file to be uploaded from an HTTP request
 // this function was extracted from fileUploadHandler code and should eventually replace its current code, along with storeFile
-func GetFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
+func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
@@ -284,7 +284,7 @@ func GetFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
 		reader = tmp
 	}
 
-	return &fileUploadInfo{
+	return &FileUploadInfo{
 		name:        fileName,
 		size:        int64(fileSize),
 		contentType: contentType,
@@ -295,7 +295,7 @@ func GetFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
 
 // storeFile stores the given file and returns its reference
 // this function was extracted from fileUploadHandler code and should eventually replace its current code, along with getFileHTTPInfo
-func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
+func storeFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)
 	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, fileInfo.toEncrypt)
