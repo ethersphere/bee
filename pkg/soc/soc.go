@@ -139,8 +139,14 @@ func FromChunk(ch swarm.Chunk) (*Soc, error) {
 	address := swarm.NewAddress(bmtSum)
 
 	h := swarm.NewHasher()
-	h.Write(sch.id)
-	h.Write(bmtSum)
+	_, err = h.Write(sch.id)
+	if err != nil {
+		return nil, err
+	}
+	_, err = h.Write(bmtSum)
+	if err != nil {
+		return nil, err
+	}
 	toSignBytes := h.Sum(nil)
 
 	// recover owner information
