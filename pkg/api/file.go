@@ -204,9 +204,9 @@ type fileUploadInfo struct {
 	reader      io.Reader
 }
 
-// getFileHTTPInfo extracts data for a file to be uploaded from an HTTP request
+// GetFileHTTPInfo extracts data for a file to be uploaded from an HTTP request
 // this function was extracted from fileUploadHandler code and should eventually replace its current code, along with storeFile
-func getFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
+func GetFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
