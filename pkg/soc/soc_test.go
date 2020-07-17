@@ -68,16 +68,10 @@ func TestToChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := swarm.NewHasher()
-	_, err = h.Write(id)
+	toSignBytes, err := soc.ToSignDigest(id, ch.Address().Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = h.Write(ch.Address().Bytes())
-	if err != nil {
-		t.Fatal(err)
-	}
-	toSignBytes := h.Sum(nil)
 
 	// verify owner match
 	recoveredPublicKey, err := crypto.Recover(signature, toSignBytes)
