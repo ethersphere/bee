@@ -137,25 +137,23 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 			reader:      tr,
 		}
 		fileReference, err := storeFile(ctx, fileInfo, s)
-
-		headers := http.Header{}
-		entry := &jsonmanifest.JSONEntry{
-			Reference: fileReference,
-			Name:      path,
-			Headers:   headers,
-		}
-		_ = entry
-		_ = manifest
-
-		logger.Infof("path: %v", path)
-		logger.Infof("fileName: %v", fileName)
-		logger.Infof("fileReference: %v", fileReference)
-
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %v", err)
 		}
 
-		_ = fileReference // what do we do with each file ref?
+		headers := http.Header{}
+		headers.Set("Content-Type", contentType)
+		entry := &jsonmanifest.JSONEntry{
+			Reference: fileReference,
+			Name:      fileName,
+			Headers:   headers,
+		}
+		manifest.Add(path, entry)
+
+		logger.Infof("path: %v", path)
+		logger.Infof("fileName: %v", fileName)
+		logger.Infof("contentType: %v", contentType)
+		logger.Infof("fileReference: %v", fileReference)
 	}
 
 	if dirInfo.defaultPath != "" && !defaultPathFound {
