@@ -24,12 +24,12 @@ func NewSocValidator() swarm.ChunkValidator {
 
 // Validate performs the validation check.
 func (v *SocValidator) Validate(ch swarm.Chunk) (valid bool) {
-	update, err := soc.FromChunk(ch)
+	s, err := soc.FromChunk(ch)
 	if err != nil {
 		return false
 	}
 
-	address, err := update.Address()
+	address, err := s.Address()
 	if err != nil {
 		return false
 	}

@@ -6,6 +6,7 @@
 package validator_test
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -25,36 +26,44 @@ func TestSocValidator(t *testing.T) {
 	}
 	signer := crypto.NewDefaultSigner(privKey)
 
-	payload := make([]byte, 42)
-	u := soc.NewChunk(id, payload)
-	err = u.AddSigner(signer)
+	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
+	address := swarm.MustParseHexAddress(bmtHashOfFoo)
+	foo := "foo"
+	fooLength := len(foo)
+	fooBytes := make([]byte, 8+fooLength)
+	binary.LittleEndian.PutUint64(fooBytes, uint64(fooLength))
+	copy(fooBytes[8:], foo)
+	ch := swarm.NewChunk(address, fooBytes)
+
+	s := soc.NewSoc(id, ch)
+	err = s.AddSigner(signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err := u.CreateChunk()
+	sch, err := s.ToChunk()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// check valid chunk
 	v := validator.NewSocValidator()
-	if !v.Validate(ch) {
+	if !v.Validate(sch) {
 		t.Fatal("valid chunk evaluates to invalid")
 	}
 
 	// check invalid data
-	ch.Data()[0] = 0x01
-	if v.Validate(ch) {
+	sch.Data()[0] = 0x01
+	if v.Validate(sch) {
 		t.Fatal("chunk with invalid data evaluates to valid")
 	}
 
 	// check invalid address
-	ch.Data()[0] = 0x00
-	wrongAddressBytes := ch.Address().Bytes()
+	sch.Data()[0] = 0x00
+	wrongAddressBytes := sch.Address().Bytes()
 	wrongAddressBytes[0] ^= wrongAddressBytes[0]
 	wrongAddress := swarm.NewAddress(wrongAddressBytes)
-	ch = swarm.NewChunk(wrongAddress, ch.Data())
-	if v.Validate(ch) {
+	sch = swarm.NewChunk(wrongAddress, sch.Data())
+	if v.Validate(sch) {
 		t.Fatal("chunk with invalid address evaluates to valid")
 	}
 }
