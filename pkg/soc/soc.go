@@ -7,13 +7,13 @@ package soc
 
 import (
 	"bytes"
-//	"encoding/binary"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
+	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
 const (
@@ -21,6 +21,10 @@ const (
 	SignatureSize = 65
 	AddressSize   = crypto.AddressSize
 	minChunkSize  = IdSize + SignatureSize + swarm.SpanSize
+)
+
+var (
+	bmtPool = bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 )
 
 // Id is a soc identifier
@@ -85,7 +89,6 @@ func (s *Soc) AddSigner(signer crypto.Signer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "%x", ownerAddressBytes)
 	ownerAddress, err := NewOwner(ownerAddressBytes)
 	if err != nil {
 		return err
@@ -106,63 +109,63 @@ func (s *Soc) Address() (swarm.Address, error) {
 }
 
 // FromChunk recreates an Chunk from swarm.Chunk data.
-//func FromChunk(ch swarm.Chunk) (*Soc, error) {
-//	chunkData := ch.Data()
-//	if len(chunkData) < minChunkSize {
-//		return nil, errors.New("less than minimum length")
-//	}
-//
-//	// add all the data fields
-//	sch := &Soc{}
-//	cursor := 0
-//
-//	sch.id = chunkData[cursor : cursor+IdSize]
-//	cursor += IdSize
-//
-//	sch.signature = chunkData[cursor : cursor+SignatureSize]
-//	cursor += SignatureSize
-//
-//	spanBytes := chunkData[cursor : cursor+swarm.SpanSize]
-//	span := binary.LittleEndian.Uint64(spanBytes)
-//	sch.span = int64(span)
-//	cursor += swarm.SpanSize
-//
-//	sch.payload = chunkData[cursor:]
-//
-//	//bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
-//	//bmtHasher := bmtlegacy.New(bmtPool)
-//
-//	// calculate the bmt hash of the sch payload
-////	err := bmtHasher.SetSpan(int64(span))
-////	if err != nil {
-////		return nil, err
-////	}
-////	_, err = bmtHasher.Write(sch.payload)
-////	if err != nil {
-////		return nil, err
-////	}
-////	payloadSum := bmtHasher.Sum(nil)
-//	payloadSum := ch.Address().Bytes()
-//
-//	toSignBytes := append(sch.id, payloadSum...)
-//
-//	// recover owner information
-//	recoveredPublicKey, err := crypto.Recover(sch.signature, toSignBytes)
-//	if err != nil {
-//		return nil, err
-//	}
-//	recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
-//	if err != nil {
-//		return nil, err
-//	}
-//	owner, err := NewOwner(recoveredEthereumAddress)
-//	if err != nil {
-//		return nil, err
-//	}
-//	sch.owner = owner
-//
-//	return sch, nil
-//}
+func FromChunk(ch swarm.Chunk) (*Soc, error) {
+	chunkData := ch.Data()
+	if len(chunkData) < minChunkSize {
+		return nil, errors.New("less than minimum length")
+	}
+
+	// add all the data fields
+	sch := &Soc{}
+	cursor := 0
+
+	sch.id = chunkData[cursor : cursor+IdSize]
+	cursor += IdSize
+
+	sch.signature = chunkData[cursor : cursor+SignatureSize]
+	cursor += SignatureSize
+
+	span := binary.LittleEndian.Uint64(chunkData[cursor:cursor+swarm.SpanSize])
+
+	bmtHasher := bmtlegacy.New(bmtPool)
+	err := bmtHasher.SetSpan(int64(span))
+	chunkWithSpanData := chunkData[cursor:]
+	fmt.Printf("span %v\n", chunkData[cursor:cursor+swarm.SpanSize])
+	if err != nil {
+		return nil, err
+	}
+	cursor += swarm.SpanSize
+	_, err = bmtHasher.Write(chunkData[cursor:])
+	if err != nil {
+		return nil, err
+	}
+	bmtSum := bmtHasher.Sum(nil)
+	address := swarm.NewAddress(bmtSum)
+
+	toSignBytes := append(sch.id, bmtSum...)
+	fmt.Printf("\nunsigning:\n%v\n", toSignBytes)
+
+	// recover owner information
+	recoveredPublicKey, err := crypto.Recover(sch.signature, toSignBytes)
+	if err != nil {
+		fmt.Println("one")
+		return nil, err
+	}
+	recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
+	if err != nil {
+		return nil, err
+		fmt.Println("two")
+	}
+	owner, err := NewOwner(recoveredEthereumAddress)
+	if err != nil {
+		fmt.Println("three")
+		return nil, err
+	}
+	sch.owner = owner
+	sch.chunk = swarm.NewChunk(address, chunkWithSpanData)
+
+	return sch, nil
+}
 
 // CreateChunk creates a new chunk with signed payload ready for submission to the swarm network
 // from the given update data.
@@ -175,6 +178,7 @@ func (s *Soc) CreateChunk() (swarm.Chunk, error) {
 
 	payloadSum := s.chunk.Address().Bytes()
 	toSignBytes := append(s.id, payloadSum...)
+	fmt.Printf("\nsigning:\n%v\n", toSignBytes)
 
 	// sign the update
 	signature, err := s.signer.Sign(toSignBytes)
