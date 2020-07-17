@@ -35,12 +35,7 @@ func TestSocValidator(t *testing.T) {
 	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
 
-	s := soc.New(id, ch)
-	err = s.AddSigner(signer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sch, err := s.ToChunk()
+	sch, err := soc.NewChunk(id, ch, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
