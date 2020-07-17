@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -20,10 +21,11 @@ import (
 )
 
 type testServerOptions struct {
-	Pingpong pingpong.Interface
-	Storer   storage.Storer
-	Tags     *tags.Tags
-	Logger   logging.Logger
+	Pingpong       pingpong.Interface
+	Storer         storage.Storer
+	ManifestParser manifest.Parser
+	Tags           *tags.Tags
+	Logger         logging.Logger
 }
 
 func newTestServer(t *testing.T, o testServerOptions) *http.Client {
@@ -31,9 +33,10 @@ func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 		o.Logger = logging.New(ioutil.Discard, 0)
 	}
 	s := api.New(api.Options{
-		Tags:   o.Tags,
-		Storer: o.Storer,
-		Logger: o.Logger,
+		Tags:           o.Tags,
+		Storer:         o.Storer,
+		ManifestParser: o.ManifestParser,
+		Logger:         o.Logger,
 	})
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
