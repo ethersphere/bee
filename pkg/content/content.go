@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package validator contains file-oriented chunk validation implementations
-package validator
+// Package contains convenience methods and validator for content-addressed chunks
+package content
 
 import (
 	"encoding/binary"
@@ -25,7 +25,7 @@ var _ swarm.ChunkValidator = (*ContentAddressValidator)(nil)
 type ContentAddressValidator struct {
 }
 
-// New constructs a new ContentAddressValidator
+// NewContentAddressValidator constructs a new ContentAddressValidator
 func NewContentAddressValidator() swarm.ChunkValidator {
 	return &ContentAddressValidator{}
 }
@@ -76,8 +76,7 @@ func contentChunkFromBytesAndSpan(data []byte, spanBytes []byte) (swarm.Chunk, e
 	return newContentChunk(data, spanBytes, int64(span))
 }
 
-// newContentChunk is the lowest level handler of deserialization of
-// content-addressed chunks.
+// newContentChunk is the lowest level handler of deserialization of content-addressed chunks.
 func newContentChunk(data []byte, spanBytes []byte, span int64) (swarm.Chunk, error) {
 	hasher := bmtlegacy.New(bmtPool)
 

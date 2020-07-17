@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
@@ -43,7 +44,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -243,7 +243,7 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+	ns := netstore.New(storer, retrieve, content.NewContentAddressValidator())
 
 	retrieve.SetStorer(ns)
 
