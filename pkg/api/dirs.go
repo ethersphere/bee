@@ -26,14 +26,14 @@ type dirUploadResponse struct {
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP Request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
-	dirInfo, err := GetDirHTTPInfo(r)
+	dirInfo, err := getDirHTTPInfo(r)
 	if err != nil {
 		s.Logger.Errorf("dir upload, get dir info: %v", err)
 		jsonhttp.BadRequest(w, "could not extract dir info from request")
 		return
 	}
 
-	reference, err := StoreDir(r.Context(), dirInfo, s.Storer, s.Logger)
+	reference, err := storeDir(r.Context(), dirInfo, s.Storer, s.Logger)
 	if err != nil {
 		s.Logger.Errorf("dir upload, store dir: %v", err)
 		jsonhttp.InternalServerError(w, "could not store dir")
@@ -45,30 +45,30 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DirUploadInfo contains the data for a dir to be uploaded
-type DirUploadInfo struct {
-	DefaultPath string
-	DirReader   io.ReadCloser
-	ToEncrypt   bool
+// dirUploadInfo contains the data for a directory to be uploaded
+type dirUploadInfo struct {
+	defaultPath string
+	dirReader   io.ReadCloser
+	toEncrypt   bool
 }
 
-// GetDirHTTPInfo extracts dir info for upload from HTTP request
-func GetDirHTTPInfo(r *http.Request) (*DirUploadInfo, error) {
+// getDirHTTPInfo extracts data for a directory to be uploaded from an HTTP request
+func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 	defaultPath := r.URL.Query().Get("defaultpath")
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
-	return &DirUploadInfo{
-		DefaultPath: defaultPath,
-		DirReader:   r.Body,
-		ToEncrypt:   toEncrypt,
+	return &dirUploadInfo{
+		defaultPath: defaultPath,
+		dirReader:   r.Body,
+		toEncrypt:   toEncrypt,
 	}, nil
 }
 
-// StoreDir stores all files contained in the given directory as a tar and returns its reference
-func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
+// storeDir stores all files contained in the given directory as a tar and returns its reference
+func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
 	var contentKey swarm.Address // how is this determined?
 	// manifestPath := GetURI(r.Context()).Path // ??
 
-	bodyReader := dirInfo.DirReader
+	bodyReader := dirInfo.dirReader
 	tr := tar.NewReader(bodyReader)
 	defer bodyReader.Close()
 
@@ -107,7 +107,7 @@ func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer, log
 				return nil, fmt.Errorf("error adding manifest entry from tar stream: %s", err)
 			}*/
 
-		if hdr.Name == dirInfo.DefaultPath {
+		if hdr.Name == dirInfo.defaultPath {
 			/*contentType := hdr.Xattrs["user.swarm.content-type"]
 			if contentType == "" {
 				contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
@@ -127,14 +127,14 @@ func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer, log
 			defaultPathFound = true
 		}
 
-		fileInfo := &FileUploadInfo{
-			FileName:    hdr.Name,
-			FileSize:    hdr.Size,
-			ContentType: contentType,
-			ToEncrypt:   dirInfo.ToEncrypt,
-			Reader:      tr,
+		fileInfo := &fileUploadInfo{
+			fileName:    hdr.Name,
+			fileSize:    hdr.Size,
+			contentType: contentType,
+			toEncrypt:   dirInfo.toEncrypt,
+			reader:      tr,
 		}
-		fileReference, err := StoreFile(ctx, fileInfo, s)
+		fileReference, err := storeFile(ctx, fileInfo, s)
 
 		logger.Infof("fileReference: %v", fileReference)
 
@@ -145,9 +145,9 @@ func StoreDir(ctx context.Context, dirInfo *DirUploadInfo, s storage.Storer, log
 		_ = fileReference // what do we do with each file ref?
 	}
 
-	if dirInfo.DefaultPath != "" && !defaultPathFound {
+	if dirInfo.defaultPath != "" && !defaultPathFound {
 		// TODO: should we still return the content key _plus_ the error?
-		return swarm.ZeroAddress, fmt.Errorf("default path error: %s not found", dirInfo.DefaultPath)
+		return swarm.ZeroAddress, fmt.Errorf("default path error: %s not found", dirInfo.defaultPath)
 	}
 
 	return contentKey, nil

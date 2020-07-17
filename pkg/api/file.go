@@ -195,18 +195,18 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// FileUploadInfo contains the data for a file to be uploaded
-type FileUploadInfo struct {
-	FileName    string
-	FileSize    int64
-	ContentType string
-	ToEncrypt   bool
-	Reader      io.Reader
+// fileUploadInfo contains the data for a file to be uploaded
+type fileUploadInfo struct {
+	fileName    string
+	fileSize    int64
+	contentType string
+	toEncrypt   bool
+	reader      io.Reader
 }
 
-// GetFileHTTPInfo extracts file info for upload from HTTP request
-// This function was extracted from fileUploadHandler code and should eventually replace its current code, along with StoreFile
-func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
+// getFileHTTPInfo extracts data for a file to be uploaded from an HTTP request
+// this function was extracted from fileUploadHandler code and should eventually replace its current code, along with storeFile
+func getFileHTTPInfo(r *http.Request) (*fileUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
@@ -279,40 +279,40 @@ func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
 		reader = tmp
 	}
 
-	return &FileUploadInfo{
-		FileName:    fileName,
-		FileSize:    int64(fileSize),
-		ContentType: contentType,
-		ToEncrypt:   toEncrypt,
-		Reader:      reader,
+	return &fileUploadInfo{
+		fileName:    fileName,
+		fileSize:    int64(fileSize),
+		contentType: contentType,
+		toEncrypt:   toEncrypt,
+		reader:      reader,
 	}, nil
 }
 
-// StoreFile stores the given file and returns its reference
-// This function was extracted from fileUploadHandler code and should eventually replace its current code, along with GetFileHTTPInfo
-func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) (swarm.Address, error) {
+// storeFile stores the given file and returns its reference
+// this function was extracted from fileUploadHandler code and should eventually replace its current code, along with getFileHTTPInfo
+func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)
-	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.Reader, fileInfo.FileSize, fileInfo.ToEncrypt)
+	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.fileSize, fileInfo.toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file error: %v", err)
 	}
 
 	// if filename is still empty, use the file hash as the filename
-	if fileInfo.FileName == "" {
-		fileInfo.FileName = fr.String()
+	if fileInfo.fileName == "" {
+		fileInfo.fileName = fr.String()
 	}
 
 	// then store the metadata and get its reference
-	m := entry.NewMetadata(fileInfo.FileName)
-	m.MimeType = fileInfo.ContentType
+	m := entry.NewMetadata(fileInfo.fileName)
+	m.MimeType = fileInfo.contentType
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal error: %v", err)
 	}
 
 	sp = splitter.NewSimpleSplitter(s)
-	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), fileInfo.ToEncrypt)
+	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), fileInfo.toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata error: %v", err)
 	}
@@ -324,7 +324,7 @@ func StoreFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) 
 		return swarm.ZeroAddress, fmt.Errorf("entry marhsal error: %v", err)
 	}
 	sp = splitter.NewSimpleSplitter(s)
-	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), fileInfo.ToEncrypt)
+	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), fileInfo.toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry error: %v", err)
 	}
