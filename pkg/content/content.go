@@ -14,10 +14,6 @@ import (
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
-var (
-	bmtPool = bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
-)
-
 // NewContentChunk creates a new content-addressed single-span chunk.
 // The length of the chunk data is set as the span.
 func NewContentChunk(data []byte) (swarm.Chunk, error) {
@@ -54,6 +50,7 @@ func contentChunkFromBytes(chunkData []byte) (swarm.Chunk, error) {
 
 // newContentChunk is the lowest level handler of deserialization of content-addressed chunks.
 func newContentChunk(data []byte, spanBytes []byte, span int64) (swarm.Chunk, error) {
+	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	hasher := bmtlegacy.New(bmtPool)
 
 	// execute hash, compare and return result
