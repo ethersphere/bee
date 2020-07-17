@@ -105,8 +105,14 @@ func TestToChunk(t *testing.T) {
 	}
 
 	h := swarm.NewHasher()
-	h.Write(id)
-	h.Write(ch.Address().Bytes())
+	_, err = h.Write(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = h.Write(ch.Address().Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
 	toSignBytes := h.Sum(nil)
 
 	// verify owner match
