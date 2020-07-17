@@ -78,6 +78,8 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// we are expecting manifest Mime type here
 	if ManifestContentType != metadata.MimeType {
+		s.Logger.Debugf("bzz download: not manifest %s: %v", address, err)
+		s.Logger.Error("bzz download: not manifest")
 		jsonhttp.BadRequest(w, "not manifest")
 		return
 	}
@@ -101,21 +103,21 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := manifest.FindEntry(path)
 	if err != nil {
+		s.Logger.Debugf("bzz download: invalid path %s/%s: %v", address, path, err)
+		s.Logger.Error("bzz download: invalid path")
 		jsonhttp.BadRequest(w, "invalid path address")
 		return
 	}
 
 	entryAddress := entry.GetReference()
 
-	additionalHeaders := http.Header{}
+	var additionalHeaders http.Header
 
 	// copy headers from manifest
 	if entry.GetHeaders() != nil {
-		for name, values := range entry.GetHeaders() {
-			for _, value := range values {
-				additionalHeaders.Add(name, value)
-			}
-		}
+		additionalHeaders = entry.GetHeaders().Clone()
+	} else {
+		additionalHeaders = http.Header{}
 	}
 
 	// include filename
