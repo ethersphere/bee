@@ -20,7 +20,6 @@ var (
 	bmtPool = bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 )
 
-
 func newTestChunk(payload []byte) (swarm.Chunk, error) {
 	span := int64(len(payload))
 	bmtHasher := bmtlegacy.New(bmtPool)

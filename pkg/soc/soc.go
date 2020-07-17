@@ -51,7 +51,7 @@ type Soc struct {
 	signature []byte
 	signer    crypto.Signer
 	owner     *Owner
-	chunk swarm.Chunk
+	chunk     swarm.Chunk
 }
 
 // NewSoc creates a new Soc from arbitrary soc id and
@@ -61,8 +61,8 @@ type Soc struct {
 // of the payload.
 func NewSoc(id Id, ch swarm.Chunk) *Soc {
 	return &Soc{
-		id:      id,
-		chunk:	ch,
+		id:    id,
+		chunk: ch,
 	}
 }
 
@@ -122,7 +122,7 @@ func FromChunk(ch swarm.Chunk) (*Soc, error) {
 	sch.signature = chunkData[cursor : cursor+SignatureSize]
 	cursor += SignatureSize
 
-	span := binary.LittleEndian.Uint64(chunkData[cursor:cursor+swarm.SpanSize])
+	span := binary.LittleEndian.Uint64(chunkData[cursor : cursor+swarm.SpanSize])
 
 	bmtHasher := bmtlegacy.New(bmtPool)
 	err := bmtHasher.SetSpan(int64(span))
