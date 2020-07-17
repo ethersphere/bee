@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -254,58 +252,10 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// send the file data back in the response
-	dataSize, err := j.Size(r.Context(), e.Reference())
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Debugf("file download: not found %s: %v", e.Reference(), err)
-			s.Logger.Errorf("file download: not found %s", addr)
-			jsonhttp.NotFound(w, nil)
-			return
-		}
-		s.Logger.Debugf("file download: invalid root chunk %s: %v", e.Reference(), err)
-		s.Logger.Errorf("file download: invalid root chunk %s", addr)
-		jsonhttp.BadRequest(w, "invalid root chunk")
-		return
+	additionalHeaders := http.Header{
+		"Content-Disposition": {fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename)},
+		"Content-Type":        {metaData.MimeType},
 	}
 
-	pr, pw := io.Pipe()
-	defer pr.Close()
-	go func() {
-		ctx := r.Context()
-		<-ctx.Done()
-		if err := ctx.Err(); err != nil {
-			if err := pr.CloseWithError(err); err != nil {
-				s.Logger.Debugf("file download: data join close %s: %v", addr, err)
-				s.Logger.Errorf("file download: data join close %s", addr)
-			}
-		}
-	}()
-
-	go func() {
-		_, err := file.JoinReadAll(j, e.Reference(), pw, toDecrypt)
-		if err := pw.CloseWithError(err); err != nil {
-			s.Logger.Debugf("file download: data join close %s: %v", addr, err)
-			s.Logger.Errorf("file download: data join close %s", addr)
-		}
-	}()
-
-	bpr := bufio.NewReader(pr)
-
-	if b, err := bpr.Peek(4096); err != nil && err != io.EOF && len(b) == 0 {
-		s.Logger.Debugf("file download: data join %s: %v", addr, err)
-		s.Logger.Errorf("file download: data join %s", addr)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	w.Header().Set("ETag", fmt.Sprintf("%q", e.Reference()))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename))
-	w.Header().Set("Content-Type", metaData.MimeType)
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
-	if _, err = io.Copy(w, bpr); err != nil {
-		s.Logger.Debugf("file download: data read %s: %v", addr, err)
-		s.Logger.Errorf("file download: data read %s", addr)
-	}
+	s.internalDownloadHandler(w, r, e.Reference(), additionalHeaders)
 }

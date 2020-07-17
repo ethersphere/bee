@@ -5,12 +5,9 @@
 package api
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
@@ -18,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -32,8 +28,6 @@ const (
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	addressHex := mux.Vars(r)["address"]
 	path := mux.Vars(r)["path"]
-
-	ctx := r.Context()
 
 	address, err := swarm.ParseHexAddress(addressHex)
 	if err != nil {
@@ -113,79 +107,21 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	entryAddress := entry.GetReference()
 
-	toDecryptEntry := len(entryAddress.Bytes()) == (swarm.HashSize + encryption.KeyLength)
+	additionalHeaders := http.Header{}
 
-	dataSize, err := j.Size(ctx, entryAddress)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Debugf("bzz download: not found %s: %v", entryAddress, err)
-			s.Logger.Error("bzz download: not found")
-			jsonhttp.NotFound(w, "not found")
-			return
-		}
-		s.Logger.Debugf("bzz download: invalid root chunk %s: %v", entryAddress, err)
-		s.Logger.Error("bzz download: invalid root chunk")
-		jsonhttp.BadRequest(w, "invalid root chunk")
-		return
-	}
-
-	outBuffer := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(j, entryAddress, outBuffer, toDecryptEntry)
-	if err != nil && c == 0 {
-		s.Logger.Debugf("bzz download: data join %s: %v", entryAddress, err)
-		s.Logger.Errorf("bzz download: data join %s", entryAddress)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	pr, pw := io.Pipe()
-	defer pr.Close()
-	go func() {
-		ctx := r.Context()
-		<-ctx.Done()
-		if err := ctx.Err(); err != nil {
-			if err := pr.CloseWithError(err); err != nil {
-				s.Logger.Debugf("bzz download: data join close %s: %v", entryAddress, err)
-				s.Logger.Errorf("bzz download: data join close %s", entryAddress)
+	// copy headers from manifest
+	if entry.GetHeaders() != nil {
+		for name, values := range entry.GetHeaders() {
+			for _, value := range values {
+				additionalHeaders.Add(name, value)
 			}
 		}
-	}()
-
-	go func() {
-		_, err := file.JoinReadAll(j, entryAddress, pw, toDecrypt)
-		if err := pw.CloseWithError(err); err != nil {
-			s.Logger.Debugf("bzz download: data join close %s: %v", entryAddress, err)
-			s.Logger.Errorf("bzz download: data join close %s", entryAddress)
-		}
-	}()
-
-	bpr := bufio.NewReader(pr)
-
-	if b, err := bpr.Peek(4096); err != nil && err != io.EOF && len(b) == 0 {
-		s.Logger.Debugf("bzz download: data join %s: %v", entryAddress, err)
-		s.Logger.Errorf("bzz download: data join %s", entryAddress)
-		jsonhttp.NotFound(w, nil)
-		return
 	}
 
-	// include all headers from manifest
-	for name, values := range entry.GetHeaders() {
-		var v string
-		for _, value := range values {
-			if v != "" {
-				v += "; "
-			}
-			v += value
-		}
-		w.Header().Set(name, v)
+	// include filename
+	if entry.GetName() != "" {
+		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", entry.GetName()))
 	}
 
-	w.Header().Set("ETag", fmt.Sprintf("%q", entryAddress))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", entry.GetName()))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
-	if _, err = io.Copy(w, bpr); err != nil {
-		s.Logger.Debugf("bzz download: data read %s: %v", entryAddress, err)
-		s.Logger.Errorf("bzz download: data read %s", entryAddress)
-	}
+	s.internalDownloadHandler(w, r, entryAddress, additionalHeaders)
 }
