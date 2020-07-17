@@ -169,6 +169,7 @@ func (s *Soc) ToChunk() (swarm.Chunk, error) {
 		return nil, errors.New("signer missing")
 	}
 
+	// generate the data to sign
 	toSignBytes, err := toSignDigest(s.id, s.Chunk.Address().Bytes())
 	if err != nil {
 		return nil, err
@@ -194,7 +195,7 @@ func (s *Soc) ToChunk() (swarm.Chunk, error) {
 	return swarm.NewChunk(socAddress, buf.Bytes()), nil
 }
 
-// toSignDigest creates a digest suitable for signing.
+// toSignDigest creates a digest suitable for signing to represent the soc.
 func toSignDigest(id Id, sum []byte) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(id)
@@ -210,15 +211,15 @@ func toSignDigest(id Id, sum []byte) ([]byte, error) {
 
 // CreateAddress creates a new soc address from the soc id and the ethereum address of the signer
 func CreateAddress(id Id, owner *Owner) (swarm.Address, error) {
-	sha3Hasher := swarm.NewHasher()
-	_, err := sha3Hasher.Write(id)
+	h := swarm.NewHasher()
+	_, err := h.Write(id)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	_, err = sha3Hasher.Write(owner.address)
+	_, err = h.Write(owner.address)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	sum := sha3Hasher.Sum(nil)
+	sum := h.Sum(nil)
 	return swarm.NewAddress(sum), nil
 }
