@@ -102,8 +102,8 @@ func TestBzz(t *testing.T) {
 		}
 
 		// now join both references (mr,fr) to create an entry and store it.
-		entrie := entry.New(fr, mr)
-		fileEntryBytes, err := entrie.MarshalBinary()
+		newEntry := entry.New(fr, mr)
+		fileEntryBytes, err := newEntry.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)
 		}
