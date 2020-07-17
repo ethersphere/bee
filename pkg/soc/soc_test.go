@@ -15,27 +15,49 @@ import (
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
+func newTestSocChunk(id soc.Id, payload []byte, signer crypto.Signer) (swarm.Chunk, error) {
+	span := len(payload)
+
+	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
+	bmtHasher := bmtlegacy.New(bmtPool)
+
+	err := bmtHasher.SetSpan(int64(span))
+	if err != nil {
+		return nil, err
+	}
+	_, err = bmtHasher.Write(payload)
+	if err != nil {
+		return nil, err
+	}
+	bmtSum := bmtHasher.Sum(nil)
+	address := swarm.NewAddress(bmtSum)
+
+	ch := swarm.NewChunk(address, payload)
+	u := soc.NewSoc(id, ch)
+	err = u.AddSigner(signer)
+	if err != nil {
+		return nil, err
+	}
+	return u.CreateChunk()
+}
+
 // TestCreateChunk verifies that the chunk create from the update object
 // corresponds to the soc spec.
 func TestCreateChunk(t *testing.T) {
-	id := make([]byte, 32)
-	payload := make([]byte, 42)
-	u := soc.NewChunk(id, payload)
+
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privKey)
-	err = u.AddSigner(signer)
+	
+	id := make([]byte, 32)
+
+	payload := []byte("foo")
+	ch, err := newTestSocChunk(id, payload, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	ch, err := u.CreateChunk()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	chunkData := ch.Data()
 
 	// verify that id, signature, payload is in place
@@ -45,7 +67,7 @@ func TestCreateChunk(t *testing.T) {
 	}
 	cursor += soc.IdSize
 	signature := chunkData[cursor : cursor+soc.SignatureSize]
-	cursor += soc.SignatureSize + swarm.SpanSize
+	cursor += soc.SignatureSize
 	if !bytes.Equal(chunkData[cursor:], payload) {
 		t.Fatal("payload mismatch")
 	}
@@ -60,31 +82,7 @@ func TestCreateChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// calculate the sum of the payload and use it to recover the owner
-	// from the chunk data
-	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
-	bmtHasher := bmtlegacy.New(bmtPool)
-	err = bmtHasher.SetSpan(int64(len(payload)))
-	if err != nil {
-		t.Fatal(err)
-
-	}
-	_, err = bmtHasher.Write(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payloadSum := bmtHasher.Sum(nil)
-
-	sha3Hasher := swarm.NewHasher()
-	_, err = sha3Hasher.Write(payloadSum)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = sha3Hasher.Write(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	toSignBytes := sha3Hasher.Sum(nil)
+	toSignBytes := append(id, payload...)
 
 	// verify owner match
 	recoveredPublicKey, err := crypto.Recover(signature, toSignBytes)
@@ -105,7 +103,7 @@ func TestCreateChunk(t *testing.T) {
 func TestFromChunk(t *testing.T) {
 	id := make([]byte, 32)
 	payload := make([]byte, 42)
-	u := soc.NewChunk(id, payload)
+	u := soc.NewSoc(id, payload)
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
