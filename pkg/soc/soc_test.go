@@ -6,8 +6,8 @@
 package soc_test
 
 import (
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -16,12 +16,14 @@ import (
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
-func newTestSocChunk(id soc.Id, payload []byte, signer crypto.Signer) (swarm.Chunk, error) {
+var (
+	bmtPool = bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
+)
+
+
+func newTestChunk(payload []byte) (swarm.Chunk, error) {
 	span := int64(len(payload))
-
-	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	bmtHasher := bmtlegacy.New(bmtPool)
-
 	err := bmtHasher.SetSpan(span)
 	if err != nil {
 		return nil, err
@@ -33,22 +35,27 @@ func newTestSocChunk(id soc.Id, payload []byte, signer crypto.Signer) (swarm.Chu
 	bmtSum := bmtHasher.Sum(nil)
 	address := swarm.NewAddress(bmtSum)
 
+	// write payload with span and data bytes
 	spanBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spanBytes, uint64(span))
 	payloadWithSpan := append(spanBytes, payload...)
-	ch := swarm.NewChunk(address, payloadWithSpan)
-	u := soc.NewSoc(id, ch)
-	err = u.AddSigner(signer)
+
+	return swarm.NewChunk(address, payloadWithSpan), nil
+}
+
+func newTestSocChunk(id soc.Id, ch swarm.Chunk, signer crypto.Signer) (swarm.Chunk, error) {
+	s := soc.NewSoc(id, ch)
+	err := s.AddSigner(signer)
 	if err != nil {
 		return nil, err
 	}
-	return u.CreateChunk()
+
+	return s.ToChunk()
 }
 
-// TestCreateChunk verifies that the chunk create from the update object
+// TestToChunk verifies that the chunk create from the Soc object
 // corresponds to the soc spec.
-func TestCreateChunk(t *testing.T) {
-	t.Skip("foo")
+func TestToChunk(t *testing.T) {
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -58,11 +65,15 @@ func TestCreateChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := newTestSocChunk(id, payload, signer)
+	ch, err := newTestChunk(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunkData := ch.Data()
+	sch, err := newTestSocChunk(id, ch, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunkData := sch.Data()
 
 	// verify that id, signature, payload is in place
 	cursor := 0
@@ -94,7 +105,10 @@ func TestCreateChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	toSignBytes := append(id, ch.Data()...)
+	h := swarm.NewHasher()
+	h.Write(id)
+	h.Write(ch.Address().Bytes())
+	toSignBytes := h.Sum(nil)
 
 	// verify owner match
 	recoveredPublicKey, err := crypto.Recover(signature, toSignBytes)
@@ -113,7 +127,6 @@ func TestCreateChunk(t *testing.T) {
 // TestFromChunk verifies that valid chunk data deserializes to
 // a fully populated Chunk object.
 func TestFromChunk(t *testing.T) {
-
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -123,12 +136,16 @@ func TestFromChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := newTestSocChunk(id, payload, signer)
+	ch, err := newTestChunk(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sch, err := newTestSocChunk(id, ch, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	u2, err := soc.FromChunk(ch)
+	u2, err := soc.FromChunk(sch)
 	if err != nil {
 		t.Fatal(err)
 	}

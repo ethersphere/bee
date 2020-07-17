@@ -45,7 +45,7 @@ func NewOwner(address []byte) (*Owner, error) {
 	}, nil
 }
 
-// Chunk wraps a single soc update.
+// Soc wraps a single soc.
 type Soc struct {
 	id        Id
 	signature []byte
@@ -54,29 +54,26 @@ type Soc struct {
 	chunk swarm.Chunk
 }
 
-// NewChunk creates a new Chunk from arbitrary soc id and
-// soc byte payload.
+// NewSoc creates a new Soc from arbitrary soc id and
+// a content-addressed chunk.
 //
 // By default the span of the soc data is set to the length
 // of the payload.
-//func NewChunk(id Id, payload []byte) *Chunk {
 func NewSoc(id Id, ch swarm.Chunk) *Soc {
 	return &Soc{
 		id:      id,
 		chunk:	ch,
-		//payload: payload,
-		//span:    int64(len(payload)),
 	}
 }
 
 // WithOwnerAddress provides the possibility of setting the ethereum
-// address for the owner of an update in the absence of a signer.
+// address for the owner of an soc in the absence of a signer.
 func (s *Soc) WithOwnerAddress(ownerAddress *Owner) *Soc {
 	s.owner = ownerAddress
 	return s
 }
 
-// AddSigner currently sets a single signer for the soc update.
+// AddSigner currently sets a single signer for the soc.
 //
 // This method will overwrite any value set with WithOwnerAddress with
 // the address derived from the given signer.
@@ -103,7 +100,7 @@ func (s *Soc) OwnerAddress() []byte {
 	return s.owner.address
 }
 
-// Address returns the soc Chunk address of the update.
+// Address returns the soc Chunk address.
 func (s *Soc) Address() (swarm.Address, error) {
 	return CreateAddress(s.id, s.owner)
 }
@@ -130,7 +127,6 @@ func FromChunk(ch swarm.Chunk) (*Soc, error) {
 	bmtHasher := bmtlegacy.New(bmtPool)
 	err := bmtHasher.SetSpan(int64(span))
 	chunkWithSpanData := chunkData[cursor:]
-	fmt.Printf("span %v\n", chunkData[cursor:cursor+swarm.SpanSize])
 	if err != nil {
 		return nil, err
 	}
@@ -142,23 +138,22 @@ func FromChunk(ch swarm.Chunk) (*Soc, error) {
 	bmtSum := bmtHasher.Sum(nil)
 	address := swarm.NewAddress(bmtSum)
 
-	toSignBytes := append(sch.id, bmtSum...)
-	fmt.Printf("\nunsigning:\n%v\n", toSignBytes)
+	h := swarm.NewHasher()
+	h.Write(sch.id)
+	h.Write(bmtSum)
+	toSignBytes := h.Sum(nil)
 
 	// recover owner information
 	recoveredPublicKey, err := crypto.Recover(sch.signature, toSignBytes)
 	if err != nil {
-		fmt.Println("one")
 		return nil, err
 	}
 	recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
 	if err != nil {
 		return nil, err
-		fmt.Println("two")
 	}
 	owner, err := NewOwner(recoveredEthereumAddress)
 	if err != nil {
-		fmt.Println("three")
 		return nil, err
 	}
 	sch.owner = owner
@@ -168,10 +163,10 @@ func FromChunk(ch swarm.Chunk) (*Soc, error) {
 }
 
 // CreateChunk creates a new chunk with signed payload ready for submission to the swarm network
-// from the given update data.
+// from the given chunk data.
 //
 // This method will fail if no signer has been defined.
-func (s *Soc) CreateChunk() (swarm.Chunk, error) {
+func (s *Soc) ToChunk() (swarm.Chunk, error) {
 	if s.signer == nil {
 		return nil, errors.New("signer missing")
 	}
@@ -181,11 +176,7 @@ func (s *Soc) CreateChunk() (swarm.Chunk, error) {
 	h.Write(s.chunk.Address().Bytes())
 	toSignBytes := h.Sum(nil)
 
-	//payloadSum := s.chunk.Address().Bytes()
-	//toSignBytes := append(s.id, payloadSum...)
-	fmt.Printf("\nsigning:\n%v\n", toSignBytes)
-
-	// sign the update
+	// sign the chunk
 	signature, err := s.signer.Sign(toSignBytes)
 	if err != nil {
 		return nil, err
