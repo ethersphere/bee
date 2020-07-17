@@ -64,45 +64,46 @@ func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 
 // storeDir stores all files contained in the given directory as a tar and returns its reference
 func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
-	manifest := jsonmanifest.NewManifest()
+	dirManifest := jsonmanifest.NewManifest()
 
-	bodyReader := dirInfo.dirReader
-	tr := tar.NewReader(bodyReader)
-	defer bodyReader.Close()
+	// set up HTTP body reader
+	tarReader := tar.NewReader(dirInfo.dirReader)
+	defer dirInfo.dirReader.Close()
 
+	// iterate through files in tar
 	for {
-		hdr, err := tr.Next()
+		fileHeader, err := tarReader.Next()
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("read tar stream error: %v", err)
 		}
 
+		filePath := fileHeader.Name
+
 		// only store regular files
-		if !hdr.FileInfo().Mode().IsRegular() {
+		if !fileHeader.FileInfo().Mode().IsRegular() {
+			logger.Warningf("skipping file upload for %s as it is not a regular file", filePath)
 			continue
 		}
 
-		path := hdr.Name
-		fileName := hdr.FileInfo().Name()
+		fileName := fileHeader.FileInfo().Name()
+		contentType := mime.TypeByExtension(filepath.Ext(fileHeader.Name))
 
-		contentType := hdr.PAXRecords["SCHILY.xattr."+"user.swarm.content-type"]
-		if contentType == "" {
-			contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
-		}
-
+		// store file
 		fileInfo := &fileUploadInfo{
 			fileName:    fileName,
-			fileSize:    hdr.FileInfo().Size(),
+			fileSize:    fileHeader.FileInfo().Size(),
 			contentType: contentType,
 			toEncrypt:   dirInfo.toEncrypt,
-			reader:      tr,
+			reader:      tarReader,
 		}
 		fileReference, err := storeFile(ctx, fileInfo, s)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %v", err)
 		}
 
+		// create manifest entry for uploaded file
 		headers := http.Header{}
 		headers.Set("Content-Type", contentType)
 		entry := &jsonmanifest.JSONEntry{
@@ -110,21 +111,29 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 			Name:      fileName,
 			Headers:   headers,
 		}
-		manifest.Add(path, entry)
 
-		logger.Infof("path: %v", path)
+		// add entry to dir manifest
+		dirManifest.Add(filePath, entry)
+
+		// temp
+		logger.Infof("path: %v", filePath)
 		logger.Infof("fileName: %v", fileName)
-		logger.Infof("filInfoSize: %v", hdr.FileInfo().Size())
-		logger.Infof("fileSize: %v", hdr.Size)
+		logger.Infof("filInfoSize: %v", fileHeader.FileInfo().Size())
 		logger.Infof("contentType: %v", contentType)
 		logger.Infof("fileReference: %v", fileReference)
 	}
 
-	b, err := manifest.Serialize()
+	// upload manifest
+	// first, serialize into byte array
+	b, err := dirManifest.Serialize()
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest serialize error: %v", err)
 	}
+
+	// set up reader for manifest file upload
 	r := bytes.NewReader(b)
+
+	// then, upload manifest
 	manifestFileInfo := &fileUploadInfo{
 		fileName:    "manifest.json",
 		fileSize:    r.Size(),
