@@ -52,5 +52,5 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		"Content-Type": {"application/octet-stream"},
 	}
 
-	s.internalDownloadHandler(w, r, address, additionalHeaders)
+	s.downloadHandler(w, r, address, additionalHeaders)
 }

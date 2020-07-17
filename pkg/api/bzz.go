@@ -123,5 +123,5 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", entry.GetName()))
 	}
 
-	s.internalDownloadHandler(w, r, entryAddress, additionalHeaders)
+	s.downloadHandler(w, r, entryAddress, additionalHeaders)
 }
