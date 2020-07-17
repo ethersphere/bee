@@ -16,6 +16,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -66,7 +67,7 @@ func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 // storeDir stores all files contained in the given directory as a tar and returns its reference
 func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
 	var contentKey swarm.Address // how is this determined?
-	// manifestPath := GetURI(r.Context()).Path // ??
+	manifest := jsonmanifest.NewManifest()
 
 	bodyReader := dirInfo.dirReader
 	tr := tar.NewReader(bodyReader)
@@ -86,8 +87,9 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 			continue
 		}
 
-		// manifestPath := path.Join(manifestPath, hdr.Name)
-		// apparently, `h.Xattrs[key] = value` == `h.PAXRecords["SCHILY.xattr."+key] = value`
+		path := hdr.Name
+		fileName := hdr.FileInfo().Name()
+
 		contentType := hdr.PAXRecords["SCHILY.xattr."+"user.swarm.content-type"]
 		if contentType == "" {
 			contentType = mime.TypeByExtension(filepath.Ext(hdr.Name))
@@ -128,7 +130,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		}
 
 		fileInfo := &fileUploadInfo{
-			fileName:    hdr.Name,
+			fileName:    fileName,
 			fileSize:    hdr.Size,
 			contentType: contentType,
 			toEncrypt:   dirInfo.toEncrypt,
@@ -136,6 +138,17 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		}
 		fileReference, err := storeFile(ctx, fileInfo, s)
 
+		headers := http.Header{}
+		entry := &jsonmanifest.JSONEntry{
+			Reference: fileReference,
+			Name:      path,
+			Headers:   headers,
+		}
+		_ = entry
+		_ = manifest
+
+		logger.Infof("path: %v", path)
+		logger.Infof("fileName: %v", fileName)
 		logger.Infof("fileReference: %v", fileReference)
 
 		if err != nil {
