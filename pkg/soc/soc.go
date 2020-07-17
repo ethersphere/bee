@@ -142,11 +142,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	}
 
 	// recover owner information
-	recoveredPublicKey, err := crypto.Recover(s.signature, toSignBytes)
-	if err != nil {
-		return nil, err
-	}
-	recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
+	recoveredEthereumAddress, err := recoverAddress(s.signature, toSignBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -222,4 +218,17 @@ func CreateAddress(id Id, owner *Owner) (swarm.Address, error) {
 	}
 	sum := h.Sum(nil)
 	return swarm.NewAddress(sum), nil
+}
+
+// recoverOwner returns the ethereum address of the owner of an soc.
+func recoverAddress(signature []byte, digest []byte) ([]byte, error) {
+	recoveredPublicKey, err := crypto.Recover(signature, digest)
+	if err != nil {
+		return nil, err
+	}
+	recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return recoveredEthereumAddress, nil
 }

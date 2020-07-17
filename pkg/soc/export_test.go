@@ -1,5 +1,6 @@
 package soc
 
 var (
-	ToSignDigest = toSignDigest
+	ToSignDigest   = toSignDigest
+	RecoverAddress = recoverAddress
 )

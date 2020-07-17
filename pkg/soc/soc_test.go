@@ -74,11 +74,12 @@ func TestToChunk(t *testing.T) {
 	}
 
 	// verify owner match
-	recoveredPublicKey, err := crypto.Recover(signature, toSignBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
+	//recoveredPublicKey, err := crypto.Recover(signature, toSignBytes)
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
+	recoveredEthereumAddress, err := soc.RecoverAddress(signature, toSignBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
