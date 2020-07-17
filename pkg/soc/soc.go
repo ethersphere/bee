@@ -10,10 +10,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/content"
-	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
 const (
@@ -21,10 +20,6 @@ const (
 	SignatureSize = 65
 	AddressSize   = crypto.AddressSize
 	minChunkSize  = IdSize + SignatureSize + swarm.SpanSize
-)
-
-var (
-	bmtPool = bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 )
 
 // Id is a soc identifier
@@ -133,7 +128,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	s.signature = chunkData[cursor : cursor+SignatureSize]
 	cursor += SignatureSize
 
-	spanBytes := chunkData[cursor:cursor+swarm.SpanSize]
+	spanBytes := chunkData[cursor : cursor+swarm.SpanSize]
 	cursor += swarm.SpanSize
 
 	ch, err := content.NewContentChunkFromBytesAndSpan(chunkData[cursor:], spanBytes)
@@ -196,8 +191,7 @@ func (s *Soc) ToChunk() (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	ch := swarm.NewChunk(socAddress, buf.Bytes())
-	return ch, nil
+	return swarm.NewChunk(socAddress, buf.Bytes()), nil
 }
 
 // toSignDigest creates a digest suitable for signing.

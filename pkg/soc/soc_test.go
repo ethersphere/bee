@@ -10,47 +10,11 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
-	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
-
-var (
-	bmtPool = bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
-)
-
-func newTestChunk(payload []byte) (swarm.Chunk, error) {
-	span := int64(len(payload))
-	bmtHasher := bmtlegacy.New(bmtPool)
-	err := bmtHasher.SetSpan(span)
-	if err != nil {
-		return nil, err
-	}
-	_, err = bmtHasher.Write(payload)
-	if err != nil {
-		return nil, err
-	}
-	bmtSum := bmtHasher.Sum(nil)
-	address := swarm.NewAddress(bmtSum)
-
-	// write payload with span and data bytes
-	spanBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(spanBytes, uint64(span))
-	payloadWithSpan := append(spanBytes, payload...)
-
-	return swarm.NewChunk(address, payloadWithSpan), nil
-}
-
-func newTestSocChunk(id soc.Id, ch swarm.Chunk, signer crypto.Signer) (swarm.Chunk, error) {
-	s := soc.New(id, ch)
-	err := s.AddSigner(signer)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.ToChunk()
-}
 
 // TestToChunk verifies that the chunk create from the Soc object
 // corresponds to the soc spec.
@@ -64,11 +28,11 @@ func TestToChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := newTestChunk(payload)
+	ch, err := content.NewContentChunk(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sch, err := newTestSocChunk(id, ch, signer)
+	sch, err := soc.NewChunk(id, ch, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,11 +105,11 @@ func TestFromChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := newTestChunk(payload)
+	ch, err := content.NewContentChunk(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sch, err := newTestSocChunk(id, ch, signer)
+	sch, err := soc.NewChunk(id, ch, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
