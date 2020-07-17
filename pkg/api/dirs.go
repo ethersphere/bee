@@ -22,11 +22,18 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// dirUploadResponse is returned when an HTTP request to upload a directory as a tar is successful
 type dirUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-// dirUploadHandler uploads a directory supplied as a tar in an HTTP Request
+// dirUploadInfo contains the data for a directory to be uploaded
+type dirUploadInfo struct {
+	dirReader io.ReadCloser
+	toEncrypt bool
+}
+
+// dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	dirInfo, err := getDirHTTPInfo(r)
 	if err != nil {
@@ -47,12 +54,6 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// dirUploadInfo contains the data for a directory to be uploaded
-type dirUploadInfo struct {
-	dirReader io.ReadCloser
-	toEncrypt bool
-}
-
 // getDirHTTPInfo extracts data for a directory to be uploaded from an HTTP request
 func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
@@ -62,7 +63,8 @@ func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 	}, nil
 }
 
-// storeDir stores all files contained in the given directory as a tar and returns its reference
+// storeDir stores all files recursively contained in the directory given as a tar
+// it returns the hash for the uploaded manifest corresponding to the uploaded dir
 func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
 	dirManifest := jsonmanifest.NewManifest()
 
@@ -70,7 +72,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 	tarReader := tar.NewReader(dirInfo.dirReader)
 	defer dirInfo.dirReader.Close()
 
-	// iterate through files in tar
+	// iterate through the files in the supplied tar
 	for {
 		fileHeader, err := tarReader.Next()
 		if err == io.EOF {
@@ -90,7 +92,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		fileName := fileHeader.FileInfo().Name()
 		contentType := mime.TypeByExtension(filepath.Ext(fileHeader.Name))
 
-		// store file
+		// upload file
 		fileInfo := &fileUploadInfo{
 			fileName:    fileName,
 			fileSize:    fileHeader.FileInfo().Size(),
