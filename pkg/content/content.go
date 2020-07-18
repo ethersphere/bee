@@ -50,12 +50,8 @@ func NewContentChunkWithSpan(data []byte, span int64) (swarm.Chunk, error) {
 	return swarm.NewChunk(address, payload), nil
 }
 
-// NewContentChunkFromBytesAndSpan deserializes a content-addressed chunk from separate
+// NewContentChunkWithSpanBytes deserializes a content-addressed chunk from separate
 // data and span byte slices.
-//func NewContentChunkFromBytesAndSpan(data []byte, spanBytes []byte) (swarm.Chunk, error) {
-//	span := binary.LittleEndian.Uint64(spanBytes)
-//	return newContentChunk(data, spanBytes, int64(span))
-//}
 func NewContentChunkWithSpanBytes(data []byte, spanBytes []byte) (swarm.Chunk, error) {
 	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	hasher := bmtlegacy.New(bmtPool)
@@ -84,8 +80,3 @@ func contentChunkFromBytes(chunkData []byte) (swarm.Chunk, error) {
 
 	return NewContentChunkWithSpanBytes(chunkData[8:], chunkData[:8])
 }
-
-//
-//// newContentChunk is the lowest level handler of deserialization of content-addressed chunks.
-//func newContentChunkyyp(data []byte, spanBytes []byte, span int64) (swarm.Chunk, error) {
-//	}
