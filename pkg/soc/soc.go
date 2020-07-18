@@ -131,7 +131,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	spanBytes := chunkData[cursor : cursor+swarm.SpanSize]
 	cursor += swarm.SpanSize
 
-	ch, err := content.NewContentChunkFromBytesAndSpan(chunkData[cursor:], spanBytes)
+	ch, err := content.NewContentChunkWithSpanBytes(chunkData[cursor:], spanBytes)
 	if err != nil {
 		return nil, err
 	}

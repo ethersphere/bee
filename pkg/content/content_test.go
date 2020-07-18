@@ -53,7 +53,7 @@ func TestContentChunkWithSpanBytes(t *testing.T) {
 	span := len(data)
 	spanBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spanBytes, uint64(span))
-	c, err := content.NewContentChunkFromBytesAndSpan(data, spanBytes)
+	c, err := content.NewContentChunkWithSpanBytes(data, spanBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
