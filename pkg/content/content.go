@@ -72,7 +72,7 @@ func NewContentChunkWithSpanBytes(data []byte, spanBytes []byte) (swarm.Chunk, e
 	return swarm.NewChunk(address, payload), nil
 }
 
-//// contentChunkFromBytes deserializes a content-addressed chunk.
+// contentChunkFromBytes deserializes a content-addressed chunk.
 func contentChunkFromBytes(chunkData []byte) (swarm.Chunk, error) {
 	if len(chunkData) < swarm.SpanSize {
 		return nil, errors.New("shorter than minimum length")
