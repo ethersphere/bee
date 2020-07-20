@@ -112,7 +112,7 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	}
 }
 
-// Credit increases the balance the peer has with us
+// Credit increases the amount of credit we have with the given peer (and decreases existing debt).
 func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	balance, err := a.getPeerBalance(peer)
 	if err != nil {
@@ -139,7 +139,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	return nil
 }
 
-// Debit increases the balance we have with the peer
+// Debit increases the amount of debt we have with the given peer (and decreases existing credit)
 func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	balance, err := a.getPeerBalance(peer)
 	if err != nil {
