@@ -139,7 +139,7 @@ func TestDelivery(t *testing.T) {
 
 	clientBalance, _ := clientMockAccounting.Balance(peerID)
 	if clientBalance != -int64(price) {
-		t.Fatalf("unexpected balance on clieent. want %d got %d", -price, clientBalance)
+		t.Fatalf("unexpected balance on client. want %d got %d", -price, clientBalance)
 	}
 
 }
