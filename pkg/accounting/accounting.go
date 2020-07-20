@@ -211,7 +211,6 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 		}
 
 		a.balances[peer.String()] = peerBalance
-		return peerBalance, nil
 	}
 
 	return peerBalance, nil
