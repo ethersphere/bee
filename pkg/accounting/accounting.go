@@ -83,7 +83,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	// the previously reserved balance plus the new price is the maximum amount paid if all current operations are successful
 	// since we pay this we have to reduce this (positive quantity) from the balance
 	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
-	if balance.balance-int64(balance.reserved+price) < -int64(a.disconnectThreshold) {
+	if balance.freeBalance()-int64(price) < -int64(a.disconnectThreshold) {
 		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
@@ -214,4 +214,8 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	}
 
 	return peerBalance, nil
+}
+
+func (pb *PeerBalance) freeBalance() int64 {
+	return pb.balance - int64(pb.reserved)
 }
