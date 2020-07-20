@@ -221,7 +221,7 @@ func CreateAddress(id Id, owner *Owner) (swarm.Address, error) {
 }
 
 // recoverOwner returns the ethereum address of the owner of an soc.
-func recoverAddress(signature []byte, digest []byte) ([]byte, error) {
+func recoverAddress(signature, digest []byte) ([]byte, error) {
 	recoveredPublicKey, err := crypto.Recover(signature, digest)
 	if err != nil {
 		return nil, err

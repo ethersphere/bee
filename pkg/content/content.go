@@ -52,7 +52,7 @@ func NewContentChunkWithSpan(data []byte, span int64) (swarm.Chunk, error) {
 
 // NewContentChunkWithSpanBytes deserializes a content-addressed chunk from separate
 // data and span byte slices.
-func NewContentChunkWithSpanBytes(data []byte, spanBytes []byte) (swarm.Chunk, error) {
+func NewContentChunkWithSpanBytes(data, spanBytes []byte) (swarm.Chunk, error) {
 	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	hasher := bmtlegacy.New(bmtPool)
 
