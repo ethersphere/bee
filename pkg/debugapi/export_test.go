@@ -13,4 +13,6 @@ type (
 	PinnedChunk              = pinnedChunk
 	ListPinnedChunksResponse = listPinnedChunksResponse
 	TagResponse              = tagResponse
+	BalancesResponse         = balancesResponse
+	BalanceResponse          = balanceResponse
 )

@@ -1,6 +1,8 @@
 package debugapi
 
 import (
+	"sort"
+
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -14,7 +16,7 @@ type balanceResponse struct {
 }
 
 type balancesResponse struct {
-	Balances []balanceResponse `json: "balances"`
+	Balances []balanceResponse `json:"balances"`
 }
 
 func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
@@ -22,28 +24,35 @@ func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 	balances, err := s.Accounting.Balances()
 
 	if err != nil {
+		// TODO: Do we need to return an explicit error?
 		s.Logger.Debugf("debug api: balances: %v", err)
 	}
 
 	var balResponses []balanceResponse
 
-	for key, value := range balances {
+	keys := make([]string, 0, len(balances))
+	for k := range balances {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
 		balResponses = append(balResponses, balanceResponse{
-			Peer:    key,
-			Balance: value,
+			Peer:    k,
+			Balance: balances[k],
 		})
 	}
 
-	jsonhttp.OK(w, balResponses)
+	jsonhttp.OK(w, balancesResponse{Balances: balResponses})
 
 }
 
-func (s *server) balancesPeerHandler(w http.ResponseWriter, r *http.Request) {
-
+func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	// TODO: Currently, we do not check the length of the hex address (such as prepending zeroes), should we?
 	peer, err := swarm.ParseHexAddress(mux.Vars(r)["peer"])
 	if err != nil {
 		s.Logger.Debugf("debug api: balances peer: parse peer address: %v", err)
-		jsonhttp.BadRequest(w, "bad address")
+		jsonhttp.BadRequest(w, "malformed peer address")
 		return
 	}
 
@@ -59,7 +68,5 @@ func (s *server) balancesPeerHandler(w http.ResponseWriter, r *http.Request) {
 		Peer:    peer.String(),
 		Balance: balance,
 	})
-
-	//
 
 }

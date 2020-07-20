@@ -90,7 +90,7 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.balancesHandler),
 	})
 	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.balancesPeerHandler),
+		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
