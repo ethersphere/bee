@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: Install k3d
-        run: curl -s https://raw.githubusercontent.com/rancher/k3d/master/install.sh | bash
+        run: curl -s https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
       - name: Install latest beekeeper
         run: |
           export TAG=$(curl -s https://api.github.com/repos/ethersphere/beekeeper/releases/latest | jq -r .tag_name)
