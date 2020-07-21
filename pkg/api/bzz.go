@@ -101,7 +101,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := manifest.FindEntry(path)
+	me, err := manifest.FindEntry(path)
 	if err != nil {
 		s.Logger.Debugf("bzz download: invalid path %s/%s: %v", address, path, err)
 		s.Logger.Error("bzz download: invalid path")
@@ -109,21 +109,41 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entryAddress := entry.GetReference()
+	manifestEntryAddress := me.GetReference()
 
 	var additionalHeaders http.Header
 
 	// copy headers from manifest
-	if entry.GetHeaders() != nil {
-		additionalHeaders = entry.GetHeaders().Clone()
+	if me.GetHeaders() != nil {
+		additionalHeaders = me.GetHeaders().Clone()
 	} else {
 		additionalHeaders = http.Header{}
 	}
 
 	// include filename
-	if entry.GetName() != "" {
-		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", entry.GetName()))
+	if me.GetName() != "" {
+		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", me.GetName()))
 	}
 
-	s.downloadHandler(w, r, entryAddress, additionalHeaders)
+	// read file entry
+	buf = bytes.NewBuffer(nil)
+	_, err = file.JoinReadAll(j, manifestEntryAddress, buf, toDecrypt)
+	if err != nil {
+		s.Logger.Debugf("bzz download: read file entry %s: %v", address, err)
+		s.Logger.Errorf("bzz download: read file entry %s", address)
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+	fe := &entry.Entry{}
+	err = fe.UnmarshalBinary(buf.Bytes())
+	if err != nil {
+		s.Logger.Debugf("bzz download: unmarshal file entry %s: %v", address, err)
+		s.Logger.Errorf("bzz download: unmarshal file entry %s", address)
+		jsonhttp.InternalServerError(w, "error unmarshaling file entry")
+		return
+	}
+
+	fileEntryAddress := fe.Reference()
+
+	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders)
 }
