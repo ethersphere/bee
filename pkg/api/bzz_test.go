@@ -57,12 +57,34 @@ func TestBzz(t *testing.T) {
 		</html>`
 
 		var err error
+		var fileContentReference swarm.Address
 		var fileReference swarm.Address
 		var manifestFileReference swarm.Address
 
 		// save file
 
-		fileReference, err = file.SplitWriteAll(context.Background(), sp, strings.NewReader(sampleHtml), int64(len(sampleHtml)), false)
+		fileContentReference, err = file.SplitWriteAll(context.Background(), sp, strings.NewReader(sampleHtml), int64(len(sampleHtml)), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fileMetadata := entry.NewMetadata(fileName)
+		fileMetadataBytes, err := json.Marshal(fileMetadata)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fileMetadataReference, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileMetadataBytes), int64(len(fileMetadataBytes)), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fe := entry.New(fileContentReference, fileMetadataReference)
+		fileEntryBytes, err := fe.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -103,12 +125,12 @@ func TestBzz(t *testing.T) {
 
 		// now join both references (mr,fr) to create an entry and store it.
 		newEntry := entry.New(fr, mr)
-		fileEntryBytes, err := newEntry.MarshalBinary()
+		manifestFileEntryBytes, err := newEntry.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		manifestFileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), false)
+		manifestFileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileEntryBytes), int64(len(manifestFileEntryBytes)), false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,7 +146,7 @@ func TestBzz(t *testing.T) {
 		if params["filename"] != fileName {
 			t.Fatal("Invalid file name detected")
 		}
-		if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", fileReference) {
+		if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", fileContentReference) {
 			t.Fatal("Invalid ETags header received")
 		}
 		if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
