@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -43,14 +44,23 @@ func TestDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	serverMockAccounting := accountingmock.NewAccounting()
+
+	price := uint64(10)
+	pricerMock := accountingmock.NewPricer(price, price)
+
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(retrieval.Options{
-		Storer: mockStorer,
-		Logger: logger,
+		Storer:     mockStorer,
+		Logger:     logger,
+		Accounting: serverMockAccounting,
+		Pricer:     pricerMock,
 	})
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
+
+	clientMockAccounting := accountingmock.NewAccounting()
 
 	// client mock storer does not store any data at this point
 	// but should be checked at at the end of the test for the
@@ -68,6 +78,8 @@ func TestDelivery(t *testing.T) {
 		ChunkPeerer: ps,
 		Storer:      clientMockStorer,
 		Logger:      logger,
+		Accounting:  clientMockAccounting,
+		Pricer:      pricerMock,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
@@ -118,6 +130,11 @@ func TestDelivery(t *testing.T) {
 
 	if len(gotDeliveries) != 1 {
 		t.Fatalf("got too many deliveries. want 1 got %d", len(gotDeliveries))
+	}
+
+	clientBalance, _ := clientMockAccounting.Balance(peerID)
+	if clientBalance != -int64(price) {
+		t.Fatalf("unexpected balance on client. want %d got %d", -price, clientBalance)
 	}
 
 }
