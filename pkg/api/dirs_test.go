@@ -37,20 +37,44 @@ func TestDirs(t *testing.T) {
 	})
 
 	t.Run("empty file", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "dir-test")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(file.Name())
+		f := tempFile(t, "empty", nil)
+		defer os.Remove(f.Name())
 
-		reader, err := os.Open(file.Name())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, reader, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, getFileReader(t, f), http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "could not store dir",
 			Code:    http.StatusInternalServerError,
 		}, nil)
 	})
+
+	t.Run("non tar file", func(t *testing.T) {
+		f := tempFile(t, "non-tar", []byte("some data"))
+		defer os.Remove(f.Name())
+
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, getFileReader(t, f), http.StatusInternalServerError, jsonhttp.StatusResponse{
+			Message: "could not store dir",
+			Code:    http.StatusInternalServerError,
+		}, nil)
+	})
+}
+
+func tempFile(t *testing.T, name string, data []byte) *os.File {
+	f, err := ioutil.TempFile("", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return f
+}
+
+func getFileReader(t *testing.T, f *os.File) *os.File {
+	r, err := os.Open(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }

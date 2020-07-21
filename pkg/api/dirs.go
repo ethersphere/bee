@@ -123,7 +123,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		dirManifest.Add(filePath, fileEntry)
 	}
 
-	// check through the manifest if files were uploaded
+	// check if files were uploaded through the manifest
 	if len(dirManifest.Entries) == 0 {
 		return swarm.ZeroAddress, fmt.Errorf("no files in tar")
 	}
