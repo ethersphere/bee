@@ -132,11 +132,6 @@ func TestDelivery(t *testing.T) {
 		t.Fatalf("got too many deliveries. want 1 got %d", len(gotDeliveries))
 	}
 
-	serverBalance, _ := serverMockAccounting.Balance(peerID)
-	if serverBalance != int64(price) {
-		t.Fatalf("unexpected balance on server. want %d got %d", price, serverBalance)
-	}
-
 	clientBalance, _ := clientMockAccounting.Balance(peerID)
 	if clientBalance != -int64(price) {
 		t.Fatalf("unexpected balance on client. want %d got %d", -price, clientBalance)
