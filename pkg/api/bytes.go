@@ -5,20 +5,20 @@
 package api
 
 import (
+<<<<<<< HEAD
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+=======
+>>>>>>> master
 	"net/http"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -47,7 +47,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	addressHex := mux.Vars(r)["address"]
-	ctx := r.Context()
 
 	address, err := swarm.ParseHexAddress(addressHex)
 	if err != nil {
@@ -57,20 +56,8 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
-	j := joiner.NewSimpleJoiner(s.Storer)
-	dataSize, err := j.Size(ctx, address)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Debugf("bytes: not found %s: %v", address, err)
-			s.Logger.Error("bytes: not found")
-			jsonhttp.NotFound(w, "not found")
-			return
-		}
-		s.Logger.Debugf("bytes: invalid root chunk %s: %v", address, err)
-		s.Logger.Error("bytes: invalid root chunk")
-		jsonhttp.BadRequest(w, "invalid root chunk")
-		return
+	additionalHeaders := http.Header{
+		"Content-Type": {"application/octet-stream"},
 	}
 
 	targets := r.URL.Query().Get("targets")
@@ -93,4 +80,5 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Debugf("bytes download: data read %s: %v", address, err)
 		s.Logger.Errorf("bytes download: data read %s", address)
 	}
+	s.downloadHandler(w, r, address, additionalHeaders)
 }
