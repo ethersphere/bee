@@ -67,6 +67,9 @@ func TestBytes(t *testing.T) {
 		if !bytes.Equal(data, content) {
 			t.Fatalf("data mismatch. got %s, want %s", string(data), string(content))
 		}
+		if resp.Header.Get("Targets") != "0x222" {
+			t.Fatal("Invalid Targets")
+		}
 	})
 
 	t.Run("not found", func(t *testing.T) {

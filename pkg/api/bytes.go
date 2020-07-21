@@ -88,6 +88,7 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", fmt.Sprintf("%q", address))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
+	w.Header().Set("Targets", fmt.Sprintf("%s", targets))
 	if _, err = io.Copy(w, outBuffer); err != nil {
 		s.Logger.Debugf("bytes download: data read %s: %v", address, err)
 		s.Logger.Errorf("bytes download: data read %s", address)

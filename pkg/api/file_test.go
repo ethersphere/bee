@@ -232,6 +232,9 @@ func TestFiles(t *testing.T) {
 			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
 				t.Fatal("Invalid content type detected")
 			}
+			if rcvdHeader.Get("Targets") != "0x222" {
+				t.Fatal("Invalid Targets")
+			}
 
 		})
 
