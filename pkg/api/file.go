@@ -279,6 +279,9 @@ func (s *server) downloadHandler(
 	reference swarm.Address,
 	additionalHeaders http.Header,
 ) {
+
+	targets := r.URL.Query().Get("targets")
+	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
 	ctx := r.Context()
 
 	toDecrypt := len(reference.Bytes()) == (swarm.HashSize + encryption.KeyLength)

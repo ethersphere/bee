@@ -5,14 +5,6 @@
 package api
 
 import (
-<<<<<<< HEAD
-	"bytes"
-	"context"
-	"errors"
-	"fmt"
-	"io"
-=======
->>>>>>> master
 	"net/http"
 	"strings"
 
@@ -60,25 +52,5 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		"Content-Type": {"application/octet-stream"},
 	}
 
-	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
-	ctx = r.Context()
-
-	outBuffer := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(ctx, j, address, outBuffer, toDecrypt)
-	if err != nil && c == 0 {
-		s.Logger.Debugf("bytes download: data join %s: %v", address, err)
-		s.Logger.Errorf("bytes download: data join %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-	w.Header().Set("ETag", fmt.Sprintf("%q", address))
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	w.Header().Set("Targets", targets)
-	if _, err = io.Copy(w, outBuffer); err != nil {
-		s.Logger.Debugf("bytes download: data read %s: %v", address, err)
-		s.Logger.Errorf("bytes download: data read %s", address)
-	}
 	s.downloadHandler(w, r, address, additionalHeaders)
 }
