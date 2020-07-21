@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -65,23 +66,24 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir            string
-	DBCapacity         uint64
-	Password           string
-	APIAddr            string
-	DebugAPIAddr       string
-	Addr               string
-	NATAddr            string
-	EnableWS           bool
-	EnableQUIC         bool
-	NetworkID          uint64
-	WelcomeMessage     string
-	Bootnodes          []string
-	CORSAllowedOrigins []string
-	Logger             logging.Logger
-	TracingEnabled     bool
-	TracingEndpoint    string
-	TracingServiceName string
+	DataDir             string
+	DBCapacity          uint64
+	Password            string
+	APIAddr             string
+	DebugAPIAddr        string
+	Addr                string
+	NATAddr             string
+	EnableWS            bool
+	EnableQUIC          bool
+	NetworkID           uint64
+	WelcomeMessage      string
+	Bootnodes           []string
+	CORSAllowedOrigins  []string
+	Logger              logging.Logger
+	TracingEnabled      bool
+	TracingEndpoint     string
+	TracingServiceName  string
+	DisconnectThreshold uint64
 }
 
 func NewBee(o Options) (*Bee, error) {
@@ -232,10 +234,18 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.localstoreCloser = storer
 
+	acc := accounting.NewAccounting(accounting.Options{
+		Logger:              logger,
+		Store:               stateStore,
+		DisconnectThreshold: o.DisconnectThreshold,
+	})
+
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
+		Accounting:  acc,
+		Pricer:      accounting.NewFixedPricer(address, 10),
 	})
 	tagg := tags.NewTags()
 

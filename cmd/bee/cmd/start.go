@@ -26,25 +26,26 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameDataDir            = "data-dir"
-		optionNameDBCapacity         = "db-capacity"
-		optionNamePassword           = "password"
-		optionNamePasswordFile       = "password-file"
-		optionNameAPIAddr            = "api-addr"
-		optionNameP2PAddr            = "p2p-addr"
-		optionNameNATAddr            = "nat-addr"
-		optionNameP2PWSEnable        = "p2p-ws-enable"
-		optionNameP2PQUICEnable      = "p2p-quic-enable"
-		optionNameDebugAPIEnable     = "debug-api-enable"
-		optionNameDebugAPIAddr       = "debug-api-addr"
-		optionNameBootnodes          = "bootnode"
-		optionNameNetworkID          = "network-id"
-		optionWelcomeMessage         = "welcome-message"
-		optionCORSAllowedOrigins     = "cors-allowed-origins"
-		optionNameTracingEnabled     = "tracing-enable"
-		optionNameTracingEndpoint    = "tracing-endpoint"
-		optionNameTracingServiceName = "tracing-service-name"
-		optionNameVerbosity          = "verbosity"
+		optionNameDataDir             = "data-dir"
+		optionNameDBCapacity          = "db-capacity"
+		optionNamePassword            = "password"
+		optionNamePasswordFile        = "password-file"
+		optionNameAPIAddr             = "api-addr"
+		optionNameP2PAddr             = "p2p-addr"
+		optionNameNATAddr             = "nat-addr"
+		optionNameP2PWSEnable         = "p2p-ws-enable"
+		optionNameP2PQUICEnable       = "p2p-quic-enable"
+		optionNameDebugAPIEnable      = "debug-api-enable"
+		optionNameDebugAPIAddr        = "debug-api-addr"
+		optionNameBootnodes           = "bootnode"
+		optionNameNetworkID           = "network-id"
+		optionWelcomeMessage          = "welcome-message"
+		optionCORSAllowedOrigins      = "cors-allowed-origins"
+		optionNameTracingEnabled      = "tracing-enable"
+		optionNameTracingEndpoint     = "tracing-endpoint"
+		optionNameTracingServiceName  = "tracing-service-name"
+		optionNameVerbosity           = "verbosity"
+		optionNameDisconnectThreshold = "disconnect-threshold"
 	)
 
 	cmd := &cobra.Command{
@@ -112,23 +113,24 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			}
 
 			b, err := node.NewBee(node.Options{
-				DataDir:            c.config.GetString(optionNameDataDir),
-				DBCapacity:         c.config.GetUint64(optionNameDBCapacity),
-				Password:           password,
-				APIAddr:            c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr:       debugAPIAddr,
-				Addr:               c.config.GetString(optionNameP2PAddr),
-				NATAddr:            c.config.GetString(optionNameNATAddr),
-				EnableWS:           c.config.GetBool(optionNameP2PWSEnable),
-				EnableQUIC:         c.config.GetBool(optionNameP2PQUICEnable),
-				NetworkID:          c.config.GetUint64(optionNameNetworkID),
-				WelcomeMessage:     c.config.GetString(optionWelcomeMessage),
-				Bootnodes:          c.config.GetStringSlice(optionNameBootnodes),
-				CORSAllowedOrigins: c.config.GetStringSlice(optionCORSAllowedOrigins),
-				TracingEnabled:     c.config.GetBool(optionNameTracingEnabled),
-				TracingEndpoint:    c.config.GetString(optionNameTracingEndpoint),
-				TracingServiceName: c.config.GetString(optionNameTracingServiceName),
-				Logger:             logger,
+				DataDir:             c.config.GetString(optionNameDataDir),
+				DBCapacity:          c.config.GetUint64(optionNameDBCapacity),
+				Password:            password,
+				APIAddr:             c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr:        debugAPIAddr,
+				Addr:                c.config.GetString(optionNameP2PAddr),
+				NATAddr:             c.config.GetString(optionNameNATAddr),
+				EnableWS:            c.config.GetBool(optionNameP2PWSEnable),
+				EnableQUIC:          c.config.GetBool(optionNameP2PQUICEnable),
+				NetworkID:           c.config.GetUint64(optionNameNetworkID),
+				WelcomeMessage:      c.config.GetString(optionWelcomeMessage),
+				Bootnodes:           c.config.GetStringSlice(optionNameBootnodes),
+				CORSAllowedOrigins:  c.config.GetStringSlice(optionCORSAllowedOrigins),
+				TracingEnabled:      c.config.GetBool(optionNameTracingEnabled),
+				TracingEndpoint:     c.config.GetString(optionNameTracingEndpoint),
+				TracingServiceName:  c.config.GetString(optionNameTracingServiceName),
+				Logger:              logger,
+				DisconnectThreshold: c.config.GetUint64(optionNameDisconnectThreshold),
 			})
 			if err != nil {
 				return err
@@ -192,6 +194,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
+	cmd.Flags().Uint64(optionNameDisconnectThreshold, 100000000000, "threshold in BZZ until which you allow peers to be indebted before disconnecting")
 
 	c.root.AddCommand(cmd)
 	return nil
