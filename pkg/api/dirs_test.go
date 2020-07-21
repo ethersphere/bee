@@ -28,11 +28,10 @@ func TestDirs(t *testing.T) {
 		})
 	)
 
-	t.Run("non-tar", func(t *testing.T) {
-		d := []byte("text")
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, bytes.NewReader(d), http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Message: "could not store dir",
-			Code:    http.StatusInternalServerError,
+	t.Run("empty request", func(t *testing.T) {
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, bytes.NewReader(nil), http.StatusBadRequest, jsonhttp.StatusResponse{
+			Message: "could not extract dir info from request",
+			Code:    http.StatusBadRequest,
 		}, nil)
 	})
 }

@@ -8,6 +8,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -56,6 +57,9 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // getDirHTTPInfo extracts data for a directory to be uploaded from an HTTP request
 func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
+	if r.Body == http.NoBody {
+		return &dirUploadInfo{}, errors.New("request has no body")
+	}
 	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
 	return &dirUploadInfo{
 		reader:    r.Body,
