@@ -190,4 +190,76 @@ func TestFiles(t *testing.T) {
 		})
 	})
 
+	t.Run("upload-then-download-with-targets", func(t *testing.T) {
+		fileName := "sample.html"
+		rootHash := "9f8ba407ff4809e877c75506247e0f1faf206262d1ddd7b3c8f9775d3501be50"
+		sampleHtml := `<!DOCTYPE html>
+		<html>
+		<body>
+
+		<h1>My First Heading</h1>
+
+		<p>My first paragraph.</p>
+
+		</body>
+		</html>`
+		fileDownloadResource = func(addr string) string { return "/files/" + addr + "?targets=0x222" }
+
+		t.Run("binary", func(t *testing.T) {
+			headers := make(http.Header)
+			headers.Add("Content-Type", "text/html; charset=utf-8")
+
+			rcvdHeader := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, strings.NewReader(sampleHtml), http.StatusOK, api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(rootHash),
+			}, headers)
+
+			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
+				t.Fatal("Invalid ETags header received")
+			}
+
+			// try to fetch the same file and check the data
+			rcvdHeader = jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, []byte(sampleHtml), nil)
+
+			// check the headers
+			cd := rcvdHeader.Get("Content-Disposition")
+			_, params, err := mime.ParseMediaType(cd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if params["filename"] != fileName {
+				t.Fatal("Invalid filename detected")
+			}
+			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
+				t.Fatal("Invalid content type detected")
+			}
+
+		})
+
+		t.Run("multipart", func(t *testing.T) {
+			rcvdHeader := jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, fileUploadResource, fileName, []byte(sampleHtml), http.StatusOK, "", api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(rootHash),
+			})
+
+			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
+				t.Fatal("Invalid ETags header received")
+			}
+
+			// try to fetch the same file and check the data
+			rcvdHeader = jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, []byte(sampleHtml), nil)
+
+			// check the headers
+			cd := rcvdHeader.Get("Content-Disposition")
+			_, params, err := mime.ParseMediaType(cd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if params["filename"] != fileName {
+				t.Fatal("Invalid filename detected")
+			}
+			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
+				t.Fatal("Invalid content type detected")
+			}
+		})
+	})
+
 }
