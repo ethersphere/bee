@@ -31,6 +31,10 @@ import (
 )
 
 const (
+	defaultBufSize = 4096
+)
+
+const (
 	multiPartFormData = "multipart/form-data"
 	EncryptHeader     = "swarm-encrypt"
 )
@@ -254,17 +258,38 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	additionalHeaders := http.Header{
+		"Content-Disposition": {fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename)},
+		"Content-Type":        {metaData.MimeType},
+	}
+
+	s.downloadHandler(w, r, e.Reference(), additionalHeaders)
+}
+
+// downloadHandler contains common logic for dowloading Swarm file from API
+func (s *server) downloadHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	reference swarm.Address,
+	additionalHeaders http.Header,
+) {
+	ctx := r.Context()
+
+	toDecrypt := len(reference.Bytes()) == (swarm.HashSize + encryption.KeyLength)
+
+	j := joiner.NewSimpleJoiner(s.Storer)
+
 	// send the file data back in the response
-	dataSize, err := j.Size(r.Context(), e.Reference())
+	dataSize, err := j.Size(ctx, reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Debugf("file download: not found %s: %v", e.Reference(), err)
-			s.Logger.Errorf("file download: not found %s", addr)
-			jsonhttp.NotFound(w, nil)
+			s.Logger.Debugf("api download: not found %s: %v", reference, err)
+			s.Logger.Error("api download: not found")
+			jsonhttp.NotFound(w, "not found")
 			return
 		}
-		s.Logger.Debugf("file download: invalid root chunk %s: %v", e.Reference(), err)
-		s.Logger.Errorf("file download: invalid root chunk %s", addr)
+		s.Logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
+		s.Logger.Error("api download: invalid root chunk")
 		jsonhttp.BadRequest(w, "invalid root chunk")
 		return
 	}
@@ -276,36 +301,46 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		<-ctx.Done()
 		if err := ctx.Err(); err != nil {
 			if err := pr.CloseWithError(err); err != nil {
-				s.Logger.Debugf("file download: data join close %s: %v", addr, err)
-				s.Logger.Errorf("file download: data join close %s", addr)
+				s.Logger.Debugf("api download: data join close %s: %v", reference, err)
+				s.Logger.Errorf("api download: data join close %s", reference)
 			}
 		}
 	}()
 
 	go func() {
-		_, err := file.JoinReadAll(j, e.Reference(), pw, toDecrypt)
+		_, err := file.JoinReadAll(j, reference, pw, toDecrypt)
 		if err := pw.CloseWithError(err); err != nil {
-			s.Logger.Debugf("file download: data join close %s: %v", addr, err)
-			s.Logger.Errorf("file download: data join close %s", addr)
+			s.Logger.Debugf("api download: data join close %s: %v", reference, err)
+			s.Logger.Errorf("api download: data join close %s", reference)
 		}
 	}()
 
 	bpr := bufio.NewReader(pr)
 
-	if b, err := bpr.Peek(4096); err != nil && err != io.EOF && len(b) == 0 {
-		s.Logger.Debugf("file download: data join %s: %v", addr, err)
-		s.Logger.Errorf("file download: data join %s", addr)
+	if b, err := bpr.Peek(defaultBufSize); err != nil && err != io.EOF && len(b) == 0 {
+		s.Logger.Debugf("api download: data join %s: %v", reference, err)
+		s.Logger.Errorf("api download: data join %s", reference)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 
-	w.Header().Set("ETag", fmt.Sprintf("%q", e.Reference()))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename))
-	w.Header().Set("Content-Type", metaData.MimeType)
+	// include additional headers
+	for name, values := range additionalHeaders {
+		var v string
+		for _, value := range values {
+			if v != "" {
+				v += "; "
+			}
+			v += value
+		}
+		w.Header().Set(name, v)
+	}
+
+	w.Header().Set("ETag", fmt.Sprintf("%q", reference))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
 	if _, err = io.Copy(w, bpr); err != nil {
-		s.Logger.Debugf("file download: data read %s: %v", addr, err)
-		s.Logger.Errorf("file download: data read %s", addr)
+		s.Logger.Debugf("api download: data read %s: %v", reference, err)
+		s.Logger.Errorf("api download: data read %s", reference)
 	}
 }
