@@ -113,14 +113,19 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		// create manifest entry for uploaded file
 		headers := http.Header{}
 		headers.Set("Content-Type", contentType)
-		entry := &jsonmanifest.JSONEntry{
+		fileEntry := &jsonmanifest.JSONEntry{
 			Reference: fileReference,
 			Name:      fileName,
 			Headers:   headers,
 		}
 
 		// add entry to dir manifest
-		dirManifest.Add(filePath, entry)
+		dirManifest.Add(filePath, fileEntry)
+	}
+
+	// check through the manifest if files were uploaded
+	if len(dirManifest.Entries) == 0 {
+		return swarm.ZeroAddress, fmt.Errorf("no files in tar")
 	}
 
 	// upload manifest
