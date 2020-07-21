@@ -104,6 +104,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %v", err)
 		}
+		logger.Tracef("uploaded dir file %v with reference %v", filePath, fileReference)
 
 		// create manifest entry for uploaded file
 		headers := http.Header{}
@@ -116,13 +117,6 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 
 		// add entry to dir manifest
 		dirManifest.Add(filePath, entry)
-
-		// temp
-		logger.Infof("path: %v", filePath)
-		logger.Infof("fileName: %v", fileName)
-		logger.Infof("filInfoSize: %v", fileHeader.FileInfo().Size())
-		logger.Infof("contentType: %v", contentType)
-		logger.Infof("fileReference: %v", fileReference)
 	}
 
 	// upload manifest
