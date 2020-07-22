@@ -61,10 +61,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}()
 	var req pb.Payment
 	if err := r.ReadMsg(&req); err != nil {
-		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
+		return fmt.Errorf("read request: %w peer %v", err, p.Address)
 	}
 
-	s.logger.Errorf("received payment of %d", req.Amount)
+	s.logger.Tracef("received payment message from peer %v of %d", p.Address, req.Amount)
 	return s.observer.NotifyPayment(p.Address, req.Amount)
 }
 
@@ -84,13 +84,13 @@ func (s *Service) Pay(peer swarm.Address, amount uint64) error {
 		}
 	}()
 
+	s.logger.Tracef("sending payment message from peer %v of %d", peer, amount)
 	w := protobuf.NewWriter(stream)
-
 	return w.WriteMsgWithContext(ctx, &pb.Payment{
 		Amount: amount,
 	})
 }
 
-func (s *Service) SetObserver(observer settlement.PaymentObserver) {
+func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
 	s.observer = observer
 }

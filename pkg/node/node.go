@@ -253,7 +253,7 @@ func NewBee(o Options) (*Bee, error) {
 		Settlement:       settlement,
 	})
 
-	settlement.SetObserver(acc)
+	settlement.SetPaymentObserver(acc)
 
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
