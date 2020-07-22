@@ -242,7 +242,7 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) 
 	e := entry.New(fr, mr)
 	fileEntryBytes, err := e.MarshalBinary()
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("entry marhsal error: %v", err)
+		return swarm.ZeroAddress, fmt.Errorf("entry marshal error: %v", err)
 	}
 	sp = splitter.NewSimpleSplitter(s)
 	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), fileInfo.toEncrypt)
