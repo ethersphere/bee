@@ -20,7 +20,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 ```
 
 
-Our documenation is hosted at:
+Our documentation is hosted at:
 - https://swarm-gateways.net/bzz:/docs.swarm.eth/
 - https://docs.ethswarm.org
 
