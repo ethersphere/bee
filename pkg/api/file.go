@@ -210,7 +210,7 @@ type fileUploadInfo struct {
 }
 
 // storeFile uploads the given file and returns its reference
-// this function was extracted from `fileUploadHandler` and should eventually replace its current code, along with `GetFileHTTPInfo`
+// this function was extracted from `fileUploadHandler` and should eventually replace its current code
 func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)

@@ -156,7 +156,7 @@ func TestDirs(t *testing.T) {
 			tarReader := tarFiles(t, dirFiles)
 
 			// verify directory tar upload response
-			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusOK, api.DirUploadResponse{
+			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusOK, api.FileUploadResponse{
 				Reference: swarm.MustParseHexAddress(tc.expectedHash),
 			}, nil)
 

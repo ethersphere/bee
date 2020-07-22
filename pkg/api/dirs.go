@@ -23,11 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// DirUploadResponse is returned when an HTTP request to upload a directory as a tar is successful
-type DirUploadResponse struct {
-	Reference swarm.Address `json:"reference"` // manifest hash for the uploaded dir
-}
-
 // dirUploadInfo contains the data for a directory to be uploaded
 type dirUploadInfo struct {
 	toEncrypt bool
@@ -50,7 +45,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, DirUploadResponse{
+	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})
 }
