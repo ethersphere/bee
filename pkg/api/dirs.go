@@ -140,7 +140,6 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 
 	// then, upload manifest
 	manifestFileInfo := &fileUploadInfo{
-		name:        "manifest.json",
 		size:        r.Size(),
 		contentType: ManifestContentType,
 		toEncrypt:   dirInfo.toEncrypt,

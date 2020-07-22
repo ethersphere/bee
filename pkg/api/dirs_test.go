@@ -78,7 +78,7 @@ func TestDirs(t *testing.T) {
 
 	for _, tc := range []dirTestCase{
 		{
-			expectedHash: "8db93fe0558b9692a24f96cec0880bc8cdad692063ba9d9db411f1c13b851f7a",
+			expectedHash: "2fa041bd35ebff676727eb3023272f43b1e0fa71c8735cc1a7487e9131f963c4",
 			files: []dirTestCaseFile{
 				{
 					data:      []byte("first file data"),
@@ -101,7 +101,7 @@ func TestDirs(t *testing.T) {
 			},
 		},
 		{
-			expectedHash: "af73c63627d076ed12dda839cf236e460b797cb29ab0e20c0e453559ed37cdd3",
+			expectedHash: "c3cb9fbe2efa7bbc979245d9bac1400bd4894371776b7560309d49e687514dd6",
 			files: []dirTestCaseFile{
 				{
 					data:      []byte("robots text"),
