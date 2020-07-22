@@ -107,7 +107,7 @@ func (p *Pss) Register(topic trojan.Topic, hndlr Handler) {
 func (p *Pss) Deliver(c swarm.Chunk) {
 	if trojan.IsPotential(c) {
 		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
-		h := p.getHandler(m.Topic)
+		h := p.GetHandler(m.Topic)
 		if h != nil {
 			//TODO replace with logger
 			//log.Debug("executing handler for trojan", "process", "global-pinning", "chunk", hex.EncodeToString(c.Address()))
@@ -119,9 +119,16 @@ func (p *Pss) Deliver(c swarm.Chunk) {
 	//log.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", hex.EncodeToString(c.Address()))
 }
 
-// getHandler returns the Handler func registered in pss for the given topic
-func (p *Pss) getHandler(topic trojan.Topic) Handler {
+// GetHandler returns the Handler func registered in pss for the given topic
+func (p *Pss) GetHandler(topic trojan.Topic) Handler {
 	p.handlersMu.RLock()
 	defer p.handlersMu.RUnlock()
 	return p.handlers[topic]
+}
+
+// GetAllHandlers returns all the Handler funcs registered in pss
+func (p *Pss) GetAllHandlers() map[trojan.Topic]Handler {
+	p.handlersMu.RLock()
+	defer p.handlersMu.RUnlock()
+	return p.handlers
 }

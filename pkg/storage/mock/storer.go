@@ -74,6 +74,16 @@ func NewValidatingStorer(v swarm.ChunkValidator, tags *tags.Tags) *MockStorer {
 	}
 }
 
+func NewTagsStorer(tags *tags.Tags) *MockStorer {
+	return &MockStorer{
+		store:     make(map[string][]byte),
+		modeSet:   make(map[string]storage.ModeSet),
+		modeSetMu: sync.Mutex{},
+		pinSetMu:  sync.Mutex{},
+		tags:      tags,
+	}
+}
+
 func (m *MockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
