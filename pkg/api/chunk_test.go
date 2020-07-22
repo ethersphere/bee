@@ -27,7 +27,9 @@ import (
 func TestChunkUploadDownload(t *testing.T) {
 
 	var (
+		targets              = "0x222"
 		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		resourceTargets      = func(addr swarm.Address) string { return "/chunks/" + addr.String() + "?targets=" + targets }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		invalidHash          = swarm.MustParseHexAddress("bbccdd")
 		validContent         = []byte("bbaatt")
@@ -115,6 +117,29 @@ func TestChunkUploadDownload(t *testing.T) {
 		// Also check if the chunk is pinned
 		if mockValidatingStorer.GetModeSet(validHash) != storage.ModeSetPin {
 			t.Fatal("chunk is not pinned")
+		}
+
+	})
+	t.Run("retrieve-targets", func(t *testing.T) {
+		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		})
+
+		// try to fetch the same chunk
+		resp := request(t, client, http.MethodGet, resourceTargets(validHash), nil, http.StatusOK)
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(validContent, data) {
+			t.Fatal("data retrieved doesnt match uploaded content")
+		}
+
+		// Check if the target is obtained correctly
+		if resp.Header.Get("Targets") != targets {
+			t.Fatal("Invalid Targets")
 		}
 
 	})
