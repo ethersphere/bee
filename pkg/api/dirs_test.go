@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -30,6 +31,7 @@ type dirTestCase struct {
 type dirTestCaseFile struct {
 	data      []byte
 	name      string
+	path      string
 	reference swarm.Address
 	headers   http.Header
 }
@@ -74,27 +76,59 @@ func TestDirs(t *testing.T) {
 		}, nil)
 	})
 
-	// auxiliary http.Header vars for response verification
-	pngHeader := http.Header{}
-	pngHeader.Set("Content-Type", "image/png")
-	jpgHeader := http.Header{}
-	jpgHeader.Set("Content-Type", "image/jpeg")
-
 	for _, tc := range []dirTestCase{
 		{
-			expectedHash: "23bae268691842905a5273acf489d1383d1da5987b0179cf94e256814064aa63",
+			expectedHash: "8db93fe0558b9692a24f96cec0880bc8cdad692063ba9d9db411f1c13b851f7a",
 			files: []dirTestCaseFile{
 				{
 					data:      []byte("first file data"),
-					name:      "img1.png",
-					reference: swarm.MustParseHexAddress("e0f3cb26ab1559e6734794134cf04dd8b836342836d46178813cdb16272da7c1"),
-					headers:   pngHeader,
+					name:      "file1",
+					path:      "",
+					reference: swarm.MustParseHexAddress("3c07cd2cf5c46208d69d554b038f4dce203f53ac02cb8a313a0fe1e3fe6cc3cf"),
+					headers: http.Header{
+						"Content-Type": {""},
+					},
 				},
 				{
 					data:      []byte("second file data"),
-					name:      "img2.jpg",
-					reference: swarm.MustParseHexAddress("acf73b043a413e6bbccea5175a99a4577c4f6b5933c4267a1259aefea7658a1d"),
-					headers:   jpgHeader,
+					name:      "file2",
+					path:      "",
+					reference: swarm.MustParseHexAddress("47e1a2a8f16e02da187fac791d57e6794f3e9b5d2400edd00235da749ad36683"),
+					headers: http.Header{
+						"Content-Type": {""},
+					},
+				},
+			},
+		},
+		{
+			expectedHash: "af73c63627d076ed12dda839cf236e460b797cb29ab0e20c0e453559ed37cdd3",
+			files: []dirTestCaseFile{
+				{
+					data:      []byte("robots text"),
+					name:      "robots.txt",
+					path:      "",
+					reference: swarm.MustParseHexAddress("17b96d0a800edca59aaf7e40c6053f7c4c0fb80dd2eb3f8663d51876bf350b12"),
+					headers: http.Header{
+						"Content-Type": {"text/plain; charset=utf-8"},
+					},
+				},
+				{
+					data:      []byte("image 1"),
+					name:      "1.png",
+					path:      "img",
+					reference: swarm.MustParseHexAddress("3c1b3fc640e67f0595d9c1db23f10c7a2b0bdc9843b0e27c53e2ac2a2d6c4674"),
+					headers: http.Header{
+						"Content-Type": {"image/png"},
+					},
+				},
+				{
+					data:      []byte("image 2"),
+					name:      "2.png",
+					path:      "img",
+					reference: swarm.MustParseHexAddress("b234ea7954cab7b2ccc5e07fe8487e932df11b2275db6b55afcbb7bad0be73fb"),
+					headers: http.Header{
+						"Content-Type": {"image/png"},
+					},
 				},
 			},
 		},
@@ -103,7 +137,14 @@ func TestDirs(t *testing.T) {
 			// create and collect all files in the test case
 			dirFiles := make([]*os.File, len(tc.files))
 			for i, file := range tc.files {
-				f := writeAndOpenFile(t, file.name, file.data)
+				// create dir if the file is nested
+				if file.path != "" {
+					if _, err := os.Stat(file.path); os.IsNotExist(err) {
+						os.Mkdir(file.path, 0700)
+						defer os.RemoveAll(file.path)
+					}
+				}
+				f := writeAndOpenFile(t, path.Join(file.path, file.name), file.data)
 				defer os.Remove(f.Name())
 				defer f.Close()
 				dirFiles[i] = f
@@ -125,7 +166,7 @@ func TestDirs(t *testing.T) {
 					Name:      file.name,
 					Headers:   file.headers,
 				}
-				expectedManifest.Add(file.name, e)
+				expectedManifest.Add(path.Join(file.path, file.name), e)
 			}
 
 			b, err := expectedManifest.Serialize()
@@ -170,7 +211,7 @@ func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 
 		// create tar header and write it
 		hdr := &tar.Header{
-			Name: info.Name(),
+			Name: file.Name(),
 			Mode: 0600,
 			Size: info.Size(),
 		}
