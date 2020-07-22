@@ -112,7 +112,7 @@ func Unwrap(c swarm.Chunk) (*Message, error) {
 }
 
 // IsPotential returns true if the given chunk is a potential trojan
-func isPotential(c swarm.Chunk) bool {
+func IsPotential(c swarm.Chunk) bool {
 	// chunk must be content-addressed to be trojan
 	if c.Type() != swarm.ContentAddressed {
 		return false
