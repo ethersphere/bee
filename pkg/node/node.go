@@ -39,6 +39,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -66,24 +67,25 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir             string
-	DBCapacity          uint64
-	Password            string
-	APIAddr             string
-	DebugAPIAddr        string
-	Addr                string
-	NATAddr             string
-	EnableWS            bool
-	EnableQUIC          bool
-	NetworkID           uint64
-	WelcomeMessage      string
-	Bootnodes           []string
-	CORSAllowedOrigins  []string
-	Logger              logging.Logger
-	TracingEnabled      bool
-	TracingEndpoint     string
-	TracingServiceName  string
-	DisconnectThreshold uint64
+	DataDir            string
+	DBCapacity         uint64
+	Password           string
+	APIAddr            string
+	DebugAPIAddr       string
+	Addr               string
+	NATAddr            string
+	EnableWS           bool
+	EnableQUIC         bool
+	NetworkID          uint64
+	WelcomeMessage     string
+	Bootnodes          []string
+	CORSAllowedOrigins []string
+	Logger             logging.Logger
+	TracingEnabled     bool
+	TracingEndpoint    string
+	TracingServiceName string
+	PaymentThreshold   uint64
+	PaymentTolerance   uint64
 }
 
 func NewBee(o Options) (*Bee, error) {
@@ -234,11 +236,24 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.localstoreCloser = storer
 
-	acc := accounting.NewAccounting(accounting.Options{
-		Logger:              logger,
-		Store:               stateStore,
-		DisconnectThreshold: o.DisconnectThreshold,
+	settlement := pseudosettle.New(pseudosettle.Options{
+		Streamer: p2ps,
+		Logger:   logger,
 	})
+
+	if err = p2ps.AddProtocol(settlement.Protocol()); err != nil {
+		return nil, fmt.Errorf("pseudosettle service: %w", err)
+	}
+
+	acc := accounting.NewAccounting(accounting.Options{
+		Logger:           logger,
+		Store:            stateStore,
+		PaymentThreshold: o.PaymentThreshold,
+		PaymentTolerance: o.PaymentTolerance,
+		Settlement:       settlement,
+	})
+
+	settlement.SetObserver(acc)
 
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,

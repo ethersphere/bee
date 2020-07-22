@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -42,18 +43,22 @@ type PeerBalance struct {
 
 // Options for accounting
 type Options struct {
-	DisconnectThreshold uint64
-	Logger              logging.Logger
-	Store               storage.StateStorer
+	PaymentThreshold uint64
+	PaymentTolerance uint64
+	Logger           logging.Logger
+	Store            storage.StateStorer
+	Settlement       settlement.Interface
 }
 
 // Accounting is the main implementation of the accounting interface
 type Accounting struct {
-	balancesMu          sync.Mutex // mutex for accessing the balances map
-	balances            map[string]*PeerBalance
-	logger              logging.Logger
-	store               storage.StateStorer
-	disconnectThreshold uint64 // the debt threshold at which we will disconnect from a peer
+	balancesMu       sync.Mutex // mutex for accessing the balances map
+	balances         map[string]*PeerBalance
+	logger           logging.Logger
+	store            storage.StateStorer
+	paymentThreshold uint64 // the debt threshold we communicate to our peers
+	paymentTolerance uint64 // the amount we let peers exceed the payment threshold before disconnected
+	settlement       settlement.Interface
 }
 
 var (
@@ -63,10 +68,12 @@ var (
 // NewAccounting creates a new Accounting instance with the provided options
 func NewAccounting(o Options) *Accounting {
 	return &Accounting{
-		balances:            make(map[string]*PeerBalance),
-		disconnectThreshold: o.DisconnectThreshold,
-		logger:              o.Logger,
-		store:               o.Store,
+		balances:         make(map[string]*PeerBalance),
+		paymentThreshold: o.PaymentThreshold,
+		paymentTolerance: o.PaymentTolerance,
+		logger:           o.Logger,
+		store:            o.Store,
+		settlement:       o.Settlement,
 	}
 }
 
@@ -80,13 +87,13 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	balance.lock.Lock()
 	defer balance.lock.Unlock()
 
-	// the previously reserved balance plus the new price is the maximum amount paid if all current operations are successful
-	// since we pay this we have to reduce this (positive quantity) from the balance
+	// check if the previously reserved balance is already over the payment thresholds
 	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
-	if balance.freeBalance()-int64(price) < -int64(a.disconnectThreshold) {
+	if balance.freeBalance() < -int64(a.paymentThreshold) {
 		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
+	// since we pay this we have to reduce this (positive quantity) from the balance
 	balance.reserved += price
 
 	return nil
@@ -133,8 +140,22 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	balance.balance = nextBalance
 
-	// TODO: try to initiate payment if payment threshold is reached
-	// if balance.balance < -int64(a.paymentThreshold) { }
+	// if we are (including reservations) above our payment threshold (which we assume is also the peers payment threshold), trigger settlement
+	if balance.freeBalance() < -int64(a.paymentThreshold) {
+		paymentAmount := uint64(-balance.balance)
+		err = a.settlement.Pay(peer, paymentAmount)
+		if err != nil {
+			a.logger.Errorf("payment for peer %v with amount %d failed: %v", peer, paymentAmount, err)
+			return nil
+		}
+
+		balance.balance += int64(paymentAmount)
+		err = a.store.Put(balanceKey(peer), balance.balance)
+		if err != nil {
+			a.logger.Errorf("failed to persist balance for peer %v: %w", peer, err)
+			return nil
+		}
+	}
 
 	return nil
 }
@@ -155,12 +176,12 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	err = a.store.Put(balanceKey(peer), nextBalance)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to persist balance for peer %v: %w", peer, err)
 	}
 
 	balance.balance = nextBalance
 
-	if nextBalance >= int64(a.disconnectThreshold) {
+	if nextBalance >= int64(a.paymentThreshold+a.paymentTolerance) {
 		// peer to much in debt
 		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 	}
@@ -218,4 +239,28 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 
 func (pb *PeerBalance) freeBalance() int64 {
 	return pb.balance - int64(pb.reserved)
+}
+
+// NotifyPayment is called by Settlement when we received payment
+func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
+	balance, err := a.getPeerBalance(peer)
+	if err != nil {
+		return err
+	}
+
+	balance.lock.Lock()
+	defer balance.lock.Unlock()
+
+	nextBalance := balance.balance - int64(amount)
+
+	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+
+	err = a.store.Put(balanceKey(peer), nextBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist balance for peer %v: %w", peer, err)
+	}
+
+	balance.balance = nextBalance
+
+	return nil
 }

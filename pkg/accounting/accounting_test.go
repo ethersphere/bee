@@ -6,16 +6,18 @@ package accounting_test
 
 import (
 	"errors"
+	"io/ioutil"
+	"testing"
+
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"io/ioutil"
-	"testing"
 )
 
 const (
+	testPaymentThreshold    = 10000
 	testDisconnectThreshold = 10000
 	testPrice               = uint64(10)
 )
@@ -35,9 +37,9 @@ func TestAccountingAddBalance(t *testing.T) {
 	defer store.Close()
 
 	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
@@ -100,9 +102,9 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	defer store.Close()
 
 	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
@@ -128,9 +130,8 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	}
 
 	acc = accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+		Logger: logger,
+		Store:  store,
 	})
 
 	peer1Balance, err := acc.Balance(peer1Addr)
@@ -152,7 +153,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	}
 }
 
-// TestAccountingReserve tests that reserve returns an error if the disconnect threshold would be exceeded
+// TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded for a second time
 func TestAccountingReserve(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -160,9 +161,9 @@ func TestAccountingReserve(t *testing.T) {
 	defer store.Close()
 
 	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
@@ -170,12 +171,12 @@ func TestAccountingReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, testDisconnectThreshold-100)
+	err = acc.Reserve(peer1Addr, testPaymentThreshold+1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, 101)
+	err = acc.Reserve(peer1Addr, 1)
 	if err == nil {
 		t.Fatal("expected error from reserve")
 	}
@@ -193,9 +194,9 @@ func TestAccountingDisconnect(t *testing.T) {
 	defer store.Close()
 
 	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
