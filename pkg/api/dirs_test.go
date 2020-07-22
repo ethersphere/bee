@@ -22,10 +22,21 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
+type DirTestCase struct {
+	expectedHash string
+	files        []DirTestCaseFile
+}
+
+type DirTestCaseFile struct {
+	data      []byte
+	name      string
+	reference swarm.Address
+	headers   http.Header
+}
+
 func TestDirs(t *testing.T) {
 	var (
-		dirUploadResource = "/dirs"
-
+		dirUploadResource    = "/dirs"
 		fileDownloadResource = func(addr string) string { return "/files/" + addr }
 		client               = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
@@ -63,56 +74,69 @@ func TestDirs(t *testing.T) {
 		}, nil)
 	})
 
-	t.Run("valid tar", func(t *testing.T) {
-		f1 := "img1.png"
-		file1 := writeAndOpenFile(t, f1, []byte("first file data"))
-		defer os.Remove(file1.Name())
-		defer file1.Close()
+	// auxiliary http.Header vars for response verification
+	pngHeader := http.Header{}
+	pngHeader.Set("Content-Type", "image/png")
+	jpgHeader := http.Header{}
+	jpgHeader.Set("Content-Type", "image/jpeg")
 
-		f2 := "img2.jpg"
-		ioutil.WriteFile(f2, []byte("second file data"), 0755)
+	for _, tc := range []DirTestCase{
+		{
+			expectedHash: "23bae268691842905a5273acf489d1383d1da5987b0179cf94e256814064aa63",
+			files: []DirTestCaseFile{
+				{
+					data:      []byte("first file data"),
+					name:      "img1.png",
+					reference: swarm.MustParseHexAddress("e0f3cb26ab1559e6734794134cf04dd8b836342836d46178813cdb16272da7c1"),
+					headers:   pngHeader,
+				},
+				{
+					data:      []byte("second file data"),
+					name:      "img2.jpg",
+					reference: swarm.MustParseHexAddress("acf73b043a413e6bbccea5175a99a4577c4f6b5933c4267a1259aefea7658a1d"),
+					headers:   jpgHeader,
+				},
+			},
+		},
+	} {
+		t.Run("valid tar", func(t *testing.T) {
+			// create and collect all files in the test case
+			dirFiles := make([]*os.File, len(tc.files))
+			for i, file := range tc.files {
+				f := writeAndOpenFile(t, file.name, file.data)
+				defer os.Remove(f.Name())
+				defer f.Close()
+				dirFiles[i] = f
+			}
 
-		file2 := writeAndOpenFile(t, f2, []byte("second file data"))
-		defer os.Remove(file2.Name())
-		defer file2.Close()
+			// tar all the test case files
+			tarReader := tarFiles(t, dirFiles)
 
-		files := make([]*os.File, 2)
-		files[0] = file1
-		files[1] = file2
+			// verify directory tar upload response
+			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusOK, api.DirUploadResponse{
+				Reference: swarm.MustParseHexAddress(tc.expectedHash),
+			}, nil)
 
-		buf := tarFiles(t, files)
+			// create expected manifest
+			expectedManifest := jsonmanifest.NewManifest()
+			for _, file := range tc.files {
+				e := &jsonmanifest.JSONEntry{
+					Reference: file.reference,
+					Name:      file.name,
+					Headers:   file.headers,
+				}
+				expectedManifest.Add(file.name, e)
+			}
 
-		expectedHash := "23bae268691842905a5273acf489d1383d1da5987b0179cf94e256814064aa63"
+			b, err := expectedManifest.Serialize()
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, &buf, http.StatusOK, api.DirUploadResponse{
-			Reference: swarm.MustParseHexAddress(expectedHash),
-		}, nil)
-
-		m := jsonmanifest.NewManifest()
-		h := http.Header{}
-		h.Set("Content-Type", "image/png")
-		e := &jsonmanifest.JSONEntry{
-			Reference: swarm.MustParseHexAddress("e0f3cb26ab1559e6734794134cf04dd8b836342836d46178813cdb16272da7c1"),
-			Name:      f1,
-			Headers:   h,
-		}
-		m.Add(f1, e)
-		h = http.Header{}
-		h.Set("Content-Type", "image/jpeg")
-		e = &jsonmanifest.JSONEntry{
-			Reference: swarm.MustParseHexAddress("acf73b043a413e6bbccea5175a99a4577c4f6b5933c4267a1259aefea7658a1d"),
-			Name:      f2,
-			Headers:   h,
-		}
-
-		m.Add(f2, e)
-		b, err := m.Serialize()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(expectedHash), nil, http.StatusOK, b, nil)
-	})
+			// verify directory upload manifest through files api
+			jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(tc.expectedHash), nil, http.StatusOK, b, nil)
+		})
+	}
 }
 
 func writeAndOpenFile(t *testing.T, name string, data []byte) *os.File {
@@ -128,7 +152,7 @@ func writeAndOpenFile(t *testing.T, name string, data []byte) *os.File {
 	return f
 }
 
-func tarFiles(t *testing.T, files []*os.File) bytes.Buffer {
+func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
@@ -166,5 +190,5 @@ func tarFiles(t *testing.T, files []*os.File) bytes.Buffer {
 		t.Fatal(err)
 	}
 
-	return buf
+	return &buf
 }
