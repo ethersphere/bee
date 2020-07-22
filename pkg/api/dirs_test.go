@@ -140,7 +140,9 @@ func TestDirs(t *testing.T) {
 				// create dir if the file is nested
 				if file.path != "" {
 					if _, err := os.Stat(file.path); os.IsNotExist(err) {
-						os.Mkdir(file.path, 0700)
+						if err := os.Mkdir(file.path, 0700); err != nil {
+							t.Fatal(err)
+						}
 						defer os.RemoveAll(file.path)
 					}
 				}
