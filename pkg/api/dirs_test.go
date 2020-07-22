@@ -74,7 +74,7 @@ func TestDirs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f2 := "file-2"
+		f2 := "file-2.jpg"
 		ioutil.WriteFile(f2, []byte("second file data"), 0755)
 		defer os.Remove(f2)
 		file2, err := os.Open(f2)
@@ -88,7 +88,7 @@ func TestDirs(t *testing.T) {
 
 		buf := tarFiles(t, files)
 
-		expectedHash := "e65f543aff65e43b48f3741531142f1c920990ded97075de8f4e5fa3f3e2cb21"
+		expectedHash := "d6b9134744d05522b8a02bb2c8d8bda2f4edbff172ad9d982a70866d88a010f3"
 
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, &buf, http.StatusOK, api.DirUploadResponse{
 			Reference: swarm.MustParseHexAddress(expectedHash),
@@ -103,8 +103,10 @@ func TestDirs(t *testing.T) {
 			Headers:   h,
 		}
 		m.Add(f1, e)
+		h = http.Header{}
+		h.Set("Content-Type", "image/jpeg")
 		e = &jsonmanifest.JSONEntry{
-			Reference: swarm.MustParseHexAddress("beda80b55870e556f39892f146badaf8b80e4732b49d22444313aef0cd5029d9"),
+			Reference: swarm.MustParseHexAddress("d5f6cf3a6e493400c594ad6c2e26f4fd041d1b1a5f5ea77ccf139d670b741f92"),
 			Name:      f2,
 			Headers:   h,
 		}
