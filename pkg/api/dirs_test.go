@@ -22,12 +22,12 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
-type DirTestCase struct {
+type dirTestCase struct {
 	expectedHash string
-	files        []DirTestCaseFile
+	files        []dirTestCaseFile
 }
 
-type DirTestCaseFile struct {
+type dirTestCaseFile struct {
 	data      []byte
 	name      string
 	reference swarm.Address
@@ -80,10 +80,10 @@ func TestDirs(t *testing.T) {
 	jpgHeader := http.Header{}
 	jpgHeader.Set("Content-Type", "image/jpeg")
 
-	for _, tc := range []DirTestCase{
+	for _, tc := range []dirTestCase{
 		{
 			expectedHash: "23bae268691842905a5273acf489d1383d1da5987b0179cf94e256814064aa63",
-			files: []DirTestCaseFile{
+			files: []dirTestCaseFile{
 				{
 					data:      []byte("first file data"),
 					name:      "img1.png",
@@ -139,11 +139,14 @@ func TestDirs(t *testing.T) {
 	}
 }
 
+// writeAndOpenFile creates a new file with the given name and data and returns it as a variable ready for reading
+// callers should make sure to close and delete the created file
 func writeAndOpenFile(t *testing.T, name string, data []byte) *os.File {
 	err := ioutil.WriteFile(name, data, 0755)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	f, err := os.Open(name)
 	if err != nil {
 		t.Fatal(err)
@@ -152,40 +155,47 @@ func writeAndOpenFile(t *testing.T, name string, data []byte) *os.File {
 	return f
 }
 
+// tarFiles receives an array of files and creates a new tar with those files as a collection
+// it returns a bytes.Buffer which can be used to read the created tar
 func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
 	for _, file := range files {
+		// get file info
 		info, err := file.Stat()
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		// create tar header and write it
 		hdr := &tar.Header{
 			Name: info.Name(),
 			Mode: 0600,
 			Size: info.Size(),
 		}
-
 		if err := tw.WriteHeader(hdr); err != nil {
 			t.Fatal(err)
 		}
 
+		// open and read the file data
 		r, err := os.Open(file.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
-
+		defer r.Close()
 		fileData, err := ioutil.ReadAll(r)
 		if err != nil {
 			t.Fatal(err)
 		}
 
+		// write the file data to the tar
 		if _, err := tw.Write(fileData); err != nil {
 			t.Fatal(err)
 		}
 	}
 
+	// finally close the tar writer
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
