@@ -12,21 +12,22 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-
-	"github.com/ethersphere/bee/pkg/api"
 )
 
 func TestDirs(t *testing.T) {
 	var (
 		dirUploadResource = "/dirs"
-		//dirDownloadResource = func(addr string) string { return "/dirs/" + addr }
-		client = newTestServer(t, testServerOptions{
+
+		fileDownloadResource = func(addr string) string { return "/files/" + addr }
+		client               = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tags.NewTags(),
 			Logger: logging.New(ioutil.Discard, 5),
@@ -92,6 +93,29 @@ func TestDirs(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, &buf, http.StatusOK, api.DirUploadResponse{
 			Reference: swarm.MustParseHexAddress(expectedHash),
 		}, nil)
+
+		m := jsonmanifest.NewManifest()
+		h := http.Header{}
+		h.Set("Content-Type", "")
+		e := &jsonmanifest.JSONEntry{
+			Reference: swarm.MustParseHexAddress("def0d29fe7bd77da42490de711bb139f4fe16fc191f1df566f3e5db7371ad8d7"),
+			Name:      f1,
+			Headers:   h,
+		}
+		m.Add(f1, e)
+		e = &jsonmanifest.JSONEntry{
+			Reference: swarm.MustParseHexAddress("beda80b55870e556f39892f146badaf8b80e4732b49d22444313aef0cd5029d9"),
+			Name:      f2,
+			Headers:   h,
+		}
+
+		m.Add(f2, e)
+		b, err := m.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(expectedHash), nil, http.StatusOK, b, nil)
 	})
 }
 
