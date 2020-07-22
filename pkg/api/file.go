@@ -200,8 +200,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// FileUploadInfo contains the data for a file to be uploaded
-type FileUploadInfo struct {
+// fileUploadInfo contains the data for a file to be uploaded
+type fileUploadInfo struct {
 	name        string // file name
 	size        int64  // file size
 	contentType string
@@ -209,93 +209,9 @@ type FileUploadInfo struct {
 	reader      io.Reader
 }
 
-// GetFileHTTPInfo extracts data for a file to be uploaded from an HTTP request
-// this function was extracted from `fileUploadHandler` and should eventually replace its current code, along with `storeFile`
-func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
-	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	contentType := r.Header.Get("Content-Type")
-	mediaType, params, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return nil, fmt.Errorf("parse content type error: %v", err)
-	}
-
-	var reader io.Reader
-	var fileName, contentLength string
-	var fileSize uint64
-
-	if mediaType == multiPartFormData {
-		mr := multipart.NewReader(r.Body, params["boundary"])
-
-		// read only the first part, as only one file upload is supported
-		part, err := mr.NextPart()
-		if err != nil {
-			return nil, fmt.Errorf("read multipart error: %v", err)
-		}
-
-		// try to find filename
-		// 1) in part header params
-		// 2) as formname
-		// 3) file reference hash (after uploading the file)
-		if fileName = part.FileName(); fileName == "" {
-			fileName = part.FormName()
-		}
-
-		// then find out content type
-		contentType = part.Header.Get("Content-Type")
-		if contentType == "" {
-			br := bufio.NewReader(part)
-			buf, err := br.Peek(512)
-			if err != nil && err != io.EOF {
-				return nil, fmt.Errorf("read content type error: %v", err)
-			}
-			contentType = http.DetectContentType(buf)
-			reader = br
-		} else {
-			reader = part
-		}
-		contentLength = part.Header.Get("Content-Length")
-	} else {
-		fileName = r.URL.Query().Get("name")
-		contentLength = r.Header.Get("Content-Length")
-		reader = r.Body
-	}
-
-	if contentLength != "" {
-		fileSize, err = strconv.ParseUint(contentLength, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid content length error: %v", err)
-		}
-	} else {
-		// copy the part to a tmp file to get its size
-		tmp, err := ioutil.TempFile("", "bee-multipart")
-		if err != nil {
-			return nil, fmt.Errorf("create temp file error: %v", err)
-		}
-		defer os.Remove(tmp.Name())
-		defer tmp.Close()
-		n, err := io.Copy(tmp, reader)
-		if err != nil {
-			return nil, fmt.Errorf("write temp file error: %v", err)
-		}
-		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-			return nil, fmt.Errorf("seek temp file error: %v", err)
-		}
-		fileSize = uint64(n)
-		reader = tmp
-	}
-
-	return &FileUploadInfo{
-		name:        fileName,
-		size:        int64(fileSize),
-		contentType: contentType,
-		toEncrypt:   toEncrypt,
-		reader:      reader,
-	}, nil
-}
-
 // storeFile uploads the given file and returns its reference
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code, along with `GetFileHTTPInfo`
-func storeFile(ctx context.Context, fileInfo *FileUploadInfo, s storage.Storer) (swarm.Address, error) {
+func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)
 	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, fileInfo.toEncrypt)
