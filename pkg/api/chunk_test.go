@@ -128,18 +128,10 @@ func TestChunkUploadDownload(t *testing.T) {
 
 		// try to fetch the same chunk
 		resp := request(t, client, http.MethodGet, resourceTargets(validHash), nil, http.StatusOK)
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !bytes.Equal(validContent, data) {
-			t.Fatal("data retrieved doesnt match uploaded content")
-		}
 
 		// Check if the target is obtained correctly
 		if resp.Header.Get("Targets") != targets {
-			t.Fatal("Invalid Targets")
+			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get("Targets"), targets)
 		}
 
 	})

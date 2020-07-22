@@ -254,7 +254,7 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+	ns := netstore.New(storer, retrieve, logger, validator.NewContentAddressValidator())
 
 	retrieve.SetStorer(ns)
 

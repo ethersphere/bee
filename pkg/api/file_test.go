@@ -25,6 +25,7 @@ import (
 func TestFiles(t *testing.T) {
 	var (
 		fileUploadResource   = "/files"
+		targets              = "0x222"
 		fileDownloadResource = func(addr string) string { return "/files/" + addr }
 		simpleData           = []byte("this is a simple text")
 		client               = newTestServer(t, testServerOptions{
@@ -191,78 +192,22 @@ func TestFiles(t *testing.T) {
 	})
 
 	t.Run("upload-then-download-with-targets", func(t *testing.T) {
-		fileName := "sample.html"
-		rootHash := "9f8ba407ff4809e877c75506247e0f1faf206262d1ddd7b3c8f9775d3501be50"
-		sampleHtml := `<!DOCTYPE html>
-		<html>
-		<body>
+		fileName := "simple_file.txt"
+		rootHash := "19d2e82c076031ec4e456978f839472d2f1b1b969a765420404d8d315a0c6123"
+		headers := make(http.Header)
+		headers.Add("Content-Type", "text/html; charset=utf-8")
 
-		<h1>My First Heading</h1>
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, api.FileUploadResponse{
+			Reference: swarm.MustParseHexAddress(rootHash),
+		}, headers)
 
-		<p>My first paragraph.</p>
+		fileDownloadResource = func(addr string) string { return "/files/" + addr + "?targets=" + targets }
 
-		</body>
-		</html>`
-		fileDownloadResource = func(addr string) string { return "/files/" + addr + "?targets=0x222" }
+		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
 
-		t.Run("binary", func(t *testing.T) {
-			headers := make(http.Header)
-			headers.Add("Content-Type", "text/html; charset=utf-8")
-
-			rcvdHeader := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, strings.NewReader(sampleHtml), http.StatusOK, api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
-			}, headers)
-
-			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
-				t.Fatal("Invalid ETags header received")
-			}
-
-			// try to fetch the same file and check the data
-			rcvdHeader = jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, []byte(sampleHtml), nil)
-
-			// check the headers
-			cd := rcvdHeader.Get("Content-Disposition")
-			_, params, err := mime.ParseMediaType(cd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if params["filename"] != fileName {
-				t.Fatal("Invalid filename detected")
-			}
-			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
-				t.Fatal("Invalid content type detected")
-			}
-			if rcvdHeader.Get("Targets") != "0x222" {
-				t.Fatal("Invalid Targets")
-			}
-
-		})
-
-		t.Run("multipart", func(t *testing.T) {
-			rcvdHeader := jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, fileUploadResource, fileName, []byte(sampleHtml), http.StatusOK, "", api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
-			})
-
-			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
-				t.Fatal("Invalid ETags header received")
-			}
-
-			// try to fetch the same file and check the data
-			rcvdHeader = jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, []byte(sampleHtml), nil)
-
-			// check the headers
-			cd := rcvdHeader.Get("Content-Disposition")
-			_, params, err := mime.ParseMediaType(cd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if params["filename"] != fileName {
-				t.Fatal("Invalid filename detected")
-			}
-			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
-				t.Fatal("Invalid content type detected")
-			}
-		})
+		if rcvdHeader.Get("Targets") != targets {
+			t.Fatalf("targets mismatch. got %s, want %s", rcvdHeader.Get("Targets"), targets)
+		}
 	})
 
 }
