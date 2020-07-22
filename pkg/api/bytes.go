@@ -23,7 +23,7 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	sp := splitter.NewSimpleSplitter(s.Storer)
 	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {

@@ -60,7 +60,7 @@ func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
 	if r.Body == http.NoBody {
 		return &dirUploadInfo{}, errors.New("request has no body")
 	}
-	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	return &dirUploadInfo{
 		reader:    r.Body,
 		toEncrypt: toEncrypt,

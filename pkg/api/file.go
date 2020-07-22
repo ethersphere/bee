@@ -37,7 +37,7 @@ const (
 
 const (
 	multiPartFormData = "multipart/form-data"
-	encryptHeader     = "swarm-encrypt"
+	EncryptHeader     = "swarm-encrypt"
 )
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -49,7 +49,7 @@ type fileUploadResponse struct {
 // - multipart http message
 // - other content types as complete file body
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
-	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -212,7 +212,7 @@ type FileUploadInfo struct {
 // GetFileHTTPInfo extracts data for a file to be uploaded from an HTTP request
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code, along with `storeFile`
 func GetFileHTTPInfo(r *http.Request) (*FileUploadInfo, error) {
-	toEncrypt := strings.ToLower(r.Header.Get(encryptHeader)) == "true"
+	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	contentType := r.Header.Get("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
