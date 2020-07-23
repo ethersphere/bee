@@ -15,13 +15,13 @@ import (
 )
 
 const (
+	SpanSize                = 8
 	SectionSize             = 32
 	Branches                = 128
 	ChunkSize               = SectionSize * Branches
 	HashSize                = 32
 	MaxPO             uint8 = 15
 	MaxBins                 = MaxPO + 1
-	SpanSize                = 8
 	ChunkWithSpanSize       = ChunkSize + SpanSize
 )
 

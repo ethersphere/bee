@@ -1,14 +1,14 @@
 // Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-package validator_test
+package content_test
 
 import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/validator"
 )
 
 // TestContentAddressValidator checks that the validator evaluates correctly
@@ -16,7 +16,7 @@ import (
 func TestContentAddressValidator(t *testing.T) {
 
 	// instantiate validator
-	validator := validator.NewContentAddressValidator()
+	validator := content.NewContentAddressValidator()
 
 	// generate address from pre-generated hex of 'foo' from legacy bmt
 	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"

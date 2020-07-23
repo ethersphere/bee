@@ -17,6 +17,10 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+const (
+	AddressSize = 20
+)
+
 // NewOverlayAddress constructs a Swarm Address from ECDSA private key.
 func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64) (swarm.Address, error) {
 	ethAddr, err := NewEthereumAddress(p)
