@@ -40,11 +40,6 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
 
-			if !s.valid(ch) {
-				// invalid retrieve handling
-				return nil, storage.ErrInvalidChunk
-			}
-
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve put: %w", err)

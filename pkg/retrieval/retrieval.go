@@ -100,7 +100,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, valid f
 				continue
 			}
 			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
-			//
 			chunk := swarm.NewChunk(addr, data)
 			if valid(chunk) {
 				return chunk, nil
@@ -127,7 +126,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	defer cancel()
 
 	peer, err = s.closestPeer(addr, skipPeers)
-
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest: %w", err)
 	}
