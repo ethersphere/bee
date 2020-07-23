@@ -59,15 +59,8 @@ func TestBytes(t *testing.T) {
 	})
 
 	t.Run("download-with-targets", func(t *testing.T) {
-		resp := request(t, client, http.MethodGet, resource+"/"+expHash+"?targets=0x222", nil, http.StatusOK)
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
+		resp := request(t, client, http.MethodGet, resource+"/"+expHash+"?targets="+targets, nil, http.StatusOK)
 
-		if !bytes.Equal(data, content) {
-			t.Fatalf("data mismatch. got %s, want %s", string(data), string(content))
-		}
 		if resp.Header.Get("Targets") != targets {
 			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get("Targets"), targets)
 		}

@@ -121,19 +121,12 @@ func TestChunkUploadDownload(t *testing.T) {
 
 	})
 	t.Run("retrieve-targets", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
-
-		// try to fetch the same chunk
 		resp := request(t, client, http.MethodGet, resourceTargets(validHash), nil, http.StatusOK)
 
 		// Check if the target is obtained correctly
 		if resp.Header.Get("Targets") != targets {
 			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get("Targets"), targets)
 		}
-
 	})
 }
 

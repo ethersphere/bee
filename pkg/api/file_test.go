@@ -201,9 +201,7 @@ func TestFiles(t *testing.T) {
 			Reference: swarm.MustParseHexAddress(rootHash),
 		}, headers)
 
-		fileDownloadResource = func(addr string) string { return "/files/" + addr + "?targets=" + targets }
-
-		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
+		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash)+"?targets="+targets, nil, http.StatusOK, simpleData, nil)
 
 		if rcvdHeader.Get("Targets") != targets {
 			t.Fatalf("targets mismatch. got %s, want %s", rcvdHeader.Get("Targets"), targets)
