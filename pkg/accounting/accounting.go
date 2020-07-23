@@ -54,6 +54,7 @@ type Accounting struct {
 	logger              logging.Logger
 	store               storage.StateStorer
 	disconnectThreshold uint64 // the debt threshold at which we will disconnect from a peer
+	metrics             metrics
 }
 
 var (
@@ -67,6 +68,7 @@ func NewAccounting(o Options) *Accounting {
 		disconnectThreshold: o.DisconnectThreshold,
 		logger:              o.Logger,
 		store:               o.Store,
+		metrics:             newMetrics(),
 	}
 }
 
@@ -133,6 +135,8 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	balance.balance = nextBalance
 
+	a.metrics.CreditCount.Add(float64(price))
+
 	// TODO: try to initiate payment if payment threshold is reached
 	// if balance.balance < -int64(a.paymentThreshold) { }
 
@@ -164,6 +168,8 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 		// peer to much in debt
 		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 	}
+
+	a.metrics.DebitCount.Add(float64(price))
 
 	return nil
 }
