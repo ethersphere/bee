@@ -137,6 +137,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	balance.balance = nextBalance
 
 	a.metrics.CreditCount.Add(float64(price))
+	a.metrics.CreditEvents.Inc()
 
 	// TODO: try to initiate payment if payment threshold is reached
 	// if balance.balance < -int64(a.paymentThreshold) { }
@@ -172,6 +173,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	}
 
 	a.metrics.DebitCount.Add(float64(price))
+	a.metrics.DebitEvents.Inc()
 
 	return nil
 }
