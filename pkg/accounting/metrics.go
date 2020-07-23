@@ -41,25 +41,25 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_debit_events_count",
-			Help:      "Number of occurences of bzz debit acts towards peers",
+			Help:      "Number of occurrences of bzz debit acts towards peers",
 		}),
 		CreditEvents: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_credit_events_count",
-			Help:      "Number of occurences of bzz credit acts towards peers",
+			Help:      "Number of occurrences of bzz credit acts towards peers",
 		}),
 		CreditDisconnects: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "credit_related_disconnects_count",
-			Help:      "Number of occurences of disconnected peers based on payment thresholds",
+			Help:      "Number of occurrences of disconnected peers based on payment thresholds",
 		}),
 		CreditBlocks: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "credit_related_blocks_count",
-			Help:      "Number of occurences of temporary skipping a peer to avoid crossing their disconnect thresholds",
+			Help:      "Number of occurrences of temporary skipping a peer to avoid crossing their disconnect thresholds",
 		}),
 	}
 }
