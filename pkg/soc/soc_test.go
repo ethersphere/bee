@@ -28,7 +28,7 @@ func TestToChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := content.NewContentChunk(payload)
+	ch, err := content.NewChunk(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestFromChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := content.NewContentChunk(payload)
+	ch, err := content.NewChunk(payload)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,13 +12,13 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestContentChunkWithSpan verifies creation of content addressed chunk from
+// TestChunkWithSpan verifies creation of content addressed chunk from
 // byte data.
-func TestContentChunk(t *testing.T) {
+func TestChunk(t *testing.T) {
 	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
 
-	c, err := content.NewContentChunk([]byte("foo"))
+	c, err := content.NewChunk([]byte("foo"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,14 +27,14 @@ func TestContentChunk(t *testing.T) {
 	}
 }
 
-// TestContentChunkWithSpan verifies creation of content addressed chunk from
+// TestChunkWithSpan verifies creation of content addressed chunk from
 // payload data and span in integer form.
-func TestContentChunkWithSpan(t *testing.T) {
+func TestChunkWithSpan(t *testing.T) {
 	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
 
 	data := []byte("foo")
-	c, err := content.NewContentChunkWithSpan(data, int64(len(data)))
+	c, err := content.NewChunkWithSpan(data, int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +43,9 @@ func TestContentChunkWithSpan(t *testing.T) {
 	}
 }
 
-// TestContentChunkWithSpanBytes verifies creation of content addressed chunk from
+// TestChunkWithSpanBytes verifies creation of content addressed chunk from
 // payload data and span in byte form.
-func TestContentChunkWithSpanBytes(t *testing.T) {
+func TestChunkWithSpanBytes(t *testing.T) {
 	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
 
@@ -53,7 +53,7 @@ func TestContentChunkWithSpanBytes(t *testing.T) {
 	span := len(data)
 	spanBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spanBytes, uint64(span))
-	c, err := content.NewContentChunkWithSpanBytes(data, spanBytes)
+	c, err := content.NewChunkWithSpanBytes(data, spanBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

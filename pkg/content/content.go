@@ -14,14 +14,14 @@ import (
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
-// NewContentChunk creates a new content-addressed single-span chunk.
+// NewChunk creates a new content-addressed single-span chunk.
 // The length of the chunk data is set as the span.
-func NewContentChunk(data []byte) (swarm.Chunk, error) {
-	return NewContentChunkWithSpan(data, int64(len(data)))
+func NewChunk(data []byte) (swarm.Chunk, error) {
+	return NewChunkWithSpan(data, int64(len(data)))
 }
 
-// NewContentChunkWithSpan creates a new content-addressed chunk from given data and span.
-func NewContentChunkWithSpan(data []byte, span int64) (swarm.Chunk, error) {
+// NewChunkWithSpan creates a new content-addressed chunk from given data and span.
+func NewChunkWithSpan(data []byte, span int64) (swarm.Chunk, error) {
 	if len(data) > swarm.ChunkSize {
 		return nil, errors.New("max chunk size exceeded")
 	}
@@ -50,9 +50,9 @@ func NewContentChunkWithSpan(data []byte, span int64) (swarm.Chunk, error) {
 	return swarm.NewChunk(address, payload), nil
 }
 
-// NewContentChunkWithSpanBytes deserializes a content-addressed chunk from separate
+// NewChunkWithSpanBytes deserializes a content-addressed chunk from separate
 // data and span byte slices.
-func NewContentChunkWithSpanBytes(data, spanBytes []byte) (swarm.Chunk, error) {
+func NewChunkWithSpanBytes(data, spanBytes []byte) (swarm.Chunk, error) {
 	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
 	hasher := bmtlegacy.New(bmtPool)
 
@@ -78,5 +78,5 @@ func contentChunkFromBytes(chunkData []byte) (swarm.Chunk, error) {
 		return nil, errors.New("shorter than minimum length")
 	}
 
-	return NewContentChunkWithSpanBytes(chunkData[8:], chunkData[:8])
+	return NewChunkWithSpanBytes(chunkData[8:], chunkData[:8])
 }
