@@ -40,7 +40,7 @@ func TestSocValidator(t *testing.T) {
 	}
 
 	// check valid chunk
-	v := soc.NewSocValidator()
+	v := soc.NewValidator()
 	if !v.Validate(sch) {
 		t.Fatal("valid chunk evaluates to invalid")
 	}
