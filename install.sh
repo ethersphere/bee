@@ -32,7 +32,7 @@ detect_os() {
 run_as_root() {
   local CMD="$*"
 
-  if [ $EUID -ne 0 ] && [ $USE_SUDO = "true" ] && [ $OS != "windows" ]; then
+  if [ $EUID -ne 0 ] && [ $USE_SUDO = "true" ]; then
     CMD="sudo $CMD"
   fi
 
