@@ -40,11 +40,17 @@ run_as_root() {
 }
 
 supported() {
-  local supported="darwin-amd64\nlinux-386\nlinux-amd64\nlinux-arm64\nlinux-armv6\nwindows-386\nwindows-amd64"
+  local supported="darwin-amd64\nlinux-386\nlinux-amd64\nlinux-arm64\nlinux-armv6"
   if ! echo "${supported}" | grep -q "${OS}-${ARCH}"; then
-    echo "No prebuilt binary for ${OS}-${ARCH}."
-    echo "To build from source, go to $REPO_URL"
-    exit 1
+    if [ $OS == "windows" ]; then
+      echo "Auto install not supported for Windows."
+      echo "Install binary from here $REPO_URL/releases"
+      exit 1
+    else
+      echo "No prebuilt binary for ${OS}-${ARCH}."
+      echo "To build from source, go to $REPO_URL"
+      exit 1
+    fi
   fi
 
   if ! command -v curl &> /dev/null && ! command -v wget &> /dev/null; then
