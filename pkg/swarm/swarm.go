@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -20,6 +21,7 @@ const (
 	Branches                = 128
 	ChunkSize               = SectionSize * Branches
 	HashSize                = 32
+	EncryptedHashSize       = HashSize + encryption.KeyLength
 	MaxPO             uint8 = 15
 	MaxBins                 = MaxPO + 1
 	ChunkWithSpanSize       = ChunkSize + SpanSize

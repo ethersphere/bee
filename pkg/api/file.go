@@ -222,7 +222,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e := &entry.Entry{}
-	err = e.UnmarshalBinary(buf.Bytes())
+	err = e.UnmarshalBinary(buf.Bytes(), toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("file download: unmarshal entry %s: %v", addr, err)
 		s.Logger.Errorf("file download: unmarshal entry %s", addr)

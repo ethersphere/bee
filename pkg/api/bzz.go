@@ -50,7 +50,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e := &entry.Entry{}
-	err = e.UnmarshalBinary(buf.Bytes())
+	err = e.UnmarshalBinary(buf.Bytes(), toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("bzz download: unmarshal entry %s: %v", address, err)
 		s.Logger.Errorf("bzz download: unmarshal entry %s", address)
@@ -135,7 +135,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fe := &entry.Entry{}
-	err = fe.UnmarshalBinary(buf.Bytes())
+	err = fe.UnmarshalBinary(buf.Bytes(), toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("bzz download: unmarshal file entry %s: %v", address, err)
 		s.Logger.Errorf("bzz download: unmarshal file entry %s", address)

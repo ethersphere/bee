@@ -31,6 +31,18 @@ func NewSimpleJoiner(getter storage.Getter) file.Joiner {
 }
 
 func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSize int64, err error) {
+	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
+
+	var addr []byte
+	var key encryption.Key
+	if toDecrypt {
+		addr = address.Bytes()[:swarm.HashSize]
+		key = address.Bytes()[swarm.HashSize : swarm.HashSize+encryption.KeyLength]
+	} else {
+		addr = address.Bytes()
+	}
+
+	address = swarm.NewAddress(addr)
 	// retrieve the root chunk to read the total data length the be retrieved
 	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
@@ -42,7 +54,17 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSiz
 		return 0, fmt.Errorf("invalid chunk content of %d bytes", chunkLength)
 	}
 
-	dataLength := binary.LittleEndian.Uint64(rootChunk.Data())
+	var chunkData []byte
+	if toDecrypt {
+		originalData, err := internal.DecryptChunkData(rootChunk.Data(), key)
+		if err != nil {
+			return 0, err
+		}
+		chunkData = originalData
+	} else {
+		chunkData = rootChunk.Data()
+	}
+	dataLength := binary.LittleEndian.Uint64(chunkData[:8])
 	return int64(dataLength), nil
 }
 

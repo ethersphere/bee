@@ -22,7 +22,7 @@ func TestEntrySerialize(t *testing.T) {
 	}
 
 	entryRecovered := &entry.Entry{}
-	err = entryRecovered.UnmarshalBinary(entrySerialized)
+	err = entryRecovered.UnmarshalBinary(entrySerialized, false)
 	if err != nil {
 		t.Fatal(err)
 	}
