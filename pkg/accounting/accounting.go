@@ -89,7 +89,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 
 	// check if the previously reserved balance is already over the payment thresholds
 	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
-	if balance.freeBalance() < -int64(a.paymentThreshold) {
+	if balance.expectedDebt() > a.paymentThreshold {
 		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
@@ -141,7 +141,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	balance.balance = nextBalance
 
 	// if we are (including reservations) above our payment threshold (which we assume is also the peers payment threshold), trigger settlement
-	if balance.freeBalance() < -int64(a.paymentThreshold) {
+	if balance.expectedDebt() > a.paymentThreshold {
 		paymentAmount := uint64(-balance.balance)
 		err = a.settlement.Pay(peer, paymentAmount)
 		if err != nil {
@@ -237,8 +237,16 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	return peerBalance, nil
 }
 
-func (pb *PeerBalance) freeBalance() int64 {
+func (pb *PeerBalance) expectedBalance() int64 {
 	return pb.balance - int64(pb.reserved)
+}
+
+func (pb *PeerBalance) expectedDebt() uint64 {
+	expectedBalance := pb.expectedBalance()
+	if expectedBalance >= 0 {
+		return 0
+	}
+	return uint64(-expectedBalance)
 }
 
 // NotifyPayment is called by Settlement when we received payment
