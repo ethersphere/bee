@@ -14,7 +14,7 @@ import (
 var (
 	_                           = collection.Entry(&Entry{})
 	serializedDataSize          = swarm.SectionSize * 2
-	encryptedSerializedDataSize = swarm.EncryptedHashSize * 2
+	encryptedSerializedDataSize = swarm.EncryptedReferenceSize * 2
 )
 
 // Entry provides addition of metadata to a data reference.
@@ -51,14 +51,13 @@ func (e *Entry) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary implements encoding.BinaryUnmarshaler
-func (e *Entry) UnmarshalBinary(b []byte, toDecrypt bool) error {
+func (e *Entry) UnmarshalBinary(b []byte) error {
 	var size int
-	if toDecrypt {
+	if len(b) == serializedDataSize {
+		size = serializedDataSize
+	} else if len(b) == encryptedSerializedDataSize {
 		size = encryptedSerializedDataSize
 	} else {
-		size = serializedDataSize
-	}
-	if len(b) != size {
 		return errors.New("invalid data length")
 	}
 	e.reference = swarm.NewAddress(b[:size/2])

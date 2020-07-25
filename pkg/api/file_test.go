@@ -61,9 +61,13 @@ func TestFiles(t *testing.T) {
 
 		// get the reference as everytime it will change because of random encryption key
 		var resp api.FileUploadResponse
-		json.NewDecoder(read).Decode(&resp)
+		err := json.NewDecoder(read).Decode(&resp)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(resp.Reference.String()), nil, http.StatusOK, simpleData, nil)
+		rootHash := resp.Reference.String()
+		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
 		cd := rcvdHeader.Get("Content-Disposition")
 		_, params, err := mime.ParseMediaType(cd)
 		if err != nil {

@@ -64,7 +64,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 	e := &entry.Entry{}
-	err = e.UnmarshalBinary(buf.Bytes(), false)
+	err = e.UnmarshalBinary(buf.Bytes())
 	if err != nil {
 		return err
 	}
