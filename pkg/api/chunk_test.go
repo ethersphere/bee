@@ -27,7 +27,9 @@ import (
 func TestChunkUploadDownload(t *testing.T) {
 
 	var (
+		targets              = "0x222"
 		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		resourceTargets      = func(addr swarm.Address) string { return "/chunks/" + addr.String() + "?targets=" + targets }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		invalidHash          = swarm.MustParseHexAddress("bbccdd")
 		validContent         = []byte("bbaatt")
@@ -117,6 +119,14 @@ func TestChunkUploadDownload(t *testing.T) {
 			t.Fatal("chunk is not pinned")
 		}
 
+	})
+	t.Run("retrieve-targets", func(t *testing.T) {
+		resp := request(t, client, http.MethodGet, resourceTargets(validHash), nil, http.StatusOK)
+
+		// Check if the target is obtained correctly
+		if resp.Header.Get(api.TargetsRecoveryHeader) != targets {
+			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get(api.TargetsRecoveryHeader), targets)
+		}
 	})
 }
 

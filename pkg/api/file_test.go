@@ -26,6 +26,7 @@ import (
 func TestFiles(t *testing.T) {
 	var (
 		fileUploadResource   = "/files"
+		targets              = "0x222"
 		fileDownloadResource = func(addr string) string { return "/files/" + addr }
 		simpleData           = []byte("this is a simple text")
 		client               = newTestServer(t, testServerOptions{
@@ -195,6 +196,23 @@ func TestFiles(t *testing.T) {
 				t.Fatal("Invalid content type detected")
 			}
 		})
+	})
+
+	t.Run("upload-then-download-with-targets", func(t *testing.T) {
+		fileName := "simple_file.txt"
+		rootHash := "19d2e82c076031ec4e456978f839472d2f1b1b969a765420404d8d315a0c6123"
+		headers := make(http.Header)
+		headers.Add("Content-Type", "text/html; charset=utf-8")
+
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, api.FileUploadResponse{
+			Reference: swarm.MustParseHexAddress(rootHash),
+		}, headers)
+
+		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash)+"?targets="+targets, nil, http.StatusOK, simpleData, nil)
+
+		if rcvdHeader.Get(api.TargetsRecoveryHeader) != targets {
+			t.Fatalf("targets mismatch. got %s, want %s", rcvdHeader.Get(api.TargetsRecoveryHeader), targets)
+		}
 	})
 
 }

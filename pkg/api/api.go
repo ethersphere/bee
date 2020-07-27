@@ -35,6 +35,11 @@ type Options struct {
 	Tracer             *tracing.Tracer
 }
 
+const (
+	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
+	TargetsRecoveryHeader = "swarm-recovery-targets"
+)
+
 func New(o Options) Service {
 	s := &server{
 		Options: o,
