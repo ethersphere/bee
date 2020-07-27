@@ -36,7 +36,7 @@ type Options struct {
 }
 
 const (
-	//TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
+	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
