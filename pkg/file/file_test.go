@@ -93,7 +93,7 @@ func TestJoinReadAll(t *testing.T) {
 	var dataLength int64 = swarm.ChunkSize + 2
 	j := newMockJoiner(dataLength)
 	buf := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(j, swarm.ZeroAddress, buf, false)
+	c, err := file.JoinReadAll(context.Background(), j, swarm.ZeroAddress, buf, false)
 	if err != nil {
 		t.Fatal(err)
 	}

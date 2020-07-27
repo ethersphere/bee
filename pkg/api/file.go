@@ -40,6 +40,8 @@ const (
 	EncryptHeader     = "swarm-encrypt"
 )
 
+type targetsContextKey struct{}
+
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
 type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
@@ -265,11 +267,14 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
+	targets := r.URL.Query().Get("targets")
+
+	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
 
 	// read entry.
 	j := joiner.NewSimpleJoiner(s.Storer)
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, address, buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, address, buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("file download: read entry %s: %v", addr, err)
 		s.Logger.Errorf("file download: read entry %s", addr)
@@ -297,7 +302,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Read metadata.
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, e.Metadata(), buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("file download: read metadata %s: %v", addr, err)
 		s.Logger.Errorf("file download: read metadata %s", addr)
@@ -328,6 +333,9 @@ func (s *server) downloadHandler(
 	reference swarm.Address,
 	additionalHeaders http.Header,
 ) {
+
+	targets := r.URL.Query().Get("targets")
+	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
 	ctx := r.Context()
 
 	toDecrypt := len(reference.Bytes()) == (swarm.HashSize + encryption.KeyLength)
@@ -363,7 +371,7 @@ func (s *server) downloadHandler(
 	}()
 
 	go func() {
-		_, err := file.JoinReadAll(j, reference, pw, toDecrypt)
+		_, err := file.JoinReadAll(r.Context(), j, reference, pw, toDecrypt)
 		if err := pw.CloseWithError(err); err != nil {
 			s.Logger.Debugf("api download: data join close %s: %v", reference, err)
 			s.Logger.Errorf("api download: data join close %s", reference)
@@ -394,6 +402,7 @@ func (s *server) downloadHandler(
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
+	w.Header().Set(TargetsRecoveryHeader, targets)
 	if _, err = io.Copy(w, bpr); err != nil {
 		s.Logger.Debugf("api download: data read %s: %v", reference, err)
 		s.Logger.Errorf("api download: data read %s", reference)
