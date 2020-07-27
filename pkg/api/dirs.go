@@ -23,22 +23,18 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// dirUploadInfo contains the data for a directory to be uploaded
-type dirUploadInfo struct {
-	toEncrypt bool
-	reader    io.ReadCloser
-}
+type toEncryptHeader struct{}
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
-	dirInfo, err := getDirHTTPInfo(r)
+	ctx, err := parseRequest(r)
 	if err != nil {
-		s.Logger.Errorf("dir upload, get dir info: %v", err)
-		jsonhttp.BadRequest(w, "could not extract dir info from request")
+		s.Logger.Errorf("dir upload, parse request: %v", err)
+		jsonhttp.BadRequest(w, "could not parse request")
 		return
 	}
 
-	reference, err := storeDir(r.Context(), dirInfo, s.Storer, s.Logger)
+	reference, err := storeDir(ctx, r.Body, s.Storer, s.Logger)
 	if err != nil {
 		s.Logger.Errorf("dir upload, store dir: %v", err)
 		jsonhttp.InternalServerError(w, "could not store dir")
@@ -50,26 +46,28 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getDirHTTPInfo extracts data for a directory to be uploaded from an HTTP request
-func getDirHTTPInfo(r *http.Request) (*dirUploadInfo, error) {
+// parseRequest parses an HTTP request for a directory to be uploaded
+// it request context with extracted info from the headers
+func parseRequest(r *http.Request) (context.Context, error) {
+	ctx := r.Context()
 	if r.Body == http.NoBody {
-		return &dirUploadInfo{}, errors.New("request has no body")
+		return nil, errors.New("request has no body")
 	}
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	return &dirUploadInfo{
-		reader:    r.Body,
-		toEncrypt: toEncrypt,
-	}, nil
+	return context.WithValue(ctx, toEncryptHeader{}, toEncrypt), nil
 }
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
+func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logger logging.Logger) (swarm.Address, error) {
 	dirManifest := jsonmanifest.NewManifest()
 
 	// set up HTTP body reader
-	tarReader := tar.NewReader(dirInfo.reader)
-	defer dirInfo.reader.Close()
+	tarReader := tar.NewReader(reader)
+	defer reader.Close()
+
+	v := ctx.Value(toEncryptHeader{})
+	toEncrypt, _ := v.(bool) // default is false
 
 	// iterate through the files in the supplied tar
 	for {
@@ -96,7 +94,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 			name:        fileName,
 			size:        fileHeader.FileInfo().Size(),
 			contentType: contentType,
-			toEncrypt:   dirInfo.toEncrypt,
+			toEncrypt:   toEncrypt,
 			reader:      tarReader,
 		}
 		fileReference, err := storeFile(ctx, fileInfo, s)
@@ -137,7 +135,7 @@ func storeDir(ctx context.Context, dirInfo *dirUploadInfo, s storage.Storer, log
 	manifestFileInfo := &fileUploadInfo{
 		size:        r.Size(),
 		contentType: ManifestContentType,
-		toEncrypt:   dirInfo.toEncrypt,
+		toEncrypt:   toEncrypt,
 		reader:      r,
 	}
 	manifestReference, err := storeFile(ctx, manifestFileInfo, s)

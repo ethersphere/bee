@@ -49,7 +49,7 @@ func TestDirs(t *testing.T) {
 
 	t.Run("empty request body", func(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, bytes.NewReader(nil), http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "could not extract dir info from request",
+			Message: "could not parse request",
 			Code:    http.StatusBadRequest,
 		}, nil)
 	})
