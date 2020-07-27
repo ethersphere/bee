@@ -2,6 +2,7 @@ package pseudosettle_test
 
 import (
 	"bytes"
+	"context"
 	"io/ioutil"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestPayment(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	amount := uint64(10000)
 
-	err := payer.Pay(peerID, amount)
+	err := payer.Pay(context.Background(), peerID, amount)
 	if err != nil {
 		t.Fatal(err)
 	}

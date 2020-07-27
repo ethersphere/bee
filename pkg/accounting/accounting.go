@@ -5,6 +5,7 @@
 package accounting
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -143,7 +144,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	// if we are (including reservations) above our payment threshold (which we assume is also the peers payment threshold), trigger settlement
 	if balance.expectedDebt() > a.paymentThreshold {
 		paymentAmount := uint64(-balance.balance)
-		err = a.settlement.Pay(peer, paymentAmount)
+		err = a.settlement.Pay(context.Background(), peer, paymentAmount)
 		if err != nil {
 			a.logger.Errorf("payment for peer %v with amount %d failed: %v", peer, paymentAmount, err)
 			return nil
