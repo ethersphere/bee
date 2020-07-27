@@ -278,6 +278,10 @@ func NewBee(o Options) (*Bee, error) {
 		psss.Register(chunk.RecoveryTopic, chunkRepairHandler)
 	}
 
+	// add recovery callback for content repair
+	recoverFunc := chunk.NewRecoveryHook(self.pss.Send)
+	ns.WithRecoveryCallback(recoverFunc)
+
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
