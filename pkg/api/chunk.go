@@ -71,9 +71,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Increment the total tags here since we dont have a splitter
-	// for the file upload, it will done in the early stage itself in bulk
-	tag.Inc(tags.TotalChunks)
+	// Increment the StateSplit here since we dont have a splitter for the file upload
+	tag.Inc(tags.StateSplit)
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -108,6 +107,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	tag.DoneSplit(address)
 
 	w.Header().Set(TagHeaderUid, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)

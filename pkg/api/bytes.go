@@ -43,7 +43,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ta.Address = address
+	ta.DoneSplit(address)
 
 	w.Header().Set(TagHeaderUid, fmt.Sprint(ta.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
