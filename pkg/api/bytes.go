@@ -5,21 +5,14 @@
 package api
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
@@ -55,7 +48,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	addressHex := mux.Vars(r)["address"]
-	ctx := r.Context()
 
 	address, err := swarm.ParseHexAddress(addressHex)
 	if err != nil {
@@ -65,37 +57,11 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
-	j := joiner.NewSimpleJoiner(s.Storer)
-	dataSize, err := j.Size(ctx, address)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Debugf("bytes: not found %s: %v", address, err)
-			s.Logger.Error("bytes: not found")
-			jsonhttp.NotFound(w, "not found")
-			return
-		}
-		s.Logger.Debugf("bytes: invalid root chunk %s: %v", address, err)
-		s.Logger.Error("bytes: invalid root chunk")
-		jsonhttp.BadRequest(w, "invalid root chunk")
-		return
+	additionalHeaders := http.Header{
+		"Content-Type": {"application/octet-stream"},
 	}
 
-	outBuffer := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(j, address, outBuffer, toDecrypt)
-	if err != nil && c == 0 {
-		s.Logger.Debugf("bytes download: data join %s: %v", address, err)
-		s.Logger.Errorf("bytes download: data join %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-	w.Header().Set("ETag", fmt.Sprintf("%q", address))
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
-	if _, err = io.Copy(w, outBuffer); err != nil {
-		s.Logger.Debugf("bytes download: data read %s: %v", address, err)
-		s.Logger.Errorf("bytes download: data read %s", address)
-	}
+	s.downloadHandler(w, r, address, additionalHeaders)
 }
 
 func (s *server) createTag(w http.ResponseWriter, r *http.Request) *tags.Tag {

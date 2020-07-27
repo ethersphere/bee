@@ -285,9 +285,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			// exchange headers
 			if err := handleHeaders(ss.Headler, stream); err != nil {
 				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers: %v", p.Name, p.Version, ss.Name, overlay, err)
-				if err := stream.Close(); err != nil {
-					s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers close stream: %v", p.Name, p.Version, ss.Name, overlay, err)
-				}
+				_ = stream.Reset()
 				return
 			}
 
@@ -475,9 +473,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 	// exchange headers
 	if err := sendHeaders(ctx, headers, stream); err != nil {
-		if err := stream.Close(); err != nil {
-			s.logger.Debugf("send headers %s: close stream %v", peerID, err)
-		}
+		_ = stream.Reset()
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
 
