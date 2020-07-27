@@ -88,15 +88,12 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	balance.lock.Lock()
 	defer balance.lock.Unlock()
 
-	// check if the previously reserved balance is already over the payment thresholds
-	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
+	// check if the expected debt is already over the payment threshold
 	if balance.expectedDebt() > a.paymentThreshold {
 		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
-	// since we pay this we have to reduce this (positive quantity) from the balance
 	balance.reserved += price
-
 	return nil
 }
 
@@ -141,7 +138,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	balance.balance = nextBalance
 
-	// if we are (including reservations) above our payment threshold (which we assume is also the peers payment threshold), trigger settlement
+	// if our expected debt exceeds our payment threshold (which we assume is also the peers payment threshold), trigger settlement
 	if balance.expectedDebt() > a.paymentThreshold {
 		paymentAmount := uint64(-balance.balance)
 		err = a.settlement.Pay(context.Background(), peer, paymentAmount)
