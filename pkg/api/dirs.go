@@ -27,10 +27,10 @@ type toEncryptContextKey struct{}
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, err := parseRequest(r)
+	ctx, err := validateRequest(r)
 	if err != nil {
-		s.Logger.Errorf("dir upload, parse request: %v", err)
-		jsonhttp.BadRequest(w, "could not parse request")
+		s.Logger.Errorf("dir upload, validate request: %v", err)
+		jsonhttp.BadRequest(w, "could not validate request")
 		return
 	}
 
@@ -46,9 +46,9 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// parseRequest parses an HTTP request for a directory to be uploaded
-// it request context with extracted info from the headers
-func parseRequest(r *http.Request) (context.Context, error) {
+// validateRequest validates an HTTP request for a directory to be uploaded
+// it returns a context based on the given request
+func validateRequest(r *http.Request) (context.Context, error) {
 	ctx := r.Context()
 	if r.Body == http.NoBody {
 		return nil, errors.New("request has no body")
