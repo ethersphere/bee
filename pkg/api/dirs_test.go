@@ -23,19 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
-type dirTestCase struct {
-	expectedHash string
-	files        []dirTestCaseFile
-}
-
-type dirTestCaseFile struct {
-	data      []byte
-	name      string
-	path      string
-	reference swarm.Address
-	headers   http.Header
-}
-
 func TestDirs(t *testing.T) {
 	var (
 		dirUploadResource    = "/dirs"
@@ -76,10 +63,25 @@ func TestDirs(t *testing.T) {
 		}, nil)
 	})
 
-	for _, tc := range []dirTestCase{
+	for _, tc := range []struct {
+		expectedHash string
+		files        []struct {
+			data      []byte
+			name      string
+			path      string
+			reference swarm.Address
+			headers   http.Header
+		}
+	}{
 		{
 			expectedHash: "2fa041bd35ebff676727eb3023272f43b1e0fa71c8735cc1a7487e9131f963c4",
-			files: []dirTestCaseFile{
+			files: []struct {
+				data      []byte
+				name      string
+				path      string
+				reference swarm.Address
+				headers   http.Header
+			}{
 				{
 					data:      []byte("first file data"),
 					name:      "file1",
@@ -102,7 +104,13 @@ func TestDirs(t *testing.T) {
 		},
 		{
 			expectedHash: "c3cb9fbe2efa7bbc979245d9bac1400bd4894371776b7560309d49e687514dd6",
-			files: []dirTestCaseFile{
+			files: []struct {
+				data      []byte
+				name      string
+				path      string
+				reference swarm.Address
+				headers   http.Header
+			}{
 				{
 					data:      []byte("robots text"),
 					name:      "robots.txt",
