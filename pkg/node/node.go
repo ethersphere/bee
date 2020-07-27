@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
@@ -259,6 +260,10 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	ns := netstore.New(storer, retrieve, logger, chunkvalidators)
+
+	// add recovery callback for content repair
+	recoverFunc := chunk.NewRecoveryHook(self.pss.Send)
+	ns.WithRecoveryCallback(recoverFunc)
 
 	retrieve.SetStorer(ns)
 
