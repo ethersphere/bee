@@ -38,7 +38,9 @@ func TestDirs(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, bytes.NewReader(nil), http.StatusBadRequest, jsonhttp.StatusResponse{
 			Message: "could not validate request",
 			Code:    http.StatusBadRequest,
-		}, nil)
+		}, http.Header{
+			"Content-Type": {api.ContentTypeTar},
+		})
 	})
 
 	t.Run("empty file", func(t *testing.T) {
@@ -49,7 +51,9 @@ func TestDirs(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, f, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "could not store dir",
 			Code:    http.StatusInternalServerError,
-		}, nil)
+		}, http.Header{
+			"Content-Type": {api.ContentTypeTar},
+		})
 	})
 
 	t.Run("non tar file", func(t *testing.T) {
@@ -60,9 +64,12 @@ func TestDirs(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, f, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "could not store dir",
 			Code:    http.StatusInternalServerError,
-		}, nil)
+		}, http.Header{
+			"Content-Type": {api.ContentTypeTar},
+		})
 	})
 
+	// valid tars
 	for _, tc := range []struct {
 		expectedHash string
 		files        []struct {
@@ -166,7 +173,9 @@ func TestDirs(t *testing.T) {
 			// verify directory tar upload response
 			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusOK, api.FileUploadResponse{
 				Reference: swarm.MustParseHexAddress(tc.expectedHash),
-			}, nil)
+			}, http.Header{
+				"Content-Type": {api.ContentTypeTar},
+			})
 
 			// create expected manifest
 			expectedManifest := jsonmanifest.NewManifest()

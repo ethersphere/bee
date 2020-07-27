@@ -23,6 +23,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const (
+	contentTypeHeader = "Content-Type"
+	contentTypeTar    = "application/x-tar"
+)
+
 type toEncryptContextKey struct{}
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
@@ -52,6 +57,14 @@ func validateRequest(r *http.Request) (context.Context, error) {
 	ctx := r.Context()
 	if r.Body == http.NoBody {
 		return nil, errors.New("request has no body")
+	}
+	contentType := r.Header.Get(contentTypeHeader)
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, err
+	}
+	if mediaType != contentTypeTar {
+		return nil, errors.New("content-type not set to tar")
 	}
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	return context.WithValue(ctx, toEncryptContextKey{}, toEncrypt), nil
