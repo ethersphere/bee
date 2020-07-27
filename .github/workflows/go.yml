@@ -49,8 +49,10 @@ jobs:
         GO111MODULE: on
       working-directory: ~
     - name: Lint
+      if: matrix.os == 'linux-latest'
       run: make lint
     - name: Vet
+      if: matrix.os == 'linux-latest'
       run: make vet
     - name: Build
       run: make build

@@ -54,6 +54,10 @@ func (s *server) setupRouting() {
 		"POST": http.HandlerFunc(s.chunkUploadHandler),
 	})
 
+	handle(router, "/bzz:/{address}/{path:.*}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.bzzDownloadHandler),
+	})
+
 	s.Handler = web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
 		handlers.CompressHandler,
