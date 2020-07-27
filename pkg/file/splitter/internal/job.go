@@ -70,7 +70,7 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		sumCounts:  make([]int, levelBufferLimit),
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
-		buffer:     make([]byte, file.ChunkWithLengthSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
+		buffer:     make([]byte, swarm.ChunkWithSpanSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
 		tagg:       tagger,
 		toEncrypt:  toEncrypt,
 		refSize:    refSize,
