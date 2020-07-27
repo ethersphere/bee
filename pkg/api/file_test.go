@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"mime"
@@ -51,15 +52,21 @@ func TestFiles(t *testing.T) {
 
 	t.Run("encrypt-decrypt", func(t *testing.T) {
 		fileName := "my-pictures.jpeg"
-		rootHash := "f2e761160deda91c1fbfab065a5abf530b0766b3e102b51fbd626ba37c3bc581"
 		headers := make(http.Header)
-		headers.Add("EncryptHeader", "True")
+		headers.Add(api.EncryptHeader, "True")
 		headers.Add("Content-Type", "image/jpeg; charset=utf-8")
 
-		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, api.FileUploadResponse{
-			Reference: swarm.MustParseHexAddress(rootHash),
-		}, headers)
+		_, respBytes := jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, headers)
+		read := bytes.NewReader(respBytes)
 
+		// get the reference as everytime it will change because of random encryption key
+		var resp api.FileUploadResponse
+		err := json.NewDecoder(read).Decode(&resp)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rootHash := resp.Reference.String()
 		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
 		cd := rcvdHeader.Get("Content-Disposition")
 		_, params, err := mime.ParseMediaType(cd)

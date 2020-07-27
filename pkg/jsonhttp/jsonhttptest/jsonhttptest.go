@@ -137,6 +137,23 @@ func ResponseDirectSendHeadersAndReceiveHeaders(t *testing.T, client *http.Clien
 	return resp.Header
 }
 
+// ResponseDirectSendHeadersAndDontCheckResponse sends a request with the given headers and does not check for the returned reference.
+// this is useful in tests which does not know the return reference, for ex: when encryption flag is set
+func ResponseDirectSendHeadersAndDontCheckResponse(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, headers http.Header) (http.Header, []byte) {
+	t.Helper()
+
+	resp := request(t, client, method, url, body, responseCode, headers)
+	defer resp.Body.Close()
+
+	got, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = bytes.TrimSpace(got)
+
+	return resp.Header, got
+}
+
 func ResponseUnmarshal(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) {
 	t.Helper()
 
