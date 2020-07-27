@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bzz"
@@ -57,12 +58,6 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
-// GuardedMessage is a string message guarded by a RW mutex.
-type GuardedMessage struct {
-	val string
-	mu  sync.RWMutex
-}
-
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
@@ -70,7 +65,7 @@ type Service struct {
 	overlay               swarm.Address
 	lightNode             bool
 	networkID             uint64
-	welcomeMessage        *GuardedMessage
+	welcomeMessage        atomic.Value
 	receivedHandshakes    map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu  sync.Mutex
 	logger                logging.Logger
@@ -90,19 +85,19 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		return nil, ErrWelcomeMessageLength
 	}
 
-	return &Service{
+	svc := &Service{
 		signer:                signer,
 		advertisableAddresser: advertisableAddresser,
 		overlay:               overlay,
 		networkID:             networkID,
 		lightNode:             lighNode,
-		welcomeMessage: &GuardedMessage{
-			val: welcomeMessage,
-		},
-		receivedHandshakes: make(map[libp2ppeer.ID]struct{}),
-		logger:             logger,
-		Notifiee:           new(network.NoopNotifiee),
-	}, nil
+		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
+		logger:                logger,
+		Notifiee:              new(network.NoopNotifiee),
+	}
+	svc.welcomeMessage.Store(welcomeMessage)
+
+	return svc, nil
 }
 
 // Handshake initiates a handshake with a peer.
@@ -276,18 +271,13 @@ func (s *Service) SetWelcomeMessage(msg string) (err error) {
 	if len(msg) > MaxWelcomeMessageLength {
 		return ErrWelcomeMessageLength
 	}
-	s.welcomeMessage.mu.Lock()
-	defer s.welcomeMessage.mu.Unlock()
-	s.welcomeMessage.val = msg
+	s.welcomeMessage.Store(msg)
 	return nil
 }
 
 // GetWelcomeMessage returns the the current handshake welcome message.
 func (s *Service) GetWelcomeMessage() string {
-	s.welcomeMessage.mu.Lock()
-	defer s.welcomeMessage.mu.Unlock()
-
-	return s.welcomeMessage.val
+	return s.welcomeMessage.Load().(string)
 }
 
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
