@@ -509,7 +509,7 @@ func (s *Service) SetWelcomeMessage(val string) error {
 	return s.handshakeService.SetWelcomeMessage(val)
 }
 
-// WelcomeMessageSynced returns the synced value of the welcome message.
-func (s *Service) WelcomeMessageSynced() string {
-	return s.handshakeService.WelcomeMessageSynced()
+// GetWelcomeMessage returns the synced value of the welcome message.
+func (s *Service) GetWelcomeMessage() string {
+	return s.handshakeService.GetWelcomeMessage()
 }

@@ -155,7 +155,7 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 	}
 
 	// Synced read:
-	welcomeMessage := s.WelcomeMessageSynced()
+	welcomeMessage := s.GetWelcomeMessage()
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Ack{
 		Address: &pb.BzzAddress{
 			Underlay:  advertisableUnderlayBytes,
@@ -226,8 +226,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 		return nil, err
 	}
 
-	// SyncedRead:
-	welcomeMessage := s.WelcomeMessageSynced()
+	welcomeMessage := s.GetWelcomeMessage()
 
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.SynAck{
 		Syn: &pb.Syn{
@@ -283,8 +282,8 @@ func (s *Service) SetWelcomeMessage(msg string) (err error) {
 	return nil
 }
 
-// WelcomeMessageSynced returns the synced value of the current welcome message.
-func (s *Service) WelcomeMessageSynced() string {
+// GetWelcomeMessage returns the the current handshake welcome message.
+func (s *Service) GetWelcomeMessage() string {
 	s.welcomeMessage.mu.Lock()
 	defer s.welcomeMessage.mu.Unlock()
 

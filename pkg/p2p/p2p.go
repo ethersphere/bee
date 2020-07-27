@@ -27,7 +27,7 @@ type Service interface {
 	SetNotifier(topology.Notifier)
 	Addresses() ([]ma.Multiaddr, error)
 	SetWelcomeMessage(val string) error
-	WelcomeMessageSynced() string
+	GetWelcomeMessage() string
 }
 
 // Streamer is able to create a new Stream.

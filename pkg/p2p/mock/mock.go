@@ -17,15 +17,15 @@ import (
 )
 
 type Service struct {
-	addProtocolFunc          func(p2p.ProtocolSpec) error
-	connectFunc              func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
-	disconnectFunc           func(overlay swarm.Address) error
-	peersFunc                func() []p2p.Peer
-	setNotifierFunc          func(topology.Notifier)
-	addressesFunc            func() ([]ma.Multiaddr, error)
-	setWelcomeMessageFunc    func(string) error
-	welcomeMessageSyncedFunc func() string
-	notifyCalled             int32
+	addProtocolFunc       func(p2p.ProtocolSpec) error
+	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
+	disconnectFunc        func(overlay swarm.Address) error
+	peersFunc             func() []p2p.Peer
+	setNotifierFunc       func(topology.Notifier)
+	addressesFunc         func() ([]ma.Multiaddr, error)
+	setWelcomeMessageFunc func(string) error
+	getWelcomeMessageFunc func() string
+	notifyCalled          int32
 }
 
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
@@ -67,7 +67,7 @@ func WithAddressesFunc(f func() ([]ma.Multiaddr, error)) Option {
 func WithWelcomeMessageHandlerFunc(fSet func(string) error, fGet func() string) Option {
 	return optionFunc(func(s *Service) {
 		s.setWelcomeMessageFunc = fSet
-		s.welcomeMessageSyncedFunc = fGet
+		s.getWelcomeMessageFunc = fGet
 	})
 }
 
@@ -142,11 +142,11 @@ func (s *Service) SetWelcomeMessage(val string) error {
 	return s.setWelcomeMessageFunc(val)
 }
 
-func (s *Service) WelcomeMessageSynced() string {
-	if s.welcomeMessageSyncedFunc == nil {
+func (s *Service) GetWelcomeMessage() string {
+	if s.getWelcomeMessageFunc == nil {
 		return ""
 	}
-	return s.welcomeMessageSyncedFunc()
+	return s.getWelcomeMessageFunc()
 }
 
 type Option interface {

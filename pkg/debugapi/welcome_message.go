@@ -15,8 +15,8 @@ type welcomeMessageResponse struct {
 	WelcomeMesssage string `json:"welcome_message"`
 }
 
-func (s *server) welcomeMessageSyncedHandler(w http.ResponseWriter, r *http.Request) {
-	val := s.P2P.WelcomeMessageSynced()
+func (s *server) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+	val := s.P2P.GetWelcomeMessage()
 	jsonhttp.OK(w, welcomeMessageResponse{
 		WelcomeMesssage: val,
 	})

@@ -182,7 +182,7 @@ func TestHandshake(t *testing.T) {
 		if err != nil {
 			t.Fatal("Got error:", err)
 		}
-		got := handshakeService.WelcomeMessageSynced()
+		got := handshakeService.GetWelcomeMessage()
 		if got != TestMessage {
 			t.Fatal("expected:", TestMessage, ", got:", got)
 		}
