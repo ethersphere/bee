@@ -7,6 +7,7 @@ package retrieval
 import (
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/accounting"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -39,6 +40,8 @@ type Service struct {
 	storer        storage.Storer
 	singleflight  singleflight.Group
 	logger        logging.Logger
+	accounting    accounting.Interface
+	pricer        accounting.Pricer
 }
 
 type Options struct {
@@ -46,6 +49,8 @@ type Options struct {
 	ChunkPeerer topology.EachPeerer
 	Storer      storage.Storer
 	Logger      logging.Logger
+	Accounting  accounting.Interface
+	Pricer      accounting.Pricer
 }
 
 func New(o Options) *Service {
@@ -54,6 +59,8 @@ func New(o Options) *Service {
 		peerSuggester: o.ChunkPeerer,
 		storer:        o.Storer,
 		logger:        o.Logger,
+		accounting:    o.Accounting,
+		pricer:        o.Pricer,
 	}
 }
 
@@ -118,12 +125,27 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest: %w", err)
 	}
+
+	// compute the price we pay for this chunk and reserve it for the rest of this function
+	chunkPrice := s.pricer.PeerPrice(peer, addr)
+	err = s.accounting.Reserve(peer, chunkPrice)
+	if err != nil {
+		return nil, peer, err
+	}
+	defer s.accounting.Release(peer, chunkPrice)
+
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
@@ -136,6 +158,12 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
 		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
+	}
+
+	// credit the peer after successful delivery
+	err = s.accounting.Credit(peer, chunkPrice)
+	if err != nil {
+		return nil, peer, err
 	}
 
 	return d.Data, peer, nil
@@ -181,9 +209,15 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (sw
 	return closest, nil
 }
 
-func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 	var req pb.Request
 	if err := r.ReadMsg(&req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
@@ -198,6 +232,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		Data: chunk.Data(),
 	}); err != nil {
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
+	}
+
+	// compute the price we charge for this chunk and debit it from p's balance
+	chunkPrice := s.pricer.Price(chunk.Address())
+	err = s.accounting.Debit(p.Address, chunkPrice)
+	if err != nil {
+		return err
 	}
 
 	return nil

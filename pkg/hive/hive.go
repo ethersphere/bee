@@ -83,13 +83,18 @@ func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Add
 	s.peerHandler = h
 }
 
-func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) error {
+func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.Close()
-
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
@@ -99,7 +104,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 				s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
 				continue
 			}
-
 			return err
 		}
 
@@ -114,20 +118,22 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		return fmt.Errorf("write Peers message: %w", err)
 	}
 
-	return stream.FullClose()
+	return nil
 }
 
 func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
 	_, r := protobuf.NewWriterAndReader(stream)
 	var peersReq pb.Peers
 	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
-		_ = stream.Close()
+		_ = stream.Reset()
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	if err := stream.Close(); err != nil {
-		return fmt.Errorf("close stream: %w", err)
-	}
+	// close the stream before processing in order to unblock the sending side
+	// fullclose is called async because there is no need to wait for conformation,
+	// but we still want to handle not closed stream from the other side to avoid zombie stream
+	go stream.FullClose()
+
 	for _, newPeer := range peersReq.Peers {
 		bzzAddress, err := bzz.ParseAddress(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
 		if err != nil {

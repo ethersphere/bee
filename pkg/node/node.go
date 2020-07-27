@@ -16,8 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
@@ -27,6 +29,7 @@ import (
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -38,12 +41,12 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -65,23 +68,24 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir            string
-	DBCapacity         uint64
-	Password           string
-	APIAddr            string
-	DebugAPIAddr       string
-	Addr               string
-	NATAddr            string
-	EnableWS           bool
-	EnableQUIC         bool
-	NetworkID          uint64
-	WelcomeMessage     string
-	Bootnodes          []string
-	CORSAllowedOrigins []string
-	Logger             logging.Logger
-	TracingEnabled     bool
-	TracingEndpoint    string
-	TracingServiceName string
+	DataDir             string
+	DBCapacity          uint64
+	Password            string
+	APIAddr             string
+	DebugAPIAddr        string
+	Addr                string
+	NATAddr             string
+	EnableWS            bool
+	EnableQUIC          bool
+	NetworkID           uint64
+	WelcomeMessage      string
+	Bootnodes           []string
+	CORSAllowedOrigins  []string
+	Logger              logging.Logger
+	TracingEnabled      bool
+	TracingEndpoint     string
+	TracingServiceName  string
+	DisconnectThreshold uint64
 }
 
 func NewBee(o Options) (*Bee, error) {
@@ -232,10 +236,18 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.localstoreCloser = storer
 
+	acc := accounting.NewAccounting(accounting.Options{
+		Logger:              logger,
+		Store:               stateStore,
+		DisconnectThreshold: o.DisconnectThreshold,
+	})
+
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
+		Accounting:  acc,
+		Pricer:      accounting.NewFixedPricer(address, 10),
 	})
 	tagg := tags.NewTags()
 
@@ -243,7 +255,7 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+	ns := netstore.New(storer, retrieve, content.NewValidator(), soc.NewValidator())
 
 	retrieve.SetStorer(ns)
 
@@ -290,12 +302,15 @@ func NewBee(o Options) (*Bee, error) {
 
 	b.pullerCloser = puller
 
+	manifestParser := jsonmanifest.NewParser()
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Tags:               tagg,
 			Storer:             ns,
+			ManifestParser:     manifestParser,
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			Logger:             logger,
 			Tracer:             tracer,
@@ -452,11 +467,11 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	if err := b.pullerCloser.Close(); err != nil {
-		return fmt.Errorf("puller: %w", err)
+		errs.add(fmt.Errorf("puller: %w", err))
 	}
 
 	if err := b.pullSyncCloser.Close(); err != nil {
-		return fmt.Errorf("pull sync: %w", err)
+		errs.add(fmt.Errorf("pull sync: %w", err))
 	}
 
 	b.p2pCancel()
