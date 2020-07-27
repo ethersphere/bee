@@ -30,6 +30,8 @@ type MockStorer struct {
 	morePull        chan struct{}
 	mtx             sync.Mutex
 	quit            chan struct{}
+	baseAddress     []byte
+	bins            []uint64
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
@@ -38,6 +40,18 @@ func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
 		for i, v := range chs {
 			m.subpull[i] = v
 		}
+	})
+}
+
+func WithBaseAddress(a swarm.Address) Option {
+	return optionFunc(func(m *MockStorer) {
+		m.baseAddress = a.Bytes()
+	})
+}
+
+func WithTags(t *tags.Tags) Option {
+	return optionFunc(func(m *MockStorer) {
+		m.tags = t
 	})
 }
 
@@ -114,6 +128,8 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 		if yes {
 			exist = append(exist, true)
 		} else {
+			po := swarm.Proximity(ch.Address().Bytes(), m.baseAddress)
+			m.bins[po]++
 			exist = append(exist, false)
 		}
 
@@ -195,7 +211,7 @@ func (m *MockStorer) GetModeSet(addr swarm.Address) (mode storage.ModeSet) {
 }
 
 func (m *MockStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error) {
-	panic("not implemented") // TODO: Implement
+	return m.bins[bin], nil
 }
 
 func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (<-chan storage.Descriptor, <-chan struct{}, func()) {

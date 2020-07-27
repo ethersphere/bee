@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
@@ -26,7 +27,10 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 	ctx := context.TODO()
 	testTags := tags.NewTags()
 
-	localStore := mock.NewTagsStorer(testTags)
+	//localStore := mock.NewTagsStorer(testTags)
+	baseAddress := test.RandomAddress()
+	localStore := mock.NewStorer(mock.WithBaseAddress(baseAddress), mock.WithTags(testTags))
+	// create a option with WithBaseAddress
 	pss := pss.NewPss(localStore, testTags)
 
 	target := trojan.Target([]byte{1}) // arbitrary test target
