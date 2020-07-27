@@ -235,10 +235,12 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	return peerBalance, nil
 }
 
+// expectedBalance returns the balance we expect to have with a peer if all reserved funds are actually credited
 func (pb *PeerBalance) expectedBalance() int64 {
 	return pb.balance - int64(pb.reserved)
 }
 
+// expectedDebt returns the debt we expect to have with a peer if all reserved funds are actually credited
 func (pb *PeerBalance) expectedDebt() uint64 {
 	expectedBalance := pb.expectedBalance()
 	if expectedBalance >= 0 {
