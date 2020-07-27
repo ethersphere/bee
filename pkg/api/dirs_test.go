@@ -69,8 +69,25 @@ func TestDirs(t *testing.T) {
 		})
 	})
 
+	t.Run("wrong content type", func(t *testing.T) {
+		f := writeAndOpenFile(t, "binary-file", []byte("some data"))
+		defer os.Remove(f.Name())
+		defer f.Close()
+
+		tarReader := tarFiles(t, []*os.File{f})
+
+		// submit valid tar, but with wrong content-type
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusBadRequest, jsonhttp.StatusResponse{
+			Message: "could not validate request",
+			Code:    http.StatusBadRequest,
+		}, http.Header{
+			"Content-Type": {"other"},
+		})
+	})
+
 	// valid tars
 	for _, tc := range []struct {
+		name         string
 		expectedHash string
 		files        []struct {
 			data      []byte
@@ -81,6 +98,7 @@ func TestDirs(t *testing.T) {
 		}
 	}{
 		{
+			name:         "non-nested files without extension",
 			expectedHash: "2fa041bd35ebff676727eb3023272f43b1e0fa71c8735cc1a7487e9131f963c4",
 			files: []struct {
 				data      []byte
@@ -110,6 +128,7 @@ func TestDirs(t *testing.T) {
 			},
 		},
 		{
+			name:         "nested files with extension",
 			expectedHash: "c3cb9fbe2efa7bbc979245d9bac1400bd4894371776b7560309d49e687514dd6",
 			files: []struct {
 				data      []byte
@@ -148,7 +167,7 @@ func TestDirs(t *testing.T) {
 			},
 		},
 	} {
-		t.Run("valid tar", func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			// create and collect all files in the test case
 			dirFiles := make([]*os.File, len(tc.files))
 			for i, file := range tc.files {
