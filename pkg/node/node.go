@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
