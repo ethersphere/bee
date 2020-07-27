@@ -86,7 +86,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	// since we pay this we have to reduce this (positive quantity) from the balance
 	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
 	if balance.freeBalance()-int64(price) < -int64(a.disconnectThreshold) {
-		a.metrics.CreditBlocks.Inc()
+		a.metrics.AccointingBlocksCount.Inc()
 		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
@@ -136,8 +136,8 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	balance.balance = nextBalance
 
-	a.metrics.CreditCount.Add(float64(price))
-	a.metrics.CreditEvents.Inc()
+	a.metrics.TotalCreditedAmount.Add(float64(price))
+	a.metrics.CreditEventsCount.Inc()
 
 	// TODO: try to initiate payment if payment threshold is reached
 	// if balance.balance < -int64(a.paymentThreshold) { }
@@ -166,12 +166,12 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	balance.balance = nextBalance
 
-	a.metrics.DebitCount.Add(float64(price))
-	a.metrics.DebitEvents.Inc()
+	a.metrics.TotalDebitedAmount.Add(float64(price))
+	a.metrics.DebitEventsCount.Inc()
 
 	if nextBalance >= int64(a.disconnectThreshold) {
 		// peer to much in debt
-		a.metrics.CreditDisconnects.Inc()
+		a.metrics.AccountingDisconnectsCount.Inc()
 		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 	}
 

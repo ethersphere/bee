@@ -13,52 +13,52 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	DebitCount        prometheus.Counter
-	CreditCount       prometheus.Counter
-	DebitEvents       prometheus.Counter
-	CreditEvents      prometheus.Counter
-	CreditDisconnects prometheus.Counter
-	CreditBlocks      prometheus.Counter
+	TotalDebitedAmount         prometheus.Counter
+	TotalCreditedAmount        prometheus.Counter
+	DebitEventsCount           prometheus.Counter
+	CreditEventsCount          prometheus.Counter
+	AccountingDisconnectsCount prometheus.Counter
+	AccointingBlocksCount      prometheus.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "accounting"
 
 	return metrics{
-		DebitCount: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalDebitedAmount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_debited_amount",
 			Help:      "Amount of bzz debited to peers (potential income of the node)",
 		}),
-		CreditCount: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalCreditedAmount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_credited_amount",
 			Help:      "Amount of bzz credited to peers (potential cost of the node)",
 		}),
-		DebitEvents: prometheus.NewCounter(prometheus.CounterOpts{
+		DebitEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_debit_events_count",
+			Name:      "debit_events_count",
 			Help:      "Number of occurrences of bzz debit acts towards peers",
 		}),
-		CreditEvents: prometheus.NewCounter(prometheus.CounterOpts{
+		CreditEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_credit_events_count",
+			Name:      "credit_events_count",
 			Help:      "Number of occurrences of bzz credit acts towards peers",
 		}),
-		CreditDisconnects: prometheus.NewCounter(prometheus.CounterOpts{
+		AccountingDisconnectsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "credit_related_disconnects_count",
+			Name:      "accounting_disconnects_count",
 			Help:      "Number of occurrences of disconnected peers based on payment thresholds",
 		}),
-		CreditBlocks: prometheus.NewCounter(prometheus.CounterOpts{
+		AccointingBlocksCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "credit_related_blocks_count",
+			Name:      "accounting_blocks_count",
 			Help:      "Number of occurrences of temporary skipping a peer to avoid crossing their disconnect thresholds",
 		}),
 	}
