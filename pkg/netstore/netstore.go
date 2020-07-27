@@ -35,7 +35,6 @@ func New(s storage.Storer, rcb chunk.RecoveryHook, dcb func(swarm.Chunk), r retr
 	validators ...swarm.ChunkValidator) storage.Storer {
 	return &store{Storer: s, recoveryCallback: rcb, deliveryCallback: dcb, retrieval: r, logger: logger, validators: validators}
 }
-
 // Get retrieves a given chunk address.
 // It will request a chunk from the network whenever it cannot be found locally.
 func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
