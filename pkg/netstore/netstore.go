@@ -17,15 +17,21 @@ import (
 
 type store struct {
 	storage.Storer
-
 	retrieval  retrieval.Interface
 	validators []swarm.ChunkValidator
 	logger     logging.Logger
+	recoveryCallback func(ctx context.Context, chunkAddress swarm.Address) error // this is the callback to be executed when a chunk fails to be retrieved
 }
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validators ...swarm.ChunkValidator) storage.Storer {
 	return &store{Storer: s, retrieval: r, logger: logger, validators: validators}
+}
+
+// WithRecoveryCallback allows injecting a callback func on the NetStore struct
+func (s *store) WithRecoveryCallback(f func(ctx context.Context, chunkAddress swarm.Address) error) *store {
+	s.recoveryCallback = f
+	return s
 }
 
 // Get retrieves a given chunk address.
@@ -37,6 +43,12 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			data, err := s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
+				targets := ctx.Value(targetsContextKey)
+				if s.recoveryCallback != nil && targets != nil {
+					go s.recoveryCallback(ctx, addr)
+					return nil, ErrRecoveryAttempt
+
+				}
 				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
 
