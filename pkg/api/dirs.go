@@ -23,7 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type toEncryptHeader struct{}
+type toEncryptContextKey struct{}
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +54,7 @@ func parseRequest(r *http.Request) (context.Context, error) {
 		return nil, errors.New("request has no body")
 	}
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	return context.WithValue(ctx, toEncryptHeader{}, toEncrypt), nil
+	return context.WithValue(ctx, toEncryptContextKey{}, toEncrypt), nil
 }
 
 // storeDir stores all files recursively contained in the directory given as a tar
@@ -66,7 +66,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 	tarReader := tar.NewReader(reader)
 	defer reader.Close()
 
-	v := ctx.Value(toEncryptHeader{})
+	v := ctx.Value(toEncryptContextKey{})
 	toEncrypt, _ := v.(bool) // default is false
 
 	// iterate through the files in the supplied tar
