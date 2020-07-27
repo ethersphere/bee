@@ -54,7 +54,7 @@ func TestSocValidator(t *testing.T) {
 	// check invalid address
 	sch.Data()[0] = 0x00
 	wrongAddressBytes := sch.Address().Bytes()
-	wrongAddressBytes[0] ^= wrongAddressBytes[0]
+	wrongAddressBytes[0] = 255 - wrongAddressBytes[0]
 	wrongAddress := swarm.NewAddress(wrongAddressBytes)
 	sch = swarm.NewChunk(wrongAddress, sch.Data())
 	if v.Validate(sch) {
