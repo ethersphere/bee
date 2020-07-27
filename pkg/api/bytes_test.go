@@ -61,8 +61,8 @@ func TestBytes(t *testing.T) {
 	t.Run("download-with-targets", func(t *testing.T) {
 		resp := request(t, client, http.MethodGet, resource+"/"+expHash+"?targets="+targets, nil, http.StatusOK)
 
-		if resp.Header.Get("Targets") != targets {
-			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get("Targets"), targets)
+		if resp.Header.Get(api.TargetsRecoveryHeader) != targets {
+			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get(api.TargetsRecoveryHeader), targets)
 		}
 	})
 

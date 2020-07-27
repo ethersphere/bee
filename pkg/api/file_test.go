@@ -203,8 +203,8 @@ func TestFiles(t *testing.T) {
 
 		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash)+"?targets="+targets, nil, http.StatusOK, simpleData, nil)
 
-		if rcvdHeader.Get("Targets") != targets {
-			t.Fatalf("targets mismatch. got %s, want %s", rcvdHeader.Get("Targets"), targets)
+		if rcvdHeader.Get(api.TargetsRecoveryHeader) != targets {
+			t.Fatalf("targets mismatch. got %s, want %s", rcvdHeader.Get(api.TargetsRecoveryHeader), targets)
 		}
 	})
 

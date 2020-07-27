@@ -348,7 +348,7 @@ func (s *server) downloadHandler(
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", dataSize))
-	w.Header().Set("Targets", targets)
+	w.Header().Set(TargetsRecoveryHeader, targets)
 	if _, err = io.Copy(w, bpr); err != nil {
 		s.Logger.Debugf("api download: data read %s: %v", reference, err)
 		s.Logger.Errorf("api download: data read %s", reference)

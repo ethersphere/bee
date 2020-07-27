@@ -124,8 +124,8 @@ func TestChunkUploadDownload(t *testing.T) {
 		resp := request(t, client, http.MethodGet, resourceTargets(validHash), nil, http.StatusOK)
 
 		// Check if the target is obtained correctly
-		if resp.Header.Get("Targets") != targets {
-			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get("Targets"), targets)
+		if resp.Header.Get(api.TargetsRecoveryHeader) != targets {
+			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get(api.TargetsRecoveryHeader), targets)
 		}
 	})
 }
