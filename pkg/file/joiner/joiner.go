@@ -31,7 +31,7 @@ func NewSimpleJoiner(getter storage.Getter) file.Joiner {
 }
 
 func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSize int64, err error) {
-	// Handle size based on weather the root chunk is encrypted or not
+	// Handle size based on whether the root chunk is encrypted or not
 	toDecrypt := len(address.Bytes()) == swarm.EncryptedReferenceSize
 
 	var key encryption.Key
