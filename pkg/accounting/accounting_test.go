@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	testPaymentThreshold    = 10000
-	testDisconnectThreshold = 10000
-	testPrice               = uint64(10)
+	testPaymentThreshold = 10000
+	testPaymentTolerance = 1000
+	testPrice            = uint64(10)
 )
 
 // booking represents an accounting action and the expected result afterwards
@@ -171,6 +171,7 @@ func TestAccountingReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// it should allow to cross the threshold one time
 	err = acc.Reserve(peer1Addr, testPaymentThreshold+1)
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +196,7 @@ func TestAccountingDisconnect(t *testing.T) {
 
 	acc := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentTolerance,
 		Logger:           logger,
 		Store:            store,
 	})
@@ -204,7 +206,14 @@ func TestAccountingDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Debit(peer1Addr, testDisconnectThreshold)
+	// put the peer 1 unit away from disconnect
+	err = acc.Debit(peer1Addr, testPaymentThreshold+testPaymentTolerance-1)
+	if err != nil {
+		t.Fatal("expected no error while still within tolerance")
+	}
+
+	// put the peer over thee threshold
+	err = acc.Debit(peer1Addr, 1)
 	if err == nil {
 		t.Fatal("expected Add to return error")
 	}
