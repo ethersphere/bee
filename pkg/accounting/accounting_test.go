@@ -5,6 +5,7 @@
 package accounting_test
 
 import (
+	"context"
 	"errors"
 	"io/ioutil"
 	"testing"
@@ -221,5 +222,81 @@ func TestAccountingDisconnect(t *testing.T) {
 	var e *p2p.DisconnectError
 	if !errors.As(err, &e) {
 		t.Fatalf("expected DisconnectError, got %v", err)
+	}
+}
+
+type settlementMock struct {
+	paidAmount uint64
+	paidPeer   swarm.Address
+}
+
+func (s *settlementMock) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+	s.paidPeer = peer
+	s.paidAmount = amount
+	return nil
+}
+
+// TestAccountingCallSettlement tests that settlement is called correctly if the payment threshold is hit
+func TestAccountingCallSettlement(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	settlement := &settlementMock{}
+
+	acc := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentTolerance,
+		Logger:           logger,
+		Store:            store,
+		Settlement:       settlement,
+	})
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Credit until payment treshold
+	err = acc.Credit(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !settlement.paidPeer.Equal(peer1Addr) {
+		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	}
+
+	if settlement.paidAmount != testPaymentThreshold {
+		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, testPaymentThreshold)
+	}
+
+	balance, err := acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance != 0 {
+		t.Fatalf("expected balance to be reset. got %d", balance)
+	}
+
+	// Reserve first, then credit
+	err = acc.Reserve(peer1Addr, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedAmount := uint64(testPaymentThreshold - 100)
+	err = acc.Credit(peer1Addr, expectedAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !settlement.paidPeer.Equal(peer1Addr) {
+		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	}
+
+	if settlement.paidAmount != expectedAmount {
+		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, expectedAmount)
 	}
 }

@@ -139,23 +139,41 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	balance.balance = nextBalance
 
 	// if our expected debt exceeds our payment threshold (which we assume is also the peers payment threshold), trigger settlement
-	if balance.expectedDebt() > a.paymentThreshold {
-		paymentAmount := uint64(-balance.balance)
-		err = a.settlement.Pay(context.Background(), peer, paymentAmount)
-		if err != nil {
-			a.logger.Errorf("payment for peer %v with amount %d failed: %v", peer, paymentAmount, err)
-			return nil
-		}
-
-		balance.balance += int64(paymentAmount)
-		err = a.store.Put(balanceKey(peer), balance.balance)
-		if err != nil {
-			a.logger.Errorf("failed to persist balance for peer %v: %w", peer, err)
-			return nil
-		}
+	if balance.expectedDebt() >= a.paymentThreshold {
+		a.settle(peer, balance)
 	}
 
 	return nil
+}
+
+// settle all debt with a peer
+// the lock on balance must be held when called
+func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) {
+	paymentAmount := uint64(-balance.balance)
+
+	oldBalance := balance.balance
+	nextBalance := oldBalance + int64(paymentAmount)
+
+	// try to save the next balance first
+	// otherwise we might pay and then not be able to save, thus paying again after restart
+	err := a.store.Put(balanceKey(peer), nextBalance)
+	if err != nil {
+		a.logger.Errorf("failed to persist balance for peer %v: %w", peer, err)
+		return
+	}
+
+	err = a.settlement.Pay(context.Background(), peer, paymentAmount)
+	if err != nil {
+		a.logger.Errorf("payment for peer %v with amount %d failed: %v", peer, paymentAmount, err)
+		// if the payment didn't work we should restore the old balance in the state store
+		err = a.store.Put(balanceKey(peer), oldBalance)
+		if err != nil {
+			a.logger.Errorf("failed to persist balance for peer %v: %w", peer, err)
+			return
+		}
+		return
+	}
+	balance.balance = nextBalance
 }
 
 // Debit increases the amount of debt we have with the given peer (and decreases existing credit)
