@@ -47,7 +47,6 @@ func (s Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Add
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSyncPush status.
 func TestSendChunkToPushSyncWithTag(t *testing.T) {
-
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
