@@ -313,3 +313,44 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, expectedAmount)
 	}
 }
+
+// TestAccountingNotifyPayment tests that payments adjust the balance and payment which put us into debt are rejected
+func TestAccountingNotifyPayment(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentTolerance,
+		Logger:           logger,
+		Store:            store,
+	})
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	debtAmount := uint64(100)
+	err = acc.Debit(peer1Addr, debtAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.NotifyPayment(peer1Addr, debtAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Debit(peer1Addr, debtAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.NotifyPayment(peer1Addr, debtAmount+1)
+	if err == nil {
+		t.Fatal("expected payment to be rejected")
+	}
+}

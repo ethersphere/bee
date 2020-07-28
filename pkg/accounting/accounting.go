@@ -287,6 +287,10 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 	nextBalance := balance.balance - int64(amount)
 
+	if nextBalance < 0 {
+		return fmt.Errorf("refusing to accept payment which would put us in debt, new balance would have been %d", nextBalance)
+	}
+
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
 
 	err = a.store.Put(balanceKey(peer), nextBalance)
