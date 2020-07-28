@@ -144,24 +144,10 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	s.sumCounts[lvl]++
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
-	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
 
-	//perform hashing
-	s.hasher.Reset()
-	err := s.hasher.SetSpan(span)
-	if err != nil {
-		return nil, err
-	}
-
-	var ref encryption.Key
 	var chunkData []byte
-	data := s.buffer[s.cursors[lvl+1] : s.cursors[lvl+1]+sizeToSum]
+	var addr swarm.Address
 
-	_, err = s.hasher.Write(data)
-	if err != nil {
-		return nil, err
-	}
-	ref = s.hasher.Sum(nil)
 	head := make([]byte, 8)
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
@@ -171,15 +157,28 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 
 	// assemble chunk and put in store
 	addr := swarm.NewAddress(ref)
-
 	c := chunkData
 	var encryptionKey encryption.Key
+
 	if s.toEncrypt {
+		var err error
 		c, encryptionKey, err = s.encryptChunkData(chunkData)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	s.hasher.Reset()
+	err := s.hasher.SetSpanBytes(c[:8])
+	if err != nil {
+		return nil, err
+	}
+	_, err = s.hasher.Write(c[8:])
+	if err != nil {
+		return nil, err
+	}
+	ref := s.hasher.Sum(nil)
+	addr = swarm.NewAddress(ref)
 
 	ch := swarm.NewChunk(addr, c)
 	seen, err := s.putter.Put(s.ctx, storage.ModePutUpload, ch)
