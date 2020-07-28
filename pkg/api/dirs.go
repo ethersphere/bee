@@ -87,7 +87,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("read tar stream error: %v", err)
+			return swarm.ZeroAddress, fmt.Errorf("read tar stream error: %w", err)
 		}
 
 		filePath := fileHeader.Name
@@ -110,7 +110,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 		}
 		fileReference, err := storeFile(ctx, fileInfo, s)
 		if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %v", err)
+			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %w", err)
 		}
 		logger.Tracef("uploaded dir file %v with reference %v", filePath, fileReference)
 
@@ -136,7 +136,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 	// first, serialize into byte array
 	b, err := dirManifest.Serialize()
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("manifest serialize error: %v", err)
+		return swarm.ZeroAddress, fmt.Errorf("manifest serialize error: %w", err)
 	}
 
 	// set up reader for manifest file upload
@@ -150,7 +150,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 	}
 	manifestReference, err := storeFile(ctx, manifestFileInfo, s)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("store manifest error: %v", err)
+		return swarm.ZeroAddress, fmt.Errorf("store manifest error: %w", err)
 	}
 
 	return manifestReference, nil
