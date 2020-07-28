@@ -7,12 +7,12 @@ package accounting
 import (
 	"errors"
 	"fmt"
-	"sync"
-
+	"github.com/ethersphere/bee/pkg/accounting/debouncer"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"sync"
 )
 
 var _ Interface = (*Accounting)(nil)
@@ -45,6 +45,7 @@ type Options struct {
 	DisconnectThreshold uint64
 	Logger              logging.Logger
 	Store               storage.StateStorer
+	Debouncer           debouncer.Interface
 }
 
 // Accounting is the main implementation of the accounting interface
@@ -54,6 +55,7 @@ type Accounting struct {
 	logger              logging.Logger
 	store               storage.StateStorer
 	disconnectThreshold uint64 // the debt threshold at which we will disconnect from a peer
+	debouncer           debouncer.Interface
 }
 
 var (
@@ -62,12 +64,17 @@ var (
 
 // NewAccounting creates a new Accounting instance with the provided options
 func NewAccounting(o Options) *Accounting {
-	return &Accounting{
+
+	a := &Accounting{
 		balances:            make(map[string]*PeerBalance),
 		disconnectThreshold: o.DisconnectThreshold,
 		logger:              o.Logger,
 		store:               o.Store,
+		debouncer:           o.Debouncer,
 	}
+
+	return a
+
 }
 
 // Reserve reserves a portion of the balance for peer
@@ -126,11 +133,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	err = a.store.Put(balanceKey(peer), nextBalance)
-	if err != nil {
-		return err
-	}
-
+	a.debouncer.Put(balanceKey(peer), nextBalance)
 	balance.balance = nextBalance
 
 	// TODO: try to initiate payment if payment threshold is reached
@@ -153,10 +156,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	err = a.store.Put(balanceKey(peer), nextBalance)
-	if err != nil {
-		return err
-	}
+	a.debouncer.Put(balanceKey(peer), nextBalance)
 
 	balance.balance = nextBalance
 
@@ -219,3 +219,5 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 func (pb *PeerBalance) freeBalance() int64 {
 	return pb.balance - int64(pb.reserved)
 }
+
+/////////////////

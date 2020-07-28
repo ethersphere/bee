@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
+	"github.com/ethersphere/bee/pkg/accounting/debouncer"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/content"
@@ -58,6 +59,7 @@ type Bee struct {
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
 	errorLogWriter   *io.PipeWriter
+	debouncerCloser  io.Closer
 	tracerCloser     io.Closer
 	stateStoreCloser io.Closer
 	localstoreCloser io.Closer
@@ -236,9 +238,16 @@ func NewBee(o Options) (*Bee, error) {
 	}
 	b.localstoreCloser = storer
 
+	debouncer := debouncer.NewDebouncer(debouncer.Options{
+		Logger: logger,
+		Store:  stateStore,
+	})
+	b.debouncerCloser = debouncer
+
 	acc := accounting.NewAccounting(accounting.Options{
 		Logger:              logger,
 		Store:               stateStore,
+		Debouncer:           debouncer,
 		DisconnectThreshold: o.DisconnectThreshold,
 	})
 
@@ -481,6 +490,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.tracerCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("tracer: %w", err))
+	}
+
+	if err := b.debouncerCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("debouncer: %w", err))
 	}
 
 	if err := b.stateStoreCloser.Close(); err != nil {
