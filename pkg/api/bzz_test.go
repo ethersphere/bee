@@ -32,13 +32,11 @@ func TestBzz(t *testing.T) {
 	var (
 		bzzDownloadResource = func(addr, path string) string { return "/bzz:/" + addr + "/" + path }
 		storer              = smock.NewStorer()
-		ta                  = tags.NewTags()
-		tg, _               = ta.Create("", 0, false)
-		sp                  = splitter.NewSimpleSplitter(storer, tg)
+		sp                  = splitter.NewSimpleSplitter(storer)
 		client              = newTestServer(t, testServerOptions{
 			Storer:         storer,
 			ManifestParser: jsonmanifest.NewParser(),
-			Tags:           ta,
+			Tags:           tags.NewTags(),
 			Logger:         logging.New(ioutil.Discard, 5),
 		})
 	)

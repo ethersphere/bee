@@ -19,8 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
-
 	"gitlab.com/nolash/go-mockbytes"
 )
 
@@ -145,12 +143,7 @@ func TestEncryptionAndDecryption(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			mtags := tags.NewTags()
-			ta, err := mtags.Create("", 0, false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			s := splitter.NewSimpleSplitter(store, ta)
+			s := splitter.NewSimpleSplitter(store)
 			testDataReader := file.NewSimpleReadCloser(testData)
 			resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), true)
 			if err != nil {

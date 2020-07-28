@@ -56,13 +56,18 @@ type SimpleSplitterJob struct {
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, tagger *tags.Tag, toEncrypt bool) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, toEncrypt bool) *SimpleSplitterJob {
 	hashSize := swarm.HashSize
 	refSize := int64(hashSize)
 	if toEncrypt {
 		refSize += encryption.KeyLength
 	}
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
+
+	ta, ok := ctx.Value(tags.TagsContextKey{}).(*tags.Tag)
+	if !ok {
+		ta = nil
+	}
 	return &SimpleSplitterJob{
 		ctx:        ctx,
 		putter:     putter,
@@ -71,7 +76,7 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, swarm.ChunkWithSpanSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
-		tagg:       tagger,
+		tagg:       ta,
 		toEncrypt:  toEncrypt,
 		refSize:    refSize,
 	}
@@ -140,7 +145,6 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	spanSize := file.Spans[lvl] * swarm.ChunkSize
 	span := (s.length-1)%spanSize + 1
 	sizeToSum := s.cursors[lvl] - s.cursors[lvl+1]
-	s.tagg.Inc(tags.StateSeen)
 
 	//perform hashing
 	s.hasher.Reset()
@@ -163,8 +167,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
 
-	s.tagg.Inc(tags.StateSplit)
-	s.tagg.Inc(tags.TotalChunks)
+	s.incrTag(tags.StateSplit)
 
 	// assemble chunk and put in store
 	addr := swarm.NewAddress(ref)
@@ -179,11 +182,14 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	}
 
 	ch := swarm.NewChunk(addr, c)
-	_, err = s.putter.Put(s.ctx, storage.ModePutUpload, ch)
+	seen, err := s.putter.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err
+	} else if len(seen) > 0 && seen[0] {
+		s.incrTag(tags.StateSeen)
 	}
-	s.tagg.Inc(tags.StateStored)
+
+	s.incrTag(tags.StateStored)
 
 	return append(ch.Address().Bytes(), encryptionKey...), nil
 }
@@ -300,4 +306,10 @@ func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) *encryption.En
 
 func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) *encryption.Encryption {
 	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
+}
+
+func (s *SimpleSplitterJob) incrTag(state tags.State) {
+	if s.tagg != nil {
+		s.tagg.Inc(state)
+	}
 }

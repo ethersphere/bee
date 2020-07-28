@@ -15,8 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
-
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 
@@ -25,15 +23,10 @@ import (
 func TestSplitIncomplete(t *testing.T) {
 	testData := make([]byte, 42)
 	store := mock.NewStorer()
-	ta := tags.NewTags()
-	tg, err := ta.Create("", 0, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := splitter.NewSimpleSplitter(store, tg)
+	s := splitter.NewSimpleSplitter(store)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
-	_, err = s.Split(context.Background(), testDataReader, 41, false)
+	_, err := s.Split(context.Background(), testDataReader, 41, false)
 	if err == nil {
 		t.Fatalf("expected error on EOF before full length write")
 	}
@@ -49,12 +42,7 @@ func TestSplitSingleChunk(t *testing.T) {
 	}
 
 	store := mock.NewStorer()
-	ta := tags.NewTags()
-	tg, err := ta.Create("", 0, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := splitter.NewSimpleSplitter(store, tg)
+	s := splitter.NewSimpleSplitter(store)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), false)
@@ -86,12 +74,7 @@ func TestSplitThreeLevels(t *testing.T) {
 	}
 
 	store := mock.NewStorer()
-	ta := tags.NewTags()
-	tg, err := ta.Create("", 0, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := splitter.NewSimpleSplitter(store, tg)
+	s := splitter.NewSimpleSplitter(store)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), false)
@@ -146,14 +129,9 @@ func TestUnalignedSplit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ta := tags.NewTags()
-	tg, err := ta.Create("", 0, false)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// perform the split in a separate thread
-	sp := splitter.NewSimpleSplitter(storer, tg)
+	sp := splitter.NewSimpleSplitter(storer)
 	ctx := context.Background()
 	doneC := make(chan swarm.Address)
 	errC := make(chan error)

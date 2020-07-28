@@ -7,6 +7,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
 )
 
@@ -57,11 +59,15 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
 	var reader io.Reader
 	var fileName, contentLength string
 	var fileSize uint64
+
 	ta := s.createTag(w, r)
+
+	// Add the tag to the context
+	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, ta))
+	ctx := r.Context()
 
 	if mediaType == multiPartFormData {
 		mr := multipart.NewReader(r.Body, params["boundary"])
@@ -143,7 +149,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// first store the file and get its reference
-	sp := splitter.NewSimpleSplitter(s.Storer, ta)
+	sp := splitter.NewSimpleSplitter(s.Storer)
 	fr, err := file.SplitWriteAll(ctx, sp, reader, int64(fileSize), toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("file upload: file store, file %q: %v", fileName, err)
@@ -167,7 +173,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
-	sp = splitter.NewSimpleSplitter(s.Storer, ta)
+	sp = splitter.NewSimpleSplitter(s.Storer)
 	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
@@ -185,7 +191,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "entry marshal error")
 		return
 	}
-	sp = splitter.NewSimpleSplitter(s.Storer, ta)
+	sp = splitter.NewSimpleSplitter(s.Storer)
 	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("file upload: entry store, file %q: %v", fileName, err)

@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -25,11 +26,14 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	ta := s.createTag(w, r)
 
+	// Add the tag to the context
+	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, ta))
+	ctx := r.Context()
+
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	sp := splitter.NewSimpleSplitter(s.Storer, ta)
+	sp := splitter.NewSimpleSplitter(s.Storer)
 	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: %v", err)
@@ -97,5 +101,6 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) *tags.Tag {
 			return nil
 		}
 	}
+
 	return tag
 }

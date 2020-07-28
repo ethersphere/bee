@@ -15,8 +15,6 @@ import (
 	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/tags"
-
 	"github.com/spf13/cobra"
 )
 
@@ -95,12 +93,7 @@ func Split(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// split and rule
-	ta := tags.NewTags()
-	tg, err := ta.Create("", 0, false)
-	if err != nil {
-		return err
-	}
-	s := splitter.NewSimpleSplitter(stores, tg)
+	s := splitter.NewSimpleSplitter(stores)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	addr, err := s.Split(ctx, infile, inputLength, false)

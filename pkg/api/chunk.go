@@ -6,14 +6,13 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -30,8 +29,6 @@ const PinHeaderName = "swarm-pin"
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["addr"]
-	ctx := r.Context()
-
 	address, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("chunk upload: parse chunk address %s: %v", addr, err)
@@ -40,36 +37,14 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// if tag header is not there create a new one
-	var tag *tags.Tag
-	tagUidStr := r.Header.Get(TagHeaderUid)
-	if tagUidStr == "" {
-		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
-		tag, err = s.Tags.Create(tagName, 0, false)
-		if err != nil {
-			s.Logger.Debugf("chunk upload: tag creation error: %v, addr %s", err, address)
-			s.Logger.Error("chunk upload: tag creation error")
-			jsonhttp.InternalServerError(w, "cannot create tag")
-			return
-		}
-	} else {
-		// if the tag uid header is present, then use the tag sent
-		tagUid, err := strconv.ParseUint(tagUidStr, 10, 32)
-		if err != nil {
-			s.Logger.Debugf("chunk upload: parse taguid %s: %v", tagUidStr, err)
-			s.Logger.Error("chunk upload: parse taguid")
-			jsonhttp.BadRequest(w, "invalid taguid")
-			return
-		}
-
-		tag, err = s.Tags.Get(uint32(tagUid))
-		if err != nil {
-			s.Logger.Debugf("chunk upload: tag get error: %v, addr %s", err, address)
-			s.Logger.Error("chunk upload: tag get error")
-			jsonhttp.InternalServerError(w, "cannot create tag")
-			return
-		}
+	tag := s.createTag(w, r)
+	if tag == nil {
+		return
 	}
+
+	// Add the tag to the context
+	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, tag))
+	ctx := r.Context()
 
 	// Increment the StateSplit here since we dont have a splitter for the file upload
 	tag.Inc(tags.StateSplit)
@@ -80,7 +55,6 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("chunk upload: read chunk data error")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
-
 	}
 
 	seen, err := s.Storer.Put(ctx, storage.ModePutUpload, swarm.NewChunk(address, data))
