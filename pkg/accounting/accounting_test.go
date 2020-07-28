@@ -7,6 +7,7 @@ package accounting_test
 import (
 	"errors"
 	"github.com/ethersphere/bee/pkg/accounting"
+	debouncermock "github.com/ethersphere/bee/pkg/accounting/debouncer/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -32,12 +33,15 @@ func TestAccountingAddBalance(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
+	debouncer := debouncermock.NewDebouncer()
+
 	defer store.Close()
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
 		Logger:              logger,
 		Store:               store,
+		Debouncer:           debouncer,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
@@ -97,12 +101,14 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
+	debouncer := debouncermock.NewDebouncer()
 	defer store.Close()
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
 		Logger:              logger,
 		Store:               store,
+		Debouncer:           debouncer,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
@@ -127,29 +133,14 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc = accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
-	})
-
-	peer1Balance, err := acc.Balance(peer1Addr)
-	if err != nil {
+	val, ok := debouncer.Get(accounting.BalanceKey(peer1Addr))
+	if !ok {
+		t.Fatal("Expected Put have been called")
+	}
+	if val != int64(peer1DebitAmount) {
 		t.Fatal(err)
 	}
 
-	if peer1Balance != int64(peer1DebitAmount) {
-		t.Fatalf("peer1Balance not loaded correctly. got %d, wanted %d", peer1Balance, peer1DebitAmount)
-	}
-
-	peer2Balance, err := acc.Balance(peer2Addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if peer2Balance != -int64(peer2CreditAmount) {
-		t.Fatalf("peer2Balance not loaded correctly. got %d, wanted %d", peer2Balance, -int64(peer2CreditAmount))
-	}
 }
 
 // TestAccountingReserve tests that reserve returns an error if the disconnect threshold would be exceeded
@@ -157,12 +148,14 @@ func TestAccountingReserve(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
+	debouncer := debouncermock.NewDebouncer()
 	defer store.Close()
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
 		Logger:              logger,
 		Store:               store,
+		Debouncer:           debouncer,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
@@ -190,12 +183,16 @@ func TestAccountingDisconnect(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
+
 	defer store.Close()
+
+	debouncer := debouncermock.NewDebouncer()
 
 	acc := accounting.NewAccounting(accounting.Options{
 		DisconnectThreshold: testDisconnectThreshold,
 		Logger:              logger,
 		Store:               store,
+		Debouncer:           debouncer,
 	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
