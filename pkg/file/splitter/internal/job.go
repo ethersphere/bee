@@ -152,11 +152,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
-
 	s.incrTag(tags.StateSplit)
-
-	// assemble chunk and put in store
-	addr := swarm.NewAddress(ref)
 	c := chunkData
 	var encryptionKey encryption.Key
 
