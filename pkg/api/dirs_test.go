@@ -89,24 +89,12 @@ func TestDirs(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		expectedHash string
-		files        []struct {
-			data      []byte
-			name      string
-			path      string
-			reference swarm.Address
-			headers   http.Header
-		}
+		files        []f // files in dir for test case
 	}{
 		{
 			name:         "non-nested files without extension",
 			expectedHash: "2fa041bd35ebff676727eb3023272f43b1e0fa71c8735cc1a7487e9131f963c4",
-			files: []struct {
-				data      []byte
-				name      string
-				path      string
-				reference swarm.Address
-				headers   http.Header
-			}{
+			files: []f{
 				{
 					data:      []byte("first file data"),
 					name:      "file1",
@@ -130,13 +118,7 @@ func TestDirs(t *testing.T) {
 		{
 			name:         "nested files with extension",
 			expectedHash: "c3cb9fbe2efa7bbc979245d9bac1400bd4894371776b7560309d49e687514dd6",
-			files: []struct {
-				data      []byte
-				name      string
-				path      string
-				reference swarm.Address
-				headers   http.Header
-			}{
+			files: []f{
 				{
 					data:      []byte("robots text"),
 					name:      "robots.txt",
@@ -280,4 +262,13 @@ func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 	}
 
 	return &buf
+}
+
+// struct for dir files for test cases
+type f struct {
+	data      []byte
+	name      string
+	path      string
+	reference swarm.Address
+	headers   http.Header
 }
