@@ -258,11 +258,18 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	err = acc.Reserve(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Credit until payment treshold
 	err = acc.Credit(peer1Addr, testPaymentThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	acc.Release(peer1Addr, testPaymentThreshold)
 
 	if !settlement.paidPeer.Equal(peer1Addr) {
 		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
@@ -280,13 +287,19 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatalf("expected balance to be reset. got %d", balance)
 	}
 
-	// Reserve first, then credit
+	// Assume 100 is reserved by some other request
 	err = acc.Reserve(peer1Addr, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Credit until the expected debt exceeeds payment threshold
 	expectedAmount := uint64(testPaymentThreshold - 100)
+	err = acc.Reserve(peer1Addr, expectedAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	err = acc.Credit(peer1Addr, expectedAmount)
 	if err != nil {
 		t.Fatal(err)

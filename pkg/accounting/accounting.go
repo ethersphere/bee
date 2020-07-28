@@ -131,6 +131,9 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
+	// compute expected debt before update because reserve still includes the amount that is deducted from the balance
+	expectedDebt := balance.expectedDebt()
+
 	err = a.store.Put(balanceKey(peer), nextBalance)
 	if err != nil {
 		return err
@@ -139,7 +142,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	balance.balance = nextBalance
 
 	// if our expected debt exceeds our payment threshold (which we assume is also the peers payment threshold), trigger settlement
-	if balance.expectedDebt() >= a.paymentThreshold {
+	if expectedDebt >= a.paymentThreshold {
 		a.settle(peer, balance)
 	}
 
