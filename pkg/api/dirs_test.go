@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"path"
 	"testing"
 
@@ -43,41 +42,8 @@ func TestDirs(t *testing.T) {
 		})
 	})
 
-	t.Run("empty file", func(t *testing.T) {
-		filename := "empty-file"
-		err := ioutil.WriteFile(filename, nil, 0755)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(filename)
-
-		file, err := os.Open(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer file.Close()
-
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, file, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Message: "could not store dir",
-			Code:    http.StatusInternalServerError,
-		}, http.Header{
-			"Content-Type": {api.ContentTypeTar},
-		})
-	})
-
 	t.Run("non tar file", func(t *testing.T) {
-		filename := "non-tar-file"
-		err := ioutil.WriteFile(filename, []byte("some data"), 0755)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(filename)
-
-		file, err := os.Open(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer file.Close()
+		file := bytes.NewReader([]byte("some data"))
 
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, file, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "could not store dir",
@@ -205,59 +171,21 @@ func tarFiles(t *testing.T, files []f) *bytes.Buffer {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
-	// create and collect all files in the test case
 	for _, file := range files {
-		// create dir if the file is nested
-		if file.dir != "" {
-			if _, err := os.Stat(file.dir); os.IsNotExist(err) {
-				if err := os.Mkdir(file.dir, 0700); err != nil {
-					t.Fatal(err)
-				}
-				defer os.RemoveAll(file.dir)
-			}
-		}
-
-		// create the file
-		filepath := path.Join(file.dir, file.name)
-		err := ioutil.WriteFile(filepath, file.data, 0755)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(filepath)
-
-		f, err := os.Open(filepath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer f.Close()
-
-		// get file info
-		info, err := f.Stat()
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		// create tar header and write it
 		hdr := &tar.Header{
-			Name: f.Name(),
+			Name: path.Join(file.dir, file.name),
 			Mode: 0600,
-			Size: info.Size(),
+			Size: int64(len(file.data)),
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
 			t.Fatal(err)
 		}
 
-		// read the file data
-		fileData, err := ioutil.ReadAll(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		// write the file data to the tar
-		if _, err := tw.Write(fileData); err != nil {
+		if _, err := tw.Write(file.data); err != nil {
 			t.Fatal(err)
 		}
-
 	}
 
 	// finally close the tar writer
