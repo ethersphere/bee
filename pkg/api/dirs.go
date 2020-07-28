@@ -81,9 +81,6 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 	tarReader := tar.NewReader(reader)
 	defer reader.Close()
 
-	v := ctx.Value(toEncryptContextKey{})
-	toEncrypt, _ := v.(bool) // default is false
-
 	// iterate through the files in the supplied tar
 	for {
 		fileHeader, err := tarReader.Next()
@@ -109,7 +106,6 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 			name:        fileName,
 			size:        fileHeader.FileInfo().Size(),
 			contentType: contentType,
-			toEncrypt:   toEncrypt,
 			reader:      tarReader,
 		}
 		fileReference, err := storeFile(ctx, fileInfo, s)
@@ -150,7 +146,6 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 	manifestFileInfo := &fileUploadInfo{
 		size:        r.Size(),
 		contentType: ManifestContentType,
-		toEncrypt:   toEncrypt,
 		reader:      r,
 	}
 	manifestReference, err := storeFile(ctx, manifestFileInfo, s)

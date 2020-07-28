@@ -207,16 +207,18 @@ type fileUploadInfo struct {
 	name        string // file name
 	size        int64  // file size
 	contentType string
-	toEncrypt   bool
 	reader      io.Reader
 }
 
 // storeFile uploads the given file and returns its reference
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code
 func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
+	v := ctx.Value(toEncryptContextKey{})
+	toEncrypt, _ := v.(bool) // default is false
+
 	// first store the file and get its reference
 	sp := splitter.NewSimpleSplitter(s)
-	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, fileInfo.toEncrypt)
+	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file error: %v", err)
 	}
@@ -235,7 +237,7 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) 
 	}
 
 	sp = splitter.NewSimpleSplitter(s)
-	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), fileInfo.toEncrypt)
+	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata error: %v", err)
 	}
@@ -247,7 +249,7 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) 
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal error: %v", err)
 	}
 	sp = splitter.NewSimpleSplitter(s)
-	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), fileInfo.toEncrypt)
+	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry error: %v", err)
 	}
