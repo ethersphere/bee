@@ -42,6 +42,10 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.fileDownloadHandler),
 	})
 
+	handle(router, "/dirs", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.dirUploadHandler),
+	})
+
 	handle(router, "/bytes", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.bytesUploadHandler),
 	})
