@@ -152,6 +152,11 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 // settle all debt with a peer
 // the lock on balance must be held when called
 func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) {
+	// don't do anything if there is no actual debt
+	// this might be the case if the peer owes us and the total reserve for a peer exceeds the payment treshhold
+	if balance.balance >= 0 {
+		return
+	}
 	paymentAmount := uint64(-balance.balance)
 
 	oldBalance := balance.balance
