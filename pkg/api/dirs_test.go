@@ -44,11 +44,20 @@ func TestDirs(t *testing.T) {
 	})
 
 	t.Run("empty file", func(t *testing.T) {
-		f := writeAndOpenFile(t, "empty-file", nil)
-		defer os.Remove(f.Name())
-		defer f.Close()
+		filename := "empty-file"
+		err := ioutil.WriteFile(filename, nil, 0755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(filename)
 
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, f, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		file, err := os.Open(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, file, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "could not store dir",
 			Code:    http.StatusInternalServerError,
 		}, http.Header{
@@ -57,11 +66,20 @@ func TestDirs(t *testing.T) {
 	})
 
 	t.Run("non tar file", func(t *testing.T) {
-		f := writeAndOpenFile(t, "non-tar-file", []byte("some data"))
-		defer os.Remove(f.Name())
-		defer f.Close()
+		filename := "non-tar-file"
+		err := ioutil.WriteFile(filename, []byte("some data"), 0755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(filename)
 
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, f, http.StatusInternalServerError, jsonhttp.StatusResponse{
+		file, err := os.Open(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+
+		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, file, http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "could not store dir",
 			Code:    http.StatusInternalServerError,
 		}, http.Header{
@@ -70,11 +88,10 @@ func TestDirs(t *testing.T) {
 	})
 
 	t.Run("wrong content type", func(t *testing.T) {
-		f := writeAndOpenFile(t, "binary-file", []byte("some data"))
-		defer os.Remove(f.Name())
-		defer f.Close()
-
-		tarReader := tarFiles(t, []*os.File{f})
+		tarReader := tarFiles(t, []f{{
+			data: []byte("some data"),
+			name: "binary-file",
+		}})
 
 		// submit valid tar, but with wrong content-type
 		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusBadRequest, jsonhttp.StatusResponse{
@@ -98,7 +115,7 @@ func TestDirs(t *testing.T) {
 				{
 					data:      []byte("first file data"),
 					name:      "file1",
-					path:      "",
+					dir:       "",
 					reference: swarm.MustParseHexAddress("3c07cd2cf5c46208d69d554b038f4dce203f53ac02cb8a313a0fe1e3fe6cc3cf"),
 					headers: http.Header{
 						"Content-Type": {""},
@@ -107,7 +124,7 @@ func TestDirs(t *testing.T) {
 				{
 					data:      []byte("second file data"),
 					name:      "file2",
-					path:      "",
+					dir:       "",
 					reference: swarm.MustParseHexAddress("47e1a2a8f16e02da187fac791d57e6794f3e9b5d2400edd00235da749ad36683"),
 					headers: http.Header{
 						"Content-Type": {""},
@@ -122,7 +139,7 @@ func TestDirs(t *testing.T) {
 				{
 					data:      []byte("robots text"),
 					name:      "robots.txt",
-					path:      "",
+					dir:       "",
 					reference: swarm.MustParseHexAddress("17b96d0a800edca59aaf7e40c6053f7c4c0fb80dd2eb3f8663d51876bf350b12"),
 					headers: http.Header{
 						"Content-Type": {"text/plain; charset=utf-8"},
@@ -131,7 +148,7 @@ func TestDirs(t *testing.T) {
 				{
 					data:      []byte("image 1"),
 					name:      "1.png",
-					path:      "img",
+					dir:       "img",
 					reference: swarm.MustParseHexAddress("3c1b3fc640e67f0595d9c1db23f10c7a2b0bdc9843b0e27c53e2ac2a2d6c4674"),
 					headers: http.Header{
 						"Content-Type": {"image/png"},
@@ -140,7 +157,7 @@ func TestDirs(t *testing.T) {
 				{
 					data:      []byte("image 2"),
 					name:      "2.png",
-					path:      "img",
+					dir:       "img",
 					reference: swarm.MustParseHexAddress("b234ea7954cab7b2ccc5e07fe8487e932df11b2275db6b55afcbb7bad0be73fb"),
 					headers: http.Header{
 						"Content-Type": {"image/png"},
@@ -150,26 +167,8 @@ func TestDirs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// create and collect all files in the test case
-			dirFiles := make([]*os.File, len(tc.files))
-			for i, file := range tc.files {
-				// create dir if the file is nested
-				if file.path != "" {
-					if _, err := os.Stat(file.path); os.IsNotExist(err) {
-						if err := os.Mkdir(file.path, 0700); err != nil {
-							t.Fatal(err)
-						}
-						defer os.RemoveAll(file.path)
-					}
-				}
-				f := writeAndOpenFile(t, path.Join(file.path, file.name), file.data)
-				defer os.Remove(f.Name())
-				defer f.Close()
-				dirFiles[i] = f
-			}
-
 			// tar all the test case files
-			tarReader := tarFiles(t, dirFiles)
+			tarReader := tarFiles(t, tc.files)
 
 			// verify directory tar upload response
 			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusOK, api.FileUploadResponse{
@@ -186,7 +185,7 @@ func TestDirs(t *testing.T) {
 					Name:      file.name,
 					Headers:   file.headers,
 				}
-				expectedManifest.Add(path.Join(file.path, file.name), e)
+				expectedManifest.Add(path.Join(file.dir, file.name), e)
 			}
 
 			b, err := expectedManifest.Serialize()
@@ -200,38 +199,47 @@ func TestDirs(t *testing.T) {
 	}
 }
 
-// writeAndOpenFile creates a new file with the given name and data and returns it as a variable ready for reading
-// callers should make sure to close and delete the created file
-func writeAndOpenFile(t *testing.T, name string, data []byte) *os.File {
-	err := ioutil.WriteFile(name, data, 0755)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f, err := os.Open(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return f
-}
-
-// tarFiles receives an array of open files and creates a new tar with those files as a collection
+// tarFiles receives an array of test case files and creates a new tar with those files as a collection
 // it returns a bytes.Buffer which can be used to read the created tar
-func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
+func tarFiles(t *testing.T, files []f) *bytes.Buffer {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
+	// create and collect all files in the test case
 	for _, file := range files {
+		// create dir if the file is nested
+		if file.dir != "" {
+			if _, err := os.Stat(file.dir); os.IsNotExist(err) {
+				if err := os.Mkdir(file.dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				defer os.RemoveAll(file.dir)
+			}
+		}
+
+		// create the file
+		filepath := path.Join(file.dir, file.name)
+		err := ioutil.WriteFile(filepath, file.data, 0755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(filepath)
+
+		f, err := os.Open(filepath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+
 		// get file info
-		info, err := file.Stat()
+		info, err := f.Stat()
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// create tar header and write it
 		hdr := &tar.Header{
-			Name: file.Name(),
+			Name: f.Name(),
 			Mode: 0600,
 			Size: info.Size(),
 		}
@@ -240,7 +248,7 @@ func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 		}
 
 		// read the file data
-		fileData, err := ioutil.ReadAll(file)
+		fileData, err := ioutil.ReadAll(f)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,6 +257,7 @@ func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 		if _, err := tw.Write(fileData); err != nil {
 			t.Fatal(err)
 		}
+
 	}
 
 	// finally close the tar writer
@@ -263,7 +272,7 @@ func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 type f struct {
 	data      []byte
 	name      string
-	path      string
+	dir       string
 	reference swarm.Address
 	headers   http.Header
 }
