@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
 )
 
@@ -61,10 +62,15 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
 	var reader io.Reader
 	var fileName, contentLength string
 	var fileSize uint64
+
+	ta := s.createTag(w, r)
+
+	// Add the tag to the context
+	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, ta))
+	ctx := r.Context()
 
 	if mediaType == multiPartFormData {
 		mr := multipart.NewReader(r.Body, params["boundary"])
@@ -196,7 +202,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "could not store entry")
 		return
 	}
+
+	ta.DoneSplit(reference)
+
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
+	w.Header().Set(TagHeaderUid, fmt.Sprint(ta.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})

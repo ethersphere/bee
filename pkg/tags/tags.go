@@ -35,6 +35,8 @@ var (
 	ErrNotFound = errors.New("tag not found")
 )
 
+type TagsContextKey struct{}
+
 // Tags hold tag information indexed by a unique random uint32
 type Tags struct {
 	tags *sync.Map
