@@ -42,6 +42,7 @@ const (
 
 type targetsContextKey struct{}
 
+// fileUploadResponse is returned when an HTTP request to upload a file is successful
 type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
@@ -199,6 +200,61 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})
+}
+
+// fileUploadInfo contains the data for a file to be uploaded
+type fileUploadInfo struct {
+	name        string // file name
+	size        int64  // file size
+	contentType string
+	reader      io.Reader
+}
+
+// storeFile uploads the given file and returns its reference
+// this function was extracted from `fileUploadHandler` and should eventually replace its current code
+func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
+	v := ctx.Value(toEncryptContextKey{})
+	toEncrypt, _ := v.(bool) // default is false
+
+	// first store the file and get its reference
+	sp := splitter.NewSimpleSplitter(s)
+	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, toEncrypt)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("split file error: %w", err)
+	}
+
+	// if filename is still empty, use the file hash as the filename
+	if fileInfo.name == "" {
+		fileInfo.name = fr.String()
+	}
+
+	// then store the metadata and get its reference
+	m := entry.NewMetadata(fileInfo.name)
+	m.MimeType = fileInfo.contentType
+	metadataBytes, err := json.Marshal(m)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("metadata marshal error: %w", err)
+	}
+
+	sp = splitter.NewSimpleSplitter(s)
+	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("split metadata error: %w", err)
+	}
+
+	// now join both references (mr, fr) to create an entry and store it
+	e := entry.New(fr, mr)
+	fileEntryBytes, err := e.MarshalBinary()
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("entry marshal error: %w", err)
+	}
+	sp = splitter.NewSimpleSplitter(s)
+	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("split entry error: %w", err)
+	}
+
+	return reference, nil
 }
 
 // fileDownloadHandler downloads the file given the entry's reference.
