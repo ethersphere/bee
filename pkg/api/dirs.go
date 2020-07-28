@@ -34,14 +34,16 @@ type toEncryptContextKey struct{}
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, err := validateRequest(r)
 	if err != nil {
-		s.Logger.Errorf("dir upload, validate request: %v", err)
+		s.Logger.Errorf("dir upload, validate request")
+		s.Logger.Debugf("dir upload, validate request err: %v", err)
 		jsonhttp.BadRequest(w, "could not validate request")
 		return
 	}
 
 	reference, err := storeDir(ctx, r.Body, s.Storer, s.Logger)
 	if err != nil {
-		s.Logger.Errorf("dir upload, store dir: %v", err)
+		s.Logger.Errorf("dir upload, store dir")
+		s.Logger.Debugf("dir upload, store dir err: %v", err)
 		jsonhttp.InternalServerError(w, "could not store dir")
 		return
 	}
