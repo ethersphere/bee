@@ -216,7 +216,7 @@ func writeAndOpenFile(t *testing.T, name string, data []byte) *os.File {
 	return f
 }
 
-// tarFiles receives an array of files and creates a new tar with those files as a collection
+// tarFiles receives an array of open files and creates a new tar with those files as a collection
 // it returns a bytes.Buffer which can be used to read the created tar
 func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 	var buf bytes.Buffer
@@ -239,13 +239,8 @@ func tarFiles(t *testing.T, files []*os.File) *bytes.Buffer {
 			t.Fatal(err)
 		}
 
-		// open and read the file data
-		r, err := os.Open(file.Name())
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer r.Close()
-		fileData, err := ioutil.ReadAll(r)
+		// read the file data
+		fileData, err := ioutil.ReadAll(file)
 		if err != nil {
 			t.Fatal(err)
 		}
