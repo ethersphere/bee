@@ -68,6 +68,7 @@ func NewStorer(opts ...Option) *MockStorer {
 		modeSetMu: sync.Mutex{},
 		morePull:  make(chan struct{}),
 		quit:      make(chan struct{}),
+		bins:      make([]uint64, swarm.MaxBins),
 	}
 
 	for _, v := range opts {
