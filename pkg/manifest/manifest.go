@@ -17,11 +17,11 @@ var ErrNotFound = errors.New("manifest: not found")
 
 // Interface for operations with manifest
 type Interface interface {
-	// Add a manifest entry to specified path
+	// Add a manifest entry to the specified path
 	Add(string, Entry)
-	// Remove reference from file on specified path
+	// Remove an entry on the specified path
 	Remove(string)
-	// FindEntry returns manifest entry if one is found on specified path
+	// FindEntry returns a manifest entry if one is found on the specified path
 	FindEntry(string) (Entry, error)
 	// BinaryMarshaler is the interface implemented by an object that can marshal itself into a binary form
 	encoding.BinaryMarshaler
@@ -29,12 +29,12 @@ type Interface interface {
 	encoding.BinaryUnmarshaler
 }
 
-// Entry represents single manifest entry
+// Entry represents a single manifest entry
 type Entry interface {
-	// GetReference returns address of the entry file
+	// GetReference returns the address of the entry for a file
 	GetReference() swarm.Address
-	// GetName returns the name of the file for the entry, if added
+	// GetName returns the name of the file for the entry
 	GetName() string
-	// GetHeaders returns the headers for manifest entry, if configured
+	// GetHeaders returns the headers for manifest entry for a file
 	GetHeaders() http.Header
 }
