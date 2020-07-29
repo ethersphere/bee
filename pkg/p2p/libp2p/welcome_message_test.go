@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 )
 
 func TestDynamicWelcomeMessage(t *testing.T) {
@@ -20,16 +21,29 @@ func TestDynamicWelcomeMessage(t *testing.T) {
 		}
 	})
 
-	t.Run("Set new message - OK", func(t *testing.T) {
-		const NewTestMessage = "I'm the new message!"
+	t.Run("Set new message", func(t *testing.T) {
+		t.Run("OK", func(t *testing.T) {
+			const testMessage = "I'm the new message!"
 
-		err := svc.SetWelcomeMessage(NewTestMessage)
-		if err != nil {
-			t.Fatal("got error:", err)
-		}
-		got := svc.GetWelcomeMessage()
-		if got != NewTestMessage {
-			t.Fatalf("expected: %s. got %s", NewTestMessage, got)
-		}
+			err := svc.SetWelcomeMessage(testMessage)
+			if err != nil {
+				t.Fatal("got error:", err)
+			}
+			got := svc.GetWelcomeMessage()
+			if got != testMessage {
+				t.Fatalf("expected: %s. got %s", testMessage, got)
+			}
+		})
+		t.Run("fails - message too long", func(t *testing.T) {
+			const testMessage = `Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+			Maecenas eu aliquam enim. Nulla tincidunt arcu nec nulla condimentum nullam sodales` // 141 characters
+
+			want := handshake.ErrWelcomeMessageLength
+			got := svc.SetWelcomeMessage(testMessage)
+			if got != want {
+				t.Fatalf("wrong error: want %v, got %v", want, got)
+			}
+		})
+
 	})
 }

@@ -6,6 +6,7 @@ package debugapi_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -29,7 +30,7 @@ func TestGetWelcomeMessage(t *testing.T) {
 	})
 }
 
-func TestSetWelcomeMessageTDT(t *testing.T) {
+func TestSetWelcomeMessage(t *testing.T) {
 	testCases := []struct {
 		desc         string
 		message      string
@@ -56,17 +57,22 @@ func TestSetWelcomeMessageTDT(t *testing.T) {
 			},
 		},
 		{
-			desc: "bad request - welcome message too long",
-			message: `Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-			Maecenas eu aliquam enim. Nulla tincidunt arcu nec nulla condimentum nullam sodales`, // 141 characters
+			desc: "bad request - request length too long",
+			message: `Lorem ipsum dolor sit amet, consectetur adipiscing elit. 
+			Nam vitae enim finibus, posuere tellus eu, cursus risus. Nullam varius justo eget suscipit rhoncus. 
+			Fusce euismod, nisi non auctor posuere, lorem tortor tristique ligula, quis porta nulla lectus in magna. 
+			Duis commodo non diam non tincidunt. 
+			Nulla egestas, quam vel imperdiet dapibus, tellus sem porta nisi, nec tincidunt nunc nulla eget mauris.
+			Quisque at purus sed urna tincidunt rutrum. Fusce sit amet enim lobortis, consequat libero id, pretium morbi.`,
 			wantStatus: http.StatusBadRequest,
 			wantResponse: jsonhttp.StatusResponse{
-				Message: "welcome message length exceeds maximum of 140",
+				Message: "http: request body too large",
 				Code:    http.StatusBadRequest,
 			},
 			wantFail: true,
 		},
 	}
+	testURL := "/welcome-message"
 
 	srv := newTestServer(t, testServerOptions{
 		P2P: mock.New(),
@@ -74,7 +80,11 @@ func TestSetWelcomeMessageTDT(t *testing.T) {
 
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, "/welcome-message", bytes.NewReader([]byte(tC.message)), tC.wantStatus, tC.wantResponse)
+			data, _ := json.Marshal(debugapi.WelcomeMessageRequest{
+				WelcomeMesssage: tC.message,
+			})
+			body := bytes.NewReader(data)
+			jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, testURL, body, tC.wantStatus, tC.wantResponse)
 			if !tC.wantFail {
 				got := srv.P2PMock.GetWelcomeMessage()
 				if got != tC.message {
@@ -85,9 +95,10 @@ func TestSetWelcomeMessageTDT(t *testing.T) {
 	}
 }
 
-func TestSetWelcomeMessageInternalFail(t *testing.T) {
+func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 	testMessage := "NO CHANCE BYE"
 	testError := errors.New("Could not set value")
+	testURL := "/welcome-message"
 
 	srv := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithSetWelcomeMessageFunc(func(string) error {
@@ -95,11 +106,17 @@ func TestSetWelcomeMessageInternalFail(t *testing.T) {
 		})),
 	})
 
+	data, _ := json.Marshal(debugapi.WelcomeMessageRequest{
+		WelcomeMesssage: testMessage,
+	})
+	body := bytes.NewReader(data)
 	t.Run("internal server error - failed to store", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, "/welcome-message", bytes.NewReader([]byte(testMessage)), http.StatusInternalServerError, jsonhttp.StatusResponse{
+		wantCode := http.StatusInternalServerError
+		wantResp := jsonhttp.StatusResponse{
 			Message: testError.Error(),
-			Code:    http.StatusInternalServerError,
-		})
+			Code:    wantCode,
+		}
+		jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, testURL, body, wantCode, wantResp)
 	})
 
 }
