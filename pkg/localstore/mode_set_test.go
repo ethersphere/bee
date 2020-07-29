@@ -19,6 +19,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	tagtesting "github.com/ethersphere/bee/pkg/tags/testing"
 )
@@ -357,6 +359,56 @@ func TestModeSetRemove(t *testing.T) {
 			t.Run("gc index count", newItemsCountTest(db.gcIndex, 0))
 
 			t.Run("gc size", newIndexGCSizeTest(db))
+		})
+	}
+}
+
+// TestModeSetReUpload validates ModeSetReUpload index values on the provided DB
+func TestModeSetReUpload(t *testing.T) {
+	for _, tc := range multiChunkTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newTestDB(t, nil)
+			chunks := generateTestRandomChunks(tc.count)
+
+			// re-upload should fail if the chunk is not in the store
+			errStr := fmt.Sprintf("get value: %v", leveldb.ErrNotFound)
+			if err := db.Set(context.Background(), storage.ModeSetReUpload, chunkAddresses(chunks)...); err.Error() != errStr {
+				t.Fatalf("expected error when re-uploading chunks to be %q, but got %v", errStr, err.Error())
+			}
+
+			// put the chunks in the db
+			if _, err := db.Put(context.Background(), storage.ModePutUpload, chunks...); err != nil {
+				t.Fatal(err)
+			}
+
+			// re-upload should fail if the chunk is not pinned
+			if err := db.Set(context.Background(), storage.ModeSetReUpload, chunkAddresses(chunks)...); err != swarm.ErrNotPinned {
+				t.Fatalf("expected error when re-uploading chunks to be %q, but got %v", swarm.ErrNotPinned, err)
+			}
+
+			// pin the chunks
+			if err := db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...); err != nil {
+				t.Fatal(err)
+			}
+
+			// clear push index caused by PutUpload to test Re-Upload push index count
+			for _, c := range chunks {
+				i, err := db.retrievalDataIndex.Get(chunkToItem(c))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := db.pushIndex.Delete(i); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Run("push index count", newItemsCountTest(db.pushIndex, 0))
+
+			// re-upload should go through at this point
+			if err := db.Set(context.Background(), storage.ModeSetReUpload, chunkAddresses(chunks)...); err != nil {
+				t.Fatal(err)
+			}
+
+			t.Run("push index count", newItemsCountTest(db.pushIndex, tc.count))
 		})
 	}
 }
