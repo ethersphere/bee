@@ -101,7 +101,7 @@ func TestBzz(t *testing.T) {
 			},
 		})
 
-		manifestFileBytes, err := jsonManifest.Serialize()
+		manifestFileBytes, err := jsonManifest.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)
 		}

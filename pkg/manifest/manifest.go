@@ -5,12 +5,14 @@
 package manifest
 
 import (
+	"encoding"
 	"errors"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// ErrNotFound is returned when an Entry is not found in the manifest
 var ErrNotFound = errors.New("manifest: not found")
 
 // Parser for manifest
@@ -27,8 +29,8 @@ type Interface interface {
 	Remove(string)
 	// FindEntry returns manifest entry if one is found on specified path
 	FindEntry(string) (Entry, error)
-	// Serialize return encoded manifest
-	Serialize() ([]byte, error)
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
 }
 
 // Entry represents single manifest entry

@@ -134,7 +134,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 
 	// upload manifest
 	// first, serialize into byte array
-	b, err := dirManifest.Serialize()
+	b, err := dirManifest.MarshalBinary()
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest serialize error: %w", err)
 	}

@@ -154,7 +154,7 @@ func TestDirs(t *testing.T) {
 				expectedManifest.Add(path.Join(file.dir, file.name), e)
 			}
 
-			b, err := expectedManifest.Serialize()
+			b, err := expectedManifest.MarshalBinary()
 			if err != nil {
 				t.Fatal(err)
 			}

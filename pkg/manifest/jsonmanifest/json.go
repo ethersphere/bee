@@ -59,8 +59,12 @@ func (m *JSONManifest) FindEntry(path string) (manifest.Entry, error) {
 	return nil, manifest.ErrNotFound
 }
 
-func (m *JSONManifest) Serialize() ([]byte, error) {
+func (m *JSONManifest) MarshalBinary() (data []byte, err error) {
 	return json.Marshal(m)
+}
+
+func (m *JSONManifest) UnmarshalBinary(data []byte) error {
+	return json.Unmarshal(data, m)
 }
 
 var _ manifest.Entry = (*JSONEntry)(nil)
