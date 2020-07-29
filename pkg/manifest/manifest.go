@@ -21,7 +21,7 @@ type Interface interface {
 	Add(string, Entry)
 	// Remove a manifest entry on the specified path
 	Remove(string)
-	// FindEntry returns a manifest entry if one is found on the specified path
+	// FindEntry returns a manifest entry if one is found in the specified path
 	FindEntry(string) (Entry, error)
 	// BinaryMarshaler is the interface implemented by an object that can marshal itself into a binary form
 	encoding.BinaryMarshaler
@@ -31,10 +31,10 @@ type Interface interface {
 
 // Entry represents a single manifest entry
 type Entry interface {
-	// GetReference returns the address of the entry for a file
+	// GetReference returns the address of the file in the entry
 	GetReference() swarm.Address
-	// GetName returns the name of the file for the entry
+	// GetName returns the name of the file in the entry
 	GetName() string
-	// GetHeaders returns the headers for manifest entry for a file
+	// GetHeaders returns the headers for the file in the manifest entry
 	GetHeaders() http.Header
 }

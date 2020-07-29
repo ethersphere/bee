@@ -10,13 +10,14 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest"
 )
 
-// JSONManifest stores JSON manifest entries
+// verify JSONManifest implements manifest.Interface
+var _ manifest.Interface = (*JSONManifest)(nil)
+
+// JSONManifest is a JSON representation of a manifest
+// it stores manifest entries in a map based on string keys
 type JSONManifest struct {
 	Entries map[string]JSONEntry `json:"entries,omitempty"`
 }
-
-// verify JSONManifest implements manifest.Interface
-var _ manifest.Interface = (*JSONManifest)(nil)
 
 // NewManifest creates a new JSONManifest struct and returns a pointer to it
 func NewManifest() *JSONManifest {
@@ -39,7 +40,7 @@ func (m *JSONManifest) Remove(path string) {
 	delete(m.Entries, path)
 }
 
-// FindEntry returns a manifest entry if one is found on the specified path
+// FindEntry returns a manifest entry if one is found in the specified path
 func (m *JSONManifest) FindEntry(path string) (manifest.Entry, error) {
 	if entry, ok := m.Entries[path]; ok {
 		return entry, nil
