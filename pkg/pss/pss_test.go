@@ -121,7 +121,7 @@ func TestPssMonitor(t *testing.T) {
 		t.Fatalf("expected %d tags got %d", 1, len(storeTags))
 	}
 
-	timeout := 1 * time.Second
+	ctx = context.WithDeadline(ctx, time.Second)
 	for _, expectedState := range []tags.State{tags.StateStored, tags.StateSent, tags.StateSynced} {
 		storeTags[0].Inc(expectedState)
 	loop:
@@ -132,7 +132,7 @@ func TestPssMonitor(t *testing.T) {
 				if state == expectedState {
 					break loop
 				}
-			case <-time.After(timeout):
+			case <-ctx.Done()
 				t.Fatalf("no message received")
 			}
 		}
