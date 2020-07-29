@@ -121,7 +121,9 @@ func TestPssMonitor(t *testing.T) {
 		t.Fatalf("expected %d tags got %d", 1, len(storeTags))
 	}
 
-	ctx = context.WithDeadline(ctx, time.Second)
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Second))
+	defer cancel()
+
 	for _, expectedState := range []tags.State{tags.StateStored, tags.StateSent, tags.StateSynced} {
 		storeTags[0].Inc(expectedState)
 	loop:
