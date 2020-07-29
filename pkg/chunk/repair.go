@@ -8,7 +8,10 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"strings"
 
+	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -24,20 +27,8 @@ var (
 	// RecoveryTopic is the topic used for repairing globally pinned chunks
 	RecoveryTopic = trojan.NewTopic(RecoveryTopicText)
 
-	// ErrPublisher is returned when the publisher address turns out to be empty
-	ErrPublisher = errors.New("content publisher is empty")
-
-	// ErrPubKey is returned when the publisher bytes cannot be decompressed as a public key
-	ErrPubKey = errors.New("failed to decompress public key")
-
-	// ErrFeedLookup is returned when the recovery feed cannot be successefully looked up
-	ErrFeedLookup = errors.New("failed to look up recovery feed")
-
-	// ErrFeedContent is returned when there is a failure to retrieve content from the recovery feed
-	ErrFeedContent = errors.New("failed to get content for recovery feed")
-
-	// ErrTargets is returned when there is a failure to unmarshal the feed content as a trojan.Targets variable
-	ErrTargets = errors.New("failed to unmarshal targets in recovery feed content")
+	// ErrTargetPrefix is returned when target prefix decoding fails
+	ErrTargetPrefix = errors.New("error decoding prefix string")
 )
 
 // RecoveryHook defines code to be executed upon failing to retrieve pinned chunks
@@ -56,7 +47,7 @@ func NewRecoveryHook(send sender) RecoveryHook {
 		payload := chunkAddress
 
 		// TODO: returned monitor should be made use of
-		if _, err := send(ctx, targets, RecoveryTopic, payload); err != nil {
+		if _, err := send(ctx, targets, RecoveryTopic, payload.Bytes()); err != nil {
 			return err
 		}
 		return nil
@@ -64,17 +55,31 @@ func NewRecoveryHook(send sender) RecoveryHook {
 }
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store
-func NewRepairHandler(s *chunk.ValidatorStore) pss.Handler {
+func NewRepairHandler(s storage.Storer, logger logging.Logger) pss.Handler {
 	return func(m trojan.Message) {
 		chAddr := m.Payload
-		err := s.Set(context.Background(), storage.ModeSetReUpload, chAddr)
+		err := s.Set(context.Background(), storage.ModeSetReUpload, swarm.NewAddress(chAddr))
+		if err != nil {
+			logger.Debugf("chunk repair: could not set ModeSetReUpload: %v", err)
+		}
 	}
 }
 
-// getPinners returns the specific target pinners for a corresponding chunk
+// getPinners returns the specific target pinners for a corresponding chunk by
+// reading the prefix targets sent in the download API
 func getPinners(ctx context.Context) (trojan.Targets, error) {
+	targetString := ctx.Value(api.TargetsContextKey{}).(string)
+	prefixes := strings.Split(targetString, ",")
 
-	targets := new(trojan.Targets)
-
-	return *targets, nil
+	var targets trojan.Targets
+	for _, prefix := range prefixes {
+		var target trojan.Target
+		prefix = strings.TrimPrefix(prefix, "0x")
+		target, err := hex.DecodeString(prefix)
+		if err != nil {
+			return nil, ErrTargetPrefix
+		}
+		targets = append(targets, target)
+	}
+	return targets, nil
 }

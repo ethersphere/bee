@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -17,21 +19,28 @@ import (
 
 type store struct {
 	storage.Storer
-	retrieval  retrieval.Interface
-	validators []swarm.ChunkValidator
-	logger     logging.Logger
-	recoveryCallback func(ctx context.Context, chunkAddress swarm.Address) error // this is the callback to be executed when a chunk fails to be retrieved
+	retrieval        retrieval.Interface
+	validators       []swarm.ChunkValidator
+	logger           logging.Logger
+	recoveryCallback chunk.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
+	deliveryCallback func(swarm.Chunk)  // callback func to be invoked to deliver validated chunks
 }
 
+<<<<<<< HEAD
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validator swarm.Validator) storage.Storer {
 	return &store{Storer: s, retrieval: r, logger: logger, validator: validator}
 }
+=======
+var (
+	ErrRecoveryAttempt = errors.New("chunk recovery initiated")
+)
+>>>>>>> e7f68bf... Added chunk repair and test cases
 
-// WithRecoveryCallback allows injecting a callback func on the NetStore struct
-func (s *store) WithRecoveryCallback(f func(ctx context.Context, chunkAddress swarm.Address) error) *store {
-	s.recoveryCallback = f
-	return s
+// New returns a new NetStore that wraps a given Storer.
+func New(s storage.Storer, rcb chunk.RecoveryHook, dcb func(swarm.Chunk), r retrieval.Interface, logger logging.Logger,
+	validators ...swarm.ChunkValidator) storage.Storer {
+	return &store{Storer: s, recoveryCallback: rcb, deliveryCallback: dcb, retrieval: r, logger: logger, validators: validators}
 }
 
 // Get retrieves a given chunk address.
@@ -43,13 +52,21 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			ch, err := s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				targets := ctx.Value(targetsContextKey)
-				if s.recoveryCallback != nil && targets != nil {
-					go s.recoveryCallback(ctx, addr)
+				targets := ctx.Value(api.TargetsContextKey{})
+				if s.recoveryCallback != nil && targets != "" && targets != nil {
+					go func() {
+						err := s.recoveryCallback(ctx, addr)
+						if err != nil {
+							s.logger.Debugf("netstore: error while recovering chunk: %v", err)
+						}
+					}()
 					return nil, ErrRecoveryAttempt
-
 				}
 				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
+			}
+			ch = swarm.NewChunk(addr, data)
+			if !s.valid(ch) {
+				return nil, storage.ErrInvalidChunk
 			}
 
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
@@ -72,5 +89,17 @@ func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chun
 			return nil, storage.ErrInvalidChunk
 		}
 	}
-	return s.Storer.Put(ctx, mode, chs...)
+	exist, err = s.Storer.Put(ctx, mode, chs...)
+	if err != nil {
+		return nil, err
+	}
+	// if callback is defined, call it for every new, valid chunk
+	if s.deliveryCallback != nil {
+		for i, exists := range exist {
+			if !exists {
+				go s.deliveryCallback(chs[i])
+			}
+		}
+	}
+	return exist, nil
 }
