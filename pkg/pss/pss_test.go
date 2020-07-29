@@ -104,8 +104,8 @@ func TestPssMonitor(t *testing.T) {
 
 	target := trojan.Target([]byte{1}) // arbitrary test target
 	targets := trojan.Targets([]trojan.Target{target})
-	payload := []byte("RECOVERY CHUNK")
-	topic := trojan.NewTopic("RECOVERY TOPIC")
+	payload := []byte("PSS CHUNK")
+	topic := trojan.NewTopic("PSS TOPIC")
 
 	var monitor *pss.Monitor
 
