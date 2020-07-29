@@ -131,12 +131,12 @@ func TestPssMonitor(t *testing.T) {
 			// waits until the monitor state has changed or timeouts
 			select {
 			case state := <-monitor.State:
+				if (context.DeadlineExceeded) {
+					t.Fatalf("no message received")
+				}
 				if state == expectedState {
 					break loop
 				}
-			case <-ctx.Done():
-				t.Fatalf("no message received")
-			}
 		}
 	}
 }
