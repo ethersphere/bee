@@ -185,3 +185,24 @@ func (c *chunk) WithType(t Type) Chunk {
 type ChunkValidator interface {
 	Validate(ch Chunk) (valid bool)
 }
+
+type chunkValidators struct {
+	set []ChunkValidator
+	ChunkValidator
+}
+
+func NewChunkValidators(v ...ChunkValidator) ChunkValidator {
+	return &chunkValidators{
+		set: v,
+	}
+}
+
+func (c *chunkValidators) Validate(ch Chunk) bool {
+	for _, v := range c.set {
+		if v.Validate(ch) {
+			return true
+		}
+	}
+
+	return false
+}

@@ -31,7 +31,7 @@ const (
 var _ Interface = (*Service)(nil)
 
 type Interface interface {
-	RetrieveChunk(ctx context.Context, addr swarm.Address, valid func(swarm.Chunk) bool) (chunk swarm.Chunk, err error)
+	RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error)
 }
 
 type Service struct {
@@ -42,6 +42,7 @@ type Service struct {
 	logger        logging.Logger
 	accounting    accounting.Interface
 	pricer        accounting.Pricer
+	validator     swarm.ChunkValidator
 }
 
 type Options struct {
@@ -51,6 +52,7 @@ type Options struct {
 	Logger      logging.Logger
 	Accounting  accounting.Interface
 	Pricer      accounting.Pricer
+	Validator   swarm.ChunkValidator
 }
 
 func New(o Options) *Service {
@@ -61,6 +63,7 @@ func New(o Options) *Service {
 		logger:        o.Logger,
 		accounting:    o.Accounting,
 		pricer:        o.Pricer,
+		validator:     o.Validator,
 	}
 }
 
@@ -82,7 +85,7 @@ const (
 	retrieveChunkTimeout = 10 * time.Second
 )
 
-func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, valid func(swarm.Chunk) bool) (chunk swarm.Chunk, err error) {
+func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
 	ctx, cancel := context.WithTimeout(ctx, maxPeers*retrieveChunkTimeout)
 	defer cancel()
 
@@ -101,7 +104,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, valid f
 			}
 			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
 			chunk := swarm.NewChunk(addr, data)
-			if valid(chunk) {
+			if s.validator.Validate(chunk) {
 				return chunk, nil
 			}
 		}

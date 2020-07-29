@@ -14,9 +14,11 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -30,7 +32,7 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-
+	mockValidator := swarm.NewChunkValidators(mock.NewValidator())
 	mockStorer := storemock.NewStorer()
 	reqAddr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -55,6 +57,7 @@ func TestDelivery(t *testing.T) {
 		Logger:     logger,
 		Accounting: serverMockAccounting,
 		Pricer:     pricerMock,
+		Validator:  mockValidator,
 	})
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
@@ -80,10 +83,11 @@ func TestDelivery(t *testing.T) {
 		Logger:      logger,
 		Accounting:  clientMockAccounting,
 		Pricer:      pricerMock,
+		Validator:   mockValidator,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-	v, err := client.RetrieveChunk(ctx, reqAddr, FValidate)
+	v, err := client.RetrieveChunk(ctx, reqAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,5 +153,3 @@ func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
 func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
 	return s.eachPeerRevFunc(f)
 }
-
-func FValidate(_ swarm.Chunk) bool { return true }

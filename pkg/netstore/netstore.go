@@ -17,15 +17,14 @@ import (
 
 type store struct {
 	storage.Storer
-
-	retrieval  retrieval.Interface
-	validators []swarm.ChunkValidator
-	logger     logging.Logger
+	retrieval retrieval.Interface
+	logger    logging.Logger
+	validator swarm.ChunkValidator
 }
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validators ...swarm.ChunkValidator) storage.Storer {
-	return &store{Storer: s, retrieval: r, logger: logger, validators: validators}
+func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validator swarm.ChunkValidator) storage.Storer {
+	return &store{Storer: s, retrieval: r, logger: logger, validator: validator}
 }
 
 // Get retrieves a given chunk address.
@@ -35,7 +34,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// request from network
-			ch, err := s.retrieval.RetrieveChunk(ctx, addr, s.valid)
+			ch, err := s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
@@ -56,19 +55,9 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 // encountering an invalid chunk.
 func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
-		if !s.valid(ch) {
+		if !s.validator.Validate(ch) {
 			return nil, storage.ErrInvalidChunk
 		}
 	}
 	return s.Storer.Put(ctx, mode, chs...)
-}
-
-// checks if a particular chunk is valid using the built in validators
-func (s *store) valid(ch swarm.Chunk) (ok bool) {
-	for _, v := range s.validators {
-		if ok = v.Validate(ch); ok {
-			return true
-		}
-	}
-	return false
 }
