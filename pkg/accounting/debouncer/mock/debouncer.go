@@ -6,22 +6,22 @@ package mock
 
 import ()
 
-type mockDebouncer struct {
+type MockDebouncer struct {
 	set map[string]int64
 }
 
-func NewDebouncer() *mockDebouncer {
-	a := &mockDebouncer{
+func NewDebouncer() *MockDebouncer {
+	a := &MockDebouncer{
 		set: make(map[string]int64),
 	}
 	return a
 }
 
-func (md *mockDebouncer) Put(reference string, value int64) {
+func (md *MockDebouncer) Put(reference string, value int64) {
 	md.set[reference] = value
 }
 
-func (md *mockDebouncer) Get(reference string) (int64, bool) {
+func (md *MockDebouncer) Get(reference string) (int64, bool) {
 	value, ok := md.set[reference]
 	return value, ok
 }
