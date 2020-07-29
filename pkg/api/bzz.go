@@ -99,7 +99,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
-	manifest := &jsonmanifest.JSONManifest{}
+	manifest := jsonmanifest.NewManifest()
 	err = manifest.UnmarshalBinary(buf.Bytes())
 	if err != nil {
 		s.Logger.Debugf("bzz download: unmarshal manifest %s: %v", address, err)
