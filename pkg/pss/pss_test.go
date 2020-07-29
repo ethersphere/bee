@@ -132,7 +132,7 @@ func TestPssMonitor(t *testing.T) {
 				if state == expectedState {
 					break loop
 				}
-			case <-ctx.Done()
+			case <-ctx.Done():
 				t.Fatalf("no message received")
 			}
 		}
