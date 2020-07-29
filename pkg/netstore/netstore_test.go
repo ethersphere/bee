@@ -96,7 +96,7 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 }
 
 // returns a mock retrieval protocol, a mock local storage and a netstore
-func newRetrievingNetstore() (ret *retrievalMock, mockStore storage.Storer, ns storage.Storer) {
+func newRetrievingNetstore() (ret *retrievalMock, mockStore, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 0)
