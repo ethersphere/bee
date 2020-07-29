@@ -6,6 +6,7 @@ package jsonmanifest
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/manifest"
 )
@@ -16,19 +17,23 @@ var _ manifest.Interface = (*JSONManifest)(nil)
 // JSONManifest is a JSON representation of a manifest
 // it stores manifest entries in a map based on string keys
 type JSONManifest struct {
-	Entries map[string]JSONEntry `json:"entries,omitempty"`
+	entriesMu sync.RWMutex // mutex for accessing the entries map
+	entries   map[string]JSONEntry
 }
 
 // NewManifest creates a new JSONManifest struct and returns a pointer to it
 func NewManifest() *JSONManifest {
 	return &JSONManifest{
-		Entries: make(map[string]JSONEntry),
+		entries: make(map[string]JSONEntry),
 	}
 }
 
 // Add adds a manifest entry to the specified path
 func (m *JSONManifest) Add(path string, entry manifest.Entry) {
-	m.Entries[path] = JSONEntry{
+	m.entriesMu.Lock()
+	defer m.entriesMu.Unlock()
+
+	m.entries[path] = JSONEntry{
 		Reference: entry.GetReference(),
 		Name:      entry.GetName(),
 		Headers:   entry.GetHeaders(),
@@ -37,16 +42,30 @@ func (m *JSONManifest) Add(path string, entry manifest.Entry) {
 
 // Remove removes a manifest entry on the specified path
 func (m *JSONManifest) Remove(path string) {
-	delete(m.Entries, path)
+	m.entriesMu.Lock()
+	defer m.entriesMu.Unlock()
+
+	delete(m.entries, path)
 }
 
 // FindEntry returns a manifest entry if one is found in the specified path
 func (m *JSONManifest) FindEntry(path string) (manifest.Entry, error) {
-	if entry, ok := m.Entries[path]; ok {
+	m.entriesMu.RLock()
+	defer m.entriesMu.RUnlock()
+
+	if entry, ok := m.entries[path]; ok {
 		return entry, nil
 	}
 
 	return nil, manifest.ErrNotFound
+}
+
+// Entries returns a copy of the JSONManifest entries field
+func (m *JSONManifest) Entries() map[string]JSONEntry {
+	m.entriesMu.RLock()
+	defer m.entriesMu.RUnlock()
+
+	return m.entries
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler
