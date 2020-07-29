@@ -26,6 +26,7 @@ func TestBytes(t *testing.T) {
 	var (
 		resource   = "/bytes"
 		targets    = "0x222"
+		tag        = "abcdef"
 		expHash    = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
 		mockStorer = mock.NewStorer()
 		client     = newTestServer(t, testServerOptions{
@@ -63,6 +64,14 @@ func TestBytes(t *testing.T) {
 
 		if resp.Header.Get(api.TargetsRecoveryHeader) != targets {
 			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get(api.TargetsRecoveryHeader), targets)
+		}
+	})
+
+	t.Run("download-with-tags", func(t *testing.T) {
+		resp := request(t, client, http.MethodGet, resource+"/"+expHash+"?"+api.TagHeaderUid+"="+tag, nil, http.StatusOK)
+
+		if resp.Header.Get(api.TagHeaderUid) != tag {
+			t.Fatalf("tag mismatch. got %s, want %s", resp.Header.Get(api.TagHeaderUid), tag)
 		}
 	})
 
