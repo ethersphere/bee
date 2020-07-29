@@ -12,21 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ manifest.Parser = (*JSONParser)(nil)
-
-type JSONParser struct{}
-
-func NewParser() *JSONParser {
-	return &JSONParser{}
-}
-
-func (m *JSONParser) Parse(bytes []byte) (manifest.Interface, error) {
-	mi := &JSONManifest{}
-	err := json.Unmarshal(bytes, mi)
-
-	return mi, err
-}
-
 var _ manifest.Interface = (*JSONManifest)(nil)
 
 type JSONManifest struct {

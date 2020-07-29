@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -98,7 +99,8 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
-	manifest, err := s.ManifestParser.Parse(buf.Bytes())
+	manifest := &jsonmanifest.JSONManifest{}
+	err = manifest.UnmarshalBinary(buf.Bytes())
 	if err != nil {
 		s.Logger.Debugf("bzz download: unmarshal manifest %s: %v", address, err)
 		s.Logger.Errorf("bzz download: unmarshal manifest %s", address)

@@ -34,10 +34,9 @@ func TestBzz(t *testing.T) {
 		storer              = smock.NewStorer()
 		sp                  = splitter.NewSimpleSplitter(storer)
 		client              = newTestServer(t, testServerOptions{
-			Storer:         storer,
-			ManifestParser: jsonmanifest.NewParser(),
-			Tags:           tags.NewTags(),
-			Logger:         logging.New(ioutil.Discard, 5),
+			Storer: storer,
+			Tags:   tags.NewTags(),
+			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
 

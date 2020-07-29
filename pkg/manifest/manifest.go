@@ -15,12 +15,6 @@ import (
 // ErrNotFound is returned when an Entry is not found in the manifest
 var ErrNotFound = errors.New("manifest: not found")
 
-// Parser for manifest
-type Parser interface {
-	// Parse parses the encoded manifest data and returns the result
-	Parse(bytes []byte) (Interface, error)
-}
-
 // Interface for operations with manifest
 type Interface interface {
 	// Add a manifest entry to specified path
@@ -29,7 +23,9 @@ type Interface interface {
 	Remove(string)
 	// FindEntry returns manifest entry if one is found on specified path
 	FindEntry(string) (Entry, error)
+	// BinaryMarshaler is the interface implemented by an object that can marshal itself into a binary form
 	encoding.BinaryMarshaler
+	// BinaryUnmarshaler is the interface implemented by an object that can unmarshal a binary representation of itself
 	encoding.BinaryUnmarshaler
 }
 
