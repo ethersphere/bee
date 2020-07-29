@@ -34,7 +34,7 @@ func (m *JSONManifest) Add(path string, entry manifest.Entry) {
 	}
 }
 
-// Remove removes an entry on the specified path
+// Remove removes a manifest entry on the specified path
 func (m *JSONManifest) Remove(path string) {
 	delete(m.Entries, path)
 }

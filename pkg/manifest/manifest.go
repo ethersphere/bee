@@ -19,7 +19,7 @@ var ErrNotFound = errors.New("manifest: not found")
 type Interface interface {
 	// Add a manifest entry to the specified path
 	Add(string, Entry)
-	// Remove an entry on the specified path
+	// Remove a manifest entry on the specified path
 	Remove(string)
 	// FindEntry returns a manifest entry if one is found on the specified path
 	FindEntry(string) (Entry, error)
