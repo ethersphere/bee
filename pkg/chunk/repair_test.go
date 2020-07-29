@@ -1,0 +1,165 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package chunk_test
+
+import (
+	"context"
+	"errors"
+	"io/ioutil"
+	"testing"
+	"time"
+
+	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/chunk"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/mock"
+	storemock "github.com/ethersphere/bee/pkg/storage/mock"
+	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/trojan"
+)
+
+// TestRecoveryHook tests that a recovery hook can be created and called
+func TestRecoveryHook(t *testing.T) {
+	// test variables needed to be correctly set for any recovery hook to reach the sender func
+	chunkAddr := chunktesting.GenerateTestRandomChunk().Address()
+	target := "0xedC69a0F0E81394bb08F90F89e35F93287E99dc1"
+	ctx := context.WithValue(context.Background(), api.TargetsContextKey{}, target)
+
+	// setup the sender
+	hookWasCalled := false // test variable to check if hook is called
+	testSender := func(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*pss.Monitor, error) {
+		hookWasCalled = true
+		return nil, nil
+	}
+
+	// create recovery hook and call it
+	recoveryHook := chunk.NewRecoveryHook(testSender)
+	if err := recoveryHook(ctx, chunkAddr); err != nil {
+		t.Fatal(err)
+	}
+
+	if hookWasCalled != true {
+		t.Fatalf("recovery hook was not called")
+	}
+}
+
+// RecoveryHookTestCase is a struct used as test cases for the TestRecoveryHookCalls func
+type RecoveryHookTestCase struct {
+	name           string
+	ctx            context.Context
+	expectsFailure bool
+}
+
+// TestRecoveryHookCalls verifies that recovery hooks are being called as expected when net store attempts to get a chunk
+func TestRecoveryHookCalls(t *testing.T) {
+	// generate test chunk, store and publisher
+	c := chunktesting.GenerateTestRandomChunk()
+	ref := c.Address()
+	p := "0xbE165fe06c03e4387F79615b7A0b79d535e8D325"
+
+	// test cases variables
+	dummyContext := context.Background() // has no publisher
+	targetContext := context.WithValue(context.Background(), api.TargetsContextKey{}, p)
+
+	for _, tc := range []RecoveryHookTestCase{
+		{
+			name:           "no targets in context",
+			ctx:            dummyContext,
+			expectsFailure: true,
+		},
+		{
+			name:           "targets set in context",
+			ctx:            targetContext,
+			expectsFailure: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+
+			// setup recovery hook
+			testHook := func(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*pss.Monitor, error) {
+				hookWasCalled <- true
+				return nil, nil
+			}
+			recoverFunc := chunk.NewRecoveryHook(testHook)
+			ns := newTestNetStore(t, recoverFunc)
+
+			// fetch test chunk
+			_, err := ns.Get(tc.ctx, storage.ModeGetRequest, ref)
+			if err != nil && err != netstore.ErrRecoveryAttempt && err.Error() != "netstore retrieve chunk: get closest: no peer found" {
+				t.Fatal(err)
+			}
+
+			// checks whether the callback is invoked or the test case times out
+			select {
+			case <-hookWasCalled:
+				if !tc.expectsFailure {
+					return
+				}
+				t.Fatal("recovery hook was unexpectedly called")
+			case <-time.After(100 * time.Millisecond):
+				if tc.expectsFailure {
+					return
+				}
+				t.Fatal("recovery hook was not called when expected")
+			}
+		})
+	}
+}
+
+// newTestNetStore creates a test store with a set RemoteGet func
+func newTestNetStore(t *testing.T, recoveryFunc chunk.RecoveryHook) storage.Storer {
+	storer := mock.NewStorer()
+	logger := logging.New(ioutil.Discard, 5)
+
+	mockStorer := storemock.NewStorer()
+	serverMockAccounting := accountingmock.NewAccounting()
+	price := uint64(10)
+	pricerMock := accountingmock.NewPricer(price, price)
+	peerID := swarm.MustParseHexAddress("9ee7add7")
+	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+		_, _, _ = f(peerID, 0)
+		return nil
+	}}
+	server := retrieval.New(retrieval.Options{
+		Storer:     mockStorer,
+		Logger:     logger,
+		Accounting: serverMockAccounting,
+		Pricer:     pricerMock,
+	})
+	recorder := streamtest.New(
+		streamtest.WithProtocols(server.Protocol()),
+	)
+	retrieve := retrieval.New(retrieval.Options{
+		Streamer:    recorder,
+		ChunkPeerer: ps,
+		Storer:      mockStorer,
+		Logger:      logger,
+		Accounting:  serverMockAccounting,
+		Pricer:      pricerMock,
+	})
+
+	netStore := netstore.New(storer, recoveryFunc, nil, retrieve, logger, nil)
+	return netStore
+}
+
+type mockPeerSuggester struct {
+	eachPeerRevFunc func(f topology.EachPeerFunc) error
+}
+
+func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
+	return errors.New("not implemented")
+}
+func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
+	return s.eachPeerRevFunc(f)
+}

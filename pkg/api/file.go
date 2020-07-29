@@ -41,7 +41,7 @@ const (
 	EncryptHeader     = "swarm-encrypt"
 )
 
-type targetsContextKey struct{}
+type TargetsContextKey struct{}
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
 type fileUploadResponse struct {
@@ -285,7 +285,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 	targets := r.URL.Query().Get("targets")
 
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	r = r.WithContext(context.WithValue(r.Context(), TargetsContextKey{}, targets))
 
 	// read entry.
 	j := joiner.NewSimpleJoiner(s.Storer)
@@ -351,7 +351,7 @@ func (s *server) downloadHandler(
 ) {
 
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	r = r.WithContext(context.WithValue(r.Context(), TargetsContextKey{}, targets))
 	ctx := r.Context()
 
 	toDecrypt := len(reference.Bytes()) == (swarm.HashSize + encryption.KeyLength)

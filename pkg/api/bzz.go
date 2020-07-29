@@ -29,7 +29,7 @@ const (
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	r = r.WithContext(context.WithValue(r.Context(), TargetsContextKey{}, targets))
 	ctx := r.Context()
 
 	addressHex := mux.Vars(r)["address"]

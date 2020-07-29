@@ -19,8 +19,8 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/chunk"
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
@@ -35,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
@@ -68,24 +69,25 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir             string
-	DBCapacity          uint64
-	Password            string
-	APIAddr             string
-	DebugAPIAddr        string
-	Addr                string
-	NATAddr             string
-	EnableWS            bool
-	EnableQUIC          bool
-	NetworkID           uint64
-	WelcomeMessage      string
-	Bootnodes           []string
-	CORSAllowedOrigins  []string
-	Logger              logging.Logger
-	TracingEnabled      bool
-	TracingEndpoint     string
-	TracingServiceName  string
-	DisconnectThreshold uint64
+	DataDir              string
+	DBCapacity           uint64
+	Password             string
+	APIAddr              string
+	DebugAPIAddr         string
+	Addr                 string
+	NATAddr              string
+	EnableWS             bool
+	EnableQUIC           bool
+	NetworkID            uint64
+	WelcomeMessage       string
+	Bootnodes            []string
+	CORSAllowedOrigins   []string
+	Logger               logging.Logger
+	TracingEnabled       bool
+	TracingEndpoint      string
+	TracingServiceName   string
+	DisconnectThreshold  uint64
+	GlobalPinningEnabled bool
 }
 
 func NewBee(o Options) (*Bee, error) {
@@ -255,11 +257,21 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, logger, content.NewValidator(), soc.NewValidator())
+	// instantiate the pss object
+	psss := pss.NewPss(storer, tagg)
 
-	// add recovery callback for content repair
-	recoverFunc := chunk.NewRecoveryHook(self.pss.Send)
-	ns.WithRecoveryCallback(recoverFunc)
+	// create recovery callback for content repair and send it to netstore
+	recoverFunc := chunk.NewRecoveryHook(psss.Send)
+	// delivery call back for delivery the registered messages
+	deliverFunc := psss.Deliver
+
+	ns := netstore.New(storer, recoverFunc, deliverFunc, retrieve, logger, content.NewValidator(), soc.NewValidator())
+
+	if o.GlobalPinningEnabled {
+		// register function for chunk repair upon receiving a trojan message
+		chunkRepairHandler := chunk.NewRepairHandler(ns, logger)
+		psss.Register(chunk.RecoveryTopic, chunkRepairHandler)
+	}
 
 	retrieve.SetStorer(ns)
 

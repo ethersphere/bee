@@ -26,26 +26,27 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameDataDir             = "data-dir"
-		optionNameDBCapacity          = "db-capacity"
-		optionNamePassword            = "password"
-		optionNamePasswordFile        = "password-file"
-		optionNameAPIAddr             = "api-addr"
-		optionNameP2PAddr             = "p2p-addr"
-		optionNameNATAddr             = "nat-addr"
-		optionNameP2PWSEnable         = "p2p-ws-enable"
-		optionNameP2PQUICEnable       = "p2p-quic-enable"
-		optionNameDebugAPIEnable      = "debug-api-enable"
-		optionNameDebugAPIAddr        = "debug-api-addr"
-		optionNameBootnodes           = "bootnode"
-		optionNameNetworkID           = "network-id"
-		optionWelcomeMessage          = "welcome-message"
-		optionCORSAllowedOrigins      = "cors-allowed-origins"
-		optionNameTracingEnabled      = "tracing-enable"
-		optionNameTracingEndpoint     = "tracing-endpoint"
-		optionNameTracingServiceName  = "tracing-service-name"
-		optionNameVerbosity           = "verbosity"
-		optionNameDisconnectThreshold = "disconnect-threshold"
+		optionNameDataDir              = "data-dir"
+		optionNameDBCapacity           = "db-capacity"
+		optionNamePassword             = "password"
+		optionNamePasswordFile         = "password-file"
+		optionNameAPIAddr              = "api-addr"
+		optionNameP2PAddr              = "p2p-addr"
+		optionNameNATAddr              = "nat-addr"
+		optionNameP2PWSEnable          = "p2p-ws-enable"
+		optionNameP2PQUICEnable        = "p2p-quic-enable"
+		optionNameDebugAPIEnable       = "debug-api-enable"
+		optionNameDebugAPIAddr         = "debug-api-addr"
+		optionNameBootnodes            = "bootnode"
+		optionNameNetworkID            = "network-id"
+		optionWelcomeMessage           = "welcome-message"
+		optionCORSAllowedOrigins       = "cors-allowed-origins"
+		optionNameTracingEnabled       = "tracing-enable"
+		optionNameTracingEndpoint      = "tracing-endpoint"
+		optionNameTracingServiceName   = "tracing-service-name"
+		optionNameVerbosity            = "verbosity"
+		optionNameDisconnectThreshold  = "disconnect-threshold"
+		optionNameGlobalPinningEnabled = "global-pinning-enable"
 	)
 
 	cmd := &cobra.Command{
@@ -113,24 +114,25 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			}
 
 			b, err := node.NewBee(node.Options{
-				DataDir:             c.config.GetString(optionNameDataDir),
-				DBCapacity:          c.config.GetUint64(optionNameDBCapacity),
-				Password:            password,
-				APIAddr:             c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr:        debugAPIAddr,
-				Addr:                c.config.GetString(optionNameP2PAddr),
-				NATAddr:             c.config.GetString(optionNameNATAddr),
-				EnableWS:            c.config.GetBool(optionNameP2PWSEnable),
-				EnableQUIC:          c.config.GetBool(optionNameP2PQUICEnable),
-				NetworkID:           c.config.GetUint64(optionNameNetworkID),
-				WelcomeMessage:      c.config.GetString(optionWelcomeMessage),
-				Bootnodes:           c.config.GetStringSlice(optionNameBootnodes),
-				CORSAllowedOrigins:  c.config.GetStringSlice(optionCORSAllowedOrigins),
-				TracingEnabled:      c.config.GetBool(optionNameTracingEnabled),
-				TracingEndpoint:     c.config.GetString(optionNameTracingEndpoint),
-				TracingServiceName:  c.config.GetString(optionNameTracingServiceName),
-				Logger:              logger,
-				DisconnectThreshold: c.config.GetUint64(optionNameDisconnectThreshold),
+				DataDir:              c.config.GetString(optionNameDataDir),
+				DBCapacity:           c.config.GetUint64(optionNameDBCapacity),
+				Password:             password,
+				APIAddr:              c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr:         debugAPIAddr,
+				Addr:                 c.config.GetString(optionNameP2PAddr),
+				NATAddr:              c.config.GetString(optionNameNATAddr),
+				EnableWS:             c.config.GetBool(optionNameP2PWSEnable),
+				EnableQUIC:           c.config.GetBool(optionNameP2PQUICEnable),
+				NetworkID:            c.config.GetUint64(optionNameNetworkID),
+				WelcomeMessage:       c.config.GetString(optionWelcomeMessage),
+				Bootnodes:            c.config.GetStringSlice(optionNameBootnodes),
+				CORSAllowedOrigins:   c.config.GetStringSlice(optionCORSAllowedOrigins),
+				TracingEnabled:       c.config.GetBool(optionNameTracingEnabled),
+				TracingEndpoint:      c.config.GetString(optionNameTracingEndpoint),
+				TracingServiceName:   c.config.GetString(optionNameTracingServiceName),
+				Logger:               logger,
+				DisconnectThreshold:  c.config.GetUint64(optionNameDisconnectThreshold),
+				GlobalPinningEnabled: c.config.GetBool(optionNameGlobalPinningEnabled),
 			})
 			if err != nil {
 				return err

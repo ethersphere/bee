@@ -94,7 +94,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	r = r.WithContext(context.WithValue(r.Context(), TargetsContextKey{}, targets))
 
 	addr := mux.Vars(r)["addr"]
 	ctx := r.Context()
