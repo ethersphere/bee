@@ -5,6 +5,7 @@
 package debugapi
 
 import (
+	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -23,14 +24,23 @@ func (s *server) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request
 }
 
 func (s *server) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
-	data, err := ioutil.ReadAll(r.Body)
+	const maxMessageSize = 140 + 1 // TODO: import this constant from handshake or libp2p
+
+	data, err := ioutil.ReadAll(io.LimitReader(r.Body, maxMessageSize))
 	if err != nil {
-		s.Logger.Debugf("welcome message: request error: %v", err)
-		jsonhttp.InternalServerError(w, err)
+		s.Logger.Debugf("debugapi: welcome message: error reading request: %v", err)
+		jsonhttp.BadRequest(w, err)
 		return
 	}
+	if len(data) > 140 { // TODO: import this constant from handshake or libp2p
+		s.Logger.Debugf("debugapi: welcome message: welcome message length exceeds maximum of 140")
+		jsonhttp.BadRequest(w, "welcome message length exceeds maximum of 140")
+		return
+	}
+
 	if err := s.P2P.SetWelcomeMessage(string(data)); err != nil {
-		s.Logger.Debugf("welcome message: set error: %v", err)
+		s.Logger.Debugf("debugapi: welcome message: failed to set: %v", err)
+		s.Logger.Errorf("Failed to set welcome message")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
