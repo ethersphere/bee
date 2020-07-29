@@ -6,10 +6,8 @@ package jsonmanifest
 
 import (
 	"encoding/json"
-	"net/http"
 
 	"github.com/ethersphere/bee/pkg/manifest"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // JSONManifest stores JSON manifest entries
@@ -58,29 +56,4 @@ func (m *JSONManifest) MarshalBinary() (data []byte, err error) {
 // UnmarshalBinary implements encoding.BinaryUnmarshaler
 func (m *JSONManifest) UnmarshalBinary(data []byte) error {
 	return json.Unmarshal(data, m)
-}
-
-// verify JSONEntry implements manifest.Entry
-var _ manifest.Entry = (*JSONEntry)(nil)
-
-// JSONEntry is a JSON representation of a file entry for a JSONManifest
-type JSONEntry struct {
-	Reference swarm.Address `json:"reference"`
-	Name      string        `json:"name"`
-	Headers   http.Header   `json:"headers"`
-}
-
-// GetReference returns the address of the entry for a file
-func (me JSONEntry) GetReference() swarm.Address {
-	return me.Reference
-}
-
-// GetName returns the name of the file for the entry
-func (me JSONEntry) GetName() string {
-	return me.Name
-}
-
-// GetHeaders returns the headers for manifest entry for a file
-func (me JSONEntry) GetHeaders() http.Header {
-	return me.Headers
 }
