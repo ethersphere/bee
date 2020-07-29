@@ -31,10 +31,10 @@ type Monitor struct {
 	State chan tags.State
 }
 
-// NewPss inits the Pss struct with the localstore
-func NewPss(localStore storage.Storer, tags *tags.Tags) *Pss {
+// NewPss inits the Pss struct with the storer
+func NewPss(storer storage.Storer, tags *tags.Tags) *Pss {
 	return &Pss{
-		storer:   localStore,
+		storer:   storer,
 		tags:     tags,
 		handlers: make(map[trojan.Topic]Handler),
 	}
