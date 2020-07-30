@@ -21,18 +21,18 @@ type Interface interface {
 	Add(string, Entry)
 	// Remove a manifest entry on the specified path.
 	Remove(string)
-	// FindEntry returns a manifest entry if one is found in the specified path.
-	FindEntry(string) (Entry, error)
+	// Entry returns a manifest entry if one is found in the specified path.
+	Entry(string) (Entry, error)
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }
 
 // Entry represents a single manifest entry.
 type Entry interface {
-	// GetReference returns the address of the file in the entry.
-	GetReference() swarm.Address
-	// GetName returns the name of the file in the entry.
-	GetName() string
-	// GetHeaders returns the headers for the file in the manifest entry.
-	GetHeaders() http.Header
+	// Reference returns the address of the file in the entry.
+	Reference() swarm.Address
+	// Name returns the name of the file in the entry.
+	Name() string
+	// Headers returns the headers for the file in the manifest entry.
+	Headers() http.Header
 }

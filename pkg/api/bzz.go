@@ -108,7 +108,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	me, err := manifest.FindEntry(path)
+	me, err := manifest.Entry(path)
 	if err != nil {
 		s.Logger.Debugf("bzz download: invalid path %s/%s: %v", address, path, err)
 		s.Logger.Error("bzz download: invalid path")
@@ -116,20 +116,20 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manifestEntryAddress := me.GetReference()
+	manifestEntryAddress := me.Reference()
 
 	var additionalHeaders http.Header
 
 	// copy headers from manifest
-	if me.GetHeaders() != nil {
-		additionalHeaders = me.GetHeaders().Clone()
+	if me.Headers() != nil {
+		additionalHeaders = me.Headers().Clone()
 	} else {
 		additionalHeaders = http.Header{}
 	}
 
 	// include filename
-	if me.GetName() != "" {
-		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", me.GetName()))
+	if me.Name() != "" {
+		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", me.Name()))
 	}
 
 	// read file entry

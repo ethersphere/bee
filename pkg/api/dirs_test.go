@@ -146,11 +146,7 @@ func TestDirs(t *testing.T) {
 			// create expected manifest
 			expectedManifest := jsonmanifest.NewManifest()
 			for _, file := range tc.files {
-				e := &jsonmanifest.JSONEntry{
-					Reference: file.reference,
-					Name:      file.name,
-					Headers:   file.headers,
-				}
+				e := jsonmanifest.NewEntry(file.reference, file.name, file.headers)
 				expectedManifest.Add(path.Join(file.dir, file.name), e)
 			}
 

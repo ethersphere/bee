@@ -28,11 +28,7 @@ func NewManifest() *JSONManifest {
 
 // Add adds a manifest entry to the specified path.
 func (m *JSONManifest) Add(path string, entry manifest.Entry) {
-	m.Entries[path] = JSONEntry{
-		Reference: entry.GetReference(),
-		Name:      entry.GetName(),
-		Headers:   entry.GetHeaders(),
-	}
+	m.Entries[path] = NewEntry(entry.Reference(), entry.Name(), entry.Headers())
 }
 
 // Remove removes a manifest entry on the specified path.
@@ -40,8 +36,8 @@ func (m *JSONManifest) Remove(path string) {
 	delete(m.Entries, path)
 }
 
-// FindEntry returns a manifest entry if one is found in the specified path.
-func (m *JSONManifest) FindEntry(path string) (manifest.Entry, error) {
+// Entry returns a manifest entry if one is found in the specified path.
+func (m *JSONManifest) Entry(path string) (manifest.Entry, error) {
 	if entry, ok := m.Entries[path]; ok {
 		return entry, nil
 	}

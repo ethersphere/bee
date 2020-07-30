@@ -16,22 +16,31 @@ var _ manifest.Entry = (*JSONEntry)(nil)
 
 // JSONEntry is a JSON representation of a single manifest entry for a JSONManifest.
 type JSONEntry struct {
-	Reference swarm.Address `json:"reference"`
-	Name      string        `json:"name"`
-	Headers   http.Header   `json:"headers"`
+	reference swarm.Address
+	name      string
+	headers   http.Header
 }
 
-// GetReference returns the address of the file in the entry.
-func (me JSONEntry) GetReference() swarm.Address {
-	return me.Reference
+// NewEntry creates a new JSONEntry struct and returns it.
+func NewEntry(reference swarm.Address, name string, headers http.Header) JSONEntry {
+	return JSONEntry{
+		reference: reference,
+		name:      name,
+		headers:   headers,
+	}
 }
 
-// GetName returns the name of the file in the entry.
-func (me JSONEntry) GetName() string {
-	return me.Name
+// Reference returns the address of the file in the entry.
+func (me JSONEntry) Reference() swarm.Address {
+	return me.reference
 }
 
-// GetHeaders returns the headers for the file in the manifest entry.
-func (me JSONEntry) GetHeaders() http.Header {
-	return me.Headers
+// Name returns the name of the file in the entry.
+func (me JSONEntry) Name() string {
+	return me.name
+}
+
+// Headers returns the headers for the file in the manifest entry.
+func (me JSONEntry) Headers() http.Header {
+	return me.headers
 }
