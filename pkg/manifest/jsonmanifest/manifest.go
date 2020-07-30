@@ -16,13 +16,13 @@ var _ manifest.Interface = (*JSONManifest)(nil)
 // JSONManifest is a JSON representation of a manifest.
 // It stores manifest entries in a map based on string keys.
 type JSONManifest struct {
-	Entries map[string]JSONEntry `json:"entries,omitempty"`
+	Entries map[string]*JSONEntry `json:"entries,omitempty"`
 }
 
 // NewManifest creates a new JSONManifest struct and returns a pointer to it.
 func NewManifest() *JSONManifest {
 	return &JSONManifest{
-		Entries: make(map[string]JSONEntry),
+		Entries: make(map[string]*JSONEntry),
 	}
 }
 
