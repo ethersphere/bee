@@ -67,6 +67,9 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var fileSize uint64
 
 	ta := s.createTag(w, r)
+	if ta == nil {
+		return
+	}
 
 	// Add the tag to the context
 	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, ta))

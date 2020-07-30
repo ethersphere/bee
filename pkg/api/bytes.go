@@ -27,6 +27,9 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ta := s.createTag(w, r)
+	if ta == nil {
+		return
+	}
 
 	// Add the tag to the context
 	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, ta))
