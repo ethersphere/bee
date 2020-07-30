@@ -12,17 +12,17 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// verify JSONEntry implements manifest.Entry.
+// verify jsonEntry implements manifest.Entry.
 var _ manifest.Entry = (*jsonEntry)(nil)
 
-// jsonEntry is a JSON representation of a single manifest entry for a JSONManifest.
+// jsonEntry is a JSON representation of a single manifest entry for a jsonManifest.
 type jsonEntry struct {
 	reference swarm.Address
 	name      string
 	headers   http.Header
 }
 
-// NewEntry creates a new JSONEntry struct and returns it.
+// NewEntry creates a new jsonEntry struct and returns it.
 func NewEntry(reference swarm.Address, name string, headers http.Header) manifest.Entry {
 	return &jsonEntry{
 		reference: reference,
@@ -46,7 +46,7 @@ func (me *jsonEntry) Headers() http.Header {
 	return me.headers
 }
 
-// exportEntry is a struct used for marshaling and unmarshaling JSONEntry structs.
+// exportEntry is a struct used for marshaling and unmarshaling jsonEntry structs.
 type exportEntry struct {
 	Reference swarm.Address `json:"reference"`
 	Name      string        `json:"name"`

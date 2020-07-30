@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest"
 )
 
-// verify JSONManifest implements manifest.Interface.
+// verify jsonManifest implements manifest.Interface.
 var _ manifest.Interface = (*jsonManifest)(nil)
 
 // jsonManifest is a JSON representation of a manifest.
@@ -21,7 +21,7 @@ type jsonManifest struct {
 	entries   map[string]*jsonEntry
 }
 
-// NewManifest creates a new JSONManifest struct and returns a pointer to it.
+// NewManifest creates a new jsonManifest struct and returns a pointer to it.
 func NewManifest() manifest.Interface {
 	return &jsonManifest{
 		entries: make(map[string]*jsonEntry),
@@ -70,7 +70,7 @@ func (m *jsonManifest) Size() int {
 	return len(m.entries)
 }
 
-// exportManifest is a struct used for marshaling and unmarshaling JSONManifest structs.
+// exportManifest is a struct used for marshaling and unmarshaling jsonManifest structs.
 type exportManifest struct {
 	Entries map[string]*jsonEntry `json:"entries,omitempty"`
 }
