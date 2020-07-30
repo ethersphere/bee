@@ -263,6 +263,9 @@ func (m *MockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, s
 func (m *MockStorer) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*storage.Pinner, err error) {
 	m.pinSetMu.Lock()
 	defer m.pinSetMu.Unlock()
+	if m.pinnedAddress == nil || len(m.pinnedAddress) == 0 {
+		return pinnedChunks, nil
+	}
 	for i, addr := range m.pinnedAddress {
 		pi := &storage.Pinner{
 			Address:    swarm.NewAddress(addr.Bytes()),
