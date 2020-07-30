@@ -10,17 +10,17 @@ import (
 
 var _ swarm.ChunkValidator = (*Validator)(nil)
 
-// ContentAddressValidator validates that the address of a given chunk
-// is the content address of its contents.
+//
 type Validator struct {
+	rv bool
 }
 
-// NewContentAddressValidator constructs a new ContentAddressValidator
-func NewValidator() swarm.ChunkValidator {
-	return &Validator{}
+// NewValidator constructs a new Validator
+func NewValidator(rv bool) swarm.ChunkValidator {
+	return &Validator{rv: rv}
 }
 
-// Validate performs the validation check.
+// Validate returns rv from mock struct
 func (v *Validator) Validate(ch swarm.Chunk) (valid bool) {
-	return true
+	return v.rv
 }
