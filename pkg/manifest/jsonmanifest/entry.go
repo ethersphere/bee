@@ -11,27 +11,27 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// verify JSONEntry implements manifest.Entry
+// verify JSONEntry implements manifest.Entry.
 var _ manifest.Entry = (*JSONEntry)(nil)
 
-// JSONEntry is a JSON representation of a single manifest entry for a JSONManifest
+// JSONEntry is a JSON representation of a single manifest entry for a JSONManifest.
 type JSONEntry struct {
 	Reference swarm.Address `json:"reference"`
 	Name      string        `json:"name"`
 	Headers   http.Header   `json:"headers"`
 }
 
-// GetReference returns the address of the file in the entry
+// GetReference returns the address of the file in the entry.
 func (me JSONEntry) GetReference() swarm.Address {
 	return me.Reference
 }
 
-// GetName returns the name of the file in the entry
+// GetName returns the name of the file in the entry.
 func (me JSONEntry) GetName() string {
 	return me.Name
 }
 
-// GetHeaders returns the headers for the file in the manifest entry
+// GetHeaders returns the headers for the file in the manifest entry.
 func (me JSONEntry) GetHeaders() http.Header {
 	return me.Headers
 }
