@@ -23,9 +23,7 @@ type Interface interface {
 	Remove(string)
 	// FindEntry returns a manifest entry if one is found in the specified path.
 	FindEntry(string) (Entry, error)
-	// BinaryMarshaler is the interface implemented by an object that can marshal itself into a binary form.
 	encoding.BinaryMarshaler
-	// BinaryUnmarshaler is the interface implemented by an object that can unmarshal a binary representation of itself.
 	encoding.BinaryUnmarshaler
 }
 
