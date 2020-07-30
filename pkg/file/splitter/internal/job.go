@@ -176,6 +176,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	ref := s.hasher.Sum(nil)
 	addr = swarm.NewAddress(ref)
 
+	// Add tag to the chunk if tag is valid
 	var ch swarm.Chunk
 	if s.tagg != nil {
 		ch = swarm.NewChunk(addr, c).WithTagID(s.tagg.Uid)
