@@ -64,7 +64,7 @@ func (m *JSONManifest) Entries() map[string]*JSONEntry {
 	return m.entries
 }
 
-// exportEntry is a struct used for marshaling and unmarshaling JSONEntry structs.
+// exportManifest is a struct used for marshaling and unmarshaling JSONManifest structs.
 type exportManifest struct {
 	Entries map[string]*JSONEntry `json:"entries,omitempty"`
 }
