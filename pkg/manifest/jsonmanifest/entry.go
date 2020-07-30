@@ -62,7 +62,7 @@ func (me *JSONEntry) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// UnmarshalJSON implements the json.Marshaler interface.
+// UnmarshalJSON implements the json.Unmarshaler interface.
 func (me *JSONEntry) UnmarshalJSON(b []byte) error {
 	e := exportEntry{}
 	if err := json.Unmarshal(b, &e); err != nil {
