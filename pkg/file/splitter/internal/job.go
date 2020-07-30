@@ -176,7 +176,13 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	ref := s.hasher.Sum(nil)
 	addr = swarm.NewAddress(ref)
 
-	ch := swarm.NewChunk(addr, c)
+	var ch swarm.Chunk
+	if s.tagg != nil {
+		ch = swarm.NewChunk(addr, c).WithTagID(s.tagg.Uid)
+	} else {
+		ch = swarm.NewChunk(addr, c)
+	}
+
 	seen, err := s.putter.Put(s.ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return nil, err
