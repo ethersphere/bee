@@ -87,8 +87,8 @@ func (m *jsonManifest) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary implements encoding.BinaryUnmarshaler.
 func (m *jsonManifest) UnmarshalBinary(b []byte) error {
-	m.entriesMu.RLock()
-	defer m.entriesMu.RUnlock()
+	m.entriesMu.Lock()
+	defer m.entriesMu.Unlock()
 
 	e := exportManifest{}
 	if err := json.Unmarshal(b, &e); err != nil {
