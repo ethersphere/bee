@@ -12,24 +12,24 @@ import (
 )
 
 // verify JSONManifest implements manifest.Interface.
-var _ manifest.Interface = (*JSONManifest)(nil)
+var _ manifest.Interface = (*jsonManifest)(nil)
 
-// JSONManifest is a JSON representation of a manifest.
+// jsonManifest is a JSON representation of a manifest.
 // It stores manifest entries in a map based on string keys.
-type JSONManifest struct {
+type jsonManifest struct {
 	entriesMu sync.RWMutex // mutex for accessing the entries map
 	entries   map[string]*JSONEntry
 }
 
 // NewManifest creates a new JSONManifest struct and returns a pointer to it.
-func NewManifest() *JSONManifest {
-	return &JSONManifest{
+func NewManifest() manifest.Interface {
+	return &jsonManifest{
 		entries: make(map[string]*JSONEntry),
 	}
 }
 
 // Add adds a manifest entry to the specified path.
-func (m *JSONManifest) Add(path string, entry manifest.Entry) {
+func (m *jsonManifest) Add(path string, entry manifest.Entry) {
 	m.entriesMu.Lock()
 	defer m.entriesMu.Unlock()
 
@@ -37,7 +37,7 @@ func (m *JSONManifest) Add(path string, entry manifest.Entry) {
 }
 
 // Remove removes a manifest entry on the specified path.
-func (m *JSONManifest) Remove(path string) {
+func (m *jsonManifest) Remove(path string) {
 	m.entriesMu.Lock()
 	defer m.entriesMu.Unlock()
 
@@ -45,23 +45,24 @@ func (m *JSONManifest) Remove(path string) {
 }
 
 // Entry returns a manifest entry if one is found in the specified path
-func (m *JSONManifest) Entry(path string) (manifest.Entry, error) {
+func (m *jsonManifest) Entry(path string) (manifest.Entry, error) {
 	m.entriesMu.RLock()
 	defer m.entriesMu.RUnlock()
 
 	if entry, ok := m.entries[path]; ok {
-		return entry, nil
+		// return a copy to prevent external modification
+		return NewEntry(entry.Reference(), entry.Name(), entry.Headers()), nil
 	}
 
 	return nil, manifest.ErrNotFound
 }
 
-// Entries returns a copy of the JSONManifest entries field
-func (m *JSONManifest) Entries() map[string]*JSONEntry {
+// Size returns the amount of entries in the manifest.
+func (m *jsonManifest) Size() int {
 	m.entriesMu.RLock()
 	defer m.entriesMu.RUnlock()
 
-	return m.entries
+	return len(m.entries)
 }
 
 // exportManifest is a struct used for marshaling and unmarshaling JSONManifest structs.
@@ -70,14 +71,14 @@ type exportManifest struct {
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler
-func (m *JSONManifest) MarshalBinary() ([]byte, error) {
+func (m *jsonManifest) MarshalBinary() ([]byte, error) {
 	return json.Marshal(exportManifest{
 		Entries: m.entries,
 	})
 }
 
 // UnmarshalBinary implements encoding.BinaryUnmarshaler.
-func (m *JSONManifest) UnmarshalBinary(b []byte) error {
+func (m *jsonManifest) UnmarshalBinary(b []byte) error {
 	e := exportManifest{}
 	if err := json.Unmarshal(b, &e); err != nil {
 		return err
