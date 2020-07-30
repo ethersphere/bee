@@ -72,6 +72,9 @@ type exportManifest struct {
 
 // MarshalBinary implements encoding.BinaryMarshaler
 func (m *jsonManifest) MarshalBinary() ([]byte, error) {
+	m.entriesMu.RLock()
+	defer m.entriesMu.RUnlock()
+
 	return json.Marshal(exportManifest{
 		Entries: m.entries,
 	})
@@ -79,6 +82,9 @@ func (m *jsonManifest) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary implements encoding.BinaryUnmarshaler.
 func (m *jsonManifest) UnmarshalBinary(b []byte) error {
+	m.entriesMu.RLock()
+	defer m.entriesMu.RUnlock()
+
 	e := exportManifest{}
 	if err := json.Unmarshal(b, &e); err != nil {
 		return err
