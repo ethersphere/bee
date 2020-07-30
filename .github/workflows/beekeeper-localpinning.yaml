@@ -1,0 +1,52 @@
+name: BeekeeperLocalPinning
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  beekeeper:
+    env:
+      REPLICA: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install k3d
+        run: curl -s https://raw.githubusercontent.com/rancher/k3d/main/install.sh | TAG=v1.7.0 bash
+      - name: Install latest beekeeper
+        run: |
+          export TAG=$(curl -s https://api.github.com/repos/ethersphere/beekeeper/releases/latest | jq -r .tag_name)
+          curl -Ls https://github.com/ethersphere/beekeeper/releases/download/${TAG}/beekeeper-linux-amd64 -o beekeeper
+          chmod +x beekeeper
+      - name: Create cluster
+        run: k3d create --publish="80:80" --enable-registry --registry-name registry.localhost
+      - name: Set kubeconfig
+        run: |
+          until k3d get-kubeconfig --name='k3s-default' &> /dev/null; do echo "Waiting for the cluster..."; sleep 1; done
+          mkdir ~/.kube
+          cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
+      - name: Add entries to /etc/hosts
+        run: |
+          echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
+          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
+      - name: Set helm repo and namespace
+        run: |
+          helm repo add ethersphere "https://ethersphere.github.io/helm"
+          kubectl create ns bee
+      - name: Build latest bee image
+        run: |
+          docker build --network=host -t registry.localhost:5000/ethersphere/bee:latest .
+          docker push registry.localhost:5000/ethersphere/bee:latest
+      - name: Set bees
+        run: |
+          export LAST_BEE=$(($REPLICA-1))
+          until kubectl get svc traefik -n kube-system &> /dev/null; do echo "Waiting for the traefik service..."; sleep 1; done
+          helm install bee -f .github/beekeeper/bee.yaml ethersphere/bee --namespace bee --set image.repository=registry.localhost:5000/ethersphere/bee --set replicaCount="${REPLICA}" --set libp2pSettings.enabled=true --beeConfig.db_capacity=500 --wait
+          until [[ "$(curl -s bee-${LAST_BEE}-debug.localhost/readiness | jq -r .status)" == "ok" ]] &> /dev/null; do echo "Waiting for the last bee..."; sleep 1; done
+      - name: Test localpinning 1
+        run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Test localpinning 2
+        run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2
+      - name: Test localpinning 3
+        run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2 --large-file-count 10
