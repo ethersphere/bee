@@ -18,13 +18,13 @@ var _ manifest.Interface = (*jsonManifest)(nil)
 // It stores manifest entries in a map based on string keys.
 type jsonManifest struct {
 	entriesMu sync.RWMutex // mutex for accessing the entries map
-	entries   map[string]*JSONEntry
+	entries   map[string]*jsonEntry
 }
 
 // NewManifest creates a new JSONManifest struct and returns a pointer to it.
 func NewManifest() manifest.Interface {
 	return &jsonManifest{
-		entries: make(map[string]*JSONEntry),
+		entries: make(map[string]*jsonEntry),
 	}
 }
 
@@ -33,7 +33,12 @@ func (m *jsonManifest) Add(path string, entry manifest.Entry) {
 	m.entriesMu.Lock()
 	defer m.entriesMu.Unlock()
 
-	m.entries[path] = NewEntry(entry.Reference(), entry.Name(), entry.Headers())
+	je := &jsonEntry{
+		reference: entry.Reference(),
+		name:      entry.Name(),
+		headers:   entry.Headers(),
+	}
+	m.entries[path] = je
 }
 
 // Remove removes a manifest entry on the specified path.
@@ -67,7 +72,7 @@ func (m *jsonManifest) Size() int {
 
 // exportManifest is a struct used for marshaling and unmarshaling JSONManifest structs.
 type exportManifest struct {
-	Entries map[string]*JSONEntry `json:"entries,omitempty"`
+	Entries map[string]*jsonEntry `json:"entries,omitempty"`
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler

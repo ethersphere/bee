@@ -13,18 +13,18 @@ import (
 )
 
 // verify JSONEntry implements manifest.Entry.
-var _ manifest.Entry = (*JSONEntry)(nil)
+var _ manifest.Entry = (*jsonEntry)(nil)
 
-// JSONEntry is a JSON representation of a single manifest entry for a JSONManifest.
-type JSONEntry struct {
+// jsonEntry is a JSON representation of a single manifest entry for a JSONManifest.
+type jsonEntry struct {
 	reference swarm.Address
 	name      string
 	headers   http.Header
 }
 
 // NewEntry creates a new JSONEntry struct and returns it.
-func NewEntry(reference swarm.Address, name string, headers http.Header) *JSONEntry {
-	return &JSONEntry{
+func NewEntry(reference swarm.Address, name string, headers http.Header) manifest.Entry {
+	return &jsonEntry{
 		reference: reference,
 		name:      name,
 		headers:   headers,
@@ -32,17 +32,17 @@ func NewEntry(reference swarm.Address, name string, headers http.Header) *JSONEn
 }
 
 // Reference returns the address of the file in the entry.
-func (me *JSONEntry) Reference() swarm.Address {
+func (me *jsonEntry) Reference() swarm.Address {
 	return me.reference
 }
 
 // Name returns the name of the file in the entry.
-func (me *JSONEntry) Name() string {
+func (me *jsonEntry) Name() string {
 	return me.name
 }
 
 // Headers returns the headers for the file in the manifest entry.
-func (me *JSONEntry) Headers() http.Header {
+func (me *jsonEntry) Headers() http.Header {
 	return me.headers
 }
 
@@ -54,7 +54,7 @@ type exportEntry struct {
 }
 
 // MarshalJSON implements the json.Marshaler interface.
-func (me *JSONEntry) MarshalJSON() ([]byte, error) {
+func (me *jsonEntry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(exportEntry{
 		Reference: me.reference,
 		Name:      me.name,
@@ -63,7 +63,7 @@ func (me *JSONEntry) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
-func (me *JSONEntry) UnmarshalJSON(b []byte) error {
+func (me *jsonEntry) UnmarshalJSON(b []byte) error {
 	e := exportEntry{}
 	if err := json.Unmarshal(b, &e); err != nil {
 		return err
