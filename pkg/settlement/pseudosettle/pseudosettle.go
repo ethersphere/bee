@@ -72,6 +72,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	return s.observer.NotifyPayment(p.Address, req.Amount)
 }
 
+// Pay initiates a payment to the given peer
 func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

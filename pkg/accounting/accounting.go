@@ -57,8 +57,8 @@ type Accounting struct {
 	balances         map[string]*PeerBalance
 	logger           logging.Logger
 	store            storage.StateStorer
-	paymentThreshold uint64 // the debt threshold we communicate to our peers
-	paymentTolerance uint64 // the amount we let peers exceed the payment threshold before disconnected
+	paymentThreshold uint64 // the payment threshold in BZZ we communicate to our peers
+	paymentTolerance uint64 // the amount in BZZ we let peers exceed the payment threshold before disconnected
 	settlement       settlement.Interface
 }
 
