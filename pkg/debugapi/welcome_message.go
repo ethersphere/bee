@@ -30,7 +30,6 @@ func (s *server) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request
 	const maxBodySize = 256 // TODO: limit this on all requests?
 
 	var data welcomeMessageRequest
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		s.Logger.Debugf("debugapi: welcome message: failed to read request: %v", err)
