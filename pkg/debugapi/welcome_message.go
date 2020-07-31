@@ -27,8 +27,6 @@ func (s *server) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request
 }
 
 func (s *server) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
-	const maxBodySize = 256 // TODO: limit this on all requests?
-
 	var data welcomeMessageRequest
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
