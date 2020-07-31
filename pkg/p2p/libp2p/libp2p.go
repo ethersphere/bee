@@ -39,7 +39,8 @@ import (
 )
 
 var (
-	_ p2p.Service = (*Service)(nil)
+	_ p2p.Service      = (*Service)(nil)
+	_ p2p.DebugService = (*Service)(nil)
 )
 
 type Service struct {
