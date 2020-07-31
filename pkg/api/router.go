@@ -58,7 +58,7 @@ func (s *server) setupRouting() {
 		"POST": http.HandlerFunc(s.chunkUploadHandler),
 	})
 
-	handle(router, "/bzz:/{address}/{path:.*}", jsonhttp.MethodHandler{
+	handle(router, "/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.bzzDownloadHandler),
 	})
 
