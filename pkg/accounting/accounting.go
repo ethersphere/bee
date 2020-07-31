@@ -287,8 +287,9 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 	nextBalance := balance.balance - int64(amount)
 
-	if nextBalance < 0 {
-		return fmt.Errorf("refusing to accept payment which would put us in debt, new balance would have been %d", nextBalance)
+	// don't allow a payment to put use more into debt than the tolerance
+	if nextBalance < -int64(a.paymentTolerance) {
+		return fmt.Errorf("refusing to accept payment which would put us too much in debt, new balance would have been %d", nextBalance)
 	}
 
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
