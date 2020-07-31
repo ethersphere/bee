@@ -124,7 +124,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, logge
 	}
 
 	// check if files were uploaded through the manifest
-	if dirManifest.Size() == 0 {
+	if dirManifest.Length() == 0 {
 		return swarm.ZeroAddress, fmt.Errorf("no files added from tar")
 	}
 

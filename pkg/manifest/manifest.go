@@ -23,8 +23,8 @@ type Interface interface {
 	Remove(string)
 	// Entry returns a manifest entry if one is found in the specified path.
 	Entry(string) (Entry, error)
-	// Size returns the amount of entries in the manifest.
-	Size() int
+	// Length returns the amount of entries in the manifest.
+	Length() int
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }

@@ -62,8 +62,8 @@ func (m *jsonManifest) Entry(path string) (manifest.Entry, error) {
 	return nil, manifest.ErrNotFound
 }
 
-// Size returns the amount of entries in the manifest.
-func (m *jsonManifest) Size() int {
+// Length returns the amount of entries in the manifest.
+func (m *jsonManifest) Length() int {
 	m.entriesMu.RLock()
 	defer m.entriesMu.RUnlock()
 
