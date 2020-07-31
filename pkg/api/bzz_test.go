@@ -30,7 +30,7 @@ import (
 
 func TestBzz(t *testing.T) {
 	var (
-		bzzDownloadResource = func(addr, path string) string { return "/bzz:/" + addr + "/" + path }
+		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		storer              = smock.NewStorer()
 		sp                  = splitter.NewSimpleSplitter(storer)
 		client              = newTestServer(t, testServerOptions{

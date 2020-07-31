@@ -343,6 +343,7 @@ func NewBee(o Options) (*Bee, error) {
 			Tracer:         tracer,
 			TopologyDriver: topologyDriver,
 			Storer:         storer,
+			Tags:           tagg,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
