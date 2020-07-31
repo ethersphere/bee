@@ -196,8 +196,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
-	cmd.Flags().Uint64(optionNamePaymentThreshold, 100000000000, "threshold in BZZ where you expect to get paid from your peers")
-	cmd.Flags().Uint64(optionNamePaymentTolerance, 100000000000, "excess debt above payment threshold in BZZ where you disconnect from your peer")
+	cmd.Flags().Uint64(optionNamePaymentThreshold, 100000, "threshold in BZZ where you expect to get paid from your peers")
+	cmd.Flags().Uint64(optionNamePaymentTolerance, 10000, "excess debt above payment threshold in BZZ where you disconnect from your peer")
 
 	c.root.AddCommand(cmd)
 	return nil
