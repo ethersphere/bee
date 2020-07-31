@@ -56,21 +56,6 @@ func TestSetWelcomeMessage(t *testing.T) {
 				Code:    http.StatusOK,
 			},
 		},
-		{
-			desc: "bad request - request length too long",
-			message: `Lorem ipsum dolor sit amet, consectetur adipiscing elit. 
-			Nam vitae enim finibus, posuere tellus eu, cursus risus. Nullam varius justo eget suscipit rhoncus. 
-			Fusce euismod, nisi non auctor posuere, lorem tortor tristique ligula, quis porta nulla lectus in magna. 
-			Duis commodo non diam non tincidunt. 
-			Nulla egestas, quam vel imperdiet dapibus, tellus sem porta nisi, nec tincidunt nunc nulla eget mauris.
-			Quisque at purus sed urna tincidunt rutrum. Fusce sit amet enim lobortis, consequat libero id, pretium morbi.`,
-			wantStatus: http.StatusBadRequest,
-			wantResponse: jsonhttp.StatusResponse{
-				Message: "http: request body too large",
-				Code:    http.StatusBadRequest,
-			},
-			wantFail: true,
-		},
 	}
 	testURL := "/welcome-message"
 
