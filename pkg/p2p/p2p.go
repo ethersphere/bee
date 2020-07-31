@@ -26,6 +26,11 @@ type Service interface {
 	Peers() []Peer
 	SetNotifier(topology.Notifier)
 	Addresses() ([]ma.Multiaddr, error)
+}
+
+// DebugService extends the Service with method used for debugging.
+type DebugService interface {
+	Service
 	SetWelcomeMessage(val string) error
 	GetWelcomeMessage() string
 }
