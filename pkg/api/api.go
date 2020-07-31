@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/manifest"
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -29,7 +28,6 @@ type server struct {
 type Options struct {
 	Tags               *tags.Tags
 	Storer             storage.Storer
-	ManifestParser     manifest.Parser
 	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	Tracer             *tracing.Tracer
