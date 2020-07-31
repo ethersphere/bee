@@ -33,12 +33,11 @@ func (m *jsonManifest) Add(path string, entry manifest.Entry) {
 	m.entriesMu.Lock()
 	defer m.entriesMu.Unlock()
 
-	je := &jsonEntry{
+	m.entries[path] = &jsonEntry{
 		reference: entry.Reference(),
 		name:      entry.Name(),
 		headers:   entry.Headers(),
 	}
-	m.entries[path] = je
 }
 
 // Remove removes a manifest entry on the specified path.
@@ -49,17 +48,18 @@ func (m *jsonManifest) Remove(path string) {
 	delete(m.entries, path)
 }
 
-// Entry returns a manifest entry if one is found in the specified path
+// Entry returns a manifest entry if one is found in the specified path.
 func (m *jsonManifest) Entry(path string) (manifest.Entry, error) {
 	m.entriesMu.RLock()
 	defer m.entriesMu.RUnlock()
 
-	if entry, ok := m.entries[path]; ok {
-		// return a copy to prevent external modification
-		return NewEntry(entry.Reference(), entry.Name(), entry.Headers()), nil
+	entry, ok := m.entries[path]
+	if !ok {
+		return nil, manifest.ErrNotFound
 	}
 
-	return nil, manifest.ErrNotFound
+	// return a copy to prevent external modification
+	return NewEntry(entry.Reference(), entry.Name(), entry.Headers()), nil
 }
 
 // Length returns the amount of entries in the manifest.
