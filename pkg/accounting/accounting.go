@@ -166,7 +166,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) {
 	// otherwise we might pay and then not be able to save, thus paying again after restart
 	err := a.store.Put(balanceKey(peer), nextBalance)
 	if err != nil {
-		a.logger.Errorf("failed to persist balance for peer %v: %w", peer, err)
+		a.logger.Errorf("failed to persist balance for peer %v: %v", peer, err)
 		return
 	}
 
@@ -176,7 +176,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) {
 		// if the payment didn't work we should restore the old balance in the state store
 		err = a.store.Put(balanceKey(peer), oldBalance)
 		if err != nil {
-			a.logger.Errorf("failed to persist balance for peer %v: %w", peer, err)
+			a.logger.Errorf("failed to persist balance for peer %v: %v", peer, err)
 			return
 		}
 		return
