@@ -86,7 +86,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	// since we pay this we have to reduce this (positive quantity) from the balance
 	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
 	if balance.freeBalance()-int64(price) < -int64(a.disconnectThreshold) {
-		a.metrics.AccointingBlocksCount.Inc()
+		a.metrics.AccountingBlocksCount.Inc()
 		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
