@@ -51,6 +51,9 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		if jsonhttp.HandleBodyReadError(err, w) {
+			return
+		}
 		s.Logger.Debugf("chunk upload: read chunk data error: %v, addr %s", err, address)
 		s.Logger.Error("chunk upload: read chunk data error")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
