@@ -56,6 +56,23 @@ func TestSetWelcomeMessage(t *testing.T) {
 				Code:    http.StatusOK,
 			},
 		},
+		{
+			desc: "fails - request entity too large",
+			message: `zZZbzbzbzbBzBBZbBbZbbbBzzzZBZBbzzBBBbBzBzzZbbBzBBzBBbZz
+			bZZZBBbbZbbZzBbzBbzbZBZzBZZbZzZzZzbbZZBZzzbBZBzZzzBBzZZzzZbZZZzbbbzz
+			bBzZZBbBZBzZzBZBzbzBBbzBBzbzzzBbBbZzZBZBZzBZZbbZZBZZBzZzBZbzZBzZbBzZ
+			bbbBbbZzZbzbZzZzbzzzbzzbzZZzbbzbBZZbBbBZBBZzZzzbBBBBBZbZzBzzBbzBbbbz
+			BBzbbZBbzbzBZbzzBzbZBzzbzbbbBZBzBZzBZbzBzZzBZZZBzZZBzBZZzbzZbzzZzBBz
+			ZZzbZzzZZZBZBBbZZbZzBBBzbzZZbbZZBZZBBBbBZzZbZBZBBBzzZBbbbbzBzbbzBBBz
+			bZBBbZzBbZZBzbBbZZBzBzBzBBbzzzZBbzbZBbzBbZzbbBZBBbbZbBBbbBZbzbZzbBzB
+			bBbbZZbzZzbbBbzZbZZZZbzzZZbBzZZbZzZzzBzbZZ`, // 513 characters
+			wantStatus: http.StatusRequestEntityTooLarge,
+			wantResponse: jsonhttp.StatusResponse{
+				Message: "Request Entity Too Large",
+				Code:    http.StatusRequestEntityTooLarge,
+			},
+			wantFail: true,
+		},
 	}
 	testURL := "/welcome-message"
 

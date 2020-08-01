@@ -87,8 +87,11 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})
 	router.Handle("/welcome-message", jsonhttp.MethodHandler{
-		"GET":  http.HandlerFunc(s.getWelcomeMessageHandler),
-		"POST": http.HandlerFunc(s.setWelcomeMessageHandler),
+		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
+			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
+		),
 	})
 
 	baseRouter.Handle("/", web.ChainHandlers(

@@ -11,6 +11,8 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
+const welcomeMessageMaxRequestSize = 512
+
 type welcomeMessageRequest struct {
 	WelcomeMesssage string `json:"welcome_message"`
 }
