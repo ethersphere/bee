@@ -32,32 +32,25 @@ func TestGetWelcomeMessage(t *testing.T) {
 
 func TestSetWelcomeMessage(t *testing.T) {
 	testCases := []struct {
-		desc         string
-		message      string
-		wantStatus   int
-		wantResponse interface{}
-		wantFail     bool
+		desc        string
+		message     string
+		wantFail    bool
+		wantStatus  int
+		wantMessage string
 	}{
 		{
 			desc:       "OK",
 			message:    "Changed value",
 			wantStatus: http.StatusOK,
-			wantResponse: jsonhttp.StatusResponse{
-				Message: "OK",
-				Code:    http.StatusOK,
-			},
 		},
 		{
 			desc:       "OK - welcome message empty",
 			message:    "",
 			wantStatus: http.StatusOK,
-			wantResponse: jsonhttp.StatusResponse{
-				Message: "OK",
-				Code:    http.StatusOK,
-			},
 		},
 		{
-			desc: "fails - request entity too large",
+			desc:     "fails - request entity too large",
+			wantFail: true,
 			message: `zZZbzbzbzbBzBBZbBbZbbbBzzzZBZBbzzBBBbBzBzzZbbBzBBzBBbZz
 			bZZZBBbbZbbZzBbzBbzbZBZzBZZbZzZzZzbbZZBZzzbBZBzZzzBBzZZzzZbZZZzbbbzz
 			bBzZZBbBZBzZzBZBzbzBBbzBBzbzzzBbBbZzZBZBZzBZZbbZZBZZBzZzBZbzZBzZbBzZ
@@ -67,11 +60,6 @@ func TestSetWelcomeMessage(t *testing.T) {
 			bZBBbZzBbZZBzbBbZZBzBzBzBBbzzzZBbzbZBbzBbZzbbBZBBbbZbBBbbBZbzbZzbBzB
 			bBbbZZbzZzbbBbzZbZZZZbzzZZbBzZZbZzZzzBzbZZ`, // 513 characters
 			wantStatus: http.StatusRequestEntityTooLarge,
-			wantResponse: jsonhttp.StatusResponse{
-				Message: "Request Entity Too Large",
-				Code:    http.StatusRequestEntityTooLarge,
-			},
-			wantFail: true,
 		},
 	}
 	testURL := "/welcome-message"
@@ -82,11 +70,18 @@ func TestSetWelcomeMessage(t *testing.T) {
 
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
+			if tC.wantMessage == "" {
+				tC.wantMessage = http.StatusText(tC.wantStatus)
+			}
 			data, _ := json.Marshal(debugapi.WelcomeMessageRequest{
 				WelcomeMesssage: tC.message,
 			})
 			body := bytes.NewReader(data)
-			jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, testURL, body, tC.wantStatus, tC.wantResponse)
+			wantResponse := jsonhttp.StatusResponse{
+				Message: tC.wantMessage,
+				Code:    tC.wantStatus,
+			}
+			jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, testURL, body, tC.wantStatus, wantResponse)
 			if !tC.wantFail {
 				got := srv.P2PMock.GetWelcomeMessage()
 				if got != tC.message {

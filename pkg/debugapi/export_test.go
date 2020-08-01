@@ -16,5 +16,3 @@ type (
 	WelcomeMessageRequest    = welcomeMessageRequest
 	WelcomeMessageResponse   = welcomeMessageResponse
 )
-
-const WelcomeMessageMaxRequestSize = welcomeMessageMaxRequestSize
