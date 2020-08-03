@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/hive"
@@ -28,7 +29,6 @@ import (
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -40,12 +40,12 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/validator"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -254,7 +254,7 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, validator.NewContentAddressValidator())
+	ns := netstore.New(storer, retrieve, logger, content.NewValidator(), soc.NewValidator())
 
 	retrieve.SetStorer(ns)
 
@@ -301,15 +301,12 @@ func NewBee(o Options) (*Bee, error) {
 
 	b.pullerCloser = puller
 
-	manifestParser := jsonmanifest.NewParser()
-
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		apiService = api.New(api.Options{
 			Tags:               tagg,
 			Storer:             ns,
-			ManifestParser:     manifestParser,
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			Logger:             logger,
 			Tracer:             tracer,
@@ -346,6 +343,7 @@ func NewBee(o Options) (*Bee, error) {
 			Tracer:         tracer,
 			TopologyDriver: topologyDriver,
 			Storer:         storer,
+			Tags:           tagg,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)

@@ -5,38 +5,34 @@
 package manifest
 
 import (
+	"encoding"
 	"errors"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// ErrNotFound is returned when an Entry is not found in the manifest.
 var ErrNotFound = errors.New("manifest: not found")
 
-// Parser for manifest
-type Parser interface {
-	// Parse parses the encoded manifest data and returns the result
-	Parse(bytes []byte) (Interface, error)
-}
-
-// Interface for operations with manifest
+// Interface for operations with manifest.
 type Interface interface {
-	// Add a manifest entry to specified path
+	// Add a manifest entry to the specified path.
 	Add(string, Entry)
-	// Remove reference from file on specified path
+	// Remove a manifest entry on the specified path.
 	Remove(string)
-	// FindEntry returns manifest entry if one is found on specified path
-	FindEntry(string) (Entry, error)
-	// Serialize return encoded manifest
-	Serialize() ([]byte, error)
+	// Entry returns a manifest entry if one is found in the specified path.
+	Entry(string) (Entry, error)
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
 }
 
-// Entry represents single manifest entry
+// Entry represents a single manifest entry.
 type Entry interface {
-	// GetReference returns address of the entry file
-	GetReference() swarm.Address
-	// GetName returns the name of the file for the entry, if added
-	GetName() string
-	// GetHeaders returns the headers for manifest entry, if configured
-	GetHeaders() http.Header
+	// Reference returns the address of the file in the entry.
+	Reference() swarm.Address
+	// Name returns the name of the file in the entry.
+	Name() string
+	// Headers returns the headers for the file in the manifest entry.
+	Headers() http.Header
 }

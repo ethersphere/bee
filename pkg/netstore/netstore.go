@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -19,11 +20,12 @@ type store struct {
 
 	retrieval  retrieval.Interface
 	validators []swarm.ChunkValidator
+	logger     logging.Logger
 }
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, r retrieval.Interface, validators ...swarm.ChunkValidator) storage.Storer {
-	return &store{Storer: s, retrieval: r, validators: validators}
+func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validators ...swarm.ChunkValidator) storage.Storer {
+	return &store{Storer: s, retrieval: r, logger: logger, validators: validators}
 }
 
 // Get retrieves a given chunk address.

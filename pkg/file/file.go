@@ -34,8 +34,8 @@ type Splitter interface {
 }
 
 // JoinReadAll reads all output from the provided joiner.
-func JoinReadAll(j Joiner, addr swarm.Address, outFile io.Writer, toDecrypt bool) (int64, error) {
-	r, l, err := j.Join(context.Background(), addr, toDecrypt)
+func JoinReadAll(ctx context.Context, j Joiner, addr swarm.Address, outFile io.Writer, toDecrypt bool) (int64, error) {
+	r, l, err := j.Join(ctx, addr, toDecrypt)
 	if err != nil {
 		return 0, err
 	}

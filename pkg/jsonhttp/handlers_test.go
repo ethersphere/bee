@@ -114,3 +114,83 @@ func TestNotFoundHandler(t *testing.T) {
 
 	testContentType(t, w)
 }
+
+func TestNewMaxBodyBytesHandler(t *testing.T) {
+	var limit int64 = 10
+
+	h := jsonhttp.NewMaxBodyBytesHandler(limit)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			if jsonhttp.HandleBodyReadError(err, w) {
+				return
+			}
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+		jsonhttp.OK(w, nil)
+	}))
+
+	for _, tc := range []struct {
+		name                 string
+		body                 string
+		withoutContentLength bool
+		wantCode             int
+	}{
+		{
+			name:     "empty",
+			wantCode: http.StatusOK,
+		},
+		{
+			name:                 "within limit without content length header",
+			body:                 "data",
+			withoutContentLength: true,
+			wantCode:             http.StatusOK,
+		},
+		{
+			name:     "within limit",
+			body:     "data",
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "over limit",
+			body:     "long test data",
+			wantCode: http.StatusRequestEntityTooLarge,
+		},
+		{
+			name:                 "over limit without content length header",
+			body:                 "long test data",
+			withoutContentLength: true,
+			wantCode:             http.StatusRequestEntityTooLarge,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tc.body))
+			if tc.withoutContentLength {
+				r.Header.Del("Content-Length")
+				r.ContentLength = 0
+			}
+			w := httptest.NewRecorder()
+
+			h.ServeHTTP(w, r)
+
+			if w.Code != tc.wantCode {
+				t.Errorf("got http response code %d, want %d", w.Code, tc.wantCode)
+			}
+
+			var m *jsonhttp.StatusResponse
+
+			if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil {
+				t.Errorf("json unmarshal response body: %s", err)
+			}
+
+			if m.Code != tc.wantCode {
+				t.Errorf("got message code %d, want %d", m.Code, tc.wantCode)
+			}
+
+			wantMessage := http.StatusText(tc.wantCode)
+			if m.Message != wantMessage {
+				t.Errorf("got message message %q, want %q", m.Message, wantMessage)
+			}
+		})
+	}
+}

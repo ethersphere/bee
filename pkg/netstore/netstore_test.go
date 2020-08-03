@@ -7,9 +7,11 @@ package netstore_test
 import (
 	"bytes"
 	"context"
+	"io/ioutil"
 	"sync/atomic"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -94,10 +96,11 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 }
 
 // returns a mock retrieval protocol, a mock local storage and a netstore
-func newRetrievingNetstore() (ret *retrievalMock, mockStore storage.Storer, ns storage.Storer) {
+func newRetrievingNetstore() (ret *retrievalMock, mockStore, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
-	nstore := netstore.New(store, retrieve, mockValidator{})
+	logger := logging.New(ioutil.Discard, 0)
+	nstore := netstore.New(store, retrieve, logger, mockValidator{})
 
 	return retrieve, store, nstore
 }
