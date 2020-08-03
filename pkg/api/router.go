@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -54,11 +55,14 @@ func (s *server) setupRouting() {
 	})
 
 	handle(router, "/chunks/{addr}", jsonhttp.MethodHandler{
-		"GET":  http.HandlerFunc(s.chunkGetHandler),
-		"POST": http.HandlerFunc(s.chunkUploadHandler),
+		"GET": http.HandlerFunc(s.chunkGetHandler),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			web.FinalHandlerFunc(s.chunkUploadHandler),
+		),
 	})
 
-	handle(router, "/bzz:/{address}/{path:.*}", jsonhttp.MethodHandler{
+	handle(router, "/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.bzzDownloadHandler),
 	})
 

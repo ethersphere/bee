@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bzz"
@@ -64,7 +65,7 @@ type Service struct {
 	overlay               swarm.Address
 	lightNode             bool
 	networkID             uint64
-	welcomeMessage        string
+	welcomeMessage        atomic.Value
 	receivedHandshakes    map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu  sync.Mutex
 	logger                logging.Logger
@@ -84,17 +85,19 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		return nil, ErrWelcomeMessageLength
 	}
 
-	return &Service{
+	svc := &Service{
 		signer:                signer,
 		advertisableAddresser: advertisableAddresser,
 		overlay:               overlay,
 		networkID:             networkID,
 		lightNode:             lighNode,
-		welcomeMessage:        welcomeMessage,
 		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
 		logger:                logger,
 		Notifiee:              new(network.NoopNotifiee),
-	}, nil
+	}
+	svc.welcomeMessage.Store(welcomeMessage)
+
+	return svc, nil
 }
 
 // Handshake initiates a handshake with a peer.
@@ -146,6 +149,8 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, err
 	}
 
+	// Synced read:
+	welcomeMessage := s.GetWelcomeMessage()
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Ack{
 		Address: &pb.BzzAddress{
 			Underlay:  advertisableUnderlayBytes,
@@ -154,7 +159,7 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		},
 		NetworkID:      s.networkID,
 		Light:          s.lightNode,
-		WelcomeMessage: s.welcomeMessage,
+		WelcomeMessage: welcomeMessage,
 	}); err != nil {
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
@@ -216,6 +221,8 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 		return nil, err
 	}
 
+	welcomeMessage := s.GetWelcomeMessage()
+
 	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.SynAck{
 		Syn: &pb.Syn{
 			ObservedUnderlay: fullRemoteMABytes,
@@ -228,7 +235,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 			},
 			NetworkID:      s.networkID,
 			Light:          s.lightNode,
-			WelcomeMessage: s.welcomeMessage,
+			WelcomeMessage: welcomeMessage,
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("write synack message: %w", err)
@@ -257,6 +264,20 @@ func (s *Service) Disconnected(_ network.Network, c network.Conn) {
 	s.receivedHandshakesMu.Lock()
 	defer s.receivedHandshakesMu.Unlock()
 	delete(s.receivedHandshakes, c.RemotePeer())
+}
+
+// SetWelcomeMessage sets the new handshake welcome message.
+func (s *Service) SetWelcomeMessage(msg string) (err error) {
+	if len(msg) > MaxWelcomeMessageLength {
+		return ErrWelcomeMessageLength
+	}
+	s.welcomeMessage.Store(msg)
+	return nil
+}
+
+// GetWelcomeMessage returns the the current handshake welcome message.
+func (s *Service) GetWelcomeMessage() string {
+	return s.welcomeMessage.Load().(string)
 }
 
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
