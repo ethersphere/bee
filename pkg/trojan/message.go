@@ -37,11 +37,12 @@ const (
 	// MaxPayloadSize is the maximum allowed payload size for the Message type, in bytes
 	// MaxPayloadSize + Topic + Length + Nonce = Default ChunkSize
 	//    (4030)      +  (32) +   (2)  +  (32) = 4096 Bytes
-	MaxPayloadSize = swarm.ChunkSize - NonceSize - LengthSize - TopicSize
-	NonceSize      = 32
-	LengthSize     = 2
-	TopicSize      = 32
-	MinerTimeout   = 2 // seconds
+	MaxPayloadSize          = swarm.ChunkSize - NonceSize - LengthSize - TopicSize
+	NonceSize               = 32
+	LengthSize              = 2
+	TopicSize               = 32
+	MinerTimeout            = 10   // seconds after which the wrap will fail
+	MaxTimerCheckIterations = 256 // no of iteration after which to check if timeout has happened
 )
 
 // NewTopic creates a new Topic variable with the given input string
@@ -164,6 +165,7 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 	}
 
 	// hash chunk fields with different nonces until an acceptable one is found
+	hashCount := 0
 	for start := time.Now(); ; {
 		s := append(append(span, nonce...), b...) // serialize chunk fields
 		hash1, err := hashBytes(s)
@@ -180,13 +182,17 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 		nonceInt.Add(nonceInt, big.NewInt(1))
 		// loop around in case of overflow after 256 bits
 		if nonceInt.BitLen() > (NonceSize * swarm.SpanSize) {
-			// Test if timeout after after every 256 iteration
-			if time.Since(start) > (MinerTimeout * time.Second) {
-				break
-			}
 			nonceInt = big.NewInt(0)
 		}
 		nonce = padBytesLeft(nonceInt.Bytes()) // pad in case Bytes call is not 32 bytes long
+
+		// test if the timer is elapsed for every 256 iteration
+		hashCount++
+		if hashCount%MaxTimerCheckIterations == 0 {
+			if time.Since(start) > (MinerTimeout * time.Second) {
+				break
+			}
+		}
 	}
 	return nil, ErrMinerTimeout
 }

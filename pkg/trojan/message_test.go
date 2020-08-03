@@ -6,6 +6,7 @@ package trojan_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"reflect"
 	"testing"
@@ -121,6 +122,23 @@ func TestWrapFail(t *testing.T) {
 	varLenTargets := trojan.Targets([]trojan.Target{t1, t2, t3})
 	if _, err := m.Wrap(varLenTargets); err != trojan.ErrVarLenTargets {
 		t.Fatalf("expected error when creating chunk for variable-length targets to be %q, but got %v", trojan.ErrVarLenTargets, err)
+	}
+}
+
+func TestWrapTimeout(t *testing.T) {
+	m := newTestMessage(t)
+
+	// a large target will take more than MinerTimeout seconds, so timeout error will be triggered
+	buf := make([]byte, swarm.SectionSize)
+	_, err := rand.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t1 := trojan.Target(buf)
+	targets := trojan.Targets([]trojan.Target{t1})
+	if _, err := m.Wrap(targets); err != trojan.ErrMinerTimeout {
+		t.Fatalf("expected error when having lengthy target to be %q, but got %v", trojan.ErrMinerTimeout, err)
 	}
 }
 
