@@ -264,10 +264,10 @@ func NewBee(o Options) (*Bee, error) {
 	// instantiate the pss object
 	psss := pss.NewPss(storer, tagg)
 
-	// create recovery callback for content repair and send it to netstore
+	// create recovery callback for content repair
 	recoverFunc := chunk.NewRecoveryHook(psss.Send)
 
-	// delivery call back for delivery the registered messages
+	// delivery call back for delivery of the registered messages
 	deliverFunc := psss.Deliver
 
 	ns := netstore.New(storer, recoverFunc, deliverFunc, retrieve, logger, content.NewValidator(), soc.NewValidator())

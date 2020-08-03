@@ -9,11 +9,11 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/encryption"
 	"golang.org/x/crypto/sha3"
+
+	"github.com/ethersphere/bee/pkg/encryption"
 )
 
 const (
@@ -30,10 +30,6 @@ const (
 
 var (
 	NewHasher = sha3.NewLegacyKeccak256
-)
-
-var (
-	ErrNotPinned = errors.New("chunk not pinned")
 )
 
 // Address represents an address in Swarm metric space of

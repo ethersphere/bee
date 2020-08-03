@@ -47,7 +47,6 @@ func NewRecoveryHook(send sender) RecoveryHook {
 		}
 		payload := chunkAddress
 
-		// TODO: returned monitor should be made use of
 		if _, err := send(ctx, targets, RecoveryTopic, payload.Bytes()); err != nil {
 			return err
 		}

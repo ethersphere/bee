@@ -22,12 +22,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syndtr/goleveldb/leveldb"
-
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	tagtesting "github.com/ethersphere/bee/pkg/tags/testing"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestModeSetAccess validates ModeSetAccess index values on the provided DB.
