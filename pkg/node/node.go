@@ -348,6 +348,8 @@ func NewBee(o Options) (*Bee, error) {
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
+		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
+
 		if apiService != nil {
 			debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
 		}
