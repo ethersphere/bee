@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/pushsync"
+	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -117,8 +119,137 @@ func TestRecoveryHookCalls(t *testing.T) {
 	}
 }
 
+func TestNewRepairHandler(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	t.Run("repair-chunk", func(t *testing.T) {
+		// generate test chunk, store and publisher
+		c1 := chunktesting.GenerateTestRandomChunk()
+
+		// create a mock storer and put a chunk that will be repaired
+		mockStorer := storemock.NewStorer()
+		defer mockStorer.Close()
+		_, err := mockStorer.Put(context.Background(), storage.ModePutRequest, c1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// create a mock pushsync service to push the chunk to its destination
+		var receipt *pushsync.Receipt
+		pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+			rcpt := &pushsync.Receipt{
+				Address: swarm.NewAddress(chunk.Address().Bytes()),
+			}
+			receipt = rcpt
+			return rcpt, nil
+		})
+
+		// create the chunk repair handler
+		repairHandler := chunk.NewRepairHandler(mockStorer, logger, pushSyncService)
+
+		//create a trojan message to trigger the repair of the chunk
+		testTopic := trojan.NewTopic("foo")
+		maxPayload := make([]byte, swarm.SectionSize)
+		var msg trojan.Message
+		copy(maxPayload, c1.Address().Bytes())
+		if msg, err = trojan.NewMessage(testTopic, maxPayload); err != nil {
+			t.Fatal(err)
+		}
+
+		// invoke the chunk repair handler
+		repairHandler(msg)
+
+		// check if receipt is received
+		if receipt == nil {
+			t.Fatal("receipt not received")
+		}
+
+		if !receipt.Address.Equal(c1.Address()) {
+			t.Fatalf("invalid address in receipt: expected %s received %s", c1.Address(), receipt.Address)
+		}
+
+	})
+
+	t.Run("repair-chunk-not-present", func(t *testing.T) {
+		// generate test chunk, store and publisher
+		c2 := chunktesting.GenerateTestRandomChunk()
+
+		// create a mock storer
+		mockStorer := storemock.NewStorer()
+		defer mockStorer.Close()
+
+		// create a mock pushsync service
+		pushServiceCalled := false
+		pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+			pushServiceCalled = true
+			return nil, nil
+		})
+
+		// create the chunk repair handler
+		repairHandler := chunk.NewRepairHandler(mockStorer, logger, pushSyncService)
+
+		//create a trojan message to trigger the repair of the chunk
+		testTopic := trojan.NewTopic("foo")
+		maxPayload := make([]byte, swarm.SectionSize)
+		var msg trojan.Message
+		copy(maxPayload, c2.Address().Bytes())
+		msg, err := trojan.NewMessage(testTopic, maxPayload)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// invoke the chunk repair handler
+		repairHandler(msg)
+
+		if pushServiceCalled {
+			t.Fatal("push service called even if the chunk is not present")
+		}
+	})
+
+	t.Run("repair-chunk-closest-peer-not-present", func(t *testing.T) {
+		// generate test chunk, store and publisher
+		c3 := chunktesting.GenerateTestRandomChunk()
+
+		// create a mock storer
+		mockStorer := storemock.NewStorer()
+		defer mockStorer.Close()
+		_, err := mockStorer.Put(context.Background(), storage.ModePutRequest, c3)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// create a mock pushsync service
+		var receiptError error
+		pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+			receiptError = errors.New("invalid receipt")
+			return nil, receiptError
+		})
+
+		// create the chunk repair handler
+		repairHandler := chunk.NewRepairHandler(mockStorer, logger, pushSyncService)
+
+		//create a trojan message to trigger the repair of the chunk
+		testTopic := trojan.NewTopic("foo")
+		maxPayload := make([]byte, swarm.SectionSize)
+		var msg trojan.Message
+		copy(maxPayload, c3.Address().Bytes())
+		msg, err = trojan.NewMessage(testTopic, maxPayload)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// invoke the chunk repair handler
+		repairHandler(msg)
+
+		if receiptError == nil {
+			t.Fatal("pushsync did not generate a receipt error")
+		}
+	})
+}
+
 // newTestNetStore creates a test store with a set RemoteGet func
 func newTestNetStore(t *testing.T, recoveryFunc chunk.RecoveryHook) storage.Storer {
+	t.Helper()
 	storer := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 5)
 
