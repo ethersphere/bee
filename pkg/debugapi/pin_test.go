@@ -47,6 +47,13 @@ func TestPinChunkHandler(t *testing.T) {
 		})
 	})
 
+	// list pins without anything pinned
+	t.Run("list-pins-zero-pins", func(t *testing.T) {
+		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", nil, http.StatusOK, debugapi.ListPinnedChunksResponse{
+			Chunks: []debugapi.PinnedChunk{},
+		})
+	})
+
 	// pin a chunk which is not existing
 	t.Run("pin-absent-chunk", func(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/123456", nil, http.StatusNotFound, jsonhttp.StatusResponse{
