@@ -34,9 +34,9 @@ func (m *jsonManifest) Add(path string, entry manifest.Entry) {
 	defer m.entriesMu.Unlock()
 
 	m.entries[path] = &jsonEntry{
-		reference: entry.Reference(),
-		name:      entry.Name(),
-		headers:   entry.Headers(),
+		R: entry.Reference(),
+		N: entry.Name(),
+		H: entry.Headers(),
 	}
 }
 

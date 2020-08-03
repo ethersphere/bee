@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
+// TestMarshal verifies that created manifests are successfully marshalled and unmarshalled
 func TestMarshal(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -45,8 +46,37 @@ func TestMarshal(t *testing.T) {
 				},
 				{
 					reference: test.RandomAddress(),
-					name:      "entry-2,png",
+					name:      "entry-2.png",
 					headers:   http.Header{"Content-Type": {"image/png"}},
+					path:      "",
+				},
+			},
+		},
+		{
+			name: "nested-entries",
+			entries: []e{
+				{
+					reference: test.RandomAddress(),
+					name:      "robots.txt",
+					headers:   http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+					path:      "text",
+				},
+				{
+					reference: test.RandomAddress(),
+					name:      "1.png",
+					headers:   http.Header{"Content-Type": {"image/png"}},
+					path:      "img",
+				},
+				{
+					reference: test.RandomAddress(),
+					name:      "2.jpg",
+					headers:   http.Header{"Content-Type": {"image/jpg"}},
+					path:      "img",
+				},
+				{
+					reference: test.RandomAddress(),
+					name:      "readme.md",
+					headers:   http.Header{"Content-Type": {"text/markdown; charset=UTF-8"}},
 					path:      "",
 				},
 			},
@@ -54,6 +84,7 @@ func TestMarshal(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := jsonmanifest.NewManifest()
+
 			for _, e := range tc.entries {
 				entry := jsonmanifest.NewEntry(
 					e.reference,
@@ -69,7 +100,6 @@ func TestMarshal(t *testing.T) {
 			}
 
 			um := jsonmanifest.NewManifest()
-
 			if err := um.UnmarshalBinary(b); err != nil {
 				t.Fatal(err)
 			}
