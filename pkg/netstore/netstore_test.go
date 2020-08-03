@@ -100,7 +100,7 @@ func newRetrievingNetstore() (ret *retrievalMock, mockStore, ns storage.Storer) 
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 0)
-	nstore := netstore.New(store, retrieve, logger, mockValidator{})
+	nstore := netstore.New(store, nil, nil, retrieve, logger, mockValidator{})
 
 	return retrieve, store, nstore
 }
