@@ -14,13 +14,39 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
-// TestEntries verifies that the manifest behaves as expected when adding, deleting and modifying entries
-func TestEntries(t *testing.T) {
-	m := jsonmanifest.NewManifest()
+// simple test entry
+var testEntry = jsonmanifest.NewEntry(
+	test.RandomAddress(),
+	"test.txt",
+	http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+)
 
+// TestAdd verifies that manifests behave as expected when adding entries
+func TestAdd(t *testing.T) {
+	m := jsonmanifest.NewManifest()
 	if m.Length() != 0 {
 		t.Fatalf("expected length to be %d, but is %d instead", 0, m.Length())
 	}
+
+	m.Add("testEntry", testEntry)
+	if m.Length() != 1 {
+		t.Fatalf("expected length to be %d, but is %d instead", 1, m.Length())
+	}
+
+	// check if retrieved entry matches original entry
+	e, err := m.Entry("testEntry")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(testEntry, e) {
+		t.Fatalf("original and retrieved entry are not equal: %v, %v", testEntry, e)
+	}
+}
+
+// TestEntries verifies that the manifest entries are read-only
+func TestEntries(t *testing.T) {
+	_ = jsonmanifest.NewManifest()
 }
 
 // TestMarshal verifies that created manifests are successfully marshalled and unmarshalled
