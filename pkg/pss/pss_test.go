@@ -6,15 +6,12 @@ package pss_test
 
 import (
 	"context"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
@@ -23,71 +20,7 @@ import (
 // mocks the localstore
 // calls pss.Send method and verifies it's properly stored
 func TestTrojanChunkRetrieval(t *testing.T) {
-	var err error
-	ctx := context.TODO()
-	testTags := tags.NewTags()
-
-	//localStore := mock.NewTagsStorer(testTags)
-	baseAddress := test.RandomAddress()
-	localStore := mock.NewStorer(mock.WithBaseAddress(baseAddress), mock.WithTags(testTags))
-	// create a option with WithBaseAddress
-	pss := pss.NewPss(localStore, testTags)
-
-	target := trojan.Target([]byte{1}) // arbitrary test target
-	targets := trojan.Targets([]trojan.Target{target})
-	payload := []byte("RECOVERY CHUNK")
-	topic := trojan.NewTopic("RECOVERY TOPIC")
-
-	// call Send to store trojan chunk in localstore
-	if _, err = pss.Send(ctx, targets, topic, payload); err != nil {
-		t.Fatal(err)
-	}
-
-	var chunkAddress swarm.Address
-	// this code iterates over the localstore
-	// this will get the chunk that was stored in pss.Send
-	for po := uint8(0); po <= swarm.MaxPO; po++ {
-		last, err := localStore.LastPullSubscriptionBinID(po)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if last == 0 {
-			continue
-		}
-		// iter for chunk in localstore
-		ch, _, _ := localStore.SubscribePull(context.Background(), po, 0, last)
-		for c := range ch {
-			chunkAddress = c.Address
-			break
-		}
-	}
-
-	// verify store, that trojan chunk has been stored correctly
-	var storedChunk swarm.Chunk
-	if storedChunk, err = localStore.Get(ctx, storage.ModeGetRequest, chunkAddress); err != nil {
-		//t.Fatal(err)
-	}
-
-	// create a stored chunk artificially
-	m, err := trojan.NewMessage(topic, payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var tc swarm.Chunk
-	tc, err = m.Wrap(targets)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tag, err := tags.NewTags().Create("pss-chunks-tag", 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	storedChunk = tc.WithTagID(tag.Uid)
-
-	if !reflect.DeepEqual(tc, storedChunk) {
-		//t.Fatalf("store chunk does not match sent chunk")
-	}
+	// TODO: REPLACE WITH FINISHED TEST
 }
 
 // TestPssMonitor creates a trojan chunk
