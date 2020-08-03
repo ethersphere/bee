@@ -93,7 +93,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk 
 		var skipPeers []swarm.Address
 		for i := 0; i < maxPeers; i++ {
 			var peer swarm.Address
-			data, peer, err := s.retrieveChunk(ctx, addr, skipPeers)
+			chunk, peer, err := s.retrieveChunk(ctx, addr, skipPeers)
 			if err != nil {
 				if peer.IsZero() {
 					return nil, err
@@ -103,10 +103,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk 
 				continue
 			}
 			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
-			chunk := swarm.NewChunk(addr, data)
-			if s.validator.Validate(chunk) {
-				return chunk, nil
-			}
+			return chunk, nil
 		}
 		return nil, err
 	})
@@ -117,7 +114,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk 
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (data []byte, peer swarm.Address, err error) {
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (chunk swarm.Chunk, peer swarm.Address, err error) {
 	v := ctx.Value(requestSourceContextKey{})
 	if src, ok := v.(string); ok {
 		skipAddr, err := swarm.ParseHexAddress(src)
@@ -168,12 +165,19 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	}
 
 	// credit the peer after successful delivery
+	chunk = swarm.NewChunk(addr, d.Data)
+	if !s.validator.Validate(chunk) {
+		return nil, peer, err
+	}
+
 	err = s.accounting.Credit(peer, chunkPrice)
+
 	if err != nil {
 		return nil, peer, err
 	}
 
-	return d.Data, peer, nil
+	return chunk, peer, err
+
 }
 
 func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
