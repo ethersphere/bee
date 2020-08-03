@@ -23,6 +23,17 @@ func TestMarshal(t *testing.T) {
 			name:    "empty-manifest",
 			entries: nil,
 		},
+		{
+			name: "one-entry",
+			entries: []e{
+				{
+					reference: test.RandomAddress(),
+					name:      "entry-1",
+					headers:   http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+					path:      "",
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := jsonmanifest.NewManifest()
