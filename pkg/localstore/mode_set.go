@@ -19,13 +19,13 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
+
+	"github.com/syndtr/goleveldb/leveldb"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Set updates database indexes for
@@ -450,38 +450,4 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (err error) {
 	}
 
 	return nil
-}
-
-// setReUpload adds a pinned chunk to the push index so that it can be re-uploaded to the network
-func (db *DB) setReUpload(batch *leveldb.Batch, addr swarm.Address) (err error) {
-	item := addressToItem(addr)
-
-	// get chunk retrieval data
-	retrievalDataIndexItem, err := db.retrievalDataIndex.Get(item)
-	if err != nil {
-		return err
-	}
-
-	// only pinned chunks should be re-uploaded
-	// this also prevents a race condition: a non-pinned chunk could be gc'd after it's put in the push index
-	// but before it is actually re-uploaded to the network
-	_, err = db.pinIndex.Get(item)
-	if err != nil {
-		errStr := fmt.Sprintf("get value: %v", leveldb.ErrNotFound)
-		if err.Error() == errStr {
-			return swarm.ErrNotPinned
-		}
-		return err
-	}
-
-	// put chunk item into the push index if not already present
-	itemPresent, err := db.pushIndex.Has(retrievalDataIndexItem)
-	if err != nil {
-		return err
-	}
-	if itemPresent {
-		return nil
-	}
-
-	return db.pushIndex.PutInBatch(batch, retrievalDataIndexItem)
 }

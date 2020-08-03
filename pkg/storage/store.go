@@ -91,8 +91,6 @@ func (m ModeSet) String() string {
 		return "ModeSetPin"
 	case ModeSetUnpin:
 		return "ModeSetUnpin"
-	case ModeSetReUpload:
-		return "ModeSetReUpload"
 	default:
 		return "Unknown"
 	}
@@ -112,8 +110,6 @@ const (
 	ModeSetPin
 	// ModeSetUnpin: when a chunk is unpinned using a command locally
 	ModeSetUnpin
-	// ModeSetReUpload: when a push sync is forced for a chunk
-	ModeSetReUpload
 )
 
 // Descriptor holds information required for Pull syncing. This struct
