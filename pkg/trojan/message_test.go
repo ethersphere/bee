@@ -17,11 +17,11 @@ import (
 )
 
 // arbitrary targets for tests
-var t1 = trojan.Target([]byte{57, 120})
-var t2 = trojan.Target([]byte{209, 156})
-var t3 = trojan.Target([]byte{156, 38})
-var t4 = trojan.Target([]byte{89, 19})
-var t5 = trojan.Target([]byte{22, 129})
+var t1 = trojan.Target([]byte{57})
+var t2 = trojan.Target([]byte{209})
+var t3 = trojan.Target([]byte{156})
+var t4 = trojan.Target([]byte{89})
+var t5 = trojan.Target([]byte{22})
 var testTargets = trojan.Targets([]trojan.Target{t1, t2, t3, t4, t5})
 
 // arbitrary topic for tests
