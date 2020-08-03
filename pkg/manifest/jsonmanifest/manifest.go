@@ -90,7 +90,9 @@ func (m *jsonManifest) UnmarshalBinary(b []byte) error {
 	m.entriesMu.Lock()
 	defer m.entriesMu.Unlock()
 
-	e := exportManifest{}
+	e := exportManifest{
+		Entries: make(map[string]*jsonEntry),
+	}
 	if err := json.Unmarshal(b, &e); err != nil {
 		return err
 	}
