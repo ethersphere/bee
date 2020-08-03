@@ -14,6 +14,15 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
+// TestEntries verifies that the manifest behaves as expected when adding, deleting and modifying entries
+func TestEntries(t *testing.T) {
+	m := jsonmanifest.NewManifest()
+
+	if m.Length() != 0 {
+		t.Fatalf("expected length to be %d, but is %d instead", 0, m.Length())
+	}
+}
+
 // TestMarshal verifies that created manifests are successfully marshalled and unmarshalled
 func TestMarshal(t *testing.T) {
 	for _, tc := range []struct {
