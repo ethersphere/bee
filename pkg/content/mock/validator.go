@@ -10,7 +10,6 @@ import (
 
 var _ swarm.ChunkValidator = (*Validator)(nil)
 
-//
 type Validator struct {
 	rv bool
 }
