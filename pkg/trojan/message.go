@@ -41,7 +41,7 @@ const (
 	NonceSize               = 32
 	LengthSize              = 2
 	TopicSize               = 32
-	MinerTimeout            = 10   // seconds after which the wrap will fail
+	MinerTimeout            = 60  // seconds after which the wrap will fail
 	MaxTimerCheckIterations = 256 // no of iteration after which to check if timeout has happened
 )
 
