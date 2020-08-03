@@ -285,6 +285,7 @@ func (pb *PeerBalance) expectedDebt() uint64 {
 }
 
 // NotifyPayment is called by Settlement when we received payment
+// Implements the PaymentObserver interface
 func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	balance, err := a.getPeerBalance(peer)
 	if err != nil {

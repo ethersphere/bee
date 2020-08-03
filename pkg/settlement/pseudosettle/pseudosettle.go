@@ -97,6 +97,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	return err
 }
 
+// SetPaymentObserver sets the payment observer which will be notified of incoming payments
 func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
 	s.observer = observer
 }
