@@ -42,7 +42,7 @@ type Service struct {
 	logger        logging.Logger
 	accounting    accounting.Interface
 	pricer        accounting.Pricer
-	validator     swarm.ChunkValidator
+	validator     swarm.Validator
 }
 
 type Options struct {
@@ -52,7 +52,7 @@ type Options struct {
 	Logger      logging.Logger
 	Accounting  accounting.Interface
 	Pricer      accounting.Pricer
-	Validator   swarm.ChunkValidator
+	Validator   swarm.Validator
 }
 
 func New(o Options) *Service {

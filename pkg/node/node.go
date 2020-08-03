@@ -242,7 +242,7 @@ func NewBee(o Options) (*Bee, error) {
 		DisconnectThreshold: o.DisconnectThreshold,
 	})
 
-	chunkvalidators := swarm.NewChunkValidators(soc.NewValidator(), content.NewValidator())
+	chunkvalidators := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,

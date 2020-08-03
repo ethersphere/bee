@@ -19,11 +19,11 @@ type store struct {
 	storage.Storer
 	retrieval retrieval.Interface
 	logger    logging.Logger
-	validator swarm.ChunkValidator
+	validator swarm.Validator
 }
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validator swarm.ChunkValidator) storage.Storer {
+func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validator swarm.Validator) storage.Storer {
 	return &store{Storer: s, retrieval: r, logger: logger, validator: validator}
 }
 

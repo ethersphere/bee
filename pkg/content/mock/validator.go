@@ -8,14 +8,14 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ swarm.ChunkValidator = (*Validator)(nil)
+var _ swarm.Validator = (*Validator)(nil)
 
 type Validator struct {
 	rv bool
 }
 
 // NewValidator constructs a new Validator
-func NewValidator(rv bool) swarm.ChunkValidator {
+func NewValidator(rv bool) swarm.Validator {
 	return &Validator{rv: rv}
 }
 

@@ -101,7 +101,7 @@ func newRetrievingNetstore() (ret *retrievalMock, mockStore, ns storage.Storer) 
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 0)
-	validator := swarm.NewChunkValidators(validatormock.NewValidator(true))
+	validator := swarm.NewChunkValidator(validatormock.NewValidator(true))
 	nstore := netstore.New(store, retrieve, logger, validator)
 
 	return retrieve, store, nstore
@@ -117,6 +117,5 @@ func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (
 	r.called = true
 	atomic.AddInt32(&r.callCount, 1)
 	r.addr = addr
-	chunk = swarm.NewChunk(addr, chunkData)
-	return chunk, nil
+	return swarm.NewChunk(addr, chunkData), nil
 }
