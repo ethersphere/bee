@@ -28,6 +28,13 @@ type Service interface {
 	Addresses() ([]ma.Multiaddr, error)
 }
 
+// DebugService extends the Service with method used for debugging.
+type DebugService interface {
+	Service
+	SetWelcomeMessage(val string) error
+	GetWelcomeMessage() string
+}
+
 // Streamer is able to create a new Stream.
 type Streamer interface {
 	NewStream(ctx context.Context, address swarm.Address, h Headers, protocol, version, stream string) (Stream, error)

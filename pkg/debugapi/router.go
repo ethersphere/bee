@@ -86,6 +86,13 @@ func (s *server) setupRouting() {
 	router.Handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})
+	router.Handle("/welcome-message", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
+			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
+		),
+	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),

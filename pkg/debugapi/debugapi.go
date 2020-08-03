@@ -32,7 +32,7 @@ type server struct {
 
 type Options struct {
 	Overlay        swarm.Address
-	P2P            p2p.Service
+	P2P            p2p.DebugService
 	Pingpong       pingpong.Interface
 	TopologyDriver topology.PeerAdder
 	Storer         storage.Storer

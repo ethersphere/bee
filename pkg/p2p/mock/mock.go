@@ -16,52 +16,77 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+// Service is the mock of a P2P Service
 type Service struct {
-	addProtocolFunc func(p2p.ProtocolSpec) error
-	connectFunc     func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
-	disconnectFunc  func(overlay swarm.Address) error
-	peersFunc       func() []p2p.Peer
-	setNotifierFunc func(topology.Notifier)
-	addressesFunc   func() ([]ma.Multiaddr, error)
-	notifyCalled    int32
+	addProtocolFunc       func(p2p.ProtocolSpec) error
+	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
+	disconnectFunc        func(overlay swarm.Address) error
+	peersFunc             func() []p2p.Peer
+	setNotifierFunc       func(topology.Notifier)
+	addressesFunc         func() ([]ma.Multiaddr, error)
+	setWelcomeMessageFunc func(string) error
+	getWelcomeMessageFunc func() string
+	welcomeMessage        string
+	notifyCalled          int32
 }
 
+// WithAddProtocolFunc sets the mock implementation of the AddProtocol function
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
 	return optionFunc(func(s *Service) {
 		s.addProtocolFunc = f
 	})
 }
 
+// WithConnectFunc sets the mock implementation of the Connect function
 func WithConnectFunc(f func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)) Option {
 	return optionFunc(func(s *Service) {
 		s.connectFunc = f
 	})
 }
 
+// WithDisconnectFunc sets the mock implementation of the Disconnect function
 func WithDisconnectFunc(f func(overlay swarm.Address) error) Option {
 	return optionFunc(func(s *Service) {
 		s.disconnectFunc = f
 	})
 }
 
+// WithPeersFunc sets the mock implementation of the Peers function
 func WithPeersFunc(f func() []p2p.Peer) Option {
 	return optionFunc(func(s *Service) {
 		s.peersFunc = f
 	})
 }
 
+// WithSetNotifierFunc sets the mock implementation of the SetNotifier function
 func WithSetNotifierFunc(f func(topology.Notifier)) Option {
 	return optionFunc(func(s *Service) {
 		s.setNotifierFunc = f
 	})
 }
 
+// WithAddressesFunc sets the mock implementation of the Adresses function
 func WithAddressesFunc(f func() ([]ma.Multiaddr, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.addressesFunc = f
 	})
 }
 
+// WithGetWelcomeMessageFunc sets the mock implementation of the GetWelcomeMessage function
+func WithGetWelcomeMessageFunc(f func() string) Option {
+	return optionFunc(func(s *Service) {
+		s.getWelcomeMessageFunc = f
+	})
+}
+
+// WithSetWelcomeMessageFunc sets the mock implementation of the SetWelcomeMessage function
+func WithSetWelcomeMessageFunc(f func(string) error) Option {
+	return optionFunc(func(s *Service) {
+		s.setWelcomeMessageFunc = f
+	})
+}
+
+// New will create a new mock P2P Service with the given options
 func New(opts ...Option) *Service {
 	s := new(Service)
 	for _, o := range opts {
@@ -124,6 +149,21 @@ func (s *Service) Peers() []p2p.Peer {
 func (s *Service) ConnectNotifyCalls() int32 {
 	c := atomic.LoadInt32(&s.notifyCalled)
 	return c
+}
+
+func (s *Service) SetWelcomeMessage(val string) error {
+	if s.setWelcomeMessageFunc != nil {
+		return s.setWelcomeMessageFunc(val)
+	}
+	s.welcomeMessage = val
+	return nil
+}
+
+func (s *Service) GetWelcomeMessage() string {
+	if s.getWelcomeMessageFunc != nil {
+		return s.getWelcomeMessageFunc()
+	}
+	return s.welcomeMessage
 }
 
 type Option interface {
