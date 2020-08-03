@@ -25,7 +25,7 @@ type MockStorer struct {
 	pinSetMu        sync.Mutex
 	subpull         []storage.Descriptor
 	partialInterval bool
-	validator       swarm.ChunkValidator
+	validator       swarm.Validator
 	tags            *tags.Tags
 	morePull        chan struct{}
 	mtx             sync.Mutex
@@ -63,7 +63,7 @@ func NewStorer(opts ...Option) *MockStorer {
 	return s
 }
 
-func NewValidatingStorer(v swarm.ChunkValidator, tags *tags.Tags) *MockStorer {
+func NewValidatingStorer(v swarm.Validator, tags *tags.Tags) *MockStorer {
 	return &MockStorer{
 		store:     make(map[string][]byte),
 		modeSet:   make(map[string]storage.ModeSet),

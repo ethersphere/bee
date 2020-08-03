@@ -44,6 +44,7 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -241,12 +242,15 @@ func NewBee(o Options) (*Bee, error) {
 		DisconnectThreshold: o.DisconnectThreshold,
 	})
 
+	chunkvalidators := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
+
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
 		Accounting:  acc,
 		Pricer:      accounting.NewFixedPricer(address, 10),
+		Validator:   chunkvalidators,
 	})
 	tagg := tags.NewTags()
 
@@ -254,7 +258,7 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, logger, content.NewValidator(), soc.NewValidator())
+	ns := netstore.New(storer, retrieve, logger, chunkvalidators)
 
 	retrieve.SetStorer(ns)
 

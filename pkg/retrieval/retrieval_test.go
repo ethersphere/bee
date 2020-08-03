@@ -14,6 +14,7 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -30,7 +31,7 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-
+	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
 	mockStorer := storemock.NewStorer()
 	reqAddr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -55,6 +56,7 @@ func TestDelivery(t *testing.T) {
 		Logger:     logger,
 		Accounting: serverMockAccounting,
 		Pricer:     pricerMock,
+		Validator:  mockValidator,
 	})
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
@@ -80,6 +82,7 @@ func TestDelivery(t *testing.T) {
 		Logger:      logger,
 		Accounting:  clientMockAccounting,
 		Pricer:      pricerMock,
+		Validator:   mockValidator,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
@@ -87,7 +90,7 @@ func TestDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(v, reqData) {
+	if !bytes.Equal(v.Data(), reqData) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
 	}
 	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
