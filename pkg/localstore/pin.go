@@ -30,6 +30,16 @@ func (db *DB) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChu
 		prefix = nil
 	}
 
+	c, err := db.pinIndex.Count()
+	if err != nil {
+		return nil, fmt.Errorf("list pinned chunks: %w", err)
+	}
+
+	// send empty response if there is nothing pinned
+	if c == 0 {
+		return pinnedChunks, nil
+	}
+
 	it, err := db.pinIndex.First(prefix)
 	if err != nil {
 		return nil, fmt.Errorf("get first pin: %w", err)
