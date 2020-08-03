@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
@@ -55,12 +56,22 @@ func NewRecoveryHook(send sender) RecoveryHook {
 }
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store
-func NewRepairHandler(s storage.Storer, logger logging.Logger) pss.Handler {
+func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
 	return func(m trojan.Message) {
 		chAddr := m.Payload
-		err := s.Set(context.Background(), storage.ModeSetReUpload, swarm.NewAddress(chAddr))
+		ctx := context.Background()
+
+		ch, err := s.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(chAddr))
 		if err != nil {
-			logger.Debugf("chunk repair: could not set ModeSetReUpload: %v", err)
+			logger.Debugf("chunk repair: error while getting chunk for repairing: %v", err)
+			return
+		}
+
+		// push the chunk using push sync so that it reaches it destination in network
+		_, err = pushSyncer.PushChunkToClosest(ctx, ch)
+		if err != nil {
+			logger.Debugf("chunk repair: error while sending chunk or receiving receipt: %v", err)
+			return
 		}
 	}
 }

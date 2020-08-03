@@ -270,13 +270,6 @@ func NewBee(o Options) (*Bee, error) {
 	deliverFunc := psss.Deliver
 
 	ns := netstore.New(storer, recoverFunc, deliverFunc, retrieve, logger, content.NewValidator(), soc.NewValidator())
-
-	if o.GlobalPinningEnabled {
-		// register function for chunk repair upon receiving a trojan message
-		chunkRepairHandler := chunk.NewRepairHandler(ns, logger)
-		psss.Register(chunk.RecoveryTopic, chunkRepairHandler)
-	}
-
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
@@ -289,6 +282,12 @@ func NewBee(o Options) (*Bee, error) {
 
 	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
 		return nil, fmt.Errorf("pushsync service: %w", err)
+	}
+
+	if o.GlobalPinningEnabled {
+		// register function for chunk repair upon receiving a trojan message
+		chunkRepairHandler := chunk.NewRepairHandler(ns, logger, pushSyncProtocol)
+		psss.Register(chunk.RecoveryTopic, chunkRepairHandler)
 	}
 
 	pushSyncPusher := pusher.New(pusher.Options{
