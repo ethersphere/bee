@@ -14,11 +14,16 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
-// simple test entry
-var testEntry = jsonmanifest.NewEntry(
+// simple test entries
+var testEntry1 = jsonmanifest.NewEntry(
 	test.RandomAddress(),
-	"test.txt",
+	"entry_1.txt",
 	http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+)
+var testEntry2 = jsonmanifest.NewEntry(
+	test.RandomAddress(),
+	"entry_2.png",
+	http.Header{"Content-Type": {"image/png"}},
 )
 
 // TestAdd verifies that manifests behave as expected when adding entries
@@ -28,19 +33,34 @@ func TestAdd(t *testing.T) {
 		t.Fatalf("expected length to be %d, but is %d instead", 0, m.Length())
 	}
 
-	m.Add("testEntry", testEntry)
+	m.Add("entry_1", testEntry1)
 	if m.Length() != 1 {
 		t.Fatalf("expected length to be %d, but is %d instead", 1, m.Length())
 	}
 
 	// check if retrieved entry matches original entry
-	e, err := m.Entry("testEntry")
+	e, err := m.Entry("entry_1")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !reflect.DeepEqual(testEntry, e) {
-		t.Fatalf("original and retrieved entry are not equal: %v, %v", testEntry, e)
+	if !reflect.DeepEqual(testEntry1, e) {
+		t.Fatalf("original and retrieved entry are not equal: %v, %v", testEntry1, e)
+	}
+
+	m.Add("entry_2", testEntry2)
+	if m.Length() != 2 {
+		t.Fatalf("expected length to be %d, but is %d instead", 2, m.Length())
+	}
+
+	// check if retrieved entry matches original entry
+	e, err = m.Entry("entry_2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(testEntry2, e) {
+		t.Fatalf("original and retrieved entry are not equal: %v, %v", testEntry1, e)
 	}
 }
 
