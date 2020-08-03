@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"

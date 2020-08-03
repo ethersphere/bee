@@ -171,13 +171,11 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	}
 
 	err = s.accounting.Credit(peer, chunkPrice)
-
 	if err != nil {
 		return nil, peer, err
 	}
 
 	return chunk, peer, err
-
 }
 
 func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
