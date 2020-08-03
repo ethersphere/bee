@@ -170,7 +170,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	a.metrics.DebitEventsCount.Inc()
 
 	if nextBalance >= int64(a.disconnectThreshold) {
-		// peer to much in debt
+		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
 		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 	}
