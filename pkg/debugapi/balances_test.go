@@ -71,7 +71,7 @@ func TestBalancesError(t *testing.T) {
 	})
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances", nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-		Message: "Can not get balances",
+		Message: debugapi.ErrCantBalances,
 		Code:    500,
 	})
 }

@@ -18,3 +18,7 @@ type (
 	BalancesResponse         = balancesResponse
 	BalanceResponse          = balanceResponse
 )
+
+var (
+	ErrCantBalances = errCantBalances
+)
