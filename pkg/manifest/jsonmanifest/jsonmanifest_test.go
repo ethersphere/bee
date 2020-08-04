@@ -81,7 +81,7 @@ var testCases = []testCase{
 }
 
 // TestEntries verifies that manifests behave as expected when adding and removing entries.
-// It also verifies the Length and Entry functions.
+// It also tests the Length and Entry functions.
 func TestEntries(t *testing.T) {
 	// get non-trivial test case
 	tc := testCases[len(testCases)-1] // last test case
@@ -153,7 +153,7 @@ func TestEntries(t *testing.T) {
 	}
 }
 
-// verifyEntry check that an entry matches the retrieved from the given manifest and path
+// verifyEntry check that an entry matches the one retrieved from the given manifest and path.
 func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path string) {
 	re, err := m.Entry(path)
 	if err != nil {
