@@ -111,6 +111,7 @@ func TestAdd(t *testing.T) {
 		// check retrieved entry
 		verifyEntry(t, m, entry, path)
 	}
+	manifestLen := m.Length()
 
 	// create new entry to replace existing one
 	lastEntry := tc.entries[len(tc.entries)-1]
@@ -125,8 +126,8 @@ func TestAdd(t *testing.T) {
 	m.Add(path, entry)
 
 	// length should not have changed
-	if m.Length() != len(tc.entries) {
-		t.Fatalf("expected length to be %d, but is %d instead", len(tc.entries), m.Length())
+	if m.Length() != manifestLen {
+		t.Fatalf("expected length to be %d, but is %d instead", manifestLen, m.Length())
 	}
 	// check retrieved entry
 	verifyEntry(t, m, entry, path)
