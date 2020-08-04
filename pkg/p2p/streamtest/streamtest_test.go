@@ -314,6 +314,72 @@ func TestRecorder_closeAfterPartialWrite(t *testing.T) {
 			return err
 		}
 
+		// stream should be closed and write should return err
+		if _, err := rw.WriteString("expect err message"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+
+		if err := rw.Flush(); err == nil {
+			return fmt.Errorf("expected err")
+		}
+
+		return nil
+	}
+
+	err := request(context.Background(), recorder, swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRecords(t, records, [][2]string{
+		{
+			"unterminated message",
+			"",
+		},
+	}, nil)
+}
+
+func TestRecorder_resetAfterPartialWrite(t *testing.T) {
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
+				// just try to read the message that it terminated with
+				// a new line character
+				_, err := bufio.NewReader(stream).ReadString('\n')
+				return err
+			}),
+		),
+	)
+
+	request := func(ctx context.Context, s p2p.Streamer, address swarm.Address) (err error) {
+		stream, err := s.NewStream(ctx, address, nil, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			return fmt.Errorf("new stream: %w", err)
+		}
+		defer stream.Close()
+
+		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+
+		// write a message, but do not write a new line character for handler to
+		// know that it is complete
+		if _, err := rw.WriteString("unterminated message"); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := rw.Flush(); err != nil {
+			return fmt.Errorf("flush: %w", err)
+		}
+
+		// deliberately reset the stream before the new line character is
+		// written to the stream
+		if err := stream.Reset(); err != nil {
+			return err
+		}
+
 		// stream should be closed and read should return EOF
 		if _, err := rw.ReadString('\n'); err != io.EOF {
 			return fmt.Errorf("got error %v, want %v", err, io.EOF)
