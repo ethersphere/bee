@@ -170,6 +170,7 @@ func TestMarshal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := jsonmanifest.NewManifest()
 
+			// add all test case entries to manifest
 			for _, e := range tc.entries {
 				entry := jsonmanifest.NewEntry(
 					e.reference,
