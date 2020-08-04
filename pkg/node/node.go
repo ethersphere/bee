@@ -242,7 +242,7 @@ func NewBee(o Options) (*Bee, error) {
 		DisconnectThreshold: o.DisconnectThreshold,
 	})
 
-	chunkvalidators := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
+	chunkvalidators := swarm.NewChunkValidator(soc.NewSocValidator(), content.NewContentAddressValidator())
 
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
@@ -348,6 +348,7 @@ func NewBee(o Options) (*Bee, error) {
 			TopologyDriver: topologyDriver,
 			Storer:         storer,
 			Tags:           tagg,
+			Accounting:     acc,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)

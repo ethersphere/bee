@@ -165,6 +165,24 @@ func ResponseUnmarshal(t *testing.T, client *http.Client, method, url string, bo
 	}
 }
 
+func ResponseReturnDirect(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, response interface{}) interface{} {
+	t.Helper()
+
+	resp := request(t, client, method, url, body, responseCode, nil)
+	defer resp.Body.Close()
+
+	got, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = bytes.TrimSpace(got)
+	tmp := response
+	_ = json.Unmarshal(got, &tmp)
+
+	return tmp
+
+}
+
 func request(t *testing.T, client *http.Client, method, url string, body io.Reader, responseCode int, headers http.Header) *http.Response {
 	t.Helper()
 

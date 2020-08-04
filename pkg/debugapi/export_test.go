@@ -15,4 +15,6 @@ type (
 	TagResponse              = tagResponse
 	WelcomeMessageRequest    = welcomeMessageRequest
 	WelcomeMessageResponse   = welcomeMessageResponse
+	BalancesResponse         = balancesResponse
+	BalanceResponse          = balanceResponse
 )

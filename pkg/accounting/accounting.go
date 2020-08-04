@@ -7,15 +7,18 @@ package accounting
 import (
 	"errors"
 	"fmt"
-	"sync"
-
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"strings"
+	"sync"
 )
 
-var _ Interface = (*Accounting)(nil)
+var (
+	_              Interface = (*Accounting)(nil)
+	balancesPrefix string    = "balance_"
+)
 
 // Interface is the main interface for Accounting
 type Interface interface {
@@ -31,6 +34,8 @@ type Interface interface {
 	Debit(peer swarm.Address, price uint64) error
 	// Balance returns the current balance for the given peer
 	Balance(peer swarm.Address) (int64, error)
+	// Balances returns balances for all known peers
+	Balances() (map[string]int64, error)
 }
 
 // PeerBalance holds all relevant accounting information for one peer
@@ -129,7 +134,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	err = a.store.Put(balanceKey(peer), nextBalance)
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
 		return err
 	}
@@ -159,7 +164,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	err = a.store.Put(balanceKey(peer), nextBalance)
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
 		return err
 	}
@@ -188,8 +193,8 @@ func (a *Accounting) Balance(peer swarm.Address) (int64, error) {
 }
 
 // get the balance storage key for the given peer
-func balanceKey(peer swarm.Address) string {
-	return fmt.Sprintf("balance_%s", peer.String())
+func peerBalanceKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s%s", balancesPrefix, peer.String())
 }
 
 // getPeerBalance gets the PeerBalance for a given peer
@@ -203,7 +208,7 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	if !ok {
 		// balance not yet in memory, load from state store
 		var balance int64
-		err := a.store.Get(balanceKey(peer), &balance)
+		err := a.store.Get(peerBalanceKey(peer), &balance)
 		if err == nil {
 			peerBalance = &PeerBalance{
 				balance:  balance,
@@ -224,6 +229,65 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	}
 
 	return peerBalance, nil
+}
+
+func (a *Accounting) Balances() (map[string]int64, error) {
+	peersBalances := make(map[string]int64)
+
+	a.balancesMu.Lock()
+	for peer, balance := range a.balances {
+		peersBalances[peer] = balance.balance
+	}
+	a.balancesMu.Unlock()
+
+	err := a.CompleteFromStore(peersBalances)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return peersBalances, nil
+}
+
+func (a *Accounting) CompleteFromStore(s map[string]int64) error {
+
+	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
+
+		addr := balanceKeyPeer(key)
+
+		if _, ok := s[addr.String()]; !ok {
+			var storevalue int64
+			err = a.store.Get(peerBalanceKey(addr), &storevalue)
+			if err != nil {
+				a.logger.Debugf("store operation error for peer %v: %v", addr.String(), err)
+				return false, nil
+			}
+			s[addr.String()] = storevalue
+		}
+
+		return false, nil
+	})
+
+	return err
+
+}
+
+func balanceKeyPeer(key []byte) swarm.Address {
+	k := string(key)
+	var ret swarm.Address
+
+	split := strings.SplitAfter(k, balancesPrefix)
+	if len(split) != 2 {
+		return ret
+	}
+
+	addr, err := swarm.ParseHexAddress(split[1])
+
+	if err != nil {
+		return ret
+	}
+
+	return addr
 }
 
 func (pb *PeerBalance) freeBalance() int64 {
