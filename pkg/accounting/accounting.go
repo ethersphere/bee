@@ -60,6 +60,7 @@ type Accounting struct {
 	paymentThreshold uint64 // the payment threshold in BZZ we communicate to our peers
 	paymentTolerance uint64 // the amount in BZZ we let peers exceed the payment threshold before disconnected
 	settlement       settlement.Interface
+	metrics          metrics
 }
 
 var (
@@ -75,6 +76,7 @@ func NewAccounting(o Options) *Accounting {
 		logger:           o.Logger,
 		store:            o.Store,
 		settlement:       o.Settlement,
+		metrics:          newMetrics(),
 	}
 }
 
@@ -90,6 +92,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 
 	// check if the expected debt is already over the payment threshold
 	if balance.expectedDebt() > a.paymentThreshold {
+		a.metrics.AccountingBlocksCount.Inc()
 		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
 	}
 
@@ -138,8 +141,10 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	if err != nil {
 		return err
 	}
-
 	balance.balance = nextBalance
+
+	a.metrics.TotalCreditedAmount.Add(float64(price))
+	a.metrics.CreditEventsCount.Inc()
 
 	// if our expected debt exceeds our payment threshold (which we assume is also the peers payment threshold), trigger settlement
 	if expectedDebt >= a.paymentThreshold {
@@ -214,8 +219,12 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	balance.balance = nextBalance
 
+	a.metrics.TotalDebitedAmount.Add(float64(price))
+	a.metrics.DebitEventsCount.Inc()
+
 	if nextBalance >= int64(a.paymentThreshold+a.paymentTolerance) {
-		// peer to much in debt
+		// peer too much in debt
+		a.metrics.AccountingDisconnectsCount.Inc()
 		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
 	}
 

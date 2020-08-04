@@ -6,6 +6,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -26,6 +28,10 @@ const (
 )
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	targets := r.URL.Query().Get("targets")
+	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	ctx := r.Context()
+
 	addressHex := mux.Vars(r)["address"]
 	path := mux.Vars(r)["path"]
 
@@ -42,7 +48,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	// read manifest entry
 	j := joiner.NewSimpleJoiner(s.Storer)
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, address, buf, toDecrypt)
+	_, err = file.JoinReadAll(ctx, j, address, buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("bzz download: read entry %s: %v", address, err)
 		s.Logger.Errorf("bzz download: read entry %s", address)
@@ -60,7 +66,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// read metadata
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, e.Metadata(), buf, toDecrypt)
+	_, err = file.JoinReadAll(ctx, j, e.Metadata(), buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("bzz download: read metadata %s: %v", address, err)
 		s.Logger.Errorf("bzz download: read metadata %s", address)
@@ -86,14 +92,15 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// read manifest content
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, e.Reference(), buf, toDecrypt)
+	_, err = file.JoinReadAll(ctx, j, e.Reference(), buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("bzz download: data join %s: %v", address, err)
 		s.Logger.Errorf("bzz download: data join %s", address)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
-	manifest, err := s.ManifestParser.Parse(buf.Bytes())
+	manifest := jsonmanifest.NewManifest()
+	err = manifest.UnmarshalBinary(buf.Bytes())
 	if err != nil {
 		s.Logger.Debugf("bzz download: unmarshal manifest %s: %v", address, err)
 		s.Logger.Errorf("bzz download: unmarshal manifest %s", address)
@@ -101,7 +108,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	me, err := manifest.FindEntry(path)
+	me, err := manifest.Entry(path)
 	if err != nil {
 		s.Logger.Debugf("bzz download: invalid path %s/%s: %v", address, path, err)
 		s.Logger.Error("bzz download: invalid path")
@@ -109,25 +116,25 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manifestEntryAddress := me.GetReference()
+	manifestEntryAddress := me.Reference()
 
 	var additionalHeaders http.Header
 
 	// copy headers from manifest
-	if me.GetHeaders() != nil {
-		additionalHeaders = me.GetHeaders().Clone()
+	if me.Headers() != nil {
+		additionalHeaders = me.Headers().Clone()
 	} else {
 		additionalHeaders = http.Header{}
 	}
 
 	// include filename
-	if me.GetName() != "" {
-		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", me.GetName()))
+	if me.Name() != "" {
+		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", me.Name()))
 	}
 
 	// read file entry
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(j, manifestEntryAddress, buf, toDecrypt)
+	_, err = file.JoinReadAll(ctx, j, manifestEntryAddress, buf, toDecrypt)
 	if err != nil {
 		s.Logger.Debugf("bzz download: read file entry %s: %v", address, err)
 		s.Logger.Errorf("bzz download: read file entry %s", address)

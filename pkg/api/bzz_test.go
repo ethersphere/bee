@@ -30,14 +30,13 @@ import (
 
 func TestBzz(t *testing.T) {
 	var (
-		bzzDownloadResource = func(addr, path string) string { return "/bzz:/" + addr + "/" + path }
+		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		storer              = smock.NewStorer()
 		sp                  = splitter.NewSimpleSplitter(storer)
 		client              = newTestServer(t, testServerOptions{
-			Storer:         storer,
-			ManifestParser: jsonmanifest.NewParser(),
-			Tags:           tags.NewTags(),
-			Logger:         logging.New(ioutil.Discard, 5),
+			Storer: storer,
+			Tags:   tags.NewTags(),
+			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
 
@@ -93,15 +92,10 @@ func TestBzz(t *testing.T) {
 
 		jsonManifest := jsonmanifest.NewManifest()
 
-		jsonManifest.Add(filePath, jsonmanifest.JSONEntry{
-			Reference: fileReference,
-			Name:      fileName,
-			Headers: http.Header{
-				"Content-Type": {"text/html", "charset=utf-8"},
-			},
-		})
+		e := jsonmanifest.NewEntry(fileReference, fileName, http.Header{"Content-Type": {"text/html", "charset=utf-8"}})
+		jsonManifest.Add(filePath, e)
 
-		manifestFileBytes, err := jsonManifest.Serialize()
+		manifestFileBytes, err := jsonManifest.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)
 		}
