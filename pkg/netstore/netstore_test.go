@@ -21,10 +21,6 @@ import (
 
 var chunkData = []byte("mockdata")
 
-type mockValidator struct{}
-
-func (_ mockValidator) Validate(_ swarm.Chunk) bool { return true }
-
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
