@@ -56,7 +56,7 @@ func TestBalancesOK(t *testing.T) {
 	}).(*debugapi.BalancesResponse)
 
 	if !comparisonOfBalances(got, expected) {
-		t.Errorf("Workin got %v, not as expected %v", got, expected)
+		t.Errorf("Got: %v, not as expected: %v", got, expected)
 	}
 
 }
