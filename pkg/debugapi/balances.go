@@ -12,6 +12,10 @@ import (
 	"net/http"
 )
 
+var (
+	errCantBalances = "Can not get balances"
+)
+
 type balanceResponse struct {
 	Peer    string `json:"peer"`
 	Balance int64  `json:"balance"`
@@ -26,9 +30,9 @@ func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 	balances, err := s.Accounting.Balances()
 
 	if err != nil {
-		jsonhttp.InternalServerError(w, "Can not get balances")
+		jsonhttp.InternalServerError(w, errCantBalances)
 		s.Logger.Debugf("debug api: balances: %v", err)
-		s.Logger.Errorf("debug api: balances: %v", err)
+		s.Logger.Error("debug api: Can not get balances")
 		return
 	}
 
@@ -46,7 +50,6 @@ func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: Currently, we do not check the length of the hex address (such as prepending zeroes), should we?
 	peer, err := swarm.ParseHexAddress(mux.Vars(r)["peer"])
 	if err != nil {
 		s.Logger.Debugf("debug api: balances peer: parse peer address: %v", err)
@@ -57,7 +60,7 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	balance, err := s.Accounting.Balance(peer)
 
 	if err != nil {
-		s.Logger.Debugf("debug-api: balances peer: get peer balance: %v", err)
+		s.Logger.Debugf("debug api: balances peer: get peer balance: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

@@ -231,6 +231,7 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	return peerBalance, nil
 }
 
+// Balances gets balances for all peers, first from memory, than completing from store
 func (a *Accounting) Balances() (map[string]int64, error) {
 	peersBalances := make(map[string]int64)
 
@@ -240,8 +241,7 @@ func (a *Accounting) Balances() (map[string]int64, error) {
 	}
 	a.balancesMu.Unlock()
 
-	err := a.CompleteFromStore(peersBalances)
-
+	err := a.completeFromStore(peersBalances)
 	if err != nil {
 		return nil, err
 	}
@@ -249,12 +249,14 @@ func (a *Accounting) Balances() (map[string]int64, error) {
 	return peersBalances, nil
 }
 
-func (a *Accounting) CompleteFromStore(s map[string]int64) error {
-
+// Get balances from store for keys (peers) that do not already exist in argument map
+// Used to get all balances not loaded in memory at the time the Balances() function is called
+func (a *Accounting) completeFromStore(s map[string]int64) error {
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
-
-		addr := balanceKeyPeer(key)
-
+		addr, err := balanceKeyPeer(key)
+		if err != nil {
+			return false, nil
+		}
 		if _, ok := s[addr.String()]; !ok {
 			var storevalue int64
 			err = a.store.Get(peerBalanceKey(addr), &storevalue)
@@ -262,32 +264,30 @@ func (a *Accounting) CompleteFromStore(s map[string]int64) error {
 				a.logger.Debugf("store operation error for peer %v: %v", addr.String(), err)
 				return false, nil
 			}
+
 			s[addr.String()] = storevalue
 		}
-
 		return false, nil
 	})
 
 	return err
-
 }
 
-func balanceKeyPeer(key []byte) swarm.Address {
+// get the embedded peer from the balance storage key
+func balanceKeyPeer(key []byte) (swarm.Address, error) {
 	k := string(key)
-	var ret swarm.Address
 
 	split := strings.SplitAfter(k, balancesPrefix)
 	if len(split) != 2 {
-		return ret
+		return swarm.ZeroAddress, errors.New("No peer in key")
 	}
 
 	addr, err := swarm.ParseHexAddress(split[1])
-
 	if err != nil {
-		return ret
+		return swarm.ZeroAddress, err
 	}
 
-	return addr
+	return addr, nil
 }
 
 func (pb *PeerBalance) freeBalance() int64 {

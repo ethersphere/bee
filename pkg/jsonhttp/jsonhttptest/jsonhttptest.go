@@ -176,10 +176,9 @@ func ResponseReturnDirect(t *testing.T, client *http.Client, method, url string,
 		t.Fatal(err)
 	}
 	got = bytes.TrimSpace(got)
-	tmp := response
-	_ = json.Unmarshal(got, &tmp)
+	_ = json.Unmarshal(got, &response)
 
-	return tmp
+	return response
 
 }
 
