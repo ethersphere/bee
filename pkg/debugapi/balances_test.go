@@ -102,19 +102,18 @@ func TestBalancesPeersError(t *testing.T) {
 	})
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances/"+peer, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-		Message: wantErr.Error(),
+		Message: debugapi.ErrCantBalance,
 		Code:    http.StatusInternalServerError,
 	})
 }
 
 func TestMalformedPeer(t *testing.T) {
 	peer := "bad peer address"
-	wantErr := "malformed peer address"
 
 	testServer := newTestServer(t, testServerOptions{})
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances/"+peer, nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-		Message: wantErr,
+		Message: debugapi.ErrMalformedPeer,
 		Code:    http.StatusBadRequest,
 	})
 }

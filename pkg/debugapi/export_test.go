@@ -20,5 +20,7 @@ type (
 )
 
 var (
-	ErrCantBalances = errCantBalances
+	ErrCantBalance   = errCantBalance
+	ErrCantBalances  = errCantBalances
+	ErrMalformedPeer = errMalformedPeer
 )

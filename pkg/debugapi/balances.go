@@ -13,7 +13,9 @@ import (
 )
 
 var (
-	errCantBalances = "Can not get balances"
+	errCantBalances  = "Can not get balances"
+	errCantBalance   = "Can not get balance"
+	errMalformedPeer = "Malformed peer address"
 )
 
 type balanceResponse struct {
@@ -53,7 +55,8 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	peer, err := swarm.ParseHexAddress(mux.Vars(r)["peer"])
 	if err != nil {
 		s.Logger.Debugf("debug api: balances peer: parse peer address: %v", err)
-		jsonhttp.BadRequest(w, "malformed peer address")
+		s.Logger.Error("debug api: balances peer: Can't parse peer address")
+		jsonhttp.BadRequest(w, errMalformedPeer)
 		return
 	}
 
@@ -61,7 +64,8 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		s.Logger.Debugf("debug api: balances peer: get peer balance: %v", err)
-		jsonhttp.InternalServerError(w, err)
+		s.Logger.Error("debug api: balances peer: Can't get peer balance")
+		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
 
