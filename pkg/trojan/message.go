@@ -164,11 +164,9 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 		return nil, err
 	}
 
-	doneC := make(chan bool, 1)
-	errC := make(chan error, 1)
+	errC := make(chan error)
 	var hash, s []byte
 	go func() {
-		defer close(doneC)
 		defer close(errC)
 
 		// mining operation: hash chunk fields with different nonces until an acceptable one is found
@@ -183,7 +181,7 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 			// take as much of the hash as the targets are long
 			if contains(targets, hash[:targetsLen]) {
 				// if nonce found, stop loop and return chunk
-				doneC <- true
+				errC <- nil
 				return
 			}
 			// else, add 1 to nonce and try again
@@ -199,9 +197,10 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 	// checks whether the mining is completed or times out
 	select {
 	case err := <-errC:
+		if err == nil {
+			return swarm.NewChunk(swarm.NewAddress(hash), s), nil
+		}
 		return nil, err
-	case <-doneC:
-		return swarm.NewChunk(swarm.NewAddress(hash), s), nil
 	case <-time.After(MinerTimeout * time.Second):
 		return nil, ErrMinerTimeout
 	}
