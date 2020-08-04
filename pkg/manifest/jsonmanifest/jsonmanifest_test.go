@@ -133,7 +133,7 @@ func TestAdd(t *testing.T) {
 	verifyEntry(t, m, entry, path)
 }
 
-// verifyEntry verifies that an entry is correctly retrieved from the given manifest and path
+// verifyEntry check that an entry matches the retrieved from the given manifest and path
 func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path string) {
 	re, err := m.Entry(path)
 	if err != nil {
