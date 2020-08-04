@@ -70,7 +70,11 @@ func TestBroadcastPeers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: bzzAddresses[i].Overlay.Bytes(), Underlay: bzzAddresses[i].Underlay.Bytes(), Signature: bzzAddresses[i].Signature})
+		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
+			Overlay:   bzzAddresses[i].Overlay.Bytes(),
+			Underlay:  bzzAddresses[i].Underlay.Bytes(),
+			Signature: bzzAddresses[i].Signature,
+		})
 	}
 
 	testCases := map[string]struct {
