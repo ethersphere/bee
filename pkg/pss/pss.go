@@ -7,8 +7,8 @@ package pss
 import (
 	"context"
 	"sync"
-	"time"
 
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -45,8 +45,8 @@ type Handler func(trojan.Message)
 
 // Send constructs a padded message with topic and payload,
 // wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address
-// stores this in localstore for push-sync to pick up and deliver
-func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*Monitor, error) {
+// uses push-sync to deliver message
+func (p *Pss) Send(ctx context.Context, pushSyncer pushsync.PushSyncer, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
 	// TODO RESOLVE METRICS
 	//metrics.GetOrRegisterCounter("trojanchunk/send", nil).Inc(1)
 
@@ -66,34 +66,14 @@ func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Top
 		return nil, err
 	}
 
-	// SAVE trojanChunk to localstore, if it exists do nothing as it's already peristed
-	if _, err = p.storer.Put(ctx, storage.ModePutUpload, tc.WithTagID(tag.Uid)); err != nil {
+	// push the chunk using push sync so that it reaches it destination in network
+	if _, err = pushSyncer.PushChunkToClosest(ctx, tc.WithTagID(tag.Uid)); err != nil {
 		return nil, err
 	}
+
 	tag.Total = 1
 
-	monitor := &Monitor{
-		State: make(chan tags.State, 3),
-	}
-
-	go monitor.updateState(tag)
-
-	return monitor, nil
-}
-
-// updateState sends the change of state thru the State channel
-// this is what enables monitoring the trojan chunk after it's sent
-func (m *Monitor) updateState(tag *tags.Tag) {
-	for _, state := range []tags.State{tags.StateStored, tags.StateSent, tags.StateSynced} {
-		for {
-			n, total, err := tag.Status(state)
-			if err == nil && n == total {
-				m.State <- state
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
+	return tag, nil
 }
 
 // Register allows the definition of a Handler func for a specific topic on the pss struct
