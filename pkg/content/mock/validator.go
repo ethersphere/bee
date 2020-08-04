@@ -8,18 +8,18 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ swarm.Validator = (*ContentAddressValidator)(nil)
+var _ swarm.Validator = (*Validator)(nil)
 
-type ContentAddressValidator struct {
+type Validator struct {
 	rv bool
 }
 
 // NewValidator constructs a new Validator
-func NewContentAddressValidator(rv bool) swarm.Validator {
-	return &ContentAddressValidator{rv: rv}
+func NewValidator(rv bool) swarm.Validator {
+	return &Validator{rv: rv}
 }
 
 // Validate returns rv from mock struct
-func (v *ContentAddressValidator) Validate(ch swarm.Chunk) (valid bool) {
+func (v *Validator) Validate(ch swarm.Chunk) (valid bool) {
 	return v.rv
 }

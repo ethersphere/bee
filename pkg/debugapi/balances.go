@@ -38,13 +38,14 @@ func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var balResponses []balanceResponse
-
+	balResponses := make([]balanceResponse, len(balances))
+	i := 0
 	for k := range balances {
-		balResponses = append(balResponses, balanceResponse{
+		balResponses[i] = balanceResponse{
 			Peer:    k,
 			Balance: balances[k],
-		})
+		}
+		i++
 	}
 
 	jsonhttp.OK(w, balancesResponse{Balances: balResponses})

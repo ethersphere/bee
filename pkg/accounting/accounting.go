@@ -255,6 +255,7 @@ func (a *Accounting) completeFromStore(s map[string]int64) error {
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
 		if err != nil {
+			a.logger.Debugf("could not parse address from key: %v: %v", string(key), err)
 			return false, nil
 		}
 		if _, ok := s[addr.String()]; !ok {

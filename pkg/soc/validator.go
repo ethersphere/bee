@@ -7,20 +7,20 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ swarm.Validator = (*SocValidator)(nil)
+var _ swarm.Validator = (*Validator)(nil)
 
 // SocVaildator validates that the address of a given chunk
 // is a single-owner chunk.
-type SocValidator struct {
+type Validator struct {
 }
 
-// NewSocValidator creates a new SocValidator.
-func NewSocValidator() swarm.Validator {
-	return &SocValidator{}
+// NewValidator creates a new Validator.
+func NewValidator() swarm.Validator {
+	return &Validator{}
 }
 
 // Validate performs the validation check.
-func (v *SocValidator) Validate(ch swarm.Chunk) (valid bool) {
+func (v *Validator) Validate(ch swarm.Chunk) (valid bool) {
 	s, err := FromChunk(ch)
 	if err != nil {
 		return false

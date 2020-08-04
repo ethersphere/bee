@@ -242,7 +242,7 @@ func NewBee(o Options) (*Bee, error) {
 		DisconnectThreshold: o.DisconnectThreshold,
 	})
 
-	chunkvalidators := swarm.NewChunkValidator(soc.NewSocValidator(), content.NewContentAddressValidator())
+	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
@@ -250,7 +250,7 @@ func NewBee(o Options) (*Bee, error) {
 		Logger:      logger,
 		Accounting:  acc,
 		Pricer:      accounting.NewFixedPricer(address, 10),
-		Validator:   chunkvalidators,
+		Validator:   chunkvalidator,
 	})
 	tagg := tags.NewTags()
 
@@ -258,7 +258,7 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, logger, chunkvalidators)
+	ns := netstore.New(storer, retrieve, logger, chunkvalidator)
 
 	retrieve.SetStorer(ns)
 

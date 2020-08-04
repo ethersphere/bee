@@ -21,10 +21,6 @@ import (
 
 var chunkData = []byte("mockdata")
 
-type mockValidator struct{}
-
-func (_ mockValidator) Validate(_ swarm.Chunk) bool { return true }
-
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
@@ -101,7 +97,7 @@ func newRetrievingNetstore() (ret *retrievalMock, mockStore, ns storage.Storer) 
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 0)
-	validator := swarm.NewChunkValidator(validatormock.NewContentAddressValidator(true))
+	validator := swarm.NewChunkValidator(validatormock.NewValidator(true))
 	nstore := netstore.New(store, retrieve, logger, validator)
 
 	return retrieve, store, nstore

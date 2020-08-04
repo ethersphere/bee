@@ -31,7 +31,7 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	mockValidator := swarm.NewChunkValidator(mock.NewContentAddressValidator(true))
+	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
 	mockStorer := storemock.NewStorer()
 	reqAddr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
