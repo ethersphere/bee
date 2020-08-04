@@ -11,8 +11,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/swarm"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // Topic is an alias for a 32 byte fixed-size array which contains an encoding of a message topic
@@ -37,11 +38,11 @@ const (
 	// MaxPayloadSize is the maximum allowed payload size for the Message type, in bytes
 	// MaxPayloadSize + Topic + Length + Nonce = Default ChunkSize
 	//    (4030)      +  (32) +   (2)  +  (32) = 4096 Bytes
-	MaxPayloadSize          = swarm.ChunkSize - NonceSize - LengthSize - TopicSize
-	NonceSize               = 32
-	LengthSize              = 2
-	TopicSize               = 32
-	MinerTimeout            = 5   // seconds after which the mining will fail
+	MaxPayloadSize = swarm.ChunkSize - NonceSize - LengthSize - TopicSize
+	NonceSize      = 32
+	LengthSize     = 2
+	TopicSize      = 32
+	MinerTimeout   = 5 // seconds after which the mining will fail
 )
 
 // NewTopic creates a new Topic variable with the given input string
@@ -163,21 +164,26 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 		return nil, err
 	}
 
-	done := make(chan bool, 1)
+	doneC := make(chan bool, 1)
+	errC := make(chan error, 1)
 	var hash, s []byte
 	go func() {
+		defer close(doneC)
+		defer close(errC)
+
 		// mining operation: hash chunk fields with different nonces until an acceptable one is found
 		for {
 			s = append(append(span, nonce...), b...) // serialize chunk fields
 			hash, err = hashBytes(s)
 			if err != nil {
+				errC <- err
 				return
 			}
 
 			// take as much of the hash as the targets are long
 			if contains(targets, hash[:targetsLen]) {
 				// if nonce found, stop loop and return chunk
-				done <- true
+				doneC <- true
 				return
 			}
 			// else, add 1 to nonce and try again
@@ -192,7 +198,9 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 
 	// checks whether the mining is completed or times out
 	select {
-	case <-done:
+	case err := <-errC:
+		return nil, err
+	case <-doneC:
 		return swarm.NewChunk(swarm.NewAddress(hash), s), nil
 	case <-time.After(MinerTimeout * time.Second):
 		return nil, ErrMinerTimeout
