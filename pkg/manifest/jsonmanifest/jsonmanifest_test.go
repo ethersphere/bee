@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -79,11 +80,14 @@ var testCases = []testCase{
 	},
 }
 
-// TestAddRemove verifies that manifests behave as expected when adding and removing entries.
+// TestAdd verifies that manifests behave as expected when adding entries.
 // It also verifies the Length function.
-func TestAddRemove(t *testing.T) {
+func TestAdd(t *testing.T) {
 	// get non-trivial test case
 	tc := testCases[len(testCases)-1]
+	if len(tc.entries) < 2 {
+		t.Fatal("cannot test manifest Add/Remove using a test case with less than 2 entries")
+	}
 
 	m := jsonmanifest.NewManifest()
 	if m.Length() != 0 {
@@ -100,18 +104,42 @@ func TestAddRemove(t *testing.T) {
 		path := filepath.Join(e.path, e.name)
 		m.Add(path, entry)
 
+		// check length
 		if m.Length() != i+1 {
 			t.Fatalf("expected length to be %d, but is %d instead", i+1, m.Length())
 		}
+		// check retrieved entry
+		verifyEntry(t, m, entry, path)
+	}
 
-		re, err := m.Entry(path)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// create new entry to replace existing one
+	lastEntry := tc.entries[len(tc.entries)-1]
+	entry := jsonmanifest.NewEntry(
+		test.RandomAddress(),
+		lastEntry.name,
+		lastEntry.headers,
+	)
 
-		if !reflect.DeepEqual(entry, re) {
-			t.Fatalf("original and retrieved entry are not equal: %v, %v", entry, re)
-		}
+	// replace manifest entry by adding to the same path
+	path := filepath.Join(lastEntry.path, lastEntry.name)
+	m.Add(path, entry)
+
+	// length should not have changed
+	if m.Length() != len(tc.entries) {
+		t.Fatalf("expected length to be %d, but is %d instead", len(tc.entries), m.Length())
+	}
+	// check retrieved entry
+	verifyEntry(t, m, entry, path)
+}
+
+// verifyEntry verifies that an entry is correctly retrieved from the given manifest and path
+func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path string) {
+	re, err := m.Entry(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(entry, re) {
+		t.Fatalf("original and retrieved entry are not equal: %v, %v", entry, re)
 	}
 }
 
