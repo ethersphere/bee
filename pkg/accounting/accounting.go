@@ -64,6 +64,7 @@ type Accounting struct {
 }
 
 var (
+	// ErrOverdraft is the error returned if the expected debt in Reserve would exceed the payment thresholds
 	ErrOverdraft = errors.New("attempted overdraft")
 )
 
@@ -93,7 +94,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	// check if the expected debt is already over the payment threshold
 	if balance.expectedDebt() > a.paymentThreshold {
 		a.metrics.AccountingBlocksCount.Inc()
-		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
+		return ErrOverdraft
 	}
 
 	balance.reserved += price
@@ -113,7 +114,7 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 
 	if price > balance.reserved {
 		// If Reserve and Release calls are always paired this should never happen
-		a.logger.Error("attempting to release more balance than was reserved for peer")
+		a.logger.Errorf("attempting to release more balance than was reserved for peer")
 		balance.reserved = 0
 	} else {
 		balance.reserved -= price
@@ -160,7 +161,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 func (a *Accounting) saveBalance(peer swarm.Address, nextBalance int64) error {
 	err := a.store.Put(balanceKey(peer), nextBalance)
 	if err != nil {
-		return fmt.Errorf("failed to persist balance for peer %v: %w", peer, err)
+		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 	return nil
 }
@@ -225,7 +226,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	if nextBalance >= int64(a.paymentThreshold+a.paymentTolerance) {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
-		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
+		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded"))
 	}
 
 	return nil
