@@ -7,6 +7,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -96,6 +97,13 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				debugAPIAddr = ""
 			}
 
+			paymentThreshold := c.config.GetUint64(optionNamePaymentThreshold)
+			paymentTolerance := c.config.GetUint64(optionNamePaymentTolerance)
+
+			if paymentTolerance > paymentThreshold/2 {
+				return errors.New("payment tolerance must be less than half the payment threshold")
+			}
+
 			var password string
 			if p := c.config.GetString(optionNamePassword); p != "" {
 				password = p
@@ -131,8 +139,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				TracingEndpoint:    c.config.GetString(optionNameTracingEndpoint),
 				TracingServiceName: c.config.GetString(optionNameTracingServiceName),
 				Logger:             logger,
-				PaymentThreshold:   c.config.GetUint64(optionNamePaymentThreshold),
-				PaymentTolerance:   c.config.GetUint64(optionNamePaymentTolerance),
+				PaymentThreshold:   paymentThreshold,
+				PaymentTolerance:   paymentTolerance,
 			})
 			if err != nil {
 				return err

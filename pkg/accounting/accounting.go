@@ -308,6 +308,7 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	nextBalance := balance.balance - int64(amount)
 
 	// don't allow a payment to put use more into debt than the tolerance
+	// this is to prevent another node tricking us into settling by settling first (e.g. send a bouncing cheque to trigger an honest cheque in swap)
 	if nextBalance < -int64(a.paymentTolerance) {
 		return fmt.Errorf("refusing to accept payment which would put us too much in debt, new balance would have been %d", nextBalance)
 	}
