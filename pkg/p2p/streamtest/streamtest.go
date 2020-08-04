@@ -93,8 +93,10 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 	if headler != nil {
 		streamOut.headers = headler(h)
 	}
-	record := &Record{in: recordIn, out: recordOut}
+	record := &Record{in: recordIn, out: recordOut, done: make(chan struct{})}
 	go func() {
+		defer close(record.done)
+
 		err := handler(ctx, p2p.Peer{Address: addr}, streamIn)
 		if err != nil && err != io.EOF {
 			record.setErr(err)
@@ -119,6 +121,10 @@ func (r *Recorder) Records(addr swarm.Address, protocolName, protocolVersio, str
 	records, ok := r.records[id]
 	if !ok {
 		return nil, ErrRecordsNotFound
+	}
+	// wait for all records goroutines to terminate
+	for _, r := range records {
+		<-r.done
 	}
 	return records, nil
 }
@@ -154,6 +160,7 @@ type Record struct {
 	out   *record
 	err   error
 	errMu sync.Mutex
+	done  chan struct{}
 }
 
 func (r *Record) In() []byte {
