@@ -80,11 +80,11 @@ var testCases = []testCase{
 	},
 }
 
-// TestAdd verifies that manifests behave as expected when adding entries.
-// It also verifies the Length function.
-func TestAdd(t *testing.T) {
+// TestEntries verifies that manifests behave as expected when adding and removing entries.
+// It also verifies the Length and Entry functions.
+func TestEntries(t *testing.T) {
 	// get non-trivial test case
-	tc := testCases[len(testCases)-1]
+	tc := testCases[len(testCases)-1] // last test case
 	if len(tc.entries) < 2 {
 		t.Fatal("cannot test manifest Add using a test case with less than 2 entries")
 	}
@@ -104,13 +104,14 @@ func TestAdd(t *testing.T) {
 		path := filepath.Join(e.path, e.name)
 		m.Add(path, entry)
 
-		// check length
+		// verify length change
 		if m.Length() != i+1 {
 			t.Fatalf("expected length to be %d, but is %d instead", i+1, m.Length())
 		}
 		// check retrieved entry
 		verifyEntry(t, m, entry, path)
 	}
+	// save current manifest length
 	manifestLen := m.Length()
 
 	// create new entry to replace existing one
@@ -131,6 +132,25 @@ func TestAdd(t *testing.T) {
 	}
 	// check retrieved entry
 	verifyEntry(t, m, entry, path)
+
+	// try removing inexistent entry
+	m.Remove("invalid/path.ext")
+
+	// length should not have changed
+	if m.Length() != manifestLen {
+		t.Fatalf("expected length to be %d, but is %d instead", manifestLen, m.Length())
+	}
+
+	// remove each entry
+	for i, e := range tc.entries {
+		path := filepath.Join(e.path, e.name)
+		m.Remove(path)
+
+		// verify length change
+		if m.Length() != manifestLen-i-1 {
+			t.Fatalf("expected length to be %d, but is %d instead", manifestLen-i-1, m.Length())
+		}
+	}
 }
 
 // verifyEntry check that an entry matches the retrieved from the given manifest and path
@@ -141,42 +161,6 @@ func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path 
 	}
 	if !reflect.DeepEqual(entry, re) {
 		t.Fatalf("original and retrieved entry are not equal: %v, %v", entry, re)
-	}
-}
-
-// TestEntries verifies that manifest entries are read-only.
-func TestEntries(t *testing.T) {
-	m := jsonmanifest.NewManifest()
-
-	// add single entry
-	e := jsonmanifest.NewEntry(
-		test.RandomAddress(),
-		"single_entry.png",
-		http.Header{"Content-Type": {"image/png"}},
-	)
-	m.Add("", e)
-
-	// retrieve entry
-	re, err := m.Entry("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// create new entry
-	ne := jsonmanifest.NewEntry(
-		test.RandomAddress(),
-		"modified_entry.jpg",
-		http.Header{"Content-Type": {"image/jpg"}},
-	)
-	re = ne // wrong... cannot do *re = *ne
-
-	// re-retrieve entry
-	rre, err := m.Entry("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reflect.DeepEqual(rre, re) {
-		t.Fatalf("manifest entry %v was unexpectedly modified externally", rre)
 	}
 }
 
