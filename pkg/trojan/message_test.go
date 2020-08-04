@@ -125,6 +125,7 @@ func TestWrapFail(t *testing.T) {
 	}
 }
 
+// TestWrapTimeout tests for mining timeout and avoid forever loop
 func TestWrapTimeout(t *testing.T) {
 	m := newTestMessage(t)
 
@@ -135,8 +136,8 @@ func TestWrapTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t1 := trojan.Target(buf)
-	targets := trojan.Targets([]trojan.Target{t1})
+	target := trojan.Target(buf)
+	targets := trojan.Targets([]trojan.Target{target})
 	if _, err := m.Wrap(targets); err != trojan.ErrMinerTimeout {
 		t.Fatalf("expected error when having lengthy target to be %q, but got %v", trojan.ErrMinerTimeout, err)
 	}
