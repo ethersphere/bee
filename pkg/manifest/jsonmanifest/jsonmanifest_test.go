@@ -184,7 +184,7 @@ func TestMarshal(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			um := jsonmanifest.NewManifest()
+			um := jsonmanifest.NewManifest() // TODO: can this somehow be init as a pointer to manifest.Interface?
 			if err := um.UnmarshalBinary(b); err != nil {
 				t.Fatal(err)
 			}

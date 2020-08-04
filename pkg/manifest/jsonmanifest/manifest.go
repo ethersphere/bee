@@ -94,7 +94,7 @@ func (m *jsonManifest) UnmarshalBinary(b []byte) error {
 		Entries: make(map[string]*jsonEntry),
 	}
 	if err := json.Unmarshal(b, &e); err != nil {
-		return err
+		return err // TODO: why does this not return an error if e.Entries == nil?
 	}
 	m.entries = e.Entries
 	return nil
