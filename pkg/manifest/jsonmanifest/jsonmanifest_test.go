@@ -86,7 +86,7 @@ func TestAdd(t *testing.T) {
 	// get non-trivial test case
 	tc := testCases[len(testCases)-1]
 	if len(tc.entries) < 2 {
-		t.Fatal("cannot test manifest Add/Remove using a test case with less than 2 entries")
+		t.Fatal("cannot test manifest Add using a test case with less than 2 entries")
 	}
 
 	m := jsonmanifest.NewManifest()
