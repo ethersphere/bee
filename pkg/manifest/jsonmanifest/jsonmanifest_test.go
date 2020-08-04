@@ -146,7 +146,38 @@ func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path 
 
 // TestEntries verifies that manifest entries are read-only.
 func TestEntries(t *testing.T) {
-	_ = jsonmanifest.NewManifest()
+	m := jsonmanifest.NewManifest()
+
+	// add single entry
+	e := jsonmanifest.NewEntry(
+		test.RandomAddress(),
+		"single_entry.png",
+		http.Header{"Content-Type": {"image/png"}},
+	)
+	m.Add("", e)
+
+	// retrieve entry
+	re, err := m.Entry("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create new entry
+	ne := jsonmanifest.NewEntry(
+		test.RandomAddress(),
+		"modified_entry.jpg",
+		http.Header{"Content-Type": {"image/jpg"}},
+	)
+	re = ne // wrong... cannot do *re = *ne
+
+	// re-retrieve entry
+	rre, err := m.Entry("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(rre, re) {
+		t.Fatalf("manifest entry %v was unexpectedly modified externally", rre)
+	}
 }
 
 // TestMarshal verifies that created manifests are successfully marshalled and unmarshalled.
