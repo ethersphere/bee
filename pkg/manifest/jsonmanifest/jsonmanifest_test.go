@@ -153,7 +153,7 @@ func TestEntries(t *testing.T) {
 	}
 }
 
-// verifyEntry check that an entry matches the one retrieved from the given manifest and path.
+// verifyEntry checks that an entry is equal to the one retrieved from the given manifest and path.
 func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path string) {
 	re, err := m.Entry(path)
 	if err != nil {
@@ -164,7 +164,7 @@ func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path 
 	}
 }
 
-// TestEntryModification verifies that manifest entries are read-only once retrieved.
+// TestEntryModification verifies that manifest entries are not modifiable from outside of the manifest.
 func TestEntryModification(t *testing.T) {
 	m := jsonmanifest.NewManifest()
 
@@ -228,13 +228,13 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-// Struct for manifest test cases.
+// struct for manifest test cases
 type testCase struct {
 	name    string
 	entries []e // entries to add to manifest
 }
 
-// Struct for manifest entries for test cases.
+// struct for manifest entries for test cases
 type e struct {
 	reference swarm.Address
 	name      string
