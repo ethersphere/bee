@@ -93,11 +93,7 @@ func TestEntries(t *testing.T) {
 
 	// add and check all entries
 	for i, e := range tc.entries {
-		entry := jsonmanifest.NewEntry(
-			e.reference,
-			e.name,
-			e.header,
-		)
+		entry := jsonmanifest.NewEntry(e.reference, e.name, e.header)
 		path := filepath.Join(e.path, e.name)
 		m.Add(path, entry)
 
@@ -113,11 +109,7 @@ func TestEntries(t *testing.T) {
 
 	// create new entry to replace existing one
 	lastEntry := tc.entries[len(tc.entries)-1]
-	entry := jsonmanifest.NewEntry(
-		test.RandomAddress(),
-		lastEntry.name,
-		lastEntry.header,
-	)
+	entry := jsonmanifest.NewEntry(test.RandomAddress(), lastEntry.name, lastEntry.header)
 
 	// replace manifest entry by adding to the same path
 	path := filepath.Join(lastEntry.path, lastEntry.name)
@@ -166,11 +158,7 @@ func TestEntryModification(t *testing.T) {
 	m := jsonmanifest.NewManifest()
 
 	// add single entry
-	e := jsonmanifest.NewEntry(
-		test.RandomAddress(),
-		"single_entry.png",
-		http.Header{"Content-Type": {"image/png"}},
-	)
+	e := jsonmanifest.NewEntry(test.RandomAddress(), "single_entry.png", http.Header{"Content-Type": {"image/png"}})
 	m.Add("", e)
 
 	// retrieve entry
@@ -200,11 +188,7 @@ func TestMarshal(t *testing.T) {
 
 			// add all test case entries to manifest
 			for _, e := range tc.entries {
-				entry := jsonmanifest.NewEntry(
-					e.reference,
-					e.name,
-					e.header,
-				)
+				entry := jsonmanifest.NewEntry(e.reference, e.name, e.header)
 				m.Add(filepath.Join(e.path, e.name), entry)
 			}
 
