@@ -150,10 +150,11 @@ func checkEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path s
 }
 
 // TestEntryModification verifies that manifest entries are not modifiable from outside of the manifest.
+// This test will add a single entry to a manifest, retrieve it, and modify it.
+// After, it will re-retrieve that same entry from the manifest, and check that it has not changed.
 func TestEntryModification(t *testing.T) {
 	m := jsonmanifest.NewManifest()
 
-	// add and retrieve single entry
 	e := jsonmanifest.NewEntry(test.RandomAddress(), "single_entry.png", http.Header{"Content-Type": {"image/png"}})
 	m.Add("", e)
 
@@ -162,11 +163,9 @@ func TestEntryModification(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// modify entry
-	re.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	re.Header().Add("Content-Type", "text/plain; charset=utf-8") // modify retrieved entry
 
-	// re-retrieve entry and compare
-	rre, err := m.Entry("")
+	rre, err := m.Entry("") // re-retrieve entry
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,12 +175,13 @@ func TestEntryModification(t *testing.T) {
 }
 
 // TestMarshal verifies that created manifests are successfully marshalled and unmarshalled.
+// This function wil add all test case entries to a manifest and marshal it.
+// After, it will unmarshal the result, and verify that it is equal to the original manifest.
 func TestMarshal(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := jsonmanifest.NewManifest()
 
-			// add all test case entries to manifest
 			for _, e := range tc.entries {
 				entry := jsonmanifest.NewEntry(e.reference, e.name, e.header)
 				m.Add(filepath.Join(e.path, e.name), entry)
