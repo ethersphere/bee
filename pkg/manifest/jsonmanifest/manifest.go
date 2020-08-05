@@ -70,7 +70,7 @@ func (m *jsonManifest) Length() int {
 	return len(m.Entries)
 }
 
-// MarshalBinary implements encoding.BinaryMarshaler
+// MarshalBinary implements encoding.BinaryMarshaler.
 func (m *jsonManifest) MarshalBinary() ([]byte, error) {
 	m.entriesMu.RLock()
 	defer m.entriesMu.RUnlock()
