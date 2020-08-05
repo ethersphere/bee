@@ -62,7 +62,8 @@ func (m *jsonManifest) Entry(path string) (manifest.Entry, error) {
 	return NewEntry(entry.Reference(), entry.Name(), entry.Header().Clone()), nil
 }
 
-// Length returns the amount of entries in the manifest.
+// Length returns an implementation-specific count of elements in the manifest.
+// For jsonManifest, this means the number of all the existing entries.
 func (m *jsonManifest) Length() int {
 	m.entriesMu.RLock()
 	defer m.entriesMu.RUnlock()
