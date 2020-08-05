@@ -7,6 +7,7 @@ package debugapi
 import (
 	"net/http"
 
+	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -39,6 +40,7 @@ type Options struct {
 	Logger         logging.Logger
 	Tracer         *tracing.Tracer
 	Tags           *tags.Tags
+	Accounting     accounting.Interface
 }
 
 func New(o Options) Service {

@@ -11,9 +11,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestContentAddressValidator checks that the validator evaluates correctly
+// TestValidator checks that the validator evaluates correctly
 // on valid and invalid input
-func TestContentAddressValidator(t *testing.T) {
+func TestValidator(t *testing.T) {
 
 	// instantiate validator
 	validator := content.NewValidator()

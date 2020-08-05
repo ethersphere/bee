@@ -15,4 +15,12 @@ type (
 	TagResponse              = tagResponse
 	WelcomeMessageRequest    = welcomeMessageRequest
 	WelcomeMessageResponse   = welcomeMessageResponse
+	BalancesResponse         = balancesResponse
+	BalanceResponse          = balanceResponse
+)
+
+var (
+	ErrCantBalance   = errCantBalance
+	ErrCantBalances  = errCantBalances
+	ErrInvaliAddress = errInvaliAddress
 )
