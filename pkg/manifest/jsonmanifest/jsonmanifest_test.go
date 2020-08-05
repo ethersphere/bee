@@ -83,13 +83,10 @@ var testCases = []testCase{
 // TestEntries verifies that manifests behave as expected when adding and removing entries.
 // It also tests the Length and Entry functions.
 func TestEntries(t *testing.T) {
-	// get non-trivial test case
-	tc := testCases[len(testCases)-1] // last test case
+	tc := testCases[len(testCases)-1] // get non-trivial test case
 
 	m := jsonmanifest.NewManifest()
-	if m.Length() != 0 {
-		t.Fatalf("expected length to be %d, but is %d instead", 0, m.Length())
-	}
+	checkLength(t, m, 0)
 
 	// add and check all entries
 	for i, e := range tc.entries {
@@ -97,53 +94,43 @@ func TestEntries(t *testing.T) {
 		path := filepath.Join(e.path, e.name)
 		m.Add(path, entry)
 
-		// verify length change
-		if m.Length() != i+1 {
-			t.Fatalf("expected length to be %d, but is %d instead", i+1, m.Length())
-		}
-		// check retrieved entry
-		verifyEntry(t, m, entry, path)
+		checkLength(t, m, i+1)
+		checkEntry(t, m, entry, path)
 	}
-	// save current manifest length
-	manifestLen := m.Length()
+
+	manifestLen := m.Length() // save current manifest length
 
 	// create new entry to replace existing one
 	lastEntry := tc.entries[len(tc.entries)-1]
-	entry := jsonmanifest.NewEntry(test.RandomAddress(), lastEntry.name, lastEntry.header)
-
-	// replace manifest entry by adding to the same path
 	path := filepath.Join(lastEntry.path, lastEntry.name)
-	m.Add(path, entry)
 
-	// length should not have changed
-	if m.Length() != manifestLen {
-		t.Fatalf("expected length to be %d, but is %d instead", manifestLen, m.Length())
-	}
-	// check retrieved entry
-	verifyEntry(t, m, entry, path)
+	newEntry := jsonmanifest.NewEntry(test.RandomAddress(), lastEntry.name, lastEntry.header)
+	m.Add(path, newEntry)
 
-	// try removing inexistent entry
-	m.Remove("invalid/path.ext")
+	checkLength(t, m, manifestLen) // length should not have changed
+	checkEntry(t, m, newEntry, path)
 
-	// length should not have changed
-	if m.Length() != manifestLen {
-		t.Fatalf("expected length to be %d, but is %d instead", manifestLen, m.Length())
-	}
+	m.Remove("invalid/path.ext")   // try removing inexistent entry
+	checkLength(t, m, manifestLen) // length should not have changed
 
 	// remove each entry
 	for i, e := range tc.entries {
 		path := filepath.Join(e.path, e.name)
 		m.Remove(path)
 
-		// verify length change
-		if m.Length() != manifestLen-i-1 {
-			t.Fatalf("expected length to be %d, but is %d instead", manifestLen-i-1, m.Length())
-		}
+		checkLength(t, m, manifestLen-i-1)
 	}
 }
 
-// verifyEntry checks that an entry is equal to the one retrieved from the given manifest and path.
-func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path string) {
+// checkLength verifies that the given manifest length and integer match.
+func checkLength(t *testing.T, m manifest.Interface, length int) {
+	if m.Length() != length {
+		t.Fatalf("expected length to be %d, but is %d instead", length, m.Length())
+	}
+}
+
+// checkEntry verifies that an entry is equal to the one retrieved from the given manifest and path.
+func checkEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path string) {
 	re, err := m.Entry(path)
 	if err != nil {
 		t.Fatal(err)
@@ -157,11 +144,10 @@ func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path 
 func TestEntryModification(t *testing.T) {
 	m := jsonmanifest.NewManifest()
 
-	// add single entry
+	// add and retrieve single entry
 	e := jsonmanifest.NewEntry(test.RandomAddress(), "single_entry.png", http.Header{"Content-Type": {"image/png"}})
 	m.Add("", e)
 
-	// retrieve entry
 	re, err := m.Entry("")
 	if err != nil {
 		t.Fatal(err)
