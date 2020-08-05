@@ -164,7 +164,7 @@ func verifyEntry(t *testing.T, m manifest.Interface, entry manifest.Entry, path 
 	}
 }
 
-// TestEntryModification verifies that manifest entries are read-only.
+// TestEntryModification verifies that manifest entries are read-only once retrieved.
 func TestEntryModification(t *testing.T) {
 	m := jsonmanifest.NewManifest()
 
@@ -183,7 +183,7 @@ func TestEntryModification(t *testing.T) {
 	}
 
 	// modify entry
-	re.Headers().Add("Content-Type", "image/jpeg; charset=utf-8")
+	re.Headers().Add("Content-Type", "text/plain; charset=utf-8")
 
 	// re-retrieve entry and compare
 	rre, err := m.Entry("")
