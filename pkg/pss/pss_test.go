@@ -53,7 +53,7 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 	})
 
 	// create a option with WithBaseAddress
-	pss := pss.NewPss(logging.New(ioutil.Discard, 0), pushSyncService, testTags)
+	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), pushSyncService, testTags})
 
 	target := trojan.Target([]byte{1}) // arbitrary test target
 	targets := trojan.Targets([]trojan.Target{target})
@@ -125,7 +125,7 @@ func TestPssMonitor(t *testing.T) {
 		return rcpt, nil
 	})
 
-	pss := pss.NewPss(logging.New(ioutil.Discard, 0), pushSyncService, testTags)
+	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), pushSyncService, testTags})
 
 	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mocktopology.WithClosestPeer(closestPeer))
 	defer storer.Close()
@@ -153,7 +153,7 @@ func TestPssMonitor(t *testing.T) {
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
 	testTags := tags.NewTags()
-	pss := pss.NewPss(logging.New(ioutil.Discard, 0), nil, testTags)
+	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), nil, testTags})
 
 	// pss handlers should be empty
 	if len(pss.GetAllHandlers()) != 0 {
@@ -202,7 +202,7 @@ func TestRegister(t *testing.T) {
 // results in the execution of the expected handler func
 func TestDeliver(t *testing.T) {
 	testTags := tags.NewTags()
-	pss := pss.NewPss(logging.New(ioutil.Discard, 0), nil, testTags)
+	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), nil, testTags})
 
 	// test message
 	topic := trojan.NewTopic("footopic")

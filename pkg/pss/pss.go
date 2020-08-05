@@ -25,14 +25,20 @@ type Pss struct {
 	logger     logging.Logger
 }
 
+type Options struct {
+	Logger     logging.Logger
+	PushSyncer pushsync.PushSyncer
+	Tags       *tags.Tags
+}
+
 // NewPss inits the Pss struct with the storer
-func NewPss(logger logging.Logger, pushSyncer pushsync.PushSyncer, tags *tags.Tags) *Pss {
+func NewPss(o Options) *Pss {
 	return &Pss{
-		pusher:   pushSyncer,
-		tags:     tags,
+		pusher:   o.PushSyncer,
+		tags:     o.Tags,
 		handlers: make(map[trojan.Topic]Handler),
 		metrics:  newMetrics(),
-		logger:   logger,
+		logger:   o.Logger,
 	}
 }
 
