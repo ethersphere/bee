@@ -7,12 +7,13 @@ package accounting
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"strings"
-	"sync"
 )
 
 var (
@@ -235,43 +236,40 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 func (a *Accounting) Balances() (map[string]int64, error) {
 	peersBalances := make(map[string]int64)
 
+	// get peer balances from store first as it may be outdated
+	// compared to the in memory map
+	if err := a.balancesFromStore(peersBalances); err != nil {
+		return nil, err
+	}
+
 	a.balancesMu.Lock()
 	for peer, balance := range a.balances {
 		peersBalances[peer] = balance.balance
 	}
 	a.balancesMu.Unlock()
 
-	err := a.completeFromStore(peersBalances)
-	if err != nil {
-		return nil, err
-	}
-
 	return peersBalances, nil
 }
 
-// Get balances from store for keys (peers) that do not already exist in argument map
-// Used to get all balances not loaded in memory at the time the Balances() function is called
-func (a *Accounting) completeFromStore(s map[string]int64) error {
-	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
+// Get balances from store for keys (peers) that do not already exist in argument map.
+// Used to get all balances not loaded in memory at the time the Balances() function is called.
+func (a *Accounting) balancesFromStore(s map[string]int64) error {
+	return a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
 		if err != nil {
-			a.logger.Debugf("could not parse address from key: %v: %v", string(key), err)
-			return false, nil
+			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
 		}
 		if _, ok := s[addr.String()]; !ok {
 			var storevalue int64
 			err = a.store.Get(peerBalanceKey(addr), &storevalue)
 			if err != nil {
-				a.logger.Debugf("store operation error for peer %v: %v", addr.String(), err)
-				return false, nil
+				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
 			}
 
 			s[addr.String()] = storevalue
 		}
 		return false, nil
 	})
-
-	return err
 }
 
 // get the embedded peer from the balance storage key
@@ -280,7 +278,7 @@ func balanceKeyPeer(key []byte) (swarm.Address, error) {
 
 	split := strings.SplitAfter(k, balancesPrefix)
 	if len(split) != 2 {
-		return swarm.ZeroAddress, errors.New("No peer in key")
+		return swarm.ZeroAddress, errors.New("no peer in key")
 	}
 
 	addr, err := swarm.ParseHexAddress(split[1])
