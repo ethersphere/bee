@@ -35,6 +35,6 @@ type Entry interface {
 	Reference() swarm.Address
 	// Name returns the name of the file in the entry.
 	Name() string
-	// Headers returns the headers for the file in the manifest entry.
-	Headers() http.Header
+	// Header returns the HTTP header for the file in the manifest entry.
+	Header() http.Header
 }

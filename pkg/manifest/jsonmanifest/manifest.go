@@ -36,7 +36,7 @@ func (m *jsonManifest) Add(path string, entry manifest.Entry) {
 	m.Entries[path] = &jsonEntry{
 		R: entry.Reference(),
 		N: entry.Name(),
-		H: entry.Headers(),
+		H: entry.Header(),
 	}
 }
 
@@ -59,7 +59,7 @@ func (m *jsonManifest) Entry(path string) (manifest.Entry, error) {
 	}
 
 	// return a copy to prevent external modification
-	return NewEntry(entry.Reference(), entry.Name(), entry.Headers().Clone()), nil
+	return NewEntry(entry.Reference(), entry.Name(), entry.Header().Clone()), nil
 }
 
 // Length returns the amount of entries in the manifest.

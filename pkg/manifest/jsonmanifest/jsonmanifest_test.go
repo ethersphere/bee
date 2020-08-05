@@ -27,7 +27,7 @@ var testCases = []testCase{
 			{
 				reference: test.RandomAddress(),
 				name:      "entry-1",
-				headers:   http.Header{},
+				header:    http.Header{},
 				path:      "",
 			},
 		},
@@ -38,13 +38,13 @@ var testCases = []testCase{
 			{
 				reference: test.RandomAddress(),
 				name:      "entry-1.txt",
-				headers:   http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+				header:    http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
 				path:      "",
 			},
 			{
 				reference: test.RandomAddress(),
 				name:      "entry-2.png",
-				headers:   http.Header{"Content-Type": {"image/png"}},
+				header:    http.Header{"Content-Type": {"image/png"}},
 				path:      "",
 			},
 		},
@@ -55,25 +55,25 @@ var testCases = []testCase{
 			{
 				reference: test.RandomAddress(),
 				name:      "robots.txt",
-				headers:   http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+				header:    http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
 				path:      "text",
 			},
 			{
 				reference: test.RandomAddress(),
 				name:      "1.png",
-				headers:   http.Header{"Content-Type": {"image/png"}},
+				header:    http.Header{"Content-Type": {"image/png"}},
 				path:      "img",
 			},
 			{
 				reference: test.RandomAddress(),
 				name:      "2.jpg",
-				headers:   http.Header{"Content-Type": {"image/jpg"}},
+				header:    http.Header{"Content-Type": {"image/jpg"}},
 				path:      "img",
 			},
 			{
 				reference: test.RandomAddress(),
 				name:      "readme.md",
-				headers:   http.Header{"Content-Type": {"text/markdown; charset=UTF-8"}},
+				header:    http.Header{"Content-Type": {"text/markdown; charset=UTF-8"}},
 				path:      "",
 			},
 		},
@@ -99,7 +99,7 @@ func TestEntries(t *testing.T) {
 		entry := jsonmanifest.NewEntry(
 			e.reference,
 			e.name,
-			e.headers,
+			e.header,
 		)
 		path := filepath.Join(e.path, e.name)
 		m.Add(path, entry)
@@ -119,7 +119,7 @@ func TestEntries(t *testing.T) {
 	entry := jsonmanifest.NewEntry(
 		test.RandomAddress(),
 		lastEntry.name,
-		lastEntry.headers,
+		lastEntry.header,
 	)
 
 	// replace manifest entry by adding to the same path
@@ -183,7 +183,7 @@ func TestEntryModification(t *testing.T) {
 	}
 
 	// modify entry
-	re.Headers().Add("Content-Type", "text/plain; charset=utf-8")
+	re.Header().Add("Content-Type", "text/plain; charset=utf-8")
 
 	// re-retrieve entry and compare
 	rre, err := m.Entry("")
@@ -206,7 +206,7 @@ func TestMarshal(t *testing.T) {
 				entry := jsonmanifest.NewEntry(
 					e.reference,
 					e.name,
-					e.headers,
+					e.header,
 				)
 				m.Add(filepath.Join(e.path, e.name), entry)
 			}
@@ -238,6 +238,6 @@ type testCase struct {
 type e struct {
 	reference swarm.Address
 	name      string
-	headers   http.Header
+	header    http.Header
 	path      string
 }
