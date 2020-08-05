@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	validatormock "github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -19,10 +20,6 @@ import (
 )
 
 var chunkData = []byte("mockdata")
-
-type mockValidator struct{}
-
-func (_ mockValidator) Validate(_ swarm.Chunk) bool { return true }
 
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
@@ -100,7 +97,8 @@ func newRetrievingNetstore() (ret *retrievalMock, mockStore, ns storage.Storer) 
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 0)
-	nstore := netstore.New(store, retrieve, logger, mockValidator{})
+	validator := swarm.NewChunkValidator(validatormock.NewValidator(true))
+	nstore := netstore.New(store, retrieve, logger, validator)
 
 	return retrieve, store, nstore
 }
@@ -111,9 +109,9 @@ type retrievalMock struct {
 	addr      swarm.Address
 }
 
-func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (data []byte, err error) {
+func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
 	r.called = true
 	atomic.AddInt32(&r.callCount, 1)
 	r.addr = addr
-	return chunkData, nil
+	return swarm.NewChunk(addr, chunkData), nil
 }

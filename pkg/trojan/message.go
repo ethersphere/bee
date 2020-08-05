@@ -11,8 +11,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/swarm"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // Topic is an alias for a 32 byte fixed-size array which contains an encoding of a message topic
@@ -41,7 +42,7 @@ const (
 	NonceSize      = 32
 	LengthSize     = 2
 	TopicSize      = 32
-	MinerTimeout   = 2 // seconds
+	MinerTimeout   = 5 // seconds after which the mining will fail
 )
 
 // NewTopic creates a new Topic variable with the given input string
@@ -163,32 +164,46 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 		return nil, err
 	}
 
-	// hash chunk fields with different nonces until an acceptable one is found
-	for start := time.Now(); ; {
-		s := append(append(span, nonce...), b...) // serialize chunk fields
-		hash1, err := hashBytes(s)
-		if err != nil {
-			return nil, err
-		}
+	errC := make(chan error)
+	var hash, s []byte
+	go func() {
+		defer close(errC)
 
-		// take as much of the hash as the targets are long
-		if contains(targets, hash1[:targetsLen]) {
-			// if nonce found, stop loop and return chunk
-			return swarm.NewChunk(swarm.NewAddress(hash1), s), nil
-		}
-		// else, add 1 to nonce and try again
-		nonceInt.Add(nonceInt, big.NewInt(1))
-		// loop around in case of overflow after 256 bits
-		if nonceInt.BitLen() > (NonceSize * swarm.SpanSize) {
-			// Test if timeout after after every 256 iteration
-			if time.Since(start) > (MinerTimeout * time.Second) {
-				break
+		// mining operation: hash chunk fields with different nonces until an acceptable one is found
+		for {
+			s = append(append(span, nonce...), b...) // serialize chunk fields
+			hash, err = hashBytes(s)
+			if err != nil {
+				errC <- err
+				return
 			}
-			nonceInt = big.NewInt(0)
+
+			// take as much of the hash as the targets are long
+			if contains(targets, hash[:targetsLen]) {
+				// if nonce found, stop loop and return chunk
+				errC <- nil
+				return
+			}
+			// else, add 1 to nonce and try again
+			nonceInt.Add(nonceInt, big.NewInt(1))
+			// loop around in case of overflow after 256 bits
+			if nonceInt.BitLen() > (NonceSize * swarm.SpanSize) {
+				nonceInt = big.NewInt(0)
+			}
+			nonce = padBytesLeft(nonceInt.Bytes()) // pad in case Bytes call is not 32 bytes long
 		}
-		nonce = padBytesLeft(nonceInt.Bytes()) // pad in case Bytes call is not 32 bytes long
+	}()
+
+	// checks whether the mining is completed or times out
+	select {
+	case err := <-errC:
+		if err == nil {
+			return swarm.NewChunk(swarm.NewAddress(hash), s), nil
+		}
+		return nil, err
+	case <-time.After(MinerTimeout * time.Second):
+		return nil, ErrMinerTimeout
 	}
-	return nil, ErrMinerTimeout
 }
 
 // hashBytes hashes the given serialization of chunk fields with the hashing func
