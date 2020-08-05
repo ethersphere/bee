@@ -80,15 +80,19 @@ var testCases = []testCase{
 	},
 }
 
-// TestEntries verifies that manifests behave as expected when adding and removing entries.
-// It also tests the Length and Entry functions.
+// TestEntries tests the Add, Length and Entry functions.
+// This test will add multiple entries to a manifest, checking that they are correctly retrieved each time,
+// and that the length of the manifest is as expected.
+// It will verify that the manifest length remains unchanged when replacing entries or removing inexistent ones.
+// Finally, it will remove all entries in the manifest, checking that they are correctly not found each time,
+// and that the length of the manifest is as expected.
 func TestEntries(t *testing.T) {
 	tc := testCases[len(testCases)-1] // get non-trivial test case
 
 	m := jsonmanifest.NewManifest()
 	checkLength(t, m, 0)
 
-	// add and check all entries
+	// add entries
 	for i, e := range tc.entries {
 		entry := jsonmanifest.NewEntry(e.reference, e.name, e.header)
 		path := filepath.Join(e.path, e.name)
@@ -98,9 +102,9 @@ func TestEntries(t *testing.T) {
 		checkEntry(t, m, entry, path)
 	}
 
-	manifestLen := m.Length() // save current manifest length
+	manifestLen := m.Length()
 
-	// create new entry to replace existing one
+	// replace entry
 	lastEntry := tc.entries[len(tc.entries)-1]
 	path := filepath.Join(lastEntry.path, lastEntry.name)
 
@@ -110,13 +114,18 @@ func TestEntries(t *testing.T) {
 	checkLength(t, m, manifestLen) // length should not have changed
 	checkEntry(t, m, newEntry, path)
 
+	// remove entries
 	m.Remove("invalid/path.ext")   // try removing inexistent entry
 	checkLength(t, m, manifestLen) // length should not have changed
 
-	// remove each entry
 	for i, e := range tc.entries {
 		path := filepath.Join(e.path, e.name)
 		m.Remove(path)
+
+		entry, err := m.Entry(path)
+		if entry != nil || err != manifest.ErrNotFound {
+			t.Fatalf("expected path %v not to be present in the manifest, but it was found", path)
+		}
 
 		checkLength(t, m, manifestLen-i-1)
 	}
