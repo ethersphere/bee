@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -17,7 +18,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ Interface = (*Accounting)(nil)
+var (
+	_              Interface = (*Accounting)(nil)
+	balancesPrefix string    = "balance_"
+)
 
 // Interface is the main interface for Accounting
 type Interface interface {
@@ -33,6 +37,8 @@ type Interface interface {
 	Debit(peer swarm.Address, price uint64) error
 	// Balance returns the current balance for the given peer
 	Balance(peer swarm.Address) (int64, error)
+	// Balances returns balances for all known peers
+	Balances() (map[string]int64, error)
 }
 
 // PeerBalance holds all relevant accounting information for one peer
@@ -159,7 +165,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 }
 
 func (a *Accounting) saveBalance(peer swarm.Address, nextBalance int64) error {
-	err := a.store.Put(balanceKey(peer), nextBalance)
+	err := a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
@@ -242,8 +248,8 @@ func (a *Accounting) Balance(peer swarm.Address) (int64, error) {
 }
 
 // get the balance storage key for the given peer
-func balanceKey(peer swarm.Address) string {
-	return fmt.Sprintf("balance_%s", peer.String())
+func peerBalanceKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s%s", balancesPrefix, peer.String())
 }
 
 // getPeerBalance gets the PeerBalance for a given peer
@@ -257,7 +263,7 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	if !ok {
 		// balance not yet in memory, load from state store
 		var balance int64
-		err := a.store.Get(balanceKey(peer), &balance)
+		err := a.store.Get(peerBalanceKey(peer), &balance)
 		if err == nil {
 			peerBalance = &PeerBalance{
 				balance:  balance,
@@ -278,6 +284,63 @@ func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
 	}
 
 	return peerBalance, nil
+}
+
+// Balances gets balances for all peers, first from memory, than completing from store
+func (a *Accounting) Balances() (map[string]int64, error) {
+	peersBalances := make(map[string]int64)
+
+	// get peer balances from store first as it may be outdated
+	// compared to the in memory map
+	if err := a.balancesFromStore(peersBalances); err != nil {
+		return nil, err
+	}
+
+	a.balancesMu.Lock()
+	for peer, balance := range a.balances {
+		peersBalances[peer] = balance.balance
+	}
+	a.balancesMu.Unlock()
+
+	return peersBalances, nil
+}
+
+// Get balances from store for keys (peers) that do not already exist in argument map.
+// Used to get all balances not loaded in memory at the time the Balances() function is called.
+func (a *Accounting) balancesFromStore(s map[string]int64) error {
+	return a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
+		addr, err := balanceKeyPeer(key)
+		if err != nil {
+			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+		}
+		if _, ok := s[addr.String()]; !ok {
+			var storevalue int64
+			err = a.store.Get(peerBalanceKey(addr), &storevalue)
+			if err != nil {
+				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
+			}
+
+			s[addr.String()] = storevalue
+		}
+		return false, nil
+	})
+}
+
+// get the embedded peer from the balance storage key
+func balanceKeyPeer(key []byte) (swarm.Address, error) {
+	k := string(key)
+
+	split := strings.SplitAfter(k, balancesPrefix)
+	if len(split) != 2 {
+		return swarm.ZeroAddress, errors.New("no peer in key")
+	}
+
+	addr, err := swarm.ParseHexAddress(split[1])
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return addr, nil
 }
 
 // expectedBalance returns the balance we expect to have with a peer if all reserved funds are actually credited

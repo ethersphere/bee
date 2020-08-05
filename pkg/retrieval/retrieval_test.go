@@ -140,6 +140,10 @@ func TestDelivery(t *testing.T) {
 		t.Fatalf("unexpected balance on client. want %d got %d", -price, clientBalance)
 	}
 
+	serverBalance, _ := serverMockAccounting.Balance(peerID)
+	if serverBalance != int64(price) {
+		t.Fatalf("unexpected balance on server. want %d got %d", price, serverBalance)
+	}
 }
 
 type mockPeerSuggester struct {
