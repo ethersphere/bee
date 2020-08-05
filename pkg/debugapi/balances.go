@@ -5,17 +5,17 @@
 package debugapi
 
 import (
+	"net/http"
+
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
-
-	"net/http"
 )
 
 var (
-	errCantBalances  = "Can not get balances"
-	errCantBalance   = "Can not get balance"
-	errMalformedPeer = "Malformed peer address"
+	errCantBalances  = "Cannot get balances"
+	errCantBalance   = "Cannot get balance"
+	errInvaliAddress = "Invalid address"
 )
 
 type balanceResponse struct {
@@ -28,13 +28,11 @@ type balancesResponse struct {
 }
 
 func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
-
 	balances, err := s.Accounting.Balances()
-
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
 		s.Logger.Debugf("debug api: balances: %v", err)
-		s.Logger.Error("debug api: Can not get balances")
+		s.Logger.Error("debug api: can not get balances")
 		return
 	}
 
@@ -49,23 +47,22 @@ func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, balancesResponse{Balances: balResponses})
-
 }
 
 func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	peer, err := swarm.ParseHexAddress(mux.Vars(r)["peer"])
+	addr := mux.Vars(r)["peer"]
+	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: balances peer: parse peer address: %v", err)
-		s.Logger.Error("debug api: balances peer: Can't parse peer address")
-		jsonhttp.BadRequest(w, errMalformedPeer)
+		s.Logger.Debugf("debug api: balances peer: invalid peer address %s: %v", addr, err)
+		s.Logger.Error("debug api: balances peer: invalid peer address %s", addr)
+		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
 
 	balance, err := s.Accounting.Balance(peer)
-
 	if err != nil {
-		s.Logger.Debugf("debug api: balances peer: get peer balance: %v", err)
-		s.Logger.Error("debug api: balances peer: Can't get peer balance")
+		s.Logger.Debugf("debug api: balances peer: get peer %s balance: %v", peer.String(), err)
+		s.Logger.Errorf("debug api: balances peer: can't get peer %s balance", peer.String())
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
@@ -74,5 +71,4 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 		Peer:    peer.String(),
 		Balance: balance,
 	})
-
 }

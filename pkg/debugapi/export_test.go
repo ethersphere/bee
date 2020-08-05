@@ -22,5 +22,5 @@ type (
 var (
 	ErrCantBalance   = errCantBalance
 	ErrCantBalances  = errCantBalances
-	ErrMalformedPeer = errMalformedPeer
+	ErrInvaliAddress = errInvaliAddress
 )

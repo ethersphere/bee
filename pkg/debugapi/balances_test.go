@@ -6,17 +6,18 @@ package debugapi_test
 
 import (
 	"errors"
+	"net/http"
+	"reflect"
+	"testing"
+
 	"github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"net/http"
-	"reflect"
-	"testing"
 )
 
-func TestBalancesOK(t *testing.T) {
+func TestBalances(t *testing.T) {
 	balancesFunc := func() (ret map[string]int64, err error) {
 		ret = make(map[string]int64)
 		ret["DEAD"] = 1000000000000000000
@@ -46,17 +47,11 @@ func TestBalancesOK(t *testing.T) {
 	}
 
 	// We expect a list of items unordered by peer:
-	got := jsonhttptest.ResponseReturnDirect(t, testServer.Client, http.MethodGet, "/balances", nil, http.StatusOK, &debugapi.BalancesResponse{
-		[]debugapi.BalanceResponse{
-			{
-				Peer:    "J",
-				Balance: 5,
-			},
-		},
-	}).(*debugapi.BalancesResponse)
+	var got *debugapi.BalancesResponse
+	jsonhttptest.ResponseUnmarshal(t, testServer.Client, http.MethodGet, "/balances", nil, http.StatusOK, &got)
 
-	if !comparisonOfBalances(got, expected) {
-		t.Errorf("Got: %v, not as expected: %v", got, expected)
+	if !equalBalances(got, expected) {
+		t.Errorf("got balances: %v, expected: %v", got, expected)
 	}
 
 }
@@ -72,11 +67,11 @@ func TestBalancesError(t *testing.T) {
 
 	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances", nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
 		Message: debugapi.ErrCantBalances,
-		Code:    500,
+		Code:    http.StatusInternalServerError,
 	})
 }
 
-func TestBalancesPeersOK(t *testing.T) {
+func TestBalancesPeers(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	balanceFunc := func(swarm.Address) (int64, error) {
 		return 1000000000000000000, nil
@@ -107,19 +102,18 @@ func TestBalancesPeersError(t *testing.T) {
 	})
 }
 
-func TestMalformedPeer(t *testing.T) {
+func TestBalancesInvalidAddress(t *testing.T) {
 	peer := "bad peer address"
 
 	testServer := newTestServer(t, testServerOptions{})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances/"+peer, nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-		Message: debugapi.ErrMalformedPeer,
-		Code:    http.StatusBadRequest,
+	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances/"+peer, nil, http.StatusNotFound, jsonhttp.StatusResponse{
+		Message: debugapi.ErrInvaliAddress,
+		Code:    http.StatusNotFound,
 	})
 }
 
-func comparisonOfBalances(a, b *debugapi.BalancesResponse) bool {
-
+func equalBalances(a, b *debugapi.BalancesResponse) bool {
 	var state bool
 
 	for akeys := range a.Balances {
@@ -135,7 +129,6 @@ func comparisonOfBalances(a, b *debugapi.BalancesResponse) bool {
 	}
 
 	for bkeys := range b.Balances {
-
 		state = false
 		for akeys := range a.Balances {
 			if reflect.DeepEqual(a.Balances[akeys], b.Balances[bkeys]) {
