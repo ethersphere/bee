@@ -85,9 +85,6 @@ var testCases = []testCase{
 func TestEntries(t *testing.T) {
 	// get non-trivial test case
 	tc := testCases[len(testCases)-1] // last test case
-	if len(tc.entries) < 2 {
-		t.Fatal("cannot test manifest entries using a test case with less than 2 entries")
-	}
 
 	m := jsonmanifest.NewManifest()
 	if m.Length() != 0 {
