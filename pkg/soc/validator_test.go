@@ -14,10 +14,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestSocValidator verifies that the validator can detect both
+// TestValidator verifies that the validator can detect both
 // valid soc chunks, as well as chunks with invalid data and invalid
 // address.
-func TestSocValidator(t *testing.T) {
+func TestValidator(t *testing.T) {
 	id := make([]byte, soc.IdSize)
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
