@@ -19,8 +19,10 @@ package swarm
 // (0 farthest, 255 closest, 256 self)
 func Proximity(one, other []byte) (ret uint8) {
 	b := MaxPO/8 + 1
-	l := uint8(len(one))
-	if b > l {
+	if l := uint8(len(one)); b > l {
+		b = l
+	}
+	if l := uint8(len(other)); b > l {
 		b = l
 	}
 	var m uint8 = 8

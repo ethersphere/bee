@@ -168,10 +168,30 @@ func TestProximity(t *testing.T) {
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00000001},
 			po:   limitPO(31),
 		},
+		{
+			addr: nil,
+			po:   limitPO(31),
+		},
+		{
+			addr: []byte{0b00000001},
+			po:   limitPO(7),
+		},
+		{
+			addr: []byte{0b00000000},
+			po:   limitPO(31),
+		},
+		{
+			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000001},
+			po:   limitPO(31),
+		},
 	} {
 		got := Proximity(base, tc.addr)
 		if got != tc.po {
 			t.Errorf("got %v bin, want %v", got, tc.po)
+		}
+		got = Proximity(tc.addr, base)
+		if got != tc.po {
+			t.Errorf("got %v bin, want %v (reverse arguments)", got, tc.po)
 		}
 	}
 }
