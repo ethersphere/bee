@@ -8,6 +8,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -16,24 +17,22 @@ import (
 
 // Pss is the top-level struct, which takes care of message sending
 type Pss struct {
+	pusher     pushsync.PushSyncer
 	tags       *tags.Tags
 	handlers   map[trojan.Topic]Handler
 	handlersMu sync.RWMutex
-	//metrics metrics
-	//logger  logging.Logger
-}
-
-// Monitor is used for tracking status changes in sent trojan chunks
-type Monitor struct {
-	// returns the state of the trojan chunk that is being monitored
-	State chan tags.State
+	metrics    metrics
+	logger     logging.Logger
 }
 
 // NewPss inits the Pss struct with the storer
-func NewPss(tags *tags.Tags) *Pss {
+func NewPss(logger logging.Logger, pushSyncer pushsync.PushSyncer, tags *tags.Tags) *Pss {
 	return &Pss{
+		pusher:   pushSyncer,
 		tags:     tags,
 		handlers: make(map[trojan.Topic]Handler),
+		metrics:  newMetrics(),
+		logger:   logger,
 	}
 }
 
@@ -43,9 +42,8 @@ type Handler func(trojan.Message)
 // Send constructs a padded message with topic and payload,
 // wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address
 // uses push-sync to deliver message
-func (p *Pss) Send(ctx context.Context, pushSyncer pushsync.PushSyncer, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
-	// TODO RESOLVE METRICS
-	//metrics.GetOrRegisterCounter("trojanchunk/send", nil).Inc(1)
+func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
+	p.metrics.TotalMessagesSentCounter.Inc()
 
 	//construct Trojan Chunk
 	m, err := trojan.NewMessage(topic, payload)
@@ -64,7 +62,7 @@ func (p *Pss) Send(ctx context.Context, pushSyncer pushsync.PushSyncer, targets 
 	}
 
 	// push the chunk using push sync so that it reaches it destination in network
-	if _, err = pushSyncer.PushChunkToClosest(ctx, tc.WithTagID(tag.Uid)); err != nil {
+	if _, err = p.pusher.PushChunkToClosest(ctx, tc.WithTagID(tag.Uid)); err != nil {
 		return nil, err
 	}
 
@@ -86,14 +84,12 @@ func (p *Pss) Deliver(c swarm.Chunk) {
 		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
 		h := p.GetHandler(m.Topic)
 		if h != nil {
-			//TODO replace with logger
-			//log.Debug("executing handler for trojan", "process", "global-pinning", "chunk", hex.EncodeToString(c.Address()))
+			p.logger.Debug("executing handler for trojan", "process", "global-pinning", "chunk", c.Address().ByteString())
 			h(*m)
 			return
 		}
 	}
-	//TODO replace with logger
-	//log.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", hex.EncodeToString(c.Address()))
+	p.logger.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", c.Address().ByteString())
 }
 
 // GetHandler returns the Handler func registered in pss for the given topic

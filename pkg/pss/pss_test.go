@@ -40,9 +40,6 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 	ctx := context.TODO()
 	testTags := tags.NewTags()
 
-	// create a option with WithBaseAddress
-	pss := pss.NewPss(testTags)
-
 	// create a mock pushsync service to push the chunk to its destination
 	var receipt *pushsync.Receipt
 	var storedChunk swarm.Chunk
@@ -55,13 +52,16 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 		return rcpt, nil
 	})
 
+	// create a option with WithBaseAddress
+	pss := pss.NewPss(logging.New(ioutil.Discard, 0), pushSyncService, testTags)
+
 	target := trojan.Target([]byte{1}) // arbitrary test target
 	targets := trojan.Targets([]trojan.Target{target})
 	payload := []byte("RECOVERY CHUNK")
 	topic := trojan.NewTopic("RECOVERY TOPIC")
 
 	// call Send to store trojan chunk in localstore
-	if _, err = pss.Send(ctx, pushSyncService, targets, topic, payload); err != nil {
+	if _, err = pss.Send(ctx, targets, topic, payload); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,8 +107,6 @@ func TestPssMonitor(t *testing.T) {
 	payload := []byte("PSS CHUNK")
 	topic := trojan.NewTopic("PSS TOPIC")
 
-	pss := pss.NewPss(testTags)
-
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
@@ -127,13 +125,15 @@ func TestPssMonitor(t *testing.T) {
 		return rcpt, nil
 	})
 
+	pss := pss.NewPss(logging.New(ioutil.Discard, 0), pushSyncService, testTags)
+
 	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mocktopology.WithClosestPeer(closestPeer))
 	defer storer.Close()
 	defer p.Close()
 
 	var tag *tags.Tag
 	// call Send to store trojan chunk in localstore
-	if tag, err = pss.Send(ctx, pushSyncService, targets, topic, payload); err != nil {
+	if tag, err = pss.Send(ctx, targets, topic, payload); err != nil {
 		t.Fatal(err)
 	}
 
@@ -153,7 +153,7 @@ func TestPssMonitor(t *testing.T) {
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
 	testTags := tags.NewTags()
-	pss := pss.NewPss(testTags)
+	pss := pss.NewPss(logging.New(ioutil.Discard, 0), nil, testTags)
 
 	// pss handlers should be empty
 	if len(pss.GetAllHandlers()) != 0 {
@@ -202,7 +202,7 @@ func TestRegister(t *testing.T) {
 // results in the execution of the expected handler func
 func TestDeliver(t *testing.T) {
 	testTags := tags.NewTags()
-	pss := pss.NewPss(testTags)
+	pss := pss.NewPss(logging.New(ioutil.Discard, 0), nil, testTags)
 
 	// test message
 	topic := trojan.NewTopic("footopic")
