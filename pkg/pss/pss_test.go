@@ -19,9 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
 	mocktopology "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/trojan"
@@ -42,11 +40,8 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 	ctx := context.TODO()
 	testTags := tags.NewTags()
 
-	//localStore := mock.NewTagsStorer(testTags)
-	baseAddress := test.RandomAddress()
-	localStore := mock.NewStorer(mock.WithBaseAddress(baseAddress), mock.WithTags(testTags))
 	// create a option with WithBaseAddress
-	pss := pss.NewPss(localStore, testTags)
+	pss := pss.NewPss(testTags)
 
 	// create a mock pushsync service to push the chunk to its destination
 	var receipt *pushsync.Receipt
@@ -107,14 +102,12 @@ func TestPssMonitor(t *testing.T) {
 	ctx := context.TODO()
 	testTags := tags.NewTags()
 
-	localStore := mock.NewTagsStorer(testTags)
-
 	target := trojan.Target([]byte{1}) // arbitrary test target
 	targets := trojan.Targets([]trojan.Target{target})
 	payload := []byte("PSS CHUNK")
 	topic := trojan.NewTopic("PSS TOPIC")
 
-	pss := pss.NewPss(localStore, testTags)
+	pss := pss.NewPss(testTags)
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
@@ -124,6 +117,13 @@ func TestPssMonitor(t *testing.T) {
 		rcpt := &pushsync.Receipt{
 			Address: swarm.NewAddress(chunk.Address().Bytes()),
 		}
+		tt, err := testTags.Get(chunk.TagID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		tt.Inc(tags.StateStored)
+		tt.Inc(tags.StateSent)
+		tt.Inc(tags.StateSynced)
 		return rcpt, nil
 	})
 
@@ -131,9 +131,9 @@ func TestPssMonitor(t *testing.T) {
 	defer storer.Close()
 	defer p.Close()
 
-	//var tag *tags.Tag
+	var tag *tags.Tag
 	// call Send to store trojan chunk in localstore
-	if _, err = pss.Send(ctx, pushSyncService, targets, topic, payload); err != nil {
+	if tag, err = pss.Send(ctx, pushSyncService, targets, topic, payload); err != nil {
 		t.Fatal(err)
 	}
 
@@ -144,17 +144,16 @@ func TestPssMonitor(t *testing.T) {
 		t.Fatalf("expected %d tags got %d", 1, len(storeTags))
 	}
 
-	//if tag.Get(tags.StateStored) != -1 && tag.Get(tags.StateSent) != -1 && tag.Get(tags.StateSynced) != -1 {
-	//	t.Fatalf("Trojan Chunk expected to be Stored == %d, Sent == %d and Synced == %d", tag.Stored, tag.Sent, tag.Synced)
-	//}
+	if tag.Get(tags.StateStored) != 1 && tag.Get(tags.StateSent) != 1 && tag.Get(tags.StateSynced) != 1 {
+		t.Fatalf("Trojan Chunk expected to be Stored == %d, Sent == %d and Synced == %d", tag.Stored, tag.Sent, tag.Synced)
+	}
 
 }
 
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
 	testTags := tags.NewTags()
-	localStore := mock.NewTagsStorer(testTags)
-	pss := pss.NewPss(localStore, testTags)
+	pss := pss.NewPss(testTags)
 
 	// pss handlers should be empty
 	if len(pss.GetAllHandlers()) != 0 {
@@ -203,8 +202,7 @@ func TestRegister(t *testing.T) {
 // results in the execution of the expected handler func
 func TestDeliver(t *testing.T) {
 	testTags := tags.NewTags()
-	localStore := mock.NewTagsStorer(testTags)
-	pss := pss.NewPss(localStore, testTags)
+	pss := pss.NewPss(testTags)
 
 	// test message
 	topic := trojan.NewTopic("footopic")

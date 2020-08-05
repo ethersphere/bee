@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/pushsync"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/trojan"
@@ -17,7 +16,6 @@ import (
 
 // Pss is the top-level struct, which takes care of message sending
 type Pss struct {
-	storer     storage.Storer
 	tags       *tags.Tags
 	handlers   map[trojan.Topic]Handler
 	handlersMu sync.RWMutex
@@ -32,9 +30,8 @@ type Monitor struct {
 }
 
 // NewPss inits the Pss struct with the storer
-func NewPss(storer storage.Storer, tags *tags.Tags) *Pss {
+func NewPss(tags *tags.Tags) *Pss {
 	return &Pss{
-		storer:   storer,
 		tags:     tags,
 		handlers: make(map[trojan.Topic]Handler),
 	}
