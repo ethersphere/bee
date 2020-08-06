@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"runtime/debug"
 	"strconv"
 	"testing"
 	"time"
@@ -202,6 +203,10 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 			break
 		}
 	}
+	if len(overlays) != len(wantOverlays) {
+		debug.PrintStack()
+		t.Fatal("timed out waiting for overlays")
+	}
 
 	for _, v := range wantOverlays {
 		if !isIn(v, overlays) {
@@ -239,6 +244,10 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 		if len(addresses) == len(wantBzzAddresses) {
 			break
 		}
+	}
+	if len(addresses) != len(wantBzzAddresses) {
+		debug.PrintStack()
+		t.Fatal("timed out waiting for bzz addresses")
 	}
 
 	for _, v := range wantBzzAddresses {
