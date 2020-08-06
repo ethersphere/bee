@@ -265,20 +265,21 @@ func NewBee(o Options) (*Bee, error) {
 	psss := pss.NewPss(storer, tagg)
 
 	// create recovery callback for content repair
-	recoverFunc := recovery.NewRecoveryHook(psss.Send, logger)
+	recoverFunc := recovery.NewRecoveryHook(psss.Send)
 
 	// delivery call back for delivery of the registered messages
 	deliverFunc := psss.Deliver
 
-	ns := netstore.New(storer, recoverFunc, deliverFunc, retrieve, logger, content.NewValidator(), soc.NewValidator())
+	ns := netstore.New(storer, recoverFunc, retrieve, logger, content.NewValidator(), soc.NewValidator())
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
-		Streamer:      p2ps,
-		Storer:        storer,
-		ClosestPeerer: topologyDriver,
-		Tagger:        tagg,
-		Logger:        logger,
+		Streamer:         p2ps,
+		Storer:           storer,
+		ClosestPeerer:    topologyDriver,
+		DeliveryCallback: deliverFunc,
+		Tagger:           tagg,
+		Logger:           logger,
 	})
 
 	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {

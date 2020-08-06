@@ -6,6 +6,16 @@ package sctx
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
+	"strings"
+
+	"github.com/ethersphere/bee/pkg/trojan"
+)
+
+var (
+	// ErrTargetPrefix is returned when target prefix decoding fails.
+	ErrTargetPrefix = errors.New("error decoding prefix string")
 )
 
 type (
@@ -48,11 +58,22 @@ func SetTargets(ctx context.Context, targets string) context.Context {
 	return context.WithValue(ctx, TargetsContextKey{}, targets)
 }
 
-// GetTargets gets the targets from the context
-func GetTargets(ctx context.Context) string {
-	v, ok := ctx.Value(TargetsContextKey{}).(string)
+// GetTargets returns the specific target pinners for a corresponding chunk by
+// reading the prefix targets sent in the download API.
+func GetTargets(ctx context.Context) (trojan.Targets, error) {
+	targetString, ok := ctx.Value(TargetsContextKey{}).(string)
 	if ok {
-		return v
+		prefixes := strings.Split(targetString, ",")
+		var targets trojan.Targets
+		for _, prefix := range prefixes {
+			var target trojan.Target
+			target, err := hex.DecodeString(prefix)
+			if err != nil {
+				continue
+			}
+			targets = append(targets, target)
+		}
+		return targets, nil
 	}
-	return ""
+	return nil, ErrTargetPrefix
 }

@@ -34,9 +34,8 @@ import (
 func TestRecoveryHook(t *testing.T) {
 	// test variables needed to be correctly set for any recovery hook to reach the sender func
 	chunkAddr := chunktesting.GenerateTestRandomChunk().Address()
-	target := "0xED"
-	ctx := sctx.SetTargets(context.Background(), target)
-	logger := logging.New(ioutil.Discard, 0)
+	targets := trojan.Targets{[]byte{0xED}}
+	ctx := context.Background()
 
 	// setup the sender
 	hookWasCalled := false // test variable to check if hook is called
@@ -46,8 +45,8 @@ func TestRecoveryHook(t *testing.T) {
 	}
 
 	// create recovery hook and call it
-	recoveryHook := recovery.NewRecoveryHook(testSender, logger)
-	if err := recoveryHook(ctx, chunkAddr); err != nil {
+	recoveryHook := recovery.NewRecoveryHook(testSender)
+	if err := recoveryHook(ctx, chunkAddr, targets); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,7 +68,6 @@ func TestRecoveryHookCalls(t *testing.T) {
 	c := chunktesting.GenerateTestRandomChunk()
 	ref := c.Address()
 	target := "0xBE"
-	logger := logging.New(ioutil.Discard, 0)
 
 	// test cases variables
 	dummyContext := context.Background() // has no publisher
@@ -95,12 +93,12 @@ func TestRecoveryHookCalls(t *testing.T) {
 				hookWasCalled <- true
 				return nil, nil
 			}
-			recoverFunc := recovery.NewRecoveryHook(testHook, logger)
+			recoverFunc := recovery.NewRecoveryHook(testHook)
 			ns := newTestNetStore(t, recoverFunc)
 
 			// fetch test chunk
 			_, err := ns.Get(tc.ctx, storage.ModeGetRequest, ref)
-			if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) && err.Error() != "netstore retrieve chunk: get closest: no peer found" {
+			if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) && err.Error() != "netstore retrieve chunk: error decoding prefix string" {
 				t.Fatal(err)
 			}
 
@@ -281,7 +279,7 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.S
 		Pricer:      pricerMock,
 	})
 
-	ns := netstore.New(storer, recoveryFunc, nil, retrieve, logger, nil)
+	ns := netstore.New(storer, recoveryFunc, retrieve, logger, nil)
 	return ns
 }
 

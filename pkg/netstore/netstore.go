@@ -23,7 +23,6 @@ type store struct {
 	validators       []swarm.ChunkValidator
 	logger           logging.Logger
 	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
-	deliveryCallback func(swarm.Chunk)     // callback func to be invoked to deliver validated chunks
 }
 
 <<<<<<< HEAD
@@ -38,9 +37,9 @@ var (
 >>>>>>> e7f68bf... Added chunk repair and test cases
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, rcb recovery.RecoveryHook, dcb func(swarm.Chunk), r retrieval.Interface, logger logging.Logger,
+func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
 	validators ...swarm.ChunkValidator) storage.Storer {
-	return &store{Storer: s, recoveryCallback: rcb, deliveryCallback: dcb, retrieval: r, logger: logger, validators: validators}
+	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validators: validators}
 }
 
 // Get retrieves a given chunk address.
@@ -52,10 +51,10 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			ch, err := s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				targets := sctx.GetTargets(ctx)
-				if s.recoveryCallback != nil && targets != "" {
+				targets, err := sctx.GetTargets(ctx)
+				if s.recoveryCallback != nil && err == nil {
 					go func() {
-						err := s.recoveryCallback(ctx, addr)
+						err := s.recoveryCallback(ctx, addr, targets)
 						if err != nil {
 							s.logger.Debugf("netstore: error while recovering chunk: %v", err)
 						}
@@ -92,14 +91,6 @@ func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chun
 	exist, err = s.Storer.Put(ctx, mode, chs...)
 	if err != nil {
 		return nil, err
-	}
-	// if callback is defined, call it for every new, valid chunk
-	if s.deliveryCallback != nil {
-		for i, exists := range exist {
-			if !exists {
-				go s.deliveryCallback(chs[i])
-			}
-		}
 	}
 	return exist, nil
 }
