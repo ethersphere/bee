@@ -7,9 +7,6 @@ package pushsync_test
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
-	"testing"
-
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -20,6 +17,9 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
+	"io/ioutil"
+	"testing"
+	"time"
 )
 
 // TestSendChunkAndGetReceipt inserts a chunk as uploaded chunk in db. This triggers sending a chunk to the closest node
@@ -146,9 +146,9 @@ func TestHandler(t *testing.T) {
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	// mock call back function to see if pss message is delivered when it is received in the destination (closestPeer in this testcase)
-	deliveryCalled := false
+	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
 	pssDeliver := func(ch swarm.Chunk) {
-		deliveryCalled = true
+		hookWasCalled <- true
 	}
 
 	// Create the closest peer
@@ -176,9 +176,6 @@ func TestHandler(t *testing.T) {
 		t.Fatal("invalid receipt")
 	}
 
-	if !deliveryCalled {
-		t.Fatal("delivery not called")
-	}
 
 	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
 	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunkAddress, chunkData)
@@ -192,6 +189,14 @@ func TestHandler(t *testing.T) {
 
 	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
 	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunkAddress, nil)
+
+	// check if the pss delivery hook is called
+	select {
+	case <-hookWasCalled:
+		break
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("recovery hook was not called")
+	}
 }
 
 func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, pssDeliver func(swarm.Chunk), mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags) {
