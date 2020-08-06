@@ -42,7 +42,7 @@ const (
 	NonceSize      = 32
 	LengthSize     = 2
 	TopicSize      = 32
-	MinerTimeout   = 5 // seconds after which the mining will fail
+	MinerTimeout   = 20 // seconds after which the mining will fail
 )
 
 // NewTopic creates a new Topic variable with the given input string
