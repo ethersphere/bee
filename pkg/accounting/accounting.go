@@ -152,9 +152,9 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	// compute expected debt before update because reserve still includes the amount that is deducted from the balance
 	expectedDebt := balance.expectedDebt()
 
-	err = a.saveBalance(peer, nextBalance)
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 	balance.balance = nextBalance
 
@@ -169,14 +169,6 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 		}
 	}
 
-	return nil
-}
-
-func (a *Accounting) saveBalance(peer swarm.Address, nextBalance int64) error {
-	err := a.store.Put(peerBalanceKey(peer), nextBalance)
-	if err != nil {
-		return fmt.Errorf("failed to persist balance: %w", err)
-	}
 	return nil
 }
 
@@ -195,16 +187,16 @@ func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) error {
 
 	// try to save the next balance first
 	// otherwise we might pay and then not be able to save, thus paying again after restart
-	err := a.saveBalance(peer, nextBalance)
+	err := a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
 	err = a.settlement.Pay(context.Background(), peer, paymentAmount)
 	if err != nil {
 		err = fmt.Errorf("settlement for amount %d failed: %w", paymentAmount, err)
 		// if the payment didn't work we should restore the old balance in the state store
-		if storeErr := a.saveBalance(peer, oldBalance); storeErr != nil {
+		if storeErr := a.store.Put(peerBalanceKey(peer), nextBalance); storeErr != nil {
 			a.logger.Errorf("failed to restore balance after failed settlement for peer %v: %v", peer, storeErr)
 		}
 		return err
@@ -227,9 +219,9 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	err = a.saveBalance(peer, nextBalance)
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
 	balance.balance = nextBalance
@@ -386,9 +378,9 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
 
-	err = a.saveBalance(peer, nextBalance)
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
 	balance.balance = nextBalance
