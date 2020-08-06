@@ -20,26 +20,19 @@ import (
 type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
-	validators       []swarm.ChunkValidator
+	validator        swarm.Validator
 	logger           logging.Logger
 	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
 }
 
-<<<<<<< HEAD
-// New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validator swarm.Validator) storage.Storer {
-	return &store{Storer: s, retrieval: r, logger: logger, validator: validator}
-}
-=======
 var (
 	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
 )
->>>>>>> e7f68bf... Added chunk repair and test cases
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
-	validators ...swarm.ChunkValidator) storage.Storer {
-	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validators: validators}
+	validator swarm.Validator) storage.Storer {
+	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validator: validator}
 }
 
 // Get retrieves a given chunk address.
@@ -63,11 +56,6 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				}
 				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
-			ch = swarm.NewChunk(addr, data)
-			if !s.valid(ch) {
-				return nil, storage.ErrInvalidChunk
-			}
-
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve put: %w", err)

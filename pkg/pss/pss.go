@@ -42,6 +42,10 @@ func NewPss(o Options) *Pss {
 	}
 }
 
+func (ps *Pss) WithPushSyncer(pushSyncer pushsync.PushSyncer) {
+	ps.pusher = pushSyncer
+}
+
 // Handler defines code to be executed upon reception of a trojan message
 type Handler func(trojan.Message)
 

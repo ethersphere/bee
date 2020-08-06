@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/recovery"
@@ -26,6 +25,7 @@ import (
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
@@ -37,21 +37,22 @@ func TestRecoveryHook(t *testing.T) {
 	targets := trojan.Targets{[]byte{0xED}}
 	ctx := context.Background()
 
-	// setup the sender
-	hookWasCalled := false // test variable to check if hook is called
-	testSender := func(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*pss.Monitor, error) {
-		hookWasCalled = true
-		return nil, nil
+	//setup the sender
+	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+	pssSender := &mockPssSender{
+		hookC: hookWasCalled,
 	}
 
 	// create recovery hook and call it
-	recoveryHook := recovery.NewRecoveryHook(testSender)
+	recoveryHook := recovery.NewRecoveryHook(pssSender)
 	if err := recoveryHook(ctx, chunkAddr, targets); err != nil {
 		t.Fatal(err)
 	}
-
-	if hookWasCalled != true {
-		t.Fatalf("recovery hook was not called")
+	select {
+	case <-hookWasCalled:
+		break
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("recovery hook was not called")
 	}
 }
 
@@ -67,7 +68,7 @@ func TestRecoveryHookCalls(t *testing.T) {
 	// generate test chunk, store and publisher
 	c := chunktesting.GenerateTestRandomChunk()
 	ref := c.Address()
-	target := "0xBE"
+	target := "BE"
 
 	// test cases variables
 	dummyContext := context.Background() // has no publisher
@@ -88,12 +89,11 @@ func TestRecoveryHookCalls(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			hookWasCalled := make(chan bool, 1) // channel to check if hook is called
 
-			// setup recovery hook
-			testHook := func(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*pss.Monitor, error) {
-				hookWasCalled <- true
-				return nil, nil
+			// setup the sender
+			pssSender := &mockPssSender{
+				hookC: hookWasCalled,
 			}
-			recoverFunc := recovery.NewRecoveryHook(testHook)
+			recoverFunc := recovery.NewRecoveryHook(pssSender)
 			ns := newTestNetStore(t, recoverFunc)
 
 			// fetch test chunk
@@ -109,7 +109,7 @@ func TestRecoveryHookCalls(t *testing.T) {
 					return
 				}
 				t.Fatal("recovery hook was unexpectedly called")
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(1000 * time.Millisecond):
 				if tc.expectsFailure {
 					return
 				}
@@ -292,4 +292,15 @@ func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
 }
 func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
 	return s.eachPeerRevFunc(f)
+}
+
+type mockPssSender struct {
+	hookC     chan bool
+	pssSender recovery.PssSender
+}
+
+// Send mocks the pss Send function
+func (mp *mockPssSender) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
+	mp.hookC <- true
+	return nil, nil
 }

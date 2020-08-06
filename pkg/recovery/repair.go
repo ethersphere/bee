@@ -6,6 +6,7 @@ package recovery
 
 import (
 	"context"
+	"github.com/ethersphere/bee/pkg/tags"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -29,14 +30,15 @@ var (
 type RecoveryHook func(ctx context.Context, chunkAddress swarm.Address, targets trojan.Targets) error
 
 // sender is the function call for sending trojan chunks.
-type sender func(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*pss.Monitor, error)
+type PssSender interface {
+	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error)
+}
 
 // NewRecoveryHook returns a new RecoveryHook with the sender function defined.
-func NewRecoveryHook(send sender) RecoveryHook {
+func NewRecoveryHook(pss PssSender) RecoveryHook {
 	return func(ctx context.Context, chunkAddress swarm.Address, targets trojan.Targets) error {
 		payload := chunkAddress
-
-		if _, err := send(ctx, targets, RecoveryTopic, payload.Bytes()); err != nil {
+		if _, err := pss.Send(ctx, targets, RecoveryTopic, payload.Bytes()); err != nil {
 			return err
 		}
 		return nil

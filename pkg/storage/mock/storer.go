@@ -26,7 +26,7 @@ type MockStorer struct {
 	pinSetMu         sync.Mutex
 	subpull          []storage.Descriptor
 	partialInterval  bool
-	validator        swarm.ChunkValidator
+	validator        swarm.Validator
 	tags             *tags.Tags
 	morePull         chan struct{}
 	mtx              sync.Mutex

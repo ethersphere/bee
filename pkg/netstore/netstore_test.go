@@ -97,7 +97,8 @@ func newRetrievingNetstore() (ret *retrievalMock, mockStore, ns storage.Storer) 
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 0)
-	nstore := netstore.New(store, nil, retrieve, logger, mockValidator{})
+	validator := swarm.NewChunkValidator(validatormock.NewValidator(true))
+	nstore := netstore.New(store, nil, retrieve, logger, validator)
 	return retrieve, store, nstore
 }
 
