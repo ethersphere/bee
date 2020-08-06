@@ -4,12 +4,15 @@
 
 package sctx
 
-import "context"
+import (
+	"context"
+)
 
 type (
-	HTTPRequestIDKey struct{}
-	requestHostKey   struct{}
-	tagKey           struct{}
+	HTTPRequestIDKey  struct{}
+	requestHostKey    struct{}
+	tagKey            struct{}
+	TargetsContextKey struct{}
 )
 
 // SetHost sets the http request host in the context
@@ -38,4 +41,18 @@ func GetTag(ctx context.Context) uint32 {
 		return v
 	}
 	return 0
+}
+
+// SetTargets set the target string in the context to be used downstream in netstore
+func SetTargets(ctx context.Context, targets string) context.Context {
+	return context.WithValue(ctx, TargetsContextKey{}, targets)
+}
+
+// GetTargets gets the targets from the context
+func GetTargets(ctx context.Context) string {
+	v, ok := ctx.Value(TargetsContextKey{}).(string)
+	if ok {
+		return v
+	}
+	return ""
 }

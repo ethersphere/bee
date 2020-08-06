@@ -10,38 +10,38 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 const (
-	// RecoveryTopicText is the string used to construct the recovery topic
+	// RecoveryTopicText is the string used to construct the recovery topic.
 	RecoveryTopicText = "RECOVERY"
 )
 
 var (
-	// RecoveryTopic is the topic used for repairing globally pinned chunks
+	// RecoveryTopic is the topic used for repairing globally pinned chunks.
 	RecoveryTopic = trojan.NewTopic(RecoveryTopicText)
 
-	// ErrTargetPrefix is returned when target prefix decoding fails
+	// ErrTargetPrefix is returned when target prefix decoding fails.
 	ErrTargetPrefix = errors.New("error decoding prefix string")
 )
 
-// RecoveryHook defines code to be executed upon failing to retrieve pinned chunks
+// RecoveryHook defines code to be executed upon failing to retrieve chunks.
 type RecoveryHook func(ctx context.Context, chunkAddress swarm.Address) error
 
-// sender is the function call for sending trojan chunks
+// sender is the function call for sending trojan chunks.
 type sender func(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*pss.Monitor, error)
 
-// NewRecoveryHook returns a new RecoveryHook with the sender function defined
-func NewRecoveryHook(send sender) RecoveryHook {
+// NewRecoveryHook returns a new RecoveryHook with the sender function defined.
+func NewRecoveryHook(send sender, logger logging.Logger) RecoveryHook {
 	return func(ctx context.Context, chunkAddress swarm.Address) error {
-		targets, err := getPinners(ctx)
+		targets, err := getPinners(ctx, logger)
 		if err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ func NewRecoveryHook(send sender) RecoveryHook {
 	}
 }
 
-// NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store
+// NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store.
 func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
 	return func(m trojan.Message) {
 		chAddr := m.Payload
@@ -76,18 +76,18 @@ func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsy
 }
 
 // getPinners returns the specific target pinners for a corresponding chunk by
-// reading the prefix targets sent in the download API
-func getPinners(ctx context.Context) (trojan.Targets, error) {
-	targetString := ctx.Value(api.TargetsContextKey{}).(string)
+// reading the prefix targets sent in the download API.
+func getPinners(ctx context.Context, logger logging.Logger) (trojan.Targets, error) {
+	targetString := sctx.GetTargets(ctx)
 	prefixes := strings.Split(targetString, ",")
 
 	var targets trojan.Targets
 	for _, prefix := range prefixes {
 		var target trojan.Target
-		prefix = strings.TrimPrefix(prefix, "0x")
 		target, err := hex.DecodeString(prefix)
 		if err != nil {
-			return nil, ErrTargetPrefix
+			logger.Errorf("error decoding target prefix: %s", prefix)
+			continue
 		}
 		targets = append(targets, target)
 	}

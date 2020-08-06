@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -94,7 +95,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), TargetsContextKey{}, targets))
+	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 
 	addr := mux.Vars(r)["addr"]
 	ctx := r.Context()

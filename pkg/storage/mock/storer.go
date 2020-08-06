@@ -9,6 +9,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -17,21 +18,23 @@ import (
 var _ storage.Storer = (*MockStorer)(nil)
 
 type MockStorer struct {
-	store           map[string][]byte
-	modeSet         map[string]storage.ModeSet
-	modeSetMu       sync.Mutex
-	pinnedAddress   []swarm.Address // Stores the pinned address
-	pinnedCounter   []uint64        // and its respective counter. These are stored as slices to preserve the order.
-	pinSetMu        sync.Mutex
-	subpull         []storage.Descriptor
-	partialInterval bool
-	validator       swarm.ChunkValidator
-	tags            *tags.Tags
-	morePull        chan struct{}
-	mtx             sync.Mutex
-	quit            chan struct{}
-	baseAddress     []byte
-	bins            []uint64
+	store            map[string][]byte
+	modeSet          map[string]storage.ModeSet
+	modeSetMu        sync.Mutex
+	pinnedAddress    []swarm.Address // Stores the pinned address
+	pinnedCounter    []uint64        // and its respective counter. These are stored as slices to preserve the order.
+	pinSetMu         sync.Mutex
+	subpull          []storage.Descriptor
+	partialInterval  bool
+	validator        swarm.ChunkValidator
+	tags             *tags.Tags
+	morePull         chan struct{}
+	mtx              sync.Mutex
+	quit             chan struct{}
+	baseAddress      []byte
+	bins             []uint64
+	recoveryCallback chunk.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
+	deliveryCallback func(swarm.Chunk)  // callback func to be invoked to deliver validated chunks
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
@@ -312,6 +315,14 @@ func (m *MockStorer) PinInfo(address swarm.Address) (uint64, error) {
 		}
 	}
 	return 0, storage.ErrNotFound
+}
+
+func (m *MockStorer) WithRecoveryCallBack(rcb chunk.RecoveryHook) {
+	m.recoveryCallback = rcb
+}
+
+func (m *MockStorer) WithDeliveryCallBack(dcb func(swarm.Chunk)) {
+	m.deliveryCallback = dcb
 }
 
 func (m *MockStorer) Close() error {
