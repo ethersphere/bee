@@ -23,6 +23,8 @@ type Interface interface {
 	Remove(string)
 	// Entry returns a manifest entry if one is found in the specified path.
 	Entry(string) (Entry, error)
+	// Length returns an implementation-specific count of elements in the manifest.
+	Length() int
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }
@@ -33,6 +35,6 @@ type Entry interface {
 	Reference() swarm.Address
 	// Name returns the name of the file in the entry.
 	Name() string
-	// Headers returns the headers for the file in the manifest entry.
-	Headers() http.Header
+	// Header returns the HTTP header for the file in the manifest entry.
+	Header() http.Header
 }

@@ -6,51 +6,83 @@ package jsonmanifest
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/manifest"
 )
 
-// verify JSONManifest implements manifest.Interface.
-var _ manifest.Interface = (*JSONManifest)(nil)
+// verify jsonManifest implements manifest.Interface.
+var _ manifest.Interface = (*jsonManifest)(nil)
 
-// JSONManifest is a JSON representation of a manifest.
+// jsonManifest is a JSON representation of a manifest.
 // It stores manifest entries in a map based on string keys.
-type JSONManifest struct {
-	Entries map[string]*JSONEntry `json:"entries,omitempty"`
+type jsonManifest struct {
+	entriesMu sync.RWMutex          // mutex for accessing the entries map
+	Entries   map[string]*jsonEntry `json:"entries,omitempty"`
 }
 
-// NewManifest creates a new JSONManifest struct and returns a pointer to it.
-func NewManifest() *JSONManifest {
-	return &JSONManifest{
-		Entries: make(map[string]*JSONEntry),
+// NewManifest creates a new jsonManifest struct and returns a pointer to it.
+func NewManifest() manifest.Interface {
+	return &jsonManifest{
+		Entries: make(map[string]*jsonEntry),
 	}
 }
 
 // Add adds a manifest entry to the specified path.
-func (m *JSONManifest) Add(path string, entry manifest.Entry) {
-	m.Entries[path] = NewEntry(entry.Reference(), entry.Name(), entry.Headers())
+func (m *jsonManifest) Add(path string, entry manifest.Entry) {
+	m.entriesMu.Lock()
+	defer m.entriesMu.Unlock()
+
+	m.Entries[path] = &jsonEntry{
+		R: entry.Reference(),
+		N: entry.Name(),
+		H: entry.Header(),
+	}
 }
 
 // Remove removes a manifest entry on the specified path.
-func (m *JSONManifest) Remove(path string) {
+func (m *jsonManifest) Remove(path string) {
+	m.entriesMu.Lock()
+	defer m.entriesMu.Unlock()
+
 	delete(m.Entries, path)
 }
 
 // Entry returns a manifest entry if one is found in the specified path.
-func (m *JSONManifest) Entry(path string) (manifest.Entry, error) {
-	if entry, ok := m.Entries[path]; ok {
-		return entry, nil
+func (m *jsonManifest) Entry(path string) (manifest.Entry, error) {
+	m.entriesMu.RLock()
+	defer m.entriesMu.RUnlock()
+
+	entry, ok := m.Entries[path]
+	if !ok {
+		return nil, manifest.ErrNotFound
 	}
 
-	return nil, manifest.ErrNotFound
+	// return a copy to prevent external modification
+	return NewEntry(entry.Reference(), entry.Name(), entry.Header().Clone()), nil
+}
+
+// Length returns an implementation-specific count of elements in the manifest.
+// For jsonManifest, this means the number of all the existing entries.
+func (m *jsonManifest) Length() int {
+	m.entriesMu.RLock()
+	defer m.entriesMu.RUnlock()
+
+	return len(m.Entries)
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler.
-func (m *JSONManifest) MarshalBinary() (data []byte, err error) {
+func (m *jsonManifest) MarshalBinary() ([]byte, error) {
+	m.entriesMu.RLock()
+	defer m.entriesMu.RUnlock()
+
 	return json.Marshal(m)
 }
 
 // UnmarshalBinary implements encoding.BinaryUnmarshaler.
-func (m *JSONManifest) UnmarshalBinary(data []byte) error {
-	return json.Unmarshal(data, m)
+func (m *jsonManifest) UnmarshalBinary(b []byte) error {
+	m.entriesMu.Lock()
+	defer m.entriesMu.Unlock()
+
+	return json.Unmarshal(b, m)
 }
