@@ -26,9 +26,8 @@ var testCases = []testCase{
 		entries: []e{
 			{
 				reference: test.RandomAddress(),
-				name:      "entry-1",
+				path:      "entry-1",
 				header:    http.Header{},
-				path:      "",
 			},
 		},
 	},
@@ -37,15 +36,13 @@ var testCases = []testCase{
 		entries: []e{
 			{
 				reference: test.RandomAddress(),
-				name:      "entry-1.txt",
+				path:      "entry-1.txt",
 				header:    http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
-				path:      "",
 			},
 			{
 				reference: test.RandomAddress(),
-				name:      "entry-2.png",
+				path:      "entry-2.png",
 				header:    http.Header{"Content-Type": {"image/png"}},
-				path:      "",
 			},
 		},
 	},
@@ -54,27 +51,23 @@ var testCases = []testCase{
 		entries: []e{
 			{
 				reference: test.RandomAddress(),
-				name:      "robots.txt",
+				path:      "text/robots.txt",
 				header:    http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
-				path:      "text",
 			},
 			{
 				reference: test.RandomAddress(),
-				name:      "1.png",
+				path:      "img/1.png",
 				header:    http.Header{"Content-Type": {"image/png"}},
-				path:      "img",
 			},
 			{
 				reference: test.RandomAddress(),
-				name:      "2.jpg",
+				path:      "img/2.jpg",
 				header:    http.Header{"Content-Type": {"image/jpg"}},
-				path:      "img",
 			},
 			{
 				reference: test.RandomAddress(),
-				name:      "readme.md",
+				path:      "readme.md",
 				header:    http.Header{"Content-Type": {"text/markdown; charset=UTF-8"}},
-				path:      "",
 			},
 		},
 	},
@@ -94,37 +87,36 @@ func TestEntries(t *testing.T) {
 
 	// add entries
 	for i, e := range tc.entries {
-		entry := jsonmanifest.NewEntry(e.reference, e.name, e.header)
-		path := filepath.Join(e.path, e.name)
-		m.Add(path, entry)
+		_, name := filepath.Split(e.path)
+		entry := jsonmanifest.NewEntry(e.reference, name, e.header)
+		m.Add(e.path, entry)
 
 		checkLength(t, m, i+1)
-		checkEntry(t, m, entry, path)
+		checkEntry(t, m, entry, e.path)
 	}
 
 	manifestLen := m.Length()
 
 	// replace entry
 	lastEntry := tc.entries[len(tc.entries)-1]
-	path := filepath.Join(lastEntry.path, lastEntry.name)
+	_, name := filepath.Split(lastEntry.path)
 
-	newEntry := jsonmanifest.NewEntry(test.RandomAddress(), lastEntry.name, lastEntry.header)
-	m.Add(path, newEntry)
+	newEntry := jsonmanifest.NewEntry(test.RandomAddress(), name, lastEntry.header)
+	m.Add(lastEntry.path, newEntry)
 
 	checkLength(t, m, manifestLen) // length should not have changed
-	checkEntry(t, m, newEntry, path)
+	checkEntry(t, m, newEntry, lastEntry.path)
 
 	// remove entries
 	m.Remove("invalid/path.ext")   // try removing inexistent entry
 	checkLength(t, m, manifestLen) // length should not have changed
 
 	for i, e := range tc.entries {
-		path := filepath.Join(e.path, e.name)
-		m.Remove(path)
+		m.Remove(e.path)
 
-		entry, err := m.Entry(path)
+		entry, err := m.Entry(e.path)
 		if entry != nil || err != manifest.ErrNotFound {
-			t.Fatalf("expected path %v not to be present in the manifest, but it was found", path)
+			t.Fatalf("expected path %v not to be present in the manifest, but it was found", e.path)
 		}
 
 		checkLength(t, m, manifestLen-i-1)
@@ -183,8 +175,9 @@ func TestMarshal(t *testing.T) {
 			m := jsonmanifest.NewManifest()
 
 			for _, e := range tc.entries {
-				entry := jsonmanifest.NewEntry(e.reference, e.name, e.header)
-				m.Add(filepath.Join(e.path, e.name), entry)
+				_, name := filepath.Split(e.path)
+				entry := jsonmanifest.NewEntry(e.reference, name, e.header)
+				m.Add(e.path, entry)
 			}
 
 			b, err := m.MarshalBinary()
@@ -213,7 +206,6 @@ type testCase struct {
 // struct for manifest entries for test cases
 type e struct {
 	reference swarm.Address
-	name      string
-	header    http.Header
 	path      string
+	header    http.Header
 }
