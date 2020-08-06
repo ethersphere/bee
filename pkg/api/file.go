@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -40,8 +41,6 @@ const (
 	multiPartFormData = "multipart/form-data"
 	EncryptHeader     = "swarm-encrypt"
 )
-
-type TargetsContextKey struct{}
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
 type fileUploadResponse struct {
@@ -285,7 +284,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), TargetsContextKey{}, targets))
+	sctx.SetTargets(r.Context(), targets)
 
 	// read entry.
 	j := joiner.NewSimpleJoiner(s.Storer)
@@ -351,7 +350,7 @@ func (s *server) downloadHandler(
 ) {
 
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), TargetsContextKey{}, targets))
+	sctx.SetTargets(r.Context(), targets)
 	ctx := r.Context()
 
 	toDecrypt := len(reference.Bytes()) == (swarm.HashSize + encryption.KeyLength)

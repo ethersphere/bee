@@ -265,7 +265,7 @@ func NewBee(o Options) (*Bee, error) {
 	psss := pss.NewPss(storer, tagg)
 
 	// create recovery callback for content repair
-	recoverFunc := chunk.NewRecoveryHook(psss.Send)
+	recoverFunc := chunk.NewRecoveryHook(psss.Send, logger)
 
 	// delivery call back for delivery of the registered messages
 	deliverFunc := psss.Deliver

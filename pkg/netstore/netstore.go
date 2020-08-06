@@ -9,10 +9,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -33,7 +33,7 @@ func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validat
 }
 =======
 var (
-	ErrRecoveryAttempt = errors.New("chunk recovery initiated")
+	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
 )
 >>>>>>> e7f68bf... Added chunk repair and test cases
 
@@ -52,8 +52,8 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			ch, err := s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				targets := ctx.Value(api.TargetsContextKey{})
-				if s.recoveryCallback != nil && targets != "" && targets != nil {
+				targets := sctx.GetTargets(ctx)
+				if s.recoveryCallback != nil && targets != "" {
 					go func() {
 						err := s.recoveryCallback(ctx, addr)
 						if err != nil {

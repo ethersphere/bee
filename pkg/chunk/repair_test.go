@@ -12,7 +12,6 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
@@ -21,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -30,12 +30,13 @@ import (
 	"github.com/ethersphere/bee/pkg/trojan"
 )
 
-// TestRecoveryHook tests that a recovery hook can be created and called
+// TestRecoveryHook tests that a recovery hook can be created and called.
 func TestRecoveryHook(t *testing.T) {
 	// test variables needed to be correctly set for any recovery hook to reach the sender func
 	chunkAddr := chunktesting.GenerateTestRandomChunk().Address()
-	target := "0xedC69a0F0E81394bb08F90F89e35F93287E99dc1"
-	ctx := context.WithValue(context.Background(), api.TargetsContextKey{}, target)
+	target := "0xED"
+	ctx := sctx.SetTargets(context.Background(), target)
+	logger := logging.New(ioutil.Discard, 0)
 
 	// setup the sender
 	hookWasCalled := false // test variable to check if hook is called
@@ -45,7 +46,7 @@ func TestRecoveryHook(t *testing.T) {
 	}
 
 	// create recovery hook and call it
-	recoveryHook := chunk.NewRecoveryHook(testSender)
+	recoveryHook := chunk.NewRecoveryHook(testSender, logger)
 	if err := recoveryHook(ctx, chunkAddr); err != nil {
 		t.Fatal(err)
 	}
@@ -55,25 +56,26 @@ func TestRecoveryHook(t *testing.T) {
 	}
 }
 
-// RecoveryHookTestCase is a struct used as test cases for the TestRecoveryHookCalls func
-type RecoveryHookTestCase struct {
+// RecoveryHookTestCase is a struct used as test cases for the TestRecoveryHookCalls func.
+type recoveryHookTestCase struct {
 	name           string
 	ctx            context.Context
 	expectsFailure bool
 }
 
-// TestRecoveryHookCalls verifies that recovery hooks are being called as expected when net store attempts to get a chunk
+// TestRecoveryHookCalls verifies that recovery hooks are being called as expected when net store attempts to get a chunk.
 func TestRecoveryHookCalls(t *testing.T) {
 	// generate test chunk, store and publisher
 	c := chunktesting.GenerateTestRandomChunk()
 	ref := c.Address()
-	p := "0xbE165fe06c03e4387F79615b7A0b79d535e8D325"
+	target := "0xBE"
+	logger := logging.New(ioutil.Discard, 0)
 
 	// test cases variables
 	dummyContext := context.Background() // has no publisher
-	targetContext := context.WithValue(context.Background(), api.TargetsContextKey{}, p)
+	targetContext := sctx.SetTargets(context.Background(), target)
 
-	for _, tc := range []RecoveryHookTestCase{
+	for _, tc := range []recoveryHookTestCase{
 		{
 			name:           "no targets in context",
 			ctx:            dummyContext,
@@ -93,12 +95,12 @@ func TestRecoveryHookCalls(t *testing.T) {
 				hookWasCalled <- true
 				return nil, nil
 			}
-			recoverFunc := chunk.NewRecoveryHook(testHook)
+			recoverFunc := chunk.NewRecoveryHook(testHook, logger)
 			ns := newTestNetStore(t, recoverFunc)
 
 			// fetch test chunk
 			_, err := ns.Get(tc.ctx, storage.ModeGetRequest, ref)
-			if err != nil && err != netstore.ErrRecoveryAttempt && err.Error() != "netstore retrieve chunk: get closest: no peer found" {
+			if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) && err.Error() != "netstore retrieve chunk: get closest: no peer found" {
 				t.Fatal(err)
 			}
 
@@ -119,6 +121,7 @@ func TestRecoveryHookCalls(t *testing.T) {
 	}
 }
 
+// TestNewRepairHandler tests the function of repairing a chunk when a request for chunk repair is received.
 func TestNewRepairHandler(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -137,11 +140,10 @@ func TestNewRepairHandler(t *testing.T) {
 		// create a mock pushsync service to push the chunk to its destination
 		var receipt *pushsync.Receipt
 		pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-			rcpt := &pushsync.Receipt{
+			receipt = &pushsync.Receipt{
 				Address: swarm.NewAddress(chunk.Address().Bytes()),
 			}
-			receipt = rcpt
-			return rcpt, nil
+			return receipt, nil
 		})
 
 		// create the chunk repair handler
@@ -247,7 +249,7 @@ func TestNewRepairHandler(t *testing.T) {
 	})
 }
 
-// newTestNetStore creates a test store with a set RemoteGet func
+// newTestNetStore creates a test store with a set RemoteGet func.
 func newTestNetStore(t *testing.T, recoveryFunc chunk.RecoveryHook) storage.Storer {
 	t.Helper()
 	storer := mock.NewStorer()
@@ -255,9 +257,9 @@ func newTestNetStore(t *testing.T, recoveryFunc chunk.RecoveryHook) storage.Stor
 
 	mockStorer := storemock.NewStorer()
 	serverMockAccounting := accountingmock.NewAccounting()
-	price := uint64(10)
+	price := uint64(12345)
 	pricerMock := accountingmock.NewPricer(price, price)
-	peerID := swarm.MustParseHexAddress("9ee7add7")
+	peerID := swarm.MustParseHexAddress("deadbeef")
 	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 		_, _, _ = f(peerID, 0)
 		return nil
@@ -266,7 +268,6 @@ func newTestNetStore(t *testing.T, recoveryFunc chunk.RecoveryHook) storage.Stor
 		Storer:     mockStorer,
 		Logger:     logger,
 		Accounting: serverMockAccounting,
-		Pricer:     pricerMock,
 	})
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
@@ -280,8 +281,8 @@ func newTestNetStore(t *testing.T, recoveryFunc chunk.RecoveryHook) storage.Stor
 		Pricer:      pricerMock,
 	})
 
-	netStore := netstore.New(storer, recoveryFunc, nil, retrieve, logger, nil)
-	return netStore
+	ns := netstore.New(storer, recoveryFunc, nil, retrieve, logger, nil)
+	return ns
 }
 
 type mockPeerSuggester struct {
