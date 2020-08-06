@@ -118,18 +118,18 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	manifestEntryAddress := me.Reference()
 
-	var additionalHeader http.Header
+	var additionalHeaders http.Header
 
 	// copy header from manifest
 	if me.Header() != nil {
-		additionalHeader = me.Header().Clone()
+		additionalHeaders = me.Header().Clone()
 	} else {
-		additionalHeader = http.Header{}
+		additionalHeaders = http.Header{}
 	}
 
 	// include filename
 	if me.Name() != "" {
-		additionalHeader.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", me.Name()))
+		additionalHeaders.Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", me.Name()))
 	}
 
 	// read file entry
@@ -152,5 +152,5 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	fileEntryAddress := fe.Reference()
 
-	s.downloadHandler(w, r, fileEntryAddress, additionalHeader)
+	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders)
 }
