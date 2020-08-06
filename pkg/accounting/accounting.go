@@ -71,11 +71,16 @@ type Accounting struct {
 
 var (
 	// ErrOverdraft is the error returned if the expected debt in Reserve would exceed the payment thresholds
-	ErrOverdraft = errors.New("attempted overdraft")
+	ErrOverdraft               = errors.New("attempted overdraft")
+	ErrInvalidPaymentTolerance = errors.New("payment tolerance must be less than half the payment threshold")
 )
 
 // NewAccounting creates a new Accounting instance with the provided options
-func NewAccounting(o Options) *Accounting {
+func NewAccounting(o Options) (*Accounting, error) {
+	if o.PaymentTolerance > o.PaymentThreshold/2 {
+		return nil, ErrInvalidPaymentTolerance
+	}
+
 	return &Accounting{
 		balances:         make(map[string]*PeerBalance),
 		paymentThreshold: o.PaymentThreshold,
@@ -84,7 +89,7 @@ func NewAccounting(o Options) *Accounting {
 		store:            o.Store,
 		settlement:       o.Settlement,
 		metrics:          newMetrics(),
-	}
+	}, nil
 }
 
 // Reserve reserves a portion of the balance for peer
@@ -120,7 +125,7 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 
 	if price > balance.reserved {
 		// If Reserve and Release calls are always paired this should never happen
-		a.logger.Errorf("attempting to release more balance than was reserved for peer")
+		a.logger.Error("attempting to release more balance than was reserved for peer")
 		balance.reserved = 0
 	} else {
 		balance.reserved -= price

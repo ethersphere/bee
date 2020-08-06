@@ -247,13 +247,17 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
 
-	acc := accounting.NewAccounting(accounting.Options{
+	acc, err := accounting.NewAccounting(accounting.Options{
 		Logger:           logger,
 		Store:            stateStore,
 		PaymentThreshold: o.PaymentThreshold,
 		PaymentTolerance: o.PaymentTolerance,
 		Settlement:       settlement,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("accounting: %w", err)
+	}
+
 	settlement.SetPaymentObserver(acc)
 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())

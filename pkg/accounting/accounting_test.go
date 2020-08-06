@@ -37,11 +37,14 @@ func TestAccountingAddBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
+	acc, err := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
 		Logger:           logger,
 		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -102,11 +105,14 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
+	acc, err := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
 		Logger:           logger,
 		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -130,10 +136,13 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc = accounting.NewAccounting(accounting.Options{
+	acc, err = accounting.NewAccounting(accounting.Options{
 		Logger: logger,
 		Store:  store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Balance, err := acc.Balance(peer1Addr)
 	if err != nil {
@@ -161,11 +170,14 @@ func TestAccountingReserve(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
+	acc, err := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
 		Logger:           logger,
 		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -195,12 +207,15 @@ func TestAccountingDisconnect(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
+	acc, err := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
 		PaymentTolerance: testPaymentTolerance,
 		Logger:           logger,
 		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -245,13 +260,16 @@ func TestAccountingCallSettlement(t *testing.T) {
 
 	settlement := &settlementMock{}
 
-	acc := accounting.NewAccounting(accounting.Options{
+	acc, err := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
 		PaymentTolerance: testPaymentTolerance,
 		Logger:           logger,
 		Store:            store,
 		Settlement:       settlement,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -321,12 +339,15 @@ func TestAccountingNotifyPayment(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
+	acc, err := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
 		PaymentTolerance: testPaymentTolerance,
 		Logger:           logger,
 		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -352,5 +373,26 @@ func TestAccountingNotifyPayment(t *testing.T) {
 	err = acc.NotifyPayment(peer1Addr, debtAmount+testPaymentTolerance+1)
 	if err == nil {
 		t.Fatal("expected payment to be rejected")
+	}
+}
+
+func TestAccountingInvalidPaymentTolerance(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	_, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentThreshold/2 + 1,
+		Logger:           logger,
+		Store:            store,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	if err != accounting.ErrInvalidPaymentTolerance {
+		t.Fatalf("got wrong error. got %v wanted %v", err, accounting.ErrInvalidPaymentTolerance)
 	}
 }
