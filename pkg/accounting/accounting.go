@@ -71,7 +71,10 @@ type Accounting struct {
 
 var (
 	// ErrOverdraft is the error returned if the expected debt in Reserve would exceed the payment thresholds
-	ErrOverdraft               = errors.New("attempted overdraft")
+	ErrOverdraft = errors.New("attempted overdraft")
+	// ErrDisconnectThresholdExceeded is the error returned if a peer has exceeded the disconnect threshold
+	ErrDisconnectThresholdExceeded = errors.New("disconnect threshold exceeded")
+	// ErrInvalidPaymentTolerance is the error returned if the payment tolerance is too high compared to the payment threshold
 	ErrInvalidPaymentTolerance = errors.New("payment tolerance must be less than half the payment threshold")
 )
 
@@ -237,7 +240,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	if nextBalance >= int64(a.paymentThreshold+a.paymentTolerance) {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
-		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded"))
+		return p2p.NewDisconnectError(ErrDisconnectThresholdExceeded)
 	}
 
 	return nil
