@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -41,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
@@ -265,7 +265,7 @@ func NewBee(o Options) (*Bee, error) {
 	psss := pss.NewPss(storer, tagg)
 
 	// create recovery callback for content repair
-	recoverFunc := chunk.NewRecoveryHook(psss.Send, logger)
+	recoverFunc := recovery.NewRecoveryHook(psss.Send, logger)
 
 	// delivery call back for delivery of the registered messages
 	deliverFunc := psss.Deliver
@@ -287,8 +287,8 @@ func NewBee(o Options) (*Bee, error) {
 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
-		chunkRepairHandler := chunk.NewRepairHandler(ns, logger, pushSyncProtocol)
-		psss.Register(chunk.RecoveryTopic, chunkRepairHandler)
+		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
+		psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
 	pushSyncPusher := pusher.New(pusher.Options{

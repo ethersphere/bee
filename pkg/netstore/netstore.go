@@ -9,8 +9,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -22,8 +22,8 @@ type store struct {
 	retrieval        retrieval.Interface
 	validators       []swarm.ChunkValidator
 	logger           logging.Logger
-	recoveryCallback chunk.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
-	deliveryCallback func(swarm.Chunk)  // callback func to be invoked to deliver validated chunks
+	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
+	deliveryCallback func(swarm.Chunk)     // callback func to be invoked to deliver validated chunks
 }
 
 <<<<<<< HEAD
@@ -38,7 +38,7 @@ var (
 >>>>>>> e7f68bf... Added chunk repair and test cases
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, rcb chunk.RecoveryHook, dcb func(swarm.Chunk), r retrieval.Interface, logger logging.Logger,
+func New(s storage.Storer, rcb recovery.RecoveryHook, dcb func(swarm.Chunk), r retrieval.Interface, logger logging.Logger,
 	validators ...swarm.ChunkValidator) storage.Storer {
 	return &store{Storer: s, recoveryCallback: rcb, deliveryCallback: dcb, retrieval: r, logger: logger, validators: validators}
 }

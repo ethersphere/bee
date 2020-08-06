@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package chunk_test
+package recovery_test
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -46,7 +46,7 @@ func TestRecoveryHook(t *testing.T) {
 	}
 
 	// create recovery hook and call it
-	recoveryHook := chunk.NewRecoveryHook(testSender, logger)
+	recoveryHook := recovery.NewRecoveryHook(testSender, logger)
 	if err := recoveryHook(ctx, chunkAddr); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestRecoveryHookCalls(t *testing.T) {
 				hookWasCalled <- true
 				return nil, nil
 			}
-			recoverFunc := chunk.NewRecoveryHook(testHook, logger)
+			recoverFunc := recovery.NewRecoveryHook(testHook, logger)
 			ns := newTestNetStore(t, recoverFunc)
 
 			// fetch test chunk
@@ -147,7 +147,7 @@ func TestNewRepairHandler(t *testing.T) {
 		})
 
 		// create the chunk repair handler
-		repairHandler := chunk.NewRepairHandler(mockStorer, logger, pushSyncService)
+		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
 
 		//create a trojan message to trigger the repair of the chunk
 		testTopic := trojan.NewTopic("foo")
@@ -188,7 +188,7 @@ func TestNewRepairHandler(t *testing.T) {
 		})
 
 		// create the chunk repair handler
-		repairHandler := chunk.NewRepairHandler(mockStorer, logger, pushSyncService)
+		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
 
 		//create a trojan message to trigger the repair of the chunk
 		testTopic := trojan.NewTopic("foo")
@@ -228,7 +228,7 @@ func TestNewRepairHandler(t *testing.T) {
 		})
 
 		// create the chunk repair handler
-		repairHandler := chunk.NewRepairHandler(mockStorer, logger, pushSyncService)
+		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
 
 		//create a trojan message to trigger the repair of the chunk
 		testTopic := trojan.NewTopic("foo")
@@ -250,7 +250,7 @@ func TestNewRepairHandler(t *testing.T) {
 }
 
 // newTestNetStore creates a test store with a set RemoteGet func.
-func newTestNetStore(t *testing.T, recoveryFunc chunk.RecoveryHook) storage.Storer {
+func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.Storer {
 	t.Helper()
 	storer := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 5)
