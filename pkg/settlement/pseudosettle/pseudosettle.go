@@ -89,7 +89,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		}
 	}()
 
-	s.logger.Tracef("sending payment message from peer %v of %d", peer, amount)
+	s.logger.Tracef("sending payment message to peer %v of %d", peer, amount)
 	w := protobuf.NewWriter(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
 		Amount: amount,
