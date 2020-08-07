@@ -76,7 +76,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Balances'
+                $ref: 'SwarmCommon.yaml#/components/schemas/Balance'
         '404':
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
