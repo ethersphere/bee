@@ -232,7 +232,10 @@ func TestDeliver(t *testing.T) {
 	pss.Register(topic, hndlr)
 
 	// call pss Deliver on chunk and verify test topic variable value changes
-	pss.Deliver(c)
+	err = pss.Deliver(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if tt != msg.Topic {
 		t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
 	}

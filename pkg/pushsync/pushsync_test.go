@@ -147,7 +147,7 @@ func TestHandler(t *testing.T) {
 
 	// mock call back function to see if pss message is delivered when it is received in the destination (closestPeer in this testcase)
 	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
-	pssDeliver := func(ch swarm.Chunk) error{
+	pssDeliver := func(ctx context.Context, ch swarm.Chunk) error {
 		hookWasCalled <- true
 		return nil
 	}
@@ -199,7 +199,7 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, pssDeliver func(swarm.Chunk) error, mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags) {
+func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, pssDeliver func(context.Context, swarm.Chunk) error, mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)

@@ -267,11 +267,11 @@ func NewBee(o Options) (*Bee, error) {
 		Tags:   tagg,
 	})
 
-	// create recovery callback for content repair
-	recoverFunc := recovery.NewRecoveryHook(psss)
-
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
+		// create recovery callback for content repair
+		recoverFunc := recovery.NewRecoveryHook(psss)
+
 		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidators)
 	} else {
 		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidators)
