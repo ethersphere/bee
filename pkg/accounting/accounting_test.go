@@ -5,19 +5,22 @@
 package accounting_test
 
 import (
+	"context"
 	"errors"
+	"io/ioutil"
+	"testing"
+
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"io/ioutil"
-	"testing"
 )
 
 const (
-	testDisconnectThreshold = 10000
-	testPrice               = uint64(10)
+	testPaymentThreshold = 10000
+	testPaymentTolerance = 1000
+	testPrice            = uint64(10)
 )
 
 // booking represents an accounting action and the expected result afterwards
@@ -34,11 +37,14 @@ func TestAccountingAddBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -99,11 +105,14 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -127,11 +136,13 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc = accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+	acc, err = accounting.NewAccounting(accounting.Options{
+		Logger: logger,
+		Store:  store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Balance, err := acc.Balance(peer1Addr)
 	if err != nil {
@@ -152,30 +163,34 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	}
 }
 
-// TestAccountingReserve tests that reserve returns an error if the disconnect threshold would be exceeded
+// TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded for a second time
 func TestAccountingReserve(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, testDisconnectThreshold-100)
+	// it should allow to cross the threshold one time
+	err = acc.Reserve(peer1Addr, testPaymentThreshold+1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, 101)
+	err = acc.Reserve(peer1Addr, 1)
 	if err == nil {
 		t.Fatal("expected error from reserve")
 	}
@@ -192,18 +207,29 @@ func TestAccountingDisconnect(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc := accounting.NewAccounting(accounting.Options{
-		DisconnectThreshold: testDisconnectThreshold,
-		Logger:              logger,
-		Store:               store,
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentTolerance,
+		Logger:           logger,
+		Store:            store,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Debit(peer1Addr, testDisconnectThreshold)
+	// put the peer 1 unit away from disconnect
+	err = acc.Debit(peer1Addr, testPaymentThreshold+testPaymentTolerance-1)
+	if err != nil {
+		t.Fatal("expected no error while still within tolerance")
+	}
+
+	// put the peer over thee threshold
+	err = acc.Debit(peer1Addr, 1)
 	if err == nil {
 		t.Fatal("expected Add to return error")
 	}
@@ -211,5 +237,162 @@ func TestAccountingDisconnect(t *testing.T) {
 	var e *p2p.DisconnectError
 	if !errors.As(err, &e) {
 		t.Fatalf("expected DisconnectError, got %v", err)
+	}
+}
+
+type settlementMock struct {
+	paidAmount uint64
+	paidPeer   swarm.Address
+}
+
+func (s *settlementMock) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+	s.paidPeer = peer
+	s.paidAmount = amount
+	return nil
+}
+
+// TestAccountingCallSettlement tests that settlement is called correctly if the payment threshold is hit
+func TestAccountingCallSettlement(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	settlement := &settlementMock{}
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentTolerance,
+		Logger:           logger,
+		Store:            store,
+		Settlement:       settlement,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Reserve(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Credit until payment treshold
+	err = acc.Credit(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	acc.Release(peer1Addr, testPaymentThreshold)
+
+	if !settlement.paidPeer.Equal(peer1Addr) {
+		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	}
+
+	if settlement.paidAmount != testPaymentThreshold {
+		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, testPaymentThreshold)
+	}
+
+	balance, err := acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance != 0 {
+		t.Fatalf("expected balance to be reset. got %d", balance)
+	}
+
+	// Assume 100 is reserved by some other request
+	err = acc.Reserve(peer1Addr, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Credit until the expected debt exceeeds payment threshold
+	expectedAmount := uint64(testPaymentThreshold - 100)
+	err = acc.Reserve(peer1Addr, expectedAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Credit(peer1Addr, expectedAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !settlement.paidPeer.Equal(peer1Addr) {
+		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	}
+
+	if settlement.paidAmount != expectedAmount {
+		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, expectedAmount)
+	}
+}
+
+// TestAccountingNotifyPayment tests that payments adjust the balance and payment which put us into debt are rejected
+func TestAccountingNotifyPayment(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentTolerance,
+		Logger:           logger,
+		Store:            store,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	debtAmount := uint64(100)
+	err = acc.Debit(peer1Addr, debtAmount+testPaymentTolerance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.NotifyPayment(peer1Addr, debtAmount+testPaymentTolerance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Debit(peer1Addr, debtAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.NotifyPayment(peer1Addr, debtAmount+testPaymentTolerance+1)
+	if err == nil {
+		t.Fatal("expected payment to be rejected")
+	}
+}
+
+func TestAccountingInvalidPaymentTolerance(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	_, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentThreshold/2 + 1,
+		Logger:           logger,
+		Store:            store,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	if err != accounting.ErrInvalidPaymentTolerance {
+		t.Fatalf("got wrong error. got %v wanted %v", err, accounting.ErrInvalidPaymentTolerance)
 	}
 }
