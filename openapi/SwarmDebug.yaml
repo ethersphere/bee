@@ -41,6 +41,49 @@ paths:
         default:
           description: Default response
 
+  '/balances':
+    get:
+      summary: Get the balances with all known peers
+      tags:
+        - Swarm Debug Endpoints
+      responses:
+        '200':
+          description: Own balances with all known peers
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Balances'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/balances/{address}':
+    get:
+      summary: Get the balances with a specific peer
+      tags:
+        - Swarm Debug Endpoints
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      responses:
+        '200':
+          description: Peer is known
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Balances'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        default:
+          description: Default response
+
   '/chunks/{address}':
     get:
       summary: Check if chunk at address exists locally
