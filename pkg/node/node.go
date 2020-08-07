@@ -221,10 +221,7 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Debugf("p2p address: %s", addr)
 	}
 
-	var (
-		storer storage.Storer
-		path   = ""
-	)
+	var path string
 
 	if o.DataDir != "" {
 		path = filepath.Join(o.DataDir, "localstore")
@@ -232,7 +229,7 @@ func NewBee(o Options) (*Bee, error) {
 	lo := &localstore.Options{
 		Capacity: o.DBCapacity,
 	}
-	storer, err = localstore.New(path, address.Bytes(), lo, logger)
+	storer, err := localstore.New(path, address.Bytes(), lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}

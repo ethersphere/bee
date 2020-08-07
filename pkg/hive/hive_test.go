@@ -10,8 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"reflect"
-	"sort"
+	"runtime/debug"
 	"strconv"
 	"testing"
 	"time"
@@ -72,7 +71,12 @@ func TestBroadcastPeers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{Overlay: bzzAddresses[i].Overlay.Bytes(), Underlay: bzzAddresses[i].Underlay.Bytes(), Signature: bzzAddresses[i].Signature})
+
+		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
+			Overlay:   bzzAddresses[i].Overlay.Bytes(),
+			Underlay:  bzzAddresses[i].Underlay.Bytes(),
+			Signature: bzzAddresses[i].Signature,
+		})
 	}
 
 	testCases := map[string]struct {
@@ -175,65 +179,86 @@ func TestBroadcastPeers(t *testing.T) {
 }
 
 func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays []swarm.Address) {
+	var (
+		overlays []swarm.Address
+		err      error
+		isIn     = func(a swarm.Address, addrs []swarm.Address) bool {
+			for _, v := range addrs {
+				if a.Equal(v) {
+					return true
+				}
+			}
+			return false
+		}
+	)
+
 	for i := 0; i < 100; i++ {
-		var stringOverlays []string
-		var stringWantOverlays []string
-		o, err := exporter.Overlays()
+		time.Sleep(50 * time.Millisecond)
+		overlays, err = exporter.Overlays()
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, k := range o {
-			stringOverlays = append(stringOverlays, k.String())
-		}
 
-		for _, k := range wantOverlays {
-			stringWantOverlays = append(stringWantOverlays, k.String())
+		if len(overlays) == len(wantOverlays) {
+			break
 		}
-
-		sort.Strings(stringOverlays)
-		sort.Strings(stringWantOverlays)
-		if reflect.DeepEqual(stringOverlays, stringWantOverlays) {
-			return
-		}
-
-		time.Sleep(10 * time.Millisecond)
+	}
+	if len(overlays) != len(wantOverlays) {
+		debug.PrintStack()
+		t.Fatal("timed out waiting for overlays")
 	}
 
-	o, err := exporter.Overlays()
-	if err != nil {
-		t.Fatal(err)
+	for _, v := range wantOverlays {
+		if !isIn(v, overlays) {
+			t.Errorf("overlay %s expected but not found", v.String())
+		}
 	}
 
-	t.Errorf("Overlays got %v, want %v", o, wantOverlays)
+	if t.Failed() {
+		t.Errorf("overlays got %v, want %v", overlays, wantOverlays)
+	}
 }
 
 func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAddresses []bzz.Address) {
+	var (
+		addresses []bzz.Address
+		err       error
+
+		isIn = func(a bzz.Address, addrs []bzz.Address) bool {
+			for _, v := range addrs {
+				if a.Equal(&v) {
+					return true
+				}
+			}
+			return false
+		}
+	)
+
 	for i := 0; i < 100; i++ {
 		time.Sleep(50 * time.Millisecond)
-		addresses, err := exporter.Addresses()
+		addresses, err = exporter.Addresses()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(addresses) != len(wantBzzAddresses) {
-			continue
+		if len(addresses) == len(wantBzzAddresses) {
+			break
 		}
-
-		for i, v := range addresses {
-			if !v.Equal(&wantBzzAddresses[i]) {
-				continue
-			}
-		}
-
-		return
+	}
+	if len(addresses) != len(wantBzzAddresses) {
+		debug.PrintStack()
+		t.Fatal("timed out waiting for bzz addresses")
 	}
 
-	m, err := exporter.Addresses()
-	if err != nil {
-		t.Fatal(err)
+	for _, v := range wantBzzAddresses {
+		if !isIn(v, addresses) {
+			t.Errorf("address %s expected but not found", v.Overlay.String())
+		}
 	}
 
-	t.Errorf("Bzz addresses got %v, want %v", m, wantBzzAddresses)
+	if t.Failed() {
+		t.Errorf("bzz addresses got %v, want %v", addresses, wantBzzAddresses)
+	}
 }
 
 func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
