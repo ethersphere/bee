@@ -265,10 +265,8 @@ func (ps *PushSync) deliverToPSS(ch swarm.Chunk) error{
 			err := ps.deliveryCallback(ch)
 			errC <- err
 		}()
-		select{
-		case err := <- errC:
-			return err
-		}
+		err := <- errC
+		return err
 	}
 	return nil
 }
