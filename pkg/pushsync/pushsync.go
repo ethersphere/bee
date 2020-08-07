@@ -39,7 +39,7 @@ type PushSync struct {
 	storer           storage.Putter
 	peerSuggester    topology.ClosestPeerer
 	tagg             *tags.Tags
-	deliveryCallback func(swarm.Chunk) // callback func to be invoked to deliver chunks to PSS
+	deliveryCallback func(swarm.Chunk) error// callback func to be invoked to deliver chunks to PSS
 	logger           logging.Logger
 	metrics          metrics
 }
@@ -49,7 +49,7 @@ type Options struct {
 	Storer           storage.Putter
 	ClosestPeerer    topology.ClosestPeerer
 	Tagger           *tags.Tags
-	DeliveryCallback func(swarm.Chunk)
+	DeliveryCallback func(swarm.Chunk) error
 	Logger           logging.Logger
 }
 
@@ -256,11 +256,21 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	return rec, nil
 }
 
-func (ps *PushSync) deliverToPSS(ch swarm.Chunk) {
+func (ps *PushSync) deliverToPSS(ch swarm.Chunk) error{
 	// if callback is defined, call it for every new, valid chunk
+	errC := make(chan error)
+	defer close(errC)
 	if ps.deliveryCallback != nil {
-		go ps.deliveryCallback(ch)
+		go func () {
+			err := ps.deliveryCallback(ch)
+			errC <- err
+		}()
+		select{
+		case err := <- errC:
+			return err
+		}
 	}
+	return nil
 }
 
 func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Writer, p p2p.Peer, chunk swarm.Chunk) error {
@@ -278,6 +288,5 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 	// since all PSS messages comes through push sync, deliver them here if this node is the destination
-	ps.deliverToPSS(chunk)
-	return nil
+	return ps.deliverToPSS(chunk)
 }

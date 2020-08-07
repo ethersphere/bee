@@ -89,18 +89,18 @@ func (p *Pss) Register(topic trojan.Topic, hndlr Handler) {
 }
 
 // Deliver allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
-func (p *Pss) Deliver(c swarm.Chunk) {
+func (p *Pss) Deliver(c swarm.Chunk) error{
 	if trojan.IsPotential(c) {
 		ctx := context.Background()
 		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
 		h := p.GetHandler(m.Topic)
 		if h != nil {
 			p.logger.Debug("executing handler for trojan", "process", "global-pinning", "chunk", c.Address().ByteString())
-			h(ctx, *m)
-			return
+			return h(ctx, *m)
 		}
 	}
 	p.logger.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", c.Address().ByteString())
+	return nil
 }
 
 // GetHandler returns the Handler func registered in pss for the given topic
