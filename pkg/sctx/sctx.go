@@ -22,7 +22,7 @@ type (
 	HTTPRequestIDKey  struct{}
 	requestHostKey    struct{}
 	tagKey            struct{}
-	TargetsContextKey struct{}
+	targetsContextKey struct{}
 )
 
 // SetHost sets the http request host in the context
@@ -55,25 +55,29 @@ func GetTag(ctx context.Context) uint32 {
 
 // SetTargets set the target string in the context to be used downstream in netstore
 func SetTargets(ctx context.Context, targets string) context.Context {
-	return context.WithValue(ctx, TargetsContextKey{}, targets)
+	return context.WithValue(ctx, targetsContextKey{}, targets)
 }
 
 // GetTargets returns the specific target pinners for a corresponding chunk by
 // reading the prefix targets sent in the download API.
 func GetTargets(ctx context.Context) (trojan.Targets, error) {
-	targetString, ok := ctx.Value(TargetsContextKey{}).(string)
-	if ok {
-		prefixes := strings.Split(targetString, ",")
-		var targets trojan.Targets
-		for _, prefix := range prefixes {
-			var target trojan.Target
-			target, err := hex.DecodeString(prefix)
-			if err != nil {
-				continue
-			}
-			targets = append(targets, target)
-		}
-		return targets, nil
+	targetString, ok := ctx.Value(targetsContextKey{}).(string)
+	if !ok {
+		return nil, ErrTargetPrefix
 	}
-	return nil, ErrTargetPrefix
+
+	prefixes := strings.Split(targetString, ",")
+	var targets trojan.Targets
+	for _, prefix := range prefixes {
+		var target trojan.Target
+		target, err := hex.DecodeString(prefix)
+		if err != nil {
+			continue
+		}
+		targets = append(targets, target)
+	}
+	if len(targets) <= 0 {
+		return nil, ErrTargetPrefix
+	}
+	return targets, nil
 }

@@ -35,7 +35,6 @@ func TestRecoveryHook(t *testing.T) {
 	// test variables needed to be correctly set for any recovery hook to reach the sender func
 	chunkAddr := chunktesting.GenerateTestRandomChunk().Address()
 	targets := trojan.Targets{[]byte{0xED}}
-	ctx := context.Background()
 
 	//setup the sender
 	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
@@ -45,7 +44,7 @@ func TestRecoveryHook(t *testing.T) {
 
 	// create recovery hook and call it
 	recoveryHook := recovery.NewRecoveryHook(pssSender)
-	if err := recoveryHook(ctx, chunkAddr, targets); err != nil {
+	if err := recoveryHook(chunkAddr, targets); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -98,7 +97,7 @@ func TestRecoveryHookCalls(t *testing.T) {
 
 			// fetch test chunk
 			_, err := ns.Get(tc.ctx, storage.ModeGetRequest, ref)
-			if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) && err.Error() != "netstore retrieve chunk: error decoding prefix string" {
+			if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) && err.Error() != "error decoding prefix string" {
 				t.Fatal(err)
 			}
 
@@ -157,7 +156,10 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		repairHandler(msg)
+		err = repairHandler(context.Background(), msg)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		// check if receipt is received
 		if receipt == nil {
@@ -199,7 +201,10 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		repairHandler(msg)
+		err = repairHandler(context.Background(), msg)
+		if err != nil && err.Error() != "storage: not found" {
+			t.Fatal(err)
+		}
 
 		if pushServiceCalled {
 			t.Fatal("push service called even if the chunk is not present")
@@ -239,7 +244,10 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		repairHandler(msg)
+		err = repairHandler(context.Background(), msg)
+		if err != nil && err != receiptError {
+			t.Fatal(err)
+		}
 
 		if receiptError == nil {
 			t.Fatal("pushsync did not generate a receipt error")

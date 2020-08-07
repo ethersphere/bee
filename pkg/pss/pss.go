@@ -47,7 +47,7 @@ func (ps *Pss) WithPushSyncer(pushSyncer pushsync.PushSyncer) {
 }
 
 // Handler defines code to be executed upon reception of a trojan message
-type Handler func(trojan.Message)
+type Handler func(context.Context, trojan.Message) error
 
 // Send constructs a padded message with topic and payload,
 // wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address
@@ -91,11 +91,12 @@ func (p *Pss) Register(topic trojan.Topic, hndlr Handler) {
 // Deliver allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
 func (p *Pss) Deliver(c swarm.Chunk) {
 	if trojan.IsPotential(c) {
+		ctx := context.Background()
 		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
 		h := p.GetHandler(m.Topic)
 		if h != nil {
 			p.logger.Debug("executing handler for trojan", "process", "global-pinning", "chunk", c.Address().ByteString())
-			h(*m)
+			h(ctx, *m)
 			return
 		}
 	}

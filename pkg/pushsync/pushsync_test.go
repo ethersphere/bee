@@ -176,7 +176,6 @@ func TestHandler(t *testing.T) {
 		t.Fatal("invalid receipt")
 	}
 
-
 	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
 	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunkAddress, chunkData)
 

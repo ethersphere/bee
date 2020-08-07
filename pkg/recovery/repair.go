@@ -6,13 +6,13 @@ package recovery
 
 import (
 	"context"
-	"github.com/ethersphere/bee/pkg/tags"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
 
@@ -27,7 +27,7 @@ var (
 )
 
 // RecoveryHook defines code to be executed upon failing to retrieve chunks.
-type RecoveryHook func(ctx context.Context, chunkAddress swarm.Address, targets trojan.Targets) error
+type RecoveryHook func(chunkAddress swarm.Address, targets trojan.Targets) error
 
 // sender is the function call for sending trojan chunks.
 type PssSender interface {
@@ -36,32 +36,31 @@ type PssSender interface {
 
 // NewRecoveryHook returns a new RecoveryHook with the sender function defined.
 func NewRecoveryHook(pss PssSender) RecoveryHook {
-	return func(ctx context.Context, chunkAddress swarm.Address, targets trojan.Targets) error {
+	return func(chunkAddress swarm.Address, targets trojan.Targets) error {
 		payload := chunkAddress
-		if _, err := pss.Send(ctx, targets, RecoveryTopic, payload.Bytes()); err != nil {
-			return err
-		}
-		return nil
+		ctx := context.Background()
+		_, err := pss.Send(ctx, targets, RecoveryTopic, payload.Bytes())
+		return err
 	}
 }
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store.
 func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
-	return func(m trojan.Message) {
+	return func(ctx context.Context, m trojan.Message) error {
 		chAddr := m.Payload
-		ctx := context.Background()
 
 		ch, err := s.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(chAddr))
 		if err != nil {
 			logger.Tracef("chunk repair: error while getting chunk for repairing: %v", err)
-			return
+			return err
 		}
 
 		// push the chunk using push sync so that it reaches it destination in network
 		_, err = pushSyncer.PushChunkToClosest(ctx, ch)
 		if err != nil {
 			logger.Tracef("chunk repair: error while sending chunk or receiving receipt: %v", err)
-			return
+			return err
 		}
+		return nil
 	}
 }

@@ -270,17 +270,19 @@ func NewBee(o Options) (*Bee, error) {
 	// create recovery callback for content repair
 	recoverFunc := recovery.NewRecoveryHook(psss)
 
-	// delivery call back for delivery of the registered messages
-	deliverFunc := psss.Deliver
-
-	ns := netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidators)
+	var ns storage.Storer
+	if o.GlobalPinningEnabled {
+		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidators)
+	} else {
+		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidators)
+	}
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
 		Streamer:         p2ps,
 		Storer:           storer,
 		ClosestPeerer:    topologyDriver,
-		DeliveryCallback: deliverFunc,
+		DeliveryCallback: psss.Deliver,
 		Tagger:           tagg,
 		Logger:           logger,
 	})

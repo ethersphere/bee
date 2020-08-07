@@ -42,19 +42,22 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// request from network
-			ch, err := s.retrieval.RetrieveChunk(ctx, addr)
+			ch, err = s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				targets, err := sctx.GetTargets(ctx)
-				if s.recoveryCallback != nil && err == nil {
-					go func() {
-						err := s.recoveryCallback(ctx, addr, targets)
-						if err != nil {
-							s.logger.Debugf("netstore: error while recovering chunk: %v", err)
-						}
-					}()
-					return nil, ErrRecoveryAttempt
+				if s.recoveryCallback == nil {
+					return nil, err
 				}
-				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
+				targets, err := sctx.GetTargets(ctx)
+				if err != nil {
+					return nil, err
+				}
+				go func() {
+					err := s.recoveryCallback(addr, targets)
+					if err != nil {
+						s.logger.Debugf("netstore: error while recovering chunk: %v", err)
+					}
+				}()
+				return nil, ErrRecoveryAttempt
 			}
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
@@ -76,9 +79,5 @@ func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chun
 			return nil, storage.ErrInvalidChunk
 		}
 	}
-	exist, err = s.Storer.Put(ctx, mode, chs...)
-	if err != nil {
-		return nil, err
-	}
-	return exist, nil
+	return s.Storer.Put(ctx, mode, chs...)
 }

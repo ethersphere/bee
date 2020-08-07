@@ -163,8 +163,9 @@ func TestRegister(t *testing.T) {
 	handlerVerifier := 0 // test variable to check handler funcs are correctly retrieved
 
 	// register first handler
-	testHandler := func(m trojan.Message) {
+	testHandler := func(ctx context.Context, m trojan.Message) error {
 		handlerVerifier = 1
+		return nil
 	}
 	testTopic := trojan.NewTopic("FIRST_HANDLER")
 	pss.Register(testTopic, testHandler)
@@ -174,15 +175,16 @@ func TestRegister(t *testing.T) {
 	}
 
 	registeredHandler := pss.GetHandler(testTopic)
-	registeredHandler(trojan.Message{}) // call handler to verify the retrieved func is correct
+	registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
 
 	if handlerVerifier != 1 {
 		t.Fatalf("unexpected handler retrieved, verifier variable should be 1 but is %d instead", handlerVerifier)
 	}
 
 	// register second handler
-	testHandler = func(m trojan.Message) {
+	testHandler = func(ctx context.Context, m trojan.Message) error {
 		handlerVerifier = 2
+		return nil
 	}
 	testTopic = trojan.NewTopic("SECOND_HANDLER")
 	pss.Register(testTopic, testHandler)
@@ -191,7 +193,7 @@ func TestRegister(t *testing.T) {
 	}
 
 	registeredHandler = pss.GetHandler(testTopic)
-	registeredHandler(trojan.Message{}) // call handler to verify the retrieved func is correct
+	registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
 
 	if handlerVerifier != 2 {
 		t.Fatalf("unexpected handler retrieved, verifier variable should be 2 but is %d instead", handlerVerifier)
@@ -223,8 +225,9 @@ func TestDeliver(t *testing.T) {
 
 	// create and register handler
 	var tt trojan.Topic // test variable to check handler func was correctly called
-	hndlr := func(m trojan.Message) {
+	hndlr := func(ctx context.Context, m trojan.Message) error {
 		tt = m.Topic // copy the message topic to the test variable
+		return nil
 	}
 	pss.Register(topic, hndlr)
 
