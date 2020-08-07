@@ -20,7 +20,7 @@ import (
 // returning the length of the data which will be returned.
 // The called can then read the data on the io.Reader that was provided.
 type Joiner interface {
-	Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataLength int64, err error)
+	Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadSeeker, dataLength int64, err error)
 	Size(ctx context.Context, address swarm.Address) (dataLength int64, err error)
 }
 
