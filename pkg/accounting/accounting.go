@@ -5,6 +5,7 @@
 package accounting
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -48,34 +50,49 @@ type PeerBalance struct {
 
 // Options for accounting
 type Options struct {
-	DisconnectThreshold uint64
-	Logger              logging.Logger
-	Store               storage.StateStorer
+	PaymentThreshold uint64
+	PaymentTolerance uint64
+	Logger           logging.Logger
+	Store            storage.StateStorer
+	Settlement       settlement.Interface
 }
 
 // Accounting is the main implementation of the accounting interface
 type Accounting struct {
-	balancesMu          sync.Mutex // mutex for accessing the balances map
-	balances            map[string]*PeerBalance
-	logger              logging.Logger
-	store               storage.StateStorer
-	disconnectThreshold uint64 // the debt threshold at which we will disconnect from a peer
-	metrics             metrics
+	balancesMu       sync.Mutex // mutex for accessing the balances map
+	balances         map[string]*PeerBalance
+	logger           logging.Logger
+	store            storage.StateStorer
+	paymentThreshold uint64 // the payment threshold in BZZ we communicate to our peers
+	paymentTolerance uint64 // the amount in BZZ we let peers exceed the payment threshold before disconnected
+	settlement       settlement.Interface
+	metrics          metrics
 }
 
 var (
+	// ErrOverdraft is the error returned if the expected debt in Reserve would exceed the payment thresholds
 	ErrOverdraft = errors.New("attempted overdraft")
+	// ErrDisconnectThresholdExceeded is the error returned if a peer has exceeded the disconnect threshold
+	ErrDisconnectThresholdExceeded = errors.New("disconnect threshold exceeded")
+	// ErrInvalidPaymentTolerance is the error returned if the payment tolerance is too high compared to the payment threshold
+	ErrInvalidPaymentTolerance = errors.New("payment tolerance must be less than half the payment threshold")
 )
 
 // NewAccounting creates a new Accounting instance with the provided options
-func NewAccounting(o Options) *Accounting {
-	return &Accounting{
-		balances:            make(map[string]*PeerBalance),
-		disconnectThreshold: o.DisconnectThreshold,
-		logger:              o.Logger,
-		store:               o.Store,
-		metrics:             newMetrics(),
+func NewAccounting(o Options) (*Accounting, error) {
+	if o.PaymentTolerance > o.PaymentThreshold/2 {
+		return nil, ErrInvalidPaymentTolerance
 	}
+
+	return &Accounting{
+		balances:         make(map[string]*PeerBalance),
+		paymentThreshold: o.PaymentThreshold,
+		paymentTolerance: o.PaymentTolerance,
+		logger:           o.Logger,
+		store:            o.Store,
+		settlement:       o.Settlement,
+		metrics:          newMetrics(),
+	}, nil
 }
 
 // Reserve reserves a portion of the balance for peer
@@ -88,16 +105,13 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	balance.lock.Lock()
 	defer balance.lock.Unlock()
 
-	// the previously reserved balance plus the new price is the maximum amount paid if all current operations are successful
-	// since we pay this we have to reduce this (positive quantity) from the balance
-	// the disconnectThreshold is stored as a positive value which is why it must be negated prior to comparison
-	if balance.freeBalance()-int64(price) < -int64(a.disconnectThreshold) {
+	// check if the expected debt is already over the payment threshold
+	if balance.expectedDebt() > a.paymentThreshold {
 		a.metrics.AccountingBlocksCount.Inc()
-		return fmt.Errorf("%w with peer %v", ErrOverdraft, peer)
+		return ErrOverdraft
 	}
 
 	balance.reserved += price
-
 	return nil
 }
 
@@ -135,19 +149,59 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
+	// compute expected debt before update because reserve still includes the amount that is deducted from the balance
+	expectedDebt := balance.expectedDebt()
+
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to persist balance: %w", err)
 	}
-
 	balance.balance = nextBalance
 
 	a.metrics.TotalCreditedAmount.Add(float64(price))
 	a.metrics.CreditEventsCount.Inc()
 
-	// TODO: try to initiate payment if payment threshold is reached
-	// if balance.balance < -int64(a.paymentThreshold) { }
+	// if our expected debt exceeds our payment threshold (which we assume is also the peers payment threshold), trigger settlement
+	if expectedDebt >= a.paymentThreshold {
+		err = a.settle(peer, balance)
+		if err != nil {
+			a.logger.Errorf("failed to settle with peer %v: %v", peer, err)
+		}
+	}
 
+	return nil
+}
+
+// settle all debt with a peer
+// the lock on balance must be held when called
+func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) error {
+	// don't do anything if there is no actual debt
+	// this might be the case if the peer owes us and the total reserve for a peer exceeds the payment treshhold
+	if balance.balance >= 0 {
+		return nil
+	}
+	paymentAmount := uint64(-balance.balance)
+
+	oldBalance := balance.balance
+	nextBalance := oldBalance + int64(paymentAmount)
+
+	// try to save the next balance first
+	// otherwise we might pay and then not be able to save, thus paying again after restart
+	err := a.store.Put(peerBalanceKey(peer), nextBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	err = a.settlement.Pay(context.Background(), peer, paymentAmount)
+	if err != nil {
+		err = fmt.Errorf("settlement for amount %d failed: %w", paymentAmount, err)
+		// if the payment didn't work we should restore the old balance in the state store
+		if storeErr := a.store.Put(peerBalanceKey(peer), nextBalance); storeErr != nil {
+			a.logger.Errorf("failed to restore balance after failed settlement for peer %v: %v", peer, storeErr)
+		}
+		return err
+	}
+	balance.balance = nextBalance
 	return nil
 }
 
@@ -167,7 +221,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
 	balance.balance = nextBalance
@@ -175,10 +229,10 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	a.metrics.TotalDebitedAmount.Add(float64(price))
 	a.metrics.DebitEventsCount.Inc()
 
-	if nextBalance >= int64(a.disconnectThreshold) {
+	if nextBalance >= int64(a.paymentThreshold+a.paymentTolerance) {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
-		return p2p.NewDisconnectError(fmt.Errorf("disconnect threshold exceeded for peer %s", peer.String()))
+		return p2p.NewDisconnectError(ErrDisconnectThresholdExceeded)
 	}
 
 	return nil
@@ -289,6 +343,47 @@ func balanceKeyPeer(key []byte) (swarm.Address, error) {
 	return addr, nil
 }
 
-func (pb *PeerBalance) freeBalance() int64 {
+// expectedBalance returns the balance we expect to have with a peer if all reserved funds are actually credited
+func (pb *PeerBalance) expectedBalance() int64 {
 	return pb.balance - int64(pb.reserved)
+}
+
+// expectedDebt returns the debt we expect to have with a peer if all reserved funds are actually credited
+func (pb *PeerBalance) expectedDebt() uint64 {
+	expectedBalance := pb.expectedBalance()
+	if expectedBalance >= 0 {
+		return 0
+	}
+	return uint64(-expectedBalance)
+}
+
+// NotifyPayment is called by Settlement when we received payment
+// Implements the PaymentObserver interface
+func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
+	balance, err := a.getPeerBalance(peer)
+	if err != nil {
+		return err
+	}
+
+	balance.lock.Lock()
+	defer balance.lock.Unlock()
+
+	nextBalance := balance.balance - int64(amount)
+
+	// don't allow a payment to put use more into debt than the tolerance
+	// this is to prevent another node tricking us into settling by settling first (e.g. send a bouncing cheque to trigger an honest cheque in swap)
+	if nextBalance < -int64(a.paymentTolerance) {
+		return fmt.Errorf("refusing to accept payment which would put us too much in debt, new balance would have been %d", nextBalance)
+	}
+
+	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	balance.balance = nextBalance
+
+	return nil
 }
