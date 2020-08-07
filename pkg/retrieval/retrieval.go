@@ -105,7 +105,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
 			return chunk, nil
 		}
-		s.logger.Debugf("retrieval: failed to get chunk %s: reached max peers of %v", addr, maxPeers)
+		s.logger.Tracef("retrieval: failed to get chunk %s: reached max peers of %v", addr, maxPeers)
 		return nil, storage.ErrNotFound
 	})
 	if err != nil {
