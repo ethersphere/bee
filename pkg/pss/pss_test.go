@@ -175,7 +175,10 @@ func TestRegister(t *testing.T) {
 	}
 
 	registeredHandler := pss.GetHandler(testTopic)
-	registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
+	err := registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if handlerVerifier != 1 {
 		t.Fatalf("unexpected handler retrieved, verifier variable should be 1 but is %d instead", handlerVerifier)
@@ -193,7 +196,10 @@ func TestRegister(t *testing.T) {
 	}
 
 	registeredHandler = pss.GetHandler(testTopic)
-	registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
+	err = registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if handlerVerifier != 2 {
 		t.Fatalf("unexpected handler retrieved, verifier variable should be 2 but is %d instead", handlerVerifier)

@@ -103,9 +103,9 @@ func TestRecovery(t *testing.T) {
 		hookC: hookWasCalled,
 	}
 
-	retreive, _, nstore := newRetrievingNetstore(rec)
+	retrieve, _, nstore := newRetrievingNetstore(rec)
 	addr := swarm.MustParseHexAddress("deadbeef")
-	retreive.failure = true
+	retrieve.failure = true
 	ctx := context.Background()
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
@@ -123,9 +123,9 @@ func TestRecovery(t *testing.T) {
 }
 
 func TestInvalidRecoveryFunction(t *testing.T) {
-	retreive, _, nstore := newRetrievingNetstore(nil)
+	retrieve, _, nstore := newRetrievingNetstore(nil)
 	addr := swarm.MustParseHexAddress("deadbeef")
-	retreive.failure = true
+	retrieve.failure = true
 	ctx := context.Background()
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
@@ -141,9 +141,9 @@ func TestInvalidTargets(t *testing.T) {
 		hookC: hookWasCalled,
 	}
 
-	retreive, _, nstore := newRetrievingNetstore(rec)
+	retrieve, _, nstore := newRetrievingNetstore(rec)
 	addr := swarm.MustParseHexAddress("deadbeef")
-	retreive.failure = true
+	retrieve.failure = true
 	ctx := context.Background()
 	ctx = sctx.SetTargets(ctx, "gh")
 

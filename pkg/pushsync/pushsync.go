@@ -258,8 +258,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 func (ps *PushSync) deliverToPSS(ctx context.Context, ch swarm.Chunk) error {
 	// if callback is defined, call it for every new, valid chunk
-	errC := make(chan error)
-	defer close(errC)
 	if ps.deliveryCallback != nil {
 		return ps.deliveryCallback(ctx, ch)
 	}

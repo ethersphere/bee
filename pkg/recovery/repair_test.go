@@ -303,8 +303,7 @@ func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
 }
 
 type mockPssSender struct {
-	hookC     chan bool
-	pssSender recovery.PssSender
+	hookC chan bool
 }
 
 // Send mocks the pss Send function
