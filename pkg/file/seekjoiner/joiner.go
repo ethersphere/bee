@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package joiner provides implementations of the file.Joiner interface
-package joiner
+package seekjoiner
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"io"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/seek-joiner/internal"
+	"github.com/ethersphere/bee/pkg/file/seekjoiner/internal"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -23,32 +23,24 @@ type simpleJoiner struct {
 }
 
 // NewSimpleJoiner creates a new simpleJoiner.
-func NewSimpleJoiner(getter storage.Getter) file.Joiner {
+func NewSimpleJoiner(getter storage.Getter) file.JoinSeeker {
 	return &simpleJoiner{
 		getter: getter,
 	}
 }
 
-func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSize int64, err error) {
+func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (int64, error) {
 	// retrieve the root chunk to read the total data length the be retrieved
 	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return 0, err
 	}
 
-	chunkLength := rootChunk.Data()
-	if len(chunkLength) < 8 {
-		return 0, fmt.Errorf("invalid chunk content of %d bytes", chunkLength)
+	chunkData := rootChunk.Data()
+	if l := len(chunkData); l < 8 {
+		return 0, fmt.Errorf("invalid chunk content of %d bytes", l)
 	}
 
-	chunkData := rootChunk.Data()
-	if toDecrypt {
-		originalData, err := internal.DecryptChunkData(rootChunk.Data(), key)
-		if err != nil {
-			return 0, err
-		}
-		chunkData = originalData
-	}
 	dataLength := binary.LittleEndian.Uint64(chunkData[:8])
 	return int64(dataLength), nil
 }
@@ -57,7 +49,7 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (dataSiz
 //
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
-func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadCloser, dataSize int64, err error) {
+func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadSeeker, dataSize int64, err error) {
 	var addr = address.Bytes()
 
 	// retrieve the root chunk to read the total data length the be retrieved
@@ -70,11 +62,6 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 
 	// if this is a single chunk, short circuit to returning just that chunk
 	spanLength := binary.LittleEndian.Uint64(chunkData[:8])
-	chunkToSend := rootChunk
-	if spanLength <= swarm.ChunkSize {
-		data := chunkData[8:]
-		return file.NewSimpleReadCloser(data), int64(spanLength), nil
-	}
-	r := internal.NewSimpleJoinerJob(ctx, s.getter, chunkToSend)
+	r := internal.NewSimpleJoinerJob(ctx, s.getter, rootChunk)
 	return r, int64(spanLength), nil
 }

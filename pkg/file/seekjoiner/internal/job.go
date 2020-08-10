@@ -7,7 +7,6 @@ package internal
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -59,7 +58,6 @@ func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk sw
 	// spanLength is the overall  size of the entire data layer for this content addressed hash
 	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:8])
 	levelCount := file.Levels(int64(spanLength), swarm.SectionSize, swarm.Branches)
-	fmt.Println("rootchunk", hex.EncodeToString(rootChunk.Data()))
 	j := &SimpleJoinerJob{
 		addr:       rootChunk.Address(),
 		ctx:        ctx,
@@ -83,9 +81,9 @@ func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, rootChunk sw
 // Read is called by the consumer to retrieve the joined data.
 // It must be called with a buffer equal to the maximum chunk size.
 func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
-	if cap(b) != swarm.ChunkSize {
-		return 0, fmt.Errorf("Read must be called with a buffer of %d bytes", swarm.ChunkSize)
-	}
+	//if cap(b) != swarm.ChunkSize {
+	//return 0, fmt.Errorf("Read must be called with a buffer of %d bytes", swarm.ChunkSize)
+	//}
 
 	read, err := j.ReadAt(b, j.off)
 	if err != nil && err != io.EOF {
@@ -97,26 +95,26 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 }
 
 func (j *SimpleJoinerJob) ReadAt(b []byte, off int64) (read int, err error) {
-	// start by getting the first level
-	fmt.Println("readat")
-	rootChunk := j.rootData // j.data[j.levels-1] // get the root chunk data
-	return j.readAtOffset(b, rootChunk, 0, int64(chunkSize(rootChunk)), off)
+	return j.readAtOffset(b, j.rootData, 0, j.spanLength, off)
 }
 
 func (j *SimpleJoinerJob) readAtOffset(b, data []byte, cur, subTrieSize, off int64) (read int, err error) {
-	fmt.Println("rootchunk", "st", subTrieSize, "len", len(data), hex.EncodeToString(data))
 
 	if subTrieSize <= int64(len(data)) {
-		fmt.Println("leaf")
+		ca := int64(cap(b))
+		ii := off - cur
+		if cd := int64(len(data)) - ii; ca > cd {
+			ca = cd
+		}
+
 		// we are at a leaf
-		bs := data[off-cur:]
+		bs := data[ii : ii+ca]
 		copy(b, bs)
 		return len(bs), nil
 	}
 
 	for cursor := 0; cursor < len(data); cursor += swarm.SectionSize {
 		address := swarm.NewAddress(data[cursor : cursor+swarm.SectionSize])
-		fmt.Println("cursor", cursor, "get", address.String())
 		ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 		if err != nil {
 			return 0, err
@@ -126,7 +124,7 @@ func (j *SimpleJoinerJob) readAtOffset(b, data []byte, cur, subTrieSize, off int
 		chunkData = ch.Data()[8:]
 		sp := int64(chunkSize(ch.Data()))
 		// we have the size of the subtrie now, if the read offset is within this chunk,
-		// then we drilldown  more
+		// then we drilldown more
 		if off < cur+sp {
 			return j.readAtOffset(b, chunkData, cur, sp, off)
 
@@ -156,20 +154,25 @@ func (j *SimpleJoinerJob) Seek(offset int64, whence int) (int64, error) {
 				return 0, fmt.Errorf("chunk size: %w", err)
 			}
 		}
-		offset += int64(chunkSize(j.rootData))
+		offset = j.spanLength - offset
+		if offset < 0 {
+			return 0, io.EOF
+		}
 	}
 
 	if offset < 0 {
 		return 0, errOffset
 	}
+	if offset > j.spanLength {
+		return 0, io.EOF
+	}
 	j.off = offset
+	fmt.Println("seek", j.off)
 	return offset, nil
 
-	return 0, nil
 }
 
 func (j *SimpleJoinerJob) Size() (int64, error) {
-
 	if j.rootData == nil {
 		chunk, err := j.getter.Get(context.TODO(), storage.ModeGetRequest, j.addr)
 		if err != nil {

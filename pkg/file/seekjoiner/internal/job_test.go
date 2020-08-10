@@ -106,14 +106,15 @@ func TestSeek(t *testing.T) {
 				}
 			}
 
-			// seek to all possible locations from start
-			for i := int64(0); i < tc.size; i++ {
-				n, err := j.Seek(i, io.SeekStart)
+			// seek to 10 random locations
+			for i := int64(0); i < 10 && i < tc.size; i++ {
+				exp := mrand.Int63n(tc.size)
+				n, err := j.Seek(exp, io.SeekStart)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if n != i {
-					t.Errorf("seek to %v from start, want %v", n, i)
+				if n != exp {
+					t.Errorf("seek to %v from start, want %v", n, exp)
 				}
 
 				validateRead(t, "start", int(n))
@@ -123,30 +124,39 @@ func TestSeek(t *testing.T) {
 			}
 
 			// seek to all possible locations from current position
-			for i := int64(1); i < tc.size; i++ {
-				n, err := j.Seek(1, io.SeekCurrent)
+			for i := int64(1); i < 10 && i < tc.size; i++ {
+				exp := mrand.Int63n(tc.size)
+				n, err := j.Seek(exp, io.SeekCurrent)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if n != i {
-					t.Errorf("seek to %v from current, want %v", n, i)
+				if n != exp {
+					t.Errorf("seek to %v from current, want %v", n, exp)
 				}
 
 				validateRead(t, "current", int(n))
+				if _, err := j.Seek(0, io.SeekStart); err != nil {
+					t.Fatal(err)
+				}
+
 			}
 			if _, err := j.Seek(0, io.SeekStart); err != nil {
 				t.Fatal(err)
 			}
 
-			// seek to all possible locations from end
-			for i := int64(1); i < tc.size; i++ {
-				n, err := j.Seek(i, io.SeekEnd)
-				if err != nil {
-					t.Fatal(err)
+			// seek to 10 random locations from end
+			for i := int64(1); i < 10; i++ {
+				exp := mrand.Int63n(tc.size)
+				if exp == 0 {
+					exp = 1
 				}
-				want := tc.size - i
+				n, err := j.Seek(exp, io.SeekEnd)
+				if err != nil {
+					t.Fatalf("seek from end, exp %d size %d error: %v", exp, tc.size, err)
+				}
+				want := tc.size - exp
 				if n != want {
-					t.Errorf("seek to %v from end, want %v", n, want)
+					t.Errorf("seek to %v from end, want %v, size %v, exp %v", n, want, tc.size, exp)
 				}
 
 				validateRead(t, "end", int(n))
@@ -154,7 +164,6 @@ func TestSeek(t *testing.T) {
 			if _, err := j.Seek(0, io.SeekStart); err != nil {
 				t.Fatal(err)
 			}
-
 			// seek overflow for a few bytes
 			for i := int64(0); i < 5; i++ {
 				n, err := j.Seek(tc.size+i, io.SeekStart)
