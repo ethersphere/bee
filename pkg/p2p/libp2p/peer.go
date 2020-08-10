@@ -24,8 +24,9 @@ type peerRegistry struct {
 	streams     map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
 	mu          sync.RWMutex
 
-	disconnecter     topology.Disconnecter // peerRegistry notifies topology on peer disconnection
-	network.Notifiee                       // peerRegistry can be the receiver for network.Notify
+	//nolint:misspell
+	disconnecters    []topology.Disconnecter // peerRegistry notifies topology on peer disconnection
+	network.Notifiee                         // peerRegistry can be the receiver for network.Notify
 }
 
 func newPeerRegistry() *peerRegistry {
@@ -73,8 +74,11 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	delete(r.streams, peerID)
 
 	r.mu.Unlock()
-	if r.disconnecter != nil {
-		r.disconnecter.Disconnected(overlay)
+
+	if len(r.disconnecters) > 0 {
+		for _, d := range r.disconnecters {
+			d.Disconnected(overlay)
+		}
 	}
 }
 
@@ -169,11 +173,19 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	r.mu.Unlock()
 
 	// if overlay was not found disconnect handler should not be signaled.
-	if r.disconnecter != nil && found {
-		r.disconnecter.Disconnected(overlay)
+	if len(r.disconnecters) > 0 && found {
+		for _, d := range r.disconnecters {
+			d.Disconnected(overlay)
+		}
 	}
 }
 
-func (r *peerRegistry) setDisconnecter(d topology.Disconnecter) {
-	r.disconnecter = d
+func (r *peerRegistry) addDisconnecter(d topology.Disconnecter) {
+	r.disconnecters = append(r.disconnecters, d)
+}
+
+func (r *peerRegistry) disconnect(address swarm.Address) {
+	for _, d := range r.disconnecters {
+		d.Disconnected(address)
+	}
 }

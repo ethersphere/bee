@@ -53,7 +53,7 @@ type Service struct {
 	handshakeService  *handshake.Service
 	addressbook       addressbook.Putter
 	peers             *peerRegistry
-	topologyNotifier  topology.Notifier
+	topologyNotifiers []topology.Notifier
 	connectionBreaker breaker.Interface
 	logger            logging.Logger
 	tracer            *tracing.Tracer
@@ -241,9 +241,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if s.topologyNotifier != nil {
-			if err := s.topologyNotifier.Connected(ctx, i.BzzAddress.Overlay); err != nil {
-				s.logger.Debugf("topology notifier: %s: %v", peerID, err)
+		if len(s.topologyNotifiers) > 0 {
+			for _, tn := range s.topologyNotifiers {
+				if err := tn.Connected(ctx, i.BzzAddress.Overlay); err != nil {
+					s.logger.Debugf("topology notifier: %s: %v", peerID, err)
+				}
 			}
 		}
 
@@ -354,12 +356,16 @@ func (s *Service) ConnectNotify(ctx context.Context, addr ma.Multiaddr) (address
 	if err != nil {
 		return nil, fmt.Errorf("connect notify: %w", err)
 	}
-	if s.topologyNotifier != nil {
-		if err := s.topologyNotifier.Connected(ctx, address.Overlay); err != nil {
-			_ = s.disconnect(info.ID)
-			return nil, fmt.Errorf("notify topology: %w", err)
+
+	if len(s.topologyNotifiers) > 0 {
+		for _, tn := range s.topologyNotifiers {
+			if err := tn.Connected(ctx, address.Overlay); err != nil {
+				_ = s.disconnect(info.ID)
+				return nil, fmt.Errorf("notify topology: %w", err)
+			}
 		}
 	}
+
 	return address, nil
 }
 
@@ -423,7 +429,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 func (s *Service) Disconnect(overlay swarm.Address) error {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
-		s.peers.disconnecter.Disconnected(overlay)
+		s.peers.disconnect(overlay)
 		return p2p.ErrPeerNotFound
 	}
 
@@ -442,15 +448,15 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetNotifier(n topology.Notifier) {
-	s.topologyNotifier = n
-	s.peers.setDisconnecter(n)
+func (s *Service) AddNotifier(n topology.Notifier) {
+	s.topologyNotifiers = append(s.topologyNotifiers, n)
+	s.peers.addDisconnecter(n)
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
-		s.peers.disconnecter.Disconnected(overlay)
+		s.peers.disconnect(overlay)
 		return nil, p2p.ErrPeerNotFound
 	}
 
