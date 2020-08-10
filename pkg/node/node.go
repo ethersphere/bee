@@ -40,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -84,6 +85,8 @@ type Options struct {
 	TracingEndpoint     string
 	TracingServiceName  string
 	DisconnectThreshold uint64
+	PaymentThreshold    uint64
+	PaymentTolerance    uint64
 }
 
 func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
@@ -212,10 +215,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		logger.Debugf("p2p address: %s", addr)
 	}
 
-	var (
-		storer storage.Storer
-		path   = ""
-	)
+	var path string
 
 	if o.DataDir != "" {
 		path = filepath.Join(o.DataDir, "localstore")
@@ -223,17 +223,33 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	lo := &localstore.Options{
 		Capacity: o.DBCapacity,
 	}
-	storer, err = localstore.New(path, address.Bytes(), lo, logger)
+	storer, err := localstore.New(path, address.Bytes(), lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
 
-	acc := accounting.NewAccounting(accounting.Options{
-		Logger:              logger,
-		Store:               stateStore,
-		DisconnectThreshold: o.DisconnectThreshold,
+	settlement := pseudosettle.New(pseudosettle.Options{
+		Streamer: p2ps,
+		Logger:   logger,
 	})
+
+	if err = p2ps.AddProtocol(settlement.Protocol()); err != nil {
+		return nil, fmt.Errorf("pseudosettle service: %w", err)
+	}
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		Logger:           logger,
+		Store:            stateStore,
+		PaymentThreshold: o.PaymentThreshold,
+		PaymentTolerance: o.PaymentTolerance,
+		Settlement:       settlement,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("accounting: %w", err)
+	}
+
+	settlement.SetPaymentObserver(acc)
 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
