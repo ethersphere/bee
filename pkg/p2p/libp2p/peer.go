@@ -24,6 +24,7 @@ type peerRegistry struct {
 	streams     map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
 	mu          sync.RWMutex
 
+	//nolint:misspell
 	disconnecters    []topology.Disconnecter // peerRegistry notifies topology on peer disconnection
 	network.Notifiee                         // peerRegistry can be the receiver for network.Notify
 }
