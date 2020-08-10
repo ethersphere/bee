@@ -205,7 +205,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	topologyDriver := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Logger: logger})
 	b.topologyCloser = topologyDriver
 	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
-	p2ps.SetNotifier(topologyDriver)
+	p2ps.AddNotifier(topologyDriver)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)

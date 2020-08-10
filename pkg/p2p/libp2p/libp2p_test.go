@@ -70,7 +70,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		t.Fatal(err)
 	}
 
-	s.SetNotifier(noopNotifier)
+	s.AddNotifier(noopNotifier)
 
 	t.Cleanup(func() {
 		cancel()

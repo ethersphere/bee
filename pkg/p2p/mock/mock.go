@@ -22,7 +22,7 @@ type Service struct {
 	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	disconnectFunc        func(overlay swarm.Address) error
 	peersFunc             func() []p2p.Peer
-	setNotifierFunc       func(topology.Notifier)
+	addNotifierFunc       func(topology.Notifier)
 	addressesFunc         func() ([]ma.Multiaddr, error)
 	setWelcomeMessageFunc func(string) error
 	getWelcomeMessageFunc func() string
@@ -58,10 +58,10 @@ func WithPeersFunc(f func() []p2p.Peer) Option {
 	})
 }
 
-// WithSetNotifierFunc sets the mock implementation of the SetNotifier function
-func WithSetNotifierFunc(f func(topology.Notifier)) Option {
+// WithAddNotifierFunc sets the mock implementation of the AddNotifier function
+func WithAddNotifierFunc(f func(topology.Notifier)) Option {
 	return optionFunc(func(s *Service) {
-		s.setNotifierFunc = f
+		s.addNotifierFunc = f
 	})
 }
 
@@ -124,12 +124,12 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return s.disconnectFunc(overlay)
 }
 
-func (s *Service) SetNotifier(f topology.Notifier) {
-	if s.setNotifierFunc == nil {
+func (s *Service) AddNotifier(f topology.Notifier) {
+	if s.addNotifierFunc == nil {
 		return
 	}
 
-	s.setNotifierFunc(f)
+	s.addNotifierFunc(f)
 }
 
 func (s *Service) Addresses() ([]ma.Multiaddr, error) {
