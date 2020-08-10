@@ -58,7 +58,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 		return
 	}
 
-	overlay, found := r.overlays[peerID]
+	overlay := r.overlays[peerID]
 	delete(r.overlays, peerID)
 	delete(r.underlays, overlay.ByteString())
 
@@ -73,7 +73,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	delete(r.streams, peerID)
 
 	r.mu.Unlock()
-	if r.disconnecter != nil && found {
+	if r.disconnecter != nil {
 		r.disconnecter.Disconnected(overlay)
 	}
 }
