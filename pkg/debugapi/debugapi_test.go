@@ -74,11 +74,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 }
 
 func newBZZTestServer(t *testing.T, o testServerOptions) *http.Client {
-	s := api.New(api.Options{
-		Storer: o.Storer,
-		Tags:   o.Tags,
-		Logger: logging.New(ioutil.Discard, 0),
-	})
+	s := api.New(o.Tags, o.Storer, nil, logging.New(ioutil.Discard, 0), nil)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

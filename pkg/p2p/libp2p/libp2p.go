@@ -66,12 +66,9 @@ type Options struct {
 	EnableQUIC     bool
 	LightNode      bool
 	WelcomeMessage string
-	Addressbook    addressbook.Putter
-	Logger         logging.Logger
-	Tracer         *tracing.Tracer
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, o Options) (*Service, error) {
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
@@ -181,7 +178,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.LightNode, o.WelcomeMessage, o.Logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.LightNode, o.WelcomeMessage, logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -196,9 +193,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		metrics:           newMetrics(),
 		networkID:         networkID,
 		peers:             peerRegistry,
-		addressbook:       o.Addressbook,
-		logger:            o.Logger,
-		tracer:            o.Tracer,
+		addressbook:       ab,
+		logger:            logger,
+		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 	}
 	// Construct protocols.
