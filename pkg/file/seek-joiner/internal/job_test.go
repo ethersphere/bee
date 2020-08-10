@@ -8,15 +8,167 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"io/ioutil"
+	mrand "math/rand"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/file/seek-joiner/internal"
+	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+func TestSeek(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Log("seed", seed)
+
+	r := mrand.New(mrand.NewSource(seed))
+
+	for _, tc := range []struct {
+		name string
+		size int64
+	}{
+		{
+			name: "one byte",
+			size: 1,
+		},
+		{
+			name: "a few bytes",
+			size: 10,
+		},
+		{
+			name: "a few bytes more",
+			size: 65,
+		},
+		{
+			name: "almost a chunk",
+			size: 4095,
+		},
+		{
+			name: "one chunk",
+			size: 4096,
+		},
+		{
+			name: "a few chunks",
+			size: 10 * 4096,
+		},
+		{
+			name: "a few chunks and a change",
+			size: 10*4096 + 84,
+		},
+		{
+			name: "a few chunks more",
+			size: 2*4096*4096 + 1000,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			store := mock.NewStorer()
+			defer store.Close()
+
+			data, err := ioutil.ReadAll(io.LimitReader(r, tc.size))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s := splitter.NewSimpleSplitter(store)
+			addr, err := s.Split(ctx, ioutil.NopCloser(bytes.NewReader(data)), tc.size, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rootChunk, err := store.Get(ctx, storage.ModeGetLookup, addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+			defer j.Close()
+
+			validateRead := func(t *testing.T, name string, i int) {
+				t.Helper()
+
+				got := make([]byte, 4096)
+				count, err := j.Read(got)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count == 0 {
+					t.Errorf("read with seek from %s to %v: got count 0", name, i)
+				}
+				got = got[:count]
+				want := data[i : i+count]
+				if !bytes.Equal(got, want) {
+					t.Errorf("read on seek to %v from %v: got data %x, want %s", name, i, got, want)
+				}
+			}
+
+			// seek to all possible locations from start
+			for i := int64(0); i < tc.size; i++ {
+				n, err := j.Seek(i, io.SeekStart)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n != i {
+					t.Errorf("seek to %v from start, want %v", n, i)
+				}
+
+				validateRead(t, "start", int(n))
+			}
+			if _, err := j.Seek(0, io.SeekStart); err != nil {
+				t.Fatal(err)
+			}
+
+			// seek to all possible locations from current position
+			for i := int64(1); i < tc.size; i++ {
+				n, err := j.Seek(1, io.SeekCurrent)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n != i {
+					t.Errorf("seek to %v from current, want %v", n, i)
+				}
+
+				validateRead(t, "current", int(n))
+			}
+			if _, err := j.Seek(0, io.SeekStart); err != nil {
+				t.Fatal(err)
+			}
+
+			// seek to all possible locations from end
+			for i := int64(1); i < tc.size; i++ {
+				n, err := j.Seek(i, io.SeekEnd)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := tc.size - i
+				if n != want {
+					t.Errorf("seek to %v from end, want %v", n, want)
+				}
+
+				validateRead(t, "end", int(n))
+			}
+			if _, err := j.Seek(0, io.SeekStart); err != nil {
+				t.Fatal(err)
+			}
+
+			// seek overflow for a few bytes
+			for i := int64(0); i < 5; i++ {
+				n, err := j.Seek(tc.size+i, io.SeekStart)
+				if err != io.EOF {
+					t.Errorf("seek overflow to %v: got error %v, want %v", i, err, io.EOF)
+				}
+
+				if n != 0 {
+					t.Errorf("seek overflow to %v: got %v, want 0", i, n)
+				}
+			}
+		})
+	}
+}
 
 // TestSimpleJoinerReadAt
 func TestSimpleJoinerReadAt(t *testing.T) {
