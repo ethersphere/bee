@@ -442,7 +442,7 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) SetNotifier(n topology.Notifier) {
+func (s *Service) AddNotifier(n topology.Notifier) {
 	s.topologyNotifier = n
 	s.peers.setDisconnecter(n)
 }

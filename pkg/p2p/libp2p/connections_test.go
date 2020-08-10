@@ -346,11 +346,11 @@ func TestTopologyNotifier(t *testing.T) {
 	)
 	notifier1 := mockNotifier(n1c, n1d)
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
-	s1.SetNotifier(notifier1)
+	s1.AddNotifier(notifier1)
 
 	notifier2 := mockNotifier(n2c, n2d)
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
-	s2.SetNotifier(notifier2)
+	s2.AddNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -430,7 +430,7 @@ func TestTopologyLocalNotifier(t *testing.T) {
 	notifier2 := mockNotifier(n2c, n2d)
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
-	s2.SetNotifier(notifier2)
+	s2.AddNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
