@@ -7,6 +7,7 @@ package libp2p_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"io/ioutil"
 	"sort"
 	"testing"
@@ -22,8 +23,15 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
+type libp2pServiceOpts struct {
+	Logger      logging.Logger
+	Addressbook addressbook.Interface
+	PrivateKey  *ecdsa.PrivateKey
+	libp2pOpts  libp2p.Options
+}
+
 // newService constructs a new libp2p service.
-func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Service, overlay swarm.Address) {
+func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.Service, overlay swarm.Address) {
 	t.Helper()
 
 	swarmKey, err := crypto.GenerateSecp256k1Key()
@@ -57,7 +65,7 @@ func newService(t *testing.T, networkID uint64, o libp2p.Options) (s *libp2p.Ser
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, o.Logger, nil, o.libp2pOpts)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -112,13 +112,12 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				password = p
 			}
 
-			b, err := node.NewBee(node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), logger, node.Options{
 				DataDir:             c.config.GetString(optionNameDataDir),
 				DBCapacity:          c.config.GetUint64(optionNameDBCapacity),
 				Password:            password,
 				APIAddr:             c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr:        debugAPIAddr,
-				Addr:                c.config.GetString(optionNameP2PAddr),
 				NATAddr:             c.config.GetString(optionNameNATAddr),
 				EnableWS:            c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:          c.config.GetBool(optionNameP2PQUICEnable),
@@ -129,7 +128,6 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				TracingEnabled:      c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:     c.config.GetString(optionNameTracingEndpoint),
 				TracingServiceName:  c.config.GetString(optionNameTracingServiceName),
-				Logger:              logger,
 				DisconnectThreshold: c.config.GetUint64(optionNameDisconnectThreshold),
 			})
 			if err != nil {

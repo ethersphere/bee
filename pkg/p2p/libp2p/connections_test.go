@@ -23,7 +23,7 @@ import (
 )
 
 func TestAddresses(t *testing.T) {
-	s, _ := newService(t, 1, libp2p.Options{})
+	s, _ := newService(t, 1, libp2pServiceOpts{})
 
 	addrs, err := s.Addresses()
 	if err != nil {
@@ -38,9 +38,9 @@ func TestConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -64,9 +64,9 @@ func TestDoubleConnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -89,9 +89,9 @@ func TestDoubleDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -122,9 +122,9 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -163,9 +163,9 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addrs, err := s1.Addresses()
 	if err != nil {
@@ -193,9 +193,9 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addrs, err := s1.Addresses()
 	if err != nil {
@@ -229,9 +229,9 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, _ := newService(t, 1, libp2p.Options{})
+	s1, _ := newService(t, 1, libp2pServiceOpts{})
 
-	s2, _ := newService(t, 2, libp2p.Options{})
+	s2, _ := newService(t, 2, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -247,14 +247,18 @@ func TestConnectWithEnabledQUICAndWSTransports(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{
-		EnableQUIC: true,
-		EnableWS:   true,
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableQUIC: true,
+			EnableWS:   true,
+		},
 	})
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{
-		EnableQUIC: true,
-		EnableWS:   true,
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableQUIC: true,
+			EnableWS:   true,
+		},
 	})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -272,8 +276,8 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 	addr := serviceUnderlayAddress(t, s1)
 
 	_, err := s2.Connect(ctx, addr)
@@ -341,11 +345,11 @@ func TestTopologyNotifier(t *testing.T) {
 		}
 	)
 	notifier1 := mockNotifier(n1c, n1d)
-	s1, overlay1 := newService(t, 1, libp2p.Options{Addressbook: ab1})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
 	s1.SetNotifier(notifier1)
 
 	notifier2 := mockNotifier(n2c, n2d)
-	s2, overlay2 := newService(t, 1, libp2p.Options{Addressbook: ab2})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
 	s2.SetNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -422,10 +426,10 @@ func TestTopologyLocalNotifier(t *testing.T) {
 		}
 	)
 
-	s1, overlay1 := newService(t, 1, libp2p.Options{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 	notifier2 := mockNotifier(n2c, n2d)
 
-	s2, overlay2 := newService(t, 1, libp2p.Options{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 	s2.SetNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
