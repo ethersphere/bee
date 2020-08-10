@@ -447,6 +447,55 @@ func TestTopologyLocalNotifier(t *testing.T) {
 	waitAddrSet(t, &n2connectedAddr, &mtx, overlay1)
 }
 
+func TestTopologySupportMultipleNotifiers(t *testing.T) {
+	var (
+		mtx              sync.Mutex
+		n21connectedAddr swarm.Address
+		n22connectedAddr swarm.Address
+
+		n21c = func(_ context.Context, a swarm.Address) error {
+			mtx.Lock()
+			defer mtx.Unlock()
+			n21connectedAddr = a
+			return nil
+		}
+		n21d = func(a swarm.Address) {
+		}
+
+		n22c = func(_ context.Context, a swarm.Address) error {
+			mtx.Lock()
+			defer mtx.Unlock()
+			n22connectedAddr = a
+			return nil
+		}
+		n22d = func(a swarm.Address) {
+		}
+	)
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	notifier21 := mockNotifier(n21c, n21d)
+	notifier22 := mockNotifier(n22c, n22d)
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+	s2.AddNotifier(notifier21)
+	s2.AddNotifier(notifier22)
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	_, err := s2.ConnectNotify(context.Background(), addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
+
+	// expect that n1 notifee called with s2 overlay
+	waitAddrSet(t, &n21connectedAddr, &mtx, overlay1)
+	waitAddrSet(t, &n22connectedAddr, &mtx, overlay1)
+}
+
 func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.Address) {
 	t.Helper()
 	for i := 0; i < 20; i++ {
