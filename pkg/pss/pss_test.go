@@ -8,7 +8,6 @@ import (
 	"context"
 	"io/ioutil"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 
@@ -16,18 +15,10 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
-
-// Wrap the actual storer to intercept the modeSet that the pusher will call when a valid receipt is received
-type Store struct {
-	storage.Storer
-	modeSet   map[string]storage.ModeSet
-	modeSetMu *sync.Mutex
-}
 
 // TestTrojanChunkRetrieval creates a trojan chunk
 // mocks the localstore
