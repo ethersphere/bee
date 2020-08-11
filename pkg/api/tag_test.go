@@ -205,8 +205,8 @@ func TestTags(t *testing.T) {
 
 	t.Run("bytes-tag-counters", func(t *testing.T) {
 		// Get a tag using API
-		ta := debugapi.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, ts.Client, http.MethodPost, tagResourceUidCreate("file.jpg"), nil, http.StatusOK, &ta)
+		ta := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagResourceUidCreate("file.jpg"), nil, http.StatusOK, &ta)
 		if ta.Name != "file.jpg" {
 			t.Fatalf("tagname is not the same that we sent")
 		}
@@ -234,7 +234,7 @@ func TestTags(t *testing.T) {
 		copy(content[swarm.ChunkSize:], dataChunk)
 		copy(content[:swarm.ChunkSize], dataChunk)
 
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, apiClient, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, fileUploadResponse{
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, fileUploadResponse{
 			Reference: rootAddress,
 		}, sentHheaders)
 		uuid1 := isTagFoundInResponse(t, rcvdHeaders, nil)
@@ -248,8 +248,8 @@ func TestTags(t *testing.T) {
 			t.Fatalf("Invalid tagid received")
 		}
 
-		finalTag := debugapi.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, ts.Client, http.MethodGet, tagResourceUUid(uuid1), nil, http.StatusOK, &finalTag)
+		finalTag := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagResourceUUid(uuid1), nil, http.StatusOK, &finalTag)
 
 		if finalTag.Total != 3 {
 			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 3)
