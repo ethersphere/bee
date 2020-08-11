@@ -124,7 +124,7 @@ func (d *driver) manage() {
 	}
 }
 
-// AddPeers  adds a new peer to the topology driver.
+// AddPeers adds a new peer to the topology driver.
 // The peer would be subsequently broadcasted to all connected peers.
 // All connected peers are also broadcasted to the new peer.
 func (d *driver) AddPeers(ctx context.Context, addrs ...swarm.Address) error {

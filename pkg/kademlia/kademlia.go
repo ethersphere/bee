@@ -412,7 +412,7 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 	return err
 }
 
-// AddPeers s adds peers to the knownPeers list.
+// AddPeers adds peers to the knownPeers list.
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
