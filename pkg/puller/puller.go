@@ -414,7 +414,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			}
 			return
 		}
-		err = p.AddPeerInterval(peer, bin, s, top)
+		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Errorf("error persisting interval for peer, quitting")
@@ -461,7 +461,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if top == 0 {
 			return //TODO need to deal with this somehow. not right
 		}
-		err = p.AddPeerInterval(peer, bin, from, top)
+		err = p.addPeerInterval(peer, bin, from, top)
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
 			p.logger.Errorf("liveSyncWorker exit on add peer interval. peer %s bin %d from %d err %v", peer, bin, from, err)
@@ -500,7 +500,7 @@ func (p *Puller) Close() error {
 	return nil
 }
 
-func (p *Puller) AddPeerInterval(peer swarm.Address, bin uint8, start, end uint64) (err error) {
+func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint64) (err error) {
 	p.intervalMtx.Lock()
 	defer p.intervalMtx.Unlock()
 
