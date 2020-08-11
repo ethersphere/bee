@@ -26,6 +26,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Pss) Metrics() []prometheus.Collector {
+func (s *pss) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
