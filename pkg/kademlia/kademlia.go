@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -43,6 +44,7 @@ type Options struct {
 	AddressBook    addressbook.Interface
 	P2P            p2p.Service
 	SaturationFunc binSaturationFunc
+	Bootnodes      []ma.Multiaddr
 	Logger         logging.Logger
 }
 
@@ -55,11 +57,12 @@ type Kad struct {
 	saturationFunc binSaturationFunc     // pluggable saturation function
 	connectedPeers *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
 	knownPeers     *pslice.PSlice        // both are po aware slice of addresses
-	depth          uint8                 // current neighborhood depth
-	depthMu        sync.RWMutex          // protect depth changes
-	manageC        chan struct{}         // trigger the manage forever loop to connect to new peers
-	waitNext       map[string]retryInfo  // sanction connections to a peer, key is overlay string and value is a retry information
-	waitNextMu     sync.Mutex            // synchronize map
+	bootnodes      []ma.Multiaddr
+	depth          uint8                // current neighborhood depth
+	depthMu        sync.RWMutex         // protect depth changes
+	manageC        chan struct{}        // trigger the manage forever loop to connect to new peers
+	waitNext       map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
+	waitNextMu     sync.Mutex           // synchronize map
 	peerSig        []chan struct{}
 	peerSigMtx     sync.Mutex
 	logger         logging.Logger // logger
@@ -87,6 +90,7 @@ func New(o Options) *Kad {
 		saturationFunc: o.SaturationFunc,
 		connectedPeers: pslice.New(int(swarm.MaxBins)),
 		knownPeers:     pslice.New(int(swarm.MaxBins)),
+		bootnodes:      o.Bootnodes,
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]retryInfo),
 		logger:         o.Logger,
@@ -213,8 +217,52 @@ func (k *Kad) manage() {
 				}
 			}
 
+			if k.connectedPeers.Length() == 0 {
+				k.connectBootnodes(ctx)
+			}
+
 		}
 	}
+}
+
+func (k *Kad) Start(ctx context.Context) error {
+	addresses, err := k.addressBook.Overlays()
+	if err != nil {
+		return fmt.Errorf("addressbook overlays: %w", err)
+	}
+
+	return k.AddPeers(ctx, addresses...)
+}
+
+func (k *Kad) connectBootnodes(ctx context.Context) {
+	var wg sync.WaitGroup
+	for _, addr := range k.bootnodes {
+		wg.Add(1)
+		go func(a ma.Multiaddr) {
+			defer wg.Done()
+			var count int
+			if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+				k.logger.Tracef("connecting to bootnode %s", addr)
+				_, err = k.p2p.ConnectNotify(ctx, addr)
+				if err != nil {
+					if !errors.Is(err, p2p.ErrAlreadyConnected) {
+						k.logger.Debugf("connect fail %s: %v", addr, err)
+						k.logger.Warningf("connect to bootnode %s", addr)
+					}
+					return false, nil
+				}
+				k.logger.Tracef("connected to bootnode %s", addr)
+				count++
+				// connect to max 3 bootnodes
+				return count > 3, nil
+			}); err != nil {
+				k.logger.Debugf("discover fail %s: %v", a, err)
+				k.logger.Warningf("discover to bootnode %s", a)
+				return
+			}
+		}(addr)
+	}
+	wg.Wait()
 }
 
 // binSaturated indicates whether a certain bin is saturated or not.

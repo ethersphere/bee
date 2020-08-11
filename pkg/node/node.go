@@ -6,14 +6,12 @@ package node
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -31,7 +29,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/puller"
@@ -202,10 +199,22 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		return nil, fmt.Errorf("hive service: %w", err)
 	}
 
-	topologyDriver := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Logger: logger})
-	b.topologyCloser = topologyDriver
-	hive.SetPeerAddedHandler(topologyDriver.AddPeers)
-	p2ps.AddNotifier(topologyDriver)
+	var bootnodes []ma.Multiaddr
+	for _, a := range o.Bootnodes {
+		addr, err := ma.NewMultiaddr(a)
+		if err != nil {
+			logger.Debugf("multiaddress fail %s: %v", a, err)
+			logger.Warningf("connect to bootnode %s", a)
+			continue
+		}
+
+		bootnodes = append(bootnodes, addr)
+	}
+
+	kad := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Bootnodes: bootnodes, Logger: logger})
+	b.topologyCloser = kad
+	hive.SetPeerAddedHandler(kad.AddPeers)
+	p2ps.AddNotifier(kad)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)
@@ -255,7 +264,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
-		ChunkPeerer: topologyDriver,
+		ChunkPeerer: kad,
 		Logger:      logger,
 		Accounting:  acc,
 		Pricer:      accounting.NewFixedPricer(address, 10),
@@ -274,7 +283,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	pushSyncProtocol := pushsync.New(pushsync.Options{
 		Streamer:      p2ps,
 		Storer:        storer,
-		ClosestPeerer: topologyDriver,
+		ClosestPeerer: kad,
 		Tagger:        tagg,
 		Logger:        logger,
 	})
@@ -285,7 +294,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	pushSyncPusher := pusher.New(pusher.Options{
 		Storer:        storer,
-		PeerSuggester: topologyDriver,
+		PeerSuggester: kad,
 		PushSyncer:    pushSyncProtocol,
 		Tagger:        tagg,
 		Logger:        logger,
@@ -307,7 +316,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	puller := puller.New(puller.Options{
 		StateStore: stateStore,
-		Topology:   topologyDriver,
+		Topology:   kad,
 		PullSync:   pullSync,
 		Logger:     logger,
 	})
@@ -348,7 +357,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 			Pingpong:       pingPong,
 			Logger:         logger,
 			Tracer:         tracer,
-			TopologyDriver: topologyDriver,
+			TopologyDriver: kad,
 			Storer:         storer,
 			Tags:           tagg,
 			Accounting:     acc,
@@ -387,59 +396,8 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	addresses, err := addressbook.Overlays()
-	if err != nil {
-		return nil, fmt.Errorf("addressbook overlays: %w", err)
-	}
-
-	var count int32
-
-	// add the peers to topology and allow it to connect independently
-	for _, o := range addresses {
-		err = topologyDriver.AddPeers(p2pCtx, o)
-		if err != nil {
-			logger.Debugf("topology add peer from addressbook: %v", err)
-		} else {
-			count++
-		}
-	}
-
-	// Connect bootnodes if the address book is clean
-	if count == 0 {
-		var wg sync.WaitGroup
-		for _, a := range o.Bootnodes {
-			wg.Add(1)
-			go func(a string) {
-				defer wg.Done()
-				addr, err := ma.NewMultiaddr(a)
-				if err != nil {
-					logger.Debugf("multiaddress fail %s: %v", a, err)
-					logger.Warningf("connect to bootnode %s", a)
-					return
-				}
-				var count int
-				if _, err := p2p.Discover(p2pCtx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-					logger.Tracef("connecting to bootnode %s", addr)
-					_, err = p2ps.ConnectNotify(p2pCtx, addr)
-					if err != nil {
-						if !errors.Is(err, p2p.ErrAlreadyConnected) {
-							logger.Debugf("connect fail %s: %v", addr, err)
-							logger.Warningf("connect to bootnode %s", addr)
-						}
-						return false, nil
-					}
-					logger.Tracef("connected to bootnode %s", addr)
-					count++
-					// connect to max 3 bootnodes
-					return count > 3, nil
-				}); err != nil {
-					logger.Debugf("discover fail %s: %v", a, err)
-					logger.Warningf("discover to bootnode %s", a)
-					return
-				}
-			}(a)
-		}
-		wg.Wait()
+	if err := kad.Start(p2pCtx); err != nil {
+		return nil, err
 	}
 
 	return b, nil
