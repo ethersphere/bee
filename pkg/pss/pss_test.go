@@ -12,16 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	mocktopology "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
 
@@ -106,10 +103,6 @@ func TestPssMonitor(t *testing.T) {
 	payload := []byte("PSS CHUNK")
 	topic := trojan.NewTopic("PSS TOPIC")
 
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
-
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		rcpt := &pushsync.Receipt{
 			Address: swarm.NewAddress(chunk.Address().Bytes()),
@@ -125,10 +118,6 @@ func TestPssMonitor(t *testing.T) {
 	})
 
 	pss := pss.New(logging.New(ioutil.Discard, 0), pushSyncService, testTags)
-
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mocktopology.WithClosestPeer(closestPeer))
-	defer storer.Close()
-	defer p.Close()
 
 	var tag *tags.Tag
 	// call Send to store trojan chunk in localstore
@@ -240,28 +229,8 @@ func TestHandler(t *testing.T) {
 	// set handler for test topic
 	pss.Register(testTopic, testHandler)
 
-	// get handler for test topic
-	//testHandlerR := pss.GetHandler(testTopic)
-
-}
-
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mocktopology.Option) (*tags.Tags, *pusher.Service, *Store) {
-	t.Helper()
-	logger := logging.New(ioutil.Discard, 0)
-	storer, err := localstore.New("", addr.Bytes(), nil, logger)
-	if err != nil {
-		t.Fatal(err)
+	if pss.GetHandler(testTopic) == nil {
+		t.Errorf("handler should be registered")
 	}
 
-	mtags := tags.NewTags()
-	pusherStorer := &Store{
-		Storer:    storer,
-		modeSet:   make(map[string]storage.ModeSet),
-		modeSetMu: &sync.Mutex{},
-	}
-	peerSuggester := mocktopology.NewTopologyDriver(mockOpts...)
-
-	// TODO CHANGE FOR INTERFACE OF PUSHER
-	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, Tagger: mtags, PeerSuggester: peerSuggester, Logger: logger})
-	return mtags, pusherService, pusherStorer
 }
