@@ -31,7 +31,7 @@ func TestTags(t *testing.T) {
 		bytesResource        = "/bytes"
 		chunksResource       = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		createTagResource    = "/tags"
-		getTagResource       = func(id uint64) string { return "/tag/" + strconv.FormatUint(id, 10) }
+		getTagResource       = func(id uint64) string { return "/tags/" + strconv.FormatUint(id, 10) }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
 		mockValidator        = validator.NewMockValidator(validHash, validContent)
@@ -64,10 +64,9 @@ func TestTags(t *testing.T) {
 
 	t.Run("get-tag-and-use-it-to-upload-chunk", func(t *testing.T) {
 		// Get a tag using API
-		tr := api.TagResponse{
+		b, err := json.Marshal(api.TagResponse{
 			Name: "file.jpg",
-		}
-		b, err := json.Marshal(tr)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,8 +90,14 @@ func TestTags(t *testing.T) {
 
 	t.Run("get-tag-and-use-it-to-upload-multiple-chunk", func(t *testing.T) {
 		// Get a tag using API
+		b, err := json.Marshal(api.TagResponse{
+			Name: "file.jpg",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		ta := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, createTagResource, bytes.NewReader([]byte("file.jpg")), http.StatusOK, &ta)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, createTagResource, bytes.NewReader(b), http.StatusCreated, &ta)
 
 		if ta.Name != "file.jpg" {
 			t.Fatalf("tagname is not the same that we sent")
