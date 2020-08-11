@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -75,8 +76,8 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 
 	tag, err := s.Tags.Create(tagr.Name, 0, false)
 	if err != nil {
-		s.Logger.Debugf("bzz-tag: tag create error: %v", err)
-		s.Logger.Error("bzz-tag: tag create error")
+		s.Logger.Debugf("create tag: tag create error: %v", err)
+		s.Logger.Error("create tag: tag create error")
 		jsonhttp.InternalServerError(w, "cannot create tag")
 		return
 	}
@@ -90,17 +91,22 @@ func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		s.Logger.Debugf("bzz-tag: parse id  %s: %v", idStr, err)
-		s.Logger.Error("bzz-tag: parse id")
+		s.Logger.Debugf("get tag: parse id  %s: %v", idStr, err)
+		s.Logger.Error("get tag: parse id")
 		jsonhttp.BadRequest(w, "invalid id")
 		return
 	}
 
 	tag, err := s.Tags.Get(uint32(id))
 	if err != nil {
-		s.Logger.Debugf("bzz-tag: tag not present : %v, uuid %s", err, idStr)
-		s.Logger.Error("bzz-tag: tag not present")
-		jsonhttp.InternalServerError(w, "tag not present")
+		if errors.Is(err, tags.NotFoundErr) {
+			s.Logger.Debugf("get tag: tag not present : %v, id %s", err, idStr)
+			s.Logger.Error("get tag: tag not present")
+			jsonhttp.InternalServerError(w, "tag not present")
+		}
+		s.Logger.Debugf("get tag: tag %v: %v", idStr, err)
+		s.Logger.Errorf("get tag: %v", idStr)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 

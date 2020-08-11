@@ -30,8 +30,8 @@ import (
 )
 
 var (
-	TagUidFunc     = rand.Uint32
-	TagNotFoundErr = errors.New("tag not found")
+	TagUidFunc  = rand.Uint32
+	NotFoundErr = errors.New("tag not found")
 )
 
 // Tags hold tag information indexed by a unique random uint32
@@ -74,7 +74,7 @@ func (ts *Tags) All() (t []*Tag) {
 func (ts *Tags) Get(uid uint32) (*Tag, error) {
 	t, ok := ts.tags.Load(uid)
 	if !ok {
-		return nil, TagNotFoundErr
+		return nil, NotFoundErr
 	}
 	return t.(*Tag), nil
 }
