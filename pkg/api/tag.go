@@ -124,6 +124,6 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.Tags.Delete(uint32(id)) // no response? call get before?
+	s.Tags.Delete(uint32(id)) // no response? call Get() before?
 	jsonhttp.OK(w, nil)
 }
