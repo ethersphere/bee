@@ -664,7 +664,6 @@ func TestStart(t *testing.T) {
 
 		waitCounter(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
-		return
 	})
 
 	t.Run("empty addressbook", func(t *testing.T) {
@@ -679,8 +678,6 @@ func TestStart(t *testing.T) {
 
 		waitCounter(t, &conns, 5)
 		waitCounter(t, &failedConns, 0)
-
-		return
 	})
 }
 
