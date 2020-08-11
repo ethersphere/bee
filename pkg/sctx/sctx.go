@@ -38,8 +38,8 @@ func SetTag(ctx context.Context, tagId *tags.Tag) context.Context {
 // GetTag gets the tag instance from the context
 func GetTag(ctx context.Context) *tags.Tag {
 	v, ok := ctx.Value(tagKey{}).(*tags.Tag)
-	if ok {
-		return v
+	if !ok {
+		return nil
 	}
-	return nil
+	return v
 }

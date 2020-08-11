@@ -93,7 +93,7 @@ func (ts *Tags) GetByAddress(address swarm.Address) (*Tag, error) {
 	})
 
 	if t == nil {
-		return nil, errTagNotFound
+		return nil, NotFoundErr
 	}
 	return t, nil
 }
