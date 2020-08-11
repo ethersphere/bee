@@ -429,7 +429,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 func (s *Service) Disconnect(overlay swarm.Address) error {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
-		s.peers.disconnect(overlay)
 		return p2p.ErrPeerNotFound
 	}
 
@@ -456,7 +455,6 @@ func (s *Service) AddNotifier(n topology.Notifier) {
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
-		s.peers.disconnect(overlay)
 		return nil, p2p.ErrPeerNotFound
 	}
 

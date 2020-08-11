@@ -183,9 +183,3 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 func (r *peerRegistry) addDisconnecter(d topology.Disconnecter) {
 	r.disconnecters = append(r.disconnecters, d)
 }
-
-func (r *peerRegistry) disconnect(address swarm.Address) {
-	for _, d := range r.disconnecters {
-		d.Disconnected(address)
-	}
-}
