@@ -416,7 +416,6 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
-	peerAdded := false
 	for _, addr := range addrs {
 		if k.knownPeers.Exists(addr) {
 			continue
@@ -424,14 +423,11 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 
 		po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 		k.knownPeers.Add(addr, po)
-		peerAdded = true
 	}
 
-	if peerAdded {
-		select {
-		case k.manageC <- struct{}{}:
-		default:
-		}
+	select {
+	case k.manageC <- struct{}{}:
+	default:
 	}
 
 	return nil
