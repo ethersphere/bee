@@ -30,9 +30,10 @@ import (
 )
 
 var (
-	errExists = errors.New("already exists")
-	errNA     = errors.New("not available yet")
-	errNoETA  = errors.New("unable to calculate ETA")
+	errExists      = errors.New("already exists")
+	errNA          = errors.New("not available yet")
+	errNoETA       = errors.New("unable to calculate ETA")
+	errTagNotFound = errors.New("tag not found")
 )
 
 // State is the enum type for chunk states

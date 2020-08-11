@@ -31,8 +31,8 @@ import (
 )
 
 var (
-	TagUidFunc  = rand.Uint32
-	ErrNotFound = errors.New("tag not found")
+	TagUidFunc     = rand.Uint32
+	TagNotFoundErr = errors.New("tag not found")
 )
 
 type TagsContextKey struct{}
@@ -77,7 +77,7 @@ func (ts *Tags) All() (t []*Tag) {
 func (ts *Tags) Get(uid uint32) (*Tag, error) {
 	t, ok := ts.tags.Load(uid)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, TagNotFoundErr
 	}
 	return t.(*Tag), nil
 }
@@ -96,7 +96,7 @@ func (ts *Tags) GetByAddress(address swarm.Address) (*Tag, error) {
 	})
 
 	if t == nil {
-		return nil, ErrNotFound
+		return nil, errTagNotFound
 	}
 	return t, nil
 }
@@ -106,7 +106,7 @@ func (ts *Tags) GetFromContext(ctx context.Context) (*Tag, error) {
 	uid := sctx.GetTag(ctx)
 	t, ok := ts.tags.Load(uid)
 	if !ok {
-		return nil, ErrNotFound
+		return nil, errTagNotFound
 	}
 	return t.(*Tag), nil
 }

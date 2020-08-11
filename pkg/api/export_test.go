@@ -7,6 +7,7 @@ package api
 type (
 	BytesPostResponse  = bytesPostResponse
 	FileUploadResponse = fileUploadResponse
+	TagResponse        = tagResponse
 )
 
 var (
