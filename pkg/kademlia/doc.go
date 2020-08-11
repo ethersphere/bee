@@ -15,7 +15,7 @@ was persisted in the address book and the node has been restarted).
 
 So the information has been changed, and potentially upon disconnection,
 the depth can travel to a shallower depth in result.
-If a peer gets added through AddPeer, this does not necessarily infer
+If a peer gets added through AddPeers , this does not necessarily infer
 an immediate depth change, since the peer might end up in the backlog for
 a long time until we actually need to connect to her.
 

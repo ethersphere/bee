@@ -292,10 +292,10 @@ func TestDiscoveryHooks(t *testing.T) {
 	)
 	defer kad.Close()
 
-	// first add a peer from AddPeer, wait for the connection
+	// first add a peer from AddPeers , wait for the connection
 	addOne(t, signer, kad, ab, p1)
 	waitConn(t, &conns)
-	// add another peer from AddPeer, wait for the connection
+	// add another peer from AddPeers , wait for the connection
 	// then check that peers are gossiped to each other via discovery
 	addOne(t, signer, kad, ab, p2)
 	waitConn(t, &conns)
@@ -374,7 +374,7 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 
 	// add non connectable peer, check connection and failed connection counters
-	_ = kad.AddPeer(context.Background(), nonConnPeer.Overlay)
+	_ = kad.AddPeers(context.Background(), nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
@@ -703,7 +703,7 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	_ = k.AddPeer(context.Background(), peer)
+	_ = k.AddPeers(context.Background(), peer)
 }
 
 func add(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peers []swarm.Address, offset, number int) {

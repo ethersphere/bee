@@ -132,6 +132,7 @@ func (k *Kad) manage() {
 				return
 			default:
 			}
+
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
@@ -211,6 +212,7 @@ func (k *Kad) manage() {
 					k.logger.Errorf("kademlia manage loop iterator: %v", err)
 				}
 			}
+
 		}
 	}
 }
@@ -362,20 +364,26 @@ func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
 	return err
 }
 
-// AddPeer adds a peer to the knownPeers list.
+// AddPeers s adds peers to the knownPeers list.
 // This does not guarantee that a connection will immediately
 // be made to the peer.
-func (k *Kad) AddPeer(ctx context.Context, addr swarm.Address) error {
-	if k.knownPeers.Exists(addr) {
-		return nil
+func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
+	peerAdded := false
+	for _, addr := range addrs {
+		if k.knownPeers.Exists(addr) {
+			continue
+		}
+
+		po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
+		k.knownPeers.Add(addr, po)
+		peerAdded = true
 	}
 
-	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
-	k.knownPeers.Add(addr, po)
-
-	select {
-	case k.manageC <- struct{}{}:
-	default:
+	if peerAdded {
+		select {
+		case k.manageC <- struct{}{}:
+		default:
+		}
 	}
 
 	return nil

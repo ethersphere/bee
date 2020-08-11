@@ -58,9 +58,9 @@ func NewMockKademlia(o ...Option) *Mock {
 	return m
 }
 
-// AddPeer is called when a peer is added to the topology backlog
+// AddPeers  is called when a peers are added to the topology backlog
 // for further processing by connectivity strategy.
-func (m *Mock) AddPeer(ctx context.Context, addr swarm.Address) error {
+func (m *Mock) AddPeers(ctx context.Context, addr ...swarm.Address) error {
 	panic("not implemented") // TODO: Implement
 }
 

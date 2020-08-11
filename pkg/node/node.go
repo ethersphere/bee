@@ -204,7 +204,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	topologyDriver := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Logger: logger})
 	b.topologyCloser = topologyDriver
-	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
+	hive.SetPeerAddedHandler(topologyDriver.AddPeers)
 	p2ps.AddNotifier(topologyDriver)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
@@ -396,7 +396,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	// add the peers to topology and allow it to connect independently
 	for _, o := range addresses {
-		err = topologyDriver.AddPeer(p2pCtx, o)
+		err = topologyDriver.AddPeers(p2pCtx, o)
 		if err != nil {
 			logger.Debugf("topology add peer from addressbook: %v", err)
 		} else {
