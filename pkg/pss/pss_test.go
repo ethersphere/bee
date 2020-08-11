@@ -180,7 +180,6 @@ func TestDeliver(t *testing.T) {
 	testTags := tags.NewTags()
 	pss := pss.New(logging.New(ioutil.Discard, 0), nil, testTags)
 	ctx := context.TODO()
-	var err error
 
 	// test message
 	topic := trojan.NewTopic("footopic")
@@ -208,6 +207,9 @@ func TestDeliver(t *testing.T) {
 
 	// call pss TryUnwrap on chunk and verify test topic variable value changes
 	err = pss.TryUnwrap(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if tt != msg.Topic {
 		t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
 	}
