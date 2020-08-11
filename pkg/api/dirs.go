@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -40,6 +41,18 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	if err != nil {
+		s.Logger.Debugf("dir upload: get or create tag: %v", err)
+		s.Logger.Error("dir upload: get or create tag")
+		jsonhttp.InternalServerError(w, "cannot get or create tag")
+		return
+	}
+
+	// Add the tag to the context
+	r = r.WithContext(sctx.SetTag(r.Context(), tag))
+	ctx = r.Context()
+
 	reference, err := storeDir(ctx, r.Body, s.Storer, s.Logger)
 	if err != nil {
 		s.Logger.Errorf("dir upload, store dir")
@@ -47,6 +60,8 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "could not store dir")
 		return
 	}
+
+	tag.DoneSplit(reference)
 
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,

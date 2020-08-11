@@ -68,8 +68,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
 	if err != nil {
-		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
-		s.Logger.Error("chunk upload: get or create tag")
+		s.Logger.Debugf("file upload: get or create tag: %v", err)
+		s.Logger.Error("file upload: get or create tag")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}

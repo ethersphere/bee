@@ -28,8 +28,8 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
 	if err != nil {
-		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
-		s.Logger.Error("chunk upload: get or create tag")
+		s.Logger.Debugf("bytes upload: get or create tag: %v", err)
+		s.Logger.Error("bytes upload: get or create tag")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
@@ -42,12 +42,11 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	sp := splitter.NewSimpleSplitter(s.Storer)
 	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
-		s.Logger.Debugf("bytes upload: %v", err)
+		s.Logger.Debugf("bytes upload: split write all: %v", err)
+		s.Logger.Error("bytes upload: split write all")
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
-
-	tag.DoneSplit(address)
 
 	w.Header().Set(TagHeaderUid, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
