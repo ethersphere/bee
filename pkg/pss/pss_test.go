@@ -203,6 +203,7 @@ func TestRegister(t *testing.T) {
 func TestDeliver(t *testing.T) {
 	testTags := tags.NewTags()
 	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), nil, testTags})
+	ctx := context.TODO()
 
 	// test message
 	topic := trojan.NewTopic("footopic")
@@ -229,7 +230,7 @@ func TestDeliver(t *testing.T) {
 	pss.Register(topic, hndlr)
 
 	// call pss Deliver on chunk and verify test topic variable value changes
-	pss.Deliver(c)
+	err = pss.Deliver(ctx, c)
 	if tt != msg.Topic {
 		t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
 	}

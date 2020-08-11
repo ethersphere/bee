@@ -6,6 +6,7 @@ package pss
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -85,17 +86,17 @@ func (p *Pss) Register(topic trojan.Topic, hndlr Handler) {
 }
 
 // Deliver allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
-func (p *Pss) Deliver(c swarm.Chunk) {
+func (p *Pss) Deliver(ctx context.Context, c swarm.Chunk) error {
 	if trojan.IsPotential(c) {
 		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
 		h := p.GetHandler(m.Topic)
 		if h != nil {
 			p.logger.Debug("executing handler for trojan", "process", "global-pinning", "chunk", c.Address().ByteString())
 			h(*m)
-			return
+			return nil
 		}
 	}
-	p.logger.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", c.Address().ByteString())
+	return fmt.Errorf("chunk not trojan or no handler found process global-pinning chunk %v", c.Address().ByteString())
 }
 
 // GetHandler returns the Handler func registered in pss for the given topic
