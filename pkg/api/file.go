@@ -75,8 +75,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the tag to the context
-	r = r.WithContext(sctx.SetTag(r.Context(), tag))
-	ctx := r.Context()
+	ctx := sctx.SetTag(r.Context(), tag)
 
 	if mediaType == multiPartFormData {
 		mr := multipart.NewReader(r.Body, params["boundary"])

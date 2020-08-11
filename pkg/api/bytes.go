@@ -35,8 +35,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the tag to the context
-	r = r.WithContext(sctx.SetTag(r.Context(), tag))
-	ctx := r.Context()
+	ctx := sctx.SetTag(r.Context(), tag)
 
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 	sp := splitter.NewSimpleSplitter(s.Storer)

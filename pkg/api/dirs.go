@@ -50,8 +50,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the tag to the context
-	r = r.WithContext(sctx.SetTag(r.Context(), tag))
-	ctx = r.Context()
+	ctx = sctx.SetTag(ctx, tag)
 
 	reference, err := storeDir(ctx, r.Body, s.Storer, s.Logger)
 	if err != nil {
