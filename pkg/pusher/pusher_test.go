@@ -14,7 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
-	pushermock "github.com/ethersphere/bee/pkg/pusher/mock"
+	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -57,7 +57,7 @@ func TestSendChunkToPushSyncWithTag(t *testing.T) {
 		}
 		return receipt, nil
 	})
-	mtags, _, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	mtags, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
 	ta, err := mtags.Create("test", 1, false)
@@ -90,6 +90,7 @@ func TestSendChunkToPushSyncWithTag(t *testing.T) {
 		t.Fatalf("tags error")
 	}
 
+	p.Close()
 }
 
 // TestSendChunkToPushSyncWithoutTag is similar to TestSendChunkToPushSync, excep that the tags are not
@@ -108,7 +109,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
@@ -129,6 +130,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	p.Close()
 }
 
 // TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent ot its closest peer and
@@ -145,7 +147,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
@@ -166,6 +168,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
+	p.Close()
 }
 
 // TestSendChunkAndTimeoutinReceivingReceipt sends a chunk to pushsync to be sent ot its closest peer and
@@ -185,8 +188,9 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return nil, nil
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
+	defer p.Close()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -215,7 +219,7 @@ func createChunk() swarm.Chunk {
 	return swarm.NewChunk(chunkAddress, chunkData).WithTagID(666)
 }
 
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*tags.Tags, *pushermock.MockPusher, *Store) {
+func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)
@@ -229,8 +233,9 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 		modeSet:   make(map[string]storage.ModeSet),
 		modeSetMu: &sync.Mutex{},
 	}
+	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pushermock.NewMockPusher(mtags)
+	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, Tagger: mtags, PeerSuggester: peerSuggester, Logger: logger})
 	return mtags, pusherService, pusherStorer
 }
 
