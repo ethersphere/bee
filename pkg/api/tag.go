@@ -85,19 +85,19 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
-	uidStr := mux.Vars(r)["uuid"]
+	idStr := mux.Vars(r)["id"]
 
-	uuid, err := strconv.ParseUint(uidStr, 10, 32)
+	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		s.Logger.Debugf("bzz-tag: parse uid  %s: %v", uidStr, err)
-		s.Logger.Error("bzz-tag: parse uid")
-		jsonhttp.BadRequest(w, "invalid uid")
+		s.Logger.Debugf("bzz-tag: parse id  %s: %v", idStr, err)
+		s.Logger.Error("bzz-tag: parse id")
+		jsonhttp.BadRequest(w, "invalid id")
 		return
 	}
 
-	tag, err := s.Tags.Get(uint32(uuid))
+	tag, err := s.Tags.Get(uint32(id))
 	if err != nil {
-		s.Logger.Debugf("bzz-tag: tag not present : %v, uuid %s", err, uidStr)
+		s.Logger.Debugf("bzz-tag: tag not present : %v, uuid %s", err, idStr)
 		s.Logger.Error("bzz-tag: tag not present")
 		jsonhttp.InternalServerError(w, "tag not present")
 		return

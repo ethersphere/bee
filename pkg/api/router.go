@@ -70,7 +70,7 @@ func (s *server) setupRouting() {
 		"POST": http.HandlerFunc(s.createTag),
 	})
 
-	router.Handle("/tags/{uuid}", jsonhttp.MethodHandler{
+	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getTag),
 	})
 
