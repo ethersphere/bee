@@ -12,7 +12,7 @@ import (
 
 func TestDynamicWelcomeMessage(t *testing.T) {
 	const TestWelcomeMessage = "Hello World!"
-	svc, _ := newService(t, 1, libp2p.Options{WelcomeMessage: TestWelcomeMessage})
+	svc, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{WelcomeMessage: TestWelcomeMessage}})
 
 	t.Run("Get current message - OK", func(t *testing.T) {
 		got := svc.GetWelcomeMessage()

@@ -93,6 +93,12 @@ func (s *server) setupRouting() {
 			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
 		),
 	})
+	router.Handle("/balances", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.balancesHandler),
+	})
+	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.peerBalanceHandler),
+	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),

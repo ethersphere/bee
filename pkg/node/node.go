@@ -40,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -73,7 +74,6 @@ type Options struct {
 	Password            string
 	APIAddr             string
 	DebugAPIAddr        string
-	Addr                string
 	NATAddr             string
 	EnableWS            bool
 	EnableQUIC          bool
@@ -81,16 +81,15 @@ type Options struct {
 	WelcomeMessage      string
 	Bootnodes           []string
 	CORSAllowedOrigins  []string
-	Logger              logging.Logger
 	TracingEnabled      bool
 	TracingEndpoint     string
 	TracingServiceName  string
 	DisconnectThreshold uint64
+	PaymentThreshold    uint64
+	PaymentTolerance    uint64
 }
 
-func NewBee(o Options) (*Bee, error) {
-	logger := o.Logger
-
+func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -155,15 +154,12 @@ func NewBee(o Options) (*Bee, error) {
 	addressbook := addressbook.New(stateStore)
 	signer := crypto.NewDefaultSigner(swarmPrivateKey)
 
-	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, o.Addr, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, addr, addressbook, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
 		EnableQUIC:     o.EnableQUIC,
-		Addressbook:    addressbook,
 		WelcomeMessage: o.WelcomeMessage,
-		Logger:         logger,
-		Tracer:         tracer,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -209,7 +205,7 @@ func NewBee(o Options) (*Bee, error) {
 	topologyDriver := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Logger: logger})
 	b.topologyCloser = topologyDriver
 	hive.SetPeerAddedHandler(topologyDriver.AddPeer)
-	p2ps.SetNotifier(topologyDriver)
+	p2ps.AddNotifier(topologyDriver)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)
@@ -219,10 +215,7 @@ func NewBee(o Options) (*Bee, error) {
 		logger.Debugf("p2p address: %s", addr)
 	}
 
-	var (
-		storer storage.Storer
-		path   = ""
-	)
+	var path string
 
 	if o.DataDir != "" {
 		path = filepath.Join(o.DataDir, "localstore")
@@ -230,19 +223,35 @@ func NewBee(o Options) (*Bee, error) {
 	lo := &localstore.Options{
 		Capacity: o.DBCapacity,
 	}
-	storer, err = localstore.New(path, address.Bytes(), lo, logger)
+	storer, err := localstore.New(path, address.Bytes(), lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
 
-	acc := accounting.NewAccounting(accounting.Options{
-		Logger:              logger,
-		Store:               stateStore,
-		DisconnectThreshold: o.DisconnectThreshold,
+	settlement := pseudosettle.New(pseudosettle.Options{
+		Streamer: p2ps,
+		Logger:   logger,
 	})
 
-	chunkvalidators := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
+	if err = p2ps.AddProtocol(settlement.Protocol()); err != nil {
+		return nil, fmt.Errorf("pseudosettle service: %w", err)
+	}
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		Logger:           logger,
+		Store:            stateStore,
+		PaymentThreshold: o.PaymentThreshold,
+		PaymentTolerance: o.PaymentTolerance,
+		Settlement:       settlement,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("accounting: %w", err)
+	}
+
+	settlement.SetPaymentObserver(acc)
+
+	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
@@ -250,7 +259,7 @@ func NewBee(o Options) (*Bee, error) {
 		Logger:      logger,
 		Accounting:  acc,
 		Pricer:      accounting.NewFixedPricer(address, 10),
-		Validator:   chunkvalidators,
+		Validator:   chunkvalidator,
 	})
 	tagg := tags.NewTags()
 
@@ -258,7 +267,7 @@ func NewBee(o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, logger, chunkvalidators)
+	ns := netstore.New(storer, retrieve, logger, chunkvalidator)
 
 	retrieve.SetStorer(ns)
 
@@ -308,13 +317,7 @@ func NewBee(o Options) (*Bee, error) {
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(api.Options{
-			Tags:               tagg,
-			Storer:             ns,
-			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			Logger:             logger,
-			Tracer:             tracer,
-		})
+		apiService = api.New(tagg, ns, o.CORSAllowedOrigins, logger, tracer)
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)
@@ -348,6 +351,7 @@ func NewBee(o Options) (*Bee, error) {
 			TopologyDriver: topologyDriver,
 			Storer:         storer,
 			Tags:           tagg,
+			Accounting:     acc,
 		})
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
