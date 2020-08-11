@@ -35,7 +35,7 @@ type Options struct {
 
 const (
 	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
-	TargetsRecoveryHeader = "SWARM-RECOVERY-TARGETS"
+	TargetsRecoveryHeader = "Swarm-Recovery-Targets"
 )
 
 func New(o Options) Service {

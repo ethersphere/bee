@@ -22,10 +22,10 @@ import (
 )
 
 // Presence of this header means that it needs to be tagged using the uid
-const TagHeaderUid = "SWARM-TAG"
+const TagHeaderUid = "Swarm-Tag"
 
 // Presence of this header in the HTTP request indicates the chunk needs to be pinned.
-const PinHeaderName = "SWARM-PIN"
+const PinHeaderName = "Swarm-Pin"
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["addr"]

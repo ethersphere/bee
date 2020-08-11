@@ -38,7 +38,7 @@ const (
 
 const (
 	multiPartFormData = "multipart/form-data"
-	EncryptHeader     = "SWARM-ENCRYPTION"
+	EncryptHeader     = "Swarm-Encryption"
 )
 
 type targetsContextKey struct{}
