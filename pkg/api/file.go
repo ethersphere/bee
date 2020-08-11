@@ -66,7 +66,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var fileName, contentLength string
 	var fileSize uint64
 
-	ta := s.createTag(w, r)
+	ta := s.getOrCreateTag(w, r)
 	if ta == nil {
 		return
 	}

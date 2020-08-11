@@ -26,7 +26,7 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	ta := s.createTag(w, r)
+	ta := s.getOrCreateTag(w, r)
 	if ta == nil {
 		return
 	}
@@ -72,7 +72,7 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	s.downloadHandler(w, r, address, additionalHeaders)
 }
 
-func (s *server) createTag(w http.ResponseWriter, r *http.Request) *tags.Tag {
+func (s *server) getOrCreateTag(w http.ResponseWriter, r *http.Request) *tags.Tag {
 	// if tag header is not there create a new one
 	var tag *tags.Tag
 	tagUidStr := r.Header.Get(TagHeaderUid)

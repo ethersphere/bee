@@ -37,7 +37,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag := s.createTag(w, r)
+	tag := s.getOrCreateTag(w, r)
 	if tag == nil {
 		return
 	}
