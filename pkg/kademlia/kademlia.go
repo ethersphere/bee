@@ -241,7 +241,7 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 		go func(a ma.Multiaddr) {
 			defer wg.Done()
 			var count int
-			if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+			if _, err := p2p.Discover(ctx, a, func(addr ma.Multiaddr) (stop bool, err error) {
 				k.logger.Tracef("connecting to bootnode %s", addr)
 				_, err = k.p2p.ConnectNotify(ctx, addr)
 				if err != nil {
