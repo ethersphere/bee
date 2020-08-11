@@ -21,10 +21,10 @@ var (
 )
 
 type Interface interface {
-	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
+	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error)
 	Register(topic trojan.Topic, hndlr Handler)
 	GetHandler(topic trojan.Topic) Handler
-	TryUnwrap(swarm.Chunk, swarm.Chunk) error
+	TryUnwrap(ctx context.Context, c swarm.Chunk) error
 }
 
 // pss is the top-level struct, which takes care of message sending
@@ -38,7 +38,7 @@ type pss struct {
 }
 
 // New inits the pss struct with the storer
-func New(logger logging.Logger, pusher *pushsync.PushSync, tags *tags.Tags) *Interface {
+func New(logger logging.Logger, pusher *pushsync.PushSync, tags *tags.Tags) Interface {
 	return &pss{
 		logger:   logger,
 		pusher:   pusher,
