@@ -46,9 +46,9 @@ func TestTags(t *testing.T) {
 	t.Run("send-invalid-tag-id", func(t *testing.T) {
 		sentHheaders := make(http.Header)
 		sentHheaders.Set(api.TagHeaderUid, "file.jpg") // the value should be uint32
-		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "invalid taguid",
-			Code:    http.StatusBadRequest,
+		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusInternalServerError, jsonhttp.StatusResponse{
+			Message: "cannot get or create tag",
+			Code:    http.StatusInternalServerError,
 		}, sentHheaders)
 	})
 
