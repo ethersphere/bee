@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -37,13 +38,16 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag := s.getOrCreateTag(w, r)
-	if tag == nil {
+	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	if err != nil {
+		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
+		s.Logger.Error("chunk upload: get or create tag")
+		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
 
 	// Add the tag to the context
-	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, tag))
+	r = r.WithContext(sctx.SetTag(r.Context(), tag))
 	ctx := r.Context()
 
 	// Increment the StateSplit here since we dont have a splitter for the file upload

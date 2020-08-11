@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -34,8 +33,6 @@ var (
 	TagUidFunc     = rand.Uint32
 	TagNotFoundErr = errors.New("tag not found")
 )
-
-type TagsContextKey struct{}
 
 // Tags hold tag information indexed by a unique random uint32
 type Tags struct {
@@ -99,16 +96,6 @@ func (ts *Tags) GetByAddress(address swarm.Address) (*Tag, error) {
 		return nil, errTagNotFound
 	}
 	return t, nil
-}
-
-// GetFromContext gets a tag from the tag uid stored in the context
-func (ts *Tags) GetFromContext(ctx context.Context) (*Tag, error) {
-	uid := sctx.GetTag(ctx)
-	t, ok := ts.tags.Load(uid)
-	if !ok {
-		return nil, errTagNotFound
-	}
-	return t.(*Tag), nil
 }
 
 // Range exposes sync.Map's iterator

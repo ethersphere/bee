@@ -26,9 +26,9 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
 )
 
@@ -66,13 +66,16 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var fileName, contentLength string
 	var fileSize uint64
 
-	ta := s.getOrCreateTag(w, r)
-	if ta == nil {
+	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	if err != nil {
+		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
+		s.Logger.Error("chunk upload: get or create tag")
+		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
 
 	// Add the tag to the context
-	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, ta))
+	r = r.WithContext(sctx.SetTag(r.Context(), tag))
 	ctx := r.Context()
 
 	if mediaType == multiPartFormData {
@@ -206,10 +209,10 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ta.DoneSplit(reference)
+	tag.DoneSplit(reference)
 
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
-	w.Header().Set(TagHeaderUid, fmt.Sprint(ta.Uid))
+	w.Header().Set(TagHeaderUid, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,

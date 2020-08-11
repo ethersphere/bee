@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -48,7 +49,7 @@ type SimpleSplitterJob struct {
 	cursors    []int    // section write position, indexed per level
 	hasher     bmt.Hash // underlying hasher used for hashing the tree
 	buffer     []byte   // keeps data and hashes, indexed by cursors
-	tagg       *tags.Tag
+	tag        *tags.Tag
 	toEncrypt  bool // to encryrpt the chunks or not
 	refSize    int64
 }
@@ -64,10 +65,6 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 	}
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
 
-	ta, ok := ctx.Value(tags.TagsContextKey{}).(*tags.Tag)
-	if !ok {
-		ta = nil
-	}
 	return &SimpleSplitterJob{
 		ctx:        ctx,
 		putter:     putter,
@@ -76,7 +73,7 @@ func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength
 		cursors:    make([]int, levelBufferLimit),
 		hasher:     bmtlegacy.New(p),
 		buffer:     make([]byte, swarm.ChunkWithSpanSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
-		tagg:       ta,
+		tag:        sctx.GetTag(ctx),
 		toEncrypt:  toEncrypt,
 		refSize:    refSize,
 	}
@@ -178,8 +175,8 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 
 	// Add tag to the chunk if tag is valid
 	var ch swarm.Chunk
-	if s.tagg != nil {
-		ch = swarm.NewChunk(addr, c).WithTagID(s.tagg.Uid)
+	if s.tag != nil {
+		ch = swarm.NewChunk(addr, c).WithTagID(s.tag.Uid)
 	} else {
 		ch = swarm.NewChunk(addr, c)
 	}
@@ -311,7 +308,7 @@ func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) *encryption.En
 }
 
 func (s *SimpleSplitterJob) incrTag(state tags.State) {
-	if s.tagg != nil {
-		s.tagg.Inc(state)
+	if s.tag != nil {
+		s.tag.Inc(state)
 	}
 }

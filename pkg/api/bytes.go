@@ -5,7 +5,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
@@ -26,13 +26,16 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	ta := s.getOrCreateTag(w, r)
-	if ta == nil {
+	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	if err != nil {
+		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
+		s.Logger.Error("chunk upload: get or create tag")
+		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
 
 	// Add the tag to the context
-	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, ta))
+	r = r.WithContext(sctx.SetTag(r.Context(), tag))
 	ctx := r.Context()
 
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
@@ -44,9 +47,9 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ta.DoneSplit(address)
+	tag.DoneSplit(address)
 
-	w.Header().Set(TagHeaderUid, fmt.Sprint(ta.Uid))
+	w.Header().Set(TagHeaderUid, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
 	jsonhttp.OK(w, bytesPostResponse{
 		Reference: address,
@@ -72,38 +75,22 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	s.downloadHandler(w, r, address, additionalHeaders)
 }
 
-func (s *server) getOrCreateTag(w http.ResponseWriter, r *http.Request) *tags.Tag {
+func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, error) {
 	// if tag header is not there create a new one
-	var tag *tags.Tag
-	tagUidStr := r.Header.Get(TagHeaderUid)
-	if tagUidStr == "" {
+	if tagUid == "" {
 		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 		var err error
-		tag, err = s.Tags.Create(tagName, 0, false)
+		tag, err := s.Tags.Create(tagName, 0, false)
 		if err != nil {
-			s.Logger.Debugf("bytes upload: tag creation error: %v", err)
-			s.Logger.Error("bytes upload: tag creation")
-			jsonhttp.InternalServerError(w, "cannot create tag")
-			return nil
+			return nil, fmt.Errorf("cannot create tag: %w", err)
 		}
-	} else {
-		// if the tag uid header is present, then use the tag sent
-		tagUid, err := strconv.ParseUint(tagUidStr, 10, 32)
-		if err != nil {
-			s.Logger.Debugf("bytes upload: parse taguid %s: %v", tagUidStr, err)
-			s.Logger.Error("bytes upload: parse taguid")
-			jsonhttp.BadRequest(w, "invalid taguid")
-			return nil
-		}
-
-		tag, err = s.Tags.Get(uint32(tagUid))
-		if err != nil {
-			s.Logger.Debugf("bytes upload: get tag error: %v", err)
-			s.Logger.Error("bytes upload: get tag")
-			jsonhttp.InternalServerError(w, "cannot create tag")
-			return nil
-		}
+		return tag, nil
+	}
+	// if the tag uid header is present, then use the tag sent
+	uid, err := strconv.Atoi(tagUid)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse taguid: %w", err)
 	}
 
-	return tag
+	return s.Tags.Get(uint32(uid))
 }
