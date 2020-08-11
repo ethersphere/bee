@@ -88,12 +88,12 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 	}
 }
 
-// TestPssMonitor creates a trojan chunk
+// TestPssTags creates a trojan chunk
 // mocks the localstore
 // calls pss.Send method
 // updates the tag state (Stored/Sent/Synced)
 // waits for the monitor to notify the changed state
-func TestPssMonitor(t *testing.T) {
+func TestPssTags(t *testing.T) {
 	var err error
 	ctx := context.TODO()
 	testTags := tags.NewTags()
@@ -180,6 +180,7 @@ func TestDeliver(t *testing.T) {
 	testTags := tags.NewTags()
 	pss := pss.New(logging.New(ioutil.Discard, 0), nil, testTags)
 	ctx := context.TODO()
+	var err error
 
 	// test message
 	topic := trojan.NewTopic("footopic")
