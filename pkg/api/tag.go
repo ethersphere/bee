@@ -83,7 +83,6 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
 	jsonhttp.Created(w, newTagResponse(tag))
-
 }
 
 func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
@@ -102,14 +101,29 @@ func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, tags.NotFoundErr) {
 			s.Logger.Debugf("get tag: tag not present: %v, id %s", err, idStr)
 			s.Logger.Error("get tag: tag not present")
-			jsonhttp.InternalServerError(w, "tag not present")
+			jsonhttp.NotFound(w, "tag not present")
 		}
 		s.Logger.Debugf("get tag: tag %v: %v", idStr, err)
 		s.Logger.Errorf("get tag: %v", idStr)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
 
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
 	jsonhttp.OK(w, newTagResponse(tag))
+}
+
+func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		s.Logger.Debugf("delete tag: parse id  %s: %v", idStr, err)
+		s.Logger.Error("delete tag: parse id")
+		jsonhttp.BadRequest(w, "invalid id")
+		return
+	}
+
+	s.Tags.Delete(uint32(id)) // no response? call get before?
+	jsonhttp.OK(w, nil)
 }
