@@ -151,7 +151,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		peers = append(peers, bzzAddress.Overlay)
 	}
 
-	if s.peerAddedHandler != nil && len(peers) > 0 {
+	if s.peerAddedHandler != nil {
 		if err := s.peerAddedHandler(ctx, peers...); err != nil {
 			return err
 		}
