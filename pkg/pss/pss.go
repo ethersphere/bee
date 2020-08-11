@@ -93,7 +93,10 @@ func (p *pss) Register(topic trojan.Topic, hndlr Handler) {
 // TryUnwrap allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
 func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 	if trojan.IsPotential(c) {
-		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
+		m, err := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
+		if err != nil {
+			return err
+		}
 		h := p.GetHandler(m.Topic)
 		if h != nil {
 			p.logger.Trace("executing handler for trojan process global-pinning chunk", c.Address().ByteString())
