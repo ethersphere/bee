@@ -213,7 +213,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	kad := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Bootnodes: bootnodes, Logger: logger})
 	b.topologyCloser = kad
-	hive.SetPeerAddedHandler(kad.AddPeers)
+	hive.SetPeersAddedHandler(kad.AddPeers)
 	p2ps.AddNotifier(kad)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
