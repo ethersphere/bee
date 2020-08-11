@@ -38,7 +38,7 @@ type pss struct {
 }
 
 // New inits the pss struct with the storer
-func New(logger logging.Logger, pusher *pushsync.PushSync, tags *tags.Tags) Interface {
+func New(logger logging.Logger, pusher pushsync.PushSyncer, tags *tags.Tags) Interface {
 	return &pss{
 		logger:   logger,
 		pusher:   pusher,
