@@ -66,12 +66,12 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.bzzDownloadHandler),
 	})
 
-	router.Handle("/bzz-tag/name/{name}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.CreateTag),
+	router.Handle("/tags", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.createTag),
 	})
 
-	router.Handle("/bzz-tag/uuid/{uuid}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTagInfoUsingUUid),
+	router.Handle("/tags/{uuid}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.getTag),
 	})
 
 	s.Handler = web.ChainHandlers(

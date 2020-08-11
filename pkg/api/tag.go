@@ -5,6 +5,8 @@
 package api
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,6 +17,10 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+type tagRequest struct {
+	Name string `json:"name"`
+}
 
 type tagResponse struct {
 	Total     int64         `json:"total"`
@@ -45,22 +51,40 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 		StartedAt: tag.StartedAt,
 	}
 }
-func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
-	tagName := mux.Vars(r)["name"]
-
-	tag, err := s.Tags.Create(tagName, 0, false)
+func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		s.Logger.Debugf("bzz-chunk: tag create error: %v", err)
-		s.Logger.Error("bzz-chunk: tag create error")
+		if jsonhttp.HandleBodyReadError(err, w) {
+			return
+		}
+		s.Logger.Debugf("create tag: read request body error: %v", err)
+		s.Logger.Error("create tag: read request body error")
+		jsonhttp.InternalServerError(w, "cannot read request")
+		return
+	}
+
+	tagr := tagRequest{}
+	err = json.Unmarshal(body, &tagr)
+	if err != nil {
+		s.Logger.Debugf("create tag: unmarshal tag name error: %v", err)
+		s.Logger.Errorf("create tag: unmarshal tag name error")
+		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
+		return
+	}
+
+	tag, err := s.Tags.Create(tagr.Name, 0, false)
+	if err != nil {
+		s.Logger.Debugf("bzz-tag: tag create error: %v", err)
+		s.Logger.Error("bzz-tag: tag create error")
 		jsonhttp.InternalServerError(w, "cannot create tag")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, newTagResponse(tag))
+	jsonhttp.Created(w, newTagResponse(tag))
 
 }
 
-func (s *server) getTagInfoUsingUUid(w http.ResponseWriter, r *http.Request) {
+func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 	uidStr := mux.Vars(r)["uuid"]
 
 	uuid, err := strconv.ParseUint(uidStr, 10, 32)
