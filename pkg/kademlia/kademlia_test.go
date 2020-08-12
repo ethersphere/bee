@@ -46,11 +46,14 @@ var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cT
 func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil, nil)
 		peers                    []swarm.Address
 		binEight                 []swarm.Address
 	)
 
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
 	for i := 0; i < 8; i++ {
@@ -163,8 +166,12 @@ func TestManage(t *testing.T) {
 		saturationFunc = func(bin uint8, peers, connected *pslice.PSlice) bool {
 			return saturationVal
 		}
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc)
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc, nil)
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 	// first, saturationFunc returns always false, this means that the bin is not saturated,
 	// hence we expect that every peer we add to kademlia will be connected to
@@ -208,10 +215,13 @@ func TestBinSaturation(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil, nil)
 		peers                    []swarm.Address
 	)
 
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
 	// add two peers in a few bins to generate some depth >= 0, this will
@@ -256,10 +266,14 @@ func TestBinSaturation(t *testing.T) {
 // result in the correct behavior once called.
 func TestNotifierHooks(t *testing.T) {
 	var (
-		base, kad, ab, _, signer = newTestKademlia(nil, nil, nil)
+		base, kad, ab, _, signer = newTestKademlia(nil, nil, nil, nil)
 		peer                     = test.RandomAddressAt(base, 3)
 		addr                     = test.RandomAddressAt(peer, 4) // address which is closer to peer
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
 	connectOne(t, signer, kad, ab, peer)
@@ -287,15 +301,19 @@ func TestNotifierHooks(t *testing.T) {
 func TestDiscoveryHooks(t *testing.T) {
 	var (
 		conns                    int32
-		_, kad, ab, disc, signer = newTestKademlia(&conns, nil, nil)
+		_, kad, ab, disc, signer = newTestKademlia(&conns, nil, nil, nil)
 		p1, p2, p3               = test.RandomAddress(), test.RandomAddress(), test.RandomAddress()
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
-	// first add a peer from AddPeer, wait for the connection
+	// first add a peer from AddPeers, wait for the connection
 	addOne(t, signer, kad, ab, p1)
 	waitConn(t, &conns)
-	// add another peer from AddPeer, wait for the connection
+	// add another peer from AddPeers, wait for the connection
 	// then check that peers are gossiped to each other via discovery
 	addOne(t, signer, kad, ab, p2)
 	waitConn(t, &conns)
@@ -322,8 +340,12 @@ func TestBackoff(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil)
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil, nil)
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
 	// add one peer, wait for connection
@@ -361,8 +383,12 @@ func TestAddressBookPrune(t *testing.T) {
 
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, &failedConns, nil)
+		base, kad, ab, _, signer = newTestKademlia(&conns, &failedConns, nil, nil)
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
 	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, test.RandomAddressAt(base, 1), 0)
@@ -374,7 +400,7 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 
 	// add non connectable peer, check connection and failed connection counters
-	_ = kad.AddPeer(context.Background(), nonConnPeer.Overlay)
+	_ = kad.AddPeers(context.Background(), nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
@@ -454,6 +480,9 @@ func TestClosestPeer(t *testing.T) {
 	var conns int32
 
 	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2pMock(ab, &conns, nil), Logger: logger})
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
 	pk, _ := crypto.GenerateSecp256k1Key()
@@ -512,7 +541,6 @@ func TestClosestPeer(t *testing.T) {
 }
 
 func TestKademlia_SubscribePeersChange(t *testing.T) {
-
 	testSignal := func(t *testing.T, k *kademlia.Kad, c <-chan struct{}) {
 		t.Helper()
 
@@ -527,7 +555,10 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	}
 
 	t.Run("single subscription", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil, nil)
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
@@ -540,7 +571,10 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("single subscription, remove peer", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil, nil)
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
@@ -556,7 +590,10 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("multiple subscriptions", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil, nil)
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		defer kad.Close()
 
 		c1, u1 := kad.SubscribePeersChange()
@@ -574,7 +611,10 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("multiple changes", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil)
+		base, kad, ab, _, sg := newTestKademlia(nil, nil, nil, nil)
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
@@ -596,7 +636,10 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("no depth change", func(t *testing.T) {
-		_, kad, _, _, _ := newTestKademlia(nil, nil, nil)
+		_, kad, _, _, _ := newTestKademlia(nil, nil, nil, nil)
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		defer kad.Close()
 
 		c, u := kad.SubscribePeersChange()
@@ -615,7 +658,10 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 }
 
 func TestMarshal(t *testing.T) {
-	_, kad, ab, _, signer := newTestKademlia(nil, nil, nil)
+	_, kad, ab, _, signer := newTestKademlia(nil, nil, nil, nil)
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	defer kad.Close()
 
 	a := test.RandomAddress()
@@ -626,14 +672,68 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, peers, connected *pslice.PSlice) bool) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func TestStart(t *testing.T) {
+	var bootnodes []ma.Multiaddr
+
+	for i := 0; i < 5; i++ {
+		multiaddr, err := ma.NewMultiaddr(underlayBase + test.RandomAddress().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		bootnodes = append(bootnodes, multiaddr)
+	}
+
+	t.Run("non-empty addressbook", func(t *testing.T) {
+		var conns, failedConns int32 // how many connect calls were made to the p2p mock
+		_, kad, ab, _, signer := newTestKademlia(&conns, &failedConns, nil, bootnodes)
+		defer kad.Close()
+
+		for i := 0; i < 3; i++ {
+			peer := test.RandomAddress()
+			multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ab.Put(peer, *bzzAddr); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		waitCounter(t, &conns, 3)
+		waitCounter(t, &failedConns, 0)
+	})
+
+	t.Run("empty addressbook", func(t *testing.T) {
+		var conns, failedConns int32 // how many connect calls were made to the p2p mock
+		_, kad, _, _, _ := newTestKademlia(&conns, &failedConns, nil, bootnodes)
+		defer kad.Close()
+
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		waitCounter(t, &conns, 5)
+		waitCounter(t, &failedConns, 0)
+	})
+}
+
+func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, peers, connected *pslice.PSlice) bool, bootnodes []ma.Multiaddr) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
 		base   = test.RandomAddress()                       // base address
 		ab     = addressbook.New(mockstate.NewStateStore()) // address book
 		p2p    = p2pMock(ab, connCounter, failedConnCounter)
-		logger = logging.New(ioutil.Discard, 0)                                                                                            // logger
-		disc   = mock.NewDiscovery()                                                                                                       // mock discovery
-		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f}) // kademlia instance
+		logger = logging.New(ioutil.Discard, 0) // logger
+		disc   = mock.NewDiscovery()
+		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f, Bootnodes: bootnodes}) // kademlia instance
 	)
 
 	pk, _ := crypto.GenerateSecp256k1Key()
@@ -703,7 +803,7 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	_ = k.AddPeer(context.Background(), peer)
+	_ = k.AddPeers(context.Background(), peer)
 }
 
 func add(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peers []swarm.Address, offset, number int) {
