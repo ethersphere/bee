@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -353,8 +354,15 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	reader, l, err := rs.Join(r.Context(), reference)
 	if err != nil {
 		s.Logger.Debugf("file download: cant lazy read %s: %v", reference, err)
-		s.Logger.Errorf("file download: cant lazy read %s", reference)
-		jsonhttp.InternalServerError(w, "not enough garlic for langos")
+		if errors.Is(err, storage.ErrNotFound) {
+			s.Logger.Debugf("api download: not found %s: %v", reference, err)
+			s.Logger.Error("api download: not found")
+			jsonhttp.NotFound(w, "not found")
+			return
+		}
+		s.Logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
+		s.Logger.Error("api download: invalid root chunk")
+		jsonhttp.BadRequest(w, "invalid root chunk")
 		return
 	}
 
