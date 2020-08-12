@@ -227,7 +227,7 @@ func TestHandler(t *testing.T) {
 	}
 
 	// register first handler
-	testHandler := func(m trojan.Message) {}
+	testHandler := func(ctx context.Context, m trojan.Message) error { return nil }
 
 	// set handler for test topic
 	pss.Register(testTopic, testHandler)

@@ -25,6 +25,7 @@ type Interface interface {
 	Register(topic trojan.Topic, hndlr Handler)
 	GetHandler(topic trojan.Topic) Handler
 	TryUnwrap(ctx context.Context, c swarm.Chunk) error
+	WithPushSyncer(pushSyncer pushsync.PushSyncer)
 }
 
 // pss is the top-level struct, which takes care of message sending
@@ -48,7 +49,7 @@ func New(logger logging.Logger, pusher pushsync.PushSyncer, tags *tags.Tags) Int
 	}
 }
 
-func (ps *Pss) WithPushSyncer(pushSyncer pushsync.PushSyncer) {
+func (ps *pss) WithPushSyncer(pushSyncer pushsync.PushSyncer) {
 	ps.pusher = pushSyncer
 }
 
@@ -104,8 +105,7 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 		h := p.GetHandler(m.Topic)
 		if h != nil {
 			p.logger.Trace("executing handler for trojan process global-pinning chunk", c.Address().ByteString())
-			return h(*m)
-			return nil
+			return h(ctx, *m)
 		}
 	}
 	return fmt.Errorf("chunk not trojan or no handler found process global-pinning chunk %v", c.Address().ByteString())

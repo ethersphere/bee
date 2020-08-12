@@ -17,21 +17,21 @@ import (
 var _ storage.Storer = (*MockStorer)(nil)
 
 type MockStorer struct {
-	store            map[string][]byte
-	modeSet          map[string]storage.ModeSet
-	modeSetMu        sync.Mutex
-	pinnedAddress    []swarm.Address // Stores the pinned address
-	pinnedCounter    []uint64        // and its respective counter. These are stored as slices to preserve the order.
-	pinSetMu         sync.Mutex
-	subpull          []storage.Descriptor
-	partialInterval  bool
-	validator        swarm.Validator
-	tags             *tags.Tags
-	morePull         chan struct{}
-	mtx              sync.Mutex
-	quit             chan struct{}
-	baseAddress      []byte
-	bins             []uint64
+	store           map[string][]byte
+	modeSet         map[string]storage.ModeSet
+	modeSetMu       sync.Mutex
+	pinnedAddress   []swarm.Address // Stores the pinned address
+	pinnedCounter   []uint64        // and its respective counter. These are stored as slices to preserve the order.
+	pinSetMu        sync.Mutex
+	subpull         []storage.Descriptor
+	partialInterval bool
+	validator       swarm.Validator
+	tags            *tags.Tags
+	morePull        chan struct{}
+	mtx             sync.Mutex
+	quit            chan struct{}
+	baseAddress     []byte
+	bins            []uint64
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {

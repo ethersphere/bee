@@ -90,8 +90,8 @@ type Options struct {
 	TracingServiceName   string
 	DisconnectThreshold  uint64
 	GlobalPinningEnabled bool
-	PaymentThreshold    uint64
-	PaymentTolerance    uint64
+	PaymentThreshold     uint64
+	PaymentTolerance     uint64
 }
 
 func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
@@ -273,18 +273,15 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	}
 
 	// instantiate the pss object
-	psss := pss.NewPss(pss.Options{
-		Logger: logger,
-		Tags:   tagg,
-	})
+	psss := pss.New(logger, nil, tagg)
 
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
 		recoverFunc := recovery.NewRecoveryHook(psss)
-		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidators)
+		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
 	} else {
-		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidators)
+		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)
 	}
 	retrieve.SetStorer(ns)
 
@@ -292,7 +289,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		Streamer:         p2ps,
 		Storer:           storer,
 		ClosestPeerer:    topologyDriver,
-		DeliveryCallback: psss.Deliver,
+		DeliveryCallback: psss.TryUnwrap,
 		Tagger:           tagg,
 		Logger:           logger,
 	})

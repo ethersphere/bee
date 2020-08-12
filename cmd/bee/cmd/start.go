@@ -47,8 +47,8 @@ func (c *command) initStartCmd() (err error) {
 		optionNameVerbosity            = "verbosity"
 		optionNameDisconnectThreshold  = "disconnect-threshold"
 		optionNameGlobalPinningEnabled = "global-pinning-enable"
-		optionNamePaymentThreshold   = "payment-threshold"
-		optionNamePaymentTolerance   = "payment-tolerance"
+		optionNamePaymentThreshold     = "payment-threshold"
+		optionNamePaymentTolerance     = "payment-tolerance"
 	)
 
 	cmd := &cobra.Command{
@@ -115,7 +115,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				password = p
 			}
 
-			b, err := node.NewBee(node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), logger, node.Options{
 				DataDir:              c.config.GetString(optionNameDataDir),
 				DBCapacity:           c.config.GetUint64(optionNameDBCapacity),
 				Password:             password,
@@ -135,8 +135,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				Logger:               logger,
 				DisconnectThreshold:  c.config.GetUint64(optionNameDisconnectThreshold),
 				GlobalPinningEnabled: c.config.GetBool(optionNameGlobalPinningEnabled),
-				PaymentThreshold:   c.config.GetUint64(optionNamePaymentThreshold),
-				PaymentTolerance:   c.config.GetUint64(optionNamePaymentTolerance),
+				PaymentThreshold:     c.config.GetUint64(optionNamePaymentThreshold),
+				PaymentTolerance:     c.config.GetUint64(optionNamePaymentTolerance),
 			})
 			if err != nil {
 				return err
