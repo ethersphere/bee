@@ -93,7 +93,7 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 
-	id, err := strconv.ParseUint(idStr, 10, 32)
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		s.Logger.Debugf("get tag: parse id  %s: %v", idStr, err)
 		s.Logger.Error("get tag: parse id")
@@ -121,7 +121,7 @@ func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 
-	id, err := strconv.ParseUint(idStr, 10, 32)
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		s.Logger.Debugf("delete tag: parse id  %s: %v", idStr, err)
 		s.Logger.Error("delete tag: parse id")
