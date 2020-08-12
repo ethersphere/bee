@@ -43,11 +43,6 @@ jobs:
           ${{ runner.OS }}-build-${{ env.cache-name }}-
           ${{ runner.OS }}-build-
           ${{ runner.OS }}-
-    - name: Setup GolangCI-Lint
-      run: go get -u github.com/golangci/golangci-lint/cmd/golangci-lint@v1.30.0
-      env:
-        GO111MODULE: on
-      working-directory: ~
     - name: Lint
       if: matrix.os == 'ubuntu-latest'
       run: make lint
