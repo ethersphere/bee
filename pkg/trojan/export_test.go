@@ -1,8 +1,7 @@
 package trojan
 
 var (
-	Contains    = contains
-	HashBytes   = hashBytes
-	PadBytes    = padBytesLeft
-	IsPotential = isPotential
+	Contains  = contains
+	HashBytes = hashBytes
+	PadBytes  = padBytesLeft
 )
