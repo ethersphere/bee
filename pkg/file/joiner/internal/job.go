@@ -216,9 +216,6 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	if cap(b) != swarm.ChunkSize {
 		return 0, fmt.Errorf("Read must be called with a buffer of %d bytes", swarm.ChunkSize)
 	}
-
-	panic(cap(b))
-
 	data, ok := <-j.dataC
 	if !ok {
 		<-j.doneC

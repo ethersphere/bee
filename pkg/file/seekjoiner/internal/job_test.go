@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/file/seek-joiner/internal"
+	"github.com/ethersphere/bee/pkg/file/seekjoiner/internal"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -86,7 +86,6 @@ func TestSeek(t *testing.T) {
 			}
 
 			j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
-			defer j.Close()
 
 			validateRead := func(t *testing.T, name string, i int) {
 				t.Helper()
@@ -165,7 +164,7 @@ func TestSeek(t *testing.T) {
 				t.Fatal(err)
 			}
 			// seek overflow for a few bytes
-			for i := int64(0); i < 5; i++ {
+			for i := int64(1); i < 5; i++ {
 				n, err := j.Seek(tc.size+i, io.SeekStart)
 				if err != io.EOF {
 					t.Errorf("seek overflow to %v: got error %v, want %v", i, err, io.EOF)
@@ -192,7 +191,6 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("root", rootChunk.Address().String())
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
@@ -200,7 +198,6 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("first", firstChunk.Address().String())
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
@@ -208,7 +205,6 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("second", secondChunk.Address().String())
 
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 
@@ -217,60 +213,9 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !bytes.Equal(b, secondChunk.Data()[8:]) {
 		t.Fatal("not equal")
-	}
-}
-
-// TestSimpleJoinerJobBlocksize checks that only Read() calls with exact
-// chunk size buffer capacity is allowed.
-func TestSimpleJoinerJobBlocksize(t *testing.T) {
-	store := mock.NewStorer()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	// create root chunk with 2 references and the referenced data chunks
-	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
-	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
-	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, storage.ModePutUpload, secondChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// this buffer is too small
-	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
-	b := make([]byte, swarm.SectionSize)
-	_, err = j.Read(b)
-	if err == nil {
-		t.Fatal("expected error on Read with too small buffer")
-	}
-
-	// this buffer is too big
-	b = make([]byte, swarm.ChunkSize+swarm.SectionSize)
-	_, err = j.Read(b)
-	if err == nil {
-		t.Fatal("expected error on Read with too big buffer")
-	}
-
-	// this buffer is juuuuuust right
-	b = make([]byte, swarm.ChunkSize)
-	_, err = j.Read(b)
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 

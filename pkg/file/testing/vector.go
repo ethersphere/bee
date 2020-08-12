@@ -22,13 +22,12 @@ var (
 		65,                       // 5
 		swarm.ChunkSize,          // 6
 		swarm.ChunkSize + 31,     // 7
-		swarm.ChunkSize + 32,     // 8  DAB
-		swarm.ChunkSize + 63,     // 9  BAD BAD
-		swarm.ChunkSize + 64,     // 10 LOUIS BAD
-		swarm.ChunkSize * 2,      // 11 BAD
-		swarm.ChunkSize*2 + 32,   // 12 BAD
-		swarm.ChunkSize*128 - 1,  // SCORE NORWAY <- TODO
-		swarm.ChunkSize * 128,    // 13 BAD
+		swarm.ChunkSize + 32,     // 8
+		swarm.ChunkSize + 63,     // 9
+		swarm.ChunkSize + 64,     // 10
+		swarm.ChunkSize * 2,      // 11
+		swarm.ChunkSize*2 + 32,   // 12
+		swarm.ChunkSize * 128,    // 13
 		swarm.ChunkSize*128 + 31, // 14
 		swarm.ChunkSize*128 + 32, // 15
 		swarm.ChunkSize*128 + 64, // 16

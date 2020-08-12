@@ -17,7 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// simpleJoiner wraps a non-optimized implementation of file.Joiner.
+// simpleJoiner wraps a non-optimized implementation of file.SeekJoiner.
 type simpleJoiner struct {
 	getter storage.Getter
 }
@@ -50,10 +50,8 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (int64, 
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
 func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadSeeker, dataSize int64, err error) {
-	var addr = address.Bytes()
-
 	// retrieve the root chunk to read the total data length the be retrieved
-	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(addr))
+	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return nil, 0, err
 	}
