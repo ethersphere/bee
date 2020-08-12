@@ -33,8 +33,8 @@ type Notifier interface {
 }
 
 type PeerAdder interface {
-	// AddPeer is called when a peer is added to the topology backlog
-	AddPeer(ctx context.Context, addr swarm.Address) error
+	// AddPeers is called when peers are added to the topology backlog
+	AddPeers(ctx context.Context, addr ...swarm.Address) error
 }
 
 type Connecter interface {
