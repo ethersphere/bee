@@ -16,14 +16,14 @@ type mock struct {
 	peers           []swarm.Address
 	closestPeer     swarm.Address
 	closestPeerErr  error
-	AddPeersErr     error
+	addPeersErr     error
 	marshalJSONFunc func() ([]byte, error)
 	mtx             sync.Mutex
 }
 
 func WithAddPeersErr(err error) Option {
 	return optionFunc(func(d *mock) {
-		d.AddPeersErr = err
+		d.addPeersErr = err
 	})
 }
 
@@ -54,8 +54,8 @@ func NewTopologyDriver(opts ...Option) topology.Driver {
 }
 
 func (d *mock) AddPeers(_ context.Context, addrs ...swarm.Address) error {
-	if d.AddPeersErr != nil {
-		return d.AddPeersErr
+	if d.addPeersErr != nil {
+		return d.addPeersErr
 	}
 
 	for _, addr := range addrs {
