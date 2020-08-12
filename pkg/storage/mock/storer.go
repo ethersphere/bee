@@ -164,9 +164,9 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 	defer m.pinSetMu.Unlock()
 	for _, addr := range addrs {
 		m.modeSet[addr.String()] = mode
-
-		// if mode is set pin, increment the pin counter
-		if mode == storage.ModeSetPin {
+		switch mode {
+		case storage.ModeSetPin:
+			// if mode is set pin, increment the pin counter
 			var found bool
 			for i, ad := range m.pinnedAddress {
 				if addr.String() == ad.String() {
@@ -178,11 +178,9 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 				m.pinnedAddress = append(m.pinnedAddress, addr)
 				m.pinnedCounter = append(m.pinnedCounter, uint64(1))
 			}
-		}
-
-		// if mode is set unpin, decrement the pin counter and remove the address
-		// once it reaches zero
-		if mode == storage.ModeSetUnpin {
+		case storage.ModeSetUnpin:
+			// if mode is set unpin, decrement the pin counter and remove the address
+			// once it reaches zero
 			for i, ad := range m.pinnedAddress {
 				if addr.String() == ad.String() {
 					m.pinnedCounter[i] = m.pinnedCounter[i] - 1
@@ -197,6 +195,9 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 					}
 				}
 			}
+		case storage.ModeSetRemove:
+			delete(m.store, addr.String())
+		default:
 		}
 	}
 	return nil
