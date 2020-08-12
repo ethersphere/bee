@@ -5,8 +5,11 @@
 package file_test
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -111,5 +114,136 @@ func testChunkPipe(t *testing.T) {
 		case <-timer.C:
 			t.Fatal("timeout")
 		}
+	}
+}
+
+func TestCopyBuffer(t *testing.T) {
+	readBufferSizes := []int{
+		64,
+		1024,
+		swarm.ChunkSize,
+	}
+	dataSizes := []int{
+		1,
+		64,
+		1024,
+		swarm.ChunkSize - 1,
+		swarm.ChunkSize,
+		swarm.ChunkSize + 1,
+		swarm.ChunkSize * 2,
+		swarm.ChunkSize*2 + 3,
+		swarm.ChunkSize * 5,
+		swarm.ChunkSize*5 + 3,
+		swarm.ChunkSize * 17,
+		swarm.ChunkSize*17 + 3,
+	}
+
+	testCases := []struct {
+		readBufferSize int
+		dataSize       int
+	}{}
+
+	for i := 0; i < len(readBufferSizes); i++ {
+		for j := 0; j < len(dataSizes); j++ {
+			testCases = append(testCases, struct {
+				readBufferSize int
+				dataSize       int
+			}{readBufferSizes[i], dataSizes[j]})
+		}
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("buf_%-4d/data_size_%d", tc.readBufferSize, tc.dataSize), func(t *testing.T) {
+			// https://golang.org/doc/faq#closures_and_goroutines
+			readBufferSize := tc.readBufferSize
+			dataSize := tc.dataSize
+
+			srcBytes := make([]byte, dataSize)
+
+			rand.Read(srcBytes)
+
+			chunkPipe := file.NewChunkPipe()
+
+			// destination
+			sizeC := make(chan int)
+			dataC := make(chan []byte)
+			go reader(t, readBufferSize, chunkPipe, sizeC, dataC)
+
+			// source
+			errC := make(chan error, 1)
+			go func() {
+				src := bytes.NewReader(srcBytes)
+
+				buf := make([]byte, swarm.ChunkSize)
+				c, err := io.CopyBuffer(chunkPipe, src, buf)
+				if err != nil {
+					errC <- err
+				}
+
+				if c != int64(dataSize) {
+					errC <- errors.New("read count mismatch")
+				}
+
+				err = chunkPipe.Close()
+				if err != nil {
+					errC <- err
+				}
+
+				close(errC)
+			}()
+
+			// receive the writes
+			// err may or may not be EOF, depending on whether writes end on
+			// chunk boundary
+			expected := dataSize
+			timer := time.NewTimer(time.Second)
+			readTotal := 0
+			readData := []byte{}
+			for {
+				select {
+				case c := <-sizeC:
+					readTotal += c
+					if readTotal == expected {
+
+						// check received content
+						if !bytes.Equal(srcBytes, readData) {
+							t.Fatal("invalid byte content received")
+						}
+
+						return
+					}
+				case d := <-dataC:
+					readData = append(readData, d...)
+				case err := <-errC:
+					if err != nil {
+						if err != io.EOF {
+							t.Fatal(err)
+						}
+					}
+				case <-timer.C:
+					t.Fatal("timeout")
+				}
+			}
+		})
+	}
+}
+
+func reader(t *testing.T, bufferSize int, r io.Reader, c chan int, cd chan []byte) {
+	var buf = make([]byte, bufferSize)
+	for {
+		n, err := r.Read(buf)
+		if err == io.EOF {
+			c <- 0
+			break
+		}
+		if err != nil {
+			t.Errorf("read: %v", err)
+		}
+
+		b := make([]byte, n)
+		copy(b, buf)
+		cd <- b
+
+		c <- n
 	}
 }
