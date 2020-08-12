@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -72,6 +73,10 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Errorf("create tag: unmarshal tag name error")
 		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 		return
+	}
+
+	if tagr.Name == "" {
+		tagr.Name = fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 	}
 
 	tag, err := s.Tags.Create(tagr.Name, 0, false)
