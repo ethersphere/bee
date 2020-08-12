@@ -7,6 +7,8 @@ package seekjoiner_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io/ioutil"
 	"testing"
 
 	joiner "github.com/ethersphere/bee/pkg/file/seekjoiner"
@@ -18,48 +20,48 @@ import (
 
 // TestJoiner verifies that a newly created joiner returns the data stored
 // in the store when the reference is one single chunk.
-//func TestJoinerSingleChunk(t *testing.T) {
-//store := mock.NewStorer()
+func TestJoinerSingleChunk(t *testing.T) {
+	store := mock.NewStorer()
 
-//joiner := joiner.NewSimpleJoiner(store)
+	joiner := joiner.NewSimpleJoiner(store)
 
-//ctx, cancel := context.WithCancel(context.Background())
-//defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-//var err error
-//_, _, err = joiner.Join(ctx, swarm.ZeroAddress)
-//if err != storage.ErrNotFound {
-//t.Fatalf("expected ErrNotFound for %x", swarm.ZeroAddress)
-//}
+	var err error
+	_, _, err = joiner.Join(ctx, swarm.ZeroAddress)
+	if err != storage.ErrNotFound {
+		t.Fatalf("expected ErrNotFound for %x", swarm.ZeroAddress)
+	}
 
-//// create the chunk to
-//mockAddrHex := fmt.Sprintf("%064s", "2a")
-//mockAddr := swarm.MustParseHexAddress(mockAddrHex)
-//mockData := []byte("foo")
-//mockDataLengthBytes := make([]byte, 8)
-//mockDataLengthBytes[0] = 0x03
-//mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
-//_, err = store.Put(ctx, storage.ModePutUpload, mockChunk)
-//if err != nil {
-//t.Fatal(err)
-//}
+	// create the chunk to
+	mockAddrHex := fmt.Sprintf("%064s", "2a")
+	mockAddr := swarm.MustParseHexAddress(mockAddrHex)
+	mockData := []byte("foo")
+	mockDataLengthBytes := make([]byte, 8)
+	mockDataLengthBytes[0] = 0x03
+	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
+	_, err = store.Put(ctx, storage.ModePutUpload, mockChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-//// read back data and compare
-//joinReader, l, err := joiner.Join(ctx, mockAddr)
-//if err != nil {
-//t.Fatal(err)
-//}
-//if l != int64(len(mockData)) {
-//t.Fatalf("expected join data length %d, got %d", len(mockData), l)
-//}
-//joinData, err := ioutil.ReadAll(joinReader)
-//if err != nil {
-//t.Fatal(err)
-//}
-//if !bytes.Equal(joinData, mockData) {
-//t.Fatalf("retrieved data '%x' not like original data '%x'", joinData, mockData)
-//}
-//}
+	// read back data and compare
+	joinReader, l, err := joiner.Join(ctx, mockAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l != int64(len(mockData)) {
+		t.Fatalf("expected join data length %d, got %d", len(mockData), l)
+	}
+	joinData, err := ioutil.ReadAll(joinReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(joinData, mockData) {
+		t.Fatalf("retrieved data '%x' not like original data '%x'", joinData, mockData)
+	}
+}
 
 // TestJoinerWithReference verifies that a chunk reference is correctly resolved
 // and the underlying data is returned.
