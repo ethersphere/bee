@@ -82,7 +82,7 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 // TestPssTags creates a trojan chunk
 // mocks the localstore
 // calls pss.Send method
-// updates the tag state (Stored/Sent/Synced)
+// updates the tag state (Sent/Synced)
 // waits for the monitor to notify the changed state
 func TestPssTags(t *testing.T) {
 	var err error
