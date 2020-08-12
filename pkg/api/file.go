@@ -35,10 +35,6 @@ import (
 )
 
 const (
-	defaultBufSize = 4096
-)
-
-const (
 	multiPartFormData = "multipart/form-data"
 	EncryptHeader     = "swarm-encrypt"
 )
@@ -383,7 +379,5 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set(TargetsRecoveryHeader, targets)
 
-	http.ServeContent(w, r, "langossss", time.Now(), reader)
+	http.ServeContent(w, r, "", time.Now(), reader)
 }
-
-const getFileBufferSize = 4 * 32 * 1024

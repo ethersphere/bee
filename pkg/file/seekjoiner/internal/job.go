@@ -85,9 +85,7 @@ func (j *SimpleJoinerJob) readAtOffset(b, data []byte, cur, subTrieSize, off int
 			return 0, err
 		}
 
-		var chunkData []byte
-		chunkData = ch.Data()[8:]
-
+		chunkData := ch.Data()[8:]
 		subtrieSpan := int64(chunkSize(ch.Data()))
 
 		// we have the size of the subtrie now, if the read offset is within this chunk,
