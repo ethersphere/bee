@@ -50,4 +50,33 @@ func TestHasChunkHandler(t *testing.T) {
 			Code:    http.StatusBadRequest,
 		})
 	})
+
+	t.Run("remove-chunk", func(t *testing.T) {
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/chunks/"+key.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		})
+		yes, err := mockStorer.Has(context.Background(), key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if yes {
+			t.Fatalf("The chunk %s is not deleted", key.String())
+		}
+	})
+
+	t.Run("remove-not-present-chunk", func(t *testing.T) {
+		notPresentChunkAddress := "deadbeef"
+		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/chunks/"+notPresentChunkAddress, nil, http.StatusOK, jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		})
+		yes, err := mockStorer.Has(context.Background(), swarm.NewAddress([]byte(notPresentChunkAddress)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if yes {
+			t.Fatalf("The chunk %s is not deleted", notPresentChunkAddress)
+		}
+	})
 }
