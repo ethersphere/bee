@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/netstore"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -115,6 +116,11 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
+		}
+		if errors.Is(err, netstore.ErrRecoveryAttempt) {
+			s.Logger.Trace("chunk: chunk recovery initiated. addr %s", address)
+			jsonhttp.Accepted(w, "chunk recovery initiated. retry after sometime.")
+			return
 		}
 		s.Logger.Debugf("chunk: chunk read error: %v ,addr %s", err, address)
 		s.Logger.Error("chunk: chunk read error")

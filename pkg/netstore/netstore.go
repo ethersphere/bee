@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -20,10 +21,9 @@ import (
 type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
-	validators       []swarm.ChunkValidator
+	validator        swarm.Validator
 	logger           logging.Logger
-	recoveryCallback chunk.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
-	deliveryCallback func(swarm.Chunk)  // callback func to be invoked to deliver validated chunks
+	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
 }
 
 var (
@@ -31,9 +31,9 @@ var (
 )
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, rcb chunk.RecoveryHook, dcb func(swarm.Chunk), r retrieval.Interface, logger logging.Logger,
-	validators ...swarm.ChunkValidator) storage.Storer {
-	return &store{Storer: s, recoveryCallback: rcb, deliveryCallback: dcb, retrieval: r, logger: logger, validators: validators}
+func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
+	validator swarm.Validator) storage.Storer {
+	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validator: validator}
 }
 
 // Get retrieves a given chunk address.
@@ -43,25 +43,23 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// request from network
-			data, err := s.retrieval.RetrieveChunk(ctx, addr)
+			ch, err = s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				targets := sctx.GetTargets(ctx)
-				if s.recoveryCallback != nil && targets != "" {
-					go func() {
-						err := s.recoveryCallback(ctx, addr)
-						if err != nil {
-							s.logger.Debugf("netstore: error while recovering chunk: %v", err)
-						}
-					}()
-					return nil, ErrRecoveryAttempt
+				if s.recoveryCallback == nil {
+					return nil, err
 				}
-				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
+				targets, err := sctx.GetTargets(ctx)
+				if err != nil {
+					return nil, err
+				}
+				go func() {
+					err := s.recoveryCallback(addr, targets)
+					if err != nil {
+						s.logger.Debugf("netstore: error while recovering chunk: %v", err)
+					}
+				}()
+				return nil, ErrRecoveryAttempt
 			}
-			ch = swarm.NewChunk(addr, data)
-			if !s.valid(ch) {
-				return nil, storage.ErrInvalidChunk
-			}
-
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve put: %w", err)
@@ -78,7 +76,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 // encountering an invalid chunk.
 func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
-		if !s.valid(ch) {
+		if !s.validator.Validate(ch) {
 			return nil, storage.ErrInvalidChunk
 		}
 	}
@@ -95,14 +93,4 @@ func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chun
 		}
 	}
 	return exist, nil
-}
-
-// checks if a particular chunk is valid using the built in validators
-func (s *store) valid(ch swarm.Chunk) (ok bool) {
-	for _, v := range s.validators {
-		if ok = v.Validate(ch); ok {
-			return true
-		}
-	}
-	return false
 }

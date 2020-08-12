@@ -41,11 +41,13 @@ import (
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -244,12 +246,15 @@ func NewBee(o Options) (*Bee, error) {
 		DisconnectThreshold: o.DisconnectThreshold,
 	})
 
+	chunkvalidators := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
+
 	retrieve := retrieval.New(retrieval.Options{
 		Streamer:    p2ps,
 		ChunkPeerer: topologyDriver,
 		Logger:      logger,
 		Accounting:  acc,
 		Pricer:      accounting.NewFixedPricer(address, 10),
+		Validator:   chunkvalidators,
 	})
 	tagg := tags.NewTags()
 
@@ -258,24 +263,33 @@ func NewBee(o Options) (*Bee, error) {
 	}
 
 	// instantiate the pss object
-	psss := pss.NewPss(storer, tagg)
+	psss := pss.NewPss(pss.Options{
+		Logger: logger,
+		Tags:   tagg,
+	})
 
-	// create recovery callback for content repair
-	recoverFunc := chunk.NewRecoveryHook(psss.Send, logger)
+	var ns storage.Storer
+	if o.GlobalPinningEnabled {
+		// create recovery callback for content repair
+		recoverFunc := recovery.NewRecoveryHook(psss)
 
-	// delivery call back for delivery of the registered messages
-	deliverFunc := psss.Deliver
-
-	ns := netstore.New(storer, recoverFunc, deliverFunc, retrieve, logger, content.NewValidator(), soc.NewValidator())
+		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidators)
+	} else {
+		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidators)
+	}
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
-		Streamer:      p2ps,
-		Storer:        storer,
-		ClosestPeerer: topologyDriver,
-		Tagger:        tagg,
-		Logger:        logger,
+		Streamer:         p2ps,
+		Storer:           storer,
+		ClosestPeerer:    topologyDriver,
+		DeliveryCallback: psss.Deliver,
+		Tagger:           tagg,
+		Logger:           logger,
 	})
+
+	// set the pushSyncer in the PSS
+	psss.WithPushSyncer(pushSyncProtocol)
 
 	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
 		return nil, fmt.Errorf("pushsync service: %w", err)
@@ -283,8 +297,8 @@ func NewBee(o Options) (*Bee, error) {
 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
-		chunkRepairHandler := chunk.NewRepairHandler(ns, logger, pushSyncProtocol)
-		psss.Register(chunk.RecoveryTopic, chunkRepairHandler)
+		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
+		psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
 	pushSyncPusher := pusher.New(pusher.Options{

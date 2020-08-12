@@ -9,7 +9,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/chunk"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -26,15 +26,15 @@ type MockStorer struct {
 	pinSetMu         sync.Mutex
 	subpull          []storage.Descriptor
 	partialInterval  bool
-	validator        swarm.ChunkValidator
+	validator        swarm.Validator
 	tags             *tags.Tags
 	morePull         chan struct{}
 	mtx              sync.Mutex
 	quit             chan struct{}
 	baseAddress      []byte
 	bins             []uint64
-	recoveryCallback chunk.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
-	deliveryCallback func(swarm.Chunk)  // callback func to be invoked to deliver validated chunks
+	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
+	deliveryCallback func(swarm.Chunk)     // callback func to be invoked to deliver validated chunks
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
@@ -81,7 +81,7 @@ func NewStorer(opts ...Option) *MockStorer {
 	return s
 }
 
-func NewValidatingStorer(v swarm.ChunkValidator, tags *tags.Tags) *MockStorer {
+func NewValidatingStorer(v swarm.Validator, tags *tags.Tags) *MockStorer {
 	return &MockStorer{
 		store:     make(map[string][]byte),
 		modeSet:   make(map[string]storage.ModeSet),
@@ -293,6 +293,9 @@ func (m *MockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, s
 func (m *MockStorer) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*storage.Pinner, err error) {
 	m.pinSetMu.Lock()
 	defer m.pinSetMu.Unlock()
+	if len(m.pinnedAddress) == 0 {
+		return pinnedChunks, nil
+	}
 	for i, addr := range m.pinnedAddress {
 		pi := &storage.Pinner{
 			Address:    swarm.NewAddress(addr.Bytes()),
@@ -317,7 +320,7 @@ func (m *MockStorer) PinInfo(address swarm.Address) (uint64, error) {
 	return 0, storage.ErrNotFound
 }
 
-func (m *MockStorer) WithRecoveryCallBack(rcb chunk.RecoveryHook) {
+func (m *MockStorer) WithRecoveryCallBack(rcb recovery.RecoveryHook) {
 	m.recoveryCallback = rcb
 }
 

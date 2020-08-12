@@ -7,9 +7,9 @@ package pss
 import (
 	"context"
 	"sync"
-	"time"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/trojan"
@@ -17,38 +17,43 @@ import (
 
 // Pss is the top-level struct, which takes care of message sending
 type Pss struct {
-	storer     storage.Storer
+	pusher     pushsync.PushSyncer
 	tags       *tags.Tags
 	handlers   map[trojan.Topic]Handler
 	handlersMu sync.RWMutex
-	//metrics metrics
-	//logger  logging.Logger
+	metrics    metrics
+	logger     logging.Logger
 }
 
-// Monitor is used for tracking status changes in sent trojan chunks
-type Monitor struct {
-	// returns the state of the trojan chunk that is being monitored
-	State chan tags.State
+type Options struct {
+	Logger     logging.Logger
+	PushSyncer pushsync.PushSyncer
+	Tags       *tags.Tags
 }
 
 // NewPss inits the Pss struct with the storer
-func NewPss(storer storage.Storer, tags *tags.Tags) *Pss {
+func NewPss(o Options) *Pss {
 	return &Pss{
-		storer:   storer,
-		tags:     tags,
+		pusher:   o.PushSyncer,
+		tags:     o.Tags,
 		handlers: make(map[trojan.Topic]Handler),
+		metrics:  newMetrics(),
+		logger:   o.Logger,
 	}
 }
 
+func (ps *Pss) WithPushSyncer(pushSyncer pushsync.PushSyncer) {
+	ps.pusher = pushSyncer
+}
+
 // Handler defines code to be executed upon reception of a trojan message
-type Handler func(trojan.Message)
+type Handler func(context.Context, trojan.Message) error
 
 // Send constructs a padded message with topic and payload,
 // wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address
-// stores this in localstore for push-sync to pick up and deliver
-func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*Monitor, error) {
-	// TODO RESOLVE METRICS
-	//metrics.GetOrRegisterCounter("trojanchunk/send", nil).Inc(1)
+// uses push-sync to deliver message
+func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
+	p.metrics.TotalMessagesSentCounter.Inc()
 
 	//construct Trojan Chunk
 	m, err := trojan.NewMessage(topic, payload)
@@ -66,34 +71,14 @@ func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Top
 		return nil, err
 	}
 
-	// SAVE trojanChunk to localstore, if it exists do nothing as it's already peristed
-	if _, err = p.storer.Put(ctx, storage.ModePutUpload, tc.WithTagID(tag.Uid)); err != nil {
+	// push the chunk using push sync so that it reaches it destination in network
+	if _, err = p.pusher.PushChunkToClosest(ctx, tc.WithTagID(tag.Uid)); err != nil {
 		return nil, err
 	}
+
 	tag.Total = 1
 
-	monitor := &Monitor{
-		State: make(chan tags.State, 3),
-	}
-
-	go monitor.updateState(tag)
-
-	return monitor, nil
-}
-
-// updateState sends the change of state thru the State channel
-// this is what enables monitoring the trojan chunk after it's sent
-func (m *Monitor) updateState(tag *tags.Tag) {
-	for _, state := range []tags.State{tags.StateStored, tags.StateSent, tags.StateSynced} {
-		for {
-			n, total, err := tag.Status(state)
-			if err == nil && n == total {
-				m.State <- state
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
+	return tag, nil
 }
 
 // Register allows the definition of a Handler func for a specific topic on the pss struct
@@ -104,19 +89,17 @@ func (p *Pss) Register(topic trojan.Topic, hndlr Handler) {
 }
 
 // Deliver allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
-func (p *Pss) Deliver(c swarm.Chunk) {
+func (p *Pss) Deliver(ctx context.Context, c swarm.Chunk) error {
 	if trojan.IsPotential(c) {
 		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
 		h := p.GetHandler(m.Topic)
 		if h != nil {
-			//TODO replace with logger
-			//log.Debug("executing handler for trojan", "process", "global-pinning", "chunk", hex.EncodeToString(c.Address()))
-			h(*m)
-			return
+			p.logger.Debug("executing handler for trojan", "process", "global-pinning", "chunk", c.Address().ByteString())
+			return h(ctx, *m)
 		}
 	}
-	//TODO replace with logger
-	//log.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", hex.EncodeToString(c.Address()))
+	p.logger.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", c.Address().ByteString())
+	return nil
 }
 
 // GetHandler returns the Handler func registered in pss for the given topic

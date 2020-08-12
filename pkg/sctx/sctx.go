@@ -6,13 +6,23 @@ package sctx
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
+	"strings"
+
+	"github.com/ethersphere/bee/pkg/trojan"
+)
+
+var (
+	// ErrTargetPrefix is returned when target prefix decoding fails.
+	ErrTargetPrefix = errors.New("error decoding prefix string")
 )
 
 type (
 	HTTPRequestIDKey  struct{}
 	requestHostKey    struct{}
 	tagKey            struct{}
-	TargetsContextKey struct{}
+	targetsContextKey struct{}
 )
 
 // SetHost sets the http request host in the context
@@ -45,14 +55,29 @@ func GetTag(ctx context.Context) uint32 {
 
 // SetTargets set the target string in the context to be used downstream in netstore
 func SetTargets(ctx context.Context, targets string) context.Context {
-	return context.WithValue(ctx, TargetsContextKey{}, targets)
+	return context.WithValue(ctx, targetsContextKey{}, targets)
 }
 
-// GetTargets gets the targets from the context
-func GetTargets(ctx context.Context) string {
-	v, ok := ctx.Value(TargetsContextKey{}).(string)
-	if ok {
-		return v
+// GetTargets returns the specific target pinners for a corresponding chunk by
+// reading the prefix targets sent in the download API.
+func GetTargets(ctx context.Context) (trojan.Targets, error) {
+	targetString, ok := ctx.Value(targetsContextKey{}).(string)
+	if !ok {
+		return nil, ErrTargetPrefix
 	}
-	return ""
+
+	prefixes := strings.Split(targetString, ",")
+	var targets trojan.Targets
+	for _, prefix := range prefixes {
+		var target trojan.Target
+		target, err := hex.DecodeString(prefix)
+		if err != nil {
+			continue
+		}
+		targets = append(targets, target)
+	}
+	if len(targets) <= 0 {
+		return nil, ErrTargetPrefix
+	}
+	return targets, nil
 }
