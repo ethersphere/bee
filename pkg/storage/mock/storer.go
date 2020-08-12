@@ -9,7 +9,6 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -33,8 +32,6 @@ type MockStorer struct {
 	quit             chan struct{}
 	baseAddress      []byte
 	bins             []uint64
-	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
-	deliveryCallback func(swarm.Chunk)     // callback func to be invoked to deliver validated chunks
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
@@ -318,14 +315,6 @@ func (m *MockStorer) PinInfo(address swarm.Address) (uint64, error) {
 		}
 	}
 	return 0, storage.ErrNotFound
-}
-
-func (m *MockStorer) WithRecoveryCallBack(rcb recovery.RecoveryHook) {
-	m.recoveryCallback = rcb
-}
-
-func (m *MockStorer) WithDeliveryCallBack(dcb func(swarm.Chunk)) {
-	m.deliveryCallback = dcb
 }
 
 func (m *MockStorer) Close() error {
