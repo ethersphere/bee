@@ -292,10 +292,10 @@ func TestDiscoveryHooks(t *testing.T) {
 	)
 	defer kad.Close()
 
-	// first add a peer from AddPeers , wait for the connection
+	// first add a peer from AddPeers, wait for the connection
 	addOne(t, signer, kad, ab, p1)
 	waitConn(t, &conns)
-	// add another peer from AddPeers , wait for the connection
+	// add another peer from AddPeers, wait for the connection
 	// then check that peers are gossiped to each other via discovery
 	addOne(t, signer, kad, ab, p2)
 	waitConn(t, &conns)
