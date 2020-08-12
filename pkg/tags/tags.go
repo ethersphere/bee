@@ -31,7 +31,7 @@ import (
 
 var (
 	TagUidFunc  = rand.Uint32
-	NotFoundErr = errors.New("tag not found")
+	ErrNotFound = errors.New("tag not found")
 )
 
 // Tags hold tag information indexed by a unique random uint32
@@ -74,7 +74,7 @@ func (ts *Tags) All() (t []*Tag) {
 func (ts *Tags) Get(uid uint32) (*Tag, error) {
 	t, ok := ts.tags.Load(uid)
 	if !ok {
-		return nil, NotFoundErr
+		return nil, ErrNotFound
 	}
 	return t.(*Tag), nil
 }
@@ -93,7 +93,7 @@ func (ts *Tags) GetByAddress(address swarm.Address) (*Tag, error) {
 	})
 
 	if t == nil {
-		return nil, NotFoundErr
+		return nil, ErrNotFound
 	}
 	return t, nil
 }

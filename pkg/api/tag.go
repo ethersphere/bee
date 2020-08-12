@@ -103,7 +103,7 @@ func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 
 	tag, err := s.Tags.Get(uint32(id))
 	if err != nil {
-		if errors.Is(err, tags.NotFoundErr) {
+		if errors.Is(err, tags.ErrNotFound) {
 			s.Logger.Debugf("get tag: tag not present: %v, id %s", err, idStr)
 			s.Logger.Error("get tag: tag not present")
 			jsonhttp.NotFound(w, "tag not present")
