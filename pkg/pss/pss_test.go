@@ -102,7 +102,6 @@ func TestPssTags(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tt.Inc(tags.StateStored)
 		tt.Inc(tags.StateSent)
 		tt.Inc(tags.StateSynced)
 		return rcpt, nil
@@ -123,8 +122,8 @@ func TestPssTags(t *testing.T) {
 		t.Fatalf("expected %d tags got %d", 1, len(storeTags))
 	}
 
-	if tag.Get(tags.StateStored) != 1 && tag.Get(tags.StateSent) != 1 && tag.Get(tags.StateSynced) != 1 {
-		t.Fatalf("Trojan Chunk expected to be Stored == %d, Sent == %d and Synced == %d", tag.Stored, tag.Sent, tag.Synced)
+	if tag.Get(tags.StateSent) != 1 && tag.Get(tags.StateSynced) != 1 {
+		t.Fatalf("Trojan Chunk expected to be Sent == %d and Synced == %d", tag.Sent, tag.Synced)
 	}
 
 }
