@@ -78,8 +78,6 @@ func (p *pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Top
 		return nil, err
 	}
 
-	tag.Total = 1
-
 	return tag, nil
 }
 
