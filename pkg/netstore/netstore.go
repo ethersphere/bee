@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/chunk"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -80,17 +79,5 @@ func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chun
 			return nil, storage.ErrInvalidChunk
 		}
 	}
-	exist, err = s.Storer.Put(ctx, mode, chs...)
-	if err != nil {
-		return nil, err
-	}
-	// if callback is defined, call it for every new, valid chunk
-	if s.deliveryCallback != nil {
-		for i, exists := range exist {
-			if !exists {
-				go s.deliveryCallback(chs[i])
-			}
-		}
-	}
-	return exist, nil
+	return s.Storer.Put(ctx, mode, chs...)
 }
