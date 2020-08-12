@@ -357,7 +357,6 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		s.Logger.Errorf("file download: cant lazy read %s", reference)
 		jsonhttp.InternalServerError(w, "not enough garlic for langos")
 		return
-
 	}
 
 	// include additional headers
@@ -377,7 +376,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set(TargetsRecoveryHeader, targets)
 
-	http.ServeContent(w, r, "langossss", time.Now(), langos.NewBufferedReadSeeker(reader, getFileBufferSize))
+	http.ServeContent(w, r, "langossss", time.Now(), langos.NewBufferedLangos(reader.(langos.Reader), getFileBufferSize))
 }
 
 const getFileBufferSize = 4 * 32 * 1024
