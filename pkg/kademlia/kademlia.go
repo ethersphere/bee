@@ -98,8 +98,7 @@ func New(o Options) *Kad {
 		done:           make(chan struct{}),
 		wg:             sync.WaitGroup{},
 	}
-	k.wg.Add(1)
-	go k.manage()
+
 	return k
 }
 
@@ -226,6 +225,9 @@ func (k *Kad) manage() {
 }
 
 func (k *Kad) Start(ctx context.Context) error {
+	k.wg.Add(1)
+	go k.manage()
+
 	addresses, err := k.addressBook.Overlays()
 	if err != nil {
 		return fmt.Errorf("addressbook overlays: %w", err)
