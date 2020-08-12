@@ -26,6 +26,7 @@ type Interface interface {
 	Register(topic trojan.Topic, hndlr Handler)
 	GetHandler(topic trojan.Topic) Handler
 	TryUnwrap(ctx context.Context, c swarm.Chunk) error
+	WithPushSyncer(pushSyncer pushsync.PushSyncer)
 }
 
 // pss is the top-level struct, which takes care of message sending
@@ -47,8 +48,12 @@ func New(logger logging.Logger, pusher pushsync.PushSyncer) Interface {
 	}
 }
 
+func (ps *pss) WithPushSyncer(pushSyncer pushsync.PushSyncer) {
+	ps.pusher = pushSyncer
+}
+
 // Handler defines code to be executed upon reception of a trojan message
-type Handler func(*trojan.Message)
+type Handler func(context.Context, *trojan.Message) error
 
 // Send constructs a padded message with topic and payload,
 // wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address
@@ -97,8 +102,7 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 	if h == nil {
 		return fmt.Errorf("topic %v, %w", m.Topic, ErrNoHandler)
 	}
-	h(m)
-	return nil
+	return h(ctx, m)
 }
 
 // GetHandler returns the Handler func registered in pss for the given topic

@@ -12,7 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
 
@@ -31,7 +30,7 @@ type RecoveryHook func(chunkAddress swarm.Address, targets trojan.Targets) error
 
 // sender is the function call for sending trojan chunks.
 type PssSender interface {
-	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error)
+	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error
 }
 
 // NewRecoveryHook returns a new RecoveryHook with the sender function defined.
@@ -39,14 +38,14 @@ func NewRecoveryHook(pss PssSender) RecoveryHook {
 	return func(chunkAddress swarm.Address, targets trojan.Targets) error {
 		payload := chunkAddress
 		ctx := context.Background()
-		_, err := pss.Send(ctx, targets, RecoveryTopic, payload.Bytes())
+		err := pss.Send(ctx, targets, RecoveryTopic, payload.Bytes())
 		return err
 	}
 }
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store.
 func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
-	return func(ctx context.Context, m trojan.Message) error {
+	return func(ctx context.Context, m *trojan.Message) error {
 		chAddr := m.Payload
 
 		ch, err := s.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(chAddr))

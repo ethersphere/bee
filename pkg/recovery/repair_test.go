@@ -25,7 +25,6 @@ import (
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
@@ -156,7 +155,7 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		err = repairHandler(context.Background(), msg)
+		err = repairHandler(context.Background(), &msg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +200,7 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		err = repairHandler(context.Background(), msg)
+		err = repairHandler(context.Background(), &msg)
 		if err != nil && err.Error() != "storage: not found" {
 			t.Fatal(err)
 		}
@@ -244,7 +243,7 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		err = repairHandler(context.Background(), msg)
+		err = repairHandler(context.Background(), &msg)
 		if err != nil && err != receiptError {
 			t.Fatal(err)
 		}
@@ -307,7 +306,7 @@ type mockPssSender struct {
 }
 
 // Send mocks the pss Send function
-func (mp *mockPssSender) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
+func (mp *mockPssSender) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error {
 	mp.hookC <- true
-	return nil, nil
+	return nil
 }

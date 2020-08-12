@@ -273,7 +273,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	}
 
 	// instantiate the pss object
-	psss := pss.New(logger, nil, tagg)
+	psss := pss.New(logger, nil)
 
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
