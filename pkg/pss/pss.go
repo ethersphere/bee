@@ -102,7 +102,7 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("chunk not trojan or no handler found process global-pinning chunk %v", c.Address().ByteString())
+	return fmt.Errorf("invalid chunk or no handler, chunk %v", c.Address().ByteString())
 }
 
 // GetHandler returns the Handler func registered in pss for the given topic
