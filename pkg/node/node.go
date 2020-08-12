@@ -297,7 +297,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	pushSyncProtocol := pushsync.New(pushsync.Options{
 		Streamer:         p2ps,
 		Storer:           storer,
-		ClosestPeerer:    topologyDriver,
+		ClosestPeerer:    kad,
 		DeliveryCallback: psss.TryUnwrap,
 		Tagger:           tagg,
 		Logger:           logger,
