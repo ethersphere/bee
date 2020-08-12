@@ -270,8 +270,8 @@ func TestTags(t *testing.T) {
 		finalTag := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, getTagResource(uuid), nil, http.StatusOK, &finalTag)
 
-		if finalTag.Total != 3 {
-			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 3)
+		if finalTag.Total != 0 {
+			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 0)
 		}
 		if finalTag.Seen != 3 {
 			t.Errorf("tag seen count mismatch. got %d want %d", finalTag.Seen, 3)
@@ -280,7 +280,7 @@ func TestTags(t *testing.T) {
 			t.Errorf("tag stored count mismatch. got %d want %d", finalTag.Stored, 3)
 		}
 
-		if !finalTag.Address.Equal(rootAddress) {
+		if !finalTag.Address.Equal(swarm.ZeroAddress) {
 			t.Errorf("Address mismatch: expected %s got %s", rootAddress.String(), finalTag.Address.String())
 		}
 
