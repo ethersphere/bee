@@ -129,6 +129,19 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.Tags.Delete(uint32(id)) // no response? call Get() before?
+	tag, err := s.Tags.Get(uint32(id))
+	if err != nil {
+		if errors.Is(err, tags.ErrNotFound) {
+			s.Logger.Debugf("delete tag: tag not present: %v, id %s", err, idStr)
+			s.Logger.Error("delete tag: tag not present")
+			jsonhttp.NotFound(w, "tag not present")
+		}
+		s.Logger.Debugf("delete tag: tag %v: %v", idStr, err)
+		s.Logger.Errorf("delete tag: %v", idStr)
+		jsonhttp.InternalServerError(w, "cannot get tag")
+		return
+	}
+
+	s.Tags.Delete(tag.Uid)
 	jsonhttp.Respond(w, http.StatusNoContent, nil)
 }
