@@ -20,17 +20,13 @@ type Service interface {
 }
 
 type server struct {
-	Options
-	http.Handler
-	metrics metrics
-}
-
-type Options struct {
 	Tags               *tags.Tags
 	Storer             storage.Storer
 	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	Tracer             *tracing.Tracer
+	http.Handler
+	metrics metrics
 }
 
 const (
@@ -38,10 +34,14 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-func New(o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, corsAllowedOrigins []string, logger logging.Logger, tracer *tracing.Tracer) Service {
 	s := &server{
-		Options: o,
-		metrics: newMetrics(),
+		Tags:               tags,
+		Storer:             storer,
+		CORSAllowedOrigins: corsAllowedOrigins,
+		Logger:             logger,
+		Tracer:             tracer,
+		metrics:            newMetrics(),
 	}
 
 	s.setupRouting()

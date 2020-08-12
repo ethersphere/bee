@@ -8,29 +8,17 @@ import (
 	"context"
 	"io/ioutil"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	mocktopology "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
-
-// Wrap the actual storer to intercept the modeSet that the pusher will call when a valid receipt is received
-type Store struct {
-	storage.Storer
-	modeSet   map[string]storage.ModeSet
-	modeSetMu *sync.Mutex
-}
 
 // TestTrojanChunkRetrieval creates a trojan chunk
 // mocks the localstore
@@ -52,8 +40,7 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 		return rcpt, nil
 	})
 
-	// create a option with WithBaseAddress
-	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), pushSyncService, testTags})
+	pss := pss.New(logging.New(ioutil.Discard, 0), pushSyncService, testTags)
 
 	target := trojan.Target([]byte{1}) // arbitrary test target
 	targets := trojan.Targets([]trojan.Target{target})
@@ -92,12 +79,12 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 	}
 }
 
-// TestPssMonitor creates a trojan chunk
+// TestPssTags creates a trojan chunk
 // mocks the localstore
 // calls pss.Send method
 // updates the tag state (Stored/Sent/Synced)
 // waits for the monitor to notify the changed state
-func TestPssMonitor(t *testing.T) {
+func TestPssTags(t *testing.T) {
 	var err error
 	ctx := context.TODO()
 	testTags := tags.NewTags()
@@ -106,10 +93,6 @@ func TestPssMonitor(t *testing.T) {
 	targets := trojan.Targets([]trojan.Target{target})
 	payload := []byte("PSS CHUNK")
 	topic := trojan.NewTopic("PSS TOPIC")
-
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		rcpt := &pushsync.Receipt{
@@ -125,11 +108,7 @@ func TestPssMonitor(t *testing.T) {
 		return rcpt, nil
 	})
 
-	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), pushSyncService, testTags})
-
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mocktopology.WithClosestPeer(closestPeer))
-	defer storer.Close()
-	defer p.Close()
+	pss := pss.New(logging.New(ioutil.Discard, 0), pushSyncService, testTags)
 
 	var tag *tags.Tag
 	// call Send to store trojan chunk in localstore
@@ -153,12 +132,7 @@ func TestPssMonitor(t *testing.T) {
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
 	testTags := tags.NewTags()
-	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), nil, testTags})
-
-	// pss handlers should be empty
-	if len(pss.GetAllHandlers()) != 0 {
-		t.Fatalf("expected pss handlers to contain 0 elements, but its length is %d", len(pss.GetAllHandlers()))
-	}
+	pss := pss.New(logging.New(ioutil.Discard, 0), nil, testTags)
 
 	handlerVerifier := 0 // test variable to check handler funcs are correctly retrieved
 
@@ -169,10 +143,6 @@ func TestRegister(t *testing.T) {
 	}
 	testTopic := trojan.NewTopic("FIRST_HANDLER")
 	pss.Register(testTopic, testHandler)
-
-	if len(pss.GetAllHandlers()) != 1 {
-		t.Fatalf("expected pss handlers to contain 1 element, but its length is %d", len(pss.GetAllHandlers()))
-	}
 
 	registeredHandler := pss.GetHandler(testTopic)
 	err := registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
@@ -191,9 +161,6 @@ func TestRegister(t *testing.T) {
 	}
 	testTopic = trojan.NewTopic("SECOND_HANDLER")
 	pss.Register(testTopic, testHandler)
-	if len(pss.GetAllHandlers()) != 2 {
-		t.Fatalf("expected pss handlers to contain 2 elements, but its length is %d", len(pss.GetAllHandlers()))
-	}
 
 	registeredHandler = pss.GetHandler(testTopic)
 	err = registeredHandler(context.Background(), trojan.Message{}) // call handler to verify the retrieved func is correct
@@ -210,7 +177,8 @@ func TestRegister(t *testing.T) {
 // results in the execution of the expected handler func
 func TestDeliver(t *testing.T) {
 	testTags := tags.NewTags()
-	pss := pss.NewPss(pss.Options{logging.New(ioutil.Discard, 0), nil, testTags})
+	pss := pss.New(logging.New(ioutil.Discard, 0), nil, testTags)
+	ctx := context.TODO()
 
 	// test message
 	topic := trojan.NewTopic("footopic")
@@ -237,8 +205,8 @@ func TestDeliver(t *testing.T) {
 	}
 	pss.Register(topic, hndlr)
 
-	// call pss Deliver on chunk and verify test topic variable value changes
-	err = pss.Deliver(context.Background(), c)
+	// call pss TryUnwrap on chunk and verify test topic variable value changes
+	err = pss.TryUnwrap(ctx, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,22 +215,25 @@ func TestDeliver(t *testing.T) {
 	}
 }
 
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mocktopology.Option) (*tags.Tags, *pusher.Service, *Store) {
-	t.Helper()
-	logger := logging.New(ioutil.Discard, 0)
-	storer, err := localstore.New("", addr.Bytes(), nil, logger)
-	if err != nil {
-		t.Fatal(err)
+func TestHandler(t *testing.T) {
+
+	testTags := tags.NewTags()
+	pss := pss.New(logging.New(ioutil.Discard, 0), nil, testTags)
+	testTopic := trojan.NewTopic("TEST_TOPIC")
+
+	// verify handler is null
+	if pss.GetHandler(testTopic) != nil {
+		t.Errorf("handler should be null")
 	}
 
-	mtags := tags.NewTags()
-	pusherStorer := &Store{
-		Storer:    storer,
-		modeSet:   make(map[string]storage.ModeSet),
-		modeSetMu: &sync.Mutex{},
-	}
-	peerSuggester := mocktopology.NewTopologyDriver(mockOpts...)
+	// register first handler
+	testHandler := func(m trojan.Message) {}
 
-	pusherService := pusher.New(pusher.Options{Storer: pusherStorer, PushSyncer: pushSyncService, Tagger: mtags, PeerSuggester: peerSuggester, Logger: logger})
-	return mtags, pusherService, pusherStorer
+	// set handler for test topic
+	pss.Register(testTopic, testHandler)
+
+	if pss.GetHandler(testTopic) == nil {
+		t.Errorf("handler should be registered")
+	}
+
 }

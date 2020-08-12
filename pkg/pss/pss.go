@@ -6,6 +6,7 @@ package pss
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -15,8 +16,19 @@ import (
 	"github.com/ethersphere/bee/pkg/trojan"
 )
 
-// Pss is the top-level struct, which takes care of message sending
-type Pss struct {
+var (
+	_ Interface = (*pss)(nil)
+)
+
+type Interface interface {
+	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error)
+	Register(topic trojan.Topic, hndlr Handler)
+	GetHandler(topic trojan.Topic) Handler
+	TryUnwrap(ctx context.Context, c swarm.Chunk) error
+}
+
+// pss is the top-level struct, which takes care of message sending
+type pss struct {
 	pusher     pushsync.PushSyncer
 	tags       *tags.Tags
 	handlers   map[trojan.Topic]Handler
@@ -25,20 +37,14 @@ type Pss struct {
 	logger     logging.Logger
 }
 
-type Options struct {
-	Logger     logging.Logger
-	PushSyncer pushsync.PushSyncer
-	Tags       *tags.Tags
-}
-
-// NewPss inits the Pss struct with the storer
-func NewPss(o Options) *Pss {
-	return &Pss{
-		pusher:   o.PushSyncer,
-		tags:     o.Tags,
+// New inits the pss struct with the storer
+func New(logger logging.Logger, pusher pushsync.PushSyncer, tags *tags.Tags) Interface {
+	return &pss{
+		logger:   logger,
+		pusher:   pusher,
+		tags:     tags,
 		handlers: make(map[trojan.Topic]Handler),
 		metrics:  newMetrics(),
-		logger:   o.Logger,
 	}
 }
 
@@ -52,7 +58,7 @@ type Handler func(context.Context, trojan.Message) error
 // Send constructs a padded message with topic and payload,
 // wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address
 // uses push-sync to deliver message
-func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
+func (p *pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) (*tags.Tag, error) {
 	p.metrics.TotalMessagesSentCounter.Inc()
 
 	//construct Trojan Chunk
@@ -82,36 +88,32 @@ func (p *Pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Top
 }
 
 // Register allows the definition of a Handler func for a specific topic on the pss struct
-func (p *Pss) Register(topic trojan.Topic, hndlr Handler) {
+func (p *pss) Register(topic trojan.Topic, hndlr Handler) {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 	p.handlers[topic] = hndlr
 }
 
-// Deliver allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
-func (p *Pss) Deliver(ctx context.Context, c swarm.Chunk) error {
+// TryUnwrap allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
+func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 	if trojan.IsPotential(c) {
-		m, _ := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
+		m, err := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
+		if err != nil {
+			return err
+		}
 		h := p.GetHandler(m.Topic)
 		if h != nil {
-			p.logger.Debug("executing handler for trojan", "process", "global-pinning", "chunk", c.Address().ByteString())
-			return h(ctx, *m)
+			p.logger.Trace("executing handler for trojan process global-pinning chunk", c.Address().ByteString())
+			return h(*m)
+			return nil
 		}
 	}
-	p.logger.Debug("chunk not trojan or no handler found", "process", "global-pinning", "chunk", c.Address().ByteString())
-	return nil
+	return fmt.Errorf("chunk not trojan or no handler found process global-pinning chunk %v", c.Address().ByteString())
 }
 
 // GetHandler returns the Handler func registered in pss for the given topic
-func (p *Pss) GetHandler(topic trojan.Topic) Handler {
+func (p *pss) GetHandler(topic trojan.Topic) Handler {
 	p.handlersMu.RLock()
 	defer p.handlersMu.RUnlock()
 	return p.handlers[topic]
-}
-
-// GetAllHandlers returns all the Handler funcs registered in pss
-func (p *Pss) GetAllHandlers() map[trojan.Topic]Handler {
-	p.handlersMu.RLock()
-	defer p.handlersMu.RUnlock()
-	return p.handlers
 }

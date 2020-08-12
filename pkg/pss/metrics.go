@@ -10,10 +10,6 @@ import (
 )
 
 type metrics struct {
-	// all metrics fields must be exported
-	// to be able to return them by Metrics()
-	// using reflection
-
 	TotalMessagesSentCounter prometheus.Counter
 }
 
@@ -30,6 +26,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Pss) Metrics() []prometheus.Collector {
+func (s *pss) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

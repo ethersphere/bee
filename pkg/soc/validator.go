@@ -14,7 +14,7 @@ var _ swarm.Validator = (*Validator)(nil)
 type Validator struct {
 }
 
-// NewSocValidator creates a new SocValidator.
+// NewValidator creates a new Validator.
 func NewValidator() swarm.Validator {
 	return &Validator{}
 }

@@ -121,9 +121,9 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	var additionalHeaders http.Header
 
-	// copy headers from manifest
-	if me.Headers() != nil {
-		additionalHeaders = me.Headers().Clone()
+	// copy header from manifest
+	if me.Header() != nil {
+		additionalHeaders = me.Header().Clone()
 	} else {
 		additionalHeaders = http.Header{}
 	}
