@@ -52,11 +52,11 @@ func TestSend(t *testing.T) {
 
 	m, err := trojan.Unwrap(storedChunk)
 	if !bytes.Equal(m.Payload, payload) {
-		t.Fatal("payload mismatch")
+		t.Fatalf("payload mismatch expected %v but is %v instead", m.Payload, payload)
 	}
 
 	if !bytes.Equal(m.Topic[:], topic[:]) {
-		t.Fatal("topic mismatch")
+		t.Fatalf("topic mismatch expected %v but is %v instead", m.Topic, topic)
 	}
 }
 
