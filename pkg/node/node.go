@@ -204,7 +204,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		addr, err := ma.NewMultiaddr(a)
 		if err != nil {
 			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("connect to bootnode %s", a)
+			logger.Warningf("invalid bootnode address %s", a)
 			continue
 		}
 
@@ -213,7 +213,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	kad := kademlia.New(kademlia.Options{Base: address, Discovery: hive, AddressBook: addressbook, P2P: p2ps, Bootnodes: bootnodes, Logger: logger})
 	b.topologyCloser = kad
-	hive.SetPeersAddedHandler(kad.AddPeers)
+	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.AddNotifier(kad)
 	addrs, err := p2ps.Addresses()
 	if err != nil {

@@ -27,11 +27,11 @@ const (
 )
 
 type Service struct {
-	streamer         p2p.Streamer
-	addressBook      addressbook.GetPutter
-	peerAddedHandler func(context.Context, ...swarm.Address) error
-	networkID        uint64
-	logger           logging.Logger
+	streamer        p2p.Streamer
+	addressBook     addressbook.GetPutter
+	addPeersHandler func(context.Context, ...swarm.Address) error
+	networkID       uint64
+	logger          logging.Logger
 }
 
 type Options struct {
@@ -79,8 +79,8 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	return nil
 }
 
-func (s *Service) SetPeersAddedHandler(h func(ctx context.Context, addr ...swarm.Address) error) {
-	s.peerAddedHandler = h
+func (s *Service) SetAddPeersHandler(h func(ctx context.Context, addr ...swarm.Address) error) {
+	s.addPeersHandler = h
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
@@ -151,8 +151,8 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		peers = append(peers, bzzAddress.Overlay)
 	}
 
-	if s.peerAddedHandler != nil {
-		if err := s.peerAddedHandler(ctx, peers...); err != nil {
+	if s.addPeersHandler != nil {
+		if err := s.addPeersHandler(ctx, peers...); err != nil {
 			return err
 		}
 	}
