@@ -5,9 +5,9 @@
 package pss_test
 
 import (
+	"bytes"
 	"context"
 	"io/ioutil"
-	"reflect"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -18,10 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/trojan"
 )
 
-// TestTrojanChunkRetrieval creates a trojan chunk
-// mocks the localstore
-// calls pss.Send method and verifies it's properly stored
-func TestTrojanChunkRetrieval(t *testing.T) {
+// TestSend creates a trojan chunk and sends it using push sync
+func TestSend(t *testing.T) {
 	var err error
 	ctx := context.TODO()
 
@@ -48,25 +46,17 @@ func TestTrojanChunkRetrieval(t *testing.T) {
 	if err = pss.Send(ctx, targets, topic, payload); err != nil {
 		t.Fatal(err)
 	}
-
-	// create a stored chunk artificially
-	m, err := trojan.NewMessage(topic, payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var tc swarm.Chunk
-	tc, err = m.Wrap(targets)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// check if receipt is received
 	if receipt == nil {
-		t.Fatal("receipt not received")
+		t.Fatal("no receipt")
 	}
 
-	if !reflect.DeepEqual(tc, storedChunk) {
-		t.Fatalf("trojan chunk created does not match sent chunk. got %s, want %s", storedChunk.Address().String(), tc.Address().String())
+	m, err := trojan.Unwrap(storedChunk)
+	if !bytes.Equal(m.Payload, payload) {
+		t.Fatal("payload mismatch")
+	}
+
+	if !bytes.Equal(m.Topic[:], topic[:]) {
+		t.Fatal("topic mismatch")
 	}
 }
 
