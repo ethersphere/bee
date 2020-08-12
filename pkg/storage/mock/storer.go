@@ -30,8 +30,6 @@ type MockStorer struct {
 	morePull        chan struct{}
 	mtx             sync.Mutex
 	quit            chan struct{}
-	baseAddress     []byte
-	bins            []uint64
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
@@ -40,18 +38,6 @@ func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
 		for i, v := range chs {
 			m.subpull[i] = v
 		}
-	})
-}
-
-func WithBaseAddress(a swarm.Address) Option {
-	return optionFunc(func(m *MockStorer) {
-		m.baseAddress = a.Bytes()
-	})
-}
-
-func WithTags(t *tags.Tags) Option {
-	return optionFunc(func(m *MockStorer) {
-		m.tags = t
 	})
 }
 
@@ -68,7 +54,6 @@ func NewStorer(opts ...Option) *MockStorer {
 		modeSetMu: sync.Mutex{},
 		morePull:  make(chan struct{}),
 		quit:      make(chan struct{}),
-		bins:      make([]uint64, swarm.MaxBins),
 	}
 
 	for _, v := range opts {
@@ -85,16 +70,6 @@ func NewValidatingStorer(v swarm.Validator, tags *tags.Tags) *MockStorer {
 		modeSetMu: sync.Mutex{},
 		pinSetMu:  sync.Mutex{},
 		validator: v,
-		tags:      tags,
-	}
-}
-
-func NewTagsStorer(tags *tags.Tags) *MockStorer {
-	return &MockStorer{
-		store:     make(map[string][]byte),
-		modeSet:   make(map[string]storage.ModeSet),
-		modeSetMu: sync.Mutex{},
-		pinSetMu:  sync.Mutex{},
 		tags:      tags,
 	}
 }
@@ -129,8 +104,6 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 		if yes {
 			exist = append(exist, true)
 		} else {
-			po := swarm.Proximity(ch.Address().Bytes(), m.baseAddress)
-			m.bins[po]++
 			exist = append(exist, false)
 		}
 
@@ -164,9 +137,9 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 	defer m.pinSetMu.Unlock()
 	for _, addr := range addrs {
 		m.modeSet[addr.String()] = mode
-
-		// if mode is set pin, increment the pin counter
-		if mode == storage.ModeSetPin {
+		switch mode {
+		case storage.ModeSetPin:
+			// if mode is set pin, increment the pin counter
 			var found bool
 			for i, ad := range m.pinnedAddress {
 				if addr.String() == ad.String() {
@@ -178,11 +151,9 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 				m.pinnedAddress = append(m.pinnedAddress, addr)
 				m.pinnedCounter = append(m.pinnedCounter, uint64(1))
 			}
-		}
-
-		// if mode is set unpin, decrement the pin counter and remove the address
-		// once it reaches zero
-		if mode == storage.ModeSetUnpin {
+		case storage.ModeSetUnpin:
+			// if mode is set unpin, decrement the pin counter and remove the address
+			// once it reaches zero
 			for i, ad := range m.pinnedAddress {
 				if addr.String() == ad.String() {
 					m.pinnedCounter[i] = m.pinnedCounter[i] - 1
@@ -197,6 +168,9 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 					}
 				}
 			}
+		case storage.ModeSetRemove:
+			delete(m.store, addr.String())
+		default:
 		}
 	}
 	return nil
@@ -212,7 +186,7 @@ func (m *MockStorer) GetModeSet(addr swarm.Address) (mode storage.ModeSet) {
 }
 
 func (m *MockStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error) {
-	return m.bins[bin], nil
+	panic("not implemented") // TODO: Implement
 }
 
 func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (<-chan storage.Descriptor, <-chan struct{}, func()) {
