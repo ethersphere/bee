@@ -78,6 +78,10 @@ func (s *server) setupRouting() {
 		"DELETE": http.HandlerFunc(s.deleteTag),
 	})
 
+	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
+		"PATCH": http.HandlerFunc(s.doneSplit),
+	})
+
 	s.Handler = web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
 		handlers.CompressHandler,

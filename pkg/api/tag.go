@@ -21,7 +21,8 @@ import (
 )
 
 type tagRequest struct {
-	Name string `json:"name"`
+	Name    string        `json:"name"`
+	Address swarm.Address `json:"address"`
 }
 
 type tagResponse struct {
@@ -143,5 +144,53 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Tags.Delete(tag.Uid)
+	jsonhttp.Respond(w, http.StatusNoContent, nil)
+}
+
+func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		s.Logger.Debugf("done split tag: parse id  %s: %v", idStr, err)
+		s.Logger.Error("done split tag: parse id")
+		jsonhttp.BadRequest(w, "invalid id")
+		return
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		if jsonhttp.HandleBodyReadError(err, w) {
+			return
+		}
+		s.Logger.Debugf("done split tag: read request body error: %v", err)
+		s.Logger.Error("done split tag: read request body error")
+		jsonhttp.InternalServerError(w, "cannot read request")
+		return
+	}
+
+	tagr := tagRequest{}
+	err = json.Unmarshal(body, &tagr)
+	if err != nil {
+		s.Logger.Debugf("done split tag: unmarshal tag name error: %v", err)
+		s.Logger.Errorf("done split tag: unmarshal tag name error")
+		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
+		return
+	}
+
+	tag, err := s.Tags.Get(uint32(id))
+	if err != nil {
+		if errors.Is(err, tags.ErrNotFound) {
+			s.Logger.Debugf("done split: tag not present: %v, id %s", err, idStr)
+			s.Logger.Error("done split: tag not present")
+			jsonhttp.NotFound(w, "tag not present")
+		}
+		s.Logger.Debugf("done split: tag %v: %v", idStr, err)
+		s.Logger.Errorf("done split: %v", idStr)
+		jsonhttp.InternalServerError(w, "cannot get tag")
+		return
+	}
+
+	tag.DoneSplit(tagr.Address)
 	jsonhttp.Respond(w, http.StatusNoContent, nil)
 }
