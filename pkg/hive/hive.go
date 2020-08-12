@@ -27,11 +27,11 @@ const (
 )
 
 type Service struct {
-	streamer    p2p.Streamer
-	addressBook addressbook.GetPutter
-	peerHandler func(context.Context, swarm.Address) error
-	networkID   uint64
-	logger      logging.Logger
+	streamer        p2p.Streamer
+	addressBook     addressbook.GetPutter
+	addPeersHandler func(context.Context, ...swarm.Address) error
+	networkID       uint64
+	logger          logging.Logger
 }
 
 type Options struct {
@@ -79,8 +79,8 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	return nil
 }
 
-func (s *Service) SetPeerAddedHandler(h func(ctx context.Context, addr swarm.Address) error) {
-	s.peerHandler = h
+func (s *Service) SetAddPeersHandler(h func(ctx context.Context, addr ...swarm.Address) error) {
+	s.addPeersHandler = h
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
@@ -134,6 +134,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
 
+	var peers []swarm.Address
 	for _, newPeer := range peersReq.Peers {
 		bzzAddress, err := bzz.ParseAddress(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
 		if err != nil {
@@ -147,10 +148,12 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 			continue
 		}
 
-		if s.peerHandler != nil {
-			if err := s.peerHandler(ctx, bzzAddress.Overlay); err != nil {
-				return err
-			}
+		peers = append(peers, bzzAddress.Overlay)
+	}
+
+	if s.addPeersHandler != nil {
+		if err := s.addPeersHandler(ctx, peers...); err != nil {
+			return err
 		}
 	}
 

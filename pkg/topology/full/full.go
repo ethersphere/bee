@@ -40,75 +40,99 @@ type driver struct {
 	backoffActive bool
 	logger        logging.Logger
 	mtx           sync.Mutex
+	addPeerCh     chan swarm.Address
 	quit          chan struct{}
 }
 
 func New(disc discovery.Driver, addressBook addressbook.Interface, p2pService p2p.Service, logger logging.Logger, baseAddress swarm.Address) topology.Driver {
-	return &driver{
+	d := &driver{
 		base:          baseAddress,
 		discovery:     disc,
 		addressBook:   addressBook,
 		p2pService:    p2pService,
 		receivedPeers: make(map[string]struct{}),
 		logger:        logger,
+		addPeerCh:     make(chan swarm.Address, 64),
 		quit:          make(chan struct{}),
+	}
+
+	go d.manage()
+	return d
+}
+
+func (d *driver) manage() {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-d.quit
+		cancel()
+	}()
+
+	for {
+		select {
+		case <-d.quit:
+			return
+		case addr := <-d.addPeerCh:
+			d.mtx.Lock()
+			if _, ok := d.receivedPeers[addr.ByteString()]; ok {
+				d.mtx.Unlock()
+				return
+			}
+
+			d.receivedPeers[addr.ByteString()] = struct{}{}
+			d.mtx.Unlock()
+			connectedPeers := d.p2pService.Peers()
+			bzzAddress, err := d.addressBook.Get(addr)
+			if err != nil {
+				return
+			}
+
+			if !isConnected(addr, connectedPeers) {
+				_, err := d.p2pService.Connect(ctx, bzzAddress.Underlay)
+				if err != nil {
+					d.mtx.Lock()
+					delete(d.receivedPeers, addr.ByteString())
+					d.mtx.Unlock()
+					var e *p2p.ConnectionBackoffError
+					if errors.As(err, &e) {
+						d.backoff(e.TryAfter())
+					}
+
+					return
+				}
+			}
+
+			connectedAddrs := []swarm.Address{}
+			for _, addressee := range connectedPeers {
+				// skip newly added peer
+				if addressee.Address.Equal(addr) {
+					continue
+				}
+
+				connectedAddrs = append(connectedAddrs, addressee.Address)
+				if err := d.discovery.BroadcastPeers(ctx, addressee.Address, addr); err != nil {
+					return
+				}
+			}
+
+			if len(connectedAddrs) == 0 {
+				return
+			}
+
+			_ = d.discovery.BroadcastPeers(ctx, addr, connectedAddrs...)
+
+		}
 	}
 }
 
-// AddPeer adds a new peer to the topology driver.
+// AddPeers adds a new peer to the topology driver.
 // The peer would be subsequently broadcasted to all connected peers.
 // All connected peers are also broadcasted to the new peer.
-func (d *driver) AddPeer(ctx context.Context, addr swarm.Address) error {
-	d.mtx.Lock()
-	if _, ok := d.receivedPeers[addr.ByteString()]; ok {
-		d.mtx.Unlock()
-		return nil
+func (d *driver) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
+	for _, addr := range addrs {
+		d.addPeerCh <- addr
 	}
 
-	d.receivedPeers[addr.ByteString()] = struct{}{}
-	d.mtx.Unlock()
-	connectedPeers := d.p2pService.Peers()
-	bzzAddress, err := d.addressBook.Get(addr)
-	if err != nil {
-		if err == addressbook.ErrNotFound {
-			return topology.ErrNotFound
-		}
-		return err
-	}
-
-	if !isConnected(addr, connectedPeers) {
-		_, err := d.p2pService.Connect(ctx, bzzAddress.Underlay)
-		if err != nil {
-			d.mtx.Lock()
-			delete(d.receivedPeers, addr.ByteString())
-			d.mtx.Unlock()
-			var e *p2p.ConnectionBackoffError
-			if errors.As(err, &e) {
-				d.backoff(e.TryAfter())
-				return err
-			}
-			return err
-		}
-	}
-
-	connectedAddrs := []swarm.Address{}
-	for _, addressee := range connectedPeers {
-		// skip newly added peer
-		if addressee.Address.Equal(addr) {
-			continue
-		}
-
-		connectedAddrs = append(connectedAddrs, addressee.Address)
-		if err := d.discovery.BroadcastPeers(ctx, addressee.Address, addr); err != nil {
-			return err
-		}
-	}
-
-	if len(connectedAddrs) == 0 {
-		return nil
-	}
-
-	return d.discovery.BroadcastPeers(ctx, addr, connectedAddrs...)
+	return nil
 }
 
 // ClosestPeer returns the closest connected peer we have in relation to a
@@ -147,7 +171,7 @@ func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 }
 
 func (d *driver) Connected(ctx context.Context, addr swarm.Address) error {
-	return d.AddPeer(ctx, addr)
+	return d.AddPeers(ctx, addr)
 }
 
 func (_ *driver) Disconnected(swarm.Address) {
@@ -223,7 +247,7 @@ func (d *driver) backoff(tryAfter time.Time) {
 				case <-d.quit:
 					return
 				default:
-					if err := d.AddPeer(ctx, addr); err != nil {
+					if err := d.AddPeers(ctx, addr); err != nil {
 						var e *p2p.ConnectionBackoffError
 						if errors.As(err, &e) {
 							d.backoff(e.TryAfter())
