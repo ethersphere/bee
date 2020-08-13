@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
 	"gitlab.com/nolash/go-mockbytes"
 )
@@ -90,7 +91,7 @@ func TestTags(t *testing.T) {
 
 	t.Run("get-invalid-tags", func(t *testing.T) {
 		// invalid tag
-		jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/tags/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodGet, tagsResource+"/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Message: "invalid id",
 			Code:    http.StatusBadRequest,
 		})
@@ -337,7 +338,7 @@ func TestTags(t *testing.T) {
 
 	t.Run("delete-tag", func(t *testing.T) {
 		// try to delete invalid tag
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/tags/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsResource+"/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Message: "invalid id",
 			Code:    http.StatusBadRequest,
 		})
@@ -368,6 +369,50 @@ func TestTags(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodGet, tagsWithIdResource(tRes.Uid), nil, http.StatusNotFound, jsonhttp.StatusResponse{
 			Message: "tag not present",
 			Code:    http.StatusNotFound,
+		})
+	})
+
+	t.Run("done-split", func(t *testing.T) {
+		// no address
+		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(uint32(333)), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
+			Message: "error unmarshaling metadata",
+			Code:    http.StatusInternalServerError,
+		})
+
+		// generate address
+		b, err := json.Marshal(api.TagResponse{
+			Address: test.RandomAddress(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// invalid tag
+		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsResource+"/foobar", bytes.NewReader(b), http.StatusBadRequest, jsonhttp.StatusResponse{
+			Message: "invalid id",
+			Code:    http.StatusBadRequest,
+		})
+
+		// non-existent tag
+		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(uint32(333)), bytes.NewReader(b), http.StatusNotFound, jsonhttp.StatusResponse{
+			Message: "tag not present",
+			Code:    http.StatusNotFound,
+		})
+
+		// create a tag through API
+		b2, err := json.Marshal(api.TagResponse{
+			Name: validTagName,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tRes := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b2), http.StatusCreated, &tRes)
+
+		// call done split
+		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(tRes.Uid), bytes.NewReader(b), http.StatusOK, jsonhttp.StatusResponse{
+			Message: "ok",
+			Code:    http.StatusOK,
 		})
 	})
 }
