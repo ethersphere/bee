@@ -35,32 +35,35 @@ type Receipt struct {
 }
 
 type PushSync struct {
-	streamer      p2p.Streamer
-	storer        storage.Putter
-	peerSuggester topology.ClosestPeerer
-	tagg          *tags.Tags
-	logger        logging.Logger
-	metrics       metrics
+	streamer         p2p.Streamer
+	storer           storage.Putter
+	peerSuggester    topology.ClosestPeerer
+	tagg             *tags.Tags
+	deliveryCallback func(context.Context, swarm.Chunk) error // callback func to be invoked to deliver chunks to PSS
+	logger           logging.Logger
+	metrics          metrics
 }
 
 type Options struct {
-	Streamer      p2p.Streamer
-	Storer        storage.Putter
-	ClosestPeerer topology.ClosestPeerer
-	Tagger        *tags.Tags
-	Logger        logging.Logger
+	Streamer         p2p.Streamer
+	Storer           storage.Putter
+	ClosestPeerer    topology.ClosestPeerer
+	Tagger           *tags.Tags
+	DeliveryCallback func(context.Context, swarm.Chunk) error
+	Logger           logging.Logger
 }
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
 func New(o Options) *PushSync {
 	ps := &PushSync{
-		streamer:      o.Streamer,
-		storer:        o.Storer,
-		peerSuggester: o.ClosestPeerer,
-		tagg:          o.Tagger,
-		logger:        o.Logger,
-		metrics:       newMetrics(),
+		streamer:         o.Streamer,
+		storer:           o.Storer,
+		peerSuggester:    o.ClosestPeerer,
+		tagg:             o.Tagger,
+		deliveryCallback: o.DeliveryCallback,
+		logger:           o.Logger,
+		metrics:          newMetrics(),
 	}
 	return ps
 }
@@ -101,21 +104,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if err != nil {
 		// If i am the closest peer then store the chunk and send receipt
 		if errors.Is(err, topology.ErrWantSelf) {
-
-			// Store the chunk in the local store
-			_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
-			if err != nil {
-				return fmt.Errorf("chunk store: %w", err)
-			}
-			ps.metrics.TotalChunksStoredInDB.Inc()
-
-			// Send a receipt immediately once the storage of the chunk is successfully
-			receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
-			err = ps.sendReceipt(w, receipt)
-			if err != nil {
-				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
-			}
-			return nil
+			return ps.handleDeliveryResponse(ctx, w, p, chunk)
 		}
 		return err
 	}
@@ -123,17 +112,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// This is a special situation in that the other peer thinks thats we are the closest node
 	// and we think that the sending peer
 	if p.Address.Equal(peer) {
-
-		// Store the chunk in the local store
-		_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
-		if err != nil {
-			return fmt.Errorf("chunk store: %w", err)
-		}
-		ps.metrics.TotalChunksStoredInDB.Inc()
-
-		// Send a receipt immediately once the storage of the chunk is successfully
-		receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
-		return ps.sendReceipt(w, receipt)
+		return ps.handleDeliveryResponse(ctx, w, p, chunk)
 	}
 
 	// Forward chunk to closest peer
@@ -275,4 +254,30 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}
 
 	return rec, nil
+}
+
+func (ps *PushSync) deliverToPSS(ctx context.Context, ch swarm.Chunk) error {
+	// if callback is defined, call it for every new, valid chunk
+	if ps.deliveryCallback != nil {
+		return ps.deliveryCallback(ctx, ch)
+	}
+	return nil
+}
+
+func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Writer, p p2p.Peer, chunk swarm.Chunk) error {
+	// Store the chunk in the local store
+	_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
+	if err != nil {
+		return fmt.Errorf("chunk store: %w", err)
+	}
+	ps.metrics.TotalChunksStoredInDB.Inc()
+
+	// Send a receipt immediately once the storage of the chunk is successfully
+	receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
+	err = ps.sendReceipt(w, receipt)
+	if err != nil {
+		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
+	}
+	// since all PSS messages comes through push sync, deliver them here if this node is the destination
+	return ps.deliverToPSS(ctx, chunk)
 }
