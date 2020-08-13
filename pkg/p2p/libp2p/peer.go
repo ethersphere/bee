@@ -59,15 +59,17 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 		return
 	}
 
+	// if there are multiple libp2p connections, consider the node disconnected only when the last connection is disconnected
+	delete(r.connections[peerID], c)
+	if len(r.connections[peerID]) > 0 {
+		r.mu.Unlock()
+		return
+	}
+
+	delete(r.connections, peerID)
 	overlay := r.overlays[peerID]
 	delete(r.overlays, peerID)
 	delete(r.underlays, overlay.ByteString())
-
-	delete(r.connections[peerID], c)
-	if len(r.connections[peerID]) == 0 {
-		delete(r.connections, peerID)
-	}
-
 	for _, cancel := range r.streams[peerID] {
 		cancel()
 	}
@@ -131,14 +133,15 @@ func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address) (ex
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.underlays[overlay.ByteString()]; exists {
-		return true
-	}
-
 	if _, ok := r.connections[peerID]; !ok {
 		r.connections[peerID] = make(map[network.Conn]struct{})
 	}
 	r.connections[peerID][c] = struct{}{}
+
+	if _, exists := r.underlays[overlay.ByteString()]; exists {
+		return true
+	}
+
 	r.streams[peerID] = make(map[network.Stream]context.CancelFunc)
 	r.underlays[overlay.ByteString()] = peerID
 	r.overlays[peerID] = overlay
