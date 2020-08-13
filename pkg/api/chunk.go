@@ -9,12 +9,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/netstore"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -94,7 +96,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 
 	addr := mux.Vars(r)["addr"]
 	ctx := r.Context()
@@ -114,6 +116,11 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
+		}
+		if errors.Is(err, netstore.ErrRecoveryAttempt) {
+			s.Logger.Trace("chunk: chunk recovery initiated. addr %s", address)
+			jsonhttp.Accepted(w, "chunk recovery initiated. retry after sometime.")
+			return
 		}
 		s.Logger.Debugf("chunk: chunk read error: %v ,addr %s", err, address)
 		s.Logger.Error("chunk: chunk read error")
