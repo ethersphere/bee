@@ -54,9 +54,12 @@ func (c *ChunkPipe) Write(b []byte) (int, error) {
 		if c.cursor >= swarm.ChunkSize {
 			// NOTE: the Write method contract requires all sent data to be
 			// written before returning (without error)
-			_, err := c.writer.Write(c.data[:swarm.ChunkSize])
+			written, err := c.writer.Write(c.data[:swarm.ChunkSize])
 			if err != nil {
 				return nw, err
+			}
+			if swarm.ChunkSize != written {
+				return nw, io.ErrShortWrite
 			}
 
 			c.cursor -= swarm.ChunkSize
@@ -71,9 +74,12 @@ func (c *ChunkPipe) Write(b []byte) (int, error) {
 // Close implements io.Closer
 func (c *ChunkPipe) Close() error {
 	if c.cursor > 0 {
-		_, err := c.writer.Write(c.data[:c.cursor])
+		written, err := c.writer.Write(c.data[:c.cursor])
 		if err != nil {
 			return err
+		}
+		if c.cursor != written {
+			return io.ErrShortWrite
 		}
 	}
 	return c.writer.Close()
