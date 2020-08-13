@@ -31,11 +31,13 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -66,24 +68,27 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir             string
-	DBCapacity          uint64
-	Password            string
-	APIAddr             string
-	DebugAPIAddr        string
-	NATAddr             string
-	EnableWS            bool
-	EnableQUIC          bool
-	NetworkID           uint64
-	WelcomeMessage      string
-	Bootnodes           []string
-	CORSAllowedOrigins  []string
-	TracingEnabled      bool
-	TracingEndpoint     string
-	TracingServiceName  string
-	DisconnectThreshold uint64
-	PaymentThreshold    uint64
-	PaymentTolerance    uint64
+	DataDir              string
+	DBCapacity           uint64
+	Password             string
+	APIAddr              string
+	DebugAPIAddr         string
+	Addr                 string
+	NATAddr              string
+	EnableWS             bool
+	EnableQUIC           bool
+	NetworkID            uint64
+	WelcomeMessage       string
+	Bootnodes            []string
+	CORSAllowedOrigins   []string
+	Logger               logging.Logger
+	TracingEnabled       bool
+	TracingEndpoint      string
+	TracingServiceName   string
+	DisconnectThreshold  uint64
+	GlobalPinningEnabled bool
+	PaymentThreshold     uint64
+	PaymentTolerance     uint64
 }
 
 func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
@@ -276,20 +281,39 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, retrieve, logger, chunkvalidator)
+	// instantiate the pss object
+	psss := pss.New(logger, nil)
 
+	var ns storage.Storer
+	if o.GlobalPinningEnabled {
+		// create recovery callback for content repair
+		recoverFunc := recovery.NewRecoveryHook(psss)
+		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
+	} else {
+		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)
+	}
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(pushsync.Options{
-		Streamer:      p2ps,
-		Storer:        storer,
-		ClosestPeerer: kad,
-		Tagger:        tagg,
-		Logger:        logger,
+		Streamer:         p2ps,
+		Storer:           storer,
+		ClosestPeerer:    kad,
+		DeliveryCallback: psss.TryUnwrap,
+		Tagger:           tagg,
+		Logger:           logger,
 	})
+
+	// set the pushSyncer in the PSS
+	psss.WithPushSyncer(pushSyncProtocol)
 
 	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
 		return nil, fmt.Errorf("pushsync service: %w", err)
+	}
+
+	if o.GlobalPinningEnabled {
+		// register function for chunk repair upon receiving a trojan message
+		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
+		psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
 	pushSyncPusher := pusher.New(pusher.Options{

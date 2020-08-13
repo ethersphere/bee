@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -38,8 +39,6 @@ const (
 	multiPartFormData = "multipart/form-data"
 	EncryptHeader     = "swarm-encrypt"
 )
-
-type targetsContextKey struct{}
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
 type fileUploadResponse struct {
@@ -281,9 +280,9 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
-	targets := r.URL.Query().Get("targets")
 
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	targets := r.URL.Query().Get("targets")
+	sctx.SetTargets(r.Context(), targets)
 
 	// read entry.
 	j := joiner.NewSimpleJoiner(s.Storer)
@@ -342,9 +341,9 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header) {
-
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+  r = r.WithContext(sctx.SetTargets(r.Context(), targets))
+	toDecrypt := len(reference.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 
 	rs := seekjoiner.NewSimpleJoiner(s.Storer)
 	reader, l, err := rs.Join(r.Context(), reference)
