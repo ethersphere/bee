@@ -322,6 +322,18 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("delete-tag", func(t *testing.T) {
+		// try to delete invalid tag
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, "/tags/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+			Message: "invalid id",
+			Code:    http.StatusBadRequest,
+		})
+
+		// try to delete non-existent tag
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), nil, http.StatusNotFound, jsonhttp.StatusResponse{
+			Message: "tag not present",
+			Code:    http.StatusNotFound,
+		})
+
 		// create a tag through API
 		b, err := json.Marshal(api.TagResponse{
 			Name: validTagName,
@@ -336,6 +348,12 @@ func TestTags(t *testing.T) {
 		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(tRes.Uid), nil, http.StatusNoContent, jsonhttp.StatusResponse{
 			Message: "ok",
 			Code:    http.StatusNoContent,
+		})
+
+		// try to get tag
+		jsonhttptest.ResponseDirect(t, client, http.MethodGet, tagsWithIdResource(tRes.Uid), nil, http.StatusNotFound, jsonhttp.StatusResponse{
+			Message: "tag not present",
+			Code:    http.StatusNotFound,
 		})
 	})
 }
