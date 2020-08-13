@@ -136,6 +136,8 @@ func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address) (ex
 	if _, ok := r.connections[peerID]; !ok {
 		r.connections[peerID] = make(map[network.Conn]struct{})
 	}
+	// the connection is added regardles if the peer already exists in peer registry
+	// this is solving a case of multiple underlying libp2p connections for the same peer
 	r.connections[peerID][c] = struct{}{}
 
 	if _, exists := r.underlays[overlay.ByteString()]; exists {

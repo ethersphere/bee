@@ -7,6 +7,7 @@ package libp2p_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -83,6 +84,69 @@ func TestDoubleConnect(t *testing.T) {
 
 	expectPeers(t, s2, overlay1)
 	expectPeers(t, s1, overlay2)
+}
+
+func TestConnectOnAllAddresses(t *testing.T) {
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableQUIC: true,
+			EnableWS:   true,
+		},
+	})
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableQUIC: true,
+			EnableWS:   true,
+		},
+	})
+
+	addrs1, err := s1.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addrs2, err := s2.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		for _, addr := range addrs1 {
+			fmt.Println(addr.String())
+			bzzAddrs, err := s2.Connect(context.Background(), addr)
+			if err != nil && !errors.Is(err, p2p.ErrAlreadyConnected) {
+				fmt.Println(err)
+			}
+
+			if bzzAddrs != nil {
+				fmt.Println("connected")
+			}
+		}
+	}()
+
+	go func() {
+		for _, addr := range addrs2 {
+			fmt.Println(addr.String())
+			bzzAddrs, err := s1.Connect(context.Background(), addr)
+			if err != nil && !errors.Is(err, p2p.ErrAlreadyConnected) {
+				fmt.Println(err)
+			}
+
+			if bzzAddrs != nil {
+				fmt.Println("connected")
+			}
+		}
+	}()
+
+	time.Sleep(10 * time.Second)
+
+	err1 := s1.Disconnect(overlay2)
+	err2 := s2.Close()
+	fmt.Println(err1, err2)
+
+	time.Sleep(2 * time.Second)
+
 }
 
 func TestDoubleDisconnect(t *testing.T) {

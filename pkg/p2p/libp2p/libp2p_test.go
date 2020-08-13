@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"io/ioutil"
 	"sort"
 	"testing"
@@ -70,13 +71,25 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		t.Fatal(err)
 	}
 
-	s.AddNotifier(noopNotifier)
+	s.AddNotifier(&mocknotifier{})
 
 	t.Cleanup(func() {
 		cancel()
 		s.Close()
 	})
 	return s, overlay
+}
+
+type mocknotifier struct{}
+
+func (m *mocknotifier) Connected(_ context.Context, s swarm.Address) error {
+	fmt.Println("connected notifier", s)
+	return nil
+}
+
+func (m *mocknotifier) Disconnected(s swarm.Address) {
+	fmt.Println("disconnected notifier", s)
+
 }
 
 // expectPeers validates that peers with addresses are connected.
