@@ -101,7 +101,6 @@ func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid id")
 		return
 	}
-
 	tag, err := s.Tags.Get(uint32(id))
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
@@ -122,7 +121,6 @@ func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		s.Logger.Debugf("delete tag: parse id  %s: %v", idStr, err)
@@ -135,7 +133,7 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
 			s.Logger.Debugf("delete tag: tag not present: %v, id %s", err, idStr)
-			s.Logger.Error("delete tag: tag not present")
+			s.Logger.Error("delete tag: tag not present", id)
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
@@ -146,7 +144,7 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Tags.Delete(tag.Uid)
-	jsonhttp.Respond(w, http.StatusNoContent, nil)
+	jsonhttp.NoContent(w, "ok")
 }
 
 func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {

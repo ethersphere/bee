@@ -5,10 +5,10 @@
 package api_test
 
 import (
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -28,7 +28,7 @@ type testServerOptions struct {
 
 func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 	if o.Logger == nil {
-		o.Logger = logging.New(ioutil.Discard, 0)
+		o.Logger = logging.New(os.Stdout, 5)
 	}
 	s := api.New(o.Tags, o.Storer, nil, o.Logger, nil)
 	ts := httptest.NewServer(s)

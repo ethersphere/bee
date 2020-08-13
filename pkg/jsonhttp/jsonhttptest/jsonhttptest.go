@@ -27,13 +27,13 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Println("got", string(got))
 	got = bytes.TrimSpace(got)
 
 	want, err := json.Marshal(response)
 	if err != nil {
 		t.Error(err)
 	}
-
 	if !bytes.Equal(got, want) {
 		t.Errorf("got response %s, want %s", string(got), string(want))
 	}
@@ -160,7 +160,14 @@ func ResponseUnmarshal(t *testing.T, client *http.Client, method, url string, bo
 	resp := request(t, client, method, url, body, responseCode, nil)
 	defer resp.Body.Close()
 
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+	got, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = bytes.TrimSpace(got)
+	fmt.Println("got", string(got))
+
+	if err := json.Unmarshal(got, &response); err != nil {
 		t.Fatal(err)
 	}
 }

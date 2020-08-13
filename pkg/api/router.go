@@ -71,15 +71,9 @@ func (s *server) setupRouting() {
 	})
 
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTag),
-	})
-
-	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
+		"GET":    http.HandlerFunc(s.getTag),
 		"DELETE": http.HandlerFunc(s.deleteTag),
-	})
-
-	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
-		"PATCH": http.HandlerFunc(s.doneSplit),
+		"PATCH":  http.HandlerFunc(s.doneSplit),
 	})
 
 	s.Handler = web.ChainHandlers(

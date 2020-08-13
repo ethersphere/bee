@@ -75,6 +75,7 @@ func Respond(w http.ResponseWriter, statusCode int, response interface{}) {
 		w.Header().Set("Content-Type", DefaultContentTypeHeader)
 	}
 	w.WriteHeader(statusCode)
+	fmt.Println("writing", b.String())
 	fmt.Fprintln(w, b.String())
 }
 
@@ -106,6 +107,11 @@ func Accepted(w http.ResponseWriter, response interface{}) {
 // NonAuthoritativeInfo writes a response with status code 203.
 func NonAuthoritativeInfo(w http.ResponseWriter, response interface{}) {
 	Respond(w, http.StatusNonAuthoritativeInfo, response)
+}
+
+// NoContent writes a response with status code 204.
+func NoContent(w http.ResponseWriter, response interface{}) {
+	Respond(w, http.StatusNoContent, response)
 }
 
 // ResetContent writes a response with status code 205.

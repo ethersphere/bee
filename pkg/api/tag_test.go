@@ -300,7 +300,10 @@ func TestTags(t *testing.T) {
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tRes)
 
 		// delete tag through API
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodDelete, tagsWithIdResource(uint64(tRes.Uid)), nil, http.StatusNoContent, nil)
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(uint64(tRes.Uid)), nil, http.StatusNoContent, jsonhttp.StatusResponse{
+			Message: "ok",
+			Code:    http.StatusNoContent,
+		})
 	})
 }
 
