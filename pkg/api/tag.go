@@ -195,5 +195,5 @@ func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tag.DoneSplit(tagr.Address)
-	jsonhttp.Respond(w, http.StatusNoContent, nil)
+	jsonhttp.OK(w, "ok")
 }
