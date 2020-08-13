@@ -88,6 +88,20 @@ func TestTags(t *testing.T) {
 		}, sentHeaders)
 	})
 
+	t.Run("get-invalid-tags", func(t *testing.T) {
+		// invalid tag
+		jsonhttptest.ResponseDirect(t, client, http.MethodGet, "/tags/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
+			Message: "invalid id",
+			Code:    http.StatusBadRequest,
+		})
+
+		// non-existent tag
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), nil, http.StatusNotFound, jsonhttp.StatusResponse{
+			Message: "tag not present",
+			Code:    http.StatusNotFound,
+		})
+	})
+
 	t.Run("get-tag-id-from-chunk-upload-without-tag", func(t *testing.T) {
 		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
