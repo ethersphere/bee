@@ -143,7 +143,7 @@ func TestEncryptionAndDecryption(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			s := splitter.NewSimpleSplitter(store)
+			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 			testDataReader := file.NewSimpleReadCloser(testData)
 			resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), true)
 			if err != nil {

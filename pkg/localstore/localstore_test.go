@@ -342,6 +342,24 @@ func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp i
 	}
 }
 
+// newPinIndexTest returns a test function that validates if the right
+// chunk values are in the pin index.
+func newPinIndexTest(db *DB, chunk swarm.Chunk, wantError error) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Helper()
+
+		item, err := db.pinIndex.Get(shed.Item{
+			Address: chunk.Address().Bytes(),
+		})
+		if !errors.Is(err, wantError) {
+			t.Errorf("got error %v, want %v", err, wantError)
+		}
+		if err == nil {
+			validateItem(t, item, chunk.Address().Bytes(), nil, 0, 0)
+		}
+	}
+}
+
 // newItemsCountTest returns a test function that validates if
 // an index contains expected number of key/value pairs.
 func newItemsCountTest(i shed.Index, want int) func(t *testing.T) {
