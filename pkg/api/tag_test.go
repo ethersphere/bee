@@ -290,8 +290,8 @@ func TestTags(t *testing.T) {
 }
 
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
-// if an API tag response is supplied, it also verifies that it contains and id which matches the headers
-func isTagFoundInResponse(t *testing.T, headers http.Header, tag *api.TagResponse) uint64 {
+// if an API tag response is supplied, it also verifies that it contains an id which matches the headers
+func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint64 {
 	idStr := headers.Get(api.TagHeaderUid)
 	if idStr == "" {
 		t.Fatalf("could not find tag id header in chunk upload response")
@@ -300,9 +300,9 @@ func isTagFoundInResponse(t *testing.T, headers http.Header, tag *api.TagRespons
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tag != nil {
-		if uid != uint64(tag.Uid) {
-			t.Fatalf("id created is not received while uploading chunk, expected : %d, got %d", tag.Uid, uid)
+	if tr != nil {
+		if uid != uint64(tr.Uid) {
+			t.Fatalf("id created is not received while uploading chunk, expected : %d, got %d", tr.Uid, uid)
 		}
 	}
 	return uid
