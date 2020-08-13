@@ -10,21 +10,29 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type store struct {
 	storage.Storer
-	retrieval retrieval.Interface
-	logger    logging.Logger
-	validator swarm.Validator
+	retrieval        retrieval.Interface
+	validator        swarm.Validator
+	logger           logging.Logger
+	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
 }
 
+var (
+	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
+)
+
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, r retrieval.Interface, logger logging.Logger, validator swarm.Validator) storage.Storer {
-	return &store{Storer: s, retrieval: r, logger: logger, validator: validator}
+func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
+	validator swarm.Validator) storage.Storer {
+	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validator: validator}
 }
 
 // Get retrieves a given chunk address.
@@ -34,11 +42,23 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// request from network
-			ch, err := s.retrieval.RetrieveChunk(ctx, addr)
+			ch, err = s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
+				if s.recoveryCallback == nil {
+					return nil, err
+				}
+				targets, err := sctx.GetTargets(ctx)
+				if err != nil {
+					return nil, err
+				}
+				go func() {
+					err := s.recoveryCallback(addr, targets)
+					if err != nil {
+						s.logger.Debugf("netstore: error while recovering chunk: %v", err)
+					}
+				}()
+				return nil, ErrRecoveryAttempt
 			}
-
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve put: %w", err)

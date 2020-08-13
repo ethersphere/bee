@@ -11,8 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/encryption"
 	"golang.org/x/crypto/sha3"
+
+	"github.com/ethersphere/bee/pkg/encryption"
 )
 
 const (

@@ -6,10 +6,11 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/gorilla/mux"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/encryption"
@@ -17,8 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
 )
 
 const (
@@ -29,7 +30,7 @@ const (
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(context.WithValue(r.Context(), targetsContextKey{}, targets))
+	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 	ctx := r.Context()
 
 	addressHex := mux.Vars(r)["address"]
