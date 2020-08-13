@@ -302,7 +302,7 @@ func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse
 	}
 	if tr != nil {
 		if uid != uint64(tr.Uid) {
-			t.Fatalf("id created is not received while uploading chunk, expected : %d, got %d", tr.Uid, uid)
+			t.Fatalf("expected created tag id to be %d, but got %d when uploading chunk", tr.Uid, uid)
 		}
 	}
 	return uid
