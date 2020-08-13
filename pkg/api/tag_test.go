@@ -35,6 +35,7 @@ func TestTags(t *testing.T) {
 		chunksResource       = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		tagsResource         = "/tags"
 		tagsWithIdResource   = func(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
+		dirResource          = "/dirs"
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
 		validTagName         = "file.jpg"
@@ -414,6 +415,16 @@ func TestTags(t *testing.T) {
 			Message: "ok",
 			Code:    http.StatusOK,
 		})
+	})
+
+	t.Run("dir-tags", func(t *testing.T) {
+		tarReader := tarFiles(t, []f{{
+			data: []byte("some data"),
+			name: "binary-file",
+		}})
+
+		// why is this not working??? same dirs_test.go:56, but with correct content type
+		jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodPost, dirResource, tarReader, http.StatusOK, http.Header{"Content-Type": {api.ContentTypeTar}})
 	})
 }
 
