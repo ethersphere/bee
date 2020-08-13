@@ -36,7 +36,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		invalidContent       = []byte("bbaattss")
 		mockValidator        = validator.NewMockValidator(validHash, validContent)
 		tag                  = tags.NewTags()
-		mockValidatingStorer = mock.NewValidatingStorer(mockValidator, tag)
+		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
 		client               = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
 			Tags:   tag,

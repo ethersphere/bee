@@ -34,7 +34,7 @@ func TestTags(t *testing.T) {
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
 		tag                  = tags.NewTags()
-		mockStorer           = mock.NewStorer(mock.WithTags(tag))
+		mockStorer           = mock.NewStorer()
 		mockPusher           = mp.NewMockPusher(tag)
 		ts                   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,

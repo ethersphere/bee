@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 var _ storage.Storer = (*MockStorer)(nil)
@@ -25,7 +24,6 @@ type MockStorer struct {
 	subpull         []storage.Descriptor
 	partialInterval bool
 	validator       swarm.Validator
-	tags            *tags.Tags
 	morePull        chan struct{}
 	mtx             sync.Mutex
 	quit            chan struct{}
@@ -48,9 +46,9 @@ func WithBaseAddress(a swarm.Address) Option {
 	})
 }
 
-func WithTags(t *tags.Tags) Option {
+func WithValidator(v swarm.Validator) Option {
 	return optionFunc(func(m *MockStorer) {
-		m.tags = t
+		m.validator = v
 	})
 }
 
@@ -75,26 +73,6 @@ func NewStorer(opts ...Option) *MockStorer {
 	}
 
 	return s
-}
-
-func NewValidatingStorer(v swarm.Validator, tags *tags.Tags) *MockStorer {
-	return &MockStorer{
-		store:     make(map[string][]byte),
-		modePut:   make(map[string]storage.ModePut),
-		modeSet:   make(map[string]storage.ModeSet),
-		validator: v,
-		tags:      tags,
-	}
-}
-
-func NewTagsStorer(tags *tags.Tags) *MockStorer {
-	return &MockStorer{
-		store:     make(map[string][]byte),
-		modeSet:   make(map[string]storage.ModeSet),
-		modeSetMu: sync.Mutex{},
-		pinSetMu:  sync.Mutex{},
-		tags:      tags,
-	}
 }
 
 func (m *MockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
