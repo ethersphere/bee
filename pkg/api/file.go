@@ -343,7 +343,6 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header) {
 	targets := r.URL.Query().Get("targets")
 	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
-	toDecrypt := len(reference.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 
 	rs := seekjoiner.NewSimpleJoiner(s.Storer)
 	reader, l, err := rs.Join(r.Context(), reference)
