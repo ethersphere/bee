@@ -7,6 +7,7 @@ package api_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"testing"
@@ -31,7 +32,7 @@ func TestTags(t *testing.T) {
 		bytesResource        = "/bytes"
 		chunksResource       = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		createTagResource    = "/tags"
-		getTagResource       = func(id uint64) string { return "/tags/" + strconv.FormatUint(id, 10) }
+		getTagResource       = func(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
 		mockValidator        = validator.NewMockValidator(validHash, validContent)
