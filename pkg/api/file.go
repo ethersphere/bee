@@ -349,7 +349,6 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	rs := seekjoiner.NewSimpleJoiner(s.Storer)
 	reader, l, err := rs.Join(r.Context(), reference)
 	if err != nil {
-		s.Logger.Debugf("file download: cant lazy read %s: %v", reference, err)
 		if errors.Is(err, storage.ErrNotFound) {
 			s.Logger.Debugf("api download: not found %s: %v", reference, err)
 			s.Logger.Error("api download: not found")
