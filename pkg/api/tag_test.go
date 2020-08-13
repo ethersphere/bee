@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -46,7 +47,39 @@ func TestTags(t *testing.T) {
 		})
 	)
 
-	t.Run("create-tag-with-invalid-id", func(t *testing.T) {
+	t.Run("create-unnamed-tag", func(t *testing.T) {
+		tReq := &api.TagRequest{}
+		b, err := json.Marshal(tReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tr := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
+
+		if !strings.Contains(tr.Name, "unnamed_tag_") {
+			t.Fatalf("expected tag name to contain %s but is %s instead", "unnamed_tag_", tr.Name)
+		}
+	})
+
+	t.Run("create-tag-with-name", func(t *testing.T) {
+		tReq := &api.TagRequest{
+			Name: validTagName,
+		}
+		b, err := json.Marshal(tReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tr := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
+
+		if tr.Name != validTagName {
+			t.Fatalf("expected tag name to be %s but is %s instead", validTagName, tr.Name)
+		}
+	})
+
+	t.Run("create-tag-from-chunk-upload-with-invalid-id", func(t *testing.T) {
 		sentHeaders := make(http.Header)
 		sentHeaders.Set(api.TagHeaderUid, "invalid_id.jpg") // the value should be uint32
 		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusInternalServerError, jsonhttp.StatusResponse{
