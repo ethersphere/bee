@@ -107,8 +107,8 @@ func TestWrap(t *testing.T) {
 	}
 }
 
-// TestWrapFail tests that the creation of a chunk fails when given targets are invalid
-func TestWrapFail(t *testing.T) {
+// TestWrapError tests that the creation of a chunk fails when given targets are invalid
+func TestWrapError(t *testing.T) {
 	m := newTestMessage(t)
 
 	emptyTargets := trojan.Targets([]trojan.Target{})

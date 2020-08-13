@@ -34,7 +34,7 @@ func TestDynamicWelcomeMessage(t *testing.T) {
 				t.Fatalf("expected: %s. got %s", testMessage, got)
 			}
 		})
-		t.Run("fails - message too long", func(t *testing.T) {
+		t.Run("error - message too long", func(t *testing.T) {
 			const testMessage = `Lorem ipsum dolor sit amet, consectetur adipiscing elit.
 			Maecenas eu aliquam enim. Nulla tincidunt arcu nec nulla condimentum nullam sodales` // 141 characters
 
