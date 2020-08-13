@@ -31,8 +31,8 @@ func TestTags(t *testing.T) {
 	var (
 		bytesResource        = "/bytes"
 		chunksResource       = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
-		createTagResource    = "/tags"
-		getTagResource       = func(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
+		tagsResource         = "/tags"
+		tagsWithIdResource   = func(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
 		validTagName         = "file.jpg"
@@ -73,7 +73,7 @@ func TestTags(t *testing.T) {
 			t.Fatal(err)
 		}
 		tr := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, createTagResource, bytes.NewReader(b), http.StatusCreated, &tr)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
 
 		if tr.Name != validTagName {
 			t.Fatalf("sent tag name %s does not match received tag name %s", validTagName, tr.Name)
@@ -99,7 +99,7 @@ func TestTags(t *testing.T) {
 			t.Fatal(err)
 		}
 		tr := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, createTagResource, bytes.NewReader(b), http.StatusCreated, &tr)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
 
 		if tr.Name != validTagName {
 			t.Fatalf("sent tag name %s does not match received tag name %s", validTagName, tr.Name)
@@ -141,7 +141,7 @@ func TestTags(t *testing.T) {
 
 		// see if the tag id is present and has valid values
 		tr := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, getTagResource(id), nil, http.StatusOK, &tr)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &tr)
 
 		// now upload another chunk using the same tag id
 		sentHeaders := make(http.Header)
@@ -153,7 +153,7 @@ func TestTags(t *testing.T) {
 
 		// see if the tag id is present and has valid values
 		tr = api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, getTagResource(id), nil, http.StatusOK, &tr)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &tr)
 
 		if id != uint64(tr.Uid) {
 			t.Fatalf("expected tag id to be %d but is %d", id, tr.Uid)
@@ -172,7 +172,7 @@ func TestTags(t *testing.T) {
 
 		// request the tag and see if the ID is the same
 		tr := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, getTagResource(id), nil, http.StatusOK, &tr)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &tr)
 		if id != uint64(tr.Uid) {
 			t.Fatalf("expected tag id to be %d but is %d", id, tr.Uid)
 		}
@@ -199,7 +199,7 @@ func TestTags(t *testing.T) {
 		}
 
 		finalTag := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, getTagResource(id), nil, http.StatusOK, &finalTag)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &finalTag)
 
 		if tagToVerify.Total != finalTag.Total {
 			t.Errorf("tag total count mismatch. got %d want %d", tagToVerify.Total, finalTag.Total)
@@ -227,7 +227,7 @@ func TestTags(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, createTagResource, bytes.NewReader(b), http.StatusCreated, &tr)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
 		if tr.Name != validTagName {
 			t.Fatalf("sent tag name %s does not match received tag name %s", validTagName, tr.Name)
 		}
@@ -270,7 +270,7 @@ func TestTags(t *testing.T) {
 		}
 
 		finalTag := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, getTagResource(uuid), nil, http.StatusOK, &finalTag)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(uuid), nil, http.StatusOK, &finalTag)
 
 		if finalTag.Total != 0 {
 			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 0)
@@ -287,6 +287,21 @@ func TestTags(t *testing.T) {
 		}
 
 	})
+
+	t.Run("delete-tag", func(t *testing.T) {
+		// create a tag through API
+		b, err := json.Marshal(api.TagResponse{
+			Name: validTagName,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tRes := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tRes)
+
+		// delete tag through API
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodDelete, tagsWithIdResource(uint64(tRes.Uid)), nil, http.StatusNoContent, nil)
+	})
 }
 
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
@@ -296,14 +311,14 @@ func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse
 	if idStr == "" {
 		t.Fatalf("could not find tag id header in chunk upload response")
 	}
-	uid, err := strconv.ParseUint(idStr, 10, 32)
+	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tr != nil {
-		if uid != uint64(tr.Uid) {
-			t.Fatalf("expected created tag id to be %d, but got %d when uploading chunk", tr.Uid, uid)
+		if id != uint64(tr.Uid) {
+			t.Fatalf("expected created tag id to be %d, but got %d when uploading chunk", tr.Uid, id)
 		}
 	}
-	return uid
+	return id
 }
