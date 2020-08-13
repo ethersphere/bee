@@ -32,7 +32,7 @@ func TestTags(t *testing.T) {
 		bytesResource        = "/bytes"
 		chunksResource       = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		tagsResource         = "/tags"
-		tagsWithIdResource   = func(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
+		tagsWithIdResource   = func(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
 		validTagName         = "file.jpg"
@@ -107,7 +107,7 @@ func TestTags(t *testing.T) {
 
 		// now upload a chunk and see if we receive a tag with the same id
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(tr.Uid), 10))
+		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
 		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -121,7 +121,7 @@ func TestTags(t *testing.T) {
 		mockValidator.AddPair(secondValidHash, secondValidContent)
 
 		sentHeaders = make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(tr.Uid), 10))
+		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
 		rcvdHeaders = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(secondValidHash), bytes.NewReader(secondValidContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -145,7 +145,7 @@ func TestTags(t *testing.T) {
 
 		// now upload another chunk using the same tag id
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, strconv.FormatUint(id, 10))
+		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
 		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -155,7 +155,7 @@ func TestTags(t *testing.T) {
 		tr = api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &tr)
 
-		if id != uint64(tr.Uid) {
+		if id != tr.Uid {
 			t.Fatalf("expected tag id to be %d but is %d", id, tr.Uid)
 		}
 		if tr.Stored != 2 {
@@ -173,7 +173,7 @@ func TestTags(t *testing.T) {
 		// request the tag and see if the ID is the same
 		tr := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &tr)
-		if id != uint64(tr.Uid) {
+		if id != tr.Uid {
 			t.Fatalf("expected tag id to be %d but is %d", id, tr.Uid)
 		}
 	})
@@ -185,15 +185,15 @@ func TestTags(t *testing.T) {
 		}, nil)
 		id := isTagFoundInResponse(t, rcvdHeaders, nil)
 
-		tagToVerify, err := tag.Get(uint32(id))
+		tagToVerify, err := tag.Get(id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = mockPusher.SendChunk(uint32(id))
+		err = mockPusher.SendChunk(id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = mockPusher.RcvdReceipt(uint32(id))
+		err = mockPusher.RcvdReceipt(id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,9 +258,9 @@ func TestTags(t *testing.T) {
 		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, fileUploadResponse{
 			Reference: rootAddress,
 		}, sentHeaders)
-		uuid := isTagFoundInResponse(t, rcvdHeaders, nil)
+		id := isTagFoundInResponse(t, rcvdHeaders, nil)
 
-		tagToVerify, err := tag.Get(uint32(uuid))
+		tagToVerify, err := tag.Get(id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,7 +270,7 @@ func TestTags(t *testing.T) {
 		}
 
 		finalTag := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(uuid), nil, http.StatusOK, &finalTag)
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &finalTag)
 
 		if finalTag.Total != 0 {
 			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 0)
@@ -300,7 +300,7 @@ func TestTags(t *testing.T) {
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tRes)
 
 		// delete tag through API
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(uint64(tRes.Uid)), nil, http.StatusNoContent, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(tRes.Uid), nil, http.StatusNoContent, jsonhttp.StatusResponse{
 			Message: "ok",
 			Code:    http.StatusNoContent,
 		})
@@ -309,17 +309,18 @@ func TestTags(t *testing.T) {
 
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
 // if an API tag response is supplied, it also verifies that it contains an id which matches the headers
-func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint64 {
+func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {
 	idStr := headers.Get(api.TagHeaderUid)
 	if idStr == "" {
 		t.Fatalf("could not find tag id header in chunk upload response")
 	}
-	id, err := strconv.ParseUint(idStr, 10, 32)
+	nId, err := strconv.Atoi(idStr)
+	id := uint32(nId)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tr != nil {
-		if id != uint64(tr.Uid) {
+		if id != tr.Uid {
 			t.Fatalf("expected created tag id to be %d, but got %d when uploading chunk", tr.Uid, id)
 		}
 	}
