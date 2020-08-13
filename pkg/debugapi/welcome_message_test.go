@@ -49,7 +49,7 @@ func TestSetWelcomeMessage(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
-			desc:     "fails - request entity too large",
+			desc:     "error - request entity too large",
 			wantFail: true,
 			message: `zZZbzbzbzbBzBBZbBbZbbbBzzzZBZBbzzBBBbBzBzzZbbBzBBzBBbZz
 			bZZZBBbbZbbZzBbzBbzbZBZzBZZbZzZzZzbbZZBZzzbBZBzZzzBBzZZzzZbZZZzbbbzz
@@ -107,7 +107,7 @@ func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 		WelcomeMesssage: testMessage,
 	})
 	body := bytes.NewReader(data)
-	t.Run("internal server error - failed to store", func(t *testing.T) {
+	t.Run("internal server error - error on store", func(t *testing.T) {
 		wantCode := http.StatusInternalServerError
 		wantResp := jsonhttp.StatusResponse{
 			Message: testError.Error(),

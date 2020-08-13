@@ -42,8 +42,9 @@ const (
 	NonceSize      = 32
 	LengthSize     = 2
 	TopicSize      = 32
-	MinerTimeout   = 5 // seconds after which the mining will fail
 )
+
+var minerTimeout = 10 * time.Second
 
 // NewTopic creates a new Topic variable with the given input string
 // the input string is taken as a byte slice and hashed
@@ -201,7 +202,7 @@ func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
 			return swarm.NewChunk(swarm.NewAddress(hash), s), nil
 		}
 		return nil, err
-	case <-time.After(MinerTimeout * time.Second):
+	case <-time.After(minerTimeout):
 		return nil, ErrMinerTimeout
 	}
 }
