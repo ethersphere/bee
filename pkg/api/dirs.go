@@ -91,7 +91,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("read tar stream error: %w", err)
+			return swarm.ZeroAddress, fmt.Errorf("read tar stream: %w", err)
 		}
 
 		filePath := fileHeader.Name
@@ -114,7 +114,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		}
 		fileReference, err := storeFile(ctx, fileInfo, s, mode)
 		if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("store dir file error: %w", err)
+			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
 		logger.Tracef("uploaded dir file %v with reference %v", filePath, fileReference)
 
@@ -136,7 +136,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 	// first, serialize into byte array
 	b, err := dirManifest.MarshalBinary()
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("manifest serialize error: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("manifest serialize: %w", err)
 	}
 
 	// set up reader for manifest file upload
@@ -150,7 +150,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 	}
 	manifestReference, err := storeFile(ctx, manifestFileInfo, s, mode)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("store manifest error: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}
 
 	return manifestReference, nil
@@ -166,7 +166,7 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 	sp := splitter.NewSimpleSplitter(s, mode)
 	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, toEncrypt)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split file error: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("split file: %w", err)
 	}
 
 	// if filename is still empty, use the file hash as the filename
@@ -179,25 +179,25 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 	m.MimeType = fileInfo.contentType
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("metadata marshal error: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
 	sp = splitter.NewSimpleSplitter(s, mode)
 	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split metadata error: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
 	}
 
 	// now join both references (mr, fr) to create an entry and store it
 	e := entry.New(fr, mr)
 	fileEntryBytes, err := e.MarshalBinary()
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("entry marshal error: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
 	sp = splitter.NewSimpleSplitter(s, mode)
 	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split entry error: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
 	}
 
 	return reference, nil
