@@ -108,6 +108,7 @@ func (s *server) getTag(w http.ResponseWriter, r *http.Request) {
 			s.Logger.Debugf("get tag: tag not present: %v, id %s", err, idStr)
 			s.Logger.Error("get tag: tag not present")
 			jsonhttp.NotFound(w, "tag not present")
+			return
 		}
 		s.Logger.Debugf("get tag: tag %v: %v", idStr, err)
 		s.Logger.Errorf("get tag: %v", idStr)
@@ -136,6 +137,7 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 			s.Logger.Debugf("delete tag: tag not present: %v, id %s", err, idStr)
 			s.Logger.Error("delete tag: tag not present")
 			jsonhttp.NotFound(w, "tag not present")
+			return
 		}
 		s.Logger.Debugf("delete tag: tag %v: %v", idStr, err)
 		s.Logger.Errorf("delete tag: %v", idStr)
@@ -184,6 +186,7 @@ func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {
 			s.Logger.Debugf("done split: tag not present: %v, id %s", err, idStr)
 			s.Logger.Error("done split: tag not present")
 			jsonhttp.NotFound(w, "tag not present")
+			return
 		}
 		s.Logger.Debugf("done split: tag %v: %v", idStr, err)
 		s.Logger.Errorf("done split: %v", idStr)
