@@ -160,7 +160,7 @@ func insert(t *testing.T, store storage.StateStorer, prefix string, count int) {
 	t.Helper()
 
 	for i := 0; i < count; i++ {
-		k := prefix + string(i)
+		k := prefix + fmt.Sprint(i)
 
 		err := store.Put(k, i)
 		if err != nil {
