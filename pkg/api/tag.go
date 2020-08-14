@@ -174,12 +174,14 @@ func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tagr := tagRequest{}
-	err = json.Unmarshal(body, &tagr)
-	if err != nil {
-		s.Logger.Debugf("done split tag: unmarshal tag name error: %v", err)
-		s.Logger.Errorf("done split tag: unmarshal tag name error")
-		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
-		return
+	if len(body) > 0 {
+		err = json.Unmarshal(body, &tagr)
+		if err != nil {
+			s.Logger.Debugf("done split tag: unmarshal tag name error: %v", err)
+			s.Logger.Errorf("done split tag: unmarshal tag name error")
+			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
+			return
+		}
 	}
 
 	tag, err := s.Tags.Get(uint32(id))
