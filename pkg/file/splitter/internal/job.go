@@ -13,13 +13,16 @@ import (
 
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
 )
+
+type Putter interface {
+	Put(context.Context, swarm.Chunk) ([]bool, error)
+}
 
 // maximum amount of file tree levels this file hasher component can handle
 // (128 ^ (9 - 1)) * 4096 = 295147905179352825856 bytes
@@ -41,7 +44,7 @@ func hashFunc() hash.Hash {
 // error and will may result in undefined result.
 type SimpleSplitterJob struct {
 	ctx        context.Context
-	putter     storage.Putter
+	putter     Putter
 	spanLength int64    // target length of data
 	length     int64    // number of bytes written to the data level of the hasher
 	sumCounts  []int    // number of sums performed, indexed per level
@@ -56,7 +59,7 @@ type SimpleSplitterJob struct {
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, toEncrypt bool) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, putter Putter, spanLength int64, toEncrypt bool) *SimpleSplitterJob {
 	hashSize := swarm.HashSize
 	refSize := int64(hashSize)
 	if toEncrypt {
@@ -184,7 +187,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 		ch = swarm.NewChunk(addr, c)
 	}
 
-	seen, err := s.putter.Put(s.ctx, storage.ModePutUpload, ch)
+	seen, err := s.putter.Put(s.ctx, ch)
 	if err != nil {
 		return nil, err
 	} else if len(seen) > 0 && seen[0] {

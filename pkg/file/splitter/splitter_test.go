@@ -23,7 +23,7 @@ import (
 func TestSplitIncomplete(t *testing.T) {
 	testData := make([]byte, 42)
 	store := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(store)
+	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	_, err := s.Split(context.Background(), testDataReader, 41, false)
@@ -42,7 +42,7 @@ func TestSplitSingleChunk(t *testing.T) {
 	}
 
 	store := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(store)
+	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), false)
@@ -74,7 +74,7 @@ func TestSplitThreeLevels(t *testing.T) {
 	}
 
 	store := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(store)
+	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), false)
@@ -131,7 +131,7 @@ func TestUnalignedSplit(t *testing.T) {
 	}
 
 	// perform the split in a separate thread
-	sp := splitter.NewSimpleSplitter(storer)
+	sp := splitter.NewSimpleSplitter(storer, storage.ModePutUpload)
 	ctx := context.Background()
 	doneC := make(chan swarm.Address)
 	errC := make(chan error)

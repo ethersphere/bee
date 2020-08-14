@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	test "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -44,7 +45,7 @@ func testSplitThenJoin(t *testing.T) {
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
 		store       = mock.NewStorer()
-		s           = splitter.NewSimpleSplitter(store)
+		s           = splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 		j           = joiner.NewSimpleJoiner(store)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
