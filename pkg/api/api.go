@@ -58,8 +58,10 @@ func New(tags *tags.Tags, storer storage.Storer, corsAllowedOrigins []string, lo
 	return s
 }
 
+// getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
+// If no id is supplied, it will attempt to create a new tag with a generated name and return it.
 func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
-	// if tag header is not there create a new one
+	// if tag ID is not supplied, create a new tag
 	if tagUid == "" {
 		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 		var err error
@@ -69,7 +71,6 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 		}
 		return tag, true, nil
 	}
-	// if the tag uid header is present, then use the tag sent
 	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot parse taguid: %w", err)
