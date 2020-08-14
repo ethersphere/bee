@@ -30,11 +30,12 @@ type fileUploadResponse struct {
 
 func TestTags(t *testing.T) {
 	var (
+		filesResource      = "/files"
+		dirResource        = "/dirs"
 		bytesResource      = "/bytes"
 		chunksResource     = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		tagsResource       = "/tags"
 		tagsWithIdResource = func(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
-		dirResource        = "/dirs"
 		someHash           = swarm.MustParseHexAddress("aabbcc")
 		someContent        = []byte("bbaatt")
 		someTagName        = "file.jpg"
@@ -263,68 +264,6 @@ func TestTags(t *testing.T) {
 		}
 	})
 
-	t.Run("bytes-tags", func(t *testing.T) {
-		// create a tag using the API
-		tr := api.TagResponse{}
-		b, err := json.Marshal(api.TagResponse{
-			Name: someTagName,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
-		if tr.Name != someTagName {
-			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
-		}
-
-		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10))
-
-		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
-		dataChunk, err := g.SequentialBytes(swarm.ChunkSize)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		rootAddress := swarm.MustParseHexAddress("5e2a21902f51438be1adbd0e29e1bd34c53a21d3120aefa3c7275129f2f88de9")
-
-		content := make([]byte, swarm.ChunkSize*2)
-		copy(content[swarm.ChunkSize:], dataChunk)
-		copy(content[:swarm.ChunkSize], dataChunk)
-
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, fileUploadResponse{
-			Reference: rootAddress,
-		}, sentHeaders)
-		id := isTagFoundInResponse(t, rcvdHeaders, nil)
-
-		tagToVerify, err := tag.Get(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if tagToVerify.Uid != tr.Uid {
-			t.Fatalf("expected tag id to be %d but is %d", tagToVerify.Uid, tr.Uid)
-		}
-
-		finalTag := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &finalTag)
-
-		if finalTag.Total != 0 {
-			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 0)
-		}
-		if finalTag.Seen != 1 {
-			t.Errorf("tag seen count mismatch. got %d want %d", finalTag.Seen, 1)
-		}
-		if finalTag.Stored != 3 {
-			t.Errorf("tag stored count mismatch. got %d want %d", finalTag.Stored, 3)
-		}
-
-		if !finalTag.Address.Equal(swarm.ZeroAddress) {
-			t.Errorf("address mismatch: expected %s got %s", rootAddress.String(), finalTag.Address.String())
-		}
-
-	})
-
 	t.Run("delete-tag-error", func(t *testing.T) {
 		// try to delete invalid tag
 		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsResource+"/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
@@ -446,6 +385,35 @@ func TestTags(t *testing.T) {
 		}
 	})
 
+	t.Run("file-tags", func(t *testing.T) {
+		// upload a file without supplying tag
+		expectedHash := swarm.MustParseHexAddress("8e27bb803ff049e8c2f4650357026723220170c15ebf9b635a7026539879a1a8")
+		expectedResponse := api.FileUploadResponse{Reference: expectedHash}
+
+		sentHeaders := make(http.Header)
+		sentHeaders.Set("Content-Type", "application/octet-stream")
+		respHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, filesResource, bytes.NewReader([]byte("some data")), http.StatusOK, expectedResponse, sentHeaders)
+
+		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUidHeader))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// check tag data
+		tRes := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(uint32(tagId)), nil, http.StatusOK, &tRes)
+
+		if !(tRes.Total > 0) {
+			t.Errorf("tag total should be greater than 0 but it is not")
+		}
+		if !(tRes.Stored > 0) {
+			t.Errorf("tag stored should be greater than 0 but it is not")
+		}
+		if !(tRes.Split > 0) {
+			t.Errorf("tag split should be greater than 0 but it is not")
+		}
+	})
+
 	t.Run("dir-tags", func(t *testing.T) {
 		// upload a dir without supplying tag
 		tarReader := tarFiles(t, []f{{
@@ -477,6 +445,67 @@ func TestTags(t *testing.T) {
 		}
 		if !(tRes.Split > 0) {
 			t.Errorf("tag split should be greater than 0 but it is not")
+		}
+	})
+
+	t.Run("bytes-tags", func(t *testing.T) {
+		// create a tag using the API
+		tr := api.TagResponse{}
+		b, err := json.Marshal(api.TagResponse{
+			Name: someTagName,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
+		if tr.Name != someTagName {
+			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
+		}
+
+		sentHeaders := make(http.Header)
+		sentHeaders.Set(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10))
+
+		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+		dataChunk, err := g.SequentialBytes(swarm.ChunkSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rootAddress := swarm.MustParseHexAddress("5e2a21902f51438be1adbd0e29e1bd34c53a21d3120aefa3c7275129f2f88de9")
+
+		content := make([]byte, swarm.ChunkSize*2)
+		copy(content[swarm.ChunkSize:], dataChunk)
+		copy(content[:swarm.ChunkSize], dataChunk)
+
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, bytesResource, bytes.NewReader(content), http.StatusOK, fileUploadResponse{
+			Reference: rootAddress,
+		}, sentHeaders)
+		id := isTagFoundInResponse(t, rcvdHeaders, nil)
+
+		tagToVerify, err := tag.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if tagToVerify.Uid != tr.Uid {
+			t.Fatalf("expected tag id to be %d but is %d", tagToVerify.Uid, tr.Uid)
+		}
+
+		finalTag := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(id), nil, http.StatusOK, &finalTag)
+
+		if finalTag.Total != 0 {
+			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 0)
+		}
+		if finalTag.Seen != 1 {
+			t.Errorf("tag seen count mismatch. got %d want %d", finalTag.Seen, 1)
+		}
+		if finalTag.Stored != 3 {
+			t.Errorf("tag stored count mismatch. got %d want %d", finalTag.Stored, 3)
+		}
+
+		if !finalTag.Address.Equal(swarm.ZeroAddress) {
+			t.Errorf("address mismatch: expected %s got %s", rootAddress.String(), finalTag.Address.String())
 		}
 	})
 }
