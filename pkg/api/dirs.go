@@ -41,7 +41,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
 	if err != nil {
 		s.Logger.Debugf("dir upload: get or create tag: %v", err)
 		s.Logger.Error("dir upload: get or create tag")
@@ -59,9 +59,9 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "could not store dir")
 		return
 	}
-
-	tag.DoneSplit(reference)
-
+	if created {
+		tag.DoneSplit(reference)
+	}
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})

@@ -64,7 +64,6 @@ func JoinReadAll(ctx context.Context, j Joiner, addr swarm.Address, outFile io.W
 
 // SplitWriteAll writes all input from provided reader to the provided splitter
 func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64, toEncrypt bool) (swarm.Address, error) {
-	fmt.Println("sprintWriteAll", "l", l, "encrypt", toEncrypt)
 	chunkPipe := NewChunkPipe()
 	errC := make(chan error)
 	go func() {

@@ -67,13 +67,19 @@ func (s *server) setupRouting() {
 	})
 
 	router.Handle("/tags", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.createTag),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(1024),
+			web.FinalHandlerFunc(s.createTag),
+		),
 	})
 
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
 		"GET":    http.HandlerFunc(s.getTag),
 		"DELETE": http.HandlerFunc(s.deleteTag),
-		"PATCH":  http.HandlerFunc(s.doneSplit),
+		"PATCH": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(1024),
+			web.FinalHandlerFunc(s.doneSplit),
+		),
 	})
 
 	s.Handler = web.ChainHandlers(

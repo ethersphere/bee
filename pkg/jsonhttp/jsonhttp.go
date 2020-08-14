@@ -108,9 +108,11 @@ func NonAuthoritativeInfo(w http.ResponseWriter, response interface{}) {
 	Respond(w, http.StatusNonAuthoritativeInfo, response)
 }
 
-// NoContent writes a response with status code 204.
-func NoContent(w http.ResponseWriter, response interface{}) {
-	Respond(w, http.StatusNoContent, response)
+// NoContent writes a response with status code 204. It does not
+// accept a response value since the HTTP server will not write it
+// to the client when returning a NoContent response.
+func NoContent(w http.ResponseWriter) {
+	Respond(w, http.StatusNoContent, nil)
 }
 
 // ResetContent writes a response with status code 205.

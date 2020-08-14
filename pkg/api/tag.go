@@ -146,7 +146,7 @@ func (s *server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Tags.Delete(tag.Uid)
-	jsonhttp.NoContent(w, "ok")
+	jsonhttp.NoContent(w)
 }
 
 func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {

@@ -39,7 +39,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	tag, _, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
 	if err != nil {
 		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
 		s.Logger.Error("chunk upload: get or create tag")

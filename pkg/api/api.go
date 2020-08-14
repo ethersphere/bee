@@ -5,7 +5,10 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -47,4 +50,24 @@ func New(tags *tags.Tags, storer storage.Storer, corsAllowedOrigins []string, lo
 	s.setupRouting()
 
 	return s
+}
+
+func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
+	// if tag header is not there create a new one
+	if tagUid == "" {
+		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
+		var err error
+		tag, err := s.Tags.Create(tagName, 0, false)
+		if err != nil {
+			return nil, false, fmt.Errorf("cannot create tag: %w", err)
+		}
+		return tag, true, nil
+	}
+	// if the tag uid header is present, then use the tag sent
+	uid, err := strconv.Atoi(tagUid)
+	if err != nil {
+		return nil, false, fmt.Errorf("cannot parse taguid: %w", err)
+	}
+	t, err := s.Tags.Get(uint32(uid))
+	return t, false, err
 }
