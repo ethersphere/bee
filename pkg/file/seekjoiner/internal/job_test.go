@@ -74,7 +74,7 @@ func TestSeek(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			s := splitter.NewSimpleSplitter(store)
+			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 			addr, err := s.Split(ctx, ioutil.NopCloser(bytes.NewReader(data)), tc.size, false)
 			if err != nil {
 				t.Fatal(err)
