@@ -85,7 +85,6 @@ type Options struct {
 	TracingEnabled       bool
 	TracingEndpoint      string
 	TracingServiceName   string
-	DisconnectThreshold  uint64
 	GlobalPinningEnabled bool
 	PaymentThreshold     uint64
 	PaymentTolerance     uint64
