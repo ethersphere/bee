@@ -21,8 +21,8 @@ import (
 )
 
 type tagRequest struct {
-	Name    string        `json:"name"`
-	Address swarm.Address `json:"address"`
+	Name    string        `json:"name,omitempty"`
+	Address swarm.Address `json:"address,omitempty"`
 }
 
 type tagResponse struct {
@@ -68,12 +68,14 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tagr := tagRequest{}
-	err = json.Unmarshal(body, &tagr)
-	if err != nil {
-		s.Logger.Debugf("create tag: unmarshal tag name error: %v", err)
-		s.Logger.Errorf("create tag: unmarshal tag name error")
-		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
-		return
+	if len(body) > 0 {
+		err = json.Unmarshal(body, &tagr)
+		if err != nil {
+			s.Logger.Debugf("create tag: unmarshal tag name error: %v", err)
+			s.Logger.Errorf("create tag: unmarshal tag name error")
+			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
+			return
+		}
 	}
 
 	if tagr.Name == "" {
