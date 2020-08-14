@@ -30,19 +30,18 @@ type fileUploadResponse struct {
 
 func TestTags(t *testing.T) {
 	var (
-		bytesResource        = "/bytes"
-		chunksResource       = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
-		tagsResource         = "/tags"
-		tagsWithIdResource   = func(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
-		dirResource          = "/dirs"
-		validHash            = swarm.MustParseHexAddress("aabbcc")
-		validContent         = []byte("bbaatt")
-		validTagName         = "file.jpg"
-		tag                  = tags.NewTags()
-		mockValidatingStorer = mock.NewStorer()
-		mockPusher           = mp.NewMockPusher(tag)
-		client               = newTestServer(t, testServerOptions{
-			Storer: mockValidatingStorer,
+		bytesResource      = "/bytes"
+		chunksResource     = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		tagsResource       = "/tags"
+		tagsWithIdResource = func(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
+		dirResource        = "/dirs"
+		someHash           = swarm.MustParseHexAddress("aabbcc")
+		someContent        = []byte("bbaatt")
+		someTagName        = "file.jpg"
+		tag                = tags.NewTags()
+		mockPusher         = mp.NewMockPusher(tag)
+		client             = newTestServer(t, testServerOptions{
+			Storer: mock.NewStorer(),
 			Tags:   tag,
 		})
 	)
@@ -64,7 +63,7 @@ func TestTags(t *testing.T) {
 
 	t.Run("create-tag-with-name", func(t *testing.T) {
 		tReq := &api.TagRequest{
-			Name: validTagName,
+			Name: someTagName,
 		}
 		b, err := json.Marshal(tReq)
 		if err != nil {
@@ -74,15 +73,15 @@ func TestTags(t *testing.T) {
 		tr := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
 
-		if tr.Name != validTagName {
-			t.Fatalf("expected tag name to be %s but is %s instead", validTagName, tr.Name)
+		if tr.Name != someTagName {
+			t.Fatalf("expected tag name to be %s but is %s instead", someTagName, tr.Name)
 		}
 	})
 
 	t.Run("create-tag-from-chunk-upload-with-invalid-id", func(t *testing.T) {
 		sentHeaders := make(http.Header)
 		sentHeaders.Set(api.TagHeaderUid, "invalid_id.jpg") // the value should be uint32
-		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusInternalServerError, jsonhttp.StatusResponse{
+		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "cannot get or create tag",
 			Code:    http.StatusInternalServerError,
 		}, sentHeaders)
@@ -103,7 +102,7 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("get-tag-id-from-chunk-upload-without-tag", func(t *testing.T) {
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, nil)
@@ -114,7 +113,7 @@ func TestTags(t *testing.T) {
 	t.Run("create-tag-and-use-it-to-upload-chunk", func(t *testing.T) {
 		// create a tag using the API
 		b, err := json.Marshal(api.TagResponse{
-			Name: validTagName,
+			Name: someTagName,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -122,14 +121,14 @@ func TestTags(t *testing.T) {
 		tr := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
 
-		if tr.Name != validTagName {
-			t.Fatalf("sent tag name %s does not match received tag name %s", validTagName, tr.Name)
+		if tr.Name != someTagName {
+			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
 		}
 
 		// now upload a chunk and see if we receive a tag with the same id
 		sentHeaders := make(http.Header)
 		sentHeaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(tr.Uid), 10))
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, sentHeaders)
@@ -140,7 +139,7 @@ func TestTags(t *testing.T) {
 	t.Run("create-tag-and-use-it-to-upload-multiple-chunks", func(t *testing.T) {
 		// create a tag using the API
 		b, err := json.Marshal(api.TagResponse{
-			Name: validTagName,
+			Name: someTagName,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -148,14 +147,14 @@ func TestTags(t *testing.T) {
 		tr := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
 
-		if tr.Name != validTagName {
-			t.Fatalf("sent tag name %s does not match received tag name %s", validTagName, tr.Name)
+		if tr.Name != someTagName {
+			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
 		}
 
 		// now upload a chunk and see if we receive a tag with the same id
 		sentHeaders := make(http.Header)
 		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, sentHeaders)
@@ -178,7 +177,7 @@ func TestTags(t *testing.T) {
 
 	t.Run("get-tag-from-chunk-upload-and-use-it-again", func(t *testing.T) {
 		// upload a new chunk and get the generated tag id
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, nil)
@@ -192,7 +191,7 @@ func TestTags(t *testing.T) {
 		// now upload another chunk using the same tag id
 		sentHeaders := make(http.Header)
 		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
-		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, sentHeaders)
@@ -210,7 +209,7 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("get-tag-using-id", func(t *testing.T) {
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, nil)
@@ -225,7 +224,7 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("tag-counters", func(t *testing.T) {
-		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
+		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
 		}, nil)
@@ -268,14 +267,14 @@ func TestTags(t *testing.T) {
 		// create a tag using the API
 		tr := api.TagResponse{}
 		b, err := json.Marshal(api.TagResponse{
-			Name: validTagName,
+			Name: someTagName,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tr)
-		if tr.Name != validTagName {
-			t.Fatalf("sent tag name %s does not match received tag name %s", validTagName, tr.Name)
+		if tr.Name != someTagName {
+			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
 		}
 
 		sentHeaders := make(http.Header)
@@ -313,8 +312,8 @@ func TestTags(t *testing.T) {
 		if finalTag.Total != 0 {
 			t.Errorf("tag total count mismatch. got %d want %d", finalTag.Total, 0)
 		}
-		if finalTag.Seen != 3 {
-			t.Errorf("tag seen count mismatch. got %d want %d", finalTag.Seen, 3)
+		if finalTag.Seen != 1 {
+			t.Errorf("tag seen count mismatch. got %d want %d", finalTag.Seen, 1)
 		}
 		if finalTag.Stored != 3 {
 			t.Errorf("tag stored count mismatch. got %d want %d", finalTag.Stored, 3)
@@ -341,7 +340,7 @@ func TestTags(t *testing.T) {
 
 		// create a tag through API
 		b, err := json.Marshal(api.TagResponse{
-			Name: validTagName,
+			Name: someTagName,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -388,7 +387,7 @@ func TestTags(t *testing.T) {
 
 		// create a tag through API
 		b2, err := json.Marshal(api.TagResponse{
-			Name: validTagName,
+			Name: someTagName,
 		})
 		if err != nil {
 			t.Fatal(err)

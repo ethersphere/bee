@@ -45,7 +45,6 @@ func (c *command) initStartCmd() (err error) {
 		optionNameTracingEndpoint      = "tracing-endpoint"
 		optionNameTracingServiceName   = "tracing-service-name"
 		optionNameVerbosity            = "verbosity"
-		optionNameDisconnectThreshold  = "disconnect-threshold"
 		optionNameGlobalPinningEnabled = "global-pinning-enable"
 		optionNamePaymentThreshold     = "payment-threshold"
 		optionNamePaymentTolerance     = "payment-tolerance"
@@ -133,7 +132,6 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				TracingEndpoint:      c.config.GetString(optionNameTracingEndpoint),
 				TracingServiceName:   c.config.GetString(optionNameTracingServiceName),
 				Logger:               logger,
-				DisconnectThreshold:  c.config.GetUint64(optionNameDisconnectThreshold),
 				GlobalPinningEnabled: c.config.GetBool(optionNameGlobalPinningEnabled),
 				PaymentThreshold:     c.config.GetUint64(optionNamePaymentThreshold),
 				PaymentTolerance:     c.config.GetUint64(optionNamePaymentTolerance),

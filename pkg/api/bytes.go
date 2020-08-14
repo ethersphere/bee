@@ -35,7 +35,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := sctx.SetTag(r.Context(), tag)
 
 	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	sp := splitter.NewSimpleSplitter(s.Storer)
+	sp := splitter.NewSimpleSplitter(s.Storer, requestModePut(r))
 	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: split write all: %v", err)

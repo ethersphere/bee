@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -15,6 +16,11 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
+)
+
+const (
+	SwarmPinHeader = "Swarm-Pin"
+	TagHeaderUid   = "swarm-tag-uid"
 )
 
 type Service interface {
@@ -70,4 +76,12 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	}
 	t, err := s.Tags.Get(uint32(uid))
 	return t, false, err
+}
+
+// requestModePut returns the desired storage.ModePut for this request based on the request headers.
+func requestModePut(r *http.Request) storage.ModePut {
+	if h := strings.ToLower(r.Header.Get(SwarmPinHeader)); h == "true" {
+		return storage.ModePutUploadPin
+	}
+	return storage.ModePutUpload
 }
