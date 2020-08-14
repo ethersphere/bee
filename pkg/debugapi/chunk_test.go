@@ -31,31 +31,39 @@ func TestHasChunkHandler(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunks/"+key.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chunks/"+key.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunks/abbbbb", nil, http.StatusNotFound, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusNotFound),
-			Code:    http.StatusNotFound,
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chunks/abbbbb", http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusNotFound),
+				Code:    http.StatusNotFound,
+			}),
+		)
 	})
 
 	t.Run("bad address", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/chunks/abcd1100zz", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "bad address",
-			Code:    http.StatusBadRequest,
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chunks/abcd1100zz", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "bad address",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 	})
 
 	t.Run("remove-chunk", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/chunks/"+key.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/chunks/"+key.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 		yes, err := mockStorer.Has(context.Background(), key)
 		if err != nil {
 			t.Fatal(err)
@@ -67,10 +75,12 @@ func TestHasChunkHandler(t *testing.T) {
 
 	t.Run("remove-not-present-chunk", func(t *testing.T) {
 		notPresentChunkAddress := "deadbeef"
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/chunks/"+notPresentChunkAddress, nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/chunks/"+notPresentChunkAddress, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 		yes, err := mockStorer.Has(context.Background(), swarm.NewAddress([]byte(notPresentChunkAddress)))
 		if err != nil {
 			t.Fatal(err)

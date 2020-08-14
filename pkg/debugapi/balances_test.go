@@ -48,7 +48,9 @@ func TestBalances(t *testing.T) {
 
 	// We expect a list of items unordered by peer:
 	var got *debugapi.BalancesResponse
-	jsonhttptest.ResponseUnmarshal(t, testServer.Client, http.MethodGet, "/balances", nil, http.StatusOK, &got)
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances", http.StatusOK,
+		jsonhttptest.WithUnmarshalResponse(&got),
+	)
 
 	if !equalBalances(got, expected) {
 		t.Errorf("got balances: %v, expected: %v", got, expected)
@@ -65,10 +67,12 @@ func TestBalancesError(t *testing.T) {
 		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
 	})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances", nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-		Message: debugapi.ErrCantBalances,
-		Code:    http.StatusInternalServerError,
-	})
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances", http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrCantBalances,
+			Code:    http.StatusInternalServerError,
+		}),
+	)
 }
 
 func TestBalancesPeers(t *testing.T) {
@@ -80,10 +84,12 @@ func TestBalancesPeers(t *testing.T) {
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances/"+peer, nil, http.StatusOK, debugapi.BalanceResponse{
-		Peer:    peer,
-		Balance: 1000000000000000000,
-	})
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.BalanceResponse{
+			Peer:    peer,
+			Balance: 1000000000000000000,
+		}),
+	)
 }
 
 func TestBalancesPeersError(t *testing.T) {
@@ -96,10 +102,12 @@ func TestBalancesPeersError(t *testing.T) {
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances/"+peer, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-		Message: debugapi.ErrCantBalance,
-		Code:    http.StatusInternalServerError,
-	})
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrCantBalance,
+			Code:    http.StatusInternalServerError,
+		}),
+	)
 }
 
 func TestBalancesInvalidAddress(t *testing.T) {
@@ -107,10 +115,12 @@ func TestBalancesInvalidAddress(t *testing.T) {
 
 	testServer := newTestServer(t, testServerOptions{})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/balances/"+peer, nil, http.StatusNotFound, jsonhttp.StatusResponse{
-		Message: debugapi.ErrInvaliAddress,
-		Code:    http.StatusNotFound,
-	})
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusNotFound,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrInvaliAddress,
+			Code:    http.StatusNotFound,
+		}),
+	)
 }
 
 func equalBalances(a, b *debugapi.BalancesResponse) bool {

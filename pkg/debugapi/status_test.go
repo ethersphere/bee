@@ -15,15 +15,19 @@ import (
 func TestHealth(t *testing.T) {
 	testServer := newTestServer(t, testServerOptions{})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/health", nil, http.StatusOK, debugapi.StatusResponse{
-		Status: "ok",
-	})
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/health", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.StatusResponse{
+			Status: "ok",
+		}),
+	)
 }
 
 func TestReadiness(t *testing.T) {
 	testServer := newTestServer(t, testServerOptions{})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/readiness", nil, http.StatusOK, debugapi.StatusResponse{
-		Status: "ok",
-	})
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/readiness", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.StatusResponse{
+			Status: "ok",
+		}),
+	)
 }

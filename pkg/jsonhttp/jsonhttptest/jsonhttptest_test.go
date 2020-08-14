@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 )
 
-func TestResponse(t *testing.T) {
+func TestRequest(t *testing.T) {
 	type response struct {
 		Message string `json:"message"`
 	}
@@ -40,10 +40,13 @@ func TestResponse(t *testing.T) {
 
 	c := s.Client()
 
-	t.Run("direct", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, c, wantMethod, s.URL+wantPath, strings.NewReader(wantBody), http.StatusCreated, response{
-			Message: message,
-		})
+	t.Run("WithExpectedJSONResponse", func(t *testing.T) {
+		jsonhttptest.Request(t, c, wantMethod, s.URL+wantPath, http.StatusCreated,
+			jsonhttptest.WithRequestBody(strings.NewReader(wantBody)),
+			jsonhttptest.WithExpectedJSONResponse(response{
+				Message: message,
+			}),
+		)
 
 		if gotMethod != wantMethod {
 			t.Errorf("got method %s, want %s", gotMethod, wantMethod)
@@ -56,9 +59,12 @@ func TestResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("unmarshal", func(t *testing.T) {
+	t.Run("WithUnmarshalResponse", func(t *testing.T) {
 		var r response
-		jsonhttptest.ResponseUnmarshal(t, c, wantMethod, s.URL+wantPath, strings.NewReader(wantBody), http.StatusCreated, &r)
+		jsonhttptest.Request(t, c, wantMethod, s.URL+wantPath, http.StatusCreated,
+			jsonhttptest.WithRequestBody(strings.NewReader(wantBody)),
+			jsonhttptest.WithUnmarshalResponse(&r),
+		)
 
 		if gotMethod != wantMethod {
 			t.Errorf("got method %s, want %s", gotMethod, wantMethod)
@@ -70,7 +76,7 @@ func TestResponse(t *testing.T) {
 			t.Errorf("got body %s, want %s", gotBody, wantBody)
 		}
 		if r.Message != message {
-			t.Errorf("got messag %s, want %s", r.Message, message)
+			t.Errorf("got message %s, want %s", r.Message, message)
 		}
 	})
 }
