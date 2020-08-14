@@ -6,13 +6,13 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/netstore"
 	"io"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/ethersphere/bee/pkg/netstore"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -32,14 +32,16 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag := s.createTag(w, r)
-	if tag == nil {
+	tag, _, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
+	if err != nil {
+		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
+		s.Logger.Error("chunk upload: get or create tag")
+		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
 
 	// Add the tag to the context
-	r = r.WithContext(context.WithValue(r.Context(), tags.TagsContextKey{}, tag))
-	ctx := r.Context()
+	ctx := sctx.SetTag(r.Context(), tag)
 
 	// Increment the StateSplit here since we dont have a splitter for the file upload
 	tag.Inc(tags.StateSplit)
@@ -68,10 +70,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Indicate that the chunk is stored
 	tag.Inc(tags.StateStored)
 
-	tag.DoneSplit(address)
-
-	w.Header().Set(TagHeaderUid, fmt.Sprint(tag.Uid))
-	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
+	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
 	jsonhttp.OK(w, nil)
 }
 

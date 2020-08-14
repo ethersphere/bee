@@ -78,12 +78,6 @@ func (s *server) setupRouting() {
 	router.Handle("/chunks-pin", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.listPinnedChunks),
 	})
-	router.Handle("/tags", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.createTag),
-	})
-	router.Handle("/tags/{uid}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTag),
-	})
 	router.Handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})

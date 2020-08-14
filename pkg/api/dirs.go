@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -44,14 +45,28 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger)
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
 	if err != nil {
-		s.Logger.Errorf("dir upload, store dir")
-		s.Logger.Debugf("dir upload, store dir err: %v", err)
-		jsonhttp.InternalServerError(w, "could not store dir")
+		s.Logger.Debugf("dir upload: get or create tag: %v", err)
+		s.Logger.Error("dir upload: get or create tag")
+		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
 
+	// Add the tag to the context
+	ctx = sctx.SetTag(ctx, tag)
+
+	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger)
+	if err != nil {
+		s.Logger.Debugf("dir upload, store dir err: %v", err)
+		s.Logger.Errorf("dir upload, store dir")
+		jsonhttp.InternalServerError(w, "could not store dir")
+		return
+	}
+	if created {
+		tag.DoneSplit(reference)
+	}
+	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})

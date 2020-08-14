@@ -209,6 +209,12 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	peer, err := ps.peerSuggester.ClosestPeer(ch.Address())
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
+			// this is to make sure that the sent number does not diverge from the synced counter
+			t, err := ps.tagg.Get(ch.TagID())
+			if err == nil && t != nil {
+				t.Inc(tags.StateSent)
+			}
+
 			// if you are the closest node return a receipt immediately
 			return &Receipt{
 				Address: ch.Address(),
@@ -228,6 +234,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		_ = streamer.Reset()
 		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
+
 	//  if you manage to get a tag, just increment the respective counter
 	t, err := ps.tagg.Get(ch.TagID())
 	if err == nil && t != nil {
