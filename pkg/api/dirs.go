@@ -66,6 +66,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if created {
 		tag.DoneSplit(reference)
 	}
+	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})

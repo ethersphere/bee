@@ -358,11 +358,8 @@ func TestTags(t *testing.T) {
 		})
 	})
 
-	t.Run("done-split", func(t *testing.T) {
-		// generate address
-		b, err := json.Marshal(api.TagResponse{
-			Address: test.RandomAddress(),
-		})
+	t.Run("done-split-error", func(t *testing.T) {
+		b, err := json.Marshal(api.TagResponse{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -378,6 +375,17 @@ func TestTags(t *testing.T) {
 			Message: "tag not present",
 			Code:    http.StatusNotFound,
 		})
+	})
+
+	t.Run("done-split", func(t *testing.T) {
+		addr := test.RandomAddress()
+		// generate address
+		b, err := json.Marshal(api.TagResponse{
+			Address: addr,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		// create a tag through API
 		b2, err := json.Marshal(api.TagResponse{
@@ -389,21 +397,75 @@ func TestTags(t *testing.T) {
 		tRes := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b2), http.StatusCreated, &tRes)
 
+		tagId := tRes.Uid
+
 		// call done split
-		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(tRes.Uid), bytes.NewReader(b), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(tagId), bytes.NewReader(b), http.StatusOK, jsonhttp.StatusResponse{
 			Message: "ok",
 			Code:    http.StatusOK,
 		})
+
+		// check tag data
+		tRes2 := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(tagId), nil, http.StatusOK, &tRes2)
+
+		if tRes2.Uid != tagId {
+			t.Fatalf("expected tag id to be %d but is %d", tagId, tRes2.Uid)
+		}
+
+		if !tRes2.Address.Equal(addr) {
+			t.Fatalf("expected tag address to be %s but is %s", addr.String(), tRes2.Address.String())
+		}
+
+		if tRes2.Total != 0 {
+			t.Errorf("tag total count mismatch. got %d want %d", tRes2.Total, 0)
+		}
+		if tRes2.Seen != 0 {
+			t.Errorf("tag seen count mismatch. got %d want %d", tRes2.Seen, 0)
+		}
+		if tRes2.Stored != 0 {
+			t.Errorf("tag stored count mismatch. got %d want %d", tRes2.Stored, 0)
+		}
+		if tRes2.Sent != 0 {
+			t.Errorf("tag sent count mismatch. got %d want %d", tRes2.Sent, 0)
+		}
+		if tRes2.Synced != 0 {
+			t.Errorf("tag synced count mismatch. got %d want %d", tRes2.Synced, 0)
+		}
 	})
 
 	t.Run("dir-tags", func(t *testing.T) {
+		// upload a dir without supplying tag
 		tarReader := tarFiles(t, []f{{
 			data: []byte("some data"),
 			name: "binary-file",
 		}})
 
-		// why is this not working??? same dirs_test.go:56, but with correct content type
-		jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodPost, dirResource, tarReader, http.StatusOK, http.Header{"Content-Type": {api.ContentTypeTar}})
+		expectedHash := swarm.MustParseHexAddress("9e5acfbfeb7e074d4c79f5f9922e8a25990dad267d0ea7becaaad07b47fb2a87")
+		expectedResponse := api.FileUploadResponse{Reference: expectedHash}
+
+		sentHeaders := make(http.Header)
+		sentHeaders.Set("Content-Type", api.ContentTypeTar)
+		respHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirResource, tarReader, http.StatusOK, expectedResponse, sentHeaders)
+
+		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUidHeader))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// check tag data
+		tRes := api.TagResponse{}
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(uint32(tagId)), nil, http.StatusOK, &tRes)
+
+		if tRes.Total == 0 {
+			t.Error("tag total should be different than 0 but it is not")
+		}
+		if tRes.Stored == 0 {
+			t.Error("tag stored should be different than 0 but it is not")
+		}
+		if tRes.Split == 0 {
+			t.Error("tag split should be different than 0 but it is not")
+		}
 	})
 }
 
