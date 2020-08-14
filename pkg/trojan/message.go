@@ -44,7 +44,7 @@ const (
 	TopicSize      = 32
 )
 
-var minerTimeout = 10 * time.Second
+var minerTimeout = 20 * time.Second
 
 // NewTopic creates a new Topic variable with the given input string
 // the input string is taken as a byte slice and hashed

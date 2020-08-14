@@ -8,9 +8,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
+	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -52,6 +55,7 @@ func TestFiles(t *testing.T) {
 	})
 
 	t.Run("encrypt-decrypt", func(t *testing.T) {
+		t.Skip("reenable after crypto refactor")
 		fileName := "my-pictures.jpeg"
 		headers := make(http.Header)
 		headers.Add(api.EncryptHeader, "True")
@@ -215,4 +219,178 @@ func TestFiles(t *testing.T) {
 		}
 	})
 
+}
+
+// TestRangeRequests validates that all endpoints are serving content with
+// respect to HTTP Range headers.
+func TestRangeRequests(t *testing.T) {
+	data := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus dignissim tincidunt orci id aliquam. Praesent eget turpis in lectus semper consectetur et ut nibh. Nam rhoncus, augue sit amet sollicitudin lacinia, turpis tortor molestie urna, at mattis sem sapien sit amet augue. In bibendum ex vel odio dignissim interdum. Quisque hendrerit sapien et porta condimentum. Vestibulum efficitur mauris tellus, eget vestibulum sapien vulputate ac. Proin et vulputate sapien. Duis tincidunt mauris vulputate porta venenatis. Sed dictum aliquet urna, sit amet fermentum velit pellentesque vitae. Nam sed nisi ultrices, volutpat quam et, malesuada sapien. Nunc gravida non orci at rhoncus. Sed vitae dui accumsan, venenatis lectus et, mattis tellus. Proin sed mauris eu mi congue lacinia.")
+
+	uploads := []struct {
+		name             string
+		uploadEndpoint   string
+		downloadEndpoint string
+		reference        string
+		filepath         string
+		reader           io.Reader
+		contentType      string
+	}{
+		{
+			name:             "bytes",
+			uploadEndpoint:   "/bytes",
+			downloadEndpoint: "/bytes",
+			reference:        "4985af9dc3339ad3111c71651b92df7f21587391c01d3aa34a26879b9a1beb78",
+			reader:           bytes.NewReader(data),
+			contentType:      "text/plain; charset=utf-8",
+		},
+		{
+			name:             "file",
+			uploadEndpoint:   "/files",
+			downloadEndpoint: "/files",
+			reference:        "e387331d1c9d82f2cb01c47a4ffcdf2ed0c047cbe283e484a64fd61bffc410e7",
+			reader:           bytes.NewReader(data),
+			contentType:      "text/plain; charset=utf-8",
+		},
+		{
+			name:             "bzz",
+			uploadEndpoint:   "/dirs",
+			downloadEndpoint: "/bzz",
+			filepath:         "/ipsum/lorem.txt",
+			reference:        "c1e596eebc9b39fea8f790b6ede4a294bf336e17b0cb7cd64ec54edc5c4ec0e2",
+			reader: tarFiles(t, []f{
+				{
+					data:      data,
+					name:      "lorem.txt",
+					dir:       "ipsum",
+					reference: swarm.MustParseHexAddress("4985af9dc3339ad3111c71651b92df7f21587391c01d3aa34a26879b9a1beb78"),
+					header: http.Header{
+						"Content-Type": {"text/plain; charset=utf-8"},
+					},
+				},
+			}),
+			contentType: api.ContentTypeTar,
+		},
+	}
+
+	ranges := []struct {
+		name   string
+		ranges [][2]int
+	}{
+		{
+			name:   "all",
+			ranges: [][2]int{{0, len(data)}},
+		},
+		{
+			name:   "all without end",
+			ranges: [][2]int{{0, -1}},
+		},
+		{
+			name:   "all without start",
+			ranges: [][2]int{{-1, len(data)}},
+		},
+		{
+			name:   "head",
+			ranges: [][2]int{{0, 50}},
+		},
+		{
+			name:   "tail",
+			ranges: [][2]int{{250, len(data)}},
+		},
+		{
+			name:   "middle",
+			ranges: [][2]int{{10, 15}},
+		},
+		{
+			name:   "multiple",
+			ranges: [][2]int{{10, 15}, {100, 125}},
+		},
+		{
+			name:   "even more multiple parts",
+			ranges: [][2]int{{10, 15}, {100, 125}, {250, 252}, {261, 270}, {270, 280}},
+		},
+	}
+
+	for _, upload := range uploads {
+		t.Run(upload.name, func(t *testing.T) {
+			client := newTestServer(t, testServerOptions{
+				Storer: mock.NewStorer(),
+				Tags:   tags.NewTags(),
+				Logger: logging.New(ioutil.Discard, 5),
+			})
+
+			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, upload.uploadEndpoint, upload.reader, http.StatusOK, api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(upload.reference),
+			}, http.Header{
+				"Content-Type": {upload.contentType},
+			})
+
+			for _, tc := range ranges {
+				t.Run(tc.name, func(t *testing.T) {
+					rangeHeader, want := createRangeHeader(data, tc.ranges)
+
+					respHeaders, body := jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodGet, upload.downloadEndpoint+"/"+upload.reference+upload.filepath, nil, http.StatusPartialContent, http.Header{
+						"Range": {rangeHeader},
+					})
+
+					got := parseRangeParts(t, respHeaders.Get("Content-Type"), body)
+
+					if len(got) != len(want) {
+						t.Fatalf("got %v parts, want %v parts", len(got), len(want))
+					}
+					for i := 0; i < len(want); i++ {
+						if !bytes.Equal(got[i], want[i]) {
+							t.Errorf("part %v: got %q, want %q", i, string(got[i]), string(want[i]))
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func createRangeHeader(data []byte, ranges [][2]int) (header string, parts [][]byte) {
+	header = "bytes="
+	for i, r := range ranges {
+		if i > 0 {
+			header += ", "
+		}
+		if r[0] >= 0 && r[1] >= 0 {
+			parts = append(parts, data[r[0]:r[1]])
+			header += fmt.Sprintf("%v-%v", r[0], r[1]-1) // Range: <unit>=<range-start>-<range-end> // end is inclusive
+		} else {
+			if r[0] >= 0 {
+				header += strconv.Itoa(r[0]) // Range: <unit>=<range-start>-
+				parts = append(parts, data[r[0]:])
+			}
+			header += "-"
+			if r[1] >= 0 {
+				if r[0] >= 0 {
+					header += strconv.Itoa(r[1] - 1) // Range: <unit>=<range-start>-<range-end> // end is inclusive
+				} else {
+					header += strconv.Itoa(r[1]) // Range: <unit>=-<suffix-length> // the parameter is length
+				}
+				parts = append(parts, data[:r[1]])
+			}
+		}
+	}
+	return
+}
+
+func parseRangeParts(t *testing.T, contentType string, body []byte) (parts [][]byte) {
+	t.Helper()
+
+	mimetype, params, _ := mime.ParseMediaType(contentType)
+	if mimetype != "multipart/byteranges" {
+		parts = append(parts, body)
+		return
+	}
+	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
+		value, err := ioutil.ReadAll(part)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts = append(parts, value)
+	}
+	return parts
 }
