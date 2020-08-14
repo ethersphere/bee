@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
+	"github.com/ethersphere/bee/pkg/storage"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -32,7 +33,7 @@ func TestBzz(t *testing.T) {
 	var (
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		storer              = smock.NewStorer()
-		sp                  = splitter.NewSimpleSplitter(storer)
+		sp                  = splitter.NewSimpleSplitter(storer, storage.ModePutUpload)
 		client              = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(),

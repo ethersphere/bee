@@ -87,7 +87,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			gcSizeChange += c
 		}
 
-	case storage.ModePutUpload:
+	case storage.ModePutUpload, storage.ModePutUploadPin:
 		for i, ch := range chs {
 			if containsChunk(ch.Address(), chs[:i]...) {
 				exist[i] = true
@@ -105,6 +105,12 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				triggerPushFeed = true
 			}
 			gcSizeChange += c
+			if mode == storage.ModePutUploadPin {
+				err = db.setPin(batch, ch.Address())
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 
 	case storage.ModePutSync:

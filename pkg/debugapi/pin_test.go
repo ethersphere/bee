@@ -23,21 +23,25 @@ import (
 // invalid chunk address case etc. This test case has to be run in sequence and
 // it assumes some state of the DB before another case is run.
 func TestPinChunkHandler(t *testing.T) {
-	resource := func(addr swarm.Address) string { return "/chunks/" + addr.String() }
-	hash := swarm.MustParseHexAddress("aabbcc")
-	data := []byte("bbaatt")
-	mockValidator := validator.NewMockValidator(hash, data)
-	tag := tags.NewTags()
-	mockValidatingStorer := mock.NewValidatingStorer(mockValidator, tag)
-	debugTestServer := newTestServer(t, testServerOptions{
-		Storer: mockValidatingStorer,
-		Tags:   tag,
-	})
-	// This server is used to store chunks
-	bzzTestServer := newBZZTestServer(t, testServerOptions{
-		Storer: mockValidatingStorer,
-		Tags:   tag,
-	})
+	var (
+		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		hash                 = swarm.MustParseHexAddress("aabbcc")
+		data                 = []byte("bbaatt")
+		mockValidator        = validator.NewMockValidator(hash, data)
+		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
+		tag                  = tags.NewTags()
+
+		debugTestServer = newTestServer(t, testServerOptions{
+			Storer: mockValidatingStorer,
+			Tags:   tag,
+		})
+
+		// This server is used to store chunks
+		bzzTestServer = newBZZTestServer(t, testServerOptions{
+			Storer: mockValidatingStorer,
+			Tags:   tag,
+		})
+	)
 
 	// bad chunk address
 	t.Run("pin-bad-address", func(t *testing.T) {

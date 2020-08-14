@@ -59,6 +59,8 @@ func (m ModePut) String() string {
 		return "Sync"
 	case ModePutUpload:
 		return "Upload"
+	case ModePutUploadPin:
+		return "UploadPin"
 	default:
 		return "Unknown"
 	}
@@ -72,6 +74,8 @@ const (
 	ModePutSync
 	// ModePutUpload: when a chunk is created by local upload
 	ModePutUpload
+	// ModePutUploadPin: the same as ModePutUpload but also pin the chunk atomically with the put
+	ModePutUploadPin
 )
 
 // ModeSet enumerates different Setter modes.
