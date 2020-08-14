@@ -164,6 +164,8 @@ func TestDirs(t *testing.T) {
 // tarFiles receives an array of test case files and creates a new tar with those files as a collection
 // it returns a bytes.Buffer which can be used to read the created tar
 func tarFiles(t *testing.T, files []f) *bytes.Buffer {
+	t.Helper()
+
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
