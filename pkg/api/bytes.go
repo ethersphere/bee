@@ -23,7 +23,7 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	tag, created, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
 	if err != nil {
 		s.Logger.Debugf("bytes upload: get or create tag: %v", err)
 		s.Logger.Error("bytes upload: get or create tag")
@@ -46,8 +46,8 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if created {
 		tag.DoneSplit(address)
 	}
-	w.Header().Set(TagHeaderUid, fmt.Sprint(tag.Uid))
-	w.Header().Set("Access-Control-Expose-Headers", TagHeaderUid)
+	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
 	jsonhttp.OK(w, bytesPostResponse{
 		Reference: address,
 	})

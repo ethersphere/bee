@@ -80,7 +80,7 @@ func TestTags(t *testing.T) {
 
 	t.Run("create-tag-from-chunk-upload-with-invalid-id", func(t *testing.T) {
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, "invalid_id.jpg") // the value should be uint32
+		sentHeaders.Set(api.SwarmTagUidHeader, "invalid_id.jpg") // the value should be uint32
 		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusInternalServerError, jsonhttp.StatusResponse{
 			Message: "cannot get or create tag",
 			Code:    http.StatusInternalServerError,
@@ -127,7 +127,7 @@ func TestTags(t *testing.T) {
 
 		// now upload a chunk and see if we receive a tag with the same id
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(tr.Uid), 10))
+		sentHeaders.Set(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10))
 		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -153,7 +153,7 @@ func TestTags(t *testing.T) {
 
 		// now upload a chunk and see if we receive a tag with the same id
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
+		sentHeaders.Set(api.SwarmTagUidHeader, fmt.Sprint(tr.Uid))
 		rcvdHeaders := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -166,7 +166,7 @@ func TestTags(t *testing.T) {
 		secondValidContent := []byte("123456")
 
 		sentHeaders = make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
+		sentHeaders.Set(api.SwarmTagUidHeader, fmt.Sprint(tr.Uid))
 		rcvdHeaders = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(secondValidHash), bytes.NewReader(secondValidContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -190,7 +190,7 @@ func TestTags(t *testing.T) {
 
 		// now upload another chunk using the same tag id
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
+		sentHeaders.Set(api.SwarmTagUidHeader, fmt.Sprint(tr.Uid))
 		_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusOK),
 			Code:    http.StatusOK,
@@ -278,7 +278,7 @@ func TestTags(t *testing.T) {
 		}
 
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.TagHeaderUid, strconv.FormatUint(uint64(tr.Uid), 10))
+		sentHeaders.Set(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10))
 
 		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 		dataChunk, err := g.SequentialBytes(swarm.ChunkSize)
@@ -416,7 +416,7 @@ func TestTags(t *testing.T) {
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
 // if an API tag response is supplied, it also verifies that it contains an id which matches the headers
 func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {
-	idStr := headers.Get(api.TagHeaderUid)
+	idStr := headers.Get(api.SwarmTagUidHeader)
 	if idStr == "" {
 		t.Fatalf("could not find tag id header in chunk upload response")
 	}

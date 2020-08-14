@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	SwarmPinHeader = "Swarm-Pin"
-	TagHeaderUid   = "swarm-tag-uid"
+	SwarmPinHeader    = "Swarm-Pin"
+	SwarmTagUidHeader = "Swarm-Tag-Uid"
 )
 
 type Service interface {

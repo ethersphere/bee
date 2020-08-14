@@ -45,7 +45,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, created, err := s.getOrCreateTag(r.Header.Get(TagHeaderUid))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
 	if err != nil {
 		s.Logger.Debugf("dir upload: get or create tag: %v", err)
 		s.Logger.Error("dir upload: get or create tag")
