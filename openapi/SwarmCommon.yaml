@@ -29,6 +29,21 @@ components:
           items:
             $ref: '#/components/schemas/P2PUnderlay'
 
+    Balance:
+      type: object
+      properties:
+        peer:
+          $ref: '#/components/schemas/SwarmAddress'
+        balance:
+          type: integer
+    
+    Balances:
+      type: object
+      properties:
+        balances:
+          type: array
+          items:
+            $ref: '#/components/schemas/Balance'
      
     BzzChunksPinned:
       type: object
