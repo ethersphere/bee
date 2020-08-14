@@ -64,7 +64,7 @@ func (db *DB) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChu
 	return pinnedChunks, err
 }
 
-// Pinner returns the pin counter given a swarm address, provided that the
+// PinInfo returns the pin counter for a given swarm address, provided that the
 // address has been pinned.
 func (db *DB) PinInfo(address swarm.Address) (uint64, error) {
 	out, err := db.pinIndex.Get(shed.Item{
