@@ -23,6 +23,8 @@ type Joiner interface {
 	Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataLength int64, err error)
 	Size(ctx context.Context, address swarm.Address) (dataLength int64, err error)
 }
+
+// JoinSeeker provides a Joiner that can seek.
 type JoinSeeker interface {
 	Join(ctx context.Context, address swarm.Address) (dataOut io.ReadSeeker, dataLength int64, err error)
 	Size(ctx context.Context, address swarm.Address) (dataLength int64, err error)

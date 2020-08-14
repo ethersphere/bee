@@ -56,6 +56,7 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 }
 
 func (j *SimpleJoinerJob) ReadAt(b []byte, off int64) (read int, err error) {
+	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
 	return j.readAtOffset(b, j.rootData, 0, j.spanLength, off)
 }
 
@@ -86,7 +87,7 @@ func (j *SimpleJoinerJob) readAtOffset(b, data []byte, cur, subTrieSize, off int
 		}
 
 		chunkData := ch.Data()[8:]
-		subtrieSpan := int64(chunkSize(ch.Data()))
+		subtrieSpan := int64(chunkToSpan(ch.Data()))
 
 		// we have the size of the subtrie now, if the read offset is within this chunk,
 		// then we drilldown more
@@ -105,8 +106,6 @@ var errOffset = errors.New("seek: invalid offset")
 
 func (j *SimpleJoinerJob) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
-	default:
-		return 0, errWhence
 	case 0:
 		offset += 0
 	case 1:
@@ -117,6 +116,8 @@ func (j *SimpleJoinerJob) Seek(offset int64, whence int) (int64, error) {
 		if offset < 0 {
 			return 0, io.EOF
 		}
+	default:
+		return 0, errWhence
 	}
 
 	if offset < 0 {
@@ -139,11 +140,11 @@ func (j *SimpleJoinerJob) Size() (int64, error) {
 		j.rootData = chunk.Data()
 	}
 
-	s := chunkSize(j.rootData)
+	s := chunkToSpan(j.rootData)
 
 	return int64(s), nil
 }
 
-func chunkSize(data []byte) uint64 {
+func chunkToSpan(data []byte) uint64 {
 	return binary.LittleEndian.Uint64(data[:8])
 }

@@ -23,7 +23,6 @@ import (
 
 func TestSeek(t *testing.T) {
 	seed := time.Now().UnixNano()
-	t.Log("seed", seed)
 
 	r := mrand.New(mrand.NewSource(seed))
 
@@ -49,19 +48,19 @@ func TestSeek(t *testing.T) {
 		},
 		{
 			name: "one chunk",
-			size: 4096,
+			size: swarm.ChunkSize,
 		},
 		{
 			name: "a few chunks",
-			size: 10 * 4096,
+			size: 10 * swarm.ChunkSize,
 		},
 		{
 			name: "a few chunks and a change",
-			size: 10*4096 + 84,
+			size: 10*swarm.ChunkSize + 84,
 		},
 		{
 			name: "a few chunks more",
-			size: 2*4096*4096 + 1000,
+			size: 2*swarm.ChunkSize*swarm.ChunkSize + 1000,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -90,7 +89,7 @@ func TestSeek(t *testing.T) {
 			validateRead := func(t *testing.T, name string, i int) {
 				t.Helper()
 
-				got := make([]byte, 4096)
+				got := make([]byte, swarm.ChunkSize)
 				count, err := j.Read(got)
 				if err != nil {
 					t.Fatal(err)
@@ -209,13 +208,13 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 
 	b := make([]byte, swarm.ChunkSize)
-	_, err = j.ReadAt(b, 4096)
+	_, err = j.ReadAt(b, swarm.ChunkSize)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if !bytes.Equal(b, secondChunk.Data()[8:]) {
-		t.Fatal("not equal")
+		t.Fatal("data read at offset not equal to expected chunk")
 	}
 }
 
@@ -251,13 +250,13 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 
 	// verify first chunk content
-	outBuffer := make([]byte, 4096)
+	outBuffer := make([]byte, swarm.ChunkSize)
 	c, err := j.Read(outBuffer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c != 4096 {
-		t.Fatalf("expected firstchunk read count %d, got %d", 4096, c)
+	if c != swarm.ChunkSize {
+		t.Fatalf("expected firstchunk read count %d, got %d", swarm.ChunkSize, c)
 	}
 	if !bytes.Equal(outBuffer, firstChunk.Data()[8:]) {
 		t.Fatalf("firstchunk data mismatch, expected %x, got %x", outBuffer, firstChunk.Data()[8:])
@@ -268,8 +267,8 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c != 4096 {
-		t.Fatalf("expected secondchunk read count %d, got %d", 4096, c)
+	if c != swarm.ChunkSize {
+		t.Fatalf("expected secondchunk read count %d, got %d", swarm.ChunkSize, c)
 	}
 	if !bytes.Equal(outBuffer, secondChunk.Data()[8:]) {
 		t.Fatalf("secondchunk data mismatch, expected %x, got %x", outBuffer, secondChunk.Data()[8:])

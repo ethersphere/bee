@@ -31,7 +31,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 	var err error
 	_, _, err = joiner.Join(ctx, swarm.ZeroAddress)
 	if err != storage.ErrNotFound {
-		t.Fatalf("expected ErrNotFound for %x", swarm.ZeroAddress)
+		t.Fatalf("expected ErrNotFound for %x but got %v", swarm.ZeroAddress, err)
 	}
 
 	// create the chunk to
