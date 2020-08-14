@@ -66,6 +66,22 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.bzzDownloadHandler),
 	})
 
+	router.Handle("/tags", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(1024),
+			web.FinalHandlerFunc(s.createTag),
+		),
+	})
+
+	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
+		"GET":    http.HandlerFunc(s.getTag),
+		"DELETE": http.HandlerFunc(s.deleteTag),
+		"PATCH": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(1024),
+			web.FinalHandlerFunc(s.doneSplit),
+		),
+	})
+
 	s.Handler = web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
 		handlers.CompressHandler,

@@ -177,7 +177,11 @@ func (t *Tag) Done(s State) bool {
 func (t *Tag) DoneSplit(address swarm.Address) int64 {
 	total := atomic.LoadInt64(&t.Split)
 	atomic.StoreInt64(&t.Total, total)
-	t.Address = address
+
+	if !address.Equal(swarm.ZeroAddress) {
+		t.Address = address
+	}
+
 	return total
 }
 

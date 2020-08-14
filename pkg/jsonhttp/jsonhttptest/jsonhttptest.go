@@ -28,7 +28,9 @@ func ResponseDirect(t *testing.T, client *http.Client, method, url string, body 
 		t.Fatal(err)
 	}
 	got = bytes.TrimSpace(got)
-
+	if response == nil && len(got) == 0 {
+		return
+	}
 	want, err := json.Marshal(response)
 	if err != nil {
 		t.Error(err)
