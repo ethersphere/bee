@@ -399,6 +399,11 @@ func TestTags(t *testing.T) {
 
 		tagId := tRes.Uid
 
+		// upload content with tag
+		sentHeaders := make(http.Header)
+		sentHeaders.Set(api.SwarmTagUidHeader, fmt.Sprint(tagId))
+		jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, sentHeaders)
+
 		// call done split
 		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(tagId), bytes.NewReader(b), http.StatusOK, jsonhttp.StatusResponse{
 			Message: "ok",
@@ -409,28 +414,12 @@ func TestTags(t *testing.T) {
 		tRes2 := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(tagId), nil, http.StatusOK, &tRes2)
 
-		if tRes2.Uid != tagId {
-			t.Fatalf("expected tag id to be %d but is %d", tagId, tRes2.Uid)
-		}
-
 		if !tRes2.Address.Equal(addr) {
 			t.Fatalf("expected tag address to be %s but is %s", addr.String(), tRes2.Address.String())
 		}
 
-		if tRes2.Total != 0 {
-			t.Errorf("tag total count mismatch. got %d want %d", tRes2.Total, 0)
-		}
-		if tRes2.Seen != 0 {
-			t.Errorf("tag seen count mismatch. got %d want %d", tRes2.Seen, 0)
-		}
-		if tRes2.Stored != 0 {
-			t.Errorf("tag stored count mismatch. got %d want %d", tRes2.Stored, 0)
-		}
-		if tRes2.Sent != 0 {
-			t.Errorf("tag sent count mismatch. got %d want %d", tRes2.Sent, 0)
-		}
-		if tRes2.Synced != 0 {
-			t.Errorf("tag synced count mismatch. got %d want %d", tRes2.Synced, 0)
+		if tRes2.Total == 0 {
+			t.Errorf("tag total should be greater than 0 but it is not")
 		}
 	})
 
