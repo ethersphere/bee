@@ -359,12 +359,6 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("done-split", func(t *testing.T) {
-		// no address
-		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(uint32(333)), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Message: "error unmarshaling metadata",
-			Code:    http.StatusInternalServerError,
-		})
-
 		// generate address
 		b, err := json.Marshal(api.TagResponse{
 			Address: test.RandomAddress(),
