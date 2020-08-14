@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
@@ -160,7 +161,7 @@ func putEntry(cmd *cobra.Command, args []string) (err error) {
 	logger.Debugf("metadata contents: %s", metadataBytes)
 
 	// set up splitter to process the metadata
-	s := splitter.NewSimpleSplitter(stores)
+	s := splitter.NewSimpleSplitter(stores, storage.ModePutUpload)
 	ctx := context.Background()
 
 	// first add metadata

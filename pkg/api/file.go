@@ -49,8 +49,15 @@ type fileUploadResponse struct {
 // - multipart http message
 // - other content types as complete file body
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
-	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	contentType := r.Header.Get("Content-Type")
+	var (
+		reader                  io.Reader
+		fileName, contentLength string
+		fileSize                uint64
+		mode                    = requestModePut(r)
+		toEncrypt               = strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
+		contentType             = r.Header.Get("Content-Type")
+	)
+
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		s.Logger.Debugf("file upload: parse content type header %q: %v", contentType, err)
@@ -58,10 +65,6 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid content-type header")
 		return
 	}
-
-	var reader io.Reader
-	var fileName, contentLength string
-	var fileSize uint64
 
 	ta := s.createTag(w, r)
 	if ta == nil {
@@ -152,7 +155,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// first store the file and get its reference
-	sp := splitter.NewSimpleSplitter(s.Storer)
+	sp := splitter.NewSimpleSplitter(s.Storer, mode)
 	fr, err := file.SplitWriteAll(ctx, sp, reader, int64(fileSize), toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("file upload: file store, file %q: %v", fileName, err)
@@ -176,7 +179,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
-	sp = splitter.NewSimpleSplitter(s.Storer)
+	sp = splitter.NewSimpleSplitter(s.Storer, mode)
 	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
@@ -194,7 +197,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "entry marshal error")
 		return
 	}
-	sp = splitter.NewSimpleSplitter(s.Storer)
+	sp = splitter.NewSimpleSplitter(s.Storer, mode)
 	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
 	if err != nil {
 		s.Logger.Debugf("file upload: entry store, file %q: %v", fileName, err)
@@ -219,53 +222,6 @@ type fileUploadInfo struct {
 	size        int64  // file size
 	contentType string
 	reader      io.Reader
-}
-
-// storeFile uploads the given file and returns its reference
-// this function was extracted from `fileUploadHandler` and should eventually replace its current code
-func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer) (swarm.Address, error) {
-	v := ctx.Value(toEncryptContextKey{})
-	toEncrypt, _ := v.(bool) // default is false
-
-	// first store the file and get its reference
-	sp := splitter.NewSimpleSplitter(s)
-	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, toEncrypt)
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split file error: %w", err)
-	}
-
-	// if filename is still empty, use the file hash as the filename
-	if fileInfo.name == "" {
-		fileInfo.name = fr.String()
-	}
-
-	// then store the metadata and get its reference
-	m := entry.NewMetadata(fileInfo.name)
-	m.MimeType = fileInfo.contentType
-	metadataBytes, err := json.Marshal(m)
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("metadata marshal error: %w", err)
-	}
-
-	sp = splitter.NewSimpleSplitter(s)
-	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split metadata error: %w", err)
-	}
-
-	// now join both references (mr, fr) to create an entry and store it
-	e := entry.New(fr, mr)
-	fileEntryBytes, err := e.MarshalBinary()
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("entry marshal error: %w", err)
-	}
-	sp = splitter.NewSimpleSplitter(s)
-	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split entry error: %w", err)
-	}
-
-	return reference, nil
 }
 
 // fileDownloadHandler downloads the file given the entry's reference.
