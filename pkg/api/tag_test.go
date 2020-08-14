@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	mp "github.com/ethersphere/bee/pkg/pusher/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -39,9 +38,8 @@ func TestTags(t *testing.T) {
 		validHash            = swarm.MustParseHexAddress("aabbcc")
 		validContent         = []byte("bbaatt")
 		validTagName         = "file.jpg"
-		mockValidator        = validator.NewMockValidator(validHash, validContent)
 		tag                  = tags.NewTags()
-		mockValidatingStorer = mock.NewValidatingStorer(mockValidator, tag)
+		mockValidatingStorer = mock.NewStorer()
 		mockPusher           = mp.NewMockPusher(tag)
 		client               = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
@@ -167,7 +165,6 @@ func TestTags(t *testing.T) {
 		// add a second valid content validator
 		secondValidHash := swarm.MustParseHexAddress("deadbeaf")
 		secondValidContent := []byte("123456")
-		mockValidator.AddPair(secondValidHash, secondValidContent)
 
 		sentHeaders = make(http.Header)
 		sentHeaders.Set(api.TagHeaderUid, fmt.Sprint(tr.Uid))
@@ -290,15 +287,7 @@ func TestTags(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		chunkAddress := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef")
-		rootBytes := swarm.MustParseHexAddress("c10090961e7682a10890c334d759a28426647141213abda93b096b892824d2ef").Bytes()
-		rootChunk := make([]byte, 64)
-		copy(rootChunk[:32], rootBytes)
-		copy(rootChunk[32:], rootBytes)
 		rootAddress := swarm.MustParseHexAddress("5e2a21902f51438be1adbd0e29e1bd34c53a21d3120aefa3c7275129f2f88de9")
-
-		mockValidator.AddPair(chunkAddress, dataChunk)
-		mockValidator.AddPair(rootAddress, rootChunk)
 
 		content := make([]byte, swarm.ChunkSize*2)
 		copy(content[swarm.ChunkSize:], dataChunk)
@@ -361,10 +350,7 @@ func TestTags(t *testing.T) {
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b), http.StatusCreated, &tRes)
 
 		// delete tag through API
-		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(tRes.Uid), nil, http.StatusNoContent, jsonhttp.StatusResponse{
-			Message: "ok",
-			Code:    http.StatusNoContent,
-		})
+		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsWithIdResource(tRes.Uid), nil, http.StatusNoContent, nil)
 
 		// try to get tag
 		jsonhttptest.ResponseDirect(t, client, http.MethodGet, tagsWithIdResource(tRes.Uid), nil, http.StatusNotFound, jsonhttp.StatusResponse{

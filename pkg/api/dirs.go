@@ -54,8 +54,8 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	reference, err := storeDir(ctx, r.Body, s.Storer, s.Logger)
 	if err != nil {
-		s.Logger.Errorf("dir upload, store dir")
 		s.Logger.Debugf("dir upload, store dir err: %v", err)
+		s.Logger.Errorf("dir upload, store dir")
 		jsonhttp.InternalServerError(w, "could not store dir")
 		return
 	}
