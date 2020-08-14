@@ -263,7 +263,7 @@ func TestTags(t *testing.T) {
 		}
 	})
 
-	t.Run("bytes-tag-counters", func(t *testing.T) {
+	t.Run("bytes-tags", func(t *testing.T) {
 		// create a tag using the API
 		tr := api.TagResponse{}
 		b, err := json.Marshal(api.TagResponse{
@@ -325,7 +325,7 @@ func TestTags(t *testing.T) {
 
 	})
 
-	t.Run("delete-tag", func(t *testing.T) {
+	t.Run("delete-tag-error", func(t *testing.T) {
 		// try to delete invalid tag
 		jsonhttptest.ResponseDirect(t, client, http.MethodDelete, tagsResource+"/foobar", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
 			Message: "invalid id",
@@ -337,7 +337,9 @@ func TestTags(t *testing.T) {
 			Message: "tag not present",
 			Code:    http.StatusNotFound,
 		})
+	})
 
+	t.Run("delete-tag", func(t *testing.T) {
 		// create a tag through API
 		b, err := json.Marshal(api.TagResponse{
 			Name: someTagName,
@@ -378,26 +380,25 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("done-split", func(t *testing.T) {
-		addr := test.RandomAddress()
-		// generate address
-		b, err := json.Marshal(api.TagResponse{
-			Address: addr,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		// create a tag through API
-		b2, err := json.Marshal(api.TagResponse{
+		tResB, err := json.Marshal(api.TagResponse{
 			Name: someTagName,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		tRes := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(b2), http.StatusCreated, &tRes)
-
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodPost, tagsResource, bytes.NewReader(tResB), http.StatusCreated, &tRes)
 		tagId := tRes.Uid
+
+		// generate address to be supplied to the done split
+		addr := test.RandomAddress()
+		tReqB, err := json.Marshal(api.TagRequest{
+			Address: addr,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		// upload content with tag
 		sentHeaders := make(http.Header)
@@ -405,21 +406,43 @@ func TestTags(t *testing.T) {
 		jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodPost, chunksResource(someHash), bytes.NewReader(someContent), http.StatusOK, sentHeaders)
 
 		// call done split
-		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(tagId), bytes.NewReader(b), http.StatusOK, jsonhttp.StatusResponse{
+		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(tagId), bytes.NewReader(tReqB), http.StatusOK, jsonhttp.StatusResponse{
 			Message: "ok",
 			Code:    http.StatusOK,
 		})
 
 		// check tag data
-		tRes2 := api.TagResponse{}
-		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(tagId), nil, http.StatusOK, &tRes2)
-
-		if !tRes2.Address.Equal(addr) {
-			t.Fatalf("expected tag address to be %s but is %s", addr.String(), tRes2.Address.String())
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(tagId), nil, http.StatusOK, &tRes)
+		if !tRes.Address.Equal(addr) {
+			t.Fatalf("expected tag address to be %s but is %s", addr.String(), tRes.Address.String())
+		}
+		total := tRes.Total
+		if !(total > 0) {
+			t.Errorf("tag total should be greater than 0 but it is not")
 		}
 
-		if tRes2.Total == 0 {
-			t.Errorf("tag total should be greater than 0 but it is not")
+		// try different address value
+		addr = test.RandomAddress()
+		tReqB, err = json.Marshal(api.TagRequest{
+			Address: addr,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// call done split
+		jsonhttptest.ResponseDirect(t, client, http.MethodPatch, tagsWithIdResource(tagId), bytes.NewReader(tReqB), http.StatusOK, jsonhttp.StatusResponse{
+			Message: "ok",
+			Code:    http.StatusOK,
+		})
+
+		// check tag data
+		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(tagId), nil, http.StatusOK, &tRes)
+		if !tRes.Address.Equal(addr) {
+			t.Fatalf("expected tag address to be %s but is %s", addr.String(), tRes.Address.String())
+		}
+		if tRes.Total != total {
+			t.Errorf("tag total should not have changed")
 		}
 	})
 
@@ -446,14 +469,14 @@ func TestTags(t *testing.T) {
 		tRes := api.TagResponse{}
 		jsonhttptest.ResponseUnmarshal(t, client, http.MethodGet, tagsWithIdResource(uint32(tagId)), nil, http.StatusOK, &tRes)
 
-		if tRes.Total == 0 {
-			t.Error("tag total should be different than 0 but it is not")
+		if !(tRes.Total > 0) {
+			t.Errorf("tag total should be greater than 0 but it is not")
 		}
-		if tRes.Stored == 0 {
-			t.Error("tag stored should be different than 0 but it is not")
+		if !(tRes.Stored > 0) {
+			t.Errorf("tag stored should be greater than 0 but it is not")
 		}
-		if tRes.Split == 0 {
-			t.Error("tag split should be different than 0 but it is not")
+		if !(tRes.Split > 0) {
+			t.Errorf("tag split should be greater than 0 but it is not")
 		}
 	})
 }
