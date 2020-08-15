@@ -72,6 +72,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	w.WriteHeader(http.StatusContinue)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
@@ -209,7 +215,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tag.DoneSplit(reference)
 	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	//w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,

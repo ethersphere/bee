@@ -30,6 +30,11 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
+	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	w.WriteHeader(http.StatusContinue)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
@@ -46,7 +51,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if created {
 		tag.DoneSplit(address)
 	}
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
 	jsonhttp.OK(w, bytesPostResponse{
 		Reference: address,
