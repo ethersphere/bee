@@ -66,7 +66,7 @@ func TestAccountingAddBalance(t *testing.T) {
 
 	for i, booking := range bookings {
 		if booking.price < 0 {
-			err = acc.Reserve(booking.peer, uint64(booking.price))
+			err = acc.Reserve(booking.peer, uint64(-booking.price))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -74,6 +74,7 @@ func TestAccountingAddBalance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			acc.Release(booking.peer, uint64(booking.price))
 		} else {
 			err = acc.Debit(booking.peer, uint64(booking.price))
 			if err != nil {
@@ -88,10 +89,6 @@ func TestAccountingAddBalance(t *testing.T) {
 
 		if balance != booking.expectedBalance {
 			t.Fatalf("balance for peer %v not as expected after booking %d. got %d, wanted %d", booking.peer.String(), i, balance, booking.expectedBalance)
-		}
-
-		if booking.price < 0 {
-			acc.Release(booking.peer, uint64(booking.price))
 		}
 	}
 }
