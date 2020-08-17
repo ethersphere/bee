@@ -44,25 +44,16 @@ type PushSync struct {
 	metrics          metrics
 }
 
-type Options struct {
-	Streamer         p2p.Streamer
-	Storer           storage.Putter
-	ClosestPeerer    topology.ClosestPeerer
-	Tagger           *tags.Tags
-	DeliveryCallback func(context.Context, swarm.Chunk) error
-	Logger           logging.Logger
-}
-
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(o Options) *PushSync {
+func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk) error, logger logging.Logger) *PushSync {
 	ps := &PushSync{
-		streamer:         o.Streamer,
-		storer:           o.Storer,
-		peerSuggester:    o.ClosestPeerer,
-		tagg:             o.Tagger,
-		deliveryCallback: o.DeliveryCallback,
-		logger:           o.Logger,
+		streamer:         streamer,
+		storer:           storer,
+		peerSuggester:    closestPeerer,
+		tagg:             tagger,
+		deliveryCallback: deliveryCallback,
+		logger:           logger,
 		metrics:          newMetrics(),
 	}
 	return ps

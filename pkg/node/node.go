@@ -283,14 +283,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	}
 	retrieve.SetStorer(ns)
 
-	pushSyncProtocol := pushsync.New(pushsync.Options{
-		Streamer:         p2ps,
-		Storer:           storer,
-		ClosestPeerer:    kad,
-		DeliveryCallback: psss.TryUnwrap,
-		Tagger:           tagg,
-		Logger:           logger,
-	})
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger)
 
 	// set the pushSyncer in the PSS
 	psss.WithPushSyncer(pushSyncProtocol)
