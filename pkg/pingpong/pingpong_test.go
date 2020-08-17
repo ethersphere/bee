@@ -27,9 +27,7 @@ func TestPing(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	// create a pingpong server that handles the incoming stream
-	server := pingpong.New(pingpong.Options{
-		Logger: logger,
-	})
+	server := pingpong.New(nil, logger, nil)
 
 	// setup the stream recorder to record stream data
 	recorder := streamtest.New(
@@ -46,10 +44,7 @@ func TestPing(t *testing.T) {
 	)
 
 	// create a pingpong client that will do pinging
-	client := pingpong.New(pingpong.Options{
-		Streamer: recorder,
-		Logger:   logger,
-	})
+	client := pingpong.New(recorder, logger, nil)
 
 	// ping
 	addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")

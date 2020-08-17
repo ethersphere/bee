@@ -182,11 +182,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	}
 
 	// Construct protocols.
-	pingPong := pingpong.New(pingpong.Options{
-		Streamer: p2ps,
-		Logger:   logger,
-		Tracer:   tracer,
-	})
+	pingPong := pingpong.New(p2ps, logger, tracer)
 
 	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
 		return nil, fmt.Errorf("pingpong service: %w", err)
