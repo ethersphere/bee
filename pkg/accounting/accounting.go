@@ -41,10 +41,10 @@ type Interface interface {
 	Balances() (map[string]int64, error)
 }
 
-// PeerBalance holds all relevant accounting information for one peer
-type PeerBalance struct {
-	lock     sync.Mutex
-	reserved uint64 // amount currently reserved for active peer interaction
+// accountingPeer holds all in-memory accounting information for one peer
+type accountingPeer struct {
+	lock     sync.Mutex // lock to be held during any accounting action for this peer
+	reserved uint64     // amount currently reserved for active peer interaction
 }
 
 // Options for accounting
@@ -58,14 +58,14 @@ type Options struct {
 
 // Accounting is the main implementation of the accounting interface
 type Accounting struct {
-	balancesMu       sync.Mutex // mutex for accessing the balances map
-	balances         map[string]*PeerBalance
-	logger           logging.Logger
-	store            storage.StateStorer
-	paymentThreshold uint64 // the payment threshold in BZZ we communicate to our peers
-	paymentTolerance uint64 // the amount in BZZ we let peers exceed the payment threshold before disconnected
-	settlement       settlement.Interface
-	metrics          metrics
+	accountingPeersMu sync.Mutex // mutex for accessing the accountingPeers map
+	accountingPeers   map[string]*accountingPeer
+	logger            logging.Logger
+	store             storage.StateStorer
+	paymentThreshold  uint64 // the payment threshold in BZZ we communicate to our peers
+	paymentTolerance  uint64 // the amount in BZZ we let peers exceed the payment threshold before disconnected
+	settlement        settlement.Interface
+	metrics           metrics
 }
 
 var (
@@ -84,7 +84,7 @@ func NewAccounting(o Options) (*Accounting, error) {
 	}
 
 	return &Accounting{
-		balances:         make(map[string]*PeerBalance),
+		accountingPeers:  make(map[string]*accountingPeer),
 		paymentThreshold: o.PaymentThreshold,
 		paymentTolerance: o.PaymentTolerance,
 		logger:           o.Logger,
@@ -96,20 +96,20 @@ func NewAccounting(o Options) (*Accounting, error) {
 
 // Reserve reserves a portion of the balance for peer
 func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
-	balance, err := a.getPeerBalance(peer)
+	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err
 	}
 
-	balance.lock.Lock()
-	defer balance.lock.Unlock()
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		return fmt.Errorf("failed to load balance: %w", err)
 	}
 
-	expectedDebt := -(currentBalance - int64(balance.reserved))
+	expectedDebt := -(currentBalance - int64(accountingPeer.reserved))
 	if expectedDebt < 0 {
 		expectedDebt = 0
 	}
@@ -120,39 +120,39 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		return ErrOverdraft
 	}
 
-	balance.reserved += price
+	accountingPeer.reserved += price
 	return nil
 }
 
 // Release releases reserved funds
 func (a *Accounting) Release(peer swarm.Address, price uint64) {
-	balance, err := a.getPeerBalance(peer)
+	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		a.logger.Errorf("cannot release balance for peer: %v", err)
 		return
 	}
 
-	balance.lock.Lock()
-	defer balance.lock.Unlock()
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
 
-	if price > balance.reserved {
+	if price > accountingPeer.reserved {
 		// If Reserve and Release calls are always paired this should never happen
 		a.logger.Error("attempting to release more balance than was reserved for peer")
-		balance.reserved = 0
+		accountingPeer.reserved = 0
 	} else {
-		balance.reserved -= price
+		accountingPeer.reserved -= price
 	}
 }
 
 // Credit increases the amount of credit we have with the given peer (and decreases existing debt).
 func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
-	balance, err := a.getPeerBalance(peer)
+	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err
 	}
 
-	balance.lock.Lock()
-	defer balance.lock.Unlock()
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
@@ -164,7 +164,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
 	// compute expected debt before update because reserve still includes the amount that is deducted from the balance
-	expectedDebt := -(currentBalance - int64(balance.reserved))
+	expectedDebt := -(currentBalance - int64(accountingPeer.reserved))
 	if expectedDebt < 0 {
 		expectedDebt = 0
 	}
@@ -179,7 +179,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	// if our expected debt exceeds our payment threshold (which we assume is also the peers payment threshold), trigger settlement
 	if uint64(expectedDebt) >= a.paymentThreshold {
-		err = a.settle(peer, balance)
+		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			a.logger.Errorf("failed to settle with peer %v: %v", peer, err)
 		}
@@ -189,8 +189,8 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 }
 
 // settle all debt with a peer
-// the lock on balance must be held when called
-func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) error {
+// the lock on the accountingPeer must be held when called
+func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	oldBalance, err := a.Balance(peer)
 	if err != nil {
 		return fmt.Errorf("failed to load balance: %w", err)
@@ -226,13 +226,13 @@ func (a *Accounting) settle(peer swarm.Address, balance *PeerBalance) error {
 
 // Debit increases the amount of debt we have with the given peer (and decreases existing credit)
 func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
-	balance, err := a.getPeerBalance(peer)
+	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err
 	}
 
-	balance.lock.Lock()
-	defer balance.lock.Unlock()
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
@@ -276,36 +276,21 @@ func peerBalanceKey(peer swarm.Address) string {
 	return fmt.Sprintf("%s%s", balancesPrefix, peer.String())
 }
 
-// getPeerBalance gets the PeerBalance for a given peer
-// If not in memory it will try to load it from the state store
-// if not found it will initialise it with 0 balance
-func (a *Accounting) getPeerBalance(peer swarm.Address) (*PeerBalance, error) {
-	a.balancesMu.Lock()
-	defer a.balancesMu.Unlock()
+// getAccountingPeer gets the accountingPeer for a given swarm address
+// If not in memory it will initalize it
+func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, error) {
+	a.accountingPeersMu.Lock()
+	defer a.accountingPeersMu.Unlock()
 
-	peerBalance, ok := a.balances[peer.String()]
+	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
-		// balance not yet in memory, load from state store
-		var balance int64
-		err := a.store.Get(peerBalanceKey(peer), &balance)
-		if err == nil {
-			peerBalance = &PeerBalance{
-				reserved: 0,
-			}
-		} else if err == storage.ErrNotFound {
-			// no prior records in state store
-			peerBalance = &PeerBalance{
-				reserved: 0,
-			}
-		} else {
-			// other error in state store
-			return nil, err
+		peerData = &accountingPeer{
+			reserved: 0,
 		}
-
-		a.balances[peer.String()] = peerBalance
+		a.accountingPeers[peer.String()] = peerData
 	}
 
-	return peerBalance, nil
+	return peerData, nil
 }
 
 // Balances gets balances for all peers from store
@@ -353,13 +338,13 @@ func balanceKeyPeer(key []byte) (swarm.Address, error) {
 // NotifyPayment is called by Settlement when we received payment
 // Implements the PaymentObserver interface
 func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
-	balance, err := a.getPeerBalance(peer)
+	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err
 	}
 
-	balance.lock.Lock()
-	defer balance.lock.Unlock()
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
