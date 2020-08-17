@@ -74,7 +74,7 @@ func TestAccountingAddBalance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			acc.Release(booking.peer, uint64(booking.price))
+			acc.Release(booking.peer, uint64(-booking.price))
 		} else {
 			err = acc.Debit(booking.peer, uint64(booking.price))
 			if err != nil {
