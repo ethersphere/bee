@@ -305,13 +305,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
-	pushSyncPusher := pusher.New(pusher.Options{
-		Storer:        storer,
-		PeerSuggester: kad,
-		PushSyncer:    pushSyncProtocol,
-		Tagger:        tagg,
-		Logger:        logger,
-	})
+	pushSyncPusher := pusher.New(storer, kad, pushSyncProtocol, tagg, logger)
 	b.pusherCloser = pushSyncPusher
 
 	pullStorage := pullstorage.New(storer)
