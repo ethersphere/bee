@@ -63,19 +63,12 @@ type Syncer struct {
 	io.Closer
 }
 
-type Options struct {
-	Streamer p2p.Streamer
-	Storage  pullstorage.Storer
-
-	Logger logging.Logger
-}
-
-func New(o Options) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, logger logging.Logger) *Syncer {
 	return &Syncer{
-		streamer: o.Streamer,
-		storage:  o.Storage,
+		streamer: streamer,
+		storage:  storage,
 		metrics:  newMetrics(),
-		logger:   o.Logger,
+		logger:   logger,
 		ruidCtx:  make(map[uint32]func()),
 		wg:       sync.WaitGroup{},
 		quit:     make(chan struct{}),

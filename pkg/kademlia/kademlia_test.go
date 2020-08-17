@@ -479,7 +479,7 @@ func TestClosestPeer(t *testing.T) {
 	ab := addressbook.New(mockstate.NewStateStore())
 	var conns int32
 
-	kad := kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2pMock(ab, &conns, nil), Logger: logger})
+	kad := kademlia.New(base, ab, disc, p2pMock(ab, &conns, nil), logger, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -733,7 +733,7 @@ func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, pe
 		p2p    = p2pMock(ab, connCounter, failedConnCounter)
 		logger = logging.New(ioutil.Discard, 0) // logger
 		disc   = mock.NewDiscovery()
-		kad    = kademlia.New(kademlia.Options{Base: base, Discovery: disc, AddressBook: ab, P2P: p2p, Logger: logger, SaturationFunc: f, Bootnodes: bootnodes}) // kademlia instance
+		kad    = kademlia.New(base, ab, disc, p2p, logger, kademlia.Options{SaturationFunc: f, Bootnodes: bootnodes}) // kademlia instance
 	)
 
 	pk, _ := crypto.GenerateSecp256k1Key()

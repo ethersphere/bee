@@ -26,10 +26,6 @@ var (
 )
 
 type Options struct {
-	StateStore      storage.StateStorer
-	Topology        topology.Driver
-	PullSync        pullsync.Interface
-	Logger          logging.Logger
 	Bins            uint8
 	ShallowBinPeers int
 }
@@ -57,7 +53,7 @@ type Puller struct {
 	shallowBinPeers int   // how many peers per bin do we want to sync with outside of depth
 }
 
-func New(o Options) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options) *Puller {
 	var (
 		bins            uint8 = swarm.MaxBins
 		shallowBinPeers int   = defaultShallowBinPeers
@@ -70,11 +66,11 @@ func New(o Options) *Puller {
 	}
 
 	p := &Puller{
-		statestore: o.StateStore,
-		topology:   o.Topology,
-		syncer:     o.PullSync,
+		statestore: stateStore,
+		topology:   topology,
+		syncer:     pullSync,
 		metrics:    newMetrics(),
-		logger:     o.Logger,
+		logger:     logger,
 		cursors:    make(map[string][]uint64),
 
 		syncPeers: make([]map[string]*syncPeer, bins),

@@ -45,25 +45,14 @@ type Service struct {
 	validator     swarm.Validator
 }
 
-type Options struct {
-	Streamer    p2p.Streamer
-	ChunkPeerer topology.EachPeerer
-	Storer      storage.Storer
-	Logger      logging.Logger
-	Accounting  accounting.Interface
-	Pricer      accounting.Pricer
-	Validator   swarm.Validator
-}
-
-func New(o Options) *Service {
+func New(streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator) *Service {
 	return &Service{
-		streamer:      o.Streamer,
-		peerSuggester: o.ChunkPeerer,
-		storer:        o.Storer,
-		logger:        o.Logger,
-		accounting:    o.Accounting,
-		pricer:        o.Pricer,
-		validator:     o.Validator,
+		streamer:      streamer,
+		peerSuggester: chunkPeerer,
+		logger:        logger,
+		accounting:    accounting,
+		pricer:        pricer,
+		validator:     validator,
 	}
 }
 
