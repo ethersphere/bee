@@ -262,10 +262,10 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 // Balance returns the current balance for the given peer
 func (a *Accounting) Balance(peer swarm.Address) (balance int64, err error) {
 	err = a.store.Get(peerBalanceKey(peer), &balance)
-	if err == storage.ErrNotFound {
-		return 0, nil
-	}
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return balance, nil
