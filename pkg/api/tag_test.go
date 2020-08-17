@@ -50,7 +50,7 @@ func TestTags(t *testing.T) {
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
 			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 
 		if !strings.Contains(tr.Name, "unnamed_tag_") {
@@ -64,7 +64,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(api.TagRequest{
 				Name: someTagName,
 			}),
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 
 		if tr.Name != someTagName {
@@ -120,7 +120,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{
 				Name: someTagName,
 			}),
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 
 		if tr.Name != someTagName {
@@ -147,7 +147,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{
 				Name: someTagName,
 			}),
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 
 		if tr.Name != someTagName {
@@ -197,7 +197,7 @@ func TestTags(t *testing.T) {
 		// see if the tag id is present and has valid values
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(id), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 
 		// now upload another chunk using the same tag id
@@ -213,7 +213,7 @@ func TestTags(t *testing.T) {
 		// see if the tag id is present and has valid values
 		tr = api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(id), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 
 		if id != tr.Uid {
@@ -237,7 +237,7 @@ func TestTags(t *testing.T) {
 		// request the tag and see if the ID is the same
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(id), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 		if id != tr.Uid {
 			t.Fatalf("expected tag id to be %d but is %d", id, tr.Uid)
@@ -269,7 +269,7 @@ func TestTags(t *testing.T) {
 
 		finalTag := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(id), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&finalTag),
+			jsonhttptest.WithUnmarshalJSONResponse(&finalTag),
 		)
 
 		if tagToVerify.Total != finalTag.Total {
@@ -314,7 +314,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{
 				Name: someTagName,
 			}),
-			jsonhttptest.WithUnmarshalResponse(&tRes),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 
 		// delete tag through API
@@ -358,7 +358,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{
 				Name: someTagName,
 			}),
-			jsonhttptest.WithUnmarshalResponse(&tRes),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 		tagId := tRes.Uid
 
@@ -384,7 +384,7 @@ func TestTags(t *testing.T) {
 
 		// check tag data
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(tagId), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&tRes),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 		if !tRes.Address.Equal(addr) {
 			t.Fatalf("expected tag address to be %s but is %s", addr.String(), tRes.Address.String())
@@ -410,7 +410,7 @@ func TestTags(t *testing.T) {
 
 		// check tag data
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(tagId), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&tRes),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 		if !tRes.Address.Equal(addr) {
 			t.Fatalf("expected tag address to be %s but is %s", addr.String(), tRes.Address.String())
@@ -439,7 +439,7 @@ func TestTags(t *testing.T) {
 		// check tag data
 		tRes := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(uint32(tagId)), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&tRes),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 
 		if !(tRes.Total > 0) {
@@ -477,7 +477,7 @@ func TestTags(t *testing.T) {
 		// check tag data
 		tRes := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(uint32(tagId)), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&tRes),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 
 		if !(tRes.Total > 0) {
@@ -498,7 +498,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{
 				Name: someTagName,
 			}),
-			jsonhttptest.WithUnmarshalResponse(&tr),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 		if tr.Name != someTagName {
 			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
@@ -539,7 +539,7 @@ func TestTags(t *testing.T) {
 
 		finalTag := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(id), http.StatusOK,
-			jsonhttptest.WithUnmarshalResponse(&finalTag),
+			jsonhttptest.WithUnmarshalJSONResponse(&finalTag),
 		)
 
 		if finalTag.Total != 0 {

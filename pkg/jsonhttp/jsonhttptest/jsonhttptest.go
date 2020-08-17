@@ -20,7 +20,12 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
-func Request(t *testing.T, client *http.Client, method, url string, responseCode int, opts ...Option) http.Header {
+// Request is a testing helper function that makes an HTTP request using
+// provided client with provided method and url. It performs a validation on
+// expected response code and additional options. It returns response headers if
+// the request and all validation are successful. In case of any error, testing
+// Errorf or Fatal functions will be called.
+func Request(t testing.TB, client *http.Client, method, url string, responseCode int, opts ...Option) http.Header {
 	t.Helper()
 
 	o := new(options)
@@ -55,7 +60,7 @@ func Request(t *testing.T, client *http.Client, method, url string, responseCode
 		}
 
 		if !bytes.Equal(got, o.expectedResponse) {
-			t.Errorf("got response %s, want %s", string(got), string(o.expectedResponse))
+			t.Errorf("got response %q, want %q", string(got), string(o.expectedResponse))
 		}
 		return resp.Header
 	}
@@ -72,11 +77,11 @@ func Request(t *testing.T, client *http.Client, method, url string, responseCode
 
 		want, err := json.Marshal(o.expectedJSONResponse)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		if !bytes.Equal(got, want) {
-			t.Errorf("got json response %s, want %s", string(got), string(want))
+			t.Errorf("got json response %q, want %q", string(got), string(want))
 		}
 		return resp.Header
 	}
@@ -100,12 +105,13 @@ func Request(t *testing.T, client *http.Client, method, url string, responseCode
 			t.Fatal(err)
 		}
 		if len(got) > 0 {
-			t.Errorf("got response body %s, want none", string(got))
+			t.Errorf("got response body %q, want none", string(got))
 		}
 	}
 	return resp.Header
 }
 
+// WithContext sets a context to the request made by the Request function.
 func WithContext(ctx context.Context) Option {
 	return optionFunc(func(o *options) error {
 		o.ctx = ctx
@@ -113,6 +119,8 @@ func WithContext(ctx context.Context) Option {
 	})
 }
 
+// WithRequestBody writes a request body to the request made by the Request
+// function.
 func WithRequestBody(body io.Reader) Option {
 	return optionFunc(func(o *options) error {
 		o.requestBody = body
@@ -120,6 +128,8 @@ func WithRequestBody(body io.Reader) Option {
 	})
 }
 
+// WithJSONRequestBody writes a request JSON-encoded body to the request made by
+// the Request function.
 func WithJSONRequestBody(r interface{}) Option {
 	return optionFunc(func(o *options) error {
 		b, err := json.Marshal(r)
@@ -131,6 +141,8 @@ func WithJSONRequestBody(r interface{}) Option {
 	})
 }
 
+// WithMultipartRequest writes a multipart request with a single file in it to
+// the request made by the Request function.
 func WithMultipartRequest(body io.Reader, length int, filename, contentType string) Option {
 	return optionFunc(func(o *options) error {
 		buf := bytes.NewBuffer(nil)
@@ -147,13 +159,13 @@ func WithMultipartRequest(body io.Reader, length int, filename, contentType stri
 		}
 		part, err := mw.CreatePart(hdr)
 		if err != nil {
-			return err
+			return fmt.Errorf("create multipart part: %w", err)
 		}
 		if _, err = io.Copy(part, body); err != nil {
-			return err
+			return fmt.Errorf("copy file data to multipart part: %w", err)
 		}
 		if err := mw.Close(); err != nil {
-			return err
+			return fmt.Errorf("close multipart writer: %w", err)
 		}
 		o.requestBody = buf
 		if o.requestHeaders == nil {
@@ -164,6 +176,9 @@ func WithMultipartRequest(body io.Reader, length int, filename, contentType stri
 	})
 }
 
+// WithRequestHeader adds a single header to the request made by the Request
+// function. To add multiple headers call multiple times this option when as
+// arguments to the Request function.
 func WithRequestHeader(key, value string) Option {
 	return optionFunc(func(o *options) error {
 		if o.requestHeaders == nil {
@@ -174,6 +189,8 @@ func WithRequestHeader(key, value string) Option {
 	})
 }
 
+// WithExpectedResponse validates that the response from the request in the
+// Request function matches completely bytes provided here.
 func WithExpectedResponse(response []byte) Option {
 	return optionFunc(func(o *options) error {
 		o.expectedResponse = response
@@ -181,6 +198,8 @@ func WithExpectedResponse(response []byte) Option {
 	})
 }
 
+// WithExpectedJSONResponse validates that the response from the request in the
+// Request function matches JSON-encoded body provided here.
 func WithExpectedJSONResponse(response interface{}) Option {
 	return optionFunc(func(o *options) error {
 		o.expectedJSONResponse = response
@@ -188,13 +207,17 @@ func WithExpectedJSONResponse(response interface{}) Option {
 	})
 }
 
-func WithUnmarshalResponse(response interface{}) Option {
+// WithUnmarshalJSONResponse unmarshals response body from the request in the
+// Request function to the provided response. Response must be a pointer.
+func WithUnmarshalJSONResponse(response interface{}) Option {
 	return optionFunc(func(o *options) error {
 		o.unmarshalResponse = response
 		return nil
 	})
 }
 
+// WithPutResponseBody replaces the data in the provided byte slice with the
+// data from the response body of the request in the Request function.
 func WithPutResponseBody(b *[]byte) Option {
 	return optionFunc(func(o *options) error {
 		o.responseBody = b
@@ -202,6 +225,8 @@ func WithPutResponseBody(b *[]byte) Option {
 	})
 }
 
+// WithNoResponseBody ensures that there is no data sent by the response of the
+// request in the Request function.
 func WithNoResponseBody() Option {
 	return optionFunc(func(o *options) error {
 		o.noResponseBody = true

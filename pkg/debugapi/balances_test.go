@@ -49,7 +49,7 @@ func TestBalances(t *testing.T) {
 	// We expect a list of items unordered by peer:
 	var got *debugapi.BalancesResponse
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances", http.StatusOK,
-		jsonhttptest.WithUnmarshalResponse(&got),
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
 	if !equalBalances(got, expected) {

@@ -67,7 +67,7 @@ func TestFiles(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithRequestHeader(api.EncryptHeader, "True"),
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
-			jsonhttptest.WithUnmarshalResponse(&resp),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
 
 		rootHash := resp.Reference.String()
