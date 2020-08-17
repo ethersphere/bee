@@ -34,19 +34,12 @@ type Service struct {
 	logger          logging.Logger
 }
 
-type Options struct {
-	Streamer    p2p.Streamer
-	AddressBook addressbook.GetPutter
-	NetworkID   uint64
-	Logger      logging.Logger
-}
-
-func New(o Options) *Service {
+func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
 	return &Service{
-		streamer:    o.Streamer,
-		logger:      o.Logger,
-		addressBook: o.AddressBook,
-		networkID:   o.NetworkID,
+		streamer:    streamer,
+		logger:      logger,
+		addressBook: addressbook,
+		networkID:   networkID,
 	}
 }
 

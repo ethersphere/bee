@@ -128,11 +128,7 @@ func TestBroadcastPeers(t *testing.T) {
 			addressbookclean := ab.New(mock.NewStateStore())
 
 			// create a hive server that handles the incoming stream
-			server := hive.New(hive.Options{
-				Logger:      logger,
-				AddressBook: addressbookclean,
-				NetworkID:   networkID,
-			})
+			server := hive.New(nil, addressbookclean, networkID, logger)
 
 			// setup the stream recorder to record stream data
 			recorder := streamtest.New(
@@ -140,13 +136,7 @@ func TestBroadcastPeers(t *testing.T) {
 			)
 
 			// create a hive client that will do broadcast
-			client := hive.New(hive.Options{
-				Streamer:    recorder,
-				Logger:      logger,
-				AddressBook: addressbook,
-				NetworkID:   networkID,
-			})
-
+			client := hive.New(recorder, addressbook, networkID, logger)
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
 			}
