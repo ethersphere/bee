@@ -43,8 +43,8 @@ type Interface interface {
 
 // accountingPeer holds all in-memory accounting information for one peer
 type accountingPeer struct {
-	lock     sync.Mutex // lock to be held during any accounting action for this peer
-	reserved uint64     // amount currently reserved for active peer interaction
+	lock            sync.Mutex // lock to be held during any accounting action for this peer
+	reservedBalance uint64     // amount currently reserved for active peer interaction
 }
 
 // Options for accounting
@@ -109,7 +109,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		return fmt.Errorf("failed to load balance: %w", err)
 	}
 
-	expectedDebt := -(currentBalance - int64(accountingPeer.reserved))
+	expectedDebt := -(currentBalance - int64(accountingPeer.reservedBalance))
 	if expectedDebt < 0 {
 		expectedDebt = 0
 	}
@@ -120,7 +120,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		return ErrOverdraft
 	}
 
-	accountingPeer.reserved += price
+	accountingPeer.reservedBalance += price
 	return nil
 }
 
@@ -135,12 +135,12 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	if price > accountingPeer.reserved {
+	if price > accountingPeer.reservedBalance {
 		// If Reserve and Release calls are always paired this should never happen
 		a.logger.Error("attempting to release more balance than was reserved for peer")
-		accountingPeer.reserved = 0
+		accountingPeer.reservedBalance = 0
 	} else {
-		accountingPeer.reserved -= price
+		accountingPeer.reservedBalance -= price
 	}
 }
 
@@ -164,7 +164,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
 	// compute expected debt before update because reserve still includes the amount that is deducted from the balance
-	expectedDebt := -(currentBalance - int64(accountingPeer.reserved))
+	expectedDebt := -(currentBalance - int64(accountingPeer.reservedBalance))
 	if expectedDebt < 0 {
 		expectedDebt = 0
 	}
@@ -285,7 +285,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
-			reserved: 0,
+			reservedBalance: 0,
 		}
 		a.accountingPeers[peer.String()] = peerData
 	}
