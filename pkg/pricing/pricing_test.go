@@ -18,11 +18,27 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type testObserver struct {
+	called           bool
+	peer             swarm.Address
+	paymentThreshold uint64
+}
+
+func (t *testObserver) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error {
+	t.called = true
+	t.peer = peer
+	t.paymentThreshold = paymentThreshold
+	return nil
+}
+
 func TestAnnouncePaymentThreshold(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
+	observer := &testObserver{}
+
 	recipient := pricing.New(pricing.Options{
-		Logger: logger,
+		Logger:                   logger,
+		PaymentThresholdObserver: observer,
 	})
 
 	recorder := streamtest.New(
@@ -68,5 +84,17 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 	sentPaymentThreshold := messages[0].(*pb.AnnouncePaymentThreshold).PaymentThreshold
 	if sentPaymentThreshold != paymentThreshold {
 		t.Fatalf("got message with amount %v, want %v", sentPaymentThreshold, paymentThreshold)
+	}
+
+	if !observer.called {
+		t.Fatal("expected observer to be called")
+	}
+
+	if observer.paymentThreshold != paymentThreshold {
+		t.Fatalf("observer called with wrong paymentThreshold. got %d, want %d", observer.paymentThreshold, paymentThreshold)
+	}
+
+	if !observer.peer.Equal(peerID) {
+		t.Fatalf("observer called with wrong peer. got %v, want %v", observer.peer, peerID)
 	}
 }

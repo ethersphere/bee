@@ -662,3 +662,88 @@ func TestAccountingInvalidPaymentTolerance(t *testing.T) {
 		t.Fatalf("got wrong error. got %v wanted %v", err, accounting.ErrInvalidPaymentTolerance)
 	}
 }
+
+type pricingMock struct {
+	called           bool
+	peer             swarm.Address
+	paymentThreshold uint64
+}
+
+func (p *pricingMock) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error {
+	p.called = true
+	p.peer = peer
+	p.paymentThreshold = paymentThreshold
+	return nil
+}
+
+func TestAccountingConnected(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
+		Pricing:          pricing,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Connected(context.Background(), peer1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !pricing.called {
+		t.Fatal("expected pricing to be called")
+	}
+
+	if !pricing.peer.Equal(peer1Addr) {
+		t.Fatalf("paid to wrong peer. got %v wanted %v", pricing.peer, peer1Addr)
+	}
+
+	if pricing.paymentThreshold != testPaymentThreshold {
+		t.Fatalf("paid wrong amount. got %d wanted %d", pricing.paymentThreshold, testPaymentThreshold)
+	}
+}
+
+func TestAccountingNotifyPaymentThreshold(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		Logger:           logger,
+		Store:            store,
+		Pricing:          pricing,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.NotifyPaymentThreshold(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: check the success somehow
+}

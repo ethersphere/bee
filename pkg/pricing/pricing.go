@@ -28,20 +28,27 @@ type Interface interface {
 	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error
 }
 
+type PaymentThresholdObserver interface {
+	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error
+}
+
 type Service struct {
-	streamer p2p.Streamer
-	logger   logging.Logger
+	streamer                 p2p.Streamer
+	logger                   logging.Logger
+	paymentThresholdObserver PaymentThresholdObserver
 }
 
 type Options struct {
-	Streamer p2p.Streamer
-	Logger   logging.Logger
+	Streamer                 p2p.Streamer
+	Logger                   logging.Logger
+	PaymentThresholdObserver PaymentThresholdObserver
 }
 
 func New(o Options) *Service {
 	return &Service{
-		streamer: o.Streamer,
-		logger:   o.Logger,
+		streamer:                 o.Streamer,
+		logger:                   o.Logger,
+		paymentThresholdObserver: o.PaymentThresholdObserver,
 	}
 }
 
@@ -73,7 +80,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, req.PaymentThreshold)
-	return nil
+
+	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, req.PaymentThreshold)
 }
 
 // AnnouncePaymentThreshold announces the payment threshold to per
@@ -98,5 +106,10 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 	err = w.WriteMsgWithContext(ctx, &pb.AnnouncePaymentThreshold{
 		PaymentThreshold: paymentThreshold,
 	})
+
 	return err
+}
+
+func (s *Service) SetPaymentThresholdObserver(observer PaymentThresholdObserver) {
+	s.paymentThresholdObserver = observer
 }
