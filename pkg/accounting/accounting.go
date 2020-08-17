@@ -277,7 +277,7 @@ func peerBalanceKey(peer swarm.Address) string {
 }
 
 // getAccountingPeer gets the accountingPeer for a given swarm address
-// If not in memory it will initalize it
+// If not in memory it will initialize it
 func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, error) {
 	a.accountingPeersMu.Lock()
 	defer a.accountingPeersMu.Unlock()
