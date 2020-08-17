@@ -256,14 +256,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
-	retrieve := retrieval.New(retrieval.Options{
-		Streamer:    p2ps,
-		ChunkPeerer: kad,
-		Logger:      logger,
-		Accounting:  acc,
-		Pricer:      accounting.NewFixedPricer(address, 10),
-		Validator:   chunkvalidator,
-	})
+	retrieve := retrieval.New(p2ps, kad, logger, acc, accounting.NewFixedPricer(address, 10), chunkvalidator)
 	tagg := tags.NewTags()
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
