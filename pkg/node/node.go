@@ -316,23 +316,14 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSync := pullsync.New(pullsync.Options{
-		Streamer: p2ps,
-		Storage:  pullStorage,
-		Logger:   logger,
-	})
+	pullSync := pullsync.New(p2ps, pullStorage, logger)
 	b.pullSyncCloser = pullSync
 
 	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	puller := puller.New(puller.Options{
-		StateStore: stateStore,
-		Topology:   kad,
-		PullSync:   pullSync,
-		Logger:     logger,
-	})
+	puller := puller.New(stateStore, kad, pullSync, logger, puller.Options{})
 
 	b.pullerCloser = puller
 

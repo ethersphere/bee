@@ -558,16 +558,12 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	logger := logging.New(ioutil.Discard, 6)
 
 	o := puller.Options{
-		Topology:   kad,
-		StateStore: s,
-		PullSync:   ps,
-		Logger:     logger,
-		Bins:       ops.bins,
+		Bins: ops.bins,
 	}
 	if ops.shallowBinPeers != nil {
 		o.ShallowBinPeers = *ops.shallowBinPeers
 	}
-	return puller.New(o), s, kad, ps
+	return puller.New(s, kad, ps, logger, o), s, kad, ps
 }
 
 type c struct {
