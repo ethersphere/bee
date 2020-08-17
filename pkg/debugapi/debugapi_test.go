@@ -44,16 +44,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 
-	s := debugapi.New(debugapi.Options{
-		Overlay:        o.Overlay,
-		P2P:            o.P2P,
-		Pingpong:       o.Pingpong,
-		Tags:           o.Tags,
-		Logger:         logging.New(ioutil.Discard, 0),
-		Storer:         o.Storer,
-		TopologyDriver: topologyDriver,
-		Accounting:     acc,
-	})
+	s := debugapi.New(o.Overlay, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

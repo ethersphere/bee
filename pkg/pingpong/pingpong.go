@@ -35,17 +35,11 @@ type Service struct {
 	metrics  metrics
 }
 
-type Options struct {
-	Streamer p2p.Streamer
-	Logger   logging.Logger
-	Tracer   *tracing.Tracer
-}
-
-func New(o Options) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, tracer *tracing.Tracer) *Service {
 	return &Service{
-		streamer: o.Streamer,
-		logger:   o.Logger,
-		tracer:   o.Tracer,
+		streamer: streamer,
+		logger:   logger,
+		tracer:   tracer,
 		metrics:  newMetrics(),
 	}
 }

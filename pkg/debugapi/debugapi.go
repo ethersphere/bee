@@ -25,13 +25,6 @@ type Service interface {
 }
 
 type server struct {
-	Options
-	http.Handler
-
-	metricsRegistry *prometheus.Registry
-}
-
-type Options struct {
 	Overlay        swarm.Address
 	P2P            p2p.DebugService
 	Pingpong       pingpong.Interface
@@ -41,11 +34,22 @@ type Options struct {
 	Tracer         *tracing.Tracer
 	Tags           *tags.Tags
 	Accounting     accounting.Interface
+	http.Handler
+
+	metricsRegistry *prometheus.Registry
 }
 
-func New(o Options) Service {
+func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.PeerAdder, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface) Service {
 	s := &server{
-		Options:         o,
+		Overlay:         overlay,
+		P2P:             p2p,
+		Pingpong:        pingpong,
+		TopologyDriver:  topologyDriver,
+		Storer:          storer,
+		Logger:          logger,
+		Tracer:          tracer,
+		Tags:            tags,
+		Accounting:      accounting,
 		metricsRegistry: newMetricsRegistry(),
 	}
 

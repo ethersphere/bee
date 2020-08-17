@@ -39,13 +39,8 @@ type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
 
 // Options for injecting services to Kademlia.
 type Options struct {
-	Base           swarm.Address
-	Discovery      discovery.Driver
-	AddressBook    addressbook.Interface
-	P2P            p2p.Service
 	SaturationFunc binSaturationFunc
 	Bootnodes      []ma.Multiaddr
-	Logger         logging.Logger
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -77,23 +72,23 @@ type retryInfo struct {
 }
 
 // New returns a new Kademlia.
-func New(o Options) *Kad {
+func New(base swarm.Address, addressbook addressbook.Interface, discovery discovery.Driver, p2p p2p.Service, logger logging.Logger, o Options) *Kad {
 	if o.SaturationFunc == nil {
 		o.SaturationFunc = binSaturated
 	}
 
 	k := &Kad{
-		base:           o.Base,
-		discovery:      o.Discovery,
-		addressBook:    o.AddressBook,
-		p2p:            o.P2P,
+		base:           base,
+		discovery:      discovery,
+		addressBook:    addressbook,
+		p2p:            p2p,
 		saturationFunc: o.SaturationFunc,
 		connectedPeers: pslice.New(int(swarm.MaxBins)),
 		knownPeers:     pslice.New(int(swarm.MaxBins)),
 		bootnodes:      o.Bootnodes,
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]retryInfo),
-		logger:         o.Logger,
+		logger:         logger,
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		wg:             sync.WaitGroup{},

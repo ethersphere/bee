@@ -28,22 +28,14 @@ type Service struct {
 	chunksWorkerQuitC chan struct{}
 }
 
-type Options struct {
-	Storer        storage.Storer
-	PeerSuggester topology.ClosestPeerer
-	PushSyncer    pushsync.PushSyncer
-	Tagger        *tags.Tags
-	Logger        logging.Logger
-}
-
 var retryInterval = 10 * time.Second // time interval between retries
 
-func New(o Options) *Service {
+func New(storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger) *Service {
 	service := &Service{
-		storer:            o.Storer,
-		pushSyncer:        o.PushSyncer,
-		tagg:              o.Tagger,
-		logger:            o.Logger,
+		storer:            storer,
+		pushSyncer:        pushSyncer,
+		tagg:              tagger,
+		logger:            logger,
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),

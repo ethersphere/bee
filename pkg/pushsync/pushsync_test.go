@@ -7,6 +7,10 @@ package pushsync_test
 import (
 	"bytes"
 	"context"
+	"io/ioutil"
+	"testing"
+	"time"
+
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -17,9 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
-	"io/ioutil"
-	"testing"
-	"time"
 )
 
 // TestSendChunkAndGetReceipt inserts a chunk as uploaded chunk in db. This triggers sending a chunk to the closest node
@@ -209,17 +210,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)
 	mtag := tags.NewTags()
-
-	ps := pushsync.New(pushsync.Options{
-		Streamer:         recorder,
-		Storer:           storer,
-		Tagger:           mtag,
-		DeliveryCallback: pssDeliver,
-		ClosestPeerer:    mockTopology,
-		Logger:           logger,
-	})
-
-	return ps, storer, mtag
+	return pushsync.New(recorder, storer, mockTopology, mtag, pssDeliver, logger), storer, mtag
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
