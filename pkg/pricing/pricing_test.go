@@ -36,19 +36,14 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 
 	observer := &testObserver{}
 
-	recipient := pricing.New(pricing.Options{
-		Logger:                   logger,
-		PaymentThresholdObserver: observer,
-	})
+	recipient := pricing.New(nil, logger)
+	recipient.SetPaymentThresholdObserver(observer)
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
 	)
 
-	payer := pricing.New(pricing.Options{
-		Streamer: recorder,
-		Logger:   logger,
-	})
+	payer := pricing.New(recorder, logger)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	paymentThreshold := uint64(10000)

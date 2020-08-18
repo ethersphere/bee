@@ -38,17 +38,10 @@ type Service struct {
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
-type Options struct {
-	Streamer                 p2p.Streamer
-	Logger                   logging.Logger
-	PaymentThresholdObserver PaymentThresholdObserver
-}
-
-func New(o Options) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger) *Service {
 	return &Service{
-		streamer:                 o.Streamer,
-		logger:                   o.Logger,
-		paymentThresholdObserver: o.PaymentThresholdObserver,
+		streamer: streamer,
+		logger:   logger,
 	}
 }
 
