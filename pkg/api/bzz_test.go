@@ -132,7 +132,9 @@ func TestBzz(t *testing.T) {
 
 		// read file from manifest path
 
-		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), filePath), nil, http.StatusOK, []byte(sampleHtml), nil)
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), filePath), http.StatusOK,
+			jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
+		)
 		cd := rcvdHeader.Get("Content-Disposition")
 		_, params, err := mime.ParseMediaType(cd)
 		if err != nil {
@@ -150,11 +152,12 @@ func TestBzz(t *testing.T) {
 
 		// check on invalid path
 
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "invalid path address",
-			Code:    http.StatusBadRequest,
-		}, nil)
-
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid path address",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 	})
 
 }

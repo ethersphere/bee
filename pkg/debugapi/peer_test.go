@@ -55,26 +55,32 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+underlay, nil, http.StatusOK, debugapi.PeerConnectResponse{
-			Address: overlay.String(),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/connect"+underlay, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.PeerConnectResponse{
+				Address: overlay.String(),
+			}),
+		)
 		if testServer.P2PMock.ConnectNotifyCalls() != 1 {
 			t.Fatal("connect notify not called")
 		}
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+errorUnderlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Code:    http.StatusInternalServerError,
-			Message: testErr.Error(),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/connect"+errorUnderlay, http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusInternalServerError,
+				Message: testErr.Error(),
+			}),
+		)
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/connect"+underlay, nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
-			Code:    http.StatusMethodNotAllowed,
-			Message: http.StatusText(http.StatusMethodNotAllowed),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/connect"+underlay, http.StatusMethodNotAllowed,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusMethodNotAllowed,
+				Message: http.StatusText(http.StatusMethodNotAllowed),
+			}),
+		)
 	})
 
 	t.Run("error - add peer", func(t *testing.T) {
@@ -87,10 +93,12 @@ func TestConnect(t *testing.T) {
 			})),
 		})
 
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/connect"+errorUnderlay, nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Code:    http.StatusInternalServerError,
-			Message: testErr.Error(),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/connect"+errorUnderlay, http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusInternalServerError,
+				Message: testErr.Error(),
+			}),
+		)
 	})
 }
 
@@ -115,31 +123,39 @@ func TestDisconnect(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/"+address.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Code:    http.StatusOK,
-			Message: http.StatusText(http.StatusOK),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/peers/"+address.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusOK,
+				Message: http.StatusText(http.StatusOK),
+			}),
+		)
 	})
 
 	t.Run("unknown", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/"+unknownAdddress.String(), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Code:    http.StatusBadRequest,
-			Message: "peer not found",
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/peers/"+unknownAdddress.String(), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "peer not found",
+			}),
+		)
 	})
 
 	t.Run("invalid peer address", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Code:    http.StatusBadRequest,
-			Message: "invalid peer address",
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/peers/invalid-address", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid peer address",
+			}),
+		)
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodDelete, "/peers/"+errorAddress.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Code:    http.StatusInternalServerError,
-			Message: testErr.Error(),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/peers/"+errorAddress.String(), http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusInternalServerError,
+				Message: testErr.Error(),
+			}),
+		)
 	})
 }
 
@@ -152,15 +168,19 @@ func TestPeer(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/peers", nil, http.StatusOK, debugapi.PeersResponse{
-			Peers: []p2p.Peer{{Address: overlay}},
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/peers", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.PeersResponse{
+				Peers: []p2p.Peer{{Address: overlay}},
+			}),
+		)
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/peers", nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
-			Code:    http.StatusMethodNotAllowed,
-			Message: http.StatusText(http.StatusMethodNotAllowed),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/peers", http.StatusMethodNotAllowed,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusMethodNotAllowed,
+				Message: http.StatusText(http.StatusMethodNotAllowed),
+			}),
+		)
 	})
 }

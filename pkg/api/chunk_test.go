@@ -44,30 +44,39 @@ func TestChunkUploadDownload(t *testing.T) {
 	)
 
 	t.Run("invalid hash", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(invalidHash), bytes.NewReader(validContent), http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "chunk write error",
-			Code:    http.StatusBadRequest,
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, resource(invalidHash), http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "chunk write error",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 
 		// make sure chunk is not retrievable
 		_ = request(t, client, http.MethodGet, resource(invalidHash), nil, http.StatusNotFound)
 	})
 
 	t.Run("invalid content", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(validHash), bytes.NewReader(invalidContent), http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "chunk write error",
-			Code:    http.StatusBadRequest,
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, resource(invalidHash), http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(invalidContent)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "chunk write error",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 
 		// make sure not retrievable
 		_ = request(t, client, http.MethodGet, resource(validHash), nil, http.StatusNotFound)
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
 		// try to fetch the same chunk
 		resp := request(t, client, http.MethodGet, resource(validHash), nil, http.StatusOK)
@@ -82,12 +91,14 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("pin-invalid-value", func(t *testing.T) {
-		headers := make(map[string][]string)
-		headers[api.SwarmPinHeader] = []string{"hdgdh"}
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		}, headers)
+		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "invalid-pin"),
+		)
 
 		// Also check if the chunk is NOT pinned
 		if mockValidatingStorer.GetModeSet(validHash) == storage.ModeSetPin {
@@ -95,11 +106,13 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
-		headers := make(map[string][]string)
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		}, headers)
+		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
 		// Also check if the chunk is NOT pinned
 		if mockValidatingStorer.GetModeSet(validHash) == storage.ModeSetPin {
@@ -107,12 +120,14 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-ok", func(t *testing.T) {
-		headers := make(map[string][]string)
-		headers[api.SwarmPinHeader] = []string{"True"}
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, resource(validHash), bytes.NewReader(validContent), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		}, headers)
+		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "True"),
+		)
 
 		// Also check if the chunk is pinned
 		if mockValidatingStorer.GetModePut(validHash) != storage.ModePutUploadPin {

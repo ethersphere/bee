@@ -45,141 +45,183 @@ func TestPinChunkHandler(t *testing.T) {
 
 	// bad chunk address
 	t.Run("pin-bad-address", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/abcd1100zz", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "bad address",
-			Code:    http.StatusBadRequest,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/abcd1100zz", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "bad address",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 	})
 
 	// list pins without anything pinned
 	t.Run("list-pins-zero-pins", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", nil, http.StatusOK, debugapi.ListPinnedChunksResponse{
-			Chunks: []debugapi.PinnedChunk{},
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.ListPinnedChunksResponse{
+				Chunks: []debugapi.PinnedChunk{},
+			}),
+		)
 	})
 
 	// pin a chunk which is not existing
 	t.Run("pin-absent-chunk", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/123456", nil, http.StatusNotFound, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusNotFound),
-			Code:    http.StatusNotFound,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/123456", http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusNotFound),
+				Code:    http.StatusNotFound,
+			}),
+		)
 	})
 
 	// unpin on a chunk which is not pinned
 	t.Run("unpin-while-not-pinned", func(t *testing.T) {
 		// Post a chunk
-		jsonhttptest.ResponseDirect(t, bzzTestServer, http.MethodPost, resource(hash), bytes.NewReader(data), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, bzzTestServer, http.MethodPost, resource(hash), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(data)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodDelete, "/chunks-pin/"+hash.String(), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "chunk is not yet pinned",
-			Code:    http.StatusBadRequest,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodDelete, "/chunks-pin/"+hash.String(), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "chunk is not yet pinned",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 	})
 
 	// pin a existing chunk first time
 	t.Run("pin-chunk-1", func(t *testing.T) {
 		// Post a chunk
-		jsonhttptest.ResponseDirect(t, bzzTestServer, http.MethodPost, resource(hash), bytes.NewReader(data), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, bzzTestServer, http.MethodPost, resource(hash), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(data)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
 		// Check is the chunk is pinned once
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
-			Address:    swarm.MustParseHexAddress("aabbcc"),
-			PinCounter: 1,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.PinnedChunk{
+				Address:    swarm.MustParseHexAddress("aabbcc"),
+				PinCounter: 1,
+			}),
+		)
 
 	})
 
 	// pin a existing chunk second time
 	t.Run("pin-chunk-2", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
 		// Check is the chunk is pinned twice
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
-			Address:    swarm.MustParseHexAddress("aabbcc"),
-			PinCounter: 2,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.PinnedChunk{
+				Address:    swarm.MustParseHexAddress("aabbcc"),
+				PinCounter: 2,
+			}),
+		)
 	})
 
 	// unpin a chunk first time
 	t.Run("unpin-chunk-1", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodDelete, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodDelete, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
 		// Check is the chunk is pinned once
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusOK, debugapi.PinnedChunk{
-			Address:    swarm.MustParseHexAddress("aabbcc"),
-			PinCounter: 1,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.PinnedChunk{
+				Address:    swarm.MustParseHexAddress("aabbcc"),
+				PinCounter: 1,
+			}),
+		)
 	})
 
 	// unpin a chunk second time
 	t.Run("unpin-chunk-2", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodDelete, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodDelete, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
 		// Check if the chunk is removed from the pinIndex
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), nil, http.StatusNotFound, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusNotFound),
-			Code:    http.StatusNotFound,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodGet, "/chunks-pin/"+hash.String(), http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusNotFound),
+				Code:    http.StatusNotFound,
+			}),
+		)
 	})
 
 	// Add 2 chunks, pin it and check if they show up in the list
 	t.Run("list-chunks", func(t *testing.T) {
 		// Post a chunk
-		jsonhttptest.ResponseDirect(t, bzzTestServer, http.MethodPost, resource(hash), bytes.NewReader(data), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, bzzTestServer, http.MethodPost, resource(hash), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(data)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
 		// post another chunk
 		hash2 := swarm.MustParseHexAddress("ddeeff")
 		data2 := []byte("eagle")
 		mockValidator.AddPair(hash2, data2)
-		jsonhttptest.ResponseDirect(t, bzzTestServer, http.MethodPost, resource(hash2), bytes.NewReader(data2), http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash2.String(), nil, http.StatusOK, jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		})
+		jsonhttptest.Request(t, bzzTestServer, http.MethodPost, resource(hash2), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(data2)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodPost, "/chunks-pin/"+hash2.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
 
-		jsonhttptest.ResponseDirect(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", nil, http.StatusOK, debugapi.ListPinnedChunksResponse{
-			Chunks: []debugapi.PinnedChunk{
-				{
-					Address:    swarm.MustParseHexAddress("aabbcc"),
-					PinCounter: 1,
+		jsonhttptest.Request(t, debugTestServer.Client, http.MethodGet, "/chunks-pin", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.ListPinnedChunksResponse{
+				Chunks: []debugapi.PinnedChunk{
+					{
+						Address:    swarm.MustParseHexAddress("aabbcc"),
+						PinCounter: 1,
+					},
+					{
+						Address:    swarm.MustParseHexAddress("ddeeff"),
+						PinCounter: 1,
+					},
 				},
-				{
-					Address:    swarm.MustParseHexAddress("ddeeff"),
-					PinCounter: 1,
-				},
-			},
-		})
+			}),
+		)
 	})
 }
