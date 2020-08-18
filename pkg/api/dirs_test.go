@@ -34,23 +34,27 @@ func TestDirs(t *testing.T) {
 	)
 
 	t.Run("empty request body", func(t *testing.T) {
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, bytes.NewReader(nil), http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "could not validate request",
-			Code:    http.StatusBadRequest,
-		}, http.Header{
-			"Content-Type": {api.ContentTypeTar},
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(nil)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "could not validate request",
+				Code:    http.StatusBadRequest,
+			}),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		)
 	})
 
 	t.Run("non tar file", func(t *testing.T) {
 		file := bytes.NewReader([]byte("some data"))
 
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, file, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Message: "could not store dir",
-			Code:    http.StatusInternalServerError,
-		}, http.Header{
-			"Content-Type": {api.ContentTypeTar},
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusInternalServerError,
+			jsonhttptest.WithRequestBody(file),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "could not store dir",
+				Code:    http.StatusInternalServerError,
+			}),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		)
 	})
 
 	t.Run("wrong content type", func(t *testing.T) {
@@ -60,12 +64,14 @@ func TestDirs(t *testing.T) {
 		}})
 
 		// submit valid tar, but with wrong content-type
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "could not validate request",
-			Code:    http.StatusBadRequest,
-		}, http.Header{
-			"Content-Type": {"other"},
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(tarReader),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "could not validate request",
+				Code:    http.StatusBadRequest,
+			}),
+			jsonhttptest.WithRequestHeader("Content-Type", "other"),
+		)
 	})
 
 	// valid tars
@@ -137,11 +143,13 @@ func TestDirs(t *testing.T) {
 			tarReader := tarFiles(t, tc.files)
 
 			// verify directory tar upload response
-			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, dirUploadResource, tarReader, http.StatusOK, api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(tc.expectedHash),
-			}, http.Header{
-				"Content-Type": {api.ContentTypeTar},
-			})
+			jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK,
+				jsonhttptest.WithRequestBody(tarReader),
+				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+					Reference: swarm.MustParseHexAddress(tc.expectedHash),
+				}),
+				jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			)
 
 			// create expected manifest
 			expectedManifest := jsonmanifest.NewManifest()
@@ -156,7 +164,9 @@ func TestDirs(t *testing.T) {
 			}
 
 			// verify directory upload manifest through files api
-			jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(tc.expectedHash), nil, http.StatusOK, b, nil)
+			jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(tc.expectedHash), http.StatusOK,
+				jsonhttptest.WithExpectedResponse(b),
+			)
 		})
 	}
 }
