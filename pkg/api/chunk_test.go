@@ -97,7 +97,7 @@ func TestChunkUploadDownload(t *testing.T) {
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
 			}),
-			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "hdgdh"),
+			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "invalid-pin"),
 		)
 
 		// Also check if the chunk is NOT pinned
