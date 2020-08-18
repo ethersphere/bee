@@ -130,6 +130,7 @@ func TestEncryptionAndDecryption(t *testing.T) {
 		{4096},
 		{4097},
 		{15000},
+		{20000000},
 	}
 
 	for _, tt := range tests {
