@@ -60,6 +60,9 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	c.initVersionCmd()
+
+	c.initConfigurateOptionsCmd()
+
 	return c, nil
 }
 
