@@ -15,14 +15,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
+	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/storage"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -69,6 +68,7 @@ func TestBzz(t *testing.T) {
 		}
 
 		fileMetadata := entry.NewMetadata(fileName)
+		fileMetadata.MimeType = "text/html; charset=utf-8"
 		fileMetadataBytes, err := json.Marshal(fileMetadata)
 		if err != nil {
 			t.Fatal(err)
@@ -91,24 +91,26 @@ func TestBzz(t *testing.T) {
 
 		// save manifest
 
-		jsonManifest := jsonmanifest.NewManifest()
-
-		e := jsonmanifest.NewEntry(fileReference, fileName, http.Header{"Content-Type": {"text/html", "charset=utf-8"}})
-		jsonManifest.Add(filePath, e)
-
-		manifestFileBytes, err := jsonManifest.MarshalBinary()
+		m, err := manifest.NewDefaultManifest(context.Background(), false, storer)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		fr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileBytes), int64(len(manifestFileBytes)), false)
+		e := manifest.NewEntry(fileReference)
+
+		err = m.Add(filePath, e)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		m := entry.NewMetadata(fileName)
-		m.MimeType = api.ManifestContentType
-		metadataBytes, err := json.Marshal(m)
+		manifestBytesReference, err := m.Store(storage.ModePutUpload)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		metadata := entry.NewMetadata(manifestBytesReference.String())
+		metadata.MimeType = m.Type()
+		metadataBytes, err := json.Marshal(metadata)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -118,8 +120,8 @@ func TestBzz(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// now join both references (mr,fr) to create an entry and store it.
-		newEntry := entry.New(fr, mr)
+		// now join both references (fr,mr) to create an entry and store it.
+		newEntry := entry.New(manifestBytesReference, mr)
 		manifestFileEntryBytes, err := newEntry.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)
@@ -152,10 +154,10 @@ func TestBzz(t *testing.T) {
 
 		// check on invalid path
 
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid path address",
-				Code:    http.StatusBadRequest,
+				Message: "path address not found",
+				Code:    http.StatusNotFound,
 			}),
 		)
 	})

@@ -5,36 +5,95 @@
 package manifest
 
 import (
-	"encoding"
+	"context"
 	"errors"
-	"net/http"
 
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// ErrNotFound is returned when an Entry is not found in the manifest.
-var ErrNotFound = errors.New("manifest: not found")
+const DefaultManifestType = ManifestSimpleContentType
+
+var (
+	// ErrNotFound is returned when an Entry is not found in the manifest.
+	ErrNotFound = errors.New("manifest: not found")
+
+	// ErrInvalidManifestType is returned when an unknown manifest type
+	// is provided to the function.
+	ErrInvalidManifestType = errors.New("manifest: invalid type")
+)
 
 // Interface for operations with manifest.
 type Interface interface {
+	// Type returns manifest implementation type information
+	Type() string
 	// Add a manifest entry to the specified path.
-	Add(string, Entry)
+	Add(string, Entry) error
 	// Remove a manifest entry on the specified path.
-	Remove(string)
-	// Entry returns a manifest entry if one is found in the specified path.
-	Entry(string) (Entry, error)
-	// Length returns an implementation-specific count of elements in the manifest.
-	Length() int
-	encoding.BinaryMarshaler
-	encoding.BinaryUnmarshaler
+	Remove(string) error
+	// Lookup returns a manifest entry if one is found in the specified path.
+	Lookup(string) (Entry, error)
+	// Store stores the manifest, returning the resulting address.
+	Store(storage.ModePut) (swarm.Address, error)
 }
 
 // Entry represents a single manifest entry.
 type Entry interface {
-	// Reference returns the address of the file in the entry.
+	// Reference returns the address of the file.
 	Reference() swarm.Address
-	// Name returns the name of the file in the entry.
-	Name() string
-	// Header returns the HTTP header for the file in the manifest entry.
-	Header() http.Header
+}
+
+// NewDefaultManifest creates a new manifest with default type.
+func NewDefaultManifest(
+	ctx context.Context,
+	encrypted bool,
+	storer storage.Storer,
+) (Interface, error) {
+	return NewManifest(ctx, DefaultManifestType, encrypted, storer)
+}
+
+// NewManifest creates a new manifest.
+func NewManifest(
+	ctx context.Context,
+	manifestType string,
+	encrypted bool,
+	storer storage.Storer,
+) (Interface, error) {
+	switch manifestType {
+	case ManifestSimpleContentType:
+		return NewSimpleManifest(ctx, encrypted, storer)
+	default:
+		return nil, ErrInvalidManifestType
+	}
+}
+
+// NewManifestReference loads existing manifest.
+func NewManifestReference(
+	ctx context.Context,
+	manifestType string,
+	reference swarm.Address,
+	encrypted bool,
+	storer storage.Storer,
+) (Interface, error) {
+	switch manifestType {
+	case ManifestSimpleContentType:
+		return NewSimpleManifestReference(ctx, reference, encrypted, storer)
+	default:
+		return nil, ErrInvalidManifestType
+	}
+}
+
+type manifestEntry struct {
+	reference swarm.Address
+}
+
+// NewEntry creates a new manifest entry.
+func NewEntry(reference swarm.Address) Entry {
+	return &manifestEntry{
+		reference: reference,
+	}
+}
+
+func (e *manifestEntry) Reference() swarm.Address {
+	return e.reference
 }
