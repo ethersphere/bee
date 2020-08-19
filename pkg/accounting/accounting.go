@@ -529,8 +529,4 @@ func (a *Accounting) Connected(ctx context.Context, peer swarm.Address) error {
 }
 
 func (a *Accounting) Disconnected(peer swarm.Address) {
-	a.accountingPeersMu.Lock()
-	defer a.accountingPeersMu.Unlock()
-
-	delete(a.accountingPeers, peer.String())
 }
