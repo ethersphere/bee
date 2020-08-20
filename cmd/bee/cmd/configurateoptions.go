@@ -22,11 +22,11 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 			}
 
 			d := c.config.AllSettings()
-			bs, err := yaml.Marshal(d)
+			ym, err := yaml.Marshal(d)
 			if err != nil {
 				cmd.Printf("unable to marshal config to yaml: %v", err)
 			}
-			cmd.Printf("%+v\n", string(bs))
+			cmd.Println(string(ym))
 			return nil
 
 		},

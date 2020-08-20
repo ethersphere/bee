@@ -11,14 +11,12 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
-
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
