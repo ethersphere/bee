@@ -70,7 +70,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
 
-	s.metrics.TotalRecievedPseudoSettlements.Add(float64(req.Amount))
+	s.metrics.TotalReceivedPseudoSettlements.Add(float64(req.Amount))
 
 	s.logger.Tracef("received payment message from peer %v of %d", p.Address, req.Amount)
 	return s.observer.NotifyPayment(p.Address, req.Amount)
