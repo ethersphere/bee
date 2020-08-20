@@ -60,6 +60,8 @@ func NewManifest(
 	switch manifestType {
 	case ManifestSimpleContentType:
 		return NewSimpleManifest(encrypted, storer)
+	case ManifestMantarayContentType:
+		return NewMantarayManifest(encrypted, storer)
 	default:
 		return nil, ErrInvalidManifestType
 	}
@@ -76,6 +78,8 @@ func NewManifestReference(
 	switch manifestType {
 	case ManifestSimpleContentType:
 		return NewSimpleManifestReference(ctx, reference, encrypted, storer)
+	case ManifestMantarayContentType:
+		return NewMantarayManifestReference(ctx, reference, encrypted, storer)
 	default:
 		return nil, ErrInvalidManifestType
 	}
