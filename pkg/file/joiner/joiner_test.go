@@ -119,7 +119,7 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 }
 
-func TestEncryptionAndDecryption(t *testing.T) {
+func TestEncryption(t *testing.T) {
 	var tests = []struct {
 		chunkLength int
 	}{
@@ -130,7 +130,7 @@ func TestEncryptionAndDecryption(t *testing.T) {
 		//{4096},
 		//{4097},
 		//{15000},
-		{20000000},
+		{10000000},
 	}
 
 	for _, tt := range tests {

@@ -67,7 +67,6 @@ func NewSimpleSplitterJob(ctx context.Context, putter Putter, spanLength int64, 
 		refSize += encryption.KeyLength
 	}
 	p := bmtlegacy.NewTreePool(hashFunc, swarm.Branches, bmtlegacy.PoolSize)
-
 	return &SimpleSplitterJob{
 		ctx:        ctx,
 		putter:     putter,
@@ -162,9 +161,45 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		s.hasher.Reset()
+		h2 := make([]byte, 8)
+		binary.LittleEndian.PutUint64(h2, uint64(len(c)))
+		err = s.hasher.SetSpanBytes(h2)
+		if err != nil {
+			return nil, err
+		}
+		_, err = s.hasher.Write(c[8:])
+		if err != nil {
+			return nil, err
+		}
+		ref := s.hasher.Sum(nil)
+		addr = swarm.NewAddress(ref)
+
+		// Add tag to the chunk if tag is valid
+		var ch swarm.Chunk
+		//if s.tag != nil {
+		//ch = swarm.NewChunk(addr, c).WithTagID(s.tag.Uid)
+		//} else {
+		ch = swarm.NewChunk(addr, c)
+		//}
+
+		seen, err := s.putter.Put(s.ctx, ch)
+		if err != nil {
+			return nil, err
+		} else if len(seen) > 0 && seen[0] {
+			s.incrTag(tags.StateSeen)
+		}
+
+		s.incrTag(tags.StateStored)
+
+		return append(ch.Address().Bytes(), encryptionKey...), nil
+
 	}
 
 	s.hasher.Reset()
+	h2 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(h2, uint64(len(c)))
+
 	err := s.hasher.SetSpanBytes(c[:8])
 	if err != nil {
 		return nil, err
@@ -246,6 +281,7 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 //
 // After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() error {
+
 	// calculate the total number of levels needed to represent the data (including the data level)
 	targetLevel := file.Levels(s.length, swarm.SectionSize, 64)
 
