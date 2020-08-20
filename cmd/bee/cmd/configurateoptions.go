@@ -7,6 +7,8 @@ package cmd
 import (
 	"fmt"
 	"github.com/ethersphere/bee/pkg/swarm"
+	yaml "gopkg.in/yaml.v2"
+
 	"github.com/spf13/cobra"
 	"path/filepath"
 )
@@ -48,8 +50,13 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 			}
 
 			d := c.config.AllSettings()
-			cmd.Printf("%+v\n", d)
+			bs, err := yaml.Marshal(d)
+			if err != nil {
+				cmd.Printf("unable to marshal config to yaml: %v", err)
+			}
+			cmd.Printf("%+v\n", string(bs))
 			return nil
+
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return c.config.BindPFlags(cmd.Flags())
