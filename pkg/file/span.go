@@ -6,14 +6,12 @@ package file
 
 import (
 	"math"
-
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var Spans []int64
 
 func init() {
-	Spans = GenerateSpanSizes(9, swarm.Branches)
+	Spans = GenerateSpanSizes(9, 64)
 }
 
 // GenerateSpanSizes generates a dictionary of maximum span lengths per level represented by one SectionSize() of data
