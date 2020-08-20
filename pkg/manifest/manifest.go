@@ -34,7 +34,7 @@ type Interface interface {
 	// Lookup returns a manifest entry if one is found in the specified path.
 	Lookup(string) (Entry, error)
 	// Store stores the manifest, returning the resulting address.
-	Store(storage.ModePut) (swarm.Address, error)
+	Store(context.Context, storage.ModePut) (swarm.Address, error)
 }
 
 // Entry represents a single manifest entry.
@@ -45,23 +45,21 @@ type Entry interface {
 
 // NewDefaultManifest creates a new manifest with default type.
 func NewDefaultManifest(
-	ctx context.Context,
 	encrypted bool,
 	storer storage.Storer,
 ) (Interface, error) {
-	return NewManifest(ctx, DefaultManifestType, encrypted, storer)
+	return NewManifest(DefaultManifestType, encrypted, storer)
 }
 
 // NewManifest creates a new manifest.
 func NewManifest(
-	ctx context.Context,
 	manifestType string,
 	encrypted bool,
 	storer storage.Storer,
 ) (Interface, error) {
 	switch manifestType {
 	case ManifestSimpleContentType:
-		return NewSimpleManifest(ctx, encrypted, storer)
+		return NewSimpleManifest(encrypted, storer)
 	default:
 		return nil, ErrInvalidManifestType
 	}

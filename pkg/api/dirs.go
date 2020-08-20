@@ -97,7 +97,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 	v := ctx.Value(toEncryptContextKey{})
 	toEncrypt, _ := v.(bool) // default is false
 
-	dirManifest, err := manifest.NewDefaultManifest(ctx, toEncrypt, s)
+	dirManifest, err := manifest.NewDefaultManifest(toEncrypt, s)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -156,7 +156,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 	}
 
 	// save manifest
-	manifestBytesReference, err := dirManifest.Store(mode)
+	manifestBytesReference, err := dirManifest.Store(ctx, mode)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}

@@ -27,20 +27,17 @@ const (
 type simpleManifest struct {
 	manifest simple.Manifest
 
-	ctx       context.Context
 	encrypted bool
 	storer    storage.Storer
 }
 
 // NewSimpleManifest creates a new simple manifest.
 func NewSimpleManifest(
-	ctx context.Context,
 	encrypted bool,
 	storer storage.Storer,
 ) (Interface, error) {
 	return &simpleManifest{
 		manifest:  simple.NewManifest(),
-		ctx:       ctx,
 		encrypted: encrypted,
 		storer:    storer,
 	}, nil
@@ -55,11 +52,10 @@ func NewSimpleManifestReference(
 ) (Interface, error) {
 	m := &simpleManifest{
 		manifest:  simple.NewManifest(),
-		ctx:       ctx,
 		encrypted: encrypted,
 		storer:    storer,
 	}
-	err := m.load(reference)
+	err := m.load(ctx, reference)
 	return m, err
 }
 
@@ -103,14 +99,12 @@ func (m *simpleManifest) Lookup(path string) (Entry, error) {
 	return entry, nil
 }
 
-func (m *simpleManifest) Store(mode storage.ModePut) (swarm.Address, error) {
+func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm.Address, error) {
 
 	data, err := m.manifest.MarshalBinary()
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest marshal error: %w", err)
 	}
-
-	ctx := m.ctx
 
 	sp := splitter.NewSimpleSplitter(m.storer, mode)
 
@@ -122,9 +116,7 @@ func (m *simpleManifest) Store(mode storage.ModePut) (swarm.Address, error) {
 	return address, nil
 }
 
-func (m *simpleManifest) load(reference swarm.Address) error {
-	ctx := m.ctx
-
+func (m *simpleManifest) load(ctx context.Context, reference swarm.Address) error {
 	j := joiner.NewSimpleJoiner(m.storer)
 
 	buf := bytes.NewBuffer(nil)
