@@ -149,7 +149,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
 	}
 
-	if o.Standalone == true {
+	if o.Standalone {
 		opts = append(opts, libp2p.NoListenAddrs)
 	}
 

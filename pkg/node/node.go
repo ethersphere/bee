@@ -172,7 +172,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 
 	var bootnodes []ma.Multiaddr
-	if o.Standalone != true {
+	if !o.Standalone {
 		for _, a := range o.Bootnodes {
 			addr, err := ma.NewMultiaddr(a)
 			if err != nil {
