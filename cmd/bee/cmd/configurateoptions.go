@@ -24,7 +24,7 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 			d := c.config.AllSettings()
 			ym, err := yaml.Marshal(d)
 			if err != nil {
-				cmd.Printf("unable to marshal config to yaml: %v", err)
+				return err
 			}
 			cmd.Println(string(ym))
 			return nil
