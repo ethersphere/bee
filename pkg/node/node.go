@@ -172,7 +172,9 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 
 	var bootnodes []ma.Multiaddr
-	if !o.Standalone {
+	if o.Standalone {
+		logger.Info("Starting node in standalone mode, no p2p connections will be made or accepted")
+	} else {
 		for _, a := range o.Bootnodes {
 			addr, err := ma.NewMultiaddr(a)
 			if err != nil {
