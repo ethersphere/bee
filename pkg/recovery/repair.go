@@ -48,6 +48,19 @@ func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsy
 	return func(ctx context.Context, m *trojan.Message) error {
 		chAddr := m.Payload
 
+		// check if the chunk exists in the local store and proceed.
+		// otherwise the Get will trigger a unnecessary network retrieve
+		exists, err := s.Has(ctx, swarm.NewAddress(chAddr))
+		if err != nil {
+			logger.Info("chunk repair: error while getting chunk for repairing: ", err)
+			return err
+		}
+		if !exists {
+			logger.Info("chunk repair: chunk not present in local store for repairing")
+			return err
+		}
+
+		// retrieve the chunk from the local store
 		ch, err := s.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(chAddr))
 		if err != nil {
 			logger.Tracef("chunk repair: error while getting chunk for repairing: %v", err)
