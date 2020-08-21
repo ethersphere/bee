@@ -509,8 +509,9 @@ func addI64pU64(a int64, b uint64) (result int64, err error) {
 	}
 
 	return result, nil
+}
 
-
+// NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
 func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error {
 	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
@@ -524,9 +525,11 @@ func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold
 	return nil
 }
 
+// Connected is called when a peer connects to us
 func (a *Accounting) Connected(ctx context.Context, peer swarm.Address) error {
 	return a.pricing.AnnouncePaymentThreshold(ctx, peer, a.paymentThreshold)
 }
 
+// Disconnected is called when a peer disconnects from us
 func (a *Accounting) Disconnected(peer swarm.Address) {
 }

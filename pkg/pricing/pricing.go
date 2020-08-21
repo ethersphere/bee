@@ -24,10 +24,12 @@ const (
 
 var _ Interface = (*Service)(nil)
 
+// Interface is the main interface of the pricing protocol
 type Interface interface {
 	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error
 }
 
+// PaymentThresholdObserver is used for being notified of payment threshold updates
 type PaymentThresholdObserver interface {
 	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error
 }
@@ -103,6 +105,7 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 	return err
 }
 
+// SetPaymentThresholdObserver sets the PaymentThresholdObserver to be used when receiving a new payment threshold
 func (s *Service) SetPaymentThresholdObserver(observer PaymentThresholdObserver) {
 	s.paymentThresholdObserver = observer
 }
