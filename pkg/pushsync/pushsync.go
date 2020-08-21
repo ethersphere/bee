@@ -106,7 +106,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	// This is a special situation in that the other peer thinks thats we are the closest node
-	// and we think that the sending peer
+	// and we think that the sending peer is the closest
 	if p.Address.Equal(peer) {
 		return ps.handleDeliveryResponse(ctx, w, p, chunk)
 	}
