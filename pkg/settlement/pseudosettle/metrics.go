@@ -25,13 +25,13 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_received_pseudosettlements",
-			Help:      "Amount of BZZ received from peers (actual income of the node)",
+			Help:      "Amount of pseudotokens received from peers (income of the node)",
 		}),
 		TotalSentPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_sent_pseudosettlements",
-			Help:      "Amount of BZZ sent to peers (actual cost of the node)",
+			Help:      "Amount of pseudotokens sent to peers (costs paid by the node)",
 		}),
 	}
 }
