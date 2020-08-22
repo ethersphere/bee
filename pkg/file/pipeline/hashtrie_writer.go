@@ -33,17 +33,17 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
-	_ = h.writeToLevel(1, p)
+	_ = h.writeToLevel(1, p.span, p.ref)
 	return 0, nil
 }
 
-func (h *hashTrieWriter) writeToLevel(level int, p *pipeWriteArgs) error {
-	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(p.span)], p.span) //copy the span slongside
-	h.cursors[level] += len(p.span)
-	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(p.ref)], p.ref)
-	h.cursors[level] += len(p.ref)
+func (h *hashTrieWriter) writeToLevel(level int, span, ref []byte) error {
+	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span) //copy the span slongside
+	h.cursors[level] += len(span)
+	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
+	h.cursors[level] += len(ref)
 
-	fmt.Println("write to level", level, "data", hex.EncodeToString(p.ref))
+	fmt.Println("write to level", level, "data", hex.EncodeToString(ref))
 	if h.levelSize(level) == swarm.ChunkSize {
 		h.wrapLevel(level)
 	}
@@ -52,6 +52,7 @@ func (h *hashTrieWriter) writeToLevel(level int, p *pipeWriteArgs) error {
 }
 
 func (h *hashTrieWriter) wrapLevel(level int) {
+	fmt.Println("wrap level", level)
 	/*
 		wrapLevel does the following steps:
 		 - take all of the data in the current level
@@ -62,6 +63,7 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 		 - remove already hashed data from buffer
 	*/
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
+	fmt.Println("level size", h.levelSize(level))
 	sp := uint64(0)
 	var hashes []byte
 	for i := 0; i < len(data); i += h.refSize + 8 {
@@ -75,6 +77,7 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 	writer := h.pipelineFn(&results)
 	writer.Write(hashes)
 	fmt.Println("got result on wrapping level", hex.EncodeToString(results.ref))
+	h.writeToLevel(level+1, results.span, results.ref)
 }
 
 func (h *hashTrieWriter) levelSize(level int) int {
@@ -96,9 +99,8 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		}
 		fmt.Println("level", i, "size", lSize)
 
-		for l := h.levelSize(i); l > 0; l = h.levelSize(i) {
-
-		}
+		// if we have level size > 0, then it means only upto one chunk of data is there
+		h.wrapLevel(i)
 	}
 
 	return nil, nil

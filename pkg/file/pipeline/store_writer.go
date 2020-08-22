@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -18,6 +19,7 @@ func NewStoreWriter(l storage.Putter, next ChainableWriter) ChainableWriter {
 
 func (w *storeWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	c := swarm.NewChunk(swarm.NewAddress(p.ref), p.data)
+	fmt.Println(p.ref, p.data)
 	w.l.Put(context.Background(), storage.ModePutUpload, c)
 	return w.next.ChainWrite(p)
 }
