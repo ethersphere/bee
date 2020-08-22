@@ -86,7 +86,7 @@ func (h *hashTrieWriter) levelSize(level int) int {
 
 func (h *hashTrieWriter) Sum() ([]byte, error) {
 	// sweep through the levels that have cursors .> 0
-	for i := 1; i < 9; i++ {
+	for i := 1; i < 8; i++ {
 
 		// theoretically, in an existing level, can be only upto 1 chunk of data, since
 		// wrapping should occur on writes
@@ -100,6 +100,10 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		fmt.Println("level", i, "size", lSize)
 
 		// if we have level size > 0, then it means only upto one chunk of data is there
+		if lSize == 0 {
+			fmt.Println(h.buffer[:1024])
+			return nil, nil
+		}
 		h.wrapLevel(i)
 	}
 

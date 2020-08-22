@@ -14,15 +14,15 @@ import (
 var (
 	fileByteMod int = 255
 	fileLengths     = []int{
-		31, // 0
-		32, // 1
-		//33,                       // 2
-		//63,                       // 3
-		//64,                       // 4
-		//65,                       // 5
-		//swarm.ChunkSize,          // 6
-		//swarm.ChunkSize + 31,     // 7
-		//swarm.ChunkSize + 32,     // 8
+		31,                   // 0
+		32,                   // 1
+		33,                   // 2
+		63,                   // 3
+		64,                   // 4
+		65,                   // 5
+		swarm.ChunkSize,      // 6
+		swarm.ChunkSize + 31, // 7
+		swarm.ChunkSize + 32, // 8
 		//swarm.ChunkSize + 63,     // 9
 		//swarm.ChunkSize + 64,     // 10
 		//swarm.ChunkSize * 2,      // 11

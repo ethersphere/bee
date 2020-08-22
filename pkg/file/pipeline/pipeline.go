@@ -27,11 +27,15 @@ func (p *Pipeline) Sum() ([]byte, error) {
 }
 
 func NewPipeline(s storage.Storer) Interface {
+
+	// PIPELINE IS: DATA -> FEEDER -> BMT -> STORAGE -> TRIE
+
 	tw := NewHashTrieWriter(4096, 128, 32, NewShortPipeline(s))
 	lsw := NewStoreWriter(s, tw)
 	b := NewBmtWriter(128, lsw)
+	feeder := NewChunkFeederWriter(4096, b)
 
-	return &Pipeline{head: b, tail: tw}
+	return &Pipeline{head: feeder, tail: tw}
 }
 
 type pipelineFunc func(p *pipeWriteArgs) io.Writer
@@ -42,8 +46,9 @@ func NewShortPipeline(s storage.Storer) func(*pipeWriteArgs) io.Writer {
 		rsw := NewResultWriter(p)
 		lsw := NewStoreWriter(s, rsw)
 		bw := NewBmtWriter(128, lsw)
+		feeder := NewChunkFeederWriter(4096, bw)
 
-		return bw
+		return feeder
 	}
 }
 
