@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"hash"
+	"io"
 
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
@@ -14,7 +15,7 @@ type bmtWriter struct {
 }
 
 // branches is the branching factor for BMT(!), not the same like in the trie of hashes which can differ between encrypted and unencrypted content
-func NewBmtWriter(branches int, next ChainableWriter) ChainableWriter {
+func NewBmtWriter(branches int, next ChainableWriter) io.Writer {
 	return &bmtWriter{b: bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize))}
 }
 
@@ -25,14 +26,14 @@ func (w *bmtWriter) Write(b []byte) (int, error) {
 	w.b.Reset()
 	err := w.b.SetSpanBytes(b[:8])
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	_, err = w.b.Write(b[8:])
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	bytes := w.b.Sum(nil)
-	args := pipeWriteArgs{ref: bytes, data: b, span: b[:8]}
+	args := &pipeWriteArgs{ref: bytes, data: b, span: b[:8]}
 	return w.next.ChainWrite(args)
 }
 

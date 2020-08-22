@@ -9,7 +9,7 @@ import (
 type hashTrieWriter struct {
 	branching int
 	chunkSize int
-	refLen    int
+	refSize   int
 
 	length     int64  // how many bytes were written so far to the data layer
 	cursors    []int  // level cursors, key is level. level 0 is data level
@@ -19,9 +19,11 @@ type hashTrieWriter struct {
 
 func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc) EndPipeWriter {
 	return &hashTrieWriter{
-		brancing:   branching,
+		cursors:    make([]int, 9),
+		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
+		branching:  branching,
 		chunkSize:  chunkSize,
-		refLen:     refLen,
+		refSize:    refLen,
 		pipelineFn: pipelineFn,
 	}
 }
@@ -30,17 +32,20 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	_ = h.writeToLevel(1, p)
+	return 0, nil
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, p *pipeWriteArgs) error {
-	copy(s.buffer[s.cursors[level]:s.cursors[level]+len(p.span)], p.span) //copy the span slongside
-	s.cursors[level] += len(p.span)
-	copy(s.buffer[s.cursors[lvl]:s.cursors[lvl]+len(data)], p.ref)
-	s.cursors[lvl] += len(p.ref)
+	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(p.span)], p.span) //copy the span slongside
+	h.cursors[level] += len(p.span)
+	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(p.ref)], p.ref)
+	h.cursors[level] += len(p.ref)
 
-	if s.cursors[lvl]-s.cursors[lvl+1] == swarm.ChunkSize {
+	if h.cursors[level]-h.cursors[level+1] == swarm.ChunkSize {
 		h.wrapLevel(level)
 	}
+
+	return nil
 }
 
 func (h *hashTrieWriter) wrapLevel(level int) {
@@ -53,8 +58,8 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 		 - get the hash that was created, append it one level above
 		 - remove already hashed data from buffer
 	*/
-	data := h.buffer[s.cursors[level+1]:s.cursors[level]]
-	sp := 0
+	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
+	sp := uint64(0)
 	var hashes []byte
 	for i := 0; i < len(data); i += h.refSize + 8 {
 		// sum up the spans of the level, then we need to bmt them and store it as a chunk
@@ -66,4 +71,8 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 	var results pipeWriteArgs
 	writer := h.pipelineFn(&results)
 	writer.Write(hashes)
+}
+
+func (h *hashTrieWriter) Sum() ([]byte, error) {
+	return nil, nil
 }

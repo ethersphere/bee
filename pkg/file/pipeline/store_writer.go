@@ -12,12 +12,12 @@ type storeWriter struct {
 	next ChainableWriter
 }
 
-func NewStoreWriter(l *storage.Putter, next ChainableWriter) ChainableWriter {
+func NewStoreWriter(l storage.Putter, next ChainableWriter) ChainableWriter {
 	return &storeWriter{l: l, next: next}
 }
 
 func (w *storeWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
-	c := swarm.NewChunk(p.ref, p.data)
-	w.l.Put(context.Background(), c)
+	c := swarm.NewChunk(swarm.NewAddress(p.ref), p.data)
+	w.l.Put(context.Background(), storage.ModePutUpload, c)
 	return w.next.ChainWrite(p)
 }
