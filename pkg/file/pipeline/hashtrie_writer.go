@@ -44,7 +44,7 @@ func (h *hashTrieWriter) writeToLevel(level int, p *pipeWriteArgs) error {
 	h.cursors[level] += len(p.ref)
 
 	fmt.Println("write to level", level, "data", hex.EncodeToString(p.ref))
-	if h.cursors[level]-h.cursors[level+1] == swarm.ChunkSize {
+	if h.levelSize(level) == swarm.ChunkSize {
 		h.wrapLevel(level)
 	}
 
@@ -74,6 +74,7 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 	var results pipeWriteArgs
 	writer := h.pipelineFn(&results)
 	writer.Write(hashes)
+	fmt.Println("got result on wrapping level", hex.EncodeToString(results.ref))
 }
 
 func (h *hashTrieWriter) levelSize(level int) int {
@@ -87,26 +88,17 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		// theoretically, in an existing level, can be only upto 1 chunk of data, since
 		// wrapping should occur on writes
 		lSize := h.levelSize(i)
+
 		// stop condition is: level size == size of reference + span (because we keep the spans in the buffer too) and no more data in the next level
 		if lSize == h.refSize+8 && h.levelSize(i+1) == 0 {
 			// return this ref
 			return h.buffer[h.cursors[i+1]+8 : h.cursors[i]], nil
 		}
-		fmt.Println("leveli", i, "size", lSize)
+		fmt.Println("level", i, "size", lSize)
 
-		// if the data in the level exceeds one chunk - panic
-		if lSize > swarm.ChunkSize {
-			panic("no")
+		for l := h.levelSize(i); l > 0; l = h.levelSize(i) {
+
 		}
-
-		if lSize == 0 {
-			return nil, nil
-		}
-
-		//if lSize > 0 {
-
-		//}
-
 	}
 
 	return nil, nil

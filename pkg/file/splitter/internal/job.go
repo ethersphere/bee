@@ -204,6 +204,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 // The method does not check that the final hash actually has been written, so
 // timing is the responsibility of the caller.
 func (s *SimpleSplitterJob) digest() []byte {
+	fmt.Println(s.sumCounts)
 	if s.toEncrypt {
 		return s.buffer[:swarm.SectionSize*2]
 	} else {

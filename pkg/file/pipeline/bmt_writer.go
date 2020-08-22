@@ -1,9 +1,11 @@
 package pipeline
 
 import (
+	"fmt"
 	"hash"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
@@ -36,6 +38,7 @@ func (w *bmtWriter) Write(b []byte) (int, error) {
 		return 0, err
 	}
 	bytes := w.b.Sum(nil)
+	fmt.Println("bmt hashed chunk", swarm.NewAddress(bytes).String())
 	args := &pipeWriteArgs{ref: bytes, data: b, span: b[:8]}
 	return w.next.ChainWrite(args)
 }
