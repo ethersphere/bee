@@ -1,9 +1,5 @@
 package file
 
-import (
-	"io"
-)
-
 type ChainableWriter interface {
 	ChainWrite(*pipeWriteArgs)
 }
@@ -13,5 +9,4 @@ type ChainableWriter interface {
 type EndPipeWriter interface {
 	ChainableWriter
 	Sum() ([]byte, error)
-	SetHead(io.Writer)
 }

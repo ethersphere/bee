@@ -26,10 +26,6 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc
 	}
 }
 
-func (h *hashTrieWriter) SetHead(w ChainableWriter) {
-	h.head = w
-}
-
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
@@ -48,7 +44,6 @@ func (h *hashTrieWriter) writeToLevel(level int, p *pipeWriteArgs) error {
 }
 
 func (h *hashTrieWriter) wrapLevel(level int) {
-
 	/*
 		wrapLevel does the following steps:
 		 - take all of the data in the current level
