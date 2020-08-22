@@ -1,0 +1,41 @@
+package pipeline
+
+import (
+	"hash"
+
+	"github.com/ethersphere/bmt"
+	bmtlegacy "github.com/ethersphere/bmt/legacy"
+	"golang.org/x/crypto/sha3"
+)
+
+type bmtWriter struct {
+	b    bmt.Hash
+	next ChainableWriter
+}
+
+// branches is the branching factor for BMT(!), not the same like in the trie of hashes which can differ between encrypted and unencrypted content
+func NewBmtWriter(branches int, next ChainableWriter) ChainableWriter {
+	return &bmtWriter{b: bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize))}
+}
+
+// PIPELINE IS: DATA -> BMT -> STORAGE -> TRIE
+
+// Write assumes that the span is prepended to the actual data before the write !
+func (w *bmtWriter) Write(b []byte) (int, error) {
+	w.b.Reset()
+	err := w.b.SetSpanBytes(b[:8])
+	if err != nil {
+		return nil, err
+	}
+	_, err = w.b.Write(b[8:])
+	if err != nil {
+		return nil, err
+	}
+	bytes := w.b.Sum(nil)
+	args := pipeWriteArgs{ref: bytes, data: b, span: b[:8]}
+	return w.next.ChainWrite(args)
+}
+
+func hashFunc() hash.Hash {
+	return sha3.NewLegacyKeccak256()
+}
