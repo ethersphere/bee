@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"encoding/binary"
 	"io"
 )
 
@@ -27,8 +28,11 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		} else {
 			d = b[i : i+f.size]
 		}
+		data := make([]byte, 8)
+		binary.LittleEndian.PutUint64(data[:8], uint64(len(d)))
+		data = append(data, d...)
 
-		args := &pipeWriteArgs{data: d}
+		args := &pipeWriteArgs{data: data}
 		i, err := f.next.ChainWrite(args)
 		if err != nil {
 			return 0, err

@@ -31,12 +31,9 @@ func TestNormalPipelineWrap(t *testing.T) {
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 
-	i := 6
+	i := 7
 	data, expect := test.GetVector(t, i)
 	fmt.Println("vector length", len(data))
-	d := make([]byte, 8)
-	binary.LittleEndian.PutUint64(d[:8], uint64(len(data)))
-	data = append(d, data...)
 	_, _ = p.Write(data)
 	sum, err := p.Sum()
 	if err != nil {
