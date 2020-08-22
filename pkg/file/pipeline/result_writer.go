@@ -4,7 +4,7 @@ type resultWriter struct {
 	target *pipeWriteArgs //the byte slice to write into
 }
 
-func NewResultWriter(b []byte) ChainableWriter {
+func NewResultWriter(b *pipeWriteArgs) ChainableWriter {
 	return &resultWriter{target: b}
 }
 

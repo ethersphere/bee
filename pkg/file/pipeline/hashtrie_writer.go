@@ -11,16 +11,18 @@ type hashTrieWriter struct {
 	chunkSize int
 	refLen    int
 
-	length  int64  // how many bytes were written so far to the data layer
-	cursors []int  // level cursors, key is level. level 0 is data level
-	buffer  []byte // keeps all level data
+	length     int64  // how many bytes were written so far to the data layer
+	cursors    []int  // level cursors, key is level. level 0 is data level
+	buffer     []byte // keeps all level data
+	pipelineFn pipelineFunc
 }
 
-func NewHashTrieWriter(chunkSize, branching, refLen int) EndPipeWriter {
+func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc) EndPipeWriter {
 	return &hashTrieWriter{
-		brancing:  branching,
-		chunkSize: chunkSize,
-		refLen:    refLen,
+		brancing:   branching,
+		chunkSize:  chunkSize,
+		refLen:     refLen,
+		pipelineFn: pipelineFn,
 	}
 }
 
@@ -46,11 +48,27 @@ func (h *hashTrieWriter) writeToLevel(level int, p *pipeWriteArgs) error {
 }
 
 func (h *hashTrieWriter) wrapLevel(level int) {
+
+	/*
+		wrapLevel does the following steps:
+		 - take all of the data in the current level
+		 - break down span and hash data
+		 - sum the span size
+		 - call the short pipeline (that hashes and stores the intermediate chunk created)
+		 - get the hash that was created, append it one level above
+		 - remove already hashed data from buffer
+	*/
 	data := h.buffer[s.cursors[level+1]:s.cursors[level]]
 	sp := 0
+	var hashes []byte
 	for i := 0; i < len(data); i += h.refSize + 8 {
 		// sum up the spans of the level, then we need to bmt them and store it as a chunk
 		// then write the chunk address to the next level up
 		sp += binary.LittleEndian.Uint64(data[i : i+8])
+		hashes = append(hashes, data[i+8:i+h.refSize+8]...)
 	}
+
+	var results pipeWriteArgs
+	writer := h.pipelineFn(&results)
+	writer.Write(hashes)
 }

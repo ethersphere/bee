@@ -23,7 +23,7 @@ func (p *Pipeline) Sum() ([]byte, error) {
 }
 
 func NewPipeline() EndPipeWriter {
-	tw := NewHashTrieWriter(4096, 128, 32)
+	tw := NewHashTrieWriter(4096, 128, 32, NewShortPipeline)
 	lsw := NewStoreWriter(nil, tw)
 	b := NewBmtWriter(128, lsw)
 
@@ -32,8 +32,11 @@ func NewPipeline() EndPipeWriter {
 	return &Pipeline{head: b, tail: tw}
 }
 
-func NewShortPipeline(b []byte) io.Writer {
-	rsw := NewResultWriter(b)
+type pipelineFunc func(p *pipeWriteArgs) io.Writer
+
+// this is just a hashing pipeline. needed for level wrapping inside the hash trie writer
+func NewShortPipeline(p *pipeWriteArgs) io.Writer {
+	rsw := NewResultWriter(p)
 	lsw := NewStoreWriter(nil, tw)
 	bw := NewBmtWriter(128, lsw)
 
