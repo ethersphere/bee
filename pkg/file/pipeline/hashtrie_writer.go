@@ -58,7 +58,7 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 		 - break down span and hash data
 		 - sum the span size
 		 - call the short pipeline (that hashes and stores the intermediate chunk created)
-		 - get the hash that was created, append it one level above
+		 - get the hash that was created, append it one level above, and if necessary, wrap that level too!
 		 - remove already hashed data from buffer
 	*/
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
@@ -76,6 +76,38 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 	writer.Write(hashes)
 }
 
+func (h *hashTrieWriter) levelSize(level int) int {
+	return h.cursors[level] - h.cursors[level+1]
+}
+
 func (h *hashTrieWriter) Sum() ([]byte, error) {
+	// sweep through the levels that have cursors .> 0
+	for i := 1; i < 9; i++ {
+
+		// theoretically, in an existing level, can be only upto 1 chunk of data, since
+		// wrapping should occur on writes
+		lSize := h.levelSize(i)
+		// stop condition is: level size == size of reference + span (because we keep the spans in the buffer too) and no more data in the next level
+		if lSize == h.refSize+8 && h.levelSize(i+1) == 0 {
+			// return this ref
+			return h.buffer[h.cursors[i+1]+8 : h.cursors[i]], nil
+		}
+		fmt.Println("leveli", i, "size", lSize)
+
+		// if the data in the level exceeds one chunk - panic
+		if lSize > swarm.ChunkSize {
+			panic("no")
+		}
+
+		if lSize == 0 {
+			return nil, nil
+		}
+
+		//if lSize > 0 {
+
+		//}
+
+	}
+
 	return nil, nil
 }
