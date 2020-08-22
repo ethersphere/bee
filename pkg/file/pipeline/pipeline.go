@@ -1,6 +1,10 @@
 package pipeline
 
-import "io"
+import (
+	"io"
+
+	"github.com/ethersphere/bee/pkg/storage"
+)
 
 type pipeWriteArgs struct {
 	ref  []byte
@@ -22,9 +26,9 @@ func (p *Pipeline) Sum() ([]byte, error) {
 	return p.tail.Sum()
 }
 
-func NewPipeline() Interface {
+func NewPipeline(s storage.Storer) Interface {
 	tw := NewHashTrieWriter(4096, 128, 32, NewShortPipeline)
-	lsw := NewStoreWriter(nil, tw)
+	lsw := NewStoreWriter(s, tw)
 	b := NewBmtWriter(128, lsw)
 
 	return &Pipeline{head: b, tail: tw}

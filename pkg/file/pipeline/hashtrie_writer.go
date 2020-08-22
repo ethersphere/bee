@@ -2,6 +2,8 @@ package pipeline
 
 import (
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -41,6 +43,7 @@ func (h *hashTrieWriter) writeToLevel(level int, p *pipeWriteArgs) error {
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(p.ref)], p.ref)
 	h.cursors[level] += len(p.ref)
 
+	fmt.Println("write to level", level, "data", hex.EncodeToString(p.ref))
 	if h.cursors[level]-h.cursors[level+1] == swarm.ChunkSize {
 		h.wrapLevel(level)
 	}

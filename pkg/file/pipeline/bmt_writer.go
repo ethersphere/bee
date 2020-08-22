@@ -16,7 +16,10 @@ type bmtWriter struct {
 
 // branches is the branching factor for BMT(!), not the same like in the trie of hashes which can differ between encrypted and unencrypted content
 func NewBmtWriter(branches int, next ChainableWriter) io.Writer {
-	return &bmtWriter{b: bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize))}
+	return &bmtWriter{
+		b:    bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize)),
+		next: next,
+	}
 }
 
 // PIPELINE IS: DATA -> BMT -> STORAGE -> TRIE
