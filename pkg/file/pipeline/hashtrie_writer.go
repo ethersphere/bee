@@ -55,9 +55,9 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 	fmt.Println("wrap level", level)
 	/*
 		wrapLevel does the following steps:
-		 - take all of the data in the current level
-		 - break down span and hash data
-		 - sum the span size
+		 - take all of the data in the current level - OK
+		 - break down span and hash data - OK
+		 - sum the span size - OK
 		 - call the short pipeline (that hashes and stores the intermediate chunk created)
 		 - get the hash that was created, append it one level above, and if necessary, wrap that level too!
 		 - remove already hashed data from buffer
@@ -70,12 +70,21 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 		// sum up the spans of the level, then we need to bmt them and store it as a chunk
 		// then write the chunk address to the next level up
 		sp += binary.LittleEndian.Uint64(data[i : i+8])
-		hashes = append(hashes, data[i+8:i+h.refSize+8]...)
+		fmt.Println("span on wrap", sp)
+		hash := data[i+8 : i+h.refSize+8]
+		fmt.Println("hash", hex.EncodeToString(hash))
+		hashes = append(hashes, hash...)
 	}
-
+	spb := make([]byte, 8)
+	binary.LittleEndian.PutUint64(spb, sp)
+	hashes = append(spb, hashes...)
+	fmt.Println("htw hashing level data", hex.EncodeToString(hashes))
 	var results pipeWriteArgs
 	writer := h.pipelineFn(&results)
-	writer.Write(hashes)
+	args := pipeWriteArgs{
+		data: hashes,
+	}
+	writer.ChainWrite(&args)
 	fmt.Println("got result on wrapping level", hex.EncodeToString(results.ref))
 	h.writeToLevel(level+1, results.span, results.ref)
 }

@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"encoding/hex"
 	"fmt"
 	"hash"
 
@@ -26,6 +27,7 @@ func NewBmtWriter(branches int, next ChainableWriter) ChainableWriter {
 // Write assumes that the span is prepended to the actual data before the write !
 func (w *bmtWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	w.b.Reset()
+	fmt.Println("bmt hashing data", hex.EncodeToString(p.data))
 	err := w.b.SetSpanBytes(p.data[:8])
 	if err != nil {
 		return 0, err

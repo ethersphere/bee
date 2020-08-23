@@ -38,17 +38,16 @@ func NewPipeline(s storage.Storer) Interface {
 	return &Pipeline{head: feeder, tail: tw}
 }
 
-type pipelineFunc func(p *pipeWriteArgs) io.Writer
+type pipelineFunc func(p *pipeWriteArgs) ChainableWriter
 
 // this is just a hashing pipeline. needed for level wrapping inside the hash trie writer
-func NewShortPipeline(s storage.Storer) func(*pipeWriteArgs) io.Writer {
-	return func(p *pipeWriteArgs) io.Writer {
+func NewShortPipeline(s storage.Storer) func(*pipeWriteArgs) ChainableWriter {
+	return func(p *pipeWriteArgs) ChainableWriter {
 		rsw := NewResultWriter(p)
 		lsw := NewStoreWriter(s, rsw)
 		bw := NewBmtWriter(128, lsw)
-		feeder := NewChunkFeederWriter(4096, bw)
 
-		return feeder
+		return bw
 	}
 }
 
