@@ -1,8 +1,7 @@
 package pipeline
 
 import (
-	"encoding/binary"
-	"encoding/hex"
+	"bytes"
 	"fmt"
 	"testing"
 
@@ -14,24 +13,23 @@ import (
 func TestNormalPipeline(t *testing.T) {
 	m := mock.NewStorer()
 	p := NewPipeline(m)
-	d := make([]byte, 8)
-	binary.LittleEndian.PutUint64(d[:8], 11)
-	data := append(d, []byte("hello world")...)
+	data := []byte("hello world")
 	_, _ = p.Write(data)
 	sum, err := p.Sum()
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("sum", hex.EncodeToString(sum))
-	// swarm (old) hash for hello world through bzz-raw is:
-	// 92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f
+	if !bytes.Equal([]byte("92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f"), sum) {
+		t.Fatal("error") // swarm (old) hash for hello world through bzz-raw is: 92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f
+	}
 }
 
-func TestNormalPipelineWrap(t *testing.T) {
+func TestWrap(t *testing.T) {
+
+	i := 17
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 
-	i := 7
 	data, expect := test.GetVector(t, i)
 	fmt.Println("vector length", len(data))
 	_, _ = p.Write(data)
@@ -41,9 +39,31 @@ func TestNormalPipelineWrap(t *testing.T) {
 	}
 	a := swarm.NewAddress(sum)
 	if !a.Equal(expect) {
+		t.Fatalf("failed run %d", i)
 		t.Fatalf("expected address %s but got %s", expect.String(), a.String())
 	}
-	fmt.Println("sum", hex.EncodeToString(sum))
-	// swarm (old) hash for hello world through bzz-raw is:
-	// 92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f
+	//fmt.Println("sum", hex.EncodeToString(sum))
+}
+func TestNormalPipelineWrapAll(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		if i == 13 {
+			continue
+		}
+		m := mock.NewStorer()
+		p := NewPipeline(m)
+
+		data, expect := test.GetVector(t, i)
+		fmt.Println("vector length", len(data))
+		_, _ = p.Write(data)
+		sum, err := p.Sum()
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := swarm.NewAddress(sum)
+		if !a.Equal(expect) {
+			t.Fatalf("failed run %d", i)
+			t.Fatalf("expected address %s but got %s", expect.String(), a.String())
+		}
+		//fmt.Println("sum", hex.EncodeToString(sum))
+	}
 }

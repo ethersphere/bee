@@ -1,11 +1,8 @@
 package pipeline
 
 import (
-	"encoding/hex"
-	"fmt"
 	"hash"
 
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
@@ -27,7 +24,7 @@ func NewBmtWriter(branches int, next ChainableWriter) ChainableWriter {
 // Write assumes that the span is prepended to the actual data before the write !
 func (w *bmtWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	w.b.Reset()
-	fmt.Println("bmt hashing data", hex.EncodeToString(p.data))
+	//fmt.Println("bmt hashing data", hex.EncodeToString(p.data))
 	err := w.b.SetSpanBytes(p.data[:8])
 	if err != nil {
 		return 0, err
@@ -37,7 +34,7 @@ func (w *bmtWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 		return 0, err
 	}
 	bytes := w.b.Sum(nil)
-	fmt.Println("bmt hashed chunk", swarm.NewAddress(bytes).String())
+	//fmt.Println("bmt hashed chunk", swarm.NewAddress(bytes).String())
 	args := &pipeWriteArgs{ref: bytes, data: p.data, span: p.data[:8]}
 	return w.next.ChainWrite(args)
 }

@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -22,7 +21,7 @@ type hashTrieWriter struct {
 func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc) EndPipeWriter {
 	return &hashTrieWriter{
 		cursors:    make([]int, 9),
-		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
+		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*4), // double size as temp workaround for weak calculation of needed buffer space
 		branching:  branching,
 		chunkSize:  chunkSize,
 		refSize:    refLen,
@@ -43,8 +42,9 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref []byte) error {
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
 	h.cursors[level] += len(ref)
 
-	fmt.Println("write to level", level, "data", hex.EncodeToString(ref))
-	if h.levelSize(level) == swarm.ChunkSize {
+	//fmt.Println("write to level", level, "data", hex.EncodeToString(ref))
+	howLong := (h.refSize + swarm.SpanSize) * h.branching
+	if h.levelSize(level) == howLong {
 		h.wrapLevel(level)
 	}
 
@@ -70,31 +70,45 @@ func (h *hashTrieWriter) wrapLevel(level int) {
 		// sum up the spans of the level, then we need to bmt them and store it as a chunk
 		// then write the chunk address to the next level up
 		sp += binary.LittleEndian.Uint64(data[i : i+8])
-		fmt.Println("span on wrap", sp)
+		//fmt.Println("span on wrap", sp)
 		hash := data[i+8 : i+h.refSize+8]
-		fmt.Println("hash", hex.EncodeToString(hash))
 		hashes = append(hashes, hash...)
 	}
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
 	hashes = append(spb, hashes...)
-	fmt.Println("htw hashing level data", hex.EncodeToString(hashes))
+	//fmt.Println("htw hashing level data", hex.EncodeToString(hashes))
 	var results pipeWriteArgs
 	writer := h.pipelineFn(&results)
 	args := pipeWriteArgs{
 		data: hashes,
 	}
 	writer.ChainWrite(&args)
-	fmt.Println("got result on wrapping level", hex.EncodeToString(results.ref))
+	//fmt.Println("got result on wrapping level", hex.EncodeToString(results.ref))
 	h.writeToLevel(level+1, results.span, results.ref)
+	h.cursors[level] = h.cursors[level+1] // this "truncates" the current level that was wrapped
+	// by setting the cursors the the cursors of one level above
 }
 
 func (h *hashTrieWriter) levelSize(level int) int {
+	if level == 8 {
+		return h.cursors[level]
+	}
 	return h.cursors[level] - h.cursors[level+1]
 }
 
 func (h *hashTrieWriter) Sum() ([]byte, error) {
-	// sweep through the levels that have cursors .> 0
+	// look from the top down, to look for the highest hash of a balanced tree
+	// then, whatever is in the levels below that is necessarily unbalanced,
+	// so, we'd like to reduce those levels to one hash, then wrap it together
+	// with the balanced tree hash, to produce the root chunk
+	highest := 1
+	for i := 8; i > 0; i-- {
+		if h.levelSize(i) > 0 && i > highest {
+			highest = i
+		}
+	}
+
 	for i := 1; i < 8; i++ {
 
 		// theoretically, in an existing level, can be only upto 1 chunk of data, since
