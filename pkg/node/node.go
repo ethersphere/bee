@@ -340,6 +340,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
+		debugAPIService.MustRegisterMetrics(settlement.Metrics()...)
 
 		if apiService != nil {
 			debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
