@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement"
 	pb "github.com/ethersphere/bee/pkg/settlement/pseudosettle/pb"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -26,20 +27,17 @@ const (
 type Service struct {
 	streamer p2p.Streamer
 	logger   logging.Logger
+	store    storage.StateStorer
 	observer settlement.PaymentObserver
 	metrics  metrics
 }
 
-type Options struct {
-	Streamer p2p.Streamer
-	Logger   logging.Logger
-}
-
-func New(o Options) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer) *Service {
 	return &Service{
 		streamer: o.Streamer,
 		logger:   o.Logger,
 		metrics:  newMetrics(),
+		store:    store,
 	}
 }
 
@@ -54,6 +52,14 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 			},
 		},
 	}
+}
+
+func totalReceivedKey(peer swarm.Address) string {
+	return fmt.Sprintf("pseudosettle_total_received_%v", peer)
+}
+
+func totalSentKey(peer swarm.Address) string {
+	return fmt.Sprintf("pseudosettle_total_sent_%v", peer)
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
@@ -72,6 +78,17 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	s.metrics.TotalReceivedPseudoSettlements.Add(float64(req.Amount))
 	s.logger.Tracef("received payment message from peer %v of %d", p.Address, req.Amount)
+
+	totalReceived, err := s.TotalReceived(p.Address)
+	if err != nil {
+		return err
+	}
+
+	err = s.store.Put(totalReceivedKey(p.Address), totalReceived+req.Amount)
+	if err != nil {
+		return err
+	}
+
 	return s.observer.NotifyPayment(p.Address, req.Amount)
 }
 
@@ -100,6 +117,14 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	if err != nil {
 		return err
 	}
+	totalSent, err := s.TotalSent(peer)
+	if err != nil {
+		return err
+	}
+	err = s.store.Put(totalSentKey(peer), totalSent+amount)
+	if err != nil {
+		return err
+	}
 	s.metrics.TotalSentPseudoSettlements.Add(float64(amount))
 	return nil
 }
@@ -107,4 +132,32 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 // SetPaymentObserver sets the payment observer which will be notified of incoming payments
 func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
 	s.observer = observer
+}
+
+// TotalSent returns the total amount sent to a peer
+func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
+	key := fmt.Sprintf("pseudosettle_total_sent_%v", peer)
+	err = s.store.Get(key, &totalSent)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			return 0, nil
+		} else {
+			return 0, err
+		}
+	}
+	return totalSent, nil
+}
+
+// TotalReceived returns the total amount received from a peer
+func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
+	key := fmt.Sprintf("pseudosettle_total_received_%v", peer)
+	err = s.store.Get(key, &totalReceived)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			return 0, nil
+		} else {
+			return 0, err
+		}
+	}
+	return totalReceived, nil
 }

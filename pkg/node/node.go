@@ -220,10 +220,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 	b.localstoreCloser = storer
 
-	settlement := pseudosettle.New(pseudosettle.Options{
-		Streamer: p2ps,
-		Logger:   logger,
-	})
+	settlement := pseudosettle.New(p2ps, logger, stateStore)
 
 	if err = p2ps.AddProtocol(settlement.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)

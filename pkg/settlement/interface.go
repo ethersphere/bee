@@ -15,6 +15,10 @@ type Interface interface {
 	// Pay initiates a payment to the given peer
 	// It should return without error it is likely that the payment worked
 	Pay(ctx context.Context, peer swarm.Address, amount uint64) error
+	// TotalSent returns the total amount sent to a peer
+	TotalSent(peer swarm.Address) (totalSent uint64, err error)
+	// TotalReceived returns the total amount received from a peer
+	TotalReceived(peer swarm.Address) (totalSent uint64, err error)
 }
 
 // PaymentObserver is the interface Settlement uses to notify other components of an incoming payment
