@@ -59,6 +59,5 @@ jobs:
       - name: Retag docker image and push
         run: |
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
-          printf ${{ secrets.DOCKERHUB_PASSWORD }} > password
-          cat password | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
           docker push ethersphere/bee:latest
