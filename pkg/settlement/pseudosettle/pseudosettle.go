@@ -97,8 +97,11 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
 		Amount: amount,
 	})
+	if err != nil {
+		return err
+	}
 	s.metrics.TotalSentPseudoSettlements.Add(float64(amount))
-	return err
+	return nil
 }
 
 // SetPaymentObserver sets the payment observer which will be notified of incoming payments
