@@ -155,7 +155,7 @@ func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
 
 // TotalSent returns the total amount sent to a peer
 func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
-	key := totalKey(peer, SettlementReceivedPrefix)
+	key := totalKey(peer, SettlementSentPrefix)
 	err = s.store.Get(key, &totalSent)
 	if err != nil {
 		if err == storage.ErrNotFound {
@@ -169,7 +169,7 @@ func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
 
 // TotalReceived returns the total amount received from a peer
 func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
-	key := totalKey(peer, SettlementSentPrefix)
+	key := totalKey(peer, SettlementReceivedPrefix)
 	err = s.store.Get(key, &totalReceived)
 	if err != nil {
 		if err == storage.ErrNotFound {

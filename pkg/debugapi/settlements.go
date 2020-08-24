@@ -32,7 +32,7 @@ type settlementsResponse struct {
 
 func (s *server) payPeerHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
-	amount := uint64(1000)
+	amount := uint64(100)
 
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
@@ -41,10 +41,15 @@ func (s *server) payPeerHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
-	s.Settlement.Pay(context.Background(), peer, amount)
+	err = s.Settlement.Pay(context.Background(), peer, amount)
+	if err != nil {
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
 	jsonhttp.OK(w, statusResponse{
 		Status: "ok",
 	})
+
 }
 
 func (s *server) settlementsHandler(w http.ResponseWriter, r *http.Request) {
