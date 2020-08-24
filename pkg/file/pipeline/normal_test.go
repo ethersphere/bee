@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"testing"
 
@@ -10,7 +11,23 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func testNormalPipeline(t *testing.T) {
+func TestPartialWrites(t *testing.T) {
+	m := mock.NewStorer()
+	p := NewPipeline(m)
+	_, _ = p.Write([]byte("hello "))
+	_, _ = p.Write([]byte("world"))
+
+	sum, err := p.Sum()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := swarm.MustParseHexAddress("92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f")
+	if !bytes.Equal(exp.Bytes(), sum) {
+		t.Fatalf("expected %s got %s", exp.String(), hex.EncodeToString(sum))
+	}
+}
+
+func TestHelloWorld(t *testing.T) {
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 	data := []byte("hello world")
@@ -19,19 +36,18 @@ func testNormalPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal([]byte("92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f"), sum) {
-		t.Fatal("error") // swarm (old) hash for hello world through bzz-raw is: 92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f
+	exp := swarm.MustParseHexAddress("92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f")
+	if !bytes.Equal(exp.Bytes(), sum) {
+		t.Fatalf("expected %s got %s", exp.String(), hex.EncodeToString(sum))
 	}
 }
 
-func TestWrap(t *testing.T) {
-
+func TestOne(t *testing.T) {
 	i := 14
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 
 	data, expect := test.GetVector(t, i)
-	fmt.Println("vector length", len(data))
 	_, _ = p.Write(data)
 	sum, err := p.Sum()
 	if err != nil {
@@ -42,21 +58,23 @@ func TestWrap(t *testing.T) {
 		t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
 	}
 }
-func TestNormalPipelineWrapAll(t *testing.T) {
-	for i := 1; i < 20; i++ {
-		m := mock.NewStorer()
-		p := NewPipeline(m)
 
+func TestAllVectors(t *testing.T) {
+	for i := 1; i <= 20; i++ {
 		data, expect := test.GetVector(t, i)
-		fmt.Println("vector length", len(data))
-		_, _ = p.Write(data)
-		sum, err := p.Sum()
-		if err != nil {
-			t.Fatal(err)
-		}
-		a := swarm.NewAddress(sum)
-		if !a.Equal(expect) {
-			t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
-		}
+		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
+			m := mock.NewStorer()
+			p := NewPipeline(m)
+
+			_, _ = p.Write(data)
+			sum, err := p.Sum()
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := swarm.NewAddress(sum)
+			if !a.Equal(expect) {
+				t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
+			}
+		})
 	}
 }
