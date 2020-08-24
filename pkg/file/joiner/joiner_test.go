@@ -130,6 +130,9 @@ func TestEncryptionAndDecryption(t *testing.T) {
 		{4096},
 		{4097},
 		{15000},
+		{256 * 1024},
+		// {256 * 1024 * 2}, // TODO: fix - incorrect join
+		// {256 * 1024 * 3}, // TODO: fix - deadlock
 	}
 
 	for _, tt := range tests {
