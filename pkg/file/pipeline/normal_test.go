@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestNormalPipeline(t *testing.T) {
+func testNormalPipeline(t *testing.T) {
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 	data := []byte("hello world")
@@ -26,7 +26,7 @@ func TestNormalPipeline(t *testing.T) {
 
 func TestWrap(t *testing.T) {
 
-	i := 17
+	i := 18
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 
@@ -39,16 +39,11 @@ func TestWrap(t *testing.T) {
 	}
 	a := swarm.NewAddress(sum)
 	if !a.Equal(expect) {
-		t.Fatalf("failed run %d", i)
-		t.Fatalf("expected address %s but got %s", expect.String(), a.String())
+		t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
 	}
-	//fmt.Println("sum", hex.EncodeToString(sum))
 }
 func TestNormalPipelineWrapAll(t *testing.T) {
-	for i := 0; i < 20; i++ {
-		if i == 13 {
-			continue
-		}
+	for i := 1; i < 18; i++ {
 		m := mock.NewStorer()
 		p := NewPipeline(m)
 
