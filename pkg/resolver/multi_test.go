@@ -31,38 +31,59 @@ func TestWithForceDefault(t *testing.T) {
 }
 
 func TestPushResolver(t *testing.T) {
-	tld := ".tld"
-	mr := resolver.NewMultiResolver()
+	testCases := []struct {
+		desc    string
+		tld     string
+		wantErr error
+	}{
+		{
+			desc: "empty string, default",
+			tld:  "",
+		},
+		{
+			desc: "regular tld, named chain",
+			tld:  ".tld",
+		},
+		{
+			desc:    "invalid tld",
+			tld:     "invalid",
+			wantErr: resolver.ErrInvalidTLD,
+		},
+	}
 
-	t.Run("error on bad tld", func(t *testing.T) {
-		err := mr.PushResolver("invalid", &mock.Resolver{})
-		want := resolver.ErrInvalidTLD
-		if err != want {
-			t.Errorf("bad error: got %v, want %v", err, want)
-		}
-	})
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			mr := resolver.NewMultiResolver()
 
-	t.Run("start empty", func(t *testing.T) {
-		if mr.ChainCount(tld) > 0 {
-			t.Fatal("not empty")
-		}
-	})
+			if mr.ChainCount(tC.tld) != 0 {
+				t.Fatal("chain should start empty")
+			}
 
-	t.Run("ok on tld", func(t *testing.T) {
-		want := mock.NewResolver()
-		err := mr.PushResolver(tld, want)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := mr.GetChain(tld)[0]
-		if !reflect.DeepEqual(got, want) {
-			t.Error("failed to push")
-		}
-	})
+			want := mock.NewResolver()
+			err := mr.PushResolver(tC.tld, want)
+			if err != nil {
+				if err != tC.wantErr {
+					t.Fatal(err)
+				}
+				return
+			}
+
+			got := mr.GetChain(tC.tld)[0]
+			if !reflect.DeepEqual(got, want) {
+				t.Error("failed to push")
+			}
+
+			if err := mr.PopResolver(tC.tld); err != nil {
+				t.Error(err)
+			}
+			if mr.ChainCount(tC.tld) > 0 {
+				t.Error("failed to pop")
+			}
+		})
+	}
 }
 
 func TestPopResolver(t *testing.T) {
-	tld := ".tld"
 	mr := resolver.NewMultiResolver()
 
 	t.Run("error on bad tld", func(t *testing.T) {
@@ -74,23 +95,10 @@ func TestPopResolver(t *testing.T) {
 	})
 
 	t.Run("error on empty", func(t *testing.T) {
-		err := mr.PopResolver(tld)
+		err := mr.PopResolver(".tld")
 		want := resolver.ErrResolverChainEmpty
 		if err != want {
 			t.Fatalf("bad error: got %v, want %v", err, want)
-		}
-	})
-
-	t.Run("ok on regular tld", func(t *testing.T) {
-		if err := mr.PushResolver(tld, mock.NewResolver()); err != nil {
-			t.Fatal(err)
-		}
-		err := mr.PopResolver(tld)
-		if err != nil {
-			t.Error(err)
-		}
-		if mr.ChainCount(tld) > 0 {
-			t.Error("failed to pop")
 		}
 	})
 }
