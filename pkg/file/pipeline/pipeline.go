@@ -1,8 +1,6 @@
 package pipeline
 
 import (
-	"io"
-
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
@@ -14,8 +12,7 @@ type pipeWriteArgs struct {
 }
 
 type Pipeline struct {
-	head io.Writer
-	tail EndPipeWriter
+	head Interface
 }
 
 func (p *Pipeline) Write(b []byte) (int, error) {
@@ -23,19 +20,17 @@ func (p *Pipeline) Write(b []byte) (int, error) {
 }
 
 func (p *Pipeline) Sum() ([]byte, error) {
-	return p.tail.Sum()
+	return p.head.Sum()
 }
 
 func NewPipeline(s storage.Storer) Interface {
-
-	// PIPELINE IS: DATA -> FEEDER -> BMT -> STORAGE -> TRIE
-
+	// DATA -> FEEDER -> BMT -> STORAGE -> TRIE
 	tw := NewHashTrieWriter(4096, 128, 32, NewShortPipeline(s))
 	lsw := NewStoreWriter(s, tw)
 	b := NewBmtWriter(128, lsw)
 	feeder := NewChunkFeederWriter(4096, b)
 
-	return &Pipeline{head: feeder, tail: tw}
+	return &Pipeline{head: feeder}
 }
 
 type pipelineFunc func(p *pipeWriteArgs) ChainableWriter

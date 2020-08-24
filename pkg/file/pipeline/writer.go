@@ -4,6 +4,7 @@ import "io"
 
 type ChainableWriter interface {
 	ChainWrite(*pipeWriteArgs) (int, error)
+	Sum() ([]byte, error)
 }
 
 // this one is by definition not chainable and is used in the end of the pipeline

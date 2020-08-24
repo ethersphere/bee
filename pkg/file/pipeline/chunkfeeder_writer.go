@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"encoding/binary"
-	"io"
 )
 
 type chunkFeeder struct {
@@ -10,7 +9,7 @@ type chunkFeeder struct {
 	next ChainableWriter
 }
 
-func NewChunkFeederWriter(size int, next ChainableWriter) io.Writer {
+func NewChunkFeederWriter(size int, next ChainableWriter) Interface {
 	return &chunkFeeder{
 		size: size,
 		next: next,
@@ -40,4 +39,8 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		w += i
 	}
 	return w, nil
+}
+
+func (w *chunkFeeder) Sum() ([]byte, error) {
+	return w.next.Sum()
 }

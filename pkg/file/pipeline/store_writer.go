@@ -21,3 +21,7 @@ func (w *storeWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	w.l.Put(context.Background(), storage.ModePutUpload, c)
 	return w.next.ChainWrite(p)
 }
+
+func (w *storeWriter) Sum() ([]byte, error) {
+	return w.next.Sum()
+}

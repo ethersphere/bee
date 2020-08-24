@@ -39,6 +39,10 @@ func (w *bmtWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	return w.next.ChainWrite(args)
 }
 
+func (w *bmtWriter) Sum() ([]byte, error) {
+	return w.next.Sum()
+}
+
 func hashFunc() hash.Hash {
 	return sha3.NewLegacyKeccak256()
 }
