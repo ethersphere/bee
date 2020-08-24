@@ -6,7 +6,9 @@ package pseudosettle
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -22,6 +24,11 @@ const (
 	protocolName    = "pseudosettle"
 	protocolVersion = "1.0.0"
 	streamName      = "pseudosettle"
+)
+
+var (
+	SettlementReceivedPrefix = "pseudosettle_total_received_"
+	SettlementSentPrefix     = "pseudosettle_total_sent_"
 )
 
 type Service struct {
@@ -54,12 +61,24 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func totalReceivedKey(peer swarm.Address) string {
-	return fmt.Sprintf("pseudosettle_total_received_%v", peer)
+func totalKey(peer swarm.Address, prefix string) string {
+	return fmt.Sprintf("%v%v", prefix, peer.String())
 }
 
-func totalSentKey(peer swarm.Address) string {
-	return fmt.Sprintf("pseudosettle_total_sent_%v", peer)
+func totalKeyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
+	k := string(key)
+
+	split := strings.SplitAfter(k, prefix)
+	if len(split) != 2 {
+		return swarm.ZeroAddress, errors.New("no peer in key")
+	}
+
+	addr, err := swarm.ParseHexAddress(split[1])
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return addr, nil
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
@@ -84,7 +103,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
-	err = s.store.Put(totalReceivedKey(p.Address), totalReceived+req.Amount)
+	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), totalReceived+req.Amount)
 	if err != nil {
 		return err
 	}
@@ -121,7 +140,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	if err != nil {
 		return err
 	}
-	err = s.store.Put(totalSentKey(peer), totalSent+amount)
+	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent+amount)
 	if err != nil {
 		return err
 	}
@@ -136,7 +155,7 @@ func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
 
 // TotalSent returns the total amount sent to a peer
 func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
-	key := fmt.Sprintf("pseudosettle_total_sent_%v", peer)
+	key := totalKey(peer, SettlementReceivedPrefix)
 	err = s.store.Get(key, &totalSent)
 	if err != nil {
 		if err == storage.ErrNotFound {
@@ -150,7 +169,7 @@ func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
 
 // TotalReceived returns the total amount received from a peer
 func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
-	key := fmt.Sprintf("pseudosettle_total_received_%v", peer)
+	key := totalKey(peer, SettlementSentPrefix)
 	err = s.store.Get(key, &totalReceived)
 	if err != nil {
 		if err == storage.ErrNotFound {
@@ -160,4 +179,53 @@ func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err e
 		}
 	}
 	return totalReceived, nil
+}
+
+// AllSettlements returns all stored settlement values for a given type of prefix (sent or received)
+func (s *Service) SettlementsSent() (map[string]uint64, error) {
+	sent := make(map[string]uint64)
+	err := s.store.Iterate(SettlementSentPrefix, func(key, val []byte) (stop bool, err error) {
+		addr, err := totalKeyPeer(key, SettlementSentPrefix)
+		if err != nil {
+			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+		}
+		if _, ok := sent[addr.String()]; !ok {
+			var storevalue uint64
+			err = s.store.Get(totalKey(addr, SettlementSentPrefix), &storevalue)
+			if err != nil {
+				return false, fmt.Errorf("get peer %s settlement balance: %v", addr.String(), err)
+			}
+
+			sent[addr.String()] = storevalue
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sent, nil
+}
+
+func (s *Service) SettlementsReceived() (map[string]uint64, error) {
+	received := make(map[string]uint64)
+	err := s.store.Iterate(SettlementReceivedPrefix, func(key, val []byte) (stop bool, err error) {
+		addr, err := totalKeyPeer(key, SettlementReceivedPrefix)
+		if err != nil {
+			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+		}
+		if _, ok := received[addr.String()]; !ok {
+			var storevalue uint64
+			err = s.store.Get(totalKey(addr, SettlementReceivedPrefix), &storevalue)
+			if err != nil {
+				return false, fmt.Errorf("get peer %s settlement balance: %v", addr.String(), err)
+			}
+
+			received[addr.String()] = storevalue
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return received, nil
 }
