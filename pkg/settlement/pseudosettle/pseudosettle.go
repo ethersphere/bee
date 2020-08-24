@@ -27,6 +27,7 @@ type Service struct {
 	streamer p2p.Streamer
 	logger   logging.Logger
 	observer settlement.PaymentObserver
+	metrics  metrics
 }
 
 type Options struct {
@@ -38,6 +39,7 @@ func New(o Options) *Service {
 	return &Service{
 		streamer: o.Streamer,
 		logger:   o.Logger,
+		metrics:  newMetrics(),
 	}
 }
 
@@ -68,6 +70,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
 
+	s.metrics.TotalReceivedPseudoSettlements.Add(float64(req.Amount))
 	s.logger.Tracef("received payment message from peer %v of %d", p.Address, req.Amount)
 	return s.observer.NotifyPayment(p.Address, req.Amount)
 }
@@ -94,7 +97,11 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
 		Amount: amount,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	s.metrics.TotalSentPseudoSettlements.Add(float64(amount))
+	return nil
 }
 
 // SetPaymentObserver sets the payment observer which will be notified of incoming payments
