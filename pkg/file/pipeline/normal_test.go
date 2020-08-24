@@ -26,7 +26,7 @@ func testNormalPipeline(t *testing.T) {
 
 func TestWrap(t *testing.T) {
 
-	i := 18
+	i := 14
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 
@@ -43,7 +43,7 @@ func TestWrap(t *testing.T) {
 	}
 }
 func TestNormalPipelineWrapAll(t *testing.T) {
-	for i := 1; i < 18; i++ {
+	for i := 1; i < 20; i++ {
 		m := mock.NewStorer()
 		p := NewPipeline(m)
 
@@ -56,9 +56,7 @@ func TestNormalPipelineWrapAll(t *testing.T) {
 		}
 		a := swarm.NewAddress(sum)
 		if !a.Equal(expect) {
-			t.Fatalf("failed run %d", i)
-			t.Fatalf("expected address %s but got %s", expect.String(), a.String())
+			t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
 		}
-		//fmt.Println("sum", hex.EncodeToString(sum))
 	}
 }

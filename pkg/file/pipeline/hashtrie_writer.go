@@ -9,11 +9,10 @@ import (
 )
 
 type hashTrieWriter struct {
-	branching int
-	chunkSize int
-	refSize   int
-	fullChunk int // full chunk size in terms of the data represented in the buffer (span+refsize)
-
+	branching  int
+	chunkSize  int
+	refSize    int
+	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
 	length     int64  // how many bytes were written so far to the data layer
 	cursors    []int  // level cursors, key is level. level 0 is data level
 	buffer     []byte // keeps all level data
@@ -35,6 +34,7 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
+	fmt.Println("chainwrite hash", hex.EncodeToString(p.ref))
 	_ = h.writeToLevel(1, p.span, p.ref)
 	return 0, nil
 }
@@ -48,12 +48,14 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref []byte) error {
 	//fmt.Println("write to level", level, "data", hex.EncodeToString(ref))
 	howLong := (h.refSize + swarm.SpanSize) * h.branching
 	if h.levelSize(level) == howLong {
+		fmt.Println("howlong", howLong)
 		h.wrapFullLevel(level)
 	}
 
 	return nil
 }
 
+// assumes that the function has been called when refsize+span*branching has been reached
 func (h *hashTrieWriter) wrapFullLevel(level int) {
 	fmt.Println("wrap level", level)
 	/*
@@ -66,7 +68,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) {
 		 - remove already hashed data from buffer
 	*/
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
-	fmt.Println("level size", h.levelSize(level))
+	fmt.Println("wrap level size", h.levelSize(level))
 	sp := uint64(0)
 	var hashes []byte
 	for i := 0; i < len(data); i += h.refSize + 8 {
@@ -80,22 +82,23 @@ func (h *hashTrieWriter) wrapFullLevel(level int) {
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
 	hashes = append(spb, hashes...)
-	//fmt.Println("htw hashing level data", hex.EncodeToString(hashes))
 	var results pipeWriteArgs
 	writer := h.pipelineFn(&results)
 	args := pipeWriteArgs{
 		data: hashes,
 	}
 	writer.ChainWrite(&args)
-	//fmt.Println("got result on wrapping level", hex.EncodeToString(results.ref))
 	h.writeToLevel(level+1, results.span, results.ref)
-	h.cursors[level] = h.cursors[level+1] // this "truncates" the current level that was wrapped
+
+	// this "truncates" the current level that was wrapped
 	// by setting the cursors the the cursors of one level above
+	h.cursors[level] = h.cursors[level+1]
 }
 
 // pulls and potentially wraps all levels up to target
 func (h *hashTrieWriter) hoistLevels(target int) []byte {
 	fmt.Println("hoist levels", target)
+	oneRef := 40
 	for i := 1; i < target; i++ {
 		l := h.levelSize(i)
 		fmt.Println("i", i, "target", target, "levelsize", l)
@@ -105,16 +108,18 @@ func (h *hashTrieWriter) hoistLevels(target int) []byte {
 		case l == h.fullChunk:
 			h.wrapFullLevel(i)
 		case l > h.fullChunk:
-			panic(1)
 			for i := l; i > 0; {
 			}
+		case l == oneRef:
+			h.cursors[i+1] = h.cursors[i]
+
 		default:
 			fmt.Println(l)
 			// more than 0 but smaller than chunk size:
 			// just copy the data one level up
 
 			// i think we can just get away with moving the cursors of the upper level to be those of this level
-			h.cursors[i+1] = h.cursors[i] // this is not right if the level is target-1
+			h.wrapFullLevel(i)
 		}
 	}
 	level := target
@@ -124,7 +129,7 @@ func (h *hashTrieWriter) hoistLevels(target int) []byte {
 		return data[8:]
 	}
 
-	fmt.Println("len target", len(h.buffer[h.cursors[target+1]:h.cursors[target]]))
+	fmt.Println("len target", len(h.buffer[h.cursors[target+1]:h.cursors[target]]), "lendata", len(data))
 
 	// here we are still with possible length of more than one ref in the highest+1 level
 	fmt.Println("level size", h.levelSize(level))
@@ -134,8 +139,9 @@ func (h *hashTrieWriter) hoistLevels(target int) []byte {
 		// sum up the spans of the level, then we need to bmt them and store it as a chunk
 		// then write the chunk address to the next level up
 		sp += binary.LittleEndian.Uint64(data[i : i+8])
-		//fmt.Println("span on wrap", sp)
+		fmt.Println("span on hoist", sp)
 		hash := data[i+8 : i+h.refSize+8]
+		fmt.Println("hash on hoist", hex.EncodeToString(hash))
 		hashes = append(hashes, hash...)
 	}
 	spb := make([]byte, 8)
@@ -148,7 +154,7 @@ func (h *hashTrieWriter) hoistLevels(target int) []byte {
 		data: hashes,
 	}
 	writer.ChainWrite(&args)
-	fmt.Println(hex.EncodeToString(h.buffer)[:1024])
+	fmt.Println(hex.EncodeToString(h.buffer)[:tlen])
 
 	return results.ref
 }

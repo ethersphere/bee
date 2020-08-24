@@ -154,7 +154,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
 	if lvl != 0 {
-		fmt.Println("hashing span", span, "data", hex.EncodeToString(chunkData))
+		fmt.Println("hashing span", span, "level", lvl, "data", hex.EncodeToString(chunkData))
 	}
 	s.incrTag(tags.StateSplit)
 	c := chunkData
