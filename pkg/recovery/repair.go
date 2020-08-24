@@ -6,6 +6,7 @@ package recovery
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -52,12 +53,10 @@ func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsy
 		// otherwise the Get will trigger a unnecessary network retrieve
 		exists, err := s.Has(ctx, swarm.NewAddress(chAddr))
 		if err != nil {
-			logger.Info("chunk repair: error while getting chunk for repairing: ", err)
 			return err
 		}
 		if !exists {
-			logger.Info("chunk repair: chunk not present in local store for repairing")
-			return err
+			return fmt.Errorf("chunk repair: chunk not present in local store for repairing")
 		}
 
 		// retrieve the chunk from the local store
