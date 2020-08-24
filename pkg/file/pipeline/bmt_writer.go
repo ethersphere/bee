@@ -14,7 +14,7 @@ type bmtWriter struct {
 }
 
 // branches is the branching factor for BMT(!), not the same like in the trie of hashes which can differ between encrypted and unencrypted content
-func NewBmtWriter(branches int, next ChainableWriter) ChainableWriter {
+func NewBmtWriter(branches int, next ChainableWriter) ChainWriter {
 	return &bmtWriter{
 		b:    bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize)),
 		next: next,

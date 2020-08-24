@@ -6,7 +6,7 @@ type resultWriter struct {
 	target *pipeWriteArgs
 }
 
-func NewResultWriter(b *pipeWriteArgs) ChainableWriter {
+func NewResultWriter(b *pipeWriteArgs) ChainWriter {
 	return &resultWriter{target: b}
 }
 

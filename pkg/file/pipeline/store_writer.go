@@ -12,7 +12,7 @@ type storeWriter struct {
 	next ChainableWriter
 }
 
-func NewStoreWriter(l storage.Putter, next ChainableWriter) ChainableWriter {
+func NewStoreWriter(l storage.Putter, next ChainableWriter) ChainWriter {
 	return &storeWriter{l: l, next: next}
 }
 
