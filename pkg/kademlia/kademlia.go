@@ -133,12 +133,10 @@ func (k *Kad) manage() {
 				return
 			default:
 			}
-
+			if k.standalone {
+				continue
+			}
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
-				if k.standalone {
-					return false, true, nil
-				}
 
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
