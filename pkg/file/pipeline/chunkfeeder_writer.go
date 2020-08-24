@@ -2,14 +2,15 @@ package pipeline
 
 import (
 	"encoding/binary"
+	"fmt"
 )
 
 type chunkFeeder struct {
 	size int
-	next ChainableWriter
+	next ChainWriter
 }
 
-func NewChunkFeederWriter(size int, next ChainableWriter) Interface {
+func NewChunkFeederWriter(size int, next ChainWriter) Interface {
 	return &chunkFeeder{
 		size: size,
 		next: next,
@@ -32,12 +33,13 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		data = append(data, d...)
 
 		args := &pipeWriteArgs{data: data}
-		i, err := f.next.ChainWrite(args)
+		_, err := f.next.ChainWrite(args)
 		if err != nil {
 			return 0, err
 		}
-		w += i
+		w += len(d)
 	}
+	fmt.Println(w)
 	return w, nil
 }
 

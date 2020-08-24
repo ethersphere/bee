@@ -10,11 +10,11 @@ import (
 
 type bmtWriter struct {
 	b    bmt.Hash
-	next ChainableWriter
+	next ChainWriter
 }
 
 // branches is the branching factor for BMT(!), not the same like in the trie of hashes which can differ between encrypted and unencrypted content
-func NewBmtWriter(branches int, next ChainableWriter) ChainWriter {
+func NewBmtWriter(branches int, next ChainWriter) ChainWriter {
 	return &bmtWriter{
 		b:    bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize)),
 		next: next,

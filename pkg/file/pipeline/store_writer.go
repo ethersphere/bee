@@ -9,10 +9,10 @@ import (
 
 type storeWriter struct {
 	l    storage.Putter
-	next ChainableWriter
+	next ChainWriter
 }
 
-func NewStoreWriter(l storage.Putter, next ChainableWriter) ChainWriter {
+func NewStoreWriter(l storage.Putter, next ChainWriter) ChainWriter {
 	return &storeWriter{l: l, next: next}
 }
 
