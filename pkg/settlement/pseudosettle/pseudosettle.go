@@ -41,8 +41,8 @@ type Service struct {
 
 func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer) *Service {
 	return &Service{
-		streamer: o.Streamer,
-		logger:   o.Logger,
+		streamer: streamer,
+		logger:   logger,
 		metrics:  newMetrics(),
 		store:    store,
 	}
