@@ -1,7 +1,9 @@
 package pipeline
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -39,6 +41,19 @@ func TestFeeder(t *testing.T) {
 			expWrites: 2,
 			writeData: []byte{6, 7, 8, 9, 10},
 		},
+		{
+			name:      "half chunk, then full one, one write",
+			dataSize:  []int{3, 5},
+			expWrites: 1,
+			writeData: []byte{1, 2, 3, 4, 5},
+		},
+
+		{
+			name:      "half chunk, another two halves, one write",
+			dataSize:  []int{3, 2, 3},
+			expWrites: 1,
+			writeData: []byte{1, 2, 3, 4, 5},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var results pipeWriteArgs
@@ -47,13 +62,16 @@ func TestFeeder(t *testing.T) {
 			i := 0
 			for _, v := range tc.dataSize {
 				d := data[i : i+v]
+				fmt.Println("test writing", d)
 				n, err := cf.Write(d)
 				if err != nil {
 					t.Fatal(err)
 				}
+				fmt.Println("wrote bytes", n)
 				if n != v {
 					t.Fatalf("wrote %d bytes but expected %d bytes", n, v)
 				}
+				i += v
 			}
 
 			if tc.expWrites == 0 && results.data != nil {
@@ -62,6 +80,11 @@ func TestFeeder(t *testing.T) {
 
 			if rr.count != tc.expWrites {
 				t.Fatalf("expected %d writes but got %d", tc.expWrites, rr.count)
+			}
+			fmt.Println("result", results.data)
+
+			if results.data != nil && !bytes.Equal(tc.writeData, results.data[8:]) {
+				t.Fatalf("expected write data %v but got %v", tc.writeData, results.data[8:])
 			}
 		})
 	}

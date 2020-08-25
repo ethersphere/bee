@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+const span = 8
+
 type chunkFeeder struct {
 	size      int
 	next      ChainWriter
@@ -22,37 +24,72 @@ func NewChunkFeederWriter(size int, next ChainWriter) Interface {
 
 // Write assumes that the span is prepended to the actual data before the write !
 func (f *chunkFeeder) Write(b []byte) (int, error) {
+	fmt.Println("write", b)
 	l := len(b) // data length
 	w := 0      // written
 
 	if l+f.bufferIdx < f.size {
 		// write the data into the buffer and return
 		n := copy(f.buffer[f.bufferIdx:], b)
+		f.bufferIdx += n
+		fmt.Println("short write", n)
 		return n, nil
 	}
 
-	for i := 0; i < len(b); i += f.size {
-		var d []byte
-		if i+f.size > l {
-			d = b[i:]
-		} else {
-			d = b[i : i+f.size]
-		}
-		data := make([]byte, 8)
-		binary.LittleEndian.PutUint64(data[:8], uint64(len(d)))
-		data = append(data, d...)
+	// if we are here it means we have to do at least one write
+	d := make([]byte, f.size+span)
+	sp := 0 // span of current write
 
-		args := &pipeWriteArgs{data: data}
+	//copy from existing buffer to this one
+	sp = copy(d[span:], f.buffer[:f.bufferIdx])
+
+	// don't account what was already in the buffer when returning
+	// number of written bytes
+	if sp > 0 {
+		w -= sp
+	}
+
+	fmt.Println("copied from existing buffer", d)
+	var n int
+	for i := 0; i < len(b); {
+		// if we can't fill a whole write, buffer the rest and return
+		if sp+len(b[i:]) < f.size {
+			n = copy(f.buffer, b[i:])
+			f.bufferIdx = n
+			return w + n, nil
+		}
+
+		// fill stuff up from the incoming write
+		n = copy(d[span+f.bufferIdx:], b[i:])
+		i += n
+		sp += n
+		fmt.Println("filled stuff up", sp, i, d)
+
+		binary.LittleEndian.PutUint64(d[:span], uint64(sp))
+		fmt.Println("feeder writing", d[:span+sp])
+		args := &pipeWriteArgs{data: d[:span+sp]}
 		_, err := f.next.ChainWrite(args)
 		if err != nil {
 			return 0, err
 		}
-		w += len(d)
+		f.bufferIdx = 0
+		w += sp
+		sp = 0
 	}
 	fmt.Println(w)
 	return w, nil
 }
 
-func (w *chunkFeeder) Sum() ([]byte, error) {
-	return w.next.Sum()
+func (f *chunkFeeder) Sum() ([]byte, error) {
+	// flush existing data in the buffer
+	d := make([]byte, f.bufferIdx+span)
+	copy(d[span:], f.buffer[:f.bufferIdx])
+	binary.LittleEndian.PutUint64(d[:span], uint64(f.bufferIdx))
+	args := &pipeWriteArgs{data: d}
+	_, err := f.next.ChainWrite(args)
+	if err != nil {
+		return nil, err
+	}
+
+	return f.next.Sum()
 }
