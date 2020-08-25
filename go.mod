@@ -27,7 +27,6 @@ require (
 	github.com/libp2p/go-tcp-transport v0.2.0
 	github.com/libp2p/go-ws-transport v0.3.1
 	github.com/libp2p/go-yamux v1.3.8 // indirect
-	github.com/marten-seemann/qtls v0.10.0 // indirect
 	github.com/mitchellh/mapstructure v1.3.2 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-multiaddr v0.2.2
@@ -37,7 +36,6 @@ require (
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/pelletier/go-toml v1.8.0 // indirect
 	github.com/prometheus/client_golang v1.7.1
-	github.com/sclevine/agouti v3.0.0+incompatible // indirect
 	github.com/sirupsen/logrus v1.6.0
 	github.com/smartystreets/assertions v1.1.1 // indirect
 	github.com/spf13/afero v1.3.1 // indirect
