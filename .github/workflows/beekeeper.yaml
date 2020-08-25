@@ -57,9 +57,11 @@ jobs:
         run: |
           helm uninstall bee -n bee
           grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
-      - name: Set testing cluster (Node connection) 5 bee nodes
+      - name: Increase REPLICA to 5
         run: |
           echo "::set-env name=REPLICA::5"
+      - name: Set testing cluster (Node connection) 5 bee nodes
+        run: |
           ./beeinfra.sh install --local -r "${REPLICA}"
       - name: Add entries to /etc/hosts
         run: |
