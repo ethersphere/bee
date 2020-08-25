@@ -99,7 +99,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 
 // pulls and potentially wraps all levels up to target
 func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
-	oneRef := 40
+	oneRef := h.refSize + swarm.SpanSize
 	for i := 1; i < target; i++ {
 		l := h.levelSize(i)
 		switch {
@@ -123,7 +123,7 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	level := target
 	tlen := h.levelSize(target)
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
-	if tlen == h.refSize+8 {
+	if tlen == oneRef {
 		return data[8:], nil
 	}
 
