@@ -76,7 +76,6 @@ type Options struct {
 	NATAddr              string
 	EnableWS             bool
 	EnableQUIC           bool
-	NetworkID            uint64
 	WelcomeMessage       string
 	Bootnodes            []string
 	CORSAllowedOrigins   []string
@@ -89,7 +88,7 @@ type Options struct {
 	PaymentTolerance     uint64
 }
 
-func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.PrivateKey, logger logging.Logger, o Options) (*Bee, error) {
+func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, swarmPrivateKey *ecdsa.PrivateKey, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -105,11 +104,6 @@ func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.Priva
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
-	}
-
-	address, err := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, o.NetworkID)
-	if err != nil {
-		return nil, err
 	}
 
 	// Construct P2P service.
@@ -137,7 +131,7 @@ func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.Priva
 	addressbook := addressbook.New(stateStore)
 	signer := crypto.NewDefaultSigner(swarmPrivateKey)
 
-	p2ps, err := libp2p.New(p2pCtx, signer, o.NetworkID, address, addr, addressbook, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
@@ -170,7 +164,7 @@ func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.Priva
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, o.NetworkID, logger)
+	hive := hive.New(p2ps, addressbook, networkID, logger)
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
 	}
@@ -187,7 +181,7 @@ func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.Priva
 		bootnodes = append(bootnodes, addr)
 	}
 
-	kad := kademlia.New(address, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes})
+	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes})
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.AddNotifier(kad)
@@ -208,7 +202,7 @@ func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.Priva
 	lo := &localstore.Options{
 		Capacity: o.DBCapacity,
 	}
-	storer, err := localstore.New(path, address.Bytes(), lo, logger)
+	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
@@ -238,7 +232,7 @@ func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.Priva
 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
-	retrieve := retrieval.New(p2ps, kad, logger, acc, accounting.NewFixedPricer(address, 10), chunkvalidator)
+	retrieve := retrieval.New(p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator)
 	tagg := tags.NewTags()
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
@@ -317,7 +311,7 @@ func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.Priva
 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
-		debugAPIService := debugapi.New(address, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc)
+		debugAPIService := debugapi.New(swarmAddress, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)

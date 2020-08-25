@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
@@ -109,12 +110,23 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				}
 			}
 
-			swarmPrivateKey, _, err := keystore.Key("swarm", password)
+			swarmPrivateKey, created, err := keystore.Key("swarm", password)
 			if err != nil {
 				return fmt.Errorf("swarm key: %w", err)
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), keystore, swarmPrivateKey, logger, node.Options{
+			address, err := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, c.config.GetUint64(optionNameNetworkID))
+			if err != nil {
+				return err
+			}
+
+			if created {
+				logger.Infof("new swarm network address created: %s", address)
+			} else {
+				logger.Infof("using existing swarm network address: %s", address)
+			}
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), address, keystore, swarmPrivateKey, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
 				DataDir:              c.config.GetString(optionNameDataDir),
 				DBCapacity:           c.config.GetUint64(optionNameDBCapacity),
 				Password:             password,
@@ -124,7 +136,6 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				NATAddr:              c.config.GetString(optionNameNATAddr),
 				EnableWS:             c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:           c.config.GetBool(optionNameP2PQUICEnable),
-				NetworkID:            c.config.GetUint64(optionNameNetworkID),
 				WelcomeMessage:       c.config.GetString(optionWelcomeMessage),
 				Bootnodes:            c.config.GetStringSlice(optionNameBootnodes),
 				CORSAllowedOrigins:   c.config.GetStringSlice(optionCORSAllowedOrigins),
