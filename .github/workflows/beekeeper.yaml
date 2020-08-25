@@ -69,7 +69,7 @@ jobs:
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2
       - name: Test localpinning 3
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2 --large-file-count 10
-      - name: Retag docker image and push
+      - name: Retag Docker image and push
         if: success()
         run: |
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest

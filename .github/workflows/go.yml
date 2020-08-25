@@ -68,7 +68,7 @@ jobs:
         ./bin/deepsource report --analyzer test-coverage --key go --value-file ./cover.out
       env:
         DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
-    - name: Trigger beekeeper
+    - name: Trigger Beekeeper
       if: success() && ${{ github.ref }} == "refs/heads/master"
       uses: peter-evans/repository-dispatch@v1
       with:
