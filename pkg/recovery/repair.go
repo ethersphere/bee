@@ -6,7 +6,7 @@ package recovery
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -24,6 +24,10 @@ const (
 var (
 	// RecoveryTopic is the topic used for repairing globally pinned chunks.
 	RecoveryTopic = trojan.NewTopic(RecoveryTopicText)
+)
+
+var (
+	errChunkNotPresent = errors.New("chunk repair: chunk not present in local store for repairing")
 )
 
 // RecoveryHook defines code to be executed upon failing to retrieve chunks.
@@ -56,7 +60,7 @@ func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsy
 			return err
 		}
 		if !exists {
-			return fmt.Errorf("chunk repair: chunk not present in local store for repairing")
+			return errChunkNotPresent
 		}
 
 		// retrieve the chunk from the local store

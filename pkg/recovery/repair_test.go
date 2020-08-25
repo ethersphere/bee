@@ -201,7 +201,7 @@ func TestNewRepairHandler(t *testing.T) {
 
 		// invoke the chunk repair handler
 		err = repairHandler(context.Background(), &msg)
-		if err != nil && err.Error() != "chunk repair: chunk not present in local store for repairing" {
+		if !errors.Is(err, recovery.ErrChunkNotPresent) {
 			t.Fatal(err)
 		}
 
