@@ -24,7 +24,6 @@ func NewBmtWriter(branches int, next ChainWriter) ChainWriter {
 // Write assumes that the span is prepended to the actual data before the write !
 func (w *bmtWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	w.b.Reset()
-	//fmt.Println("bmt hashing data", hex.EncodeToString(p.data))
 	err := w.b.SetSpanBytes(p.data[:8])
 	if err != nil {
 		return 0, err
@@ -34,7 +33,6 @@ func (w *bmtWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 		return 0, err
 	}
 	bytes := w.b.Sum(nil)
-	//fmt.Println("bmt hashed chunk", swarm.NewAddress(bytes).String())
 	args := &pipeWriteArgs{ref: bytes, data: p.data, span: p.data[:8]}
 	return w.next.ChainWrite(args)
 }
