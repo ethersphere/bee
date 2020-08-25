@@ -6,7 +6,6 @@ package resolver
 
 import (
 	"errors"
-	"fmt"
 	"path"
 	"strings"
 )
@@ -114,6 +113,7 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 		return Address{}, ErrResolverChainEmpty
 	}
 
+	var err error
 	for _, res := range chain {
 		adr, err := res.Resolve(name)
 		if err == nil {
@@ -121,7 +121,8 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 		}
 	}
 
-	return Address{}, fmt.Errorf("name resolution failed for %q", name)
+	// TODO: consider wrapping errors from the resolver chain.
+	return Address{}, err
 }
 
 func isTLD(tld string) bool {
