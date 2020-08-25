@@ -69,7 +69,7 @@ jobs:
       env:
         DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
     - name: Trigger Beekeeper
-      if: github.ref == "refs/heads/master" && matrix.os == 'ubuntu-latest' && success()
+      if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
       uses: peter-evans/repository-dispatch@v1
       with:
         token: ${{ secrets.REPO_GHA_PAT }}
