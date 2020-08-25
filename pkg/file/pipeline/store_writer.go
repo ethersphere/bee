@@ -22,7 +22,10 @@ func NewStoreWriter(l storage.Putter, next ChainWriter) ChainWriter {
 
 func (w *storeWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
 	c := swarm.NewChunk(swarm.NewAddress(p.ref), p.data)
-	w.l.Put(context.Background(), storage.ModePutUpload, c)
+	_, err := w.l.Put(context.Background(), storage.ModePutUpload, c)
+	if err != nil {
+		return 0, err
+	}
 	return w.next.ChainWrite(p)
 }
 

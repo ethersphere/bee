@@ -15,7 +15,6 @@ type hashTrieWriter struct {
 	chunkSize  int
 	refSize    int
 	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
-	length     int64  // how many bytes were written so far to the data layer
 	cursors    []int  // level cursors, key is level. level 0 is data level
 	buffer     []byte // keeps all level data
 	pipelineFn pipelineFunc
@@ -36,8 +35,8 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
-	_ = h.writeToLevel(1, p.span, p.ref)
-	return 0, nil
+	err := h.writeToLevel(1, p.span, p.ref)
+	return 0, err
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, span, ref []byte) error {
@@ -48,23 +47,23 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref []byte) error {
 
 	howLong := (h.refSize + swarm.SpanSize) * h.branching
 	if h.levelSize(level) == howLong {
-		h.wrapFullLevel(level)
+		return h.wrapFullLevel(level)
 	}
-
 	return nil
 }
 
+// wrapLevel wraps an existing level and writes the resulting hash to the following level
+// then truncates the current level data by shifting the cursors.
+// Steps are performed in the following order:
+//	 - take all of the data in the current level
+//	 - break down span and hash data
+//	 - sum the span size, concatenate the hash to the buffer
+//	 - call the short pipeline with the span and the buffer
+//	 - get the hash that was created, append it one level above, and if necessary, wrap that level too
+//	 - remove already hashed data from buffer
+
 // assumes that the function has been called when refsize+span*branching has been reached
-func (h *hashTrieWriter) wrapFullLevel(level int) {
-	/*
-		wrapLevel does the following steps:
-		 - take all of the data in the current level - OK
-		 - break down span and hash data - OK
-		 - sum the span size - OK
-		 - call the short pipeline (that hashes and stores the intermediate chunk created)
-		 - get the hash that was created, append it one level above, and if necessary, wrap that level too!
-		 - remove already hashed data from buffer
-	*/
+func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	sp := uint64(0)
 	var hashes []byte
@@ -83,16 +82,23 @@ func (h *hashTrieWriter) wrapFullLevel(level int) {
 	args := pipeWriteArgs{
 		data: hashes,
 	}
-	writer.ChainWrite(&args)
-	h.writeToLevel(level+1, results.span, results.ref)
+	_, err := writer.ChainWrite(&args)
+	if err != nil {
+		return err
+	}
+	err = h.writeToLevel(level+1, results.span, results.ref)
+	if err != nil {
+		return err
+	}
 
 	// this "truncates" the current level that was wrapped
 	// by setting the cursors the the cursors of one level above
 	h.cursors[level] = h.cursors[level+1]
+	return nil
 }
 
 // pulls and potentially wraps all levels up to target
-func (h *hashTrieWriter) hoistLevels(target int) []byte {
+func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	oneRef := 40
 	for i := 1; i < target; i++ {
 		l := h.levelSize(i)
@@ -100,23 +106,25 @@ func (h *hashTrieWriter) hoistLevels(target int) []byte {
 		case l == 0:
 			continue
 		case l == h.fullChunk:
-			h.wrapFullLevel(i)
-		case l > h.fullChunk:
-			for i := l; i > 0; {
+			err := h.wrapFullLevel(i)
+			if err != nil {
+				return nil, err
 			}
 		case l == oneRef:
 			h.cursors[i+1] = h.cursors[i]
-
 		default:
 			// more than 0 but smaller than chunk size - wrap the level to the one above it
-			h.wrapFullLevel(i)
+			err := h.wrapFullLevel(i)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	level := target
 	tlen := h.levelSize(target)
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	if tlen == h.refSize+8 {
-		return data[8:]
+		return data[8:], nil
 	}
 
 	// here we are still with possible length of more than one ref in the highest+1 level
@@ -137,9 +145,9 @@ func (h *hashTrieWriter) hoistLevels(target int) []byte {
 	args := pipeWriteArgs{
 		data: hashes,
 	}
-	writer.ChainWrite(&args)
+	_, err := writer.ChainWrite(&args)
 
-	return results.ref
+	return results.ref, err
 }
 
 func (h *hashTrieWriter) levelSize(level int) int {
@@ -160,8 +168,5 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			highest = i
 		}
 	}
-
-	ref := h.hoistLevels(highest)
-
-	return ref, nil
+	return h.hoistLevels(highest)
 }

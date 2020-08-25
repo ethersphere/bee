@@ -10,9 +10,8 @@ import (
 
 type pipeWriteArgs struct {
 	ref  []byte
-	key  []byte
 	span []byte
-	data []byte //data includes the span too!
+	data []byte //data includes the span too
 }
 
 type Pipeline struct {
@@ -49,11 +48,3 @@ func NewShortPipeline(s storage.Storer) func(*pipeWriteArgs) ChainWriter {
 		return bw
 	}
 }
-
-//func NewEncryptionPipeline() EndPipeWriter {
-//tw := NewHashTrieWriter()
-//lsw := NewStoreWriter()
-//b := NewEncryptingBmtWriter(128, lsw) // needs to pass the key somehwoe...
-//enc := NewEncryptionWriter(b)
-//return
-//}
