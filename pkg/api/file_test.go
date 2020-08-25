@@ -277,7 +277,7 @@ func TestRangeRequests(t *testing.T) {
 			uploadEndpoint:   "/dirs",
 			downloadEndpoint: "/bzz",
 			filepath:         "/ipsum/lorem.txt",
-			reference:        "c1e596eebc9b39fea8f790b6ede4a294bf336e17b0cb7cd64ec54edc5c4ec0e2",
+			reference:        "d2b1ab6fb26c1570712ca33efb30f8cbbaa994d5b85e1cf6f782bcae430eabaf",
 			reader: tarFiles(t, []f{
 				{
 					data:      data,
