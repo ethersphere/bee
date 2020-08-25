@@ -10,15 +10,15 @@ type resultWriter struct {
 	target *pipeWriteArgs
 }
 
-func NewResultWriter(b *pipeWriteArgs) ChainWriter {
+func NewResultWriter(b *pipeWriteArgs) chainWriter {
 	return &resultWriter{target: b}
 }
 
-func (w *resultWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
+func (w *resultWriter) chainWrite(p *pipeWriteArgs) error {
 	*w.target = *p
-	return 0, nil
+	return nil
 }
 
-func (w *resultWriter) Sum() ([]byte, error) {
+func (w *resultWriter) sum() ([]byte, error) {
 	return nil, errors.New("not implemented")
 }

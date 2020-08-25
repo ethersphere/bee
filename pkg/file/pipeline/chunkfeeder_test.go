@@ -221,12 +221,12 @@ func newResultWriter(b *pipeWriteArgs) *countingResultWriter {
 	return &countingResultWriter{target: b}
 }
 
-func (w *countingResultWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
+func (w *countingResultWriter) chainWrite(p *pipeWriteArgs) error {
 	w.count++
 	*w.target = *p
-	return 0, nil
+	return nil
 }
 
-func (w *countingResultWriter) Sum() ([]byte, error) {
+func (w *countingResultWriter) sum() ([]byte, error) {
 	return nil, errors.New("not implemented")
 }

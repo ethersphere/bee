@@ -20,23 +20,22 @@ type hashTrieWriter struct {
 	pipelineFn pipelineFunc
 }
 
-func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc) ChainWriter {
+func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc) chainWriter {
 	return &hashTrieWriter{
 		cursors:    make([]int, 9),
 		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
 		branching:  branching,
 		chunkSize:  chunkSize,
 		refSize:    refLen,
-		fullChunk:  (refLen + 8) * branching,
+		fullChunk:  (refLen + swarm.SpanSize) * branching,
 		pipelineFn: pipelineFn,
 	}
 }
 
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
-func (h *hashTrieWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
-	err := h.writeToLevel(1, p.span, p.ref)
-	return 0, err
+func (h *hashTrieWriter) chainWrite(p *pipeWriteArgs) error {
+	return h.writeToLevel(1, p.span, p.ref)
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, span, ref []byte) error {
@@ -82,7 +81,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	args := pipeWriteArgs{
 		data: hashes,
 	}
-	_, err := writer.ChainWrite(&args)
+	err := writer.chainWrite(&args)
 	if err != nil {
 		return err
 	}
@@ -145,7 +144,7 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	args := pipeWriteArgs{
 		data: hashes,
 	}
-	_, err := writer.ChainWrite(&args)
+	err := writer.chainWrite(&args)
 
 	return results.ref, err
 }
@@ -157,7 +156,7 @@ func (h *hashTrieWriter) levelSize(level int) int {
 	return h.cursors[level] - h.cursors[level+1]
 }
 
-func (h *hashTrieWriter) Sum() ([]byte, error) {
+func (h *hashTrieWriter) sum() ([]byte, error) {
 	// look from the top down, to look for the highest hash of a balanced tree
 	// then, whatever is in the levels below that is necessarily unbalanced,
 	// so, we'd like to reduce those levels to one hash, then wrap it together

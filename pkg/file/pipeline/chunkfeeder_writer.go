@@ -6,18 +6,23 @@ package pipeline
 
 import (
 	"encoding/binary"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const span = 8
+const span = swarm.SpanSize
 
 type chunkFeeder struct {
 	size      int
-	next      ChainWriter
+	next      chainWriter
 	buffer    []byte
 	bufferIdx int
 }
 
-func NewChunkFeederWriter(size int, next ChainWriter) Interface {
+// NewChunkFeederWriter creates a new chunkFeeder that allows for partial
+// writes into the pipeline. Any pending data in the buffer is flushed to
+// subsequent writers when Sum() is called.
+func NewChunkFeederWriter(size int, next chainWriter) Interface {
 	return &chunkFeeder{
 		size:   size,
 		next:   next,
@@ -25,7 +30,10 @@ func NewChunkFeederWriter(size int, next ChainWriter) Interface {
 	}
 }
 
-// Write assumes that the span is prepended to the actual data before the write !
+// Write writes data to the chunk feeder. It returns the number of bytes written
+// to the feeder. The number of bytes written does not necessarily reflect how many
+// bytes were actually flushed to subsequent writers, since the feeder is buffered
+// and works in chunk-size quantiles.
 func (f *chunkFeeder) Write(b []byte) (int, error) {
 	l := len(b) // data length
 	w := 0      // written
@@ -65,8 +73,8 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		sp += n
 
 		binary.LittleEndian.PutUint64(d[:span], uint64(sp))
-		args := &pipeWriteArgs{data: d[:span+sp]}
-		_, err := f.next.ChainWrite(args)
+		args := &pipeWriteArgs{data: d[:span+sp], span: d[:span]}
+		err := f.next.chainWrite(args)
 		if err != nil {
 			return 0, err
 		}
@@ -77,6 +85,9 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 	return w, nil
 }
 
+// Sum flushes any pending data to subsequent writers and returns
+// the cryptographic root-hash respresenting the data written to
+// the feeder.
 func (f *chunkFeeder) Sum() ([]byte, error) {
 	// flush existing data in the buffer
 	if f.bufferIdx > 0 {
@@ -84,11 +95,11 @@ func (f *chunkFeeder) Sum() ([]byte, error) {
 		copy(d[span:], f.buffer[:f.bufferIdx])
 		binary.LittleEndian.PutUint64(d[:span], uint64(f.bufferIdx))
 		args := &pipeWriteArgs{data: d}
-		_, err := f.next.ChainWrite(args)
+		err := f.next.chainWrite(args)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return f.next.Sum()
+	return f.next.sum()
 }

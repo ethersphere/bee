@@ -13,22 +13,22 @@ import (
 
 type storeWriter struct {
 	l    storage.Putter
-	next ChainWriter
+	next chainWriter
 }
 
-func NewStoreWriter(l storage.Putter, next ChainWriter) ChainWriter {
+func NewStoreWriter(l storage.Putter, next chainWriter) chainWriter {
 	return &storeWriter{l: l, next: next}
 }
 
-func (w *storeWriter) ChainWrite(p *pipeWriteArgs) (int, error) {
+func (w *storeWriter) chainWrite(p *pipeWriteArgs) error {
 	c := swarm.NewChunk(swarm.NewAddress(p.ref), p.data)
 	_, err := w.l.Put(context.Background(), storage.ModePutUpload, c)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return w.next.ChainWrite(p)
+	return w.next.chainWrite(p)
 }
 
-func (w *storeWriter) Sum() ([]byte, error) {
-	return w.next.Sum()
+func (w *storeWriter) sum() ([]byte, error) {
+	return w.next.sum()
 }
