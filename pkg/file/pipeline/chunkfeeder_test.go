@@ -13,29 +13,29 @@ func TestFeeder(t *testing.T) {
 
 	for _, tc := range []struct {
 		name      string
-		dataSize  int
+		dataSize  []int // how big each write is
 		expWrites int
 		writeData []byte
 	}{
 		{
 			name:      "empty write",
-			dataSize:  0,
+			dataSize:  []int{0},
 			expWrites: 0,
 		},
 		{
 			name:      "less than chunk, no writes",
-			dataSize:  3,
+			dataSize:  []int{3},
 			expWrites: 0,
 		},
 		{
 			name:      "one chunk, one write",
-			dataSize:  5,
+			dataSize:  []int{5},
 			expWrites: 1,
 			writeData: []byte{1, 2, 3, 4, 5},
 		},
 		{
 			name:      "two chunks, two writes",
-			dataSize:  10,
+			dataSize:  []int{10},
 			expWrites: 2,
 			writeData: []byte{6, 7, 8, 9, 10},
 		},
@@ -44,13 +44,16 @@ func TestFeeder(t *testing.T) {
 			var results pipeWriteArgs
 			rr := newResultWriter(&results)
 			cf := NewChunkFeederWriter(chunkSize, rr)
-			d := data[:tc.dataSize]
-			n, err := cf.Write(d)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if n != tc.dataSize {
-				t.Fatalf("wrote %d bytes but expected %d bytes", n, tc.dataSize)
+			i := 0
+			for _, v := range tc.dataSize {
+				d := data[i : i+v]
+				n, err := cf.Write(d)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n != v {
+					t.Fatalf("wrote %d bytes but expected %d bytes", n, v)
+				}
 			}
 
 			if tc.expWrites == 0 && results.data != nil {

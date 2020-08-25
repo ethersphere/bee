@@ -6,21 +6,31 @@ import (
 )
 
 type chunkFeeder struct {
-	size int
-	next ChainWriter
+	size      int
+	next      ChainWriter
+	buffer    []byte
+	bufferIdx int
 }
 
 func NewChunkFeederWriter(size int, next ChainWriter) Interface {
 	return &chunkFeeder{
-		size: size,
-		next: next,
+		size:   size,
+		next:   next,
+		buffer: make([]byte, size),
 	}
 }
 
 // Write assumes that the span is prepended to the actual data before the write !
 func (f *chunkFeeder) Write(b []byte) (int, error) {
-	l := len(b)
-	w := 0
+	l := len(b) // data length
+	w := 0      // written
+
+	if l+f.bufferIdx < f.size {
+		// write the data into the buffer and return
+		n := copy(f.buffer[f.bufferIdx:], b)
+		return n, nil
+	}
+
 	for i := 0; i < len(b); i += f.size {
 		var d []byte
 		if i+f.size > l {
