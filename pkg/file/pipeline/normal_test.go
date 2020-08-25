@@ -42,23 +42,6 @@ func TestHelloWorld(t *testing.T) {
 	}
 }
 
-func TestOne(t *testing.T) {
-	i := 6
-	m := mock.NewStorer()
-	p := NewPipeline(m)
-
-	data, expect := test.GetVector(t, i)
-	_, _ = p.Write(data)
-	sum, err := p.Sum()
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := swarm.NewAddress(sum)
-	if !a.Equal(expect) {
-		t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
-	}
-}
-
 func TestAllVectors(t *testing.T) {
 	for i := 1; i <= 20; i++ {
 		data, expect := test.GetVector(t, i)
