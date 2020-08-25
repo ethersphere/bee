@@ -127,8 +127,6 @@ func TestDeliver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// trojan chunk has its type set through the validator called by the store, so this needs to be simulated
-	c.WithType(swarm.ContentAddressed)
 
 	// create and register handler
 	var tt trojan.Topic // test variable to check handler func was correctly called
