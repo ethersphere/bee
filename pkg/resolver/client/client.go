@@ -14,5 +14,4 @@ type Interface interface {
 	resolver.Interface
 	Connect(endpoint string) error
 	IsConnected() bool
-	Close()
 }
