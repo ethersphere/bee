@@ -15,6 +15,7 @@ var _ resolver.Interface = (*Resolver)(nil)
 
 // Resolver is the mock Resolver implementation.
 type Resolver struct {
+	IsClosed    bool
 	resolveFunc func(string) (resolver.Address, error)
 }
 
@@ -46,4 +47,9 @@ func (r *Resolver) Resolve(name string) (resolver.Address, error) {
 		return r.resolveFunc(name)
 	}
 	return resolver.Address{}, fmt.Errorf("not implemented")
+}
+
+// Close implements the Resolver interface.
+func (r *Resolver) Close() {
+	r.IsClosed = true
 }

@@ -38,6 +38,8 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/recovery"
+	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -57,6 +59,7 @@ type Bee struct {
 	p2pCancel        context.CancelFunc
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
+	multiResolver    resolver.Interface
 	errorLogWriter   *io.PipeWriter
 	tracerCloser     io.Closer
 	stateStoreCloser io.Closer
@@ -88,6 +91,7 @@ type Options struct {
 	GlobalPinningEnabled bool
 	PaymentThreshold     uint64
 	PaymentTolerance     uint64
+	ENSResolverEndpoints []string
 }
 
 func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
@@ -307,6 +311,21 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	b.pullerCloser = puller
 
+	// Initiate the MultiResolver and all ENS resolvers.
+	// TODO: consider refactoring into resolver.Service that handles connection
+	// logic and logging.
+	multiResolver := resolver.NewMultiResolver()
+	for idx, ep := range o.ENSResolverEndpoints {
+		ensR := ens.NewClient()
+		if err := ensR.Connect(ep); err != nil {
+			logger.Warningf("ens resolver [%d]: failed to connect: %v", idx, err)
+		} else {
+			logger.Infof("ens resolver [%d]: connected to endpoint %q", idx, ep)
+			_ = multiResolver.PushResolver(".eth", ensR)
+		}
+	}
+	b.multiResolver = multiResolver
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
@@ -398,6 +417,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 			return nil
 		})
 	}
+
 	if err := eg.Wait(); err != nil {
 		errs.add(err)
 	}
@@ -438,6 +458,9 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	if err := b.errorLogWriter.Close(); err != nil {
 		errs.add(fmt.Errorf("error log writer: %w", err))
 	}
+
+	// TODO: consider refactoring into resolver.Service that handles closing.
+	b.multiResolver.Close()
 
 	if errs.hasErrors() {
 		return errs

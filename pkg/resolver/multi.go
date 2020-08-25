@@ -16,6 +16,9 @@ var (
 	ErrResolverChainEmpty = errors.New("resolver chain empty")
 )
 
+// Ensure MultiResolver implements Resolver interface.
+var _ Interface = (*MultiResolver)(nil)
+
 type resolverMap map[string][]Interface
 
 // MultiResolver performs name resolutions based on the TLD of the URL.
@@ -123,6 +126,15 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 
 	// TODO: consider wrapping errors from the resolver chain.
 	return Address{}, err
+}
+
+// Close all will call Close on all resolvers in all resolver chains.
+func (mr *MultiResolver) Close() {
+	for _, chain := range mr.resolvers {
+		for _, r := range chain {
+			r.Close()
+		}
+	}
 }
 
 func isTLD(tld string) bool {
