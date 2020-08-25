@@ -16,7 +16,9 @@ type storeWriter struct {
 	next chainWriter
 }
 
-func NewStoreWriter(l storage.Putter, next chainWriter) chainWriter {
+// newStoreWriter returns a storeWriter. It just writes the given data
+// to a given storage.Storer.
+func newStoreWriter(l storage.Putter, next chainWriter) chainWriter {
 	return &storeWriter{l: l, next: next}
 }
 

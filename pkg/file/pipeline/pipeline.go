@@ -19,23 +19,23 @@ type pipeWriteArgs struct {
 // a merkle-tree of hashes that represent the given arbitrary size byte stream. Partial
 // writes are supported. The pipeline flow is: Data -> Feeder -> BMT -> Storage -> HashTrie.
 func NewPipeline(s storage.Storer) Interface {
-	tw := NewHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, NewShortPipelineFunc(s))
-	lsw := NewStoreWriter(s, tw)
-	b := NewBmtWriter(128, lsw)
-	feeder := NewChunkFeederWriter(swarm.ChunkSize, b)
+	tw := newHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, newShortPipelineFunc(s))
+	lsw := newStoreWriter(s, tw)
+	b := newBmtWriter(128, lsw)
+	feeder := newChunkFeederWriter(swarm.ChunkSize, b)
 
 	return feeder
 }
 
 type pipelineFunc func(p *pipeWriteArgs) chainWriter
 
-// NewShortPipelineFunc returns a constructor function for an ephemeral hashing pipeline
+// newShortPipelineFunc returns a constructor function for an ephemeral hashing pipeline
 // needed by the hashTrieWriter.
-func NewShortPipelineFunc(s storage.Storer) func(*pipeWriteArgs) chainWriter {
+func newShortPipelineFunc(s storage.Storer) func(*pipeWriteArgs) chainWriter {
 	return func(p *pipeWriteArgs) chainWriter {
-		rsw := NewResultWriter(p)
-		lsw := NewStoreWriter(s, rsw)
-		bw := NewBmtWriter(128, lsw)
+		rsw := newResultWriter(p)
+		lsw := newStoreWriter(s, rsw)
+		bw := newBmtWriter(128, lsw)
 
 		return bw
 	}

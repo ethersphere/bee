@@ -19,10 +19,10 @@ type chunkFeeder struct {
 	bufferIdx int
 }
 
-// NewChunkFeederWriter creates a new chunkFeeder that allows for partial
+// newChunkFeederWriter creates a new chunkFeeder that allows for partial
 // writes into the pipeline. Any pending data in the buffer is flushed to
 // subsequent writers when Sum() is called.
-func NewChunkFeederWriter(size int, next chainWriter) Interface {
+func newChunkFeederWriter(size int, next chainWriter) Interface {
 	return &chunkFeeder{
 		size:   size,
 		next:   next,

@@ -72,8 +72,8 @@ func TestFeeder(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var results pipeWriteArgs
-			rr := newResultWriter(&results)
-			cf := NewChunkFeederWriter(chunkSize, rr)
+			rr := newMockResultWriter(&results)
+			cf := newChunkFeederWriter(chunkSize, rr)
 			i := 0
 			for _, v := range tc.dataSize {
 				d := data[i : i+v]
@@ -173,8 +173,8 @@ func TestFeederFlush(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var results pipeWriteArgs
-			rr := newResultWriter(&results)
-			cf := NewChunkFeederWriter(chunkSize, rr)
+			rr := newMockResultWriter(&results)
+			cf := newChunkFeederWriter(chunkSize, rr)
 			i := 0
 			for _, v := range tc.dataSize {
 				d := data[i : i+v]
@@ -217,7 +217,7 @@ type countingResultWriter struct {
 	count  int
 }
 
-func newResultWriter(b *pipeWriteArgs) *countingResultWriter {
+func newMockResultWriter(b *pipeWriteArgs) *countingResultWriter {
 	return &countingResultWriter{target: b}
 }
 

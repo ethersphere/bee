@@ -20,7 +20,7 @@ type hashTrieWriter struct {
 	pipelineFn pipelineFunc
 }
 
-func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc) chainWriter {
+func newHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc) chainWriter {
 	return &hashTrieWriter{
 		cursors:    make([]int, 9),
 		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space

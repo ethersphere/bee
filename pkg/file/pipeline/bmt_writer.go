@@ -18,10 +18,9 @@ type bmtWriter struct {
 	next chainWriter
 }
 
-// branches is the branching factor for BMT(!), not the same like in the trie of hashes which can differ between encrypted and unencrypted content
-// NewBmtWriter returns a new bmtWriter. Partial writes are not supported.
+// newBmtWriter returns a new bmtWriter. Partial writes are not supported.
 // Note: branching factor is the BMT branching factor, not the merkle trie branching factor.
-func NewBmtWriter(branches int, next chainWriter) chainWriter {
+func newBmtWriter(branches int, next chainWriter) chainWriter {
 	return &bmtWriter{
 		b:    bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize)),
 		next: next,

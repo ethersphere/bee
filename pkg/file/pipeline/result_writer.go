@@ -10,7 +10,7 @@ type resultWriter struct {
 	target *pipeWriteArgs
 }
 
-func NewResultWriter(b *pipeWriteArgs) chainWriter {
+func newResultWriter(b *pipeWriteArgs) chainWriter {
 	return &resultWriter{target: b}
 }
 
