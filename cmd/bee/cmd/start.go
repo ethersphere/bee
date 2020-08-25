@@ -11,10 +11,14 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/keystore"
+	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
+	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/sirupsen/logrus"
@@ -70,6 +74,14 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				debugAPIAddr = ""
 			}
 
+			var keystore keystore.Service
+			if c.config.GetString(optionNameDataDir) == "" {
+				keystore = memkeystore.New()
+				logger.Warning("data directory not provided, keys are not persisted")
+			} else {
+				keystore = filekeystore.New(filepath.Join(c.config.GetString(optionNameDataDir), "keys"))
+			}
+
 			var password string
 			if p := c.config.GetString(optionNamePassword); p != "" {
 				password = p
@@ -80,14 +92,29 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				}
 				password = string(bytes.Trim(b, "\n"))
 			} else {
-				p, err := terminalPromptPassword(cmd, c.passwordReader, "Password")
+				exists, err := keystore.Exists("swarm")
 				if err != nil {
 					return err
 				}
-				password = p
+				if exists {
+					password, err = terminalPromptPassword(cmd, c.passwordReader, "Password")
+					if err != nil {
+						return err
+					}
+				} else {
+					password, err = terminalPromptCreatePassword(cmd, c.passwordReader)
+					if err != nil {
+						return err
+					}
+				}
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), logger, node.Options{
+			swarmPrivateKey, _, err := keystore.Key("swarm", password)
+			if err != nil {
+				return fmt.Errorf("swarm key: %w", err)
+			}
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), keystore, swarmPrivateKey, logger, node.Options{
 				DataDir:              c.config.GetString(optionNameDataDir),
 				DBCapacity:           c.config.GetUint64(optionNameDBCapacity),
 				Password:             password,

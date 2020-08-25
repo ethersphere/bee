@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"io"
 	"log"
@@ -23,8 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/kademlia"
 	"github.com/ethersphere/bee/pkg/keystore"
-	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
-	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
@@ -90,7 +89,7 @@ type Options struct {
 	PaymentTolerance     uint64
 }
 
-func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
+func NewBee(addr string, keystore keystore.Service, swarmPrivateKey *ecdsa.PrivateKey, logger logging.Logger, o Options) (*Bee, error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -108,30 +107,13 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 		tracerCloser:   tracerCloser,
 	}
 
-	var keyStore keystore.Service
-	if o.DataDir == "" {
-		keyStore = memkeystore.New()
-		logger.Warning("data directory not provided, keys are not persisted")
-	} else {
-		keyStore = filekeystore.New(filepath.Join(o.DataDir, "keys"))
-	}
-
-	swarmPrivateKey, created, err := keyStore.Key("swarm", o.Password)
-	if err != nil {
-		return nil, fmt.Errorf("swarm key: %w", err)
-	}
 	address, err := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, o.NetworkID)
 	if err != nil {
 		return nil, err
 	}
-	if created {
-		logger.Infof("new swarm network address created: %s", address)
-	} else {
-		logger.Infof("using existing swarm network address: %s", address)
-	}
 
 	// Construct P2P service.
-	libp2pPrivateKey, created, err := keyStore.Key("libp2p", o.Password)
+	libp2pPrivateKey, created, err := keystore.Key("libp2p", o.Password)
 	if err != nil {
 		return nil, fmt.Errorf("libp2p key: %w", err)
 	}
