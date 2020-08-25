@@ -38,16 +38,24 @@ func newHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipelineFunc
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) chainWrite(p *pipeWriteArgs) error {
-	return h.writeToLevel(1, p.span, p.ref)
+	oneRef := h.refSize + swarm.SpanSize
+	l := len(p.span) + len(p.ref) + len(p.key)
+	if l%oneRef != 0 {
+		return errInconsistentRefs
+	}
+	return h.writeToLevel(1, p.span, p.ref, p.key)
 }
 
-func (h *hashTrieWriter) writeToLevel(level int, span, ref []byte) error {
+func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span) //copy the span slongside
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
 	h.cursors[level] += len(ref)
+	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
+	h.cursors[level] += len(key)
 
 	howLong := (h.refSize + swarm.SpanSize) * h.branching
+
 	if h.levelSize(level) == howLong {
 		return h.wrapFullLevel(level)
 	}
@@ -88,7 +96,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	if err != nil {
 		return err
 	}
-	err = h.writeToLevel(level+1, args.span, args.ref)
+	err = h.writeToLevel(level+1, args.span, args.ref, args.key)
 	if err != nil {
 		return err
 	}
@@ -154,8 +162,8 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 		span: spb,
 	}
 	err := writer.chainWrite(&args)
-
-	return args.ref, err
+	ref := append(args.ref, args.key...)
+	return ref, err
 }
 
 func (h *hashTrieWriter) levelSize(level int) int {
