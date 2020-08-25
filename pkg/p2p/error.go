@@ -65,6 +65,29 @@ func (e *DisconnectError) Error() string {
 	return e.err.Error()
 }
 
+type BlockPeerError struct {
+	duration time.Duration
+	err      error
+}
+
+// NewBlockPeerError wraps error and creates a special error that is treated specially
+// by p2p. It causes peer to be disconnected and blocks any new connection for this peer for the provided duration.
+//
+func NewBlockPeerError(duration time.Duration, err error) error {
+	return &BlockPeerError{
+		duration: duration,
+		err:      err,
+	}
+}
+
+// Unwrap returns an underlying error.
+func (e *BlockPeerError) Unwrap() error { return e.err }
+
+// Error implements function of the standard go error interface.
+func (e *BlockPeerError) Error() string {
+	return e.err.Error()
+}
+
 // IncompatibleStreamError is the error that should be returned by p2p service
 // NewStream method when the stream or its version is not supported.
 type IncompatibleStreamError struct {
