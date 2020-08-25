@@ -47,12 +47,17 @@ func TestFeeder(t *testing.T) {
 			expWrites: 1,
 			writeData: []byte{1, 2, 3, 4, 5},
 		},
-
 		{
 			name:      "half chunk, another two halves, one write",
 			dataSize:  []int{3, 2, 3},
 			expWrites: 1,
 			writeData: []byte{1, 2, 3, 4, 5},
+		},
+		{
+			name:      "half chunk, another two halves, another full, two writes",
+			dataSize:  []int{3, 2, 5},
+			expWrites: 2,
+			writeData: []byte{6, 7, 8, 9, 10},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -43,7 +43,7 @@ func TestHelloWorld(t *testing.T) {
 }
 
 func TestOne(t *testing.T) {
-	i := 14
+	i := 6
 	m := mock.NewStorer()
 	p := NewPipeline(m)
 

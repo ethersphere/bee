@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"encoding/binary"
-	"fmt"
 )
 
 const span = 8
@@ -24,7 +23,6 @@ func NewChunkFeederWriter(size int, next ChainWriter) Interface {
 
 // Write assumes that the span is prepended to the actual data before the write !
 func (f *chunkFeeder) Write(b []byte) (int, error) {
-	fmt.Println("write", b)
 	l := len(b) // data length
 	w := 0      // written
 
@@ -32,7 +30,6 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		// write the data into the buffer and return
 		n := copy(f.buffer[f.bufferIdx:], b)
 		f.bufferIdx += n
-		fmt.Println("short write", n)
 		return n, nil
 	}
 
@@ -49,7 +46,6 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		w -= sp
 	}
 
-	fmt.Println("copied from existing buffer", d)
 	var n int
 	for i := 0; i < len(b); {
 		// if we can't fill a whole write, buffer the rest and return
@@ -63,10 +59,8 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		n = copy(d[span+f.bufferIdx:], b[i:])
 		i += n
 		sp += n
-		fmt.Println("filled stuff up", sp, i, d)
 
 		binary.LittleEndian.PutUint64(d[:span], uint64(sp))
-		fmt.Println("feeder writing", d[:span+sp])
 		args := &pipeWriteArgs{data: d[:span+sp]}
 		_, err := f.next.ChainWrite(args)
 		if err != nil {
@@ -76,19 +70,20 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		w += sp
 		sp = 0
 	}
-	fmt.Println(w)
 	return w, nil
 }
 
 func (f *chunkFeeder) Sum() ([]byte, error) {
 	// flush existing data in the buffer
-	d := make([]byte, f.bufferIdx+span)
-	copy(d[span:], f.buffer[:f.bufferIdx])
-	binary.LittleEndian.PutUint64(d[:span], uint64(f.bufferIdx))
-	args := &pipeWriteArgs{data: d}
-	_, err := f.next.ChainWrite(args)
-	if err != nil {
-		return nil, err
+	if f.bufferIdx > 0 {
+		d := make([]byte, f.bufferIdx+span)
+		copy(d[span:], f.buffer[:f.bufferIdx])
+		binary.LittleEndian.PutUint64(d[:span], uint64(f.bufferIdx))
+		args := &pipeWriteArgs{data: d}
+		_, err := f.next.ChainWrite(args)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return f.next.Sum()
