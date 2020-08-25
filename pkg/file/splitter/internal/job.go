@@ -302,11 +302,11 @@ func (s *SimpleSplitterJob) encrypt(chunkData []byte) (encryption.Key, []byte, [
 	return key, encryptedSpan, encryptedData, nil
 }
 
-func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) *encryption.Encryption {
+func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) encryption.Interface {
 	return encryption.New(key, 0, uint32(swarm.ChunkSize/s.refSize), sha3.NewLegacyKeccak256)
 }
 
-func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) *encryption.Encryption {
+func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) encryption.Interface {
 	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }
 

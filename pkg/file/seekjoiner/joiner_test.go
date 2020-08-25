@@ -7,22 +7,25 @@ package seekjoiner_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/encryption/store"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	joiner "github.com/ethersphere/bee/pkg/file/seekjoiner"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"gitlab.com/nolash/go-mockbytes"
 )
 
-// TestJoiner verifies that a newly created joiner returns the data stored
-// in the store when the reference is one single chunk.
-func TestJoinerSingleChunk(t *testing.T) {
+func TestJoiner_ErrReferenceLength(t *testing.T) {
 	store := mock.NewStorer()
-
 	joiner := joiner.NewSimpleJoiner(store)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -30,9 +33,19 @@ func TestJoinerSingleChunk(t *testing.T) {
 
 	var err error
 	_, _, err = joiner.Join(ctx, swarm.ZeroAddress)
-	if err != storage.ErrNotFound {
-		t.Fatalf("expected ErrNotFound for %x but got %v", swarm.ZeroAddress, err)
+	if !errors.Is(err, storage.ErrReferenceLength) {
+		t.Fatalf("expected ErrReferenceLength %x but got %v", swarm.ZeroAddress, err)
 	}
+}
+
+// TestJoiner verifies that a newly created joiner returns the data stored
+// in the store when the reference is one single chunk.
+func TestJoinerSingleChunk(t *testing.T) {
+	store := mock.NewStorer()
+	joiner := joiner.NewSimpleJoiner(store)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// create the chunk to
 	mockAddrHex := fmt.Sprintf("%064s", "2a")
@@ -41,7 +54,46 @@ func TestJoinerSingleChunk(t *testing.T) {
 	mockDataLengthBytes := make([]byte, 8)
 	mockDataLengthBytes[0] = 0x03
 	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
-	_, err = store.Put(ctx, storage.ModePutUpload, mockChunk)
+	_, err := store.Put(ctx, storage.ModePutUpload, mockChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read back data and compare
+	joinReader, l, err := joiner.Join(ctx, mockAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l != int64(len(mockData)) {
+		t.Fatalf("expected join data length %d, got %d", len(mockData), l)
+	}
+	joinData, err := ioutil.ReadAll(joinReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(joinData, mockData) {
+		t.Fatalf("retrieved data '%x' not like original data '%x'", joinData, mockData)
+	}
+}
+
+// TestJoinerDecryptingStore_NormalChunk verifies the the mock store that uses
+// the decrypting store manages to retrieve a normal chunk which is not encrypted
+func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
+	st := mock.NewStorer()
+	store := store.NewDecrypting(st)
+	joiner := joiner.NewSimpleJoiner(store)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// create the chunk to
+	mockAddrHex := fmt.Sprintf("%064s", "2a")
+	mockAddr := swarm.MustParseHexAddress(mockAddrHex)
+	mockData := []byte("foo")
+	mockDataLengthBytes := make([]byte, 8)
+	mockDataLengthBytes[0] = 0x03
+	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
+	_, err := st.Put(ctx, storage.ModePutUpload, mockChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,5 +164,64 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 	if !bytes.Equal(resultBuffer, firstChunk.Data()[8:]) {
 		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, firstChunk.Data()[:len(resultBuffer)])
+	}
+}
+
+func TestEncryptDecrypt(t *testing.T) {
+	var tests = []struct {
+		chunkLength int
+	}{
+		{10},
+		{100},
+		{1000},
+		{4095},
+		{4096},
+		{4097},
+		{1000000},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("Encrypt %d bytes", tt.chunkLength), func(t *testing.T) {
+			store := mock.NewStorer()
+			joinner := seekjoiner.NewSimpleJoiner(store)
+
+			g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+			testData, err := g.SequentialBytes(tt.chunkLength)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			pipe := pipeline.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true)
+			testDataReader := bytes.NewReader(testData)
+			resultAddress, err := pipeline.FeedPipeline(ctx, pipe, testDataReader, int64(len(testData)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader, l, err := joinner.Join(context.Background(), resultAddress)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if l != int64(len(testData)) {
+				t.Fatalf("expected join data length %d, got %d", len(testData), l)
+			}
+
+			totalGot := make([]byte, tt.chunkLength)
+			index := 0
+			resultBuffer := make([]byte, swarm.ChunkSize)
+
+			for index < tt.chunkLength {
+				n, err := reader.Read(resultBuffer)
+				if err != nil && err != io.EOF {
+					t.Fatal(err)
+				}
+				copy(totalGot[index:], resultBuffer[:n])
+				index += n
+			}
+
+			if !bytes.Equal(testData, totalGot) {
+				t.Fatal("input data and output data does not match")
+			}
+		})
 	}
 }

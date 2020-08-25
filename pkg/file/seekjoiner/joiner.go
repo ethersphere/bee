@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner/internal"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -25,7 +26,7 @@ type simpleJoiner struct {
 // NewSimpleJoiner creates a new simpleJoiner.
 func NewSimpleJoiner(getter storage.Getter) file.JoinSeeker {
 	return &simpleJoiner{
-		getter: getter,
+		getter: store.NewDecrypting(getter),
 	}
 }
 
@@ -58,8 +59,7 @@ func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut
 
 	var chunkData = rootChunk.Data()
 
-	// if this is a single chunk, short circuit to returning just that chunk
 	spanLength := binary.LittleEndian.Uint64(chunkData[:8])
-	r := internal.NewSimpleJoinerJob(ctx, s.getter, rootChunk)
+	r := internal.NewSimpleJoinerJob(ctx, s.getter, len(address.Bytes()), rootChunk)
 	return r, int64(spanLength), nil
 }

@@ -84,7 +84,7 @@ func TestSeek(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+			j := internal.NewSimpleJoinerJob(ctx, store, len(addr.Bytes()), rootChunk)
 
 			validateRead := func(t *testing.T, name string, i int) {
 				t.Helper()
@@ -205,7 +205,7 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+	j := internal.NewSimpleJoinerJob(ctx, store, len(rootChunk.Address().Bytes()), rootChunk)
 
 	b := make([]byte, swarm.ChunkSize)
 	_, err = j.ReadAt(b, swarm.ChunkSize)
@@ -247,7 +247,7 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+	j := internal.NewSimpleJoinerJob(ctx, store, len(rootChunk.Address().Bytes()), rootChunk)
 
 	// verify first chunk content
 	outBuffer := make([]byte, swarm.ChunkSize)
@@ -336,7 +336,7 @@ func TestSimpleJoinerJobTwoLevelsAcrossChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+	j := internal.NewSimpleJoinerJob(ctx, store, len(rootChunk.Address().Bytes()), rootChunk)
 
 	// read back all the chunks and verify
 	b := make([]byte, swarm.ChunkSize)

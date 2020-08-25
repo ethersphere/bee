@@ -14,16 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// Joiner returns file data referenced by the given Swarm Address to the given io.Reader.
-//
-// The call returns when the chunk for the given Swarm Address is found,
-// returning the length of the data which will be returned.
-// The called can then read the data on the io.Reader that was provided.
-type Joiner interface {
-	Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataLength int64, err error)
-	Size(ctx context.Context, address swarm.Address) (dataLength int64, err error)
-}
-
 // JoinSeeker provides a Joiner that can seek.
 type JoinSeeker interface {
 	Join(ctx context.Context, address swarm.Address) (dataOut io.ReadSeeker, dataLength int64, err error)
@@ -40,8 +30,8 @@ type Splitter interface {
 }
 
 // JoinReadAll reads all output from the provided joiner.
-func JoinReadAll(ctx context.Context, j Joiner, addr swarm.Address, outFile io.Writer, toDecrypt bool) (int64, error) {
-	r, l, err := j.Join(ctx, addr, toDecrypt)
+func JoinReadAll(ctx context.Context, j JoinSeeker, addr swarm.Address, outFile io.Writer) (int64, error) {
+	r, l, err := j.Join(ctx, addr)
 	if err != nil {
 		return 0, err
 	}

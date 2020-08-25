@@ -60,7 +60,6 @@ func TestFiles(t *testing.T) {
 	})
 
 	t.Run("encrypt-decrypt", func(t *testing.T) {
-		t.Skip("reenable after crypto refactor")
 		fileName := "my-pictures.jpeg"
 
 		var resp api.FileUploadResponse
