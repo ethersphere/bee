@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -41,12 +42,14 @@ type PushSync struct {
 	tagg             *tags.Tags
 	deliveryCallback func(context.Context, swarm.Chunk) error // callback func to be invoked to deliver chunks to PSS
 	logger           logging.Logger
+	accounting       accounting.Interface
+	pricer           accounting.Pricer
 	metrics          metrics
 }
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk) error, logger logging.Logger) *PushSync {
+func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk) error, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer) *PushSync {
 	ps := &PushSync{
 		streamer:         streamer,
 		storer:           storer,
@@ -54,6 +57,8 @@ func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.Cl
 		tagg:             tagger,
 		deliveryCallback: deliveryCallback,
 		logger:           logger,
+		accounting:       accounting,
+		pricer:           pricer,
 		metrics:          newMetrics(),
 	}
 	return ps
@@ -101,10 +106,18 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	// This is a special situation in that the other peer thinks thats we are the closest node
-	// and we think that the sending peer
+	// and we think that the sending peer is the closest
 	if p.Address.Equal(peer) {
 		return ps.handleDeliveryResponse(ctx, w, p, chunk)
 	}
+
+	// compute the price we pay for this receipt and reserve it for the rest of this function
+	receiptPrice := ps.pricer.PeerPrice(peer, chunk.Address())
+	err = ps.accounting.Reserve(peer, receiptPrice)
+	if err != nil {
+		return err
+	}
+	defer ps.accounting.Release(peer, receiptPrice)
 
 	// Forward chunk to closest peer
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
@@ -137,6 +150,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("invalid receipt from peer %s", peer.String())
 	}
 
+	err = ps.accounting.Credit(peer, receiptPrice)
+	if err != nil {
+		return err
+	}
+
 	// pass back the received receipt in the previously received stream
 	err = ps.sendReceipt(w, &receipt)
 	if err != nil {
@@ -144,7 +162,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 	ps.metrics.ReceiptsSentCounter.Inc()
 
-	return nil
+	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
 }
 
 func (ps *PushSync) getChunkDelivery(r protobuf.Reader) (chunk swarm.Chunk, err error) {
@@ -214,6 +232,14 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		return nil, fmt.Errorf("closest peer: %w", err)
 	}
 
+	// compute the price we pay for this receipt and reserve it for the rest of this function
+	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
+	err = ps.accounting.Reserve(peer, receiptPrice)
+	if err != nil {
+		return nil, err
+	}
+	defer ps.accounting.Release(peer, receiptPrice)
+
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
@@ -247,6 +273,11 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
 	}
 
+	err = ps.accounting.Credit(peer, receiptPrice)
+	if err != nil {
+		return nil, err
+	}
+
 	rec := &Receipt{
 		Address: swarm.NewAddress(receipt.Address),
 	}
@@ -276,6 +307,12 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 	if err != nil {
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
+
+	err = ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
+	if err != nil {
+		return err
+	}
+
 	// since all PSS messages comes through push sync, deliver them here if this node is the destination
 	return ps.deliverToPSS(ctx, chunk)
 }
