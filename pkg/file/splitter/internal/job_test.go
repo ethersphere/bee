@@ -72,11 +72,10 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 
 // TestSplitterJobVector verifies file hasher results of legacy test vectors
 func TestSplitterJobVector(t *testing.T) {
-	//for i := start; i < end; i++ {
-	i := 14
-	dataLengthStr := strconv.Itoa(i)
-	t.Run(dataLengthStr, testSplitterJobVector)
-	//}
+	for i := start; i < end; i++ {
+		dataLengthStr := strconv.Itoa(i)
+		t.Run(dataLengthStr, testSplitterJobVector)
+	}
 }
 
 func testSplitterJobVector(t *testing.T) {

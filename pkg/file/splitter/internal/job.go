@@ -7,7 +7,6 @@ package internal
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
@@ -153,9 +152,6 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
-	if lvl != 0 {
-		fmt.Println("hashing span", span, "level", lvl, "data", hex.EncodeToString(chunkData))
-	}
 	s.incrTag(tags.StateSplit)
 	c := chunkData
 	var encryptionKey encryption.Key
@@ -179,7 +175,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	}
 	ref := s.hasher.Sum(nil)
 	addr = swarm.NewAddress(ref)
-	fmt.Println("level", lvl, "got ref", addr.String())
+
 	// Add tag to the chunk if tag is valid
 	var ch swarm.Chunk
 	if s.tag != nil {
@@ -208,7 +204,6 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 // The method does not check that the final hash actually has been written, so
 // timing is the responsibility of the caller.
 func (s *SimpleSplitterJob) digest() []byte {
-	fmt.Println(s.sumCounts)
 	if s.toEncrypt {
 		return s.buffer[:swarm.SectionSize*2]
 	} else {
