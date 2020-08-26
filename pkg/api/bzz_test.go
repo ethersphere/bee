@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -16,8 +17,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -32,14 +32,17 @@ func TestBzz(t *testing.T) {
 	var (
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		storer              = smock.NewStorer()
-		sp                  = splitter.NewSimpleSplitter(storer, storage.ModePutUpload)
+		ctx                 = context.Background()
 		client              = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(),
 			Logger: logging.New(ioutil.Discard, 5),
 		})
+		pipeWriteAll = func(r io.Reader, l int64) (swarm.Address, error) {
+			pipe := pipeline.NewPipeline(ctx, storer, storage.ModePutUpload)
+			return pipeline.FeedPipeline(ctx, pipe, r, l)
+		}
 	)
-
 	t.Run("download-file-by-path", func(t *testing.T) {
 		fileName := "sample.html"
 		filePath := "test/" + fileName
@@ -61,8 +64,8 @@ func TestBzz(t *testing.T) {
 		var manifestFileReference swarm.Address
 
 		// save file
+		fileContentReference, err = pipeWriteAll(strings.NewReader(sampleHtml), int64(len(sampleHtml)))
 
-		fileContentReference, err = file.SplitWriteAll(context.Background(), sp, strings.NewReader(sampleHtml), int64(len(sampleHtml)), false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +77,8 @@ func TestBzz(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		fileMetadataReference, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileMetadataBytes), int64(len(fileMetadataBytes)), false)
+		fileMetadataReference, err := pipeWriteAll(bytes.NewReader(fileMetadataBytes), int64(len(fileMetadataBytes)))
+
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,13 +88,13 @@ func TestBzz(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), false)
+		fileReference, err = pipeWriteAll(bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// save manifest
-
 		m, err := manifest.NewDefaultManifest(false, storer)
 		if err != nil {
 			t.Fatal(err)
@@ -115,7 +119,7 @@ func TestBzz(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		mr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), false)
+		mr, err := pipeWriteAll(bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +131,7 @@ func TestBzz(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		manifestFileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileEntryBytes), int64(len(manifestFileEntryBytes)), false)
+		manifestFileReference, err = pipeWriteAll(bytes.NewReader(manifestFileEntryBytes), int64(len(manifestFileEntryBytes)))
 		if err != nil {
 			t.Fatal(err)
 		}

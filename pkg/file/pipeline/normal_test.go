@@ -6,18 +6,20 @@ package pipeline
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"testing"
 
 	test "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestPartialWrites(t *testing.T) {
 	m := mock.NewStorer()
-	p := NewPipeline(m)
+	p := NewPipeline(context.Background(), m, storage.ModePutUpload)
 	_, _ = p.Write([]byte("hello "))
 	_, _ = p.Write([]byte("world"))
 
@@ -33,9 +35,14 @@ func TestPartialWrites(t *testing.T) {
 
 func TestHelloWorld(t *testing.T) {
 	m := mock.NewStorer()
-	p := NewPipeline(m)
+	p := NewPipeline(context.Background(), m, storage.ModePutUpload)
+
 	data := []byte("hello world")
-	_, _ = p.Write(data)
+	_, err := p.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sum, err := p.Sum()
 	if err != nil {
 		t.Fatal(err)
@@ -51,9 +58,12 @@ func TestAllVectors(t *testing.T) {
 		data, expect := test.GetVector(t, i)
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
 			m := mock.NewStorer()
-			p := NewPipeline(m)
+			p := NewPipeline(context.Background(), m, storage.ModePutUpload)
 
-			_, _ = p.Write(data)
+			_, err := p.Write(data)
+			if err != nil {
+				t.Fatal(err)
+			}
 			sum, err := p.Sum()
 			if err != nil {
 				t.Fatal(err)

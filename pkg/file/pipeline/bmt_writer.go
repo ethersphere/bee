@@ -39,9 +39,8 @@ func (w *bmtWriter) chainWrite(p *pipeWriteArgs) error {
 	if err != nil {
 		return err
 	}
-	bytes := w.b.Sum(nil)
-	args := &pipeWriteArgs{ref: bytes, data: p.data, span: p.data[:swarm.SpanSize]}
-	return w.next.chainWrite(args)
+	p.ref = w.b.Sum(nil)
+	return w.next.chainWrite(p)
 }
 
 // sum calls the next writer for the cryptographic sum
