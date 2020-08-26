@@ -252,7 +252,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 	retrieve.SetStorer(ns)
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger)
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(address, 10))
 
 	// set the pushSyncer in the PSS
 	psss.WithPushSyncer(pushSyncProtocol)
