@@ -7,6 +7,7 @@ package ens
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -27,6 +28,7 @@ type resolveType func(bind.ContractBackend, string) (string, error)
 // Client is a name resolution client that can connect to ENS via an
 // Ethereum endpoint.
 type Client struct {
+	mu        sync.RWMutex
 	Endpoint  string
 	ethCl     *ethclient.Client
 	dialFn    dialType
@@ -57,6 +59,9 @@ func (c *Client) Connect(ep string) error {
 		return errors.New("no dial function implementation")
 	}
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	ethCl, err := c.dialFn(ep)
 	if err != nil {
 		return err
@@ -69,18 +74,25 @@ func (c *Client) Connect(ep string) error {
 
 // IsConnected returns true if there is an active RPC connection with an
 // Ethereum node at the configured endpoint.
+// Function obtains a write lock while interacting with the Ethereum client.
 func (c *Client) IsConnected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return c.ethCl != nil
 }
 
 // Resolve implements the resolver.Client interface.
+// Function obtains a read lock while interacting with the Ethereum client.
 func (c *Client) Resolve(name string) (Address, error) {
 	if c.resolveFn == nil {
 		return swarm.ZeroAddress, errors.New("no resolve function implementation")
 	}
 
-	// Retrieve the content hash from ENS.
+	// Retrieve the content hash from ENS. Obtain a read lock.
+	c.mu.RLock()
 	hash, err := c.resolveFn(c.ethCl, name)
+	c.mu.RUnlock()
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -97,7 +109,11 @@ func (c *Client) Resolve(name string) (Address, error) {
 
 // Close closes the RPC connection with the client, terminating all unfinished
 // requests.
+// Function obtains a write lock while interacting with the Ethereum client.
 func (c *Client) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.ethCl != nil {
 		c.ethCl.Close() // TODO: consider mocking out the eth client.
 	}
