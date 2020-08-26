@@ -5,6 +5,7 @@
 package resolver_test
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -47,7 +48,7 @@ func TestPushResolver(t *testing.T) {
 		{
 			desc:    "invalid tld",
 			tld:     "invalid",
-			wantErr: resolver.ErrInvalidTLD,
+			wantErr: resolver.ErrInvalidTLD("invalid"),
 		},
 	}
 
@@ -62,7 +63,7 @@ func TestPushResolver(t *testing.T) {
 			want := mock.NewResolver()
 			err := mr.PushResolver(tC.tld, want)
 			if err != nil {
-				if err != tC.wantErr {
+				if errors.Is(err, tC.wantErr) {
 					t.Fatal(err)
 				}
 				return
@@ -88,7 +89,7 @@ func TestPopResolver(t *testing.T) {
 
 	t.Run("error on bad tld", func(t *testing.T) {
 		err := mr.PopResolver("invalid")
-		want := resolver.ErrInvalidTLD
+		want := resolver.ErrInvalidTLD("invalid")
 		if err != want {
 			t.Fatalf("bad error: got %v, want %v", err, want)
 		}
@@ -96,7 +97,7 @@ func TestPopResolver(t *testing.T) {
 
 	t.Run("error on empty", func(t *testing.T) {
 		err := mr.PopResolver(".tld")
-		want := resolver.ErrResolverChainEmpty
+		want := resolver.ErrResolverChainEmpty(".tld")
 		if err != want {
 			t.Fatalf("bad error: got %v, want %v", err, want)
 		}
@@ -192,7 +193,7 @@ func TestResolve(t *testing.T) {
 		},
 		{
 			name:    "this.empty",
-			wantErr: resolver.ErrResolverChainEmpty,
+			wantErr: resolver.ErrResolverChainEmpty(".empty"),
 		},
 		{
 			name:    "this.fails",
@@ -217,7 +218,7 @@ func TestResolve(t *testing.T) {
 				if tC.wantErr == nil {
 					t.Fatalf("unexpected error: got %v", err)
 				}
-				if err.Error() != tC.wantErr.Error() {
+				if !errors.Is(err, tC.wantErr) {
 					t.Fatalf("got %v, want %v", err, tC.wantErr)
 				}
 			}

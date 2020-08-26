@@ -100,7 +100,7 @@ func (c *Client) Resolve(name string) (Address, error) {
 	// Ensure that the content hash string is in a valid format, eg.
 	// "/swarm/<address>".
 	if !strings.HasPrefix(hash, "/swarm/") {
-		return swarm.ZeroAddress, errors.New("ENS contenthash invalid")
+		return swarm.ZeroAddress, ErrInvalidContentHash(hash)
 	}
 
 	// Trim the prefix and try to parse the result as a bzz address.

@@ -27,7 +27,7 @@ func TestConnect(t *testing.T) {
 			ens.WithDialFunc(nil),
 		)
 		err := c.Connect(ep)
-		if err == nil && err.Error() != "no dial function implementation" {
+		if err == nil && errors.Is(err, ens.ErrNotImplemented{}) {
 			t.Fatal("expected error")
 		}
 	})
@@ -79,7 +79,7 @@ func TestResolve(t *testing.T) {
 			ens.WithResolveFunc(nil),
 		)
 		_, err := c.Resolve("test")
-		if err == nil && err.Error() != "no resolve function implementation" {
+		if err == nil && errors.Is(err, ens.ErrNotImplemented{}) {
 			t.Fatal("expected error")
 		}
 	})

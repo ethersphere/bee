@@ -5,15 +5,13 @@
 package resolver
 
 import (
-	"errors"
 	"path"
 	"strings"
 )
 
 // MultiResolver errors.
 var (
-	ErrInvalidTLD         = errors.New("invalid TLD")
-	ErrResolverChainEmpty = errors.New("resolver chain empty")
+// ErrResolverChainEmpty = errors.New("resolver chain empty")
 )
 
 // Ensure MultiResolver implements Resolver interface.
@@ -60,7 +58,7 @@ func WithForceDefault() Option {
 // to the default resolver chain.
 func (mr *MultiResolver) PushResolver(tld string, r Interface) error {
 	if tld != "" && !isTLD(tld) {
-		return ErrInvalidTLD
+		return ErrInvalidTLD("tld")
 	}
 
 	mr.resolvers[tld] = append(mr.resolvers[tld], r)
@@ -73,12 +71,12 @@ func (mr *MultiResolver) PushResolver(tld string, r Interface) error {
 // from the default resolver chain.
 func (mr *MultiResolver) PopResolver(tld string) error {
 	if tld != "" && !isTLD(tld) {
-		return ErrInvalidTLD
+		return ErrInvalidTLD("tld")
 	}
 
 	l := len(mr.resolvers[tld])
 	if l == 0 {
-		return ErrResolverChainEmpty
+		return ErrResolverChainEmpty(tld)
 	}
 	mr.resolvers[tld] = mr.resolvers[tld][:l-1]
 	return nil
@@ -113,7 +111,7 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 	chain := mr.resolvers[tld]
 
 	if len(chain) == 0 {
-		return Address{}, ErrResolverChainEmpty
+		return Address{}, ErrResolverChainEmpty(tld)
 	}
 
 	var err error
