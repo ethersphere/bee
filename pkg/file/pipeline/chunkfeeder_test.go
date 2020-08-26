@@ -212,6 +212,9 @@ func TestFeederFlush(t *testing.T) {
 	}
 }
 
+// countingResultWriter counts how many writes were done to it
+// and passes the results to the caller using the pointer provided
+// in the constructor.
 type countingResultWriter struct {
 	target *pipeWriteArgs
 	count  int

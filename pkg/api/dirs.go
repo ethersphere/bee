@@ -18,8 +18,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -169,8 +168,8 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	sp := splitter.NewSimpleSplitter(s, mode)
-	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
+	pipe := pipeline.NewPipeline(ctx, s, mode)
+	mr, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
 	}
@@ -182,8 +181,8 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
 
-	sp = splitter.NewSimpleSplitter(s, mode)
-	manifestFileReference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
+	pipe = pipeline.NewPipeline(ctx, s, mode)
+	manifestFileReference, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
 	}
@@ -194,12 +193,9 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 // storeFile uploads the given file and returns its reference
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code
 func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, mode storage.ModePut) (swarm.Address, error) {
-	v := ctx.Value(toEncryptContextKey{})
-	toEncrypt, _ := v.(bool) // default is false
-
 	// first store the file and get its reference
-	sp := splitter.NewSimpleSplitter(s, mode)
-	fr, err := file.SplitWriteAll(ctx, sp, fileInfo.reader, fileInfo.size, toEncrypt)
+	pipe := pipeline.NewPipeline(ctx, s, mode)
+	fr, err := pipeline.FeedPipeline(ctx, pipe, fileInfo.reader, fileInfo.size)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file: %w", err)
 	}
@@ -217,8 +213,8 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	sp = splitter.NewSimpleSplitter(s, mode)
-	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
+	pipe = pipeline.NewPipeline(ctx, s, mode)
+	mr, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
 	}
@@ -229,8 +225,8 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
-	sp = splitter.NewSimpleSplitter(s, mode)
-	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
+	pipe = pipeline.NewPipeline(ctx, s, mode)
+	reference, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
 	}

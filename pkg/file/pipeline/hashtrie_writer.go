@@ -6,9 +6,12 @@ package pipeline
 
 import (
 	"encoding/binary"
+	"errors"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+var errInconsistentRefs = errors.New("inconsistent reference lengths in level")
 
 type hashTrieWriter struct {
 	branching  int
@@ -76,22 +79,22 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
 	hashes = append(spb, hashes...)
-	var results pipeWriteArgs
-	writer := h.pipelineFn(&results)
+	writer := h.pipelineFn()
 	args := pipeWriteArgs{
 		data: hashes,
+		span: spb,
 	}
 	err := writer.chainWrite(&args)
 	if err != nil {
 		return err
 	}
-	err = h.writeToLevel(level+1, results.span, results.ref)
+	err = h.writeToLevel(level+1, args.span, args.ref)
 	if err != nil {
 		return err
 	}
 
 	// this "truncates" the current level that was wrapped
-	// by setting the cursors the the cursors of one level above
+	// by setting the cursors to the cursors of one level above
 	h.cursors[level] = h.cursors[level+1]
 	return nil
 }
@@ -101,6 +104,9 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	oneRef := h.refSize + swarm.SpanSize
 	for i := 1; i < target; i++ {
 		l := h.levelSize(i)
+		if l%oneRef != 0 {
+			return nil, errInconsistentRefs
+		}
 		switch {
 		case l == 0:
 			continue
@@ -122,6 +128,9 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	level := target
 	tlen := h.levelSize(target)
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
+	if tlen%oneRef != 0 {
+		return nil, errInconsistentRefs
+	}
 	if tlen == oneRef {
 		return data[8:], nil
 	}
@@ -139,14 +148,14 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
 	hashes = append(spb, hashes...)
-	var results pipeWriteArgs
-	writer := h.pipelineFn(&results)
+	writer := h.pipelineFn()
 	args := pipeWriteArgs{
 		data: hashes,
+		span: spb,
 	}
 	err := writer.chainWrite(&args)
 
-	return results.ref, err
+	return args.ref, err
 }
 
 func (h *hashTrieWriter) levelSize(level int) int {

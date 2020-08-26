@@ -94,7 +94,7 @@ func (f *chunkFeeder) Sum() ([]byte, error) {
 		d := make([]byte, f.bufferIdx+span)
 		copy(d[span:], f.buffer[:f.bufferIdx])
 		binary.LittleEndian.PutUint64(d[:span], uint64(f.bufferIdx))
-		args := &pipeWriteArgs{data: d}
+		args := &pipeWriteArgs{data: d, span: d[:span]}
 		err := f.next.chainWrite(args)
 		if err != nil {
 			return nil, err
