@@ -22,6 +22,20 @@ func New(dir string) *Service {
 	return &Service{dir: dir}
 }
 
+func (s *Service) Exists(name string) (bool, error) {
+	filename := s.keyFilename(name)
+
+	data, err := ioutil.ReadFile(filename)
+	if err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("read private key: %w", err)
+	}
+	if len(data) == 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool, err error) {
 	filename := s.keyFilename(name)
 
