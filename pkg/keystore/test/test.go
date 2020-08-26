@@ -13,6 +13,14 @@ import (
 )
 
 func Service(t *testing.T, s keystore.Service) {
+	exists, err := s.Exists("swarm")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if exists {
+		t.Fatal("should not exist")
+	}
 	// create a new swarm key
 	k1, created, err := s.Key("swarm", "pass123456")
 	if err != nil {
@@ -20,6 +28,15 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 	if !created {
 		t.Fatal("key is not created")
+	}
+
+	exists, err = s.Exists("swarm")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !exists {
+		t.Fatal("should exist")
 	}
 
 	// get swarm key
