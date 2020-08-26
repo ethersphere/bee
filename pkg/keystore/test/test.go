@@ -19,7 +19,7 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	if exists {
-		t.Fatal("should not exists")
+		t.Fatal("should not exist")
 	}
 	// create a new swarm key
 	k1, created, err := s.Key("swarm", "pass123456")
@@ -36,7 +36,7 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	if !exists {
-		t.Fatal("should exists")
+		t.Fatal("should exist")
 	}
 
 	// get swarm key
