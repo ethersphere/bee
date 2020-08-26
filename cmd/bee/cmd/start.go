@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
+	"github.com/ethersphere/bee/pkg/resolver/service"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ func (c *command) initStartCmd() (err error) {
 		optionNameGlobalPinningEnabled = "global-pinning-enable"
 		optionNamePaymentThreshold     = "payment-threshold"
 		optionNamePaymentTolerance     = "payment-tolerance"
-		optionNameENSResolverEndpoints = "ens-endpoints"
+		optionNameResolverEndpoints    = "resolver-endpoints"
 	)
 
 	cmd := &cobra.Command{
@@ -76,6 +77,18 @@ func (c *command) initStartCmd() (err error) {
 			default:
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
+
+			// If the resolver is specified, resolve all connection strings
+			// and fail on any errors.
+			var resolverCfgs []*service.ConnectionConfig
+			resolverEndpoints := c.config.GetStringSlice(optionNameResolverEndpoints)
+			if len(resolverEndpoints) > 0 {
+				resolverCfgs, err = service.ParseConnectionStrings(resolverEndpoints)
+				if err != nil {
+					return err
+				}
+			}
+
 			bee := `
 Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
                 \     /                
@@ -116,27 +129,27 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			}
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), logger, node.Options{
-				DataDir:              c.config.GetString(optionNameDataDir),
-				DBCapacity:           c.config.GetUint64(optionNameDBCapacity),
-				Password:             password,
-				APIAddr:              c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr:         debugAPIAddr,
-				Addr:                 c.config.GetString(optionNameP2PAddr),
-				NATAddr:              c.config.GetString(optionNameNATAddr),
-				EnableWS:             c.config.GetBool(optionNameP2PWSEnable),
-				EnableQUIC:           c.config.GetBool(optionNameP2PQUICEnable),
-				NetworkID:            c.config.GetUint64(optionNameNetworkID),
-				WelcomeMessage:       c.config.GetString(optionWelcomeMessage),
-				Bootnodes:            c.config.GetStringSlice(optionNameBootnodes),
-				CORSAllowedOrigins:   c.config.GetStringSlice(optionCORSAllowedOrigins),
-				TracingEnabled:       c.config.GetBool(optionNameTracingEnabled),
-				TracingEndpoint:      c.config.GetString(optionNameTracingEndpoint),
-				TracingServiceName:   c.config.GetString(optionNameTracingServiceName),
-				Logger:               logger,
-				GlobalPinningEnabled: c.config.GetBool(optionNameGlobalPinningEnabled),
-				PaymentThreshold:     c.config.GetUint64(optionNamePaymentThreshold),
-				PaymentTolerance:     c.config.GetUint64(optionNamePaymentTolerance),
-				ENSResolverEndpoints: c.config.GetStringSlice(optionNameENSResolverEndpoints),
+				DataDir:                c.config.GetString(optionNameDataDir),
+				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
+				Password:               password,
+				APIAddr:                c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr:           debugAPIAddr,
+				Addr:                   c.config.GetString(optionNameP2PAddr),
+				NATAddr:                c.config.GetString(optionNameNATAddr),
+				EnableWS:               c.config.GetBool(optionNameP2PWSEnable),
+				EnableQUIC:             c.config.GetBool(optionNameP2PQUICEnable),
+				NetworkID:              c.config.GetUint64(optionNameNetworkID),
+				WelcomeMessage:         c.config.GetString(optionWelcomeMessage),
+				Bootnodes:              c.config.GetStringSlice(optionNameBootnodes),
+				CORSAllowedOrigins:     c.config.GetStringSlice(optionCORSAllowedOrigins),
+				TracingEnabled:         c.config.GetBool(optionNameTracingEnabled),
+				TracingEndpoint:        c.config.GetString(optionNameTracingEndpoint),
+				TracingServiceName:     c.config.GetString(optionNameTracingServiceName),
+				Logger:                 logger,
+				GlobalPinningEnabled:   c.config.GetBool(optionNameGlobalPinningEnabled),
+				PaymentThreshold:       c.config.GetUint64(optionNamePaymentThreshold),
+				PaymentTolerance:       c.config.GetUint64(optionNamePaymentTolerance),
+				ResolverConnectionCfgs: resolverCfgs,
 			})
 			if err != nil {
 				return err
@@ -202,7 +215,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 	cmd.Flags().Uint64(optionNamePaymentThreshold, 100000, "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Uint64(optionNamePaymentTolerance, 10000, "excess debt above payment threshold in BZZ where you disconnect from your peer")
-	cmd.Flags().StringSlice(optionNameENSResolverEndpoints, []string{}, "ENS resolver endpoints, in order of use")
+	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "resolver connection string, see help for format")
 
 	c.root.AddCommand(cmd)
 	return nil

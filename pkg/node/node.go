@@ -38,8 +38,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/recovery"
-	"github.com/ethersphere/bee/pkg/resolver"
-	"github.com/ethersphere/bee/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/pkg/resolver/service"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -59,7 +58,7 @@ type Bee struct {
 	p2pCancel        context.CancelFunc
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
-	multiResolver    resolver.Interface
+	resolverCloser   io.Closer
 	errorLogWriter   *io.PipeWriter
 	tracerCloser     io.Closer
 	stateStoreCloser io.Closer
@@ -71,27 +70,27 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir              string
-	DBCapacity           uint64
-	Password             string
-	APIAddr              string
-	DebugAPIAddr         string
-	Addr                 string
-	NATAddr              string
-	EnableWS             bool
-	EnableQUIC           bool
-	NetworkID            uint64
-	WelcomeMessage       string
-	Bootnodes            []string
-	CORSAllowedOrigins   []string
-	Logger               logging.Logger
-	TracingEnabled       bool
-	TracingEndpoint      string
-	TracingServiceName   string
-	GlobalPinningEnabled bool
-	PaymentThreshold     uint64
-	PaymentTolerance     uint64
-	ENSResolverEndpoints []string
+	DataDir                string
+	DBCapacity             uint64
+	Password               string
+	APIAddr                string
+	DebugAPIAddr           string
+	Addr                   string
+	NATAddr                string
+	EnableWS               bool
+	EnableQUIC             bool
+	NetworkID              uint64
+	WelcomeMessage         string
+	Bootnodes              []string
+	CORSAllowedOrigins     []string
+	Logger                 logging.Logger
+	TracingEnabled         bool
+	TracingEndpoint        string
+	TracingServiceName     string
+	GlobalPinningEnabled   bool
+	PaymentThreshold       uint64
+	PaymentTolerance       uint64
+	ResolverConnectionCfgs []*service.ConnectionConfig
 }
 
 func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
@@ -311,20 +310,17 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 
 	b.pullerCloser = puller
 
-	// Initiate the MultiResolver and all ENS resolvers.
-	// TODO: consider refactoring into resolver.Service that handles connection
-	// logic and logging.
-	multiResolver := resolver.NewMultiResolver()
-	for idx, ep := range o.ENSResolverEndpoints {
-		ensR := ens.NewClient()
-		if err := ensR.Connect(ep); err != nil {
-			logger.Warningf("ens resolver [%d]: failed to connect: %v", idx, err)
-		} else {
-			logger.Infof("ens resolver [%d]: connected to endpoint %q", idx, ep)
-			_ = multiResolver.PushResolver(".eth", ensR)
-		}
+	// If any resolver endpoint is specified, init and connect the resolver.
+	if len(o.ResolverConnectionCfgs) > 0 {
+		logger.Debug("Connecting to name resolution services")
+
+		resolverSvc := service.NewService(o.ResolverConnectionCfgs, logger)
+		resolverSvc.Connect()
+
+		b.resolverCloser = resolverSvc
+	} else {
+		logger.Info("No name resolution connection string specified")
 	}
-	b.multiResolver = multiResolver
 
 	var apiService api.Service
 	if o.APIAddr != "" {
@@ -459,8 +455,12 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(fmt.Errorf("error log writer: %w", err))
 	}
 
-	// TODO: consider refactoring into resolver.Service that handles closing.
-	b.multiResolver.Close()
+	// Shutdown the resolver service only if it has been initialized.
+	if b.resolverCloser != nil {
+		if err := b.resolverCloser.Close(); err != nil {
+			errs.add(fmt.Errorf("resolver service: %w", err))
+		}
+	}
 
 	if errs.hasErrors() {
 		return errs
