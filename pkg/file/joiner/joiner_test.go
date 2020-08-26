@@ -146,7 +146,7 @@ func TestEncryptionAndDecryption(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			pipe := pipeline.NewEncryptionPipeline(ctx, store, storage.ModePutUpload)
+			pipe := pipeline.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true)
 			testDataReader := bytes.NewReader(testData)
 			resultAddress, err := pipeline.FeedPipeline(ctx, pipe, testDataReader, int64(len(testData)))
 			if err != nil {
