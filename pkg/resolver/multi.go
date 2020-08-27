@@ -133,10 +133,7 @@ func (mr *MultiResolver) Close() error {
 		}
 	}
 
-	if errs.hasErrors() {
-		return errs
-	}
-	return nil
+	return errs.resolve()
 }
 
 func isTLD(tld string) bool {

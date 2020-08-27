@@ -35,10 +35,14 @@ func (me MultiCloseError) add(err error) {
 	me.errs = append(me.errs, err)
 }
 
-func (me MultiCloseError) hasErrors() bool {
-	return len(me.errs) > 0
+func (me MultiCloseError) resolve() error {
+	if len(me.errs) > 0 {
+		return me
+	}
+	return nil
 }
 
+// Error returns a formatted multi close error.
 func (me MultiCloseError) Error() string {
 	if len(me.errs) == 0 {
 		return ""
