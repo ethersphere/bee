@@ -21,10 +21,18 @@ type pipeWriteArgs struct {
 	data []byte // data includes the span too, but it may be encrypted when the pipeline is encrypted
 }
 
-// NewPipeline creates a standard pipeline that only hashes content with BMT to create
+// NewPipelineBuilder returns the appropriate pipeline according to the specified parameters
+func NewPipelineBuilder(ctx context.Context, s storage.Storer, mode storage.ModePut, encrypt bool) Interface {
+	if encrypt {
+		return newEncryptionPipeline(ctx, s, mode)
+	}
+	return newPipeline(ctx, s, mode)
+}
+
+// newPipeline creates a standard pipeline that only hashes content with BMT to create
 // a merkle-tree of hashes that represent the given arbitrary size byte stream. Partial
 // writes are supported. The pipeline flow is: Data -> Feeder -> BMT -> Storage -> HashTrie.
-func NewPipeline(ctx context.Context, s storage.Storer, mode storage.ModePut) Interface {
+func newPipeline(ctx context.Context, s storage.Storer, mode storage.ModePut) Interface {
 	tw := newHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, newShortPipelineFunc(ctx, s, mode))
 	lsw := newStoreWriter(ctx, s, mode, tw)
 	b := newBmtWriter(128, lsw)
@@ -42,12 +50,12 @@ func newShortPipelineFunc(ctx context.Context, s storage.Storer, mode storage.Mo
 	}
 }
 
-// NewEncryptionPipeline creates an encryption pipeline that encrypts using CTR, hashes content with BMT to create
+// newEncryptionPipeline creates an encryption pipeline that encrypts using CTR, hashes content with BMT to create
 // a merkle-tree of hashes that represent the given arbitrary size byte stream. Partial
 // writes are supported. The pipeline flow is: Data -> Feeder -> Encryption -> BMT -> Storage -> HashTrie.
 // Note that the encryption writer will mutate the data to contain the encrypted span, but the span field
 // with the unencrypted span is preserved.
-func NewEncryptionPipeline(ctx context.Context, s storage.Storer, mode storage.ModePut) Interface {
+func newEncryptionPipeline(ctx context.Context, s storage.Storer, mode storage.ModePut) Interface {
 	tw := newHashTrieWriter(swarm.ChunkSize, 64, swarm.HashSize+encryption.KeyLength, newShortEncryptionPipelineFunc(ctx, s, mode))
 	lsw := newStoreWriter(ctx, s, mode, tw)
 	b := newBmtWriter(128, lsw)
