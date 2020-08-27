@@ -9,11 +9,6 @@ import (
 	"strings"
 )
 
-// MultiResolver errors.
-var (
-// ErrResolverChainEmpty = errors.New("resolver chain empty")
-)
-
 // Ensure MultiResolver implements Resolver interface.
 var _ Interface = (*MultiResolver)(nil)
 
