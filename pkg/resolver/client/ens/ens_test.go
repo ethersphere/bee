@@ -27,6 +27,7 @@ func TestConnect(t *testing.T) {
 			ens.WithDialFunc(nil),
 		)
 		err := c.Connect(ep)
+		defer c.Close()
 		if err == nil && errors.Is(err, ens.ErrNotImplemented{}) {
 			t.Fatal("expected error")
 		}
@@ -40,6 +41,7 @@ func TestConnect(t *testing.T) {
 		if err := c.Connect("test"); err == nil {
 			t.Fatal("expected error")
 		}
+		c.Close()
 	})
 
 	t.Run("ok", func(t *testing.T) {
@@ -93,6 +95,7 @@ func TestResolve(t *testing.T) {
 		if err := c.Connect(name); err != nil {
 			t.Fatal(err)
 		}
+		defer c.Close()
 
 		_, err := c.Resolve(name)
 		if err == nil {
@@ -109,6 +112,7 @@ func TestResolve(t *testing.T) {
 		if err := c.Connect(name); err != nil {
 			t.Fatal(err)
 		}
+		defer c.Close()
 
 		_, err := c.Resolve(name)
 		if err == nil {
@@ -125,6 +129,7 @@ func TestResolve(t *testing.T) {
 		if err := c.Connect(name); err != nil {
 			t.Fatal(err)
 		}
+		defer c.Close()
 
 		adr, err := c.Resolve(name)
 		if err != nil {
