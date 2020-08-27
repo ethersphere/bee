@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -52,6 +53,9 @@ func TestConnect(t *testing.T) {
 		if err := c.Connect(ep); err != nil {
 			t.Fatal(err)
 		}
+		// Override the eth client to test connection.
+		ens.SetEthClient(c, &ethclient.Client{})
+
 		if c.Endpoint != ep {
 			t.Errorf("bad endpoint: got %q, want %q", c.Endpoint, ep)
 		}

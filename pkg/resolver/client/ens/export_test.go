@@ -29,7 +29,7 @@ func WithErrorDialFunc(err error) Option {
 
 func WithNoopDialFunc() Option {
 	return WithDialFunc(func(ep string) (*ethclient.Client, error) {
-		return &ethclient.Client{}, nil
+		return nil, nil
 	})
 }
 
