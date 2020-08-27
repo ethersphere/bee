@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/ethersphere/bmt v0.1.2
-	github.com/ethersphere/manifest v0.1.0
+	github.com/ethersphere/manifest v0.2.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20200217142428-fce0ec30dd00 // indirect
@@ -51,7 +51,7 @@ require (
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.opencensus.io v0.22.4 // indirect
 	go.uber.org/zap v1.15.0 // indirect
-	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
+	golang.org/x/crypto v0.0.0-20200728195943-123391ffb6de
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/mod v0.3.0 // indirect
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
