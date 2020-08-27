@@ -228,8 +228,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 
-	switch mode {
-	case storage.ModeSetSyncPush:
+	if mode == storage.ModeSetSyncPush {
 		i, err := db.pushIndex.Get(item)
 		if err != nil {
 			if errors.Is(err, leveldb.ErrNotFound) {
@@ -237,11 +236,11 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 				// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 				// but this function is called with ModeSetSyncPush
 				db.logger.Debugf("localstore: chunk with address %s not found in push index", addr)
-				break
+			} else {
+				return 0, err
 			}
-			return 0, err
 		}
-		if db.tags != nil && i.Tag != 0 {
+		if err == nil && db.tags != nil && i.Tag != 0 {
 			t, err := db.tags.Get(i.Tag)
 			if err != nil {
 				// we cannot break or return here since the function needs to
