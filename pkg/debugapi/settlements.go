@@ -26,30 +26,8 @@ type settlementResponse struct {
 
 type settlementsResponse struct {
 	TotalSettlementReceived *big.Int             `json:"totalreceived"`
-	TotalSettlementSent     *big.Int             `json:"totalsent""`
+	TotalSettlementSent     *big.Int             `json:"totalsent"`
 	Settlements             []settlementResponse `json:"settlements"`
-}
-
-func (s *server) payPeerHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	amount := uint64(100)
-
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.Logger.Debugf("debug api: settlements peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Error("debug api: settlements peer: invalid peer address %s", addr)
-		jsonhttp.NotFound(w, errInvaliAddress)
-		return
-	}
-	err = s.Settlement.Pay(context.Background(), peer, amount)
-	if err != nil {
-		jsonhttp.InternalServerError(w, err)
-		return
-	}
-	jsonhttp.OK(w, statusResponse{
-		Status: "ok",
-	})
-
 }
 
 func (s *server) settlementsHandler(w http.ResponseWriter, r *http.Request) {

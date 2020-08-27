@@ -93,9 +93,6 @@ func (s *server) setupRouting() {
 	router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peerSettlementsHandler),
 	})
-	router.Handle("/settlements/pay/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.payPeerHandler),
-	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
