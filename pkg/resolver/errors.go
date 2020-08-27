@@ -9,6 +9,14 @@ import (
 	"strings"
 )
 
+// ErrTLDTooLong denotes when a TLD in a name exceeds maximum length.
+type ErrTLDTooLong string
+
+// Error returns the formatted TLD too long error.
+func (e ErrTLDTooLong) Error() string {
+	return fmt.Sprintf("TLD %q exceeds max label length of %d characters", string(e), maxLabelLength)
+}
+
 // ErrInvalidTLD denotes passing an invalid TLD to the MultiResolver.
 type ErrInvalidTLD string
 
@@ -25,17 +33,19 @@ func (e ErrResolverChainEmpty) Error() string {
 	return fmt.Sprintf("Resolver chain for %q empty", string(e))
 }
 
-// MultiCloseError denotes that at least one resolver in the MultiResolver has
+// TODO: implement MultiError as separate package.
+
+// CloseError denotes that at least one resolver in the MultiResolver has
 // had an error when Close was called.
-type MultiCloseError struct {
+type CloseError struct {
 	errs []error
 }
 
-func (me MultiCloseError) add(err error) {
+func (me CloseError) add(err error) {
 	me.errs = append(me.errs, err)
 }
 
-func (me MultiCloseError) resolve() error {
+func (me CloseError) resolve() error {
 	if len(me.errs) > 0 {
 		return me
 	}
@@ -43,7 +53,7 @@ func (me MultiCloseError) resolve() error {
 }
 
 // Error returns a formatted multi close error.
-func (me MultiCloseError) Error() string {
+func (me CloseError) Error() string {
 	if len(me.errs) == 0 {
 		return ""
 	}

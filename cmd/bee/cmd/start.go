@@ -18,7 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
-	resolverSvc "github.com/ethersphere/bee/pkg/resolver/service"
+	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -80,10 +80,10 @@ func (c *command) initStartCmd() (err error) {
 
 			// If the resolver is specified, resolve all connection strings
 			// and fail on any errors.
-			var resolverCfgs []*resolverSvc.ConnectionConfig
+			var resolverCfgs []*resolver.ConnectionConfig
 			resolverEndpoints := c.config.GetStringSlice(optionNameResolverEndpoints)
 			if len(resolverEndpoints) > 0 {
-				resolverCfgs, err = resolverSvc.ParseConnectionStrings(resolverEndpoints)
+				resolverCfgs, err = resolver.ParseConnectionStrings(resolverEndpoints)
 				if err != nil {
 					return err
 				}

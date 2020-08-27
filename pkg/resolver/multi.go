@@ -14,7 +14,7 @@ var _ Interface = (*MultiResolver)(nil)
 
 type resolverMap map[string][]Interface
 
-// MultiResolver performs name resolutions based on the TLD of the URL.
+// MultiResolver performs name resolutions based on the TLD label in the name.
 type MultiResolver struct {
 	resolvers resolverMap
 	// ForceDefault will force all names to be resolved by the default
@@ -39,8 +39,7 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 	return mr
 }
 
-// WithForceDefault will force resolution using the default resolver
-// chain.
+// WithForceDefault will force resolution using the default resolver chain.
 func WithForceDefault() Option {
 	return func(mr *MultiResolver) {
 		mr.ForceDefault = true
@@ -99,6 +98,7 @@ func (mr *MultiResolver) GetChain(tld string) []Interface {
 // returning the result of the first Resolver that succeeds. If all resolvers
 // in the chain return an error, the function will return an ErrResolveFailed.
 func (mr *MultiResolver) Resolve(name string) (Address, error) {
+
 	tld := ""
 	if !mr.ForceDefault {
 		tld = getTLD(name)
@@ -117,13 +117,12 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 		}
 	}
 
-	// TODO: consider wrapping errors from the resolver chain.
 	return Address{}, err
 }
 
 // Close all will call Close on all resolvers in all resolver chains.
 func (mr *MultiResolver) Close() error {
-	errs := new(MultiCloseError)
+	errs := new(CloseError)
 
 	for _, chain := range mr.resolvers {
 		for _, r := range chain {
