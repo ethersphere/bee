@@ -38,7 +38,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/recovery"
-	"github.com/ethersphere/bee/pkg/resolver/service"
+	resolverSvc "github.com/ethersphere/bee/pkg/resolver/service"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -90,7 +90,7 @@ type Options struct {
 	GlobalPinningEnabled   bool
 	PaymentThreshold       uint64
 	PaymentTolerance       uint64
-	ResolverConnectionCfgs []*service.ConnectionConfig
+	ResolverConnectionCfgs []*resolverSvc.ConnectionConfig
 }
 
 func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
@@ -314,7 +314,7 @@ func NewBee(addr string, logger logging.Logger, o Options) (*Bee, error) {
 	if len(o.ResolverConnectionCfgs) > 0 {
 		logger.Debug("Connecting to name resolution services")
 
-		resolverSvc := service.NewService(o.ResolverConnectionCfgs, logger)
+		resolverSvc := resolverSvc.NewService(o.ResolverConnectionCfgs, logger)
 		resolverSvc.Connect()
 
 		b.resolverCloser = resolverSvc
