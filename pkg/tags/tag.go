@@ -57,7 +57,6 @@ type Tag struct {
 	Synced int64 // number of chunks synced with proof
 
 	Uid       uint32        // a unique identifier for this tag
-	Anonymous bool          // indicates if the tag is anonymous (i.e. if only pull sync should be used)
 	Name      string        // a name tag for this tag
 	Address   swarm.Address // the associated swarm hash for this tag
 	StartedAt time.Time     // tag started to calculate ETA
@@ -69,10 +68,9 @@ type Tag struct {
 }
 
 // NewTag creates a new tag, and returns it
-func NewTag(ctx context.Context, uid uint32, s string, total int64, anon bool, tracer *tracing.Tracer) *Tag {
+func NewTag(ctx context.Context, uid uint32, s string, total int64, tracer *tracing.Tracer) *Tag {
 	t := &Tag{
 		Uid:       uid,
-		Anonymous: anon,
 		Name:      s,
 		StartedAt: time.Now(),
 		Total:     total,

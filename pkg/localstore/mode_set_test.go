@@ -72,7 +72,7 @@ func TestModeSetAccess(t *testing.T) {
 func TestModeSetSyncPullNormalTag(t *testing.T) {
 	db := newTestDB(t, &Options{Tags: tags.NewTags()})
 
-	tag, err := db.tags.Create("test", 1, false)
+	tag, err := db.tags.Create("test", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,131 +120,13 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 	tagtesting.CheckTag(t, tag, 0, 1, 0, 1, 0, 1)
 }
 
-// TestModeSetSyncPullAnonymousTag checks that pull sync correcly increments
-// counters on an anonymous tag which is expected to be handled only by pull sync
-func TestModeSetSyncPullAnonymousTag(t *testing.T) {
-	db := newTestDB(t, &Options{Tags: tags.NewTags()})
-
-	tag, err := db.tags.Create("test", 1, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ch := generateTestRandomChunk().WithTagID(tag.Uid)
-	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
-
-	item, err := db.pullIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if item.Tag != tag.Uid {
-		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
-	}
-
-	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if item.Tag != 0 {
-		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, 0)
-	}
-
-	// 1 stored (because incremented manually in test), 1 sent, 1 total
-	tagtesting.CheckTag(t, tag, 0, 1, 0, 1, 0, 1)
-}
-
-// TestModeSetSyncPullPushAnonymousTag creates an anonymous tag and a corresponding chunk
-// then tries to Set both with push and pull Sync modes, but asserts that only the pull sync
-// increments were done to the tag
-func TestModeSetSyncPullPushAnonymousTag(t *testing.T) {
-	db := newTestDB(t, &Options{Tags: tags.NewTags()})
-
-	tag, err := db.tags.Create("test", 1, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ch := generateTestRandomChunk().WithTagID(tag.Uid)
-	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
-	item, err := db.pullIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if item.Tag != tag.Uid {
-		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
-	}
-
-	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// expect no error here. if the item cannot be found in pushsync the rest of the
-	// setSync logic should be executed
-	err = db.Set(context.Background(), storage.ModeSetSyncPush, ch.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// check that the tag has been incremented
-	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if item.Tag != 0 {
-		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, 0)
-	}
-
-	// 1 stored (because incremented manually in test), 1 sent, 1 total
-	tagtesting.CheckTag(t, tag, 0, 1, 0, 1, 0, 1)
-
-	// verify that the item does not exist in the push index
-	item, err = db.pushIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err == nil {
-		t.Fatal("expected error but got none")
-	}
-}
-
 // TestModeSetSyncPushNormalTag makes sure that push sync increments tags
 // correctly on a normal tag (that is, a tag that is expected to show progress bars
 // according to push sync progress)
 func TestModeSetSyncPushNormalTag(t *testing.T) {
 	db := newTestDB(t, &Options{Tags: tags.NewTags()})
 
-	tag, err := db.tags.Create("test", 1, false)
+	tag, err := db.tags.Create("test", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

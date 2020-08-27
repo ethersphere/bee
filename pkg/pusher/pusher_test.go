@@ -60,7 +60,7 @@ func TestSendChunkToPushSyncWithTag(t *testing.T) {
 	mtags, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 	defer storer.Close()
 
-	ta, err := mtags.Create("test", 1, false)
+	ta, err := mtags.Create("test", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

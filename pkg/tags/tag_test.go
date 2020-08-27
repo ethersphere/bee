@@ -144,7 +144,7 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 	wg.Add(10 * 5 * n)
 	for i := 0; i < 10; i++ {
 		s := string([]byte{uint8(i)})
-		tag, err := ts.Create(s, int64(n), false)
+		tag, err := ts.Create(s, int64(n))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 // TestMarshallingWithAddr tests that marshalling and unmarshalling is done correctly when the
 // tag Address (byte slice) contains some arbitrary value
 func TestMarshallingWithAddr(t *testing.T) {
-	tg := NewTag(context.Background(), 111, "test/tag", 10, false, nil)
+	tg := NewTag(context.Background(), 111, "test/tag", 10, nil)
 	tg.Address = swarm.NewAddress([]byte{0, 1, 2, 3, 4, 5, 6})
 
 	for _, f := range allStates {
@@ -210,9 +210,6 @@ func TestMarshallingWithAddr(t *testing.T) {
 	if unmarshalledTag.Name != tg.Name {
 		t.Fatalf("tag names not equal. want %s got %s", tg.Name, unmarshalledTag.Name)
 	}
-	if unmarshalledTag.Anonymous != tg.Anonymous {
-		t.Fatalf("tag anon field not equal. want %t got %t", tg.Anonymous, unmarshalledTag.Anonymous)
-	}
 
 	for _, state := range allStates {
 		uv, tv := unmarshalledTag.Get(state), tg.Get(state)
@@ -236,7 +233,7 @@ func TestMarshallingWithAddr(t *testing.T) {
 
 // TestMarshallingNoAddress tests that marshalling and unmarshalling is done correctly
 func TestMarshallingNoAddr(t *testing.T) {
-	tg := NewTag(context.Background(), 111, "test/tag", 10, false, nil)
+	tg := NewTag(context.Background(), 111, "test/tag", 10, nil)
 	for _, f := range allStates {
 		tg.Inc(f)
 	}
