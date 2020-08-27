@@ -351,8 +351,7 @@ func TestRangeRequests(t *testing.T) {
 			)
 
 			if uploadReference == "" {
-				// NOTE: cannot have expected hash for manifest because each time
-				//       it is created it is obfuscated using random key
+				// NOTE: reference will be different each time, due to manifest randomness
 
 				read := bytes.NewReader(respBytes)
 

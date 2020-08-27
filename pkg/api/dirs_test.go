@@ -163,8 +163,7 @@ func TestDirs(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// NOTE: cannot have expected hash for manifest because each time
-			//       it is created it is obfuscated using random key
+			// NOTE: reference will be different each time, due to manifest randomness
 
 			if resp.Reference.String() == "" {
 				t.Fatalf("expected file reference, did not got any")
