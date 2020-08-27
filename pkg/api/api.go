@@ -66,7 +66,7 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	if tagUid == "" {
 		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 		var err error
-		tag, err := s.Tags.Create(tagName, 0, false)
+		tag, err := s.Tags.Create(tagName, 0)
 		if err != nil {
 			return nil, false, fmt.Errorf("cannot create tag: %w", err)
 		}

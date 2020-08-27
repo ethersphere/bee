@@ -229,44 +229,6 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 	item.BinID = i.BinID
 
 	switch mode {
-	case storage.ModeSetSyncPull:
-		// if we are setting a chunk for pullsync we expect it to be in the index
-		// if it has a tag - we increment it and set the index item to _not_ contain the tag reference
-		// this prevents duplicate increments
-		i, err := db.pullIndex.Get(item)
-		if err != nil {
-			if errors.Is(err, leveldb.ErrNotFound) {
-				// we handle this error internally, since this is an internal inconsistency of the indices
-				// if we return the error here - it means that for example, in stream protocol peers which we sync
-				// to would be dropped. this is possible when the chunk is put with ModePutRequest and ModeSetSyncPull is
-				// called on the same chunk (which should not happen)
-				db.logger.Debugf("localstore: chunk with address %s not found in pull index", addr)
-				break
-			}
-			return 0, err
-		}
-
-		if db.tags != nil && i.Tag != 0 {
-			t, err := db.tags.Get(i.Tag)
-
-			// increment if and only if tag is anonymous
-			if err == nil && t.Anonymous {
-				// since pull sync does not guarantee that
-				// a chunk has reached its NN, we can only mark
-				// it as Sent
-				t.Inc(tags.StateSent)
-
-				// setting the tag to zero makes sure that
-				// we don't increment the same tag twice when syncing
-				// the same chunk to different peers
-				item.Tag = 0
-
-				err = db.pullIndex.PutInBatch(batch, item)
-				if err != nil {
-					return 0, err
-				}
-			}
-		}
 	case storage.ModeSetSyncPush:
 		i, err := db.pushIndex.Get(item)
 		if err != nil {
@@ -286,11 +248,6 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 				// run to end from db.pushIndex.DeleteInBatch
 				db.logger.Errorf("localstore: get tags on push sync set uid %d: %v", i.Tag, err)
 			} else {
-				// setting a chunk for push sync assumes the tag is not anonymous
-				if t.Anonymous {
-					return 0, errors.New("got an anonymous chunk in push sync index")
-				}
-
 				t.Inc(tags.StateSynced)
 			}
 		}
