@@ -14,10 +14,14 @@ type (
 	WelcomeMessageResponse = welcomeMessageResponse
 	BalancesResponse       = balancesResponse
 	BalanceResponse        = balanceResponse
+	SettlementResponse     = settlementResponse
+	SettlementsResponse    = settlementsResponse
 )
 
 var (
-	ErrCantBalance   = errCantBalance
-	ErrCantBalances  = errCantBalances
-	ErrInvaliAddress = errInvaliAddress
+	ErrCantBalance     = errCantBalance
+	ErrCantBalances    = errCantBalances
+	ErrCantSettlement  = errCantSettlements
+	ErrCantSettlements = errCantSettlements
+	ErrInvaliAddress   = errInvaliAddress
 )
