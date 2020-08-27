@@ -48,8 +48,8 @@ func NewTags() *Tags {
 
 // Create creates a new tag, stores it by the name and returns it
 // it returns an error if the tag with this name already exists
-func (ts *Tags) Create(s string, total int64, anon bool) (*Tag, error) {
-	t := NewTag(context.Background(), TagUidFunc(), s, total, anon, nil)
+func (ts *Tags) Create(s string, total int64) (*Tag, error) {
+	t := NewTag(context.Background(), TagUidFunc(), s, total, nil)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
 		return nil, errExists
