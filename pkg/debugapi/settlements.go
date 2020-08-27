@@ -5,7 +5,6 @@
 package debugapi
 
 import (
-	"context"
 	"math/big"
 	"net/http"
 
