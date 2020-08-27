@@ -32,7 +32,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	pipe := pipeline.NewPipeline(ctx, s.Storer, requestModePut(r))
+	pipe := pipeline.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r))
 	address, err := pipeline.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: split write all: %v", err)

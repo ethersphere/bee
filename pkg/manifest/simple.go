@@ -106,9 +106,8 @@ func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm
 		return swarm.ZeroAddress, fmt.Errorf("manifest marshal error: %w", err)
 	}
 
-	pipe := pipeline.NewPipeline(ctx, m.storer, mode)
+	pipe := pipeline.NewPipelineBuilder(ctx, m.storer, mode, m.encrypted)
 	address, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
-	_ = m.encrypted // need this field for encryption but this is to avoid linter complaints
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)
 	}

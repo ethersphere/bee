@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package pipeline
+package pipeline_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -19,7 +20,7 @@ import (
 
 func TestPartialWrites(t *testing.T) {
 	m := mock.NewStorer()
-	p := NewPipeline(context.Background(), m, storage.ModePutUpload)
+	p := pipeline.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 	_, _ = p.Write([]byte("hello "))
 	_, _ = p.Write([]byte("world"))
 
@@ -35,7 +36,7 @@ func TestPartialWrites(t *testing.T) {
 
 func TestHelloWorld(t *testing.T) {
 	m := mock.NewStorer()
-	p := NewPipeline(context.Background(), m, storage.ModePutUpload)
+	p := pipeline.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 
 	data := []byte("hello world")
 	_, err := p.Write(data)
@@ -58,7 +59,7 @@ func TestAllVectors(t *testing.T) {
 		data, expect := test.GetVector(t, i)
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
 			m := mock.NewStorer()
-			p := NewPipeline(context.Background(), m, storage.ModePutUpload)
+			p := pipeline.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 
 			_, err := p.Write(data)
 			if err != nil {

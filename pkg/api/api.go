@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	SwarmPinHeader    = "Swarm-Pin"
-	SwarmTagUidHeader = "Swarm-Tag-Uid"
+	SwarmPinHeader     = "Swarm-Pin"
+	SwarmTagUidHeader  = "Swarm-Tag-Uid"
+	SwarmEncryptHeader = "Swarm-Encrypt"
 )
 
 type Service interface {
@@ -85,4 +86,8 @@ func requestModePut(r *http.Request) storage.ModePut {
 		return storage.ModePutUploadPin
 	}
 	return storage.ModePutUpload
+}
+
+func requestEncrypt(r *http.Request) bool {
+	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
 }

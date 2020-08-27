@@ -15,7 +15,6 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
@@ -32,11 +31,9 @@ const (
 	contentTypeTar    = "application/x-tar"
 )
 
-type toEncryptContextKey struct{}
-
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, err := validateRequest(r)
+	err := validateRequest(r)
 	if err != nil {
 		s.Logger.Errorf("dir upload, validate request")
 		s.Logger.Debugf("dir upload, validate request err: %v", err)
@@ -53,9 +50,9 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the tag to the context
-	ctx = sctx.SetTag(ctx, tag)
+	ctx := sctx.SetTag(r.Context(), tag)
 
-	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger)
+	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger, requestEncrypt(r))
 	if err != nil {
 		s.Logger.Debugf("dir upload, store dir err: %v", err)
 		s.Logger.Errorf("dir upload, store dir")
@@ -72,31 +69,26 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateRequest validates an HTTP request for a directory to be uploaded
-// it returns a context based on the given request
-func validateRequest(r *http.Request) (context.Context, error) {
-	ctx := r.Context()
+func validateRequest(r *http.Request) error {
 	if r.Body == http.NoBody {
-		return nil, errors.New("request has no body")
+		return errors.New("request has no body")
 	}
 	contentType := r.Header.Get(contentTypeHeader)
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if mediaType != contentTypeTar {
-		return nil, errors.New("content-type not set to tar")
+		return errors.New("content-type not set to tar")
 	}
-	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	return context.WithValue(ctx, toEncryptContextKey{}, toEncrypt), nil
+	return nil
 }
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode storage.ModePut, logger logging.Logger) (swarm.Address, error) {
-	v := ctx.Value(toEncryptContextKey{})
-	toEncrypt, _ := v.(bool) // default is false
+func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode storage.ModePut, logger logging.Logger, encrypt bool) (swarm.Address, error) {
 
-	dirManifest, err := manifest.NewDefaultManifest(toEncrypt, s)
+	dirManifest, err := manifest.NewDefaultManifest(encrypt, s)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -134,7 +126,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 			contentType: contentType,
 			reader:      tarReader,
 		}
-		fileReference, err := storeFile(ctx, fileInfo, s, mode)
+		fileReference, err := storeFile(ctx, fileInfo, s, mode, encrypt)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
@@ -168,7 +160,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	pipe := pipeline.NewPipeline(ctx, s, mode)
+	pipe := pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
 	mr, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
@@ -181,7 +173,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
 
-	pipe = pipeline.NewPipeline(ctx, s, mode)
+	pipe = pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
 	manifestFileReference, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
@@ -192,9 +184,9 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 
 // storeFile uploads the given file and returns its reference
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code
-func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, mode storage.ModePut) (swarm.Address, error) {
+func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, mode storage.ModePut, encrypt bool) (swarm.Address, error) {
 	// first store the file and get its reference
-	pipe := pipeline.NewPipeline(ctx, s, mode)
+	pipe := pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
 	fr, err := pipeline.FeedPipeline(ctx, pipe, fileInfo.reader, fileInfo.size)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file: %w", err)
@@ -213,7 +205,7 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	pipe = pipeline.NewPipeline(ctx, s, mode)
+	pipe = pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
 	mr, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
@@ -225,7 +217,7 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
-	pipe = pipeline.NewPipeline(ctx, s, mode)
+	pipe = pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
 	reference, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
