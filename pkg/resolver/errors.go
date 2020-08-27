@@ -4,7 +4,10 @@
 
 package resolver
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ErrInvalidTLD denotes passing an invalid TLD to the MultiResolver.
 type ErrInvalidTLD string
@@ -20,4 +23,34 @@ type ErrResolverChainEmpty string
 // Error returns the formatted resolver chain empty error.
 func (e ErrResolverChainEmpty) Error() string {
 	return fmt.Sprintf("Resolver chain for %q empty", string(e))
+}
+
+// MultiCloseError denotes that at least one resolver in the MultiResolver has
+// had an error when Close was called.
+type MultiCloseError struct {
+	errs []error
+}
+
+func (me MultiCloseError) add(err error) {
+	me.errs = append(me.errs, err)
+}
+
+func (me MultiCloseError) hasErrors() bool {
+	return len(me.errs) > 0
+}
+
+func (me MultiCloseError) Error() string {
+	if len(me.errs) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("multiresolver failed to close: ")
+
+	for _, e := range me.errs {
+		b.WriteString(e.Error())
+		b.WriteString("; ")
+	}
+
+	return b.String()
 }

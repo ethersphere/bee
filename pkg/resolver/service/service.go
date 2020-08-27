@@ -89,8 +89,7 @@ func (s *Service) Connect() {
 
 // Close implements the Closer interface.
 func (s *Service) Close() error {
-	s.multi.Close()
-	return nil
+	return s.multi.Close()
 }
 
 // ParseConnectionString will try to parse a connection string used to connect
@@ -117,7 +116,7 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 		if isAllUnicodeLetters(endpoint[:i]) && len(endpoint) > i+2 && endpoint[i+1:i+3] != "//" {
 			tld = endpoint[:i]
 			if len(tld) > maxLabelLength {
-				return nil, fmt.Errorf("Resolver connection string: TLD extend max length of %d characters", maxLabelLength)
+				return nil, fmt.Errorf("resolver connection string: TLD extends max length of %d characters", maxLabelLength)
 
 			}
 			endpoint = endpoint[i+1:]

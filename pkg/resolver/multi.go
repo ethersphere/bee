@@ -123,12 +123,19 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 
 // Close all will call Close on all resolvers in all resolver chains.
 func (mr *MultiResolver) Close() error {
+	errs := new(MultiCloseError)
+
 	for _, chain := range mr.resolvers {
 		for _, r := range chain {
-			r.Close()
+			if err := r.Close(); err != nil {
+				errs.add(err)
+			}
 		}
 	}
 
+	if errs.hasErrors() {
+		return errs
+	}
 	return nil
 }
 
