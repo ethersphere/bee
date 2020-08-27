@@ -51,15 +51,5 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (int64, 
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
 func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadSeeker, dataSize int64, err error) {
-	// retrieve the root chunk to read the total data length the be retrieved
-	rootChunk, err := s.getter.Get(ctx, storage.ModeGetRequest, address)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	var chunkData = rootChunk.Data()
-
-	spanLength := binary.LittleEndian.Uint64(chunkData[:8])
-	r := internal.NewSimpleJoinerJob(ctx, s.getter, len(address.Bytes()), rootChunk)
-	return r, int64(spanLength), nil
+	return internal.NewSimpleJoiner(ctx, s.getter, address)
 }

@@ -10,44 +10,48 @@ import (
 	"errors"
 	"io"
 
-	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type SimpleJoinerJob struct {
+type SimpleJoiner struct {
 	addr       swarm.Address
 	rootData   []byte
 	spanLength int64
 	off        int64
-	levels     int
 	refLength  int
 
 	ctx    context.Context
 	getter storage.Getter
 }
 
-// NewSimpleJoinerJob creates a new simpleJoinerJob.
-func NewSimpleJoinerJob(ctx context.Context, getter storage.Getter, refLength int, rootChunk swarm.Chunk) *SimpleJoinerJob {
-	// spanLength is the overall  size of the entire data layer for this content addressed hash
-	spanLength := binary.LittleEndian.Uint64(rootChunk.Data()[:swarm.SpanSize])
-	levelCount := file.Levels(int64(spanLength), swarm.SectionSize, swarm.Branches)
-	j := &SimpleJoinerJob{
-		addr:       rootChunk.Address(),
-		refLength:  refLength,
-		ctx:        ctx,
-		getter:     getter,
-		spanLength: int64(spanLength),
-		rootData:   rootChunk.Data()[swarm.SpanSize:],
-		levels:     levelCount,
+// NewSimpleJoiner creates a new SimpleJoiner.
+func NewSimpleJoiner(ctx context.Context, getter storage.Getter, address swarm.Address) (*SimpleJoiner, int64, error) {
+	// retrieve the root chunk to read the total data length the be retrieved
+	rootChunk, err := getter.Get(ctx, storage.ModeGetRequest, address)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	return j
+	var chunkData = rootChunk.Data()
+
+	spanLength := int64(binary.LittleEndian.Uint64(chunkData[:swarm.SpanSize]))
+
+	j := &SimpleJoiner{
+		addr:       rootChunk.Address(),
+		refLength:  len(address.Bytes()),
+		ctx:        ctx,
+		getter:     getter,
+		spanLength: spanLength,
+		rootData:   chunkData[swarm.SpanSize:],
+	}
+
+	return j, spanLength, nil
 }
 
 // Read is called by the consumer to retrieve the joined data.
 // It must be called with a buffer equal to the maximum chunk size.
-func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
+func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 	read, err := j.ReadAt(b, j.off)
 	if err != nil && err != io.EOF {
 		return read, err
@@ -57,12 +61,12 @@ func (j *SimpleJoinerJob) Read(b []byte) (n int, err error) {
 	return read, err
 }
 
-func (j *SimpleJoinerJob) ReadAt(b []byte, off int64) (read int, err error) {
+func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
 	return j.readAtOffset(b, j.rootData, 0, j.spanLength, off)
 }
 
-func (j *SimpleJoinerJob) readAtOffset(b, data []byte, cur, subTrieSize, off int64) (read int, err error) {
+func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off int64) (read int, err error) {
 	if off >= j.spanLength {
 		return 0, io.EOF
 	}
@@ -106,7 +110,7 @@ func (j *SimpleJoinerJob) readAtOffset(b, data []byte, cur, subTrieSize, off int
 var errWhence = errors.New("seek: invalid whence")
 var errOffset = errors.New("seek: invalid offset")
 
-func (j *SimpleJoinerJob) Seek(offset int64, whence int) (int64, error) {
+func (j *SimpleJoiner) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case 0:
 		offset += 0
@@ -133,7 +137,7 @@ func (j *SimpleJoinerJob) Seek(offset int64, whence int) (int64, error) {
 
 }
 
-func (j *SimpleJoinerJob) Size() (int64, error) {
+func (j *SimpleJoiner) Size() (int64, error) {
 	if j.rootData == nil {
 		chunk, err := j.getter.Get(j.ctx, storage.ModeGetRequest, j.addr)
 		if err != nil {
