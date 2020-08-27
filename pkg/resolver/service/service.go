@@ -15,6 +15,10 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 )
 
+// Defined as per RFC 1034. For reference, see:
+// https://en.wikipedia.org/wiki/Domain_Name_System#cite_note-rfc1034-1
+const maxLabelLength = 63
+
 // Service is the name resolution service ready for integration with bee.
 type Service struct {
 	cfgs   []*ConnectionConfig
@@ -28,6 +32,14 @@ type ConnectionConfig struct {
 	TLD      string
 	Address  string
 	Endpoint string
+}
+
+// ErrTLDTooLong denotes when a TLD in a name exceeds maximum length.
+type ErrTLDTooLong string
+
+// Error returns the formatted TLD too long error.
+func (e ErrTLDTooLong) Error() string {
+	return fmt.Sprintf("TLD %q exceeds max label length of %d characters", string(e), maxLabelLength)
 }
 
 // NewService creates a new Service with the given options.
@@ -84,7 +96,7 @@ func (s *Service) Close() error {
 // ParseConnectionString will try to parse a connection string used to connect
 // the Resolver to a name resolution service. The resulting config can be
 // used to initialize a resovler Service.
-func ParseConnectionString(cs string) (*ConnectionConfig, error) {
+func parseConnectionString(cs string) (*ConnectionConfig, error) {
 	isAllUnicodeLetters := func(s string) bool {
 		for _, r := range s {
 			if !unicode.IsLetter(r) {
@@ -93,10 +105,6 @@ func ParseConnectionString(cs string) (*ConnectionConfig, error) {
 		}
 		return true
 	}
-
-	// Defined as per RFC 1034. For reference, see:
-	// https://en.wikipedia.org/wiki/Domain_Name_System#cite_note-rfc1034-1
-	const maxLabelLength = 63
 
 	endpoint := cs
 	var tld string
@@ -134,7 +142,7 @@ func ParseConnectionStrings(cstrs []string) ([]*ConnectionConfig, error) {
 	var res []*ConnectionConfig
 
 	for _, cs := range cstrs {
-		cfg, err := ParseConnectionString(cs)
+		cfg, err := parseConnectionString(cs)
 		if err != nil {
 			return nil, err
 		}

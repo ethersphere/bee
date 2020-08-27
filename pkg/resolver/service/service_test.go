@@ -11,69 +11,6 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/errors"
 )
 
-func TestParseConnectionString(t *testing.T) {
-	testCases := []struct {
-		conString string
-		wantCfg   service.ConnectionConfig
-		wantError error
-	}{
-		{
-			conString: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff:example.com",
-			wantError: errors.New("TLD too long"),
-		},
-		{
-			conString: "https://example.com",
-			wantCfg: service.ConnectionConfig{
-				TLD:      "",
-				Endpoint: "https://example.com",
-			},
-		},
-		{
-			conString: "tld:https://example.com",
-			wantCfg: service.ConnectionConfig{
-				TLD:      "tld",
-				Endpoint: "https://example.com",
-			},
-		},
-		{
-			conString: "0x314159265dD8dbb310642f98f50C066173C1259b@https://example.com",
-			wantCfg: service.ConnectionConfig{
-				TLD:      "",
-				Address:  "0x314159265dD8dbb310642f98f50C066173C1259b",
-				Endpoint: "https://example.com",
-			},
-		},
-		{
-			conString: "tld:0x314159265dD8dbb310642f98f50C066173C1259b@https://example.com",
-			wantCfg: service.ConnectionConfig{
-				TLD:      "tld",
-				Address:  "0x314159265dD8dbb310642f98f50C066173C1259b",
-				Endpoint: "https://example.com",
-			},
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.conString, func(t *testing.T) {
-			got, err := service.ParseConnectionString(tC.conString)
-			if err != nil {
-				if tC.wantError == nil {
-					t.Errorf("got error %v", err)
-				}
-				return
-			}
-			if got.TLD != tC.wantCfg.TLD {
-				t.Errorf("got %q, want %q", got.TLD, tC.wantCfg.TLD)
-			}
-			if got.Address != tC.wantCfg.Address {
-				t.Errorf("got %q, want %q", got.Address, tC.wantCfg.Address)
-			}
-			if got.Endpoint != tC.wantCfg.Endpoint {
-				t.Errorf("got %q, want %q", got.Endpoint, tC.wantCfg.Endpoint)
-			}
-		})
-	}
-}
-
 func TestParseConnectionStrings(t *testing.T) {
 	testCases := []struct {
 		desc       string
@@ -82,7 +19,64 @@ func TestParseConnectionStrings(t *testing.T) {
 		wantErr    error
 	}{
 		{
-			desc: "ok",
+			desc: "tld too long",
+			conStrings: []string{
+				"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff:example.com",
+			},
+			wantErr: service.ErrTLDTooLong("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+		},
+		{
+			desc: "single endpoint default tld",
+			conStrings: []string{
+				"https://example.com",
+			},
+			wantCfg: []service.ConnectionConfig{
+				{
+					TLD:      "",
+					Endpoint: "https://example.com",
+				},
+			},
+		},
+		{
+			desc: "single endpoint explicit tld",
+			conStrings: []string{
+				"tld:https://example.com",
+			},
+			wantCfg: []service.ConnectionConfig{
+				{
+					TLD:      "tld",
+					Endpoint: "https://example.com",
+				},
+			},
+		},
+		{
+			desc: "single endpoint with address default tld",
+			conStrings: []string{
+				"0x314159265dD8dbb310642f98f50C066173C1259b@https://example.com",
+			},
+			wantCfg: []service.ConnectionConfig{
+				{
+					TLD:      "",
+					Address:  "0x314159265dD8dbb310642f98f50C066173C1259b",
+					Endpoint: "https://example.com",
+				},
+			},
+		},
+		{
+			desc: "single endpoint with address explicit tld",
+			conStrings: []string{
+				"tld:0x314159265dD8dbb310642f98f50C066173C1259b@https://example.com",
+			},
+			wantCfg: []service.ConnectionConfig{
+				{
+					TLD:      "tld",
+					Address:  "0x314159265dD8dbb310642f98f50C066173C1259b",
+					Endpoint: "https://example.com",
+				},
+			},
+		},
+		{
+			desc: "mixed",
 			conStrings: []string{
 				"tld:https://example.com",
 				"testdomain:wowzers.map",
@@ -110,7 +104,7 @@ func TestParseConnectionStrings(t *testing.T) {
 			},
 		},
 		{
-			desc: "expected error",
+			desc: "mixed with error",
 			conStrings: []string{
 				"tld:https://example.com",
 				"testdomain:wowzers.map",
