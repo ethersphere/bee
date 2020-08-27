@@ -65,7 +65,7 @@ func TestFiles(t *testing.T) {
 		var resp api.FileUploadResponse
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithRequestHeader(api.EncryptHeader, "True"),
+			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
 			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
