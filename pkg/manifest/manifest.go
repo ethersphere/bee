@@ -12,7 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const DefaultManifestType = ManifestSimpleContentType
+const DefaultManifestType = ManifestMantarayContentType
 
 var (
 	// ErrNotFound is returned when an Entry is not found in the manifest.

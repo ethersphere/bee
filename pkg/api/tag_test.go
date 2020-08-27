@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -460,14 +461,29 @@ func TestTags(t *testing.T) {
 			name: "binary-file",
 		}})
 
-		expectedHash := swarm.MustParseHexAddress("ebcfbfac0e9a4fa4483491875f9486107a799e54cd832d0aacc59b1125b4b71f")
-		expectedResponse := api.FileUploadResponse{Reference: expectedHash}
+		var respBytes []byte
 
 		respHeaders := jsonhttptest.Request(t, client, http.MethodPost, dirResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(tarReader),
-			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithPutResponseBody(&respBytes),
 		)
+
+		read := bytes.NewReader(respBytes)
+
+		// get the reference as everytime it will change because of random encryption key
+		var resp api.FileUploadResponse
+		err := json.NewDecoder(read).Decode(&resp)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// NOTE: cannot have expected hash for manifest because each time
+		//       it is created it is obfuscated using random key
+
+		if resp.Reference.String() == "" {
+			t.Fatalf("expected file reference, did not got any")
+		}
 
 		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUidHeader))
 		if err != nil {
