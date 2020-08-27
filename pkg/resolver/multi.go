@@ -71,7 +71,7 @@ func (mr *MultiResolver) PushResolver(tld string, r Interface) error {
 // from the default resolver chain.
 func (mr *MultiResolver) PopResolver(tld string) error {
 	if tld != "" && !isTLD(tld) {
-		return ErrInvalidTLD("tld")
+		return ErrInvalidTLD(tld)
 	}
 
 	l := len(mr.resolvers[tld])
