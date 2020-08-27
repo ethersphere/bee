@@ -36,7 +36,7 @@ components:
           $ref: '#/components/schemas/SwarmAddress'
         balance:
           type: integer
-    
+
     Balances:
       type: object
       properties:
@@ -44,7 +44,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Balance'
-     
+
     BzzChunksPinned:
       type: object
       properties:
@@ -94,7 +94,7 @@ components:
       example: "2020-06-11T11:26:42.6969797+02:00"
 
     Duration:
-      description: Go time.Duration format 
+      description: Go time.Duration format
       type: string
       example: "5.0018ms"
 
@@ -106,10 +106,10 @@ components:
       properties:
         hash:
           $ref: '#/components/schemas/SwarmAddress'
-   
+
     MultiAddress:
       type: string
-    
+
     NewTagResponse:
       type: object
       properties:
@@ -135,11 +135,11 @@ components:
           type: string
         startedAt:
           $ref: '#/components/schemas/DateTime'
-    
+
     P2PUnderlay:
       type: string
       example: "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAmTm17toLDaPYzRyjKn27iCB76yjKnJ5DjQXneFmifFvaX"
-      
+
     Peers:
       type: object
       properties:
@@ -158,7 +158,7 @@ components:
 
     ProblemDetails:
       type: string
-    
+
     ReferenceResponse:
       type: object
       properties:
@@ -189,7 +189,7 @@ components:
       type: string
       pattern: '^[A-Fa-f0-9]{64}$'
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
-    
+
     SwarmEncryptedReference:
       type: string
       pattern: '^[A-Fa-f0-9]{128}$'
@@ -205,6 +205,12 @@ components:
 
     Uid:
       type: integer
+
+    WelcomeMessage:
+      type: object
+      properties:
+        welcome_message:
+          type: string
 
   responses:
     '400':
@@ -225,5 +231,5 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
-    
+
 
