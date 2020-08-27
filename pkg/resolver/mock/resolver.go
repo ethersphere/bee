@@ -56,6 +56,8 @@ func (r *Resolver) Resolve(name string) (resolver.Address, error) {
 }
 
 // Close implements the Resolver interface.
-func (r *Resolver) Close() {
+func (r *Resolver) Close() error {
 	r.IsClosed = true
+
+	return nil
 }

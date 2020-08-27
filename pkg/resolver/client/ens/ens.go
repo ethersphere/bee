@@ -110,7 +110,7 @@ func (c *Client) Resolve(name string) (Address, error) {
 // Close closes the RPC connection with the client, terminating all unfinished
 // requests.
 // Function obtains a write lock while interacting with the Ethereum client.
-func (c *Client) Close() {
+func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -118,4 +118,6 @@ func (c *Client) Close() {
 		c.ethCl.Close() // TODO: consider mocking out the eth client.
 	}
 	c.ethCl = nil
+
+	return nil
 }

@@ -127,12 +127,14 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 }
 
 // Close all will call Close on all resolvers in all resolver chains.
-func (mr *MultiResolver) Close() {
+func (mr *MultiResolver) Close() error {
 	for _, chain := range mr.resolvers {
 		for _, r := range chain {
 			r.Close()
 		}
 	}
+
+	return nil
 }
 
 func isTLD(tld string) bool {
