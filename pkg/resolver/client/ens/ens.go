@@ -28,7 +28,7 @@ type resolveType func(bind.ContractBackend, string) (string, error)
 // Client is a name resolution client that can connect to ENS via an
 // Ethereum endpoint.
 type Client struct {
-	mu        sync.RWMutex
+	mu        sync.Mutex
 	Endpoint  string
 	ethCl     *ethclient.Client
 	dialFn    dialType
@@ -59,16 +59,17 @@ func (c *Client) Connect(ep string) error {
 		return errors.New("no dial function implementation")
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	ethCl, err := c.dialFn(ep)
 	if err != nil {
 		return err
 	}
 
-	c.Endpoint = ep
+	// Lock and set the parameters.
+	c.mu.Lock()
 	c.ethCl = ethCl
+	c.Endpoint = ep
+	c.mu.Unlock()
+
 	return nil
 }
 
@@ -76,8 +77,8 @@ func (c *Client) Connect(ep string) error {
 // Ethereum node at the configured endpoint.
 // Function obtains a write lock while interacting with the Ethereum client.
 func (c *Client) IsConnected() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	return c.ethCl != nil
 }
@@ -89,10 +90,13 @@ func (c *Client) Resolve(name string) (Address, error) {
 		return swarm.ZeroAddress, errors.New("no resolve function implementation")
 	}
 
-	// Retrieve the content hash from ENS. Obtain a read lock.
-	c.mu.RLock()
-	hash, err := c.resolveFn(c.ethCl, name)
-	c.mu.RUnlock()
+	// Obtain our copy of the client under lock.
+	c.mu.Lock()
+	ethCl := c.ethCl
+	c.mu.Unlock()
+
+	hash, err := c.resolveFn(ethCl, name)
+
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
