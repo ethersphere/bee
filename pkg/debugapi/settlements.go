@@ -5,10 +5,12 @@
 package debugapi
 
 import (
+	"errors"
 	"math/big"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -95,18 +97,38 @@ func (s *server) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	peerexists := false
+
 	received, err := s.Settlement.TotalReceived(peer)
 	if err != nil {
-		s.Logger.Debugf("debug api: settlements peer: get peer %s received settlement: %v", peer.String(), err)
-		s.Logger.Errorf("debug api: settlements peer: can't get peer %s received settlement", peer.String())
-		jsonhttp.InternalServerError(w, errCantSettlements)
-		return
+		if !errors.Is(err, pseudosettle.ErrPeerNoSettlements) {
+			s.Logger.Debugf("debug api: settlements peer: get peer %s received settlement: %v", peer.String(), err)
+			s.Logger.Errorf("debug api: settlements peer: can't get peer %s received settlement", peer.String())
+			jsonhttp.InternalServerError(w, errCantSettlements)
+			return
+		}
 	}
+
+	if err == nil {
+		peerexists = true
+	}
+
 	sent, err := s.Settlement.TotalSent(peer)
 	if err != nil {
-		s.Logger.Debugf("debug api: settlements peer: get peer %s sent settlement: %v", peer.String(), err)
-		s.Logger.Errorf("debug api: settlements peer: can't get peer %s sent settlement", peer.String())
-		jsonhttp.InternalServerError(w, errCantSettlements)
+		if !errors.Is(err, pseudosettle.ErrPeerNoSettlements) {
+			s.Logger.Debugf("debug api: settlements peer: get peer %s sent settlement: %v", peer.String(), err)
+			s.Logger.Errorf("debug api: settlements peer: can't get peer %s sent settlement", peer.String())
+			jsonhttp.InternalServerError(w, errCantSettlements)
+			return
+		}
+	}
+
+	if err == nil {
+		peerexists = true
+	}
+
+	if !peerexists {
+		jsonhttp.NotFound(w, pseudosettle.ErrPeerNoSettlements)
 		return
 	}
 
