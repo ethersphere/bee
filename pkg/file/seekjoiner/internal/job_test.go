@@ -176,6 +176,157 @@ func TestSeek(t *testing.T) {
 	}
 }
 
+// TestPrefetch tests that prefetching chunks is made to fill up the read buffer
+func TestPrefetch(t *testing.T) {
+	seed := time.Now().UnixNano()
+
+	r := mrand.New(mrand.NewSource(seed))
+
+	for _, tc := range []struct {
+		name       string
+		size       int64
+		bufferSize int
+		readOffset int64
+		expRead    int
+	}{
+		{
+			name:       "one byte",
+			size:       1,
+			bufferSize: 1,
+			readOffset: 0,
+			expRead:    1,
+		},
+		{
+			name:       "one byte",
+			size:       1,
+			bufferSize: 10,
+			readOffset: 0,
+			expRead:    1,
+		},
+		{
+			name:       "ten bytes",
+			size:       10,
+			bufferSize: 5,
+			readOffset: 0,
+			expRead:    5,
+		},
+		{
+			name:       "thousand bytes",
+			size:       1000,
+			bufferSize: 100,
+			readOffset: 0,
+			expRead:    100,
+		},
+		{
+			name:       "thousand bytes",
+			size:       1000,
+			bufferSize: 100,
+			readOffset: 900,
+			expRead:    100,
+		},
+		{
+			name:       "thousand bytes",
+			size:       1000,
+			bufferSize: 100,
+			readOffset: 800,
+			expRead:    100,
+		},
+
+		{
+			name:       "10kb",
+			size:       10000,
+			bufferSize: 5,
+			readOffset: 5,
+			expRead:    5,
+		},
+
+		{
+			name:       "10kb",
+			size:       10000,
+			bufferSize: 1500,
+			readOffset: 5,
+			expRead:    1500,
+		},
+
+		{
+			name:       "100kb",
+			size:       100000,
+			bufferSize: 8000,
+			readOffset: 100,
+			expRead:    8000,
+		},
+
+		{
+			name:       "100kb",
+			size:       100000,
+			bufferSize: 80000,
+			readOffset: 100,
+			expRead:    80000,
+		},
+
+		{
+			name:       "10megs",
+			size:       10000000,
+			bufferSize: 8000,
+			readOffset: 990000,
+			expRead:    8000,
+		},
+		{
+			name:       "10megs",
+			size:       10000000,
+			bufferSize: 80000,
+			readOffset: 900000,
+			expRead:    80000,
+		},
+		{
+			name:       "10megs",
+			size:       10000000,
+			bufferSize: 8000000,
+			readOffset: 900000,
+			expRead:    8000000,
+		},
+		{
+			name:       "10megs",
+			size:       1000000,
+			bufferSize: 2000000,
+			readOffset: 900000,
+			expRead:    100000,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			store := mock.NewStorer()
+			defer store.Close()
+
+			data, err := ioutil.ReadAll(io.LimitReader(r, tc.size))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
+			addr, err := s.Split(ctx, ioutil.NopCloser(bytes.NewReader(data)), tc.size, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			j, _, err := internal.NewSimpleJoiner(ctx, store, addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := make([]byte, tc.bufferSize)
+			n, err := j.ReadAt(b, tc.readOffset)
+			if n != tc.expRead {
+				t.Errorf("read %d bytes out of %d", n, tc.expRead)
+			}
+			ro := int(tc.readOffset)
+			if !bytes.Equal(b[:n], data[ro:ro+n]) {
+				t.Error("buffer does not match generated data")
+			}
+		})
+	}
+}
+
 // TestSimpleJoinerReadAt
 func TestSimpleJoinerReadAt(t *testing.T) {
 	store := mock.NewStorer()
