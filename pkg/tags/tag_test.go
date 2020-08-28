@@ -201,7 +201,7 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 			go func(tag *Tag, f State) {
 				for j := 0; j < n; j++ {
 					go func() {
-						err :=  tag.Inc(f)
+						err := tag.Inc(f)
 						if err != nil {
 							errC <- err
 						}
