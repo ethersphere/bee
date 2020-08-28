@@ -142,26 +142,37 @@ func TestTagConcurrentIncrements(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
 	logger := logging.New(ioutil.Discard, 0)
 	tg := &Tag{stateStore: mockStatestore, logger: logger}
-	n := 1000
+	n := 10
 	wg := sync.WaitGroup{}
 	wg.Add(5 * n)
 	errC := make(chan error)
+	doneC := make(chan bool)
 	for _, f := range allStates {
 		go func(f State) {
 			for j := 0; j < n; j++ {
 				go func() {
-					defer wg.Done()
-					errC <- tg.Inc(f)
+					err := tg.Inc(f)
+					if err != nil {
+						errC <- err
+					}
+					wg.Done()
 				}()
 			}
 		}(f)
-		err := <-errC
-		if err != nil {
-			close(errC)
-			t.Fatal(err)
-		}
 	}
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(doneC)
+	}()
+
+	select {
+	case <-doneC:
+		break
+	case err := <-errC:
+		close(errC)
+		t.Fatal(err)
+	}
+
 	for _, f := range allStates {
 		v := tg.Get(f)
 		if v != int64(n) {
