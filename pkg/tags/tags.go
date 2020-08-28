@@ -38,7 +38,7 @@ var (
 
 // Tags hold tag information indexed by a unique random uint32
 type Tags struct {
-	tags *sync.Map
+	tags       *sync.Map
 	stateStore storage.StateStorer
 	logger     logging.Logger
 }
@@ -46,7 +46,7 @@ type Tags struct {
 // NewTags creates a tags object
 func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
 	return &Tags{
-		tags: &sync.Map{},
+		tags:       &sync.Map{},
 		stateStore: stateStore,
 		logger:     logger,
 	}

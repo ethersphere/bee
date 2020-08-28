@@ -65,9 +65,9 @@ type Tag struct {
 	StartedAt time.Time     // tag started to calculate ETA
 
 	// end-to-end tag tracing
-	ctx      context.Context  // tracing context
-	span     opentracing.Span // tracing root span
-	spanOnce sync.Once        // make sure we close root span only once
+	ctx        context.Context     // tracing context
+	span       opentracing.Span    // tracing root span
+	spanOnce   sync.Once           // make sure we close root span only once
 	stateStore storage.StateStorer // to persist the tag
 	logger     logging.Logger      // logger instance for logging
 }
@@ -75,10 +75,10 @@ type Tag struct {
 // NewTag creates a new tag, and returns it
 func NewTag(ctx context.Context, uid uint32, s string, total int64, tracer *tracing.Tracer, stateStore storage.StateStorer, logger logging.Logger) *Tag {
 	t := &Tag{
-		Uid:       uid,
-		Name:      s,
-		StartedAt: time.Now(),
-		Total:     total,
+		Uid:        uid,
+		Name:       s,
+		StartedAt:  time.Now(),
+		Total:      total,
 		stateStore: stateStore,
 		logger:     logger,
 	}
