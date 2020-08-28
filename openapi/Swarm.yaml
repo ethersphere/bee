@@ -322,7 +322,7 @@ paths:
           name: path
           schema:
             type: string
-          required: false
+          required: true
           description: Path to the file in the collection.
         - in: query
           name: targets

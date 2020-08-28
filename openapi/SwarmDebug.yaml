@@ -339,7 +339,7 @@ paths:
     get:
       description: Get topology of known network
       tags:
-        - Swarm Debug Endpoints
+        - Connectivity
       responses:
         '200':
           description: Swarm topology of the bee node
