@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -65,7 +66,7 @@ func TestFiles(t *testing.T) {
 		var resp api.FileUploadResponse
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithRequestHeader(api.EncryptHeader, "True"),
+			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
 			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
@@ -277,7 +278,7 @@ func TestRangeRequests(t *testing.T) {
 			uploadEndpoint:   "/dirs",
 			downloadEndpoint: "/bzz",
 			filepath:         "/ipsum/lorem.txt",
-			reference:        "d2b1ab6fb26c1570712ca33efb30f8cbbaa994d5b85e1cf6f782bcae430eabaf",
+			reference:        "",
 			reader: tarFiles(t, []f{
 				{
 					data:      data,
@@ -339,20 +340,41 @@ func TestRangeRequests(t *testing.T) {
 				Logger: logging.New(ioutil.Discard, 5),
 			})
 
+			uploadReference := upload.reference
+
+			var respBytes []byte
+
 			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusOK,
 				jsonhttptest.WithRequestBody(upload.reader),
-				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
-					Reference: swarm.MustParseHexAddress(upload.reference),
-				}),
 				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
+				jsonhttptest.WithPutResponseBody(&respBytes),
 			)
+
+			if uploadReference == "" {
+				// NOTE: reference will be different each time, due to manifest randomness
+
+				read := bytes.NewReader(respBytes)
+
+				// get the reference as everytime it will change because of random encryption key
+				var resp api.FileUploadResponse
+				err := json.NewDecoder(read).Decode(&resp)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if resp.Reference.String() == "" {
+					t.Fatalf("expected file reference, did not got any")
+				}
+
+				uploadReference = resp.Reference.String()
+			}
 
 			for _, tc := range ranges {
 				t.Run(tc.name, func(t *testing.T) {
 					rangeHeader, want := createRangeHeader(data, tc.ranges)
 
 					var body []byte
-					respHeaders := jsonhttptest.Request(t, client, http.MethodGet, upload.downloadEndpoint+"/"+upload.reference+upload.filepath, http.StatusPartialContent,
+					respHeaders := jsonhttptest.Request(t, client, http.MethodGet, upload.downloadEndpoint+"/"+uploadReference+upload.filepath, http.StatusPartialContent,
 						jsonhttptest.WithRequestHeader("Range", rangeHeader),
 						jsonhttptest.WithPutResponseBody(&body),
 					)

@@ -12,7 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/manifest/simple"
@@ -106,9 +106,8 @@ func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm
 		return swarm.ZeroAddress, fmt.Errorf("manifest marshal error: %w", err)
 	}
 
-	sp := splitter.NewSimpleSplitter(m.storer, mode)
-
-	address, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(data), int64(len(data)), m.encrypted)
+	pipe := pipeline.NewPipelineBuilder(ctx, m.storer, mode, m.encrypted)
+	address, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)
 	}

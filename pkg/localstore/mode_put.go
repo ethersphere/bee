@@ -212,14 +212,6 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if exists {
 		return true, 0, nil
 	}
-	anonymous := false
-	if db.tags != nil && item.Tag != 0 {
-		tag, err := db.tags.Get(item.Tag)
-		if err != nil {
-			return false, 0, err
-		}
-		anonymous = tag.Anonymous
-	}
 
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
@@ -234,11 +226,9 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if err != nil {
 		return false, 0, err
 	}
-	if !anonymous {
-		err = db.pushIndex.PutInBatch(batch, item)
-		if err != nil {
-			return false, 0, err
-		}
+	err = db.pushIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
 	}
 
 	return false, 0, nil

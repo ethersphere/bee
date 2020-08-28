@@ -16,6 +16,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/keystore"
+	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
+	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver"
@@ -27,29 +31,28 @@ import (
 func (c *command) initStartCmd() (err error) {
 
 	const (
-		optionNameDataDir              = "data-dir"
-		optionNameDBCapacity           = "db-capacity"
-		optionNamePassword             = "password"
-		optionNamePasswordFile         = "password-file"
-		optionNameAPIAddr              = "api-addr"
-		optionNameP2PAddr              = "p2p-addr"
-		optionNameNATAddr              = "nat-addr"
-		optionNameP2PWSEnable          = "p2p-ws-enable"
-		optionNameP2PQUICEnable        = "p2p-quic-enable"
-		optionNameDebugAPIEnable       = "debug-api-enable"
-		optionNameDebugAPIAddr         = "debug-api-addr"
-		optionNameBootnodes            = "bootnode"
-		optionNameNetworkID            = "network-id"
-		optionWelcomeMessage           = "welcome-message"
-		optionCORSAllowedOrigins       = "cors-allowed-origins"
-		optionNameTracingEnabled       = "tracing-enable"
-		optionNameTracingEndpoint      = "tracing-endpoint"
-		optionNameTracingServiceName   = "tracing-service-name"
-		optionNameVerbosity            = "verbosity"
-		optionNameGlobalPinningEnabled = "global-pinning-enable"
-		optionNamePaymentThreshold     = "payment-threshold"
-		optionNamePaymentTolerance     = "payment-tolerance"
-		optionNameResolverEndpoints    = "resolver-endpoints"
+		optionNameDataDir            = "data-dir"
+		optionNameDBCapacity         = "db-capacity"
+		optionNamePassword           = "password"
+		optionNamePasswordFile       = "password-file"
+		optionNameAPIAddr            = "api-addr"
+		optionNameP2PAddr            = "p2p-addr"
+		optionNameNATAddr            = "nat-addr"
+		optionNameP2PWSEnable        = "p2p-ws-enable"
+		optionNameP2PQUICEnable      = "p2p-quic-enable"
+		optionNameDebugAPIEnable     = "debug-api-enable"
+		optionNameDebugAPIAddr       = "debug-api-addr"
+		optionNameBootnodes          = "bootnode"
+		optionNameNetworkID          = "network-id"
+		optionWelcomeMessage         = "welcome-message"
+		optionCORSAllowedOrigins     = "cors-allowed-origins"
+		optionNameTracingEnabled     = "tracing-enable"
+		optionNameTracingEndpoint    = "tracing-endpoint"
+		optionNameTracingServiceName = "tracing-service-name"
+		optionNameVerbosity          = "verbosity"
+		optionNamePaymentThreshold   = "payment-threshold"
+		optionNamePaymentTolerance   = "payment-tolerance"
+		optionNameResolverEndpoints  = "resolver-endpoints"
 	)
 
 	cmd := &cobra.Command{
@@ -111,6 +114,14 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				debugAPIAddr = ""
 			}
 
+			var keystore keystore.Service
+			if c.config.GetString(optionNameDataDir) == "" {
+				keystore = memkeystore.New()
+				logger.Warning("data directory not provided, keys are not persisted")
+			} else {
+				keystore = filekeystore.New(filepath.Join(c.config.GetString(optionNameDataDir), "keys"))
+			}
+
 			var password string
 			if p := c.config.GetString(optionNamePassword); p != "" {
 				password = p
@@ -121,14 +132,40 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				}
 				password = string(bytes.Trim(b, "\n"))
 			} else {
-				p, err := terminalPromptPassword(cmd, c.passwordReader, "Password")
+				exists, err := keystore.Exists("swarm")
 				if err != nil {
 					return err
 				}
-				password = p
+				if exists {
+					password, err = terminalPromptPassword(cmd, c.passwordReader, "Password")
+					if err != nil {
+						return err
+					}
+				} else {
+					password, err = terminalPromptCreatePassword(cmd, c.passwordReader)
+					if err != nil {
+						return err
+					}
+				}
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), logger, node.Options{
+			swarmPrivateKey, created, err := keystore.Key("swarm", password)
+			if err != nil {
+				return fmt.Errorf("swarm key: %w", err)
+			}
+
+			address, err := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, c.config.GetUint64(optionNameNetworkID))
+			if err != nil {
+				return err
+			}
+
+			if created {
+				logger.Infof("new swarm network address created: %s", address)
+			} else {
+				logger.Infof("using existing swarm network address: %s", address)
+			}
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), address, keystore, swarmPrivateKey, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
 				DataDir:                c.config.GetString(optionNameDataDir),
 				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
 				Password:               password,
@@ -138,7 +175,6 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				NATAddr:                c.config.GetString(optionNameNATAddr),
 				EnableWS:               c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:             c.config.GetBool(optionNameP2PQUICEnable),
-				NetworkID:              c.config.GetUint64(optionNameNetworkID),
 				WelcomeMessage:         c.config.GetString(optionWelcomeMessage),
 				Bootnodes:              c.config.GetStringSlice(optionNameBootnodes),
 				CORSAllowedOrigins:     c.config.GetStringSlice(optionCORSAllowedOrigins),

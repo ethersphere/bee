@@ -12,9 +12,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -146,9 +145,10 @@ func TestEncryptionAndDecryption(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
-			testDataReader := file.NewSimpleReadCloser(testData)
-			resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), true)
+			ctx := context.Background()
+			pipe := pipeline.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true)
+			testDataReader := bytes.NewReader(testData)
+			resultAddress, err := pipeline.FeedPipeline(ctx, pipe, testDataReader, int64(len(testData)))
 			if err != nil {
 				t.Fatal(err)
 			}
