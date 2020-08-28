@@ -20,6 +20,9 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,15 +68,19 @@ type Tag struct {
 	ctx      context.Context  // tracing context
 	span     opentracing.Span // tracing root span
 	spanOnce sync.Once        // make sure we close root span only once
+	stateStore storage.StateStorer // to persist the tag
+	logger     logging.Logger      // logger instance for logging
 }
 
 // NewTag creates a new tag, and returns it
-func NewTag(ctx context.Context, uid uint32, s string, total int64, tracer *tracing.Tracer) *Tag {
+func NewTag(ctx context.Context, uid uint32, s string, total int64, tracer *tracing.Tracer, stateStore storage.StateStorer, logger logging.Logger) *Tag {
 	t := &Tag{
 		Uid:       uid,
 		Name:      s,
 		StartedAt: time.Now(),
 		Total:     total,
+		stateStore: stateStore,
+		logger:     logger,
 	}
 
 	// context here is used only to store the root span `new.upload.tag` within Tag,
@@ -112,6 +119,14 @@ func (t *Tag) IncN(state State, n int) {
 		v = &t.Synced
 	}
 	atomic.AddInt64(v, int64(n))
+
+	// check if syncing is over and persist the tag
+	if state == StateSynced {
+		totalUnique := t.Total - t.Seen
+		if t.Synced >= totalUnique {
+			t.UpdateTag()
+		}
+	}
 }
 
 // Inc increments the count for a state
@@ -180,6 +195,8 @@ func (t *Tag) DoneSplit(address swarm.Address) int64 {
 		t.Address = address
 	}
 
+	// persist the tag
+	t.UpdateTag()
 	return total
 }
 
@@ -279,4 +296,18 @@ func decodeInt64Splice(buffer *[]byte) int64 {
 	val, n := binary.Varint((*buffer))
 	*buffer = (*buffer)[n:]
 	return val
+}
+
+func (tag *Tag) UpdateTag() {
+	key := "tags_" + strconv.Itoa(int(tag.Uid))
+	value, err := tag.MarshalBinary()
+	if err != nil {
+		tag.logger.Warning("tag: ", err)
+		return
+	}
+	err = tag.stateStore.Put(key, value)
+	if err != nil {
+		tag.logger.Warning("tag: ", err)
+		return
+	}
 }

@@ -19,6 +19,9 @@ package localstore
 import (
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -70,7 +73,9 @@ func TestModeSetAccess(t *testing.T) {
 // as a result we should expect the tag value to remain in the pull index
 // and we expect that the tag should not be incremented by pull sync set
 func TestModeSetSyncPullNormalTag(t *testing.T) {
-	db := newTestDB(t, &Options{Tags: tags.NewTags()})
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	db := newTestDB(t, &Options{Tags: tags.NewTags(mockStatestore, logger)})
 
 	tag, err := db.tags.Create("test", 1)
 	if err != nil {
@@ -124,7 +129,9 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 // correctly on a normal tag (that is, a tag that is expected to show progress bars
 // according to push sync progress)
 func TestModeSetSyncPushNormalTag(t *testing.T) {
-	db := newTestDB(t, &Options{Tags: tags.NewTags()})
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	db := newTestDB(t, &Options{Tags: tags.NewTags(mockStatestore, logger)})
 
 	tag, err := db.tags.Create("test", 1)
 	if err != nil {

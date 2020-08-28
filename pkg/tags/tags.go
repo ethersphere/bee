@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -37,19 +39,23 @@ var (
 // Tags hold tag information indexed by a unique random uint32
 type Tags struct {
 	tags *sync.Map
+	stateStore storage.StateStorer
+	logger     logging.Logger
 }
 
 // NewTags creates a tags object
-func NewTags() *Tags {
+func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
 	return &Tags{
 		tags: &sync.Map{},
+		stateStore: stateStore,
+		logger:     logger,
 	}
 }
 
 // Create creates a new tag, stores it by the name and returns it
 // it returns an error if the tag with this name already exists
 func (ts *Tags) Create(s string, total int64) (*Tag, error) {
-	t := NewTag(context.Background(), TagUidFunc(), s, total, nil)
+	t := NewTag(context.Background(), TagUidFunc(), s, total, nil, ts.stateStore, ts.logger)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
 		return nil, errExists
@@ -74,7 +80,13 @@ func (ts *Tags) All() (t []*Tag) {
 func (ts *Tags) Get(uid uint32) (*Tag, error) {
 	t, ok := ts.tags.Load(uid)
 	if !ok {
-		return nil, ErrNotFound
+		// see if the tag is present in the store
+		// if yes, load it in to the memory
+		ta, err := ts.GetTagFromStore(uid)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		return ts.Create(ta.Name, ta.Total)
 	}
 	return t.(*Tag), nil
 }
@@ -142,4 +154,29 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 	}
 
 	return err
+}
+
+func (ts *Tags) GetTagFromStore(uid uint32) (*Tag, error) {
+	key := "tags_" + strconv.Itoa(int(uid))
+	var data []byte
+	err := ts.stateStore.Get(key, data)
+	if err != nil {
+		return nil, err
+	}
+	var ta Tag
+	err = ta.UnmarshalBinary(data)
+	if err != nil {
+		return nil, nil
+	}
+	return &ta, nil
+}
+
+func (ts *Tags) Close() (err error) {
+	// store all the tags in memory
+	ts.tags.Range(func(key interface{}, value interface{}) bool {
+		ta := value.(*Tag)
+		ta.UpdateTag()
+		return true
+	})
+	return nil
 }

@@ -18,6 +18,9 @@ package tags
 
 import (
 	"context"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
@@ -31,7 +34,9 @@ var (
 
 // TestTagSingleIncrements tests if Inc increments the tag state value
 func TestTagSingleIncrements(t *testing.T) {
-	tg := &Tag{Total: 10}
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	tg := &Tag{Total: 10, stateStore: mockStatestore, logger: logger}
 
 	tc := []struct {
 		state    uint32
@@ -113,7 +118,9 @@ func TestTagETA(t *testing.T) {
 
 // TestTagConcurrentIncrements tests Inc calls concurrently
 func TestTagConcurrentIncrements(t *testing.T) {
-	tg := &Tag{}
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	tg := &Tag{stateStore: mockStatestore, logger: logger}
 	n := 1000
 	wg := sync.WaitGroup{}
 	wg.Add(5 * n)
@@ -138,7 +145,9 @@ func TestTagConcurrentIncrements(t *testing.T) {
 
 // TestTagsMultipleConcurrentIncrements tests Inc calls concurrently
 func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
-	ts := NewTags()
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	ts := NewTags(mockStatestore, logger)
 	n := 100
 	wg := sync.WaitGroup{}
 	wg.Add(10 * 5 * n)
@@ -185,7 +194,9 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 // TestMarshallingWithAddr tests that marshalling and unmarshalling is done correctly when the
 // tag Address (byte slice) contains some arbitrary value
 func TestMarshallingWithAddr(t *testing.T) {
-	tg := NewTag(context.Background(), 111, "test/tag", 10, nil)
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	tg := NewTag(context.Background(), 111, "test/tag", 10, nil, mockStatestore, logger)
 	tg.Address = swarm.NewAddress([]byte{0, 1, 2, 3, 4, 5, 6})
 
 	for _, f := range allStates {
@@ -233,7 +244,9 @@ func TestMarshallingWithAddr(t *testing.T) {
 
 // TestMarshallingNoAddress tests that marshalling and unmarshalling is done correctly
 func TestMarshallingNoAddr(t *testing.T) {
-	tg := NewTag(context.Background(), 111, "test/tag", 10, nil)
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	tg := NewTag(context.Background(), 111, "test/tag", 10, nil, mockStatestore, logger)
 	for _, f := range allStates {
 		tg.Inc(f)
 	}

@@ -8,6 +8,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,7 +42,9 @@ func TestTags(t *testing.T) {
 		someHash           = swarm.MustParseHexAddress("aabbcc")
 		someContent        = []byte("bbaatt")
 		someTagName        = "file.jpg"
-		tag                = tags.NewTags()
+		mockStatestore     = statestore.NewStateStore()
+		logger             = logging.New(ioutil.Discard, 0)
+		tag                = tags.NewTags(mockStatestore, logger)
 		mockPusher         = mp.NewMockPusher(tag)
 		client             = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),

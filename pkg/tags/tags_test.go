@@ -17,11 +17,16 @@
 package tags
 
 import (
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"io/ioutil"
 	"testing"
 )
 
 func TestAll(t *testing.T) {
-	ts := NewTags()
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	ts := NewTags(mockStatestore, logger)
 	if _, err := ts.Create("1", 1); err != nil {
 		t.Fatal(err)
 	}
