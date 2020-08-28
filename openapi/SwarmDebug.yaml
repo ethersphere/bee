@@ -23,12 +23,12 @@ servers:
         default: 6060
         description: Service port provided in bee node config
 
-paths:  
+paths:
   '/addresses':
     get:
       summary: Get overlay and underlay addresses of the node
       tags:
-        - Swarm Debug Endpoints
+        - Connectivity
       responses:
         '200':
           description: Own node underlay and overlay addresses
@@ -45,7 +45,7 @@ paths:
     get:
       summary: Get the balances with all known peers
       tags:
-        - Swarm Debug Endpoints
+        - Balance
       responses:
         '200':
           description: Own balances with all known peers
@@ -62,7 +62,7 @@ paths:
     get:
       summary: Get the balances with a specific peer
       tags:
-        - Swarm Debug Endpoints
+        - Balance
       parameters:
         - in: path
           name: address
@@ -88,14 +88,14 @@ paths:
     get:
       summary: Check if chunk at address exists locally
       tags:
-        - Swarm Debug Endpoints
+        - Chunk
       parameters:
         - in: path
           name: address
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
           required: true
-          description: Swarm address of chunk    
+          description: Swarm address of chunk
       responses:
         '200':
           description: Chunk exists
@@ -109,7 +109,31 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         default:
           description: Default response
-  
+    delete:
+      summary: Delete a chunk from local storage
+      tags:
+        - Chunk
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of chunk
+      responses:
+        '200':
+          description: Chunk exists
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        default:
+          description: Default response
+
   '/chunks-pin/{address}':
     parameters:
         - in: path
@@ -117,11 +141,11 @@ paths:
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
           required: true
-          description: Swarm address of chunk  
+          description: Swarm address of chunk
     post:
       summary: Pin chunk with given address
       tags:
-        - Swarm Debug Endpoints
+        - Chunk pinning
       responses:
         '200':
           description: Pinning chunk with address
@@ -138,7 +162,7 @@ paths:
     delete:
       summary: Unpin chunk with given address
       tags:
-        - Swarm Debug Endpoints
+        - Chunk pinning
       responses:
         '200':
           description: Unpinning chunk with address
@@ -155,7 +179,7 @@ paths:
     get:
       summary: Get pinning status of chunk with given address
       tags:
-        - Swarm Debug Endpoints
+        - Chunk pinning
       responses:
         '200':
           description: Pinning state of chunk  with address
@@ -167,12 +191,12 @@ paths:
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-  
+
   '/chunks-pin/':
     get:
       summary: Get list of pinned chunks
       tags:
-        - Swarm Debug Endpoints
+        - Chunk pinning
       responses:
         '200':
           description: List of pinned chunks
@@ -184,12 +208,12 @@ paths:
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-  
+
   '/connect/{multiAddress}':
     post:
       summary: Connect to address
       tags:
-        - Swarm Debug Endpoints
+        - Connectivity
       parameters:
         - in: path
           allowReserved: true
@@ -216,7 +240,7 @@ paths:
     get:
       summary: Get health of node
       tags:
-        - Swarm Debug Endpoints
+        - Status
       responses:
         '200':
           description: Health State of node
@@ -226,12 +250,12 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         default:
           description: Default response
-  
+
   '/peers':
     get:
       summary: Get a list of peers
       tags:
-        - Swarm Debug Endpoints
+        - Connectivity
       responses:
         '200':
           description: Returns overlay addresses of connected peers
@@ -246,14 +270,14 @@ paths:
     delete:
       summary: Remove peer
       tags:
-        - Swarm Debug Endpoints
+        - Connectivity
       parameters:
         - in: path
           name: address
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
           required: true
-          description: Swarm address of peer    
+          description: Swarm address of peer
       responses:
         '200':
           description: Disconnected peer
@@ -267,12 +291,12 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-  
+
   '/pingpong/{peer-id}':
     post:
       summary: Try connection to node
       tags:
-        - Swarm Debug Endpoints
+        - Connectivity
       parameters:
         - in: path
           name: peer-id
@@ -295,13 +319,12 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-  
-  
+
   '/readiness':
     get:
       summary: Get readiness state of node
       tags:
-        - Swarm Debug Endpoints
+        - Status
       responses:
         '200':
           description: Health State of node
@@ -311,62 +334,12 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         default:
           description: Default response
-  
-  '/tags':
-    post:
-      summary: 'Create Tag'
-      tags: 
-        - Swarm Debug Endpoints
-      parameters:
-        - in: query
-          name: name
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/TagName'
-          required: true
-          description: Tagname
-      responses:
-        '200':
-          description: New Tag Info
-          content:
-            application/json:
-              schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
-        default:
-          description: Default response
-
-  '/tags/{uid}':
-    get:
-      summary: 'Get Tag information using Uid'
-      tags: 
-        - Swarm Debug Endpoints
-      parameters:
-        - in: path
-          name: uid
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
-          required: true
-          description: Uid
-      responses:
-        '200':
-          description: Tag info
-          content:
-            application/json:
-              schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
-        default:
-          description: Default response
 
   '/topology':
     get:
       description: Get topology of known network
       tags:
-        - Swarm Debug Endpoints
+        - Connectivity
       responses:
         '200':
           description: Swarm topology of the bee node
@@ -374,5 +347,42 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
-    
 
+  '/welcome-message':
+    get:
+      summary: Get configured P2P welcome message
+      tags:
+        - Connectivity
+      responses:
+        '200':
+          description: Welcome message
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/WelcomeMessage'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    post:
+      summary: Set P2P welcome message
+      tags:
+        - Connectivity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: 'SwarmCommon.yaml#/components/schemas/WelcomeMessage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
