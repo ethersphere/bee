@@ -17,10 +17,11 @@
 package tags
 
 import (
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 )
 
 func TestAll(t *testing.T) {

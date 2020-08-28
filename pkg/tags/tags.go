@@ -21,13 +21,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/storage"
 	"math/rand"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

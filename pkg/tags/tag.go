@@ -20,13 +20,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/storage"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
@@ -122,8 +122,11 @@ func (t *Tag) IncN(state State, n int) {
 
 	// check if syncing is over and persist the tag
 	if state == StateSynced {
-		totalUnique := t.Total - t.Seen
-		if t.Synced >= totalUnique {
+		total := atomic.LoadInt64(&t.Total)
+		seen := atomic.LoadInt64(&t.Seen)
+		synced := atomic.LoadInt64(&t.Synced)
+		totalUnique := total - seen
+		if synced >= totalUnique {
 			t.UpdateTag()
 		}
 	}
@@ -237,12 +240,12 @@ func (t *Tag) ETA(state State) (time.Time, error) {
 func (tag *Tag) MarshalBinary() (data []byte, err error) {
 	buffer := make([]byte, 4)
 	binary.BigEndian.PutUint32(buffer, tag.Uid)
-	encodeInt64Append(&buffer, tag.Total)
-	encodeInt64Append(&buffer, tag.Split)
-	encodeInt64Append(&buffer, tag.Seen)
-	encodeInt64Append(&buffer, tag.Stored)
-	encodeInt64Append(&buffer, tag.Sent)
-	encodeInt64Append(&buffer, tag.Synced)
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Total))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Split))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Seen))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Stored))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Sent))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Synced))
 
 	intBuffer := make([]byte, 8)
 
@@ -265,12 +268,12 @@ func (tag *Tag) UnmarshalBinary(buffer []byte) error {
 	tag.Uid = binary.BigEndian.Uint32(buffer)
 	buffer = buffer[4:]
 
-	tag.Total = decodeInt64Splice(&buffer)
-	tag.Split = decodeInt64Splice(&buffer)
-	tag.Seen = decodeInt64Splice(&buffer)
-	tag.Stored = decodeInt64Splice(&buffer)
-	tag.Sent = decodeInt64Splice(&buffer)
-	tag.Synced = decodeInt64Splice(&buffer)
+	atomic.AddInt64(&tag.Total, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Split, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Seen, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Stored, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Sent, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Synced, decodeInt64Splice(&buffer))
 
 	t, n := binary.Varint(buffer)
 	tag.StartedAt = time.Unix(t, 0)
