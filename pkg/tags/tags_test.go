@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestAll(t *testing.T) {
@@ -57,4 +58,58 @@ func TestAll(t *testing.T) {
 	if len(all) != 3 {
 		t.Fatalf("expected length to be 3 got %d", len(all))
 	}
+}
+
+func TestPersistence(t *testing.T) {
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+	ts := NewTags(mockStatestore, logger)
+	ta, err := ts.Create("one", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ta.Total = 10
+	ta.Seen = 2
+	ta.Split = 10
+	ta.Stored = 8
+	ta.DoneSplit(swarm.ZeroAddress)
+	ts.Delete(ta.Uid) // simulate node going down
+
+	rcvd1, err := ts.Get(ta.Uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ta.Uid != rcvd1.Uid {
+		t.Fatalf("invalid uid: expected %d got %d", ta.Uid, rcvd1.Uid)
+	}
+	if ta.Total != rcvd1.Total {
+		t.Fatalf("invalid total: expected %d got %d", ta.Total, rcvd1.Total)
+	}
+
+	// See if tag update hapens after syncing is over
+	for i := 0; i < 8; i++ {
+		ta.Inc(StateSent)
+		ta.Inc(StateSynced)
+	}
+	ts.Delete(ta.Uid) // simulate node going down
+
+	rcvd2, err := ts.Get(ta.Uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ta.Uid != rcvd2.Uid {
+		t.Fatalf("invalid uid: expected %d got %d", ta.Uid, rcvd2.Uid)
+	}
+	if ta.Total != rcvd2.Total {
+		t.Fatalf("invalid total: expected %d got %d", ta.Total, rcvd2.Total)
+	}
+	if ta.Sent != rcvd2.Sent {
+		t.Fatalf("invalid sent: expected %d got %d", ta.Sent, rcvd2.Sent)
+	}
+	if ta.Synced != rcvd2.Synced {
+		t.Fatalf("invalid synced: expected %d got %d", ta.Synced, rcvd2.Synced)
+	}
+
 }

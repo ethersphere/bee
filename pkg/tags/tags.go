@@ -86,7 +86,8 @@ func (ts *Tags) Get(uid uint32) (*Tag, error) {
 		if err != nil {
 			return nil, ErrNotFound
 		}
-		return ts.Create(ta.Name, ta.Total)
+		ts.tags.LoadOrStore(ta.Uid, ta)
+		return ta, nil
 	}
 	return t.(*Tag), nil
 }
@@ -159,7 +160,7 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 func (ts *Tags) GetTagFromStore(uid uint32) (*Tag, error) {
 	key := "tags_" + strconv.Itoa(int(uid))
 	var data []byte
-	err := ts.stateStore.Get(key, data)
+	err := ts.stateStore.Get(key, &data)
 	if err != nil {
 		return nil, err
 	}
