@@ -213,6 +213,9 @@ components:
           type: string
 
   responses:
+
+    '204':
+      description: The resource was deleted successfully.
     '400':
       description: Bad request
       content:

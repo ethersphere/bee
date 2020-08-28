@@ -397,3 +397,56 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+    delete:
+      summary: 'Delete Tag information using Uid'
+      tags:
+        - Tag
+      parameters:
+        - in: path
+          name: uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: true
+          description: Uid
+      responses:
+        '204':
+          $ref: 'SwarmCommon.yaml#/components/responses/204'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    patch:
+      summary: 'Update Total Count and swarm hash for a tag of an input stream of unknown size using Uid'
+      tags:
+        - Tag
+      parameters:
+        - in: path
+          name: uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: true
+          description: Uid
+      requestBody:
+        description: Can contain swarm hash to use for the tag
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: 'SwarmCommon.yaml#/components/schemas/Address'
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Status'       
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
