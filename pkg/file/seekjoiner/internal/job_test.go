@@ -79,12 +79,11 @@ func TestSeek(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rootChunk, err := store.Get(ctx, storage.ModeGetLookup, addr)
+
+			j, _, err := internal.NewSimpleJoiner(ctx, store, addr)
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
 
 			validateRead := func(t *testing.T, name string, i int) {
 				t.Helper()
@@ -205,7 +204,10 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+	j, _, err := internal.NewSimpleJoiner(ctx, store, rootChunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	b := make([]byte, swarm.ChunkSize)
 	_, err = j.ReadAt(b, swarm.ChunkSize)
@@ -218,9 +220,9 @@ func TestSimpleJoinerReadAt(t *testing.T) {
 	}
 }
 
-// TestSimpleJoinerJobOneLevel tests the retrieval of two data chunks immediately
+// TestSimpleJoinerOneLevel tests the retrieval of two data chunks immediately
 // below the root chunk level.
-func TestSimpleJoinerJobOneLevel(t *testing.T) {
+func TestSimpleJoinerOneLevel(t *testing.T) {
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -247,7 +249,10 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+	j, _, err := internal.NewSimpleJoiner(ctx, store, rootChunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// verify first chunk content
 	outBuffer := make([]byte, swarm.ChunkSize)
@@ -286,10 +291,10 @@ func TestSimpleJoinerJobOneLevel(t *testing.T) {
 	}
 }
 
-// TestSimpleJoinerJobTwoLevelsAcrossChunk tests the retrieval of data chunks below
+// TestSimpleJoinerTwoLevelsAcrossChunk tests the retrieval of data chunks below
 // first intermediate level across two intermediate chunks.
 // Last chunk has sub-chunk length.
-func TestSimpleJoinerJobTwoLevelsAcrossChunk(t *testing.T) {
+func TestSimpleJoinerTwoLevelsAcrossChunk(t *testing.T) {
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -336,7 +341,10 @@ func TestSimpleJoinerJobTwoLevelsAcrossChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	j := internal.NewSimpleJoinerJob(ctx, store, rootChunk)
+	j, _, err := internal.NewSimpleJoiner(ctx, store, rootChunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// read back all the chunks and verify
 	b := make([]byte, swarm.ChunkSize)

@@ -8,13 +8,14 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/collection"
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
 	_                           = collection.Entry(&Entry{})
 	serializedDataSize          = swarm.SectionSize * 2
-	encryptedSerializedDataSize = swarm.EncryptedReferenceSize * 2
+	encryptedSerializedDataSize = encryption.ReferenceSize * 2
 )
 
 // Entry provides addition of metadata to a data reference.
