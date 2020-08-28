@@ -47,11 +47,11 @@ func encrypt(chunkData []byte) (encryption.Key, []byte, []byte, error) {
 	return key, encryptedSpan, encryptedData, nil
 }
 
-func newSpanEncryption(key encryption.Key) *encryption.Encryption {
+func newSpanEncryption(key encryption.Key) encryption.Interface {
 	refSize := int64(swarm.HashSize + encryption.KeyLength)
 	return encryption.New(key, 0, uint32(swarm.ChunkSize/refSize), sha3.NewLegacyKeccak256)
 }
 
-func newDataEncryption(key encryption.Key) *encryption.Encryption {
+func newDataEncryption(key encryption.Key) encryption.Interface {
 	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

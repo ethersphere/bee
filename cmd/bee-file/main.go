@@ -17,7 +17,7 @@ import (
 	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -59,8 +59,8 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	buf := bytes.NewBuffer(nil)
 	writeCloser := cmdfile.NopWriteCloser(buf)
 	limitBuf := cmdfile.NewLimitWriteCloser(writeCloser, limitMetadataLength)
-	j := joiner.NewSimpleJoiner(store)
-	_, err = file.JoinReadAll(cmd.Context(), j, addr, limitBuf, false)
+	j := seekjoiner.NewSimpleJoiner(store)
+	_, err = file.JoinReadAll(cmd.Context(), j, addr, limitBuf)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(cmd.Context(), j, e.Metadata(), buf, false)
+	_, err = file.JoinReadAll(cmd.Context(), j, e.Metadata(), buf)
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func getEntry(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 	defer outFile.Close()
-	_, err = file.JoinReadAll(cmd.Context(), j, e.Reference(), outFile, false)
+	_, err = file.JoinReadAll(cmd.Context(), j, e.Reference(), outFile)
 	return err
 }
 

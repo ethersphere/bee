@@ -11,8 +11,8 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/manifest/mantaray"
@@ -151,10 +151,10 @@ func newMantaraySaver(
 func (ls *mantarayLoadSaver) Load(ref []byte) ([]byte, error) {
 	ctx := ls.ctx
 
-	j := joiner.NewSimpleJoiner(ls.storer)
+	j := seekjoiner.NewSimpleJoiner(ls.storer)
 
 	buf := bytes.NewBuffer(nil)
-	_, err := file.JoinReadAll(ctx, j, swarm.NewAddress(ref), buf, ls.encrypted)
+	_, err := file.JoinReadAll(ctx, j, swarm.NewAddress(ref), buf)
 	if err != nil {
 		return nil, err
 	}
@@ -165,9 +165,9 @@ func (ls *mantarayLoadSaver) Load(ref []byte) ([]byte, error) {
 func (ls *mantarayLoadSaver) Save(data []byte) ([]byte, error) {
 	ctx := ls.ctx
 
-	sp := splitter.NewSimpleSplitter(ls.storer, ls.modePut)
+	pipe := pipeline.NewPipelineBuilder(ctx, ls.storer, ls.modePut, ls.encrypted)
+	address, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
 
-	address, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(data), int64(len(data)), ls.encrypted)
 	if err != nil {
 		return swarm.ZeroAddress.Bytes(), err
 	}
