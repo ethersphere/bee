@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption"
 )
 
-var _ encryption.Interface = (*Encryptor)(nil)
+var _ encryption.Encryptor = (*Encryptor)(nil)
 
 var (
 	// ErrNotImplemented is returned when a required Encryptor function is not set.
