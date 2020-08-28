@@ -191,7 +191,7 @@ func (t *Tag) Done(s State) bool {
 
 // DoneSplit sets total count to SPLIT count and sets the associated swarm hash for this tag
 // is meant to be called when splitter finishes for input streams of unknown size
-func (t *Tag) DoneSplit(address swarm.Address) int64 {
+func (t *Tag) DoneSplit(address swarm.Address) (int64, error) {
 	total := atomic.LoadInt64(&t.Split)
 	atomic.StoreInt64(&t.Total, total)
 
@@ -200,8 +200,11 @@ func (t *Tag) DoneSplit(address swarm.Address) int64 {
 	}
 
 	// persist the tag
-	t.saveTag()
-	return total
+	err := t.saveTag()
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // Status returns the value of state and the total count
@@ -320,5 +323,5 @@ func (tag *Tag) saveTag() error {
 }
 
 func getKey(uid uint32) string {
-	return fmt.Sprintf("tags_%d",uid)
+	return fmt.Sprintf("tags_%d", uid)
 }

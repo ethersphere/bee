@@ -72,7 +72,10 @@ func TestPersistence(t *testing.T) {
 	ta.Seen = 2
 	ta.Split = 10
 	ta.Stored = 8
-	ta.DoneSplit(swarm.ZeroAddress)
+	_, err = ta.DoneSplit(swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// simulate node closing down and booting up
 	err = ts.Close()
@@ -80,7 +83,6 @@ func TestPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	ts = NewTags(mockStatestore, logger)
-
 
 	// Get the tag after the node bootup
 	rcvd1, err := ts.Get(ta.Uid)

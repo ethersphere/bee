@@ -18,13 +18,13 @@ package tags
 
 import (
 	"context"
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -145,18 +145,21 @@ func TestTagConcurrentIncrements(t *testing.T) {
 	n := 1000
 	wg := sync.WaitGroup{}
 	wg.Add(5 * n)
+	errC := make(chan error)
 	for _, f := range allStates {
 		go func(f State) {
 			for j := 0; j < n; j++ {
 				go func() {
-					err := tg.Inc(f)
-					if err != nil {
-						t.Fatal(err)
-					}
-					wg.Done()
+					defer wg.Done()
+					errC <- tg.Inc(f)
 				}()
 			}
 		}(f)
+		err := <-errC
+		if err != nil {
+			close(errC)
+			t.Fatal(err)
+		}
 	}
 	wg.Wait()
 	for _, f := range allStates {
@@ -181,18 +184,21 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		errC := make(chan error)
 		for _, f := range allStates {
 			go func(tag *Tag, f State) {
 				for j := 0; j < n; j++ {
 					go func() {
-						err := tag.Inc(f)
-						if err != nil {
-							t.Fatal(err)
-						}
+						errC <- tag.Inc(f)
 						wg.Done()
 					}()
 				}
 			}(tag, f)
+		}
+		err = <-errC
+		if err != nil {
+			close(errC)
+			t.Fatal(err)
 		}
 	}
 	wg.Wait()

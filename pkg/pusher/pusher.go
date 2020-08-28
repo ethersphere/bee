@@ -123,7 +123,7 @@ LOOP:
 					}
 					return
 				}
-				err =  s.setChunkAsSynced(ctx, ch)
+				err = s.setChunkAsSynced(ctx, ch)
 				if err != nil {
 					s.logger.Debugf("pusher: error setting chunk as synced: %v", err)
 					return

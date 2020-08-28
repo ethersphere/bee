@@ -203,7 +203,13 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if created {
-		tag.DoneSplit(reference)
+		_, err = tag.DoneSplit(reference)
+		if err != nil {
+			s.Logger.Debugf("file upload: done split: %v", err)
+			s.Logger.Error("file upload: done split failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
 	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
 	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
