@@ -30,13 +30,32 @@ servers:
       port:
         default: 8080
         description: Service port provided in bee node config
-  
+
 paths:
   '/bytes':
     post:
       summary: 'Upload data'
-      tags: 
-        - 'Endpoints on local bee node'
+      tags:
+        - Bytes
+      parameters:
+        - in: header
+          name: swarm-tag-uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: false
+          description: Associate upload with an existing Tag UID
+        - in: header
+          name: swarm-pin
+          schema:
+            type: boolean
+          required: false
+          description: Represents the pinning state of the bytes
+        - in: header
+          name: swarm-encrypt
+          schema:
+            type: boolean
+          required: false
+          description: Represents the encrypting state of the bytes
       requestBody:
         content:
           application/octet-stream:
@@ -58,8 +77,8 @@ paths:
   '/bytes/{reference}':
     get:
       summary: 'Get referenced data'
-      tags: 
-        - 'Endpoints on local bee node'
+      tags:
+        - Bytes
       parameters:
         - in: path
           name: reference
@@ -83,26 +102,26 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-          
+
   '/chunks/{reference}':
     get:
       summary: 'Get Chunk'
-      tags: 
-        - 'Endpoints on local bee node'
+      tags:
+        - Chunk
       parameters:
         - in: path
           name: reference
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
           required: true
-          description: Swarm address of chunk   
+          description: Swarm address of chunk
       responses:
         '200':
           description: Retrieved chunk content
           content:
             application/octet-stream:
               schema:
-                type: string  
+                type: string
                 format: binary
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
@@ -114,15 +133,15 @@ paths:
           description: Default response
     post:
       summary: 'Upload Chunk'
-      tags: 
-        - 'Endpoints on local bee node'
+      tags:
+        - Chunk
       parameters:
         - in: header
           name: swarm-tag-uid
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
           required: false
-          description: Uid of chunk
+          description: Associate upload with an existing Tag UID
         - in: header
           name: swarm-pin
           schema:
@@ -134,7 +153,7 @@ paths:
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
           required: true
-          description: Swarm address of chunk   
+          description: Swarm address of chunk
       requestBody:
         content:
           application/octet-stream:
@@ -158,8 +177,8 @@ paths:
   '/files':
     post:
       summary: 'Upload file'
-      tags: 
-        - 'Endpoints on local bee node'
+      tags:
+        - File
       parameters:
         - in: query
           name: name
@@ -167,6 +186,24 @@ paths:
             $ref: 'SwarmCommon.yaml#/components/schemas/FileName'
           required: false
           description: Filename
+        - in: header
+          name: swarm-tag-uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: false
+          description: Associate upload with an existing Tag UID
+        - in: header
+          name: swarm-pin
+          schema:
+            type: boolean
+          required: false
+          description: Represents the pinning state of the file
+        - in: header
+          name: swarm-encrypt
+          schema:
+            type: boolean
+          required: false
+          description: Represents the encrypting state of the file
       requestBody:
         content:
           multipart/form-data:
@@ -198,8 +235,8 @@ paths:
   '/files/{reference}':
     get:
       summary: 'Get referenced file'
-      tags: 
-        - 'Endpoints on local bee node'
+      tags:
+        - File
       parameters:
         - in: path
           name: reference
@@ -215,9 +252,198 @@ paths:
               schema:
                 type: string
                 format: binary
-                  
+
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/dirs':
+    post:
+      summary: 'Upload a collection'
+      tags:
+        - Collection
+      parameters:
+        - in: header
+          name: swarm-tag-uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: false
+          description: Associate upload with an existing Tag UID
+        - in: header
+          name: swarm-pin
+          schema:
+            type: boolean
+          required: false
+          description: Represents the pinning state of the collection
+        - in: header
+          name: swarm-encrypt
+          schema:
+            type: boolean
+          required: false
+          description: Represents the encrypting state of the collection
+      requestBody:
+        content:
+          application/x-tar:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/bzz/{reference}/{path}':
+    get:
+      summary: 'Get referenced file from a collection of files'
+      tags:
+        - Collection
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
+          required: true
+          description: Swarm address of content
+        - in: path
+          name: path
+          schema:
+            type: string
+          required: true
+          description: Path to the file in the collection.
+        - in: query
+          name: targets
+          schema:
+            type: string
+          required: false
+          description: Global pinning targets prefix
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/tags':
+    post:
+      summary: 'Create Tag'
+      tags:
+        - Tag
+      parameters:
+        - in: query
+          name: name
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/TagName'
+          required: true
+          description: Tagname
+      responses:
+        '200':
+          description: New Tag Info
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/tags/{uid}':
+    get:
+      summary: 'Get Tag information using Uid'
+      tags:
+        - Tag
+      parameters:
+        - in: path
+          name: uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: true
+          description: Uid
+      responses:
+        '200':
+          description: Tag info
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    delete:
+      summary: 'Delete Tag information using Uid'
+      tags:
+        - Tag
+      parameters:
+        - in: path
+          name: uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: true
+          description: Uid
+      responses:
+        '204':
+          $ref: 'SwarmCommon.yaml#/components/responses/204'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    patch:
+      summary: 'Update Total Count and swarm hash for a tag of an input stream of unknown size using Uid'
+      tags:
+        - Tag
+      parameters:
+        - in: path
+          name: uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: true
+          description: Uid
+      requestBody:
+        description: Can contain swarm hash to use for the tag
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: 'SwarmCommon.yaml#/components/schemas/Address'
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Status'       
         '404':
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
