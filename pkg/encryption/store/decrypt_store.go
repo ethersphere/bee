@@ -7,7 +7,6 @@ package store
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -19,7 +18,7 @@ type decryptingStore struct {
 	storage.Getter
 }
 
-func NewDecrypting(s storage.Getter) storage.Getter {
+func New(s storage.Getter) storage.Getter {
 	return &decryptingStore{s}
 }
 
@@ -50,10 +49,6 @@ func (s *decryptingStore) Get(ctx context.Context, mode storage.ModeGet, addr sw
 }
 
 func decryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
-	if len(chunkData) < swarm.SpanSize {
-		return nil, fmt.Errorf("invalid ChunkData, min length 8 got %v", len(chunkData))
-	}
-
 	decryptedSpan, decryptedData, err := decrypt(chunkData, encryptionKey)
 	if err != nil {
 		return nil, err
@@ -76,15 +71,15 @@ func decryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, e
 }
 
 func decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
-	encryptedSpan, err := newSpanEncryption(key).Encrypt(chunkData[:swarm.SpanSize])
+	decryptedSpan, err := newSpanEncryption(key).Decrypt(chunkData[:swarm.SpanSize])
 	if err != nil {
 		return nil, nil, err
 	}
-	encryptedData, err := newDataEncryption(key).Encrypt(chunkData[swarm.SpanSize:])
+	decryptedData, err := newDataEncryption(key).Decrypt(chunkData[swarm.SpanSize:])
 	if err != nil {
 		return nil, nil, err
 	}
-	return encryptedSpan, encryptedData, nil
+	return decryptedSpan, decryptedData, nil
 }
 
 func newSpanEncryption(key encryption.Key) encryption.Interface {

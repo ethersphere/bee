@@ -80,7 +80,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 // the decrypting store manages to retrieve a normal chunk which is not encrypted
 func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	st := mock.NewStorer()
-	store := store.NewDecrypting(st)
+	store := store.New(st)
 	joiner := joiner.NewSimpleJoiner(store)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -183,7 +183,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("Encrypt %d bytes", tt.chunkLength), func(t *testing.T) {
 			store := mock.NewStorer()
-			joinner := seekjoiner.NewSimpleJoiner(store)
+			joiner := seekjoiner.NewSimpleJoiner(store)
 
 			g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 			testData, err := g.SequentialBytes(tt.chunkLength)
@@ -197,7 +197,7 @@ func TestEncryptDecrypt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			reader, l, err := joinner.Join(context.Background(), resultAddress)
+			reader, l, err := joiner.Join(context.Background(), resultAddress)
 			if err != nil {
 				t.Fatal(err)
 			}

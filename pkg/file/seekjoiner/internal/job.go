@@ -15,11 +15,11 @@ import (
 )
 
 type SimpleJoiner struct {
-	addr       swarm.Address
-	rootData   []byte
-	spanLength int64
-	off        int64
-	refLength  int
+	addr      swarm.Address
+	rootData  []byte
+	span      int64
+	off       int64
+	refLength int
 
 	ctx    context.Context
 	getter storage.Getter
@@ -35,18 +35,18 @@ func NewSimpleJoiner(ctx context.Context, getter storage.Getter, address swarm.A
 
 	var chunkData = rootChunk.Data()
 
-	spanLength := int64(binary.LittleEndian.Uint64(chunkData[:swarm.SpanSize]))
+	span := int64(binary.LittleEndian.Uint64(chunkData[:swarm.SpanSize]))
 
 	j := &SimpleJoiner{
-		addr:       rootChunk.Address(),
-		refLength:  len(address.Bytes()),
-		ctx:        ctx,
-		getter:     getter,
-		spanLength: spanLength,
-		rootData:   chunkData[swarm.SpanSize:],
+		addr:      rootChunk.Address(),
+		refLength: len(address.Bytes()),
+		ctx:       ctx,
+		getter:    getter,
+		span:      span,
+		rootData:  chunkData[swarm.SpanSize:],
 	}
 
-	return j, spanLength, nil
+	return j, span, nil
 }
 
 // Read is called by the consumer to retrieve the joined data.
@@ -63,11 +63,11 @@ func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 
 func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
-	return j.readAtOffset(b, j.rootData, 0, j.spanLength, off)
+	return j.readAtOffset(b, j.rootData, 0, j.span, off)
 }
 
 func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off int64) (read int, err error) {
-	if off >= j.spanLength {
+	if off >= j.span {
 		return 0, io.EOF
 	}
 
@@ -118,7 +118,7 @@ func (j *SimpleJoiner) Seek(offset int64, whence int) (int64, error) {
 		offset += j.off
 	case 2:
 
-		offset = j.spanLength - offset
+		offset = j.span - offset
 		if offset < 0 {
 			return 0, io.EOF
 		}
@@ -129,7 +129,7 @@ func (j *SimpleJoiner) Seek(offset int64, whence int) (int64, error) {
 	if offset < 0 {
 		return 0, errOffset
 	}
-	if offset > j.spanLength {
+	if offset > j.span {
 		return 0, io.EOF
 	}
 	j.off = offset
