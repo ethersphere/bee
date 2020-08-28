@@ -229,7 +229,9 @@ func TestResolve(t *testing.T) {
 	}
 
 	t.Run("close all", func(t *testing.T) {
-		mr.Close()
+		if err := mr.Close(); err != nil {
+			t.Fatal(err)
+		}
 		for _, tE := range testFixture {
 			for _, r := range mr.GetChain(tE.tld) {
 				if !r.(*mock.Resolver).IsClosed {
