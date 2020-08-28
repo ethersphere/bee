@@ -14,22 +14,22 @@ import (
 // resolvers, push them to the resolver chains and attempt to connect.
 func InitMultiResolver(logger logging.Logger, cfgs []*resolver.ConnectionConfig) *resolver.MultiResolver {
 	if len(cfgs) > 0 {
-		logger.Info("no name resolution service provided")
+		logger.Info("name resolver: no name resolution service provided")
 	}
-
-	logger.Debug("connecting to name resolution services")
 
 	// Create a new MultiResolver.
 	mr := resolver.NewMultiResolver()
 
 	connectENS := func(tld string, ep string) {
 		ensCl := ens.NewClient()
+
+		logger.Debugf("name resolver: resolver for %q: connecting to endpoint %q")
 		if err := ensCl.Connect(ep); err != nil {
-			logger.Errorf("name resolver for %q domain failed to connect to %q: %v", tld, ep, err)
+			logger.Errorf("name resolver: resolver for %q domain: failed to connect to %q: %v", tld, ep, err)
 		} else {
-			logger.Infof("name resolver for %q domain connected to %q", tld, ep)
+			logger.Infof("name resolver: resolver for %q domain: connected to %q", tld, ep)
 			if err := mr.PushResolver(tld, ens.NewClient()); err != nil {
-				logger.Errorf("failed to push name resolver to %q resolver chain: %v", tld, err)
+				logger.Errorf("name resolver: failed to push resolver to %q resolver chain: %v", tld, err)
 			}
 		}
 	}
@@ -39,13 +39,15 @@ func InitMultiResolver(logger logging.Logger, cfgs []*resolver.ConnectionConfig)
 
 		// Warn user that the resolver address field is not used.
 		if c.Address != "" {
-			logger.Warningf("connection string %q contains resolver address field, which is currently unused", c.Address)
+			logger.Warningf("name resolver: connection string %q contains resolver address field, which is currently unused", c.Address)
 		}
+
+		logger.Debugf("name resolver: attempting connection at %q", c)
 
 		// Select the appropriate resolver.
 		switch c.TLD {
 		case "eth":
-			// TODO: MultiResolver expect "." in front of the TLD label.
+			// FIXME: MultiResolver expects "." in front of the TLD label.
 			connectENS("."+c.TLD, c.Endpoint)
 		case "":
 			connectENS("", c.Endpoint)
