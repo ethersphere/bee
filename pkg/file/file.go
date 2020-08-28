@@ -29,7 +29,7 @@ type Splitter interface {
 	Split(ctx context.Context, dataIn io.ReadCloser, dataLength int64, toEncrypt bool) (addr swarm.Address, err error)
 }
 
-// JoinReadAll reads all output from the provided joiner.
+// JoinReadAll reads all output from the provided SeekJoiner.
 func JoinReadAll(ctx context.Context, j JoinSeeker, addr swarm.Address, outFile io.Writer) (int64, error) {
 	r, l, err := j.Join(ctx, addr)
 	if err != nil {
