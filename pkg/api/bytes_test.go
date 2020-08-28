@@ -41,9 +41,12 @@ func TestBytes(t *testing.T) {
 	}
 
 	t.Run("upload", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodPost, resource, bytes.NewReader(content), http.StatusOK, api.BytesPostResponse{
-			Reference: swarm.MustParseHexAddress(expHash),
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+			jsonhttptest.WithExpectedJSONResponse(api.BytesPostResponse{
+				Reference: swarm.MustParseHexAddress(expHash),
+			}),
+		)
 	})
 
 	t.Run("download", func(t *testing.T) {
@@ -67,9 +70,11 @@ func TestBytes(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, client, http.MethodGet, resource+"/abcd", nil, http.StatusNotFound, jsonhttp.StatusResponse{
-			Message: "not found",
-			Code:    http.StatusNotFound,
-		})
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "Not Found",
+				Code:    http.StatusNotFound,
+			}),
+		)
 	})
 }

@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	SwarmPinHeader    = "Swarm-Pin"
-	SwarmTagUidHeader = "Swarm-Tag-Uid"
+	SwarmPinHeader     = "Swarm-Pin"
+	SwarmTagUidHeader  = "Swarm-Tag-Uid"
+	SwarmEncryptHeader = "Swarm-Encrypt"
 )
 
 type Service interface {
@@ -65,7 +66,7 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	if tagUid == "" {
 		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 		var err error
-		tag, err := s.Tags.Create(tagName, 0, false)
+		tag, err := s.Tags.Create(tagName, 0)
 		if err != nil {
 			return nil, false, fmt.Errorf("cannot create tag: %w", err)
 		}
@@ -85,4 +86,8 @@ func requestModePut(r *http.Request) storage.ModePut {
 		return storage.ModePutUploadPin
 	}
 	return storage.ModePutUpload
+}
+
+func requestEncrypt(r *http.Request) bool {
+	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
 }

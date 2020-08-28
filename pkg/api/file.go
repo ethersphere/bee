@@ -17,15 +17,12 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
-	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -35,7 +32,6 @@ import (
 
 const (
 	multiPartFormData = "multipart/form-data"
-	EncryptHeader     = "swarm-encrypt"
 )
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -52,7 +48,6 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		fileName, contentLength string
 		fileSize                uint64
 		mode                    = requestModePut(r)
-		toEncrypt               = strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
 		contentType             = r.Header.Get("Content-Type")
 	)
 
@@ -155,8 +150,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// first store the file and get its reference
-	sp := splitter.NewSimpleSplitter(s.Storer, mode)
-	fr, err := file.SplitWriteAll(ctx, sp, reader, int64(fileSize), toEncrypt)
+	pipe := pipeline.NewPipelineBuilder(ctx, s.Storer, mode, requestEncrypt(r))
+	fr, err := pipeline.FeedPipeline(ctx, pipe, reader, int64(fileSize))
 	if err != nil {
 		s.Logger.Debugf("file upload: file store, file %q: %v", fileName, err)
 		s.Logger.Errorf("file upload: file store, file %q", fileName)
@@ -179,8 +174,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
-	sp = splitter.NewSimpleSplitter(s.Storer, mode)
-	mr, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), toEncrypt)
+	pipe = pipeline.NewPipelineBuilder(ctx, s.Storer, mode, requestEncrypt(r))
+	mr, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		s.Logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
 		s.Logger.Errorf("file upload: metadata store, file %q", fileName)
@@ -197,8 +192,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "entry marshal error")
 		return
 	}
-	sp = splitter.NewSimpleSplitter(s.Storer, mode)
-	reference, err := file.SplitWriteAll(ctx, sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), toEncrypt)
+	pipe = pipeline.NewPipelineBuilder(ctx, s.Storer, mode, requestEncrypt(r))
+	reference, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		s.Logger.Debugf("file upload: entry store, file %q: %v", fileName, err)
 		s.Logger.Errorf("file upload: entry store, file %q", fileName)
@@ -235,15 +230,13 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
-
 	targets := r.URL.Query().Get("targets")
 	sctx.SetTargets(r.Context(), targets)
 
 	// read entry.
-	j := joiner.NewSimpleJoiner(s.Storer)
+	j := seekjoiner.NewSimpleJoiner(s.Storer)
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(r.Context(), j, address, buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, address, buf)
 	if err != nil {
 		s.Logger.Debugf("file download: read entry %s: %v", addr, err)
 		s.Logger.Errorf("file download: read entry %s", addr)
@@ -271,7 +264,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Read metadata.
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf)
 	if err != nil {
 		s.Logger.Debugf("file download: read metadata %s: %v", addr, err)
 		s.Logger.Errorf("file download: read metadata %s", addr)
@@ -311,7 +304,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		}
 		s.Logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
 		s.Logger.Error("api download: invalid root chunk")
-		jsonhttp.BadRequest(w, "invalid root chunk")
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 

@@ -35,44 +35,45 @@ func TestFiles(t *testing.T) {
 		client               = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tags.NewTags(),
-			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
 
 	t.Run("invalid-content-type", func(t *testing.T) {
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource, bytes.NewReader(simpleData), http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "invalid content-type header",
-			Code:    http.StatusBadRequest,
-		}, nil)
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid content-type header",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 	})
 
 	t.Run("multipart-upload", func(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "295673cf7aa55d119dd6f82528c91d45b53dd63dc2e4ca4abf4ed8b3a0788085"
-		_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, fileUploadResource, fileName, simpleData, http.StatusOK, "", api.FileUploadResponse{
-			Reference: swarm.MustParseHexAddress(rootHash),
-		})
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+			jsonhttptest.WithMultipartRequest(bytes.NewReader(simpleData), len(simpleData), fileName, ""),
+			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(rootHash),
+			}),
+		)
 	})
 
 	t.Run("encrypt-decrypt", func(t *testing.T) {
-		t.Skip("reenable after crypto refactor")
 		fileName := "my-pictures.jpeg"
-		headers := make(http.Header)
-		headers.Add(api.EncryptHeader, "True")
-		headers.Add("Content-Type", "image/jpeg; charset=utf-8")
 
-		_, respBytes := jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, headers)
-		read := bytes.NewReader(respBytes)
-
-		// get the reference as everytime it will change because of random encryption key
 		var resp api.FileUploadResponse
-		err := json.NewDecoder(read).Decode(&resp)
-		if err != nil {
-			t.Fatal(err)
-		}
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
+			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
 
 		rootHash := resp.Reference.String()
-		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(simpleData),
+		)
 		cd := rcvdHeader.Get("Content-Disposition")
 		_, params, err := mime.ParseMediaType(cd)
 		if err != nil {
@@ -91,14 +92,17 @@ func TestFiles(t *testing.T) {
 		rootHash := "f2e761160deda91c1fbfab065a5abf530b0766b3e102b51fbd626ba37c3bc581"
 
 		t.Run("binary", func(t *testing.T) {
-			headers := make(http.Header)
-			headers.Add("Content-Type", "image/jpeg; charset=utf-8")
+			jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusOK,
+				jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+					Reference: swarm.MustParseHexAddress(rootHash),
+				}),
+				jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			)
 
-			_ = jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
-			}, headers)
-
-			rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
+			rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+				jsonhttptest.WithExpectedResponse(simpleData),
+			)
 			cd := rcvdHeader.Get("Content-Disposition")
 			_, params, err := mime.ParseMediaType(cd)
 			if err != nil {
@@ -113,11 +117,16 @@ func TestFiles(t *testing.T) {
 		})
 
 		t.Run("multipart", func(t *testing.T) {
-			_ = jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, fileUploadResource, fileName, simpleData, http.StatusOK, "image/jpeg; charset=utf-8", api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
-			})
+			jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+				jsonhttptest.WithMultipartRequest(bytes.NewReader(simpleData), len(simpleData), fileName, "image/jpeg; charset=utf-8"),
+				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+					Reference: swarm.MustParseHexAddress(rootHash),
+				}),
+			)
 
-			rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, simpleData, nil)
+			rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+				jsonhttptest.WithExpectedResponse(simpleData),
+			)
 			cd := rcvdHeader.Get("Content-Disposition")
 			_, params, err := mime.ParseMediaType(cd)
 			if err != nil {
@@ -147,19 +156,22 @@ func TestFiles(t *testing.T) {
 		</html>`
 
 		t.Run("binary", func(t *testing.T) {
-			headers := make(http.Header)
-			headers.Add("Content-Type", "text/html; charset=utf-8")
-
-			rcvdHeader := jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, strings.NewReader(sampleHtml), http.StatusOK, api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
-			}, headers)
+			rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusOK,
+				jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
+				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+					Reference: swarm.MustParseHexAddress(rootHash),
+				}),
+				jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
+			)
 
 			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
 				t.Fatal("Invalid ETags header received")
 			}
 
 			// try to fetch the same file and check the data
-			rcvdHeader = jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, []byte(sampleHtml), nil)
+			rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+				jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
+			)
 
 			// check the headers
 			cd := rcvdHeader.Get("Content-Disposition")
@@ -176,16 +188,21 @@ func TestFiles(t *testing.T) {
 		})
 
 		t.Run("multipart", func(t *testing.T) {
-			rcvdHeader := jsonhttptest.ResponseDirectWithMultiPart(t, client, http.MethodPost, fileUploadResource, fileName, []byte(sampleHtml), http.StatusOK, "", api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
-			})
+			rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+				jsonhttptest.WithMultipartRequest(strings.NewReader(sampleHtml), len(sampleHtml), fileName, ""),
+				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+					Reference: swarm.MustParseHexAddress(rootHash),
+				}),
+			)
 
 			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
 				t.Fatal("Invalid ETags header received")
 			}
 
 			// try to fetch the same file and check the data
-			rcvdHeader = jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash), nil, http.StatusOK, []byte(sampleHtml), nil)
+			rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+				jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
+			)
 
 			// check the headers
 			cd := rcvdHeader.Get("Content-Disposition")
@@ -205,14 +222,18 @@ func TestFiles(t *testing.T) {
 	t.Run("upload-then-download-with-targets", func(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "19d2e82c076031ec4e456978f839472d2f1b1b969a765420404d8d315a0c6123"
-		headers := make(http.Header)
-		headers.Add("Content-Type", "text/html; charset=utf-8")
 
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, bytes.NewReader(simpleData), http.StatusOK, api.FileUploadResponse{
-			Reference: swarm.MustParseHexAddress(rootHash),
-		}, headers)
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(rootHash),
+			}),
+			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
+		)
 
-		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, fileDownloadResource(rootHash)+"?targets="+targets, nil, http.StatusOK, simpleData, nil)
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash)+"?targets="+targets, http.StatusOK,
+			jsonhttptest.WithExpectedResponse(simpleData),
+		)
 
 		if rcvdHeader.Get(api.TargetsRecoveryHeader) != targets {
 			t.Fatalf("targets mismatch. got %s, want %s", rcvdHeader.Get(api.TargetsRecoveryHeader), targets)
@@ -256,7 +277,7 @@ func TestRangeRequests(t *testing.T) {
 			uploadEndpoint:   "/dirs",
 			downloadEndpoint: "/bzz",
 			filepath:         "/ipsum/lorem.txt",
-			reference:        "c1e596eebc9b39fea8f790b6ede4a294bf336e17b0cb7cd64ec54edc5c4ec0e2",
+			reference:        "",
 			reader: tarFiles(t, []f{
 				{
 					data:      data,
@@ -318,19 +339,44 @@ func TestRangeRequests(t *testing.T) {
 				Logger: logging.New(ioutil.Discard, 5),
 			})
 
-			jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodPost, upload.uploadEndpoint, upload.reader, http.StatusOK, api.FileUploadResponse{
-				Reference: swarm.MustParseHexAddress(upload.reference),
-			}, http.Header{
-				"Content-Type": {upload.contentType},
-			})
+			uploadReference := upload.reference
+
+			var respBytes []byte
+
+			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusOK,
+				jsonhttptest.WithRequestBody(upload.reader),
+				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
+				jsonhttptest.WithPutResponseBody(&respBytes),
+			)
+
+			if uploadReference == "" {
+				// NOTE: reference will be different each time, due to manifest randomness
+
+				read := bytes.NewReader(respBytes)
+
+				// get the reference as everytime it will change because of random encryption key
+				var resp api.FileUploadResponse
+				err := json.NewDecoder(read).Decode(&resp)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if resp.Reference.String() == "" {
+					t.Fatalf("expected file reference, did not got any")
+				}
+
+				uploadReference = resp.Reference.String()
+			}
 
 			for _, tc := range ranges {
 				t.Run(tc.name, func(t *testing.T) {
 					rangeHeader, want := createRangeHeader(data, tc.ranges)
 
-					respHeaders, body := jsonhttptest.ResponseDirectSendHeadersAndDontCheckResponse(t, client, http.MethodGet, upload.downloadEndpoint+"/"+upload.reference+upload.filepath, nil, http.StatusPartialContent, http.Header{
-						"Range": {rangeHeader},
-					})
+					var body []byte
+					respHeaders := jsonhttptest.Request(t, client, http.MethodGet, upload.downloadEndpoint+"/"+uploadReference+upload.filepath, http.StatusPartialContent,
+						jsonhttptest.WithRequestHeader("Range", rangeHeader),
+						jsonhttptest.WithPutResponseBody(&body),
+					)
 
 					got := parseRangeParts(t, respHeaders.Get("Content-Type"), body)
 

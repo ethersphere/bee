@@ -9,20 +9,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
 	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/manifest/jsonmanifest"
+	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/storage"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -33,14 +32,17 @@ func TestBzz(t *testing.T) {
 	var (
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		storer              = smock.NewStorer()
-		sp                  = splitter.NewSimpleSplitter(storer, storage.ModePutUpload)
+		ctx                 = context.Background()
 		client              = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(),
 			Logger: logging.New(ioutil.Discard, 5),
 		})
+		pipeWriteAll = func(r io.Reader, l int64) (swarm.Address, error) {
+			pipe := pipeline.NewPipelineBuilder(ctx, storer, storage.ModePutUpload, false)
+			return pipeline.FeedPipeline(ctx, pipe, r, l)
+		}
 	)
-
 	t.Run("download-file-by-path", func(t *testing.T) {
 		fileName := "sample.html"
 		filePath := "test/" + fileName
@@ -62,19 +64,21 @@ func TestBzz(t *testing.T) {
 		var manifestFileReference swarm.Address
 
 		// save file
+		fileContentReference, err = pipeWriteAll(strings.NewReader(sampleHtml), int64(len(sampleHtml)))
 
-		fileContentReference, err = file.SplitWriteAll(context.Background(), sp, strings.NewReader(sampleHtml), int64(len(sampleHtml)), false)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		fileMetadata := entry.NewMetadata(fileName)
+		fileMetadata.MimeType = "text/html; charset=utf-8"
 		fileMetadataBytes, err := json.Marshal(fileMetadata)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		fileMetadataReference, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileMetadataBytes), int64(len(fileMetadataBytes)), false)
+		fileMetadataReference, err := pipeWriteAll(bytes.NewReader(fileMetadataBytes), int64(len(fileMetadataBytes)))
+
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,55 +88,59 @@ func TestBzz(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)), false)
+		fileReference, err = pipeWriteAll(bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// save manifest
-
-		jsonManifest := jsonmanifest.NewManifest()
-
-		e := jsonmanifest.NewEntry(fileReference, fileName, http.Header{"Content-Type": {"text/html", "charset=utf-8"}})
-		jsonManifest.Add(filePath, e)
-
-		manifestFileBytes, err := jsonManifest.MarshalBinary()
+		m, err := manifest.NewDefaultManifest(false, storer)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		fr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileBytes), int64(len(manifestFileBytes)), false)
+		e := manifest.NewEntry(fileReference)
+
+		err = m.Add(filePath, e)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		m := entry.NewMetadata(fileName)
-		m.MimeType = api.ManifestContentType
-		metadataBytes, err := json.Marshal(m)
+		manifestBytesReference, err := m.Store(context.Background(), storage.ModePutUpload)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		mr, err := file.SplitWriteAll(context.Background(), sp, bytes.NewReader(metadataBytes), int64(len(metadataBytes)), false)
+		metadata := entry.NewMetadata(manifestBytesReference.String())
+		metadata.MimeType = m.Type()
+		metadataBytes, err := json.Marshal(metadata)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		// now join both references (mr,fr) to create an entry and store it.
-		newEntry := entry.New(fr, mr)
+		mr, err := pipeWriteAll(bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// now join both references (fr,mr) to create an entry and store it.
+		newEntry := entry.New(manifestBytesReference, mr)
 		manifestFileEntryBytes, err := newEntry.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		manifestFileReference, err = file.SplitWriteAll(context.Background(), sp, bytes.NewReader(manifestFileEntryBytes), int64(len(manifestFileEntryBytes)), false)
+		manifestFileReference, err = pipeWriteAll(bytes.NewReader(manifestFileEntryBytes), int64(len(manifestFileEntryBytes)))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// read file from manifest path
 
-		rcvdHeader := jsonhttptest.ResponseDirectCheckBinaryResponse(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), filePath), nil, http.StatusOK, []byte(sampleHtml), nil)
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), filePath), http.StatusOK,
+			jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
+		)
 		cd := rcvdHeader.Get("Content-Disposition")
 		_, params, err := mime.ParseMediaType(cd)
 		if err != nil {
@@ -150,11 +158,12 @@ func TestBzz(t *testing.T) {
 
 		// check on invalid path
 
-		jsonhttptest.ResponseDirectSendHeadersAndReceiveHeaders(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Message: "invalid path address",
-			Code:    http.StatusBadRequest,
-		}, nil)
-
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifestFileReference.String(), missingFilePath), http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "path address not found",
+				Code:    http.StatusNotFound,
+			}),
+		)
 	})
 
 }

@@ -48,7 +48,6 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 		Sent:      tag.Sent,
 		Synced:    tag.Synced,
 		Uid:       tag.Uid,
-		Anonymous: tag.Anonymous,
 		Name:      tag.Name,
 		Address:   tag.Address,
 		StartedAt: tag.StartedAt,
@@ -82,7 +81,7 @@ func (s *server) createTag(w http.ResponseWriter, r *http.Request) {
 		tagr.Name = fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 	}
 
-	tag, err := s.Tags.Create(tagr.Name, 0, false)
+	tag, err := s.Tags.Create(tagr.Name, 0)
 	if err != nil {
 		s.Logger.Debugf("create tag: tag create error: %v", err)
 		s.Logger.Error("create tag: tag create error")

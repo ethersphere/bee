@@ -41,36 +41,46 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/"+peerID.String(), nil, http.StatusOK, debugapi.PingpongResponse{
-			RTT: rtt.String(),
-		})
+		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/pingpong/"+peerID.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.PingpongResponse{
+				RTT: rtt.String(),
+			}),
+		)
 	})
 
 	t.Run("peer not found", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/"+unknownPeerID.String(), nil, http.StatusNotFound, jsonhttp.StatusResponse{
-			Code:    http.StatusNotFound,
-			Message: "peer not found",
-		})
+		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/pingpong/"+unknownPeerID.String(), http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusNotFound,
+				Message: "peer not found",
+			}),
+		)
 	})
 
 	t.Run("invalid peer address", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/invalid-address", nil, http.StatusBadRequest, jsonhttp.StatusResponse{
-			Code:    http.StatusBadRequest,
-			Message: "invalid peer address",
-		})
+		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/pingpong/invalid-address", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid peer address",
+			}),
+		)
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodPost, "/pingpong/"+errorPeerID.String(), nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-			Code:    http.StatusInternalServerError,
-			Message: http.StatusText(http.StatusInternalServerError), // do not leak internal error
-		})
+		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/pingpong/"+errorPeerID.String(), http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusInternalServerError,
+				Message: http.StatusText(http.StatusInternalServerError), // do not leak internal error
+			}),
+		)
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, ts.Client, http.MethodGet, "/pingpong/"+peerID.String(), nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
-			Code:    http.StatusMethodNotAllowed,
-			Message: http.StatusText(http.StatusMethodNotAllowed),
-		})
+		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/pingpong/"+peerID.String(), http.StatusMethodNotAllowed,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusMethodNotAllowed,
+				Message: http.StatusText(http.StatusMethodNotAllowed),
+			}),
+		)
 	})
 }

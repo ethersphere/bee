@@ -25,9 +25,11 @@ func TestGetWelcomeMessage(t *testing.T) {
 			return DefaultTestWelcomeMessage
 		}))})
 
-	jsonhttptest.ResponseDirect(t, srv.Client, http.MethodGet, "/welcome-message", nil, http.StatusOK, debugapi.WelcomeMessageResponse{
-		WelcomeMesssage: DefaultTestWelcomeMessage,
-	})
+	jsonhttptest.Request(t, srv.Client, http.MethodGet, "/welcome-message", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.WelcomeMessageResponse{
+			WelcomeMesssage: DefaultTestWelcomeMessage,
+		}),
+	)
 }
 
 func TestSetWelcomeMessage(t *testing.T) {
@@ -81,7 +83,10 @@ func TestSetWelcomeMessage(t *testing.T) {
 				Message: tC.wantMessage,
 				Code:    tC.wantStatus,
 			}
-			jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, testURL, body, tC.wantStatus, wantResponse)
+			jsonhttptest.Request(t, srv.Client, http.MethodPost, testURL, tC.wantStatus,
+				jsonhttptest.WithRequestBody(body),
+				jsonhttptest.WithExpectedJSONResponse(wantResponse),
+			)
 			if !tC.wantFail {
 				got := srv.P2PMock.GetWelcomeMessage()
 				if got != tC.message {
@@ -113,7 +118,10 @@ func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 			Message: testError.Error(),
 			Code:    wantCode,
 		}
-		jsonhttptest.ResponseDirect(t, srv.Client, http.MethodPost, testURL, body, wantCode, wantResp)
+		jsonhttptest.Request(t, srv.Client, http.MethodPost, testURL, wantCode,
+			jsonhttptest.WithRequestBody(body),
+			jsonhttptest.WithExpectedJSONResponse(wantResp),
+		)
 	})
 
 }

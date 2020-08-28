@@ -21,14 +21,16 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
-	"sync"
 )
 
-const KeyLength = 32
+const (
+	KeyLength     = 32
+	ReferenceSize = 64
+)
 
 type Key []byte
 
-type Encryptor interface {
+type Interface interface {
 	Encrypt(data []byte) ([]byte, error)
 	Decrypt(data []byte) ([]byte, error)
 	Reset()
@@ -44,7 +46,7 @@ type Encryption struct {
 }
 
 // New constructs a new encryptor/decryptor
-func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) *Encryption {
+func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) Interface {
 	return &Encryption{
 		key:      key,
 		keyLen:   len(key),
@@ -96,27 +98,17 @@ func (e *Encryption) Reset() {
 // split up input into keylength segments and encrypt sequentially
 func (e *Encryption) transform(in, out []byte) error {
 	inLength := len(in)
-	wg := sync.WaitGroup{}
-	wg.Add((inLength-1)/e.keyLen + 1)
 
 	for i := 0; i < inLength; i += e.keyLen {
-		errs := make(chan error, 1)
 		l := min(e.keyLen, inLength-i)
-		go func(i int, x, y []byte) {
-			defer wg.Done()
-			err := e.Transcrypt(i, x, y)
-			errs <- err
-		}(e.index, in[i:i+l], out[i:i+l])
-		e.index++
-		err := <-errs
+		err := e.Transcrypt(e.index, in[i:i+l], out[i:i+l])
 		if err != nil {
-			close((errs))
 			return err
 		}
+		e.index++
 	}
 	// pad the rest if out is longer
 	pad(out[inLength:])
-	wg.Wait()
 	return nil
 }
 

@@ -33,17 +33,21 @@ func TestAddresses(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/addresses", nil, http.StatusOK, debugapi.AddressesResponse{
-			Overlay:  overlay,
-			Underlay: addresses,
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/addresses", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
+				Overlay:  overlay,
+				Underlay: addresses,
+			}),
+		)
 	})
 
 	t.Run("post method not allowed", func(t *testing.T) {
-		jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodPost, "/addresses", nil, http.StatusMethodNotAllowed, jsonhttp.StatusResponse{
-			Code:    http.StatusMethodNotAllowed,
-			Message: http.StatusText(http.StatusMethodNotAllowed),
-		})
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/addresses", http.StatusMethodNotAllowed,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusMethodNotAllowed,
+				Message: http.StatusText(http.StatusMethodNotAllowed),
+			}),
+		)
 	})
 }
 
@@ -56,8 +60,10 @@ func TestAddresses_error(t *testing.T) {
 		})),
 	})
 
-	jsonhttptest.ResponseDirect(t, testServer.Client, http.MethodGet, "/addresses", nil, http.StatusInternalServerError, jsonhttp.StatusResponse{
-		Code:    http.StatusInternalServerError,
-		Message: testErr.Error(),
-	})
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/addresses", http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Code:    http.StatusInternalServerError,
+			Message: testErr.Error(),
+		}),
+	)
 }

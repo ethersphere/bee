@@ -7,10 +7,8 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -34,9 +32,8 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	toEncrypt := strings.ToLower(r.Header.Get(EncryptHeader)) == "true"
-	sp := splitter.NewSimpleSplitter(s.Storer, requestModePut(r))
-	address, err := file.SplitWriteAll(ctx, sp, r.Body, r.ContentLength, toEncrypt)
+	pipe := pipeline.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r))
+	address, err := pipeline.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
 	if err != nil {
 		s.Logger.Debugf("bytes upload: split write all: %v", err)
 		s.Logger.Error("bytes upload: split write all")
