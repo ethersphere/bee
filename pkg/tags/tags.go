@@ -157,6 +157,7 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 	return err
 }
 
+// GetTagFromStore get a given tag from the state store.
 func (ts *Tags) GetTagFromStore(uid uint32) (*Tag, error) {
 	key := "tags_" + strconv.Itoa(int(uid))
 	var data []byte
@@ -172,17 +173,14 @@ func (ts *Tags) GetTagFromStore(uid uint32) (*Tag, error) {
 	return &ta, nil
 }
 
+// Close is called when the node goes down. This is when all the tags in memory is persisted.
 func (ts *Tags) Close() (err error) {
 	// store all the tags in memory
-	var wg sync.WaitGroup
-	ts.tags.Range(func(key interface{}, value interface{}) bool {
-		wg.Add(1)
-		ta := value.(*Tag)
-		ts.logger.Trace("updaing tag: ", ta.Uid)
-		ta.UpdateTag()
-		wg.Done()
-		return true
-	})
-	wg.Wait()
+	tags := ts.All()
+	for _, t := range tags {
+		ts.logger.Trace("updaing tag: ", t.Uid)
+		t.UpdateTag()
+	}
+	fmt.Println("closed all tags")
 	return nil
 }

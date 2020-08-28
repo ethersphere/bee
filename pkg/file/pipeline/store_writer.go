@@ -28,10 +28,14 @@ func newStoreWriter(ctx context.Context, l storage.Putter, mode storage.ModePut,
 
 func (w *storeWriter) chainWrite(p *pipeWriteArgs) error {
 	tag := sctx.GetTag(w.ctx)
+	var c swarm.Chunk
 	if tag != nil {
 		tag.Inc(tags.StateSplit)
+		c = swarm.NewChunk(swarm.NewAddress(p.ref), p.data).WithTagID(tag.Uid)
+	} else {
+		c = swarm.NewChunk(swarm.NewAddress(p.ref), p.data)
 	}
-	c := swarm.NewChunk(swarm.NewAddress(p.ref), p.data)
+
 	seen, err := w.l.Put(w.ctx, w.mode, c)
 	if err != nil {
 		return err

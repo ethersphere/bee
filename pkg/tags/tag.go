@@ -301,6 +301,7 @@ func decodeInt64Splice(buffer *[]byte) int64 {
 	return val
 }
 
+// UpdateTag update the tag in the state store
 func (tag *Tag) UpdateTag() {
 	key := "tags_" + strconv.Itoa(int(tag.Uid))
 	value, err := tag.MarshalBinary()
@@ -308,9 +309,12 @@ func (tag *Tag) UpdateTag() {
 		tag.logger.Warning("tag: ", err)
 		return
 	}
-	err = tag.stateStore.Put(key, value)
-	if err != nil {
-		tag.logger.Warning("tag: ", err)
-		return
+
+	if tag.stateStore != nil {
+		err = tag.stateStore.Put(key, value)
+		if err != nil {
+			tag.logger.Warning("tag: ", err)
+			return
+		}
 	}
 }
