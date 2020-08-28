@@ -95,7 +95,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	totalReceived, err := s.TotalReceived(p.Address)
 	if err != nil {
-		return err
+		if err != ErrPeerNoSettlements {
+			return err
+		}
+		totalReceived = 0
 	}
 
 	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), totalReceived+req.Amount)
