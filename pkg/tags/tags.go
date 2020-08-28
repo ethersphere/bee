@@ -174,10 +174,15 @@ func (ts *Tags) GetTagFromStore(uid uint32) (*Tag, error) {
 
 func (ts *Tags) Close() (err error) {
 	// store all the tags in memory
+	var wg sync.WaitGroup
 	ts.tags.Range(func(key interface{}, value interface{}) bool {
+		wg.Add(1)
 		ta := value.(*Tag)
+		ts.logger.Trace("updaing tag: ", ta.Uid)
 		ta.UpdateTag()
+		wg.Done()
 		return true
 	})
+	wg.Wait()
 	return nil
 }
