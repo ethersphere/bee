@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
-	"github.com/ethersphere/bee/pkg/file/splitter"
 	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -23,7 +23,7 @@ import (
 
 var (
 	start = 0
-	end   = test.GetVectorCount()
+	end   = test.GetVectorCount() - 2
 )
 
 // TestSplitThenJoin splits a file with the splitter implementation and
@@ -44,7 +44,7 @@ func testSplitThenJoin(t *testing.T) {
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
 		store       = mock.NewStorer()
-		s           = splitter.NewSimpleSplitter(store, storage.ModePutUpload)
+		p           = pipeline.NewPipelineBuilder(context.Background(), store, storage.ModePutUpload, false)
 		j           = seekjoiner.NewSimpleJoiner(store)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
@@ -53,7 +53,7 @@ func testSplitThenJoin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
-	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)), false)
+	resultAddress, err := pipeline.FeedPipeline(ctx, p, dataReader, int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
