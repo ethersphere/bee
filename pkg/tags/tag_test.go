@@ -189,30 +189,40 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 	n := 100
 	wg := sync.WaitGroup{}
 	wg.Add(10 * 5 * n)
+	errC := make(chan error)
+	doneC := make(chan bool)
 	for i := 0; i < 10; i++ {
 		s := string([]byte{uint8(i)})
 		tag, err := ts.Create(s, int64(n))
 		if err != nil {
 			t.Fatal(err)
 		}
-		errC := make(chan error)
 		for _, f := range allStates {
 			go func(tag *Tag, f State) {
 				for j := 0; j < n; j++ {
 					go func() {
-						errC <- tag.Inc(f)
+						err :=  tag.Inc(f)
+						if err != nil {
+							errC <- err
+						}
 						wg.Done()
 					}()
 				}
 			}(tag, f)
 		}
-		err = <-errC
-		if err != nil {
-			close(errC)
-			t.Fatal(err)
-		}
 	}
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(doneC)
+	}()
+
+	select {
+	case <-doneC:
+		break
+	case err := <-errC:
+		close(errC)
+		t.Fatal(err)
+	}
 	i := 0
 	ts.Range(func(k, v interface{}) bool {
 		i++
