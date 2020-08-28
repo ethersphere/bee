@@ -29,6 +29,7 @@ type MockStorer struct {
 	quit            chan struct{}
 	baseAddress     []byte
 	bins            []uint64
+	getAddrs        []swarm.Address // the chunk addresses for which Get was called
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
@@ -78,6 +79,8 @@ func NewStorer(opts ...Option) *MockStorer {
 func (m *MockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+
+	m.getAddrs = append(m.getAddrs, addr)
 
 	v, has := m.store[addr.String()]
 	if !has {
@@ -295,6 +298,12 @@ func (m *MockStorer) PinInfo(address swarm.Address) (uint64, error) {
 		}
 	}
 	return 0, storage.ErrNotFound
+}
+
+func (m *MockStorer) GetAddresses() []swarm.Address {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.getAddrs
 }
 
 func (m *MockStorer) Close() error {
