@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"strconv"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -102,7 +102,7 @@ func (t *Tag) FinishRootSpan() {
 }
 
 // IncN increments the count for a state
-func (t *Tag) IncN(state State, n int) {
+func (t *Tag) IncN(state State, n int) error {
 	var v *int64
 	switch state {
 	case TotalChunks:
@@ -127,14 +127,15 @@ func (t *Tag) IncN(state State, n int) {
 		synced := atomic.LoadInt64(&t.Synced)
 		totalUnique := total - seen
 		if synced >= totalUnique {
-			t.UpdateTag()
+			return t.saveTag()
 		}
 	}
+	return nil
 }
 
 // Inc increments the count for a state
-func (t *Tag) Inc(state State) {
-	t.IncN(state, 1)
+func (t *Tag) Inc(state State) error {
+	return t.IncN(state, 1)
 }
 
 // Get returns the count for a state on a tag
@@ -199,7 +200,7 @@ func (t *Tag) DoneSplit(address swarm.Address) int64 {
 	}
 
 	// persist the tag
-	t.UpdateTag()
+	t.saveTag()
 	return total
 }
 
@@ -302,19 +303,22 @@ func decodeInt64Splice(buffer *[]byte) int64 {
 }
 
 // UpdateTag update the tag in the state store
-func (tag *Tag) UpdateTag() {
-	key := "tags_" + strconv.Itoa(int(tag.Uid))
+func (tag *Tag) saveTag() error {
+	key := getKey(tag.Uid)
 	value, err := tag.MarshalBinary()
 	if err != nil {
-		tag.logger.Warning("tag: ", err)
-		return
+		return err
 	}
 
 	if tag.stateStore != nil {
 		err = tag.stateStore.Put(key, value)
 		if err != nil {
-			tag.logger.Warning("tag: ", err)
-			return
+			return err
 		}
 	}
+	return nil
+}
+
+func getKey(uid uint32) string {
+	return fmt.Sprintf("tags_%d",uid)
 }

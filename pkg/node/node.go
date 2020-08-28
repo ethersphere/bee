@@ -402,7 +402,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	if err := b.tagsCloser.Close(); err != nil {
-		errs.add(fmt.Errorf("tag persistence:%w", err))
+		errs.add(fmt.Errorf("tag persistence: %w", err))
 	}
 
 	if err := b.stateStoreCloser.Close(); err != nil {

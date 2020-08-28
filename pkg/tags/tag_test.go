@@ -53,7 +53,10 @@ func TestTagSingleIncrements(t *testing.T) {
 
 	for _, tc := range tc {
 		for i := 0; i < tc.inc; i++ {
-			tg.Inc(tc.state)
+			err := tg.Inc(tc.state)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 
@@ -67,13 +70,28 @@ func TestTagSingleIncrements(t *testing.T) {
 // TestTagStatus is a unit test to cover Tag.Status method functionality
 func TestTagStatus(t *testing.T) {
 	tg := &Tag{Total: 10}
-	tg.Inc(StateSeen)
-	tg.Inc(StateSent)
-	tg.Inc(StateSynced)
+	err := tg.Inc(StateSeen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Inc(StateSent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Inc(StateSynced)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < 10; i++ {
-		tg.Inc(StateSplit)
-		tg.Inc(StateStored)
+		err = tg.Inc(StateSplit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tg.Inc(StateStored)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, v := range []struct {
 		state    State
@@ -105,7 +123,10 @@ func TestTagETA(t *testing.T) {
 	maxDiff := 100000 // 100 microsecond
 	tg := &Tag{Total: 10, StartedAt: now}
 	time.Sleep(100 * time.Millisecond)
-	tg.Inc(StateSplit)
+	err := tg.Inc(StateSplit)
+	if err != nil {
+		t.Fatal(err)
+	}
 	eta, err := tg.ETA(StateSplit)
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +149,10 @@ func TestTagConcurrentIncrements(t *testing.T) {
 		go func(f State) {
 			for j := 0; j < n; j++ {
 				go func() {
-					tg.Inc(f)
+					err := tg.Inc(f)
+					if err != nil {
+						t.Fatal(err)
+					}
 					wg.Done()
 				}()
 			}
@@ -161,7 +185,10 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 			go func(tag *Tag, f State) {
 				for j := 0; j < n; j++ {
 					go func() {
-						tag.Inc(f)
+						err := tag.Inc(f)
+						if err != nil {
+							t.Fatal(err)
+						}
 						wg.Done()
 					}()
 				}
@@ -200,7 +227,10 @@ func TestMarshallingWithAddr(t *testing.T) {
 	tg.Address = swarm.NewAddress([]byte{0, 1, 2, 3, 4, 5, 6})
 
 	for _, f := range allStates {
-		tg.Inc(f)
+		err := tg.Inc(f)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	b, err := tg.MarshalBinary()
@@ -248,7 +278,10 @@ func TestMarshallingNoAddr(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	tg := NewTag(context.Background(), 111, "test/tag", 10, nil, mockStatestore, logger)
 	for _, f := range allStates {
-		tg.Inc(f)
+		err := tg.Inc(f)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	b, err := tg.MarshalBinary()

@@ -88,7 +88,10 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
+	err = tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	item, err := db.pullIndex.Get(shed.Item{
 		Address: ch.Address().Bytes(),
@@ -144,7 +147,11 @@ func TestModeSetSyncPushNormalTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
+	err = tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	item, err := db.pullIndex.Get(shed.Item{
 		Address: ch.Address().Bytes(),
 		BinID:   1,

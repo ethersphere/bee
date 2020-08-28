@@ -82,7 +82,7 @@ func (ts *Tags) Get(uid uint32) (*Tag, error) {
 	if !ok {
 		// see if the tag is present in the store
 		// if yes, load it in to the memory
-		ta, err := ts.GetTagFromStore(uid)
+		ta, err := ts.getTagFromStore(uid)
 		if err != nil {
 			return nil, ErrNotFound
 		}
@@ -157,8 +157,8 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 	return err
 }
 
-// GetTagFromStore get a given tag from the state store.
-func (ts *Tags) GetTagFromStore(uid uint32) (*Tag, error) {
+// getTagFromStore get a given tag from the state store.
+func (ts *Tags) getTagFromStore(uid uint32) (*Tag, error) {
 	key := "tags_" + strconv.Itoa(int(uid))
 	var data []byte
 	err := ts.stateStore.Get(key, &data)
@@ -168,7 +168,7 @@ func (ts *Tags) GetTagFromStore(uid uint32) (*Tag, error) {
 	var ta Tag
 	err = ta.UnmarshalBinary(data)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return &ta, nil
 }
@@ -178,9 +178,11 @@ func (ts *Tags) Close() (err error) {
 	// store all the tags in memory
 	tags := ts.All()
 	for _, t := range tags {
-		ts.logger.Trace("updaing tag: ", t.Uid)
-		t.UpdateTag()
+		ts.logger.Trace("updating tag: ", t.Uid)
+		err := t.saveTag()
+		if err != nil {
+			return err
+		}
 	}
-	fmt.Println("closed all tags")
 	return nil
 }

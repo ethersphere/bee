@@ -152,7 +152,10 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
-	s.incrTag(tags.StateSplit)
+	err := s.incrTag(tags.StateSplit)
+	if err != nil {
+		return nil, err
+	}
 	c := chunkData
 	var encryptionKey encryption.Key
 
@@ -165,7 +168,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	}
 
 	s.hasher.Reset()
-	err := s.hasher.SetSpanBytes(c[:8])
+	err = s.hasher.SetSpanBytes(c[:8])
 	if err != nil {
 		return nil, err
 	}
@@ -188,10 +191,16 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	} else if len(seen) > 0 && seen[0] {
-		s.incrTag(tags.StateSeen)
+		err = s.incrTag(tags.StateSeen)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	s.incrTag(tags.StateStored)
+	err = s.incrTag(tags.StateStored)
+	if err != nil {
+		return nil, err
+	}
 
 	return append(ch.Address().Bytes(), encryptionKey...), nil
 }
@@ -310,8 +319,9 @@ func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) *encryption.En
 	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }
 
-func (s *SimpleSplitterJob) incrTag(state tags.State) {
+func (s *SimpleSplitterJob) incrTag(state tags.State) error {
 	if s.tag != nil {
-		s.tag.Inc(state)
+		return s.tag.Inc(state)
 	}
+	return nil
 }

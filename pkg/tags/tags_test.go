@@ -73,13 +73,22 @@ func TestPersistence(t *testing.T) {
 	ta.Split = 10
 	ta.Stored = 8
 	ta.DoneSplit(swarm.ZeroAddress)
-	ts.Delete(ta.Uid) // simulate node going down
 
+	// simulate node closing down and booting up
+	err = ts.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts = NewTags(mockStatestore, logger)
+
+
+	// Get the tag after the node bootup
 	rcvd1, err := ts.Get(ta.Uid)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// check if the values ae intact after the bootup
 	if ta.Uid != rcvd1.Uid {
 		t.Fatalf("invalid uid: expected %d got %d", ta.Uid, rcvd1.Uid)
 	}
@@ -87,18 +96,32 @@ func TestPersistence(t *testing.T) {
 		t.Fatalf("invalid total: expected %d got %d", ta.Total, rcvd1.Total)
 	}
 
-	// See if tag update hapens after syncing is over
+	// See if tag is saved after syncing is over
 	for i := 0; i < 8; i++ {
-		ta.Inc(StateSent)
-		ta.Inc(StateSynced)
+		err := ta.Inc(StateSent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ta.Inc(StateSynced)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	ts.Delete(ta.Uid) // simulate node going down
 
+	// simulate node closing down and booting up
+	err = ts.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts = NewTags(mockStatestore, logger)
+
+	// get the tag after the node boot up
 	rcvd2, err := ts.Get(ta.Uid)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// check if the values ae intact after the bootup
 	if ta.Uid != rcvd2.Uid {
 		t.Fatalf("invalid uid: expected %d got %d", ta.Uid, rcvd2.Uid)
 	}
@@ -111,5 +134,4 @@ func TestPersistence(t *testing.T) {
 	if ta.Synced != rcvd2.Synced {
 		t.Fatalf("invalid synced: expected %d got %d", ta.Synced, rcvd2.Synced)
 	}
-
 }
