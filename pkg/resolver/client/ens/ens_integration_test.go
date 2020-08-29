@@ -63,6 +63,7 @@ func TestENSntegration(t *testing.T) {
 			}
 
 			eC := ens.NewClient()
+			defer eC.Close()
 
 			err := eC.Connect(tC.endpoint)
 			if err != nil {
