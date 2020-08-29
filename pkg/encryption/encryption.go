@@ -23,11 +23,14 @@ import (
 	"hash"
 )
 
-const KeyLength = 32
+const (
+	KeyLength     = 32
+	ReferenceSize = 64
+)
 
 type Key []byte
 
-type Encryptor interface {
+type Interface interface {
 	Encrypt(data []byte) ([]byte, error)
 	Decrypt(data []byte) ([]byte, error)
 	Reset()
@@ -43,7 +46,7 @@ type Encryption struct {
 }
 
 // New constructs a new encryptor/decryptor
-func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) *Encryption {
+func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) Interface {
 	return &Encryption{
 		key:      key,
 		keyLen:   len(key),
