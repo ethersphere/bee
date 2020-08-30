@@ -33,8 +33,6 @@ func (e ErrResolverChainEmpty) Error() string {
 	return fmt.Sprintf("Resolver chain for %q empty", string(e))
 }
 
-// TODO: implement MultiError as separate package.
-
 // CloseError denotes that at least one resolver in the MultiResolver has
 // had an error when Close was called.
 type CloseError struct {
@@ -42,10 +40,12 @@ type CloseError struct {
 }
 
 func (me CloseError) add(err error) {
-	me.errs = append(me.errs, err)
+	if err != nil {
+		me.errs = append(me.errs, err)
+	}
 }
 
-func (me CloseError) resolve() error {
+func (me CloseError) errorOrNil() error {
 	if len(me.errs) > 0 {
 		return me
 	}

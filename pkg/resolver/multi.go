@@ -126,13 +126,11 @@ func (mr *MultiResolver) Close() error {
 
 	for _, chain := range mr.resolvers {
 		for _, r := range chain {
-			if err := r.Close(); err != nil {
-				errs.add(err)
-			}
+			errs.add(r.Close())
 		}
 	}
 
-	return errs.resolve()
+	return errs.errorOrNil()
 }
 
 func isTLD(tld string) bool {
