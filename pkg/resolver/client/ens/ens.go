@@ -96,9 +96,14 @@ func (c *Client) Resolve(name string) (Address, error) {
 	c.mu.Unlock()
 
 	hash, err := c.resolveFn(ethCl, name)
-
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return swarm.ZeroAddress, fmt.Errorf("%w: %v", ErrResolveFailed, err)
+	}
+
+	// In case the implementation returns a zero address return an NameNotFound
+	// error.
+	if hash == "" {
+		return swarm.ZeroAddress, fmt.Errorf("%w: %s", ErrNameNotFound, name)
 	}
 
 	// Ensure that the content hash string is in a valid format, eg.

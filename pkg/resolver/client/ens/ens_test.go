@@ -102,8 +102,25 @@ func TestResolve(t *testing.T) {
 		defer c.Close()
 
 		_, err := c.Resolve(name)
-		if err == nil {
-			t.Error("expected error")
+		if !errors.Is(err, ens.ErrResolveFailed) {
+			t.Error("expected resolve error")
+		}
+	})
+
+	t.Run("zero address returned", func(t *testing.T) {
+		c := ens.NewClient(
+			ens.WithNoopDialFunc(),
+			ens.WithZeroAdrResolveFunc(),
+		)
+
+		if err := c.Connect(name); err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+
+		_, err := c.Resolve(name)
+		if !errors.Is(err, ens.ErrNameNotFound) {
+			t.Error("expected name not found error")
 		}
 	})
 

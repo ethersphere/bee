@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func SetEthClient(c *Client, ethCl *ethclient.Client) {
@@ -43,6 +44,12 @@ func WithResolveFunc(fn func(backend bind.ContractBackend, input string) (string
 func WithErrorResolveFunc(err error) Option {
 	return WithResolveFunc(func(backend bind.ContractBackend, input string) (string, error) {
 		return "", err
+	})
+}
+
+func WithZeroAdrResolveFunc() Option {
+	return WithResolveFunc(func(backend bind.ContractBackend, input string) (string, error) {
+		return swarm.ZeroAddress.String(), nil
 	})
 }
 
