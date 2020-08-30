@@ -29,7 +29,7 @@ func InitMultiResolver(logger logging.Logger, cfgs []*resolver.ConnectionConfig)
 			logger.Errorf("name resolver: resolver for %q domain: failed to connect to %q: %v", tld, ep, err)
 		} else {
 			logger.Infof("name resolver: resolver for %q domain: connected to %q", tld, ep)
-			if err := mr.PushResolver(tld, ens.NewClient()); err != nil {
+			if err := mr.PushResolver(tld, ensCl); err != nil {
 				logger.Errorf("name resolver: failed to push resolver to %q resolver chain: %v", tld, err)
 			}
 		}
