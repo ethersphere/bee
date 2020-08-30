@@ -12,9 +12,10 @@ import (
 
 // InitMultiResolver will create a new MultiResolver, create the appropriate
 // resolvers, push them to the resolver chains and attempt to connect.
-func InitMultiResolver(logger logging.Logger, cfgs []*resolver.ConnectionConfig) *resolver.MultiResolver {
-	if len(cfgs) > 0 {
+func InitMultiResolver(logger logging.Logger, cfgs []*resolver.ConnectionConfig) resolver.Interface {
+	if len(cfgs) == 0 {
 		logger.Info("name resolver: no name resolution service provided")
+		return nil
 	}
 
 	// Create a new MultiResolver.
