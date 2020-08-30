@@ -41,6 +41,7 @@ type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
 type Options struct {
 	SaturationFunc binSaturationFunc
 	Bootnodes      []ma.Multiaddr
+	Standalone     bool
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -61,8 +62,9 @@ type Kad struct {
 	peerSig        []chan struct{}
 	peerSigMtx     sync.Mutex
 	logger         logging.Logger // logger
-	quit           chan struct{}  // quit channel
-	done           chan struct{}  // signal that `manage` has quit
+	standalone     bool
+	quit           chan struct{} // quit channel
+	done           chan struct{} // signal that `manage` has quit
 	wg             sync.WaitGroup
 }
 
@@ -89,6 +91,7 @@ func New(base swarm.Address, addressbook addressbook.Interface, discovery discov
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]retryInfo),
 		logger:         logger,
+		standalone:     o.Standalone,
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		wg:             sync.WaitGroup{},
@@ -130,8 +133,11 @@ func (k *Kad) manage() {
 				return
 			default:
 			}
-
+			if k.standalone {
+				continue
+			}
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
