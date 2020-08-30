@@ -59,7 +59,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUIDHeader))
 	if err != nil {
 		s.Logger.Debugf("file upload: get or create tag: %v", err)
 		s.Logger.Error("file upload: get or create tag")
@@ -204,8 +204,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tag.DoneSplit(reference)
 	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
+	w.Header().Set(SwarmTagUIDHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUIDHeader)
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})
@@ -221,13 +221,20 @@ type fileUploadInfo struct {
 
 // fileDownloadHandler downloads the file given the entry's reference.
 func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["addr"]
-	address, err := swarm.ParseHexAddress(addr)
+	adrOrName := mux.Vars(r)["addr"]
+
+	var address swarm.Address
+	address, err := swarm.ParseHexAddress(adrOrName)
 	if err != nil {
-		s.Logger.Debugf("file download: parse file address %s: %v", addr, err)
-		s.Logger.Errorf("file download: parse file address %s", addr)
-		jsonhttp.BadRequest(w, "invalid file address")
-		return
+		s.Logger.Debugf("file download: attemptiing to resolve name %q", adrOrName)
+		address, err = s.Resolver.Resolve(adrOrName)
+		if err != nil {
+			s.Logger.Debugf("file download: parse file address %s: %v", adrOrName, err)
+			s.Logger.Errorf("file download: parse file address %s", adrOrName)
+			jsonhttp.BadRequest(w, "invalid file address")
+			return
+		}
+		s.Logger.Debugf("file download: resolved name %q to address %s", adrOrName, address)
 	}
 
 	targets := r.URL.Query().Get("targets")
@@ -238,16 +245,16 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	buf := bytes.NewBuffer(nil)
 	_, err = file.JoinReadAll(r.Context(), j, address, buf)
 	if err != nil {
-		s.Logger.Debugf("file download: read entry %s: %v", addr, err)
-		s.Logger.Errorf("file download: read entry %s", addr)
+		s.Logger.Debugf("file download: read entry %s: %v", adrOrName, err)
+		s.Logger.Errorf("file download: read entry %s", adrOrName)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	e := &entry.Entry{}
 	err = e.UnmarshalBinary(buf.Bytes())
 	if err != nil {
-		s.Logger.Debugf("file download: unmarshal entry %s: %v", addr, err)
-		s.Logger.Errorf("file download: unmarshal entry %s", addr)
+		s.Logger.Debugf("file download: unmarshal entry %s: %v", adrOrName, err)
+		s.Logger.Errorf("file download: unmarshal entry %s", adrOrName)
 		jsonhttp.InternalServerError(w, "error unmarshaling entry")
 		return
 	}
@@ -266,16 +273,16 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	buf = bytes.NewBuffer(nil)
 	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf)
 	if err != nil {
-		s.Logger.Debugf("file download: read metadata %s: %v", addr, err)
-		s.Logger.Errorf("file download: read metadata %s", addr)
+		s.Logger.Debugf("file download: read metadata %s: %v", adrOrName, err)
+		s.Logger.Errorf("file download: read metadata %s", adrOrName)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	metaData := &entry.Metadata{}
 	err = json.Unmarshal(buf.Bytes(), metaData)
 	if err != nil {
-		s.Logger.Debugf("file download: unmarshal metadata %s: %v", addr, err)
-		s.Logger.Errorf("file download: unmarshal metadata %s", addr)
+		s.Logger.Debugf("file download: unmarshal metadata %s: %v", adrOrName, err)
+		s.Logger.Errorf("file download: unmarshal metadata %s", adrOrName)
 		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 		return
 	}

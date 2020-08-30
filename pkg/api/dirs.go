@@ -41,7 +41,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUIDHeader))
 	if err != nil {
 		s.Logger.Debugf("dir upload: get or create tag: %v", err)
 		s.Logger.Error("dir upload: get or create tag")
@@ -62,7 +62,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if created {
 		tag.DoneSplit(reference)
 	}
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set(SwarmTagUIDHeader, fmt.Sprint(tag.Uid))
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})
