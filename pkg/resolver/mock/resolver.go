@@ -50,7 +50,7 @@ func (r *Resolver) Resolve(name string) (resolver.Address, error) {
 	if r.resolveFunc != nil {
 		return r.resolveFunc(name)
 	}
-	return resolver.Address{}, fmt.Errorf("%w: resolveFunc", ErrNotImplemented)
+	return resolver.Address{}, fmt.Errorf("resolveFunc: %w", ErrNotImplemented)
 }
 
 // Close implements the Resolver interface.

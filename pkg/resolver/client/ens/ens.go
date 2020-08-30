@@ -56,7 +56,7 @@ func NewClient(opts ...Option) *Client {
 // Connect implements the resolver.Client interface.
 func (c *Client) Connect(ep string) error {
 	if c.dialFn == nil {
-		return fmt.Errorf("%w: dialFn", ErrNotImplemented)
+		return fmt.Errorf("dialFn: %w", ErrNotImplemented)
 	}
 
 	ethCl, err := c.dialFn(ep)
@@ -87,7 +87,7 @@ func (c *Client) IsConnected() bool {
 // Function obtains a read lock while interacting with the Ethereum client.
 func (c *Client) Resolve(name string) (Address, error) {
 	if c.resolveFn == nil {
-		return swarm.ZeroAddress, fmt.Errorf("%w: resolveFn", ErrNotImplemented)
+		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", ErrNotImplemented)
 	}
 
 	// Obtain our copy of the client under lock.
@@ -97,19 +97,19 @@ func (c *Client) Resolve(name string) (Address, error) {
 
 	hash, err := c.resolveFn(ethCl, name)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("%w: %v", ErrResolveFailed, err)
+		return swarm.ZeroAddress, fmt.Errorf("%v: %w", err, ErrResolveFailed)
 	}
 
 	// In case the implementation returns a zero address return an NameNotFound
 	// error.
 	if hash == "" {
-		return swarm.ZeroAddress, fmt.Errorf("%w: %s", ErrNameNotFound, name)
+		return swarm.ZeroAddress, fmt.Errorf("name %s: %w", name, ErrNameNotFound)
 	}
 
 	// Ensure that the content hash string is in a valid format, eg.
 	// "/swarm/<address>".
 	if !strings.HasPrefix(hash, "/swarm/") {
-		return swarm.ZeroAddress, fmt.Errorf("%w: %s", ErrInvalidContentHash, hash)
+		return swarm.ZeroAddress, fmt.Errorf("contenthash %s: %w", hash, ErrInvalidContentHash)
 	}
 
 	// Trim the prefix and try to parse the result as a bzz address.

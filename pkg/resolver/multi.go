@@ -53,7 +53,7 @@ func WithForceDefault() Option {
 // to the default resolver chain.
 func (mr *MultiResolver) PushResolver(tld string, r Interface) error {
 	if tld != "" && !isTLD(tld) {
-		return fmt.Errorf("%w: %s", ErrInvalidTLD, tld)
+		return fmt.Errorf("tld %s: %w", tld, ErrInvalidTLD)
 	}
 
 	mr.resolvers[tld] = append(mr.resolvers[tld], r)
@@ -66,12 +66,12 @@ func (mr *MultiResolver) PushResolver(tld string, r Interface) error {
 // from the default resolver chain.
 func (mr *MultiResolver) PopResolver(tld string) error {
 	if tld != "" && !isTLD(tld) {
-		return fmt.Errorf("%w: %s", ErrInvalidTLD, tld)
+		return fmt.Errorf("tld %s: %w", tld, ErrInvalidTLD)
 	}
 
 	l := len(mr.resolvers[tld])
 	if l == 0 {
-		return fmt.Errorf("%w: %s", ErrResolverChainEmpty, tld)
+		return fmt.Errorf("tld %s: %w", tld, ErrResolverChainEmpty)
 	}
 	mr.resolvers[tld] = mr.resolvers[tld][:l-1]
 	return nil
@@ -107,7 +107,7 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 	chain := mr.resolvers[tld]
 
 	if len(chain) == 0 {
-		return Address{}, fmt.Errorf("%w: %s", ErrResolverChainEmpty, tld)
+		return Address{}, fmt.Errorf("tld %s: %w", tld, ErrResolverChainEmpty)
 	}
 
 	var err error
