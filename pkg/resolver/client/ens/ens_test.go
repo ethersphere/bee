@@ -29,8 +29,8 @@ func TestConnect(t *testing.T) {
 		)
 		err := c.Connect(ep)
 		defer c.Close()
-		if err == nil && errors.Is(err, ens.ErrNotImplemented{}) {
-			t.Fatal("expected error")
+		if !errors.Is(err, ens.ErrNotImplemented) {
+			t.Fatal("expected correct error")
 		}
 	})
 
@@ -85,8 +85,8 @@ func TestResolve(t *testing.T) {
 			ens.WithResolveFunc(nil),
 		)
 		_, err := c.Resolve("test")
-		if err != nil && errors.Is(err, ens.ErrNotImplemented{}) {
-			t.Fatal("expected error")
+		if !errors.Is(err, ens.ErrNotImplemented) {
+			t.Fatal("expected correct error")
 		}
 	})
 

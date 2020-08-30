@@ -4,21 +4,14 @@
 
 package ens
 
-import "fmt"
+import (
+	"errors"
+)
 
-// ErrNotImplemented denotes that the function has not been implemented.
-type ErrNotImplemented struct{}
-
-// Error returns the fomatted not implemented error message.
-func (e ErrNotImplemented) Error() string {
-	return "function not implemented"
-}
-
-// ErrInvalidContentHash denotes that the value of the contenthash record is
-// not valid.
-type ErrInvalidContentHash string
-
-// Error returns the formatted invalid content hash error.
-func (e ErrInvalidContentHash) Error() string {
-	return fmt.Sprintf("%q is not a valid swarm ENS content hash value", string(e))
-}
+var (
+	// ErrNotImplemented denotes that the function has not been implemented.
+	ErrNotImplemented = errors.New("function not implemented")
+	// ErrInvalidContentHash denotes that the value of the contenthash record is
+	// not valid.
+	ErrInvalidContentHash = errors.New("invalid swarm content hash")
+)

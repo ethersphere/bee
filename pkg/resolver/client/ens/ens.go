@@ -5,7 +5,7 @@
 package ens
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -56,7 +56,7 @@ func NewClient(opts ...Option) *Client {
 // Connect implements the resolver.Client interface.
 func (c *Client) Connect(ep string) error {
 	if c.dialFn == nil {
-		return errors.New("no dial function implementation")
+		return fmt.Errorf("%w: dialFn", ErrNotImplemented)
 	}
 
 	ethCl, err := c.dialFn(ep)
@@ -87,7 +87,7 @@ func (c *Client) IsConnected() bool {
 // Function obtains a read lock while interacting with the Ethereum client.
 func (c *Client) Resolve(name string) (Address, error) {
 	if c.resolveFn == nil {
-		return swarm.ZeroAddress, errors.New("no resolve function implementation")
+		return swarm.ZeroAddress, fmt.Errorf("%w: resolveFn", ErrNotImplemented)
 	}
 
 	// Obtain our copy of the client under lock.
@@ -104,7 +104,7 @@ func (c *Client) Resolve(name string) (Address, error) {
 	// Ensure that the content hash string is in a valid format, eg.
 	// "/swarm/<address>".
 	if !strings.HasPrefix(hash, "/swarm/") {
-		return swarm.ZeroAddress, ErrInvalidContentHash(hash)
+		return swarm.ZeroAddress, fmt.Errorf("%w: %s", ErrInvalidContentHash, hash)
 	}
 
 	// Trim the prefix and try to parse the result as a bzz address.
