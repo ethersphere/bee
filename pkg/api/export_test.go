@@ -20,6 +20,7 @@ var (
 )
 
 var (
+	ErrNoResolver          = errNoResolver
 	ErrInvalidChunkAddress = errInvalidChunkAddress
 )
 

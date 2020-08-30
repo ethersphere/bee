@@ -89,6 +89,7 @@ func (s *server) getOrCreateTag(tagUID string) (*tags.Tag, bool, error) {
 }
 
 var errInvalidChunkAddress = errors.New("invalid chunk address")
+var errNoResolver = errors.New("no resolver connected")
 
 func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	log := s.Logger
@@ -96,17 +97,24 @@ func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	// Try and parse the name as a bzz address.
 	adr, err := swarm.ParseHexAddress(str)
 	if err == nil {
-		log.Debugf("name parse: valid bzz address %q", str)
+		log.Debugf("name resolve: valid bzz address %q", str)
 		return adr, nil
 	}
+
+	// If no resolver is not available, return an error.
+	if s.Resolver == nil {
+		log.Errorf("name resolve: no name resolver available", str)
+		return swarm.ZeroAddress, errNoResolver
+	}
+
 	// Try and resolve the name using the provided resolver.
-	log.Debugf("name parse: attempting to resolve %s to bzz address", str)
+	log.Debugf("name resolve: attempting to resolve %s to bzz address", str)
 	adr, err = s.Resolver.Resolve(str)
 	if err == nil {
-		log.Debugf("name parse: resolved name %s to %s", str, adr)
+		log.Debugf("name resolve: resolved name %s to %s", str, adr)
 		return adr, nil
 	}
-	log.Errorf("name parse: failed to resolve name %s", str)
+	log.Errorf("name resolve: failed to resolve name %s", str)
 
 	return swarm.ZeroAddress, fmt.Errorf("%w: %v", errInvalidChunkAddress, err)
 }

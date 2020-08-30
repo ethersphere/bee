@@ -55,14 +55,16 @@ func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 }
 
 func TestParseName(t *testing.T) {
+	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
 
 	testCases := []struct {
-		desc    string
-		name    string
-		log     logging.Logger
-		res     resolver.Interface
-		wantAdr swarm.Address
-		wantErr error
+		desc       string
+		name       string
+		log        logging.Logger
+		res        resolver.Interface
+		noResolver bool
+		wantAdr    swarm.Address
+		wantErr    error
 	}{
 		{
 			desc:    "empty name",
@@ -71,8 +73,20 @@ func TestParseName(t *testing.T) {
 		},
 		{
 			desc:    "bzz hash",
-			name:    "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d",
-			wantAdr: swarm.MustParseHexAddress("89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"),
+			name:    bzzHash,
+			wantAdr: swarm.MustParseHexAddress(bzzHash),
+		},
+		{
+			desc:       "no resolver connected with bzz hash",
+			name:       bzzHash,
+			noResolver: true,
+			wantAdr:    swarm.MustParseHexAddress(bzzHash),
+		},
+		{
+			desc:       "no resolver connected with name",
+			name:       "itdoesntmatter.eth",
+			noResolver: true,
+			wantErr:    api.ErrNoResolver,
 		},
 		{
 			desc: "name not resolved",
@@ -94,7 +108,7 @@ func TestParseName(t *testing.T) {
 		if tC.log == nil {
 			tC.log = logging.New(ioutil.Discard, 0)
 		}
-		if tC.res == nil {
+		if tC.res == nil && !tC.noResolver {
 			tC.res = resolverMock.NewResolver(
 				resolverMock.WithResolveFunc(func(string) (swarm.Address, error) {
 					return tC.wantAdr, nil
@@ -105,8 +119,8 @@ func TestParseName(t *testing.T) {
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)
-			if err != nil && !errors.Is(err, api.ErrInvalidChunkAddress) {
-				t.Fatalf("unexpected error: %v", err)
+			if err != nil && !errors.Is(err, tC.wantErr) {
+				t.Fatalf("bad error: %v", err)
 			}
 			if !got.Equal(tC.wantAdr) {
 				t.Errorf("got %s, want %s", got, tC.wantAdr)
