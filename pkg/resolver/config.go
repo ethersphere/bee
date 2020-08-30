@@ -39,7 +39,7 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 
 	endpoint := cs
 	var tld string
-	var adr string
+	var addr string
 
 	// Split TLD and Endpoint strings.
 	if i := strings.Index(endpoint, ":"); i > 0 {
@@ -56,13 +56,13 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 	}
 	// Split the address string.
 	if i := strings.Index(endpoint, "@"); i > 0 {
-		adr = common.HexToAddress(endpoint[:i]).String()
+		addr = common.HexToAddress(endpoint[:i]).String()
 		endpoint = endpoint[i+1:]
 	}
 
 	return &ConnectionConfig{
 		Endpoint: endpoint,
-		Address:  adr,
+		Address:  addr,
 		TLD:      tld,
 	}, nil
 }

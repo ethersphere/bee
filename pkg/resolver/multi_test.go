@@ -104,10 +104,10 @@ func TestResolve(t *testing.T) {
 	testAdr := newAddr("aaaabbbbccccdddd")
 	testAdrAlt := newAddr("ddddccccbbbbaaaa")
 
-	newOKResolver := func(adr Address) resolver.Interface {
+	newOKResolver := func(addr Address) resolver.Interface {
 		return mock.NewResolver(
 			mock.WithResolveFunc(func(_ string) (Address, error) {
-				return adr, nil
+				return addr, nil
 			}),
 		)
 	}
@@ -209,7 +209,7 @@ func TestResolve(t *testing.T) {
 
 	for _, tC := range testCases {
 		t.Run(tC.name, func(t *testing.T) {
-			adr, err := mr.Resolve(tC.name)
+			addr, err := mr.Resolve(tC.name)
 			if err != nil {
 				if tC.wantErr == nil {
 					t.Fatalf("unexpected error: got %v", err)
@@ -218,8 +218,8 @@ func TestResolve(t *testing.T) {
 					t.Fatalf("got %v, want %v", err, tC.wantErr)
 				}
 			}
-			if !adr.Equal(tC.wantAdr) {
-				t.Errorf("got %q, want %q", adr, tC.wantAdr)
+			if !addr.Equal(tC.wantAdr) {
+				t.Errorf("got %q, want %q", addr, tC.wantAdr)
 			}
 		})
 	}

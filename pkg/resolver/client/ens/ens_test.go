@@ -135,12 +135,12 @@ func TestResolve(t *testing.T) {
 		}
 		defer c.Close()
 
-		adr, err := c.Resolve(name)
+		addr, err := c.Resolve(name)
 		if err != nil {
 			t.Error(err)
 		}
 		want := bzzAddress.String()
-		got := adr.String()
+		got := addr.String()
 		if got != want {
 			t.Errorf("got %q, want %q", got, want)
 		}

@@ -41,10 +41,10 @@ func wrapResolve(backend bind.ContractBackend, name string) (string, error) {
 		return "", err
 	}
 
-	adr, err := goens.ContenthashToString(ch)
+	addr, err := goens.ContenthashToString(ch)
 	if err != nil {
 		return "", err
 	}
 
-	return adr, nil
+	return addr, nil
 }

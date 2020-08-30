@@ -73,7 +73,7 @@ func TestENSntegration(t *testing.T) {
 				return
 			}
 
-			adr, err := eC.Resolve(tC.name)
+			addr, err := eC.Resolve(tC.name)
 			if err != nil {
 				if !tC.wantFailResolve {
 					t.Fatalf("failed to resolve name: %v", err)
@@ -82,7 +82,7 @@ func TestENSntegration(t *testing.T) {
 			}
 
 			want := strings.ToLower(tC.wantAdr)
-			got := strings.ToLower(adr.String())
+			got := strings.ToLower(addr.String())
 			if got != want {
 				t.Errorf("bad addr: got %q, want %q", got, want)
 			}

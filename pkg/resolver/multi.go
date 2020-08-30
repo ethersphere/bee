@@ -112,9 +112,9 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 
 	var err error
 	for _, res := range chain {
-		adr, err := res.Resolve(name)
+		addr, err := res.Resolve(name)
 		if err == nil {
-			return adr, nil
+			return addr, nil
 		}
 	}
 

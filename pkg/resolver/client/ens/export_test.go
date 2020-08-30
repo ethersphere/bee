@@ -46,14 +46,14 @@ func WithErrorResolveFunc(err error) Option {
 	})
 }
 
-func WithNoprefixAdrResolveFunc(adr resolver.Address) Option {
+func WithNoprefixAdrResolveFunc(addr resolver.Address) Option {
 	return WithResolveFunc(func(backend bind.ContractBackend, input string) (string, error) {
-		return adr.String(), nil
+		return addr.String(), nil
 	})
 }
 
-func WithValidAdrResolveFunc(adr resolver.Address) Option {
+func WithValidAdrResolveFunc(addr resolver.Address) Option {
 	return WithResolveFunc(func(backend bind.ContractBackend, input string) (string, error) {
-		return "/swarm/" + adr.String(), nil
+		return "/swarm/" + addr.String(), nil
 	})
 }
