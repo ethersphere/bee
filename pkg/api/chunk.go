@@ -79,12 +79,12 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
 	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 
-	addr := mux.Vars(r)["addr"]
+	nameOrHex := mux.Vars(r)["addr"]
 	ctx := r.Context()
 
-	address, err := swarm.ParseHexAddress(addr)
+	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.Logger.Debugf("chunk: parse chunk address %s: %v", addr, err)
+		s.Logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
 		s.Logger.Error("chunk: parse chunk address error")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
