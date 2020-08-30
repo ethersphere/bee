@@ -145,34 +145,20 @@ func TestTagConcurrentIncrements(t *testing.T) {
 	n := 10
 	wg := sync.WaitGroup{}
 	wg.Add(5 * n)
-	errC := make(chan error)
-	doneC := make(chan bool)
 	for _, f := range allStates {
 		go func(f State) {
 			for j := 0; j < n; j++ {
 				go func() {
 					err := tg.Inc(f)
 					if err != nil {
-						errC <- err
+						t.Errorf("error incrementing tag counters: %v", err)
 					}
 					wg.Done()
 				}()
 			}
 		}(f)
 	}
-	go func() {
-		wg.Wait()
-		close(doneC)
-	}()
-
-	select {
-	case <-doneC:
-		break
-	case err := <-errC:
-		close(errC)
-		t.Fatal(err)
-	}
-
+	wg.Wait()
 	for _, f := range allStates {
 		v := tg.Get(f)
 		if v != int64(n) {
@@ -189,8 +175,6 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 	n := 100
 	wg := sync.WaitGroup{}
 	wg.Add(10 * 5 * n)
-	errC := make(chan error)
-	doneC := make(chan bool)
 	for i := 0; i < 10; i++ {
 		s := string([]byte{uint8(i)})
 		tag, err := ts.Create(s, int64(n))
@@ -203,7 +187,7 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 					go func() {
 						err := tag.Inc(f)
 						if err != nil {
-							errC <- err
+							t.Errorf("error incrementing tag counters: %v", err)
 						}
 						wg.Done()
 					}()
@@ -211,18 +195,7 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 			}(tag, f)
 		}
 	}
-	go func() {
-		wg.Wait()
-		close(doneC)
-	}()
-
-	select {
-	case <-doneC:
-		break
-	case err := <-errC:
-		close(errC)
-		t.Fatal(err)
-	}
+	wg.Wait()
 	i := 0
 	ts.Range(func(k, v interface{}) bool {
 		i++
