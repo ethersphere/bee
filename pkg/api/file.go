@@ -239,16 +239,16 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	buf := bytes.NewBuffer(nil)
 	_, err = file.JoinReadAll(r.Context(), j, address, buf)
 	if err != nil {
-		s.Logger.Debugf("file download: read entry %s: %v", nameOrHex, err)
-		s.Logger.Errorf("file download: read entry %s", nameOrHex)
+		s.Logger.Debugf("file download: read entry %s: %v", address, err)
+		s.Logger.Errorf("file download: read entry %s", address)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	e := &entry.Entry{}
 	err = e.UnmarshalBinary(buf.Bytes())
 	if err != nil {
-		s.Logger.Debugf("file download: unmarshal entry %s: %v", nameOrHex, err)
-		s.Logger.Errorf("file download: unmarshal entry %s", nameOrHex)
+		s.Logger.Debugf("file download: unmarshal entry %s: %v", address, err)
+		s.Logger.Errorf("file download: unmarshal entry %s", address)
 		jsonhttp.InternalServerError(w, "error unmarshaling entry")
 		return
 	}
