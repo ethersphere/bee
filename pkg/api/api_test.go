@@ -14,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/resolver"
+	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	"resenje.org/web"
@@ -22,6 +24,7 @@ import (
 type testServerOptions struct {
 	Pingpong pingpong.Interface
 	Storer   storage.Storer
+	Resolver resolver.Interface
 	Tags     *tags.Tags
 	Logger   logging.Logger
 }
@@ -30,7 +33,10 @@ func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 	if o.Logger == nil {
 		o.Logger = logging.New(ioutil.Discard, 0)
 	}
-	s := api.New(o.Tags, o.Storer, nil, o.Logger, nil)
+	if o.Resolver == nil {
+		o.Resolver = resolverMock.NewResolver()
+	}
+	s := api.New(o.Tags, o.Storer, o.Resolver, nil, o.Logger, nil)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

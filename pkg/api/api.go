@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -32,6 +33,7 @@ type Service interface {
 type server struct {
 	Tags               *tags.Tags
 	Storer             storage.Storer
+	Resolver           resolver.Interface
 	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	Tracer             *tracing.Tracer
@@ -44,10 +46,11 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-func New(tags *tags.Tags, storer storage.Storer, corsAllowedOrigins []string, logger logging.Logger, tracer *tracing.Tracer) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, corsAllowedOrigins []string, logger logging.Logger, tracer *tracing.Tracer) Service {
 	s := &server{
 		Tags:               tags,
 		Storer:             storer,
+		Resolver:           resolver,
 		CORSAllowedOrigins: corsAllowedOrigins,
 		Logger:             logger,
 		Tracer:             tracer,

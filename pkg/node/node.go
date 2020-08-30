@@ -293,12 +293,13 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	b.pullerCloser = puller
 
-	b.resolverCloser = resolverSvc.InitMultiResolver(logger, o.ResolverConnectionCfgs)
+	multiResolver := resolverSvc.InitMultiResolver(logger, o.ResolverConnectionCfgs)
+	b.resolverCloser = multiResolver
 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagg, ns, o.CORSAllowedOrigins, logger, tracer)
+		apiService = api.New(tagg, ns, multiResolver, o.CORSAllowedOrigins, logger, tracer)
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)
