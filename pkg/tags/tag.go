@@ -305,7 +305,7 @@ func decodeInt64Splice(buffer *[]byte) int64 {
 	return val
 }
 
-// UpdateTag update the tag in the state store
+// saveTag update the tag in the state store
 func (tag *Tag) saveTag() error {
 	key := getKey(tag.Uid)
 	value, err := tag.MarshalBinary()
