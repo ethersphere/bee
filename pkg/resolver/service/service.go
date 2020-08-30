@@ -24,26 +24,24 @@ func InitMultiResolver(logger logging.Logger, cfgs []*resolver.ConnectionConfig)
 	connectENS := func(tld string, ep string) {
 		ensCl := ens.NewClient()
 
-		logger.Debugf("name resolver: resolver for %q: connecting to endpoint %q")
+		logger.Debugf("name resolver: resolver for %q: connecting to endpoint %s", tld, ep)
 		if err := ensCl.Connect(ep); err != nil {
 			logger.Errorf("name resolver: resolver for %q domain: failed to connect to %q: %v", tld, ep, err)
 		} else {
-			logger.Infof("name resolver: resolver for %q domain: connected to %q", tld, ep)
+			logger.Infof("name resolver: resolver for %q domain: connected to %s", tld, ep)
 			if err := mr.PushResolver(tld, ensCl); err != nil {
 				logger.Errorf("name resolver: failed to push resolver to %q resolver chain: %v", tld, err)
 			}
 		}
 	}
 
-	// Atrempt to conect to each resolver using the connection string.
+	// Attempt to conect to each resolver using the connection string.
 	for _, c := range cfgs {
 
 		// Warn user that the resolver address field is not used.
 		if c.Address != "" {
 			logger.Warningf("name resolver: connection string %q contains resolver address field, which is currently unused", c.Address)
 		}
-
-		logger.Debugf("name resolver: attempting connection at %q", c)
 
 		// Select the appropriate resolver.
 		switch c.TLD {
