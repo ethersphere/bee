@@ -5,10 +5,10 @@
 package resolver_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/resolver"
-	"github.com/syndtr/goleveldb/leveldb/errors"
 )
 
 func TestParseConnectionStrings(t *testing.T) {
@@ -23,7 +23,7 @@ func TestParseConnectionStrings(t *testing.T) {
 			conStrings: []string{
 				"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff:example.com",
 			},
-			wantErr: resolver.ErrTLDTooLong("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+			wantErr: resolver.ErrTLDTooLong,
 		},
 		{
 			desc: "single endpoint default tld",
@@ -110,14 +110,14 @@ func TestParseConnectionStrings(t *testing.T) {
 				"testdomain:wowzers.map",
 				"nonononononononononononononononononononononononononononononononononono:yes",
 			},
-			wantErr: errors.New("Resolver connection string: TLD extend max length of 63 characters"),
+			wantErr: resolver.ErrTLDTooLong,
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := resolver.ParseConnectionStrings(tC.conStrings)
 			if err != nil {
-				if tC.wantErr == nil {
+				if !errors.Is(err, tC.wantErr) {
 					t.Errorf("got error %v", err)
 				}
 				return

@@ -48,7 +48,7 @@ func TestPushResolver(t *testing.T) {
 		{
 			desc:    "invalid tld",
 			tld:     "invalid",
-			wantErr: resolver.ErrInvalidTLD("invalid"),
+			wantErr: resolver.ErrInvalidTLD,
 		},
 	}
 
@@ -63,7 +63,7 @@ func TestPushResolver(t *testing.T) {
 			want := mock.NewResolver()
 			err := mr.PushResolver(tC.tld, want)
 			if err != nil {
-				if errors.Is(err, tC.wantErr) {
+				if !errors.Is(err, tC.wantErr) {
 					t.Fatal(err)
 				}
 				return
@@ -88,18 +88,14 @@ func TestPopResolver(t *testing.T) {
 	mr := resolver.NewMultiResolver()
 
 	t.Run("error on bad tld", func(t *testing.T) {
-		err := mr.PopResolver("invalid")
-		want := resolver.ErrInvalidTLD("invalid")
-		if err != want {
-			t.Fatalf("bad error: got %v, want %v", err, want)
+		if err := mr.PopResolver("invalid"); !errors.Is(err, resolver.ErrInvalidTLD) {
+			t.Fatal("invalid error type")
 		}
 	})
 
 	t.Run("error on empty", func(t *testing.T) {
-		err := mr.PopResolver(".tld")
-		want := resolver.ErrResolverChainEmpty(".tld")
-		if err != want {
-			t.Fatalf("bad error: got %v, want %v", err, want)
+		if err := mr.PopResolver(".tld"); !errors.Is(err, resolver.ErrResolverChainEmpty) {
+			t.Fatal("invalid error type")
 		}
 	})
 }
@@ -193,7 +189,7 @@ func TestResolve(t *testing.T) {
 		},
 		{
 			name:    "this.empty",
-			wantErr: resolver.ErrResolverChainEmpty(".empty"),
+			wantErr: resolver.ErrResolverChainEmpty,
 		},
 		{
 			name:    "this.dies",

@@ -48,7 +48,7 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 		if isAllUnicodeLetters(endpoint[:i]) && len(endpoint) > i+2 && endpoint[i+1:i+3] != "//" {
 			tld = endpoint[:i]
 			if len(tld) > maxLabelLength {
-				return nil, fmt.Errorf("resolver connection string: TLD extends max length of %d characters", maxLabelLength)
+				return nil, fmt.Errorf("%w: %s", ErrTLDTooLong, tld)
 
 			}
 			endpoint = endpoint[i+1:]
