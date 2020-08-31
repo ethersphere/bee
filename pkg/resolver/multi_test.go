@@ -101,8 +101,9 @@ func TestPopResolver(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
-	testAdr := newAddr("aaaabbbbccccdddd")
-	testAdrAlt := newAddr("ddddccccbbbbaaaa")
+	addr := newAddr("aaaabbbbccccdddd")
+	addrAlt := newAddr("ddddccccbbbbaaaa")
+	errUnregisteredName := fmt.Errorf("unregistered name")
 
 	newOKResolver := func(addr Address) resolver.Interface {
 		return mock.NewResolver(
@@ -115,7 +116,14 @@ func TestResolve(t *testing.T) {
 		return mock.NewResolver(
 			mock.WithResolveFunc(func(name string) (Address, error) {
 				err := fmt.Errorf("name resolution failed for %q", name)
-				return Address{}, err
+				return swarm.ZeroAddress, err
+			}),
+		)
+	}
+	newUnregisteredNameResolver := func() resolver.Interface {
+		return mock.NewResolver(
+			mock.WithResolveFunc(func(name string) (Address, error) {
+				return swarm.ZeroAddress, errUnregisteredName
 			}),
 		)
 	}
@@ -129,26 +137,26 @@ func TestResolve(t *testing.T) {
 			// Default chain:
 			tld: "",
 			res: []resolver.Interface{
-				newOKResolver(testAdr),
+				newOKResolver(addr),
 			},
-			expectAdr: testAdr,
+			expectAdr: addr,
 		},
 		{
 			tld: ".tld",
 			res: []resolver.Interface{
 				newErrResolver(),
 				newErrResolver(),
-				newOKResolver(testAdr),
+				newOKResolver(addr),
 			},
-			expectAdr: testAdr,
+			expectAdr: addr,
 		},
 		{
 			tld: ".good",
 			res: []resolver.Interface{
-				newOKResolver(testAdr),
-				newOKResolver(testAdrAlt),
+				newOKResolver(addr),
+				newOKResolver(addrAlt),
 			},
-			expectAdr: testAdr,
+			expectAdr: addr,
 		},
 		{
 			tld: ".empty",
@@ -160,6 +168,12 @@ func TestResolve(t *testing.T) {
 				newErrResolver(),
 			},
 		},
+		{
+			tld: ".unregistered",
+			res: []resolver.Interface{
+				newUnregisteredNameResolver(),
+			},
+		},
 	}
 
 	testCases := []struct {
@@ -167,34 +181,39 @@ func TestResolve(t *testing.T) {
 		wantAdr Address
 		wantErr error
 	}{
+		// {
+		// 	name:    "",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "hello",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "example.tld",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    ".tld",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "get.good",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	// Switch to the default chain:
+		// 	name:    "this.empty",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "this.dies",
+		// 	wantErr: fmt.Errorf("Failed to resolve name %q", "this.dies"),
+		// },
 		{
-			name:    "",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "hello",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "example.tld",
-			wantAdr: testAdr,
-		},
-		{
-			name:    ".tld",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "get.good",
-			wantAdr: testAdr,
-		},
-		{
-			// Switch to the default chain:
-			name:    "this.empty",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "this.dies",
-			wantErr: fmt.Errorf("Failed to resolve name %q", "this.dies"),
+			name:    "iam.unregistered",
+			wantAdr: swarm.ZeroAddress,
+			wantErr: errUnregisteredName,
 		},
 	}
 
