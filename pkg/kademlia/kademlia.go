@@ -239,26 +239,30 @@ func (k *Kad) Start(ctx context.Context) error {
 
 func (k *Kad) connectBootnodes(ctx context.Context) {
 	var count int
-
 	for _, addr := range k.bootnodes {
-		if count == 3 {
+		if count >= 3 {
 			return
 		}
 
 		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
 			k.logger.Tracef("connecting to bootnode %s", addr)
-			_, err = k.p2p.ConnectNotify(ctx, addr)
+			bzzAddress, err := k.p2p.Connect(ctx, addr)
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
 					k.logger.Debugf("connect fail %s: %v", addr, err)
 					k.logger.Warningf("connect to bootnode %s", addr)
+					return false, err
 				}
 				return false, nil
+			}
+
+			if err := k.connected(ctx, bzzAddress.Overlay); err != nil {
+				return false, err
 			}
 			k.logger.Tracef("connected to bootnode %s", addr)
 			count++
 			// connect to max 3 bootnodes
-			return count == 3, nil
+			return count >= 3, nil
 		}); err != nil {
 			k.logger.Debugf("discover fail %s: %v", addr, err)
 			k.logger.Warningf("discover to bootnode %s", addr)
@@ -427,6 +431,8 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 		k.knownPeers.Add(addr, po)
 	}
 
+	fmt.Println("triggering manage C from addPeers")
+
 	select {
 	case k.manageC <- struct{}{}:
 	default:
@@ -437,6 +443,20 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
+	if err := k.connected(ctx, addr); err != nil {
+		return err
+	}
+
+	fmt.Println("triggering manage C from connected")
+	select {
+	case k.manageC <- struct{}{}:
+	default:
+	}
+
+	return nil
+}
+
+func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 	if err := k.announce(ctx, addr); err != nil {
 		return err
 	}
@@ -455,11 +475,6 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 
 	k.notifyPeerSig()
 
-	select {
-	case k.manageC <- struct{}{}:
-	default:
-	}
-
 	return nil
 }
 
@@ -475,6 +490,8 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	k.depthMu.Lock()
 	k.depth = recalcDepth(k.connectedPeers)
 	k.depthMu.Unlock()
+	fmt.Println("triggering manage C from disconnected")
+
 	select {
 	case k.manageC <- struct{}{}:
 	default:
