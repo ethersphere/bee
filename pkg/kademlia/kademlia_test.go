@@ -720,7 +720,7 @@ func TestStart(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		waitCounter(t, &conns, 5)
+		waitCounter(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
 	})
 }
