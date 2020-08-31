@@ -14,7 +14,7 @@ import (
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
-func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (stop bool, err error)) (stopped bool, err error) {
+func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool, error)) (bool, error) {
 	if comp, _ := ma.SplitFirst(addr); comp.Protocol().Name != "dnsaddr" {
 		return f(addr)
 	}
@@ -32,12 +32,13 @@ func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (stop
 		addrs[i], addrs[j] = addrs[j], addrs[i]
 	})
 	for _, addr := range addrs {
-		stopped, err = Discover(ctx, addr, f)
+		stopped, err := Discover(ctx, addr, f)
 		if err != nil {
 			return false, fmt.Errorf("discover %s: %w", addr, err)
 		}
+
 		if stopped {
-			break
+			return true, nil
 		}
 	}
 
