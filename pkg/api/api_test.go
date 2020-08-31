@@ -69,7 +69,7 @@ func TestParseName(t *testing.T) {
 		{
 			desc:    "empty name",
 			name:    "",
-			wantErr: api.ErrInvalidChunkAddress,
+			wantErr: api.ErrInvalidNameOrAddress,
 		},
 		{
 			desc:    "bzz hash",
@@ -96,7 +96,7 @@ func TestParseName(t *testing.T) {
 					return swarm.ZeroAddress, errors.New("failed to resolve")
 				}),
 			),
-			wantErr: api.ErrInvalidChunkAddress,
+			wantErr: api.ErrInvalidNameOrAddress,
 		},
 		{
 			desc:    "name resolved",

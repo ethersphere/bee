@@ -28,8 +28,8 @@ const (
 )
 
 var (
-	errInvalidChunkAddress = errors.New("invalid chunk address")
-	errNoResolver          = errors.New("no resolver connected")
+	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
+	errNoResolver           = errors.New("no resolver connected")
 )
 
 // Service is the API service interface.
@@ -115,7 +115,7 @@ func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 		return addr, nil
 	}
 
-	return swarm.ZeroAddress, fmt.Errorf("%w: %v", errInvalidChunkAddress, err)
+	return swarm.ZeroAddress, fmt.Errorf("%w: %v", errInvalidNameOrAddress, err)
 }
 
 // requestModePut returns the desired storage.ModePut for this request based on the request headers.

@@ -20,8 +20,8 @@ var (
 )
 
 var (
-	ErrNoResolver          = errNoResolver
-	ErrInvalidChunkAddress = errInvalidChunkAddress
+	ErrNoResolver           = errNoResolver
+	ErrInvalidNameOrAddress = errInvalidNameOrAddress
 )
 
 func (s *Server) ResolveNameOrAddress(str string) (swarm.Address, error) {
