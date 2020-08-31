@@ -7,6 +7,7 @@ require (
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/coreos/go-semver v0.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
+	github.com/ethereum/go-ethereum v1.9.20
 	github.com/ethersphere/bmt v0.1.2
 	github.com/ethersphere/manifest v0.2.0
 	github.com/gogo/protobuf v1.3.1
@@ -48,6 +49,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
+	github.com/wealdtech/go-ens/v3 v3.4.3
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.opencensus.io v0.22.4 // indirect
 	go.uber.org/zap v1.15.0 // indirect

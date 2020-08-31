@@ -43,6 +43,10 @@ vet:
 test-race:
 	$(GO) test -race -v ./...
 
+.PHONY: test-integration
+test-integration:
+	$(GO) test -tags=integration -v ./...
+
 .PHONY: test
 test:
 	$(GO) test -v ./...

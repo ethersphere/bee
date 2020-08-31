@@ -40,6 +40,7 @@ const (
 	optionNameGlobalPinningEnabled = "global-pinning-enable"
 	optionNamePaymentThreshold     = "payment-threshold"
 	optionNamePaymentTolerance     = "payment-tolerance"
+	optionNameResolverEndpoints    = "resolver-options"
 )
 
 func init() {
@@ -182,4 +183,5 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameGlobalPinningEnabled, false, "enable global pinning")
 	cmd.Flags().Uint64(optionNamePaymentThreshold, 100000, "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Uint64(optionNamePaymentTolerance, 10000, "excess debt above payment threshold in BZZ where you disconnect from your peer")
+	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "resolver connection string, see help for format")
 }

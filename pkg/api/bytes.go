@@ -52,11 +52,11 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
-	addressHex := mux.Vars(r)["address"]
+	nameOrHex := mux.Vars(r)["address"]
 
-	address, err := swarm.ParseHexAddress(addressHex)
+	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.Logger.Debugf("bytes: parse address %s: %v", addressHex, err)
+		s.Logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
 		s.Logger.Error("bytes: parse address error")
 		jsonhttp.BadRequest(w, "invalid address")
 		return

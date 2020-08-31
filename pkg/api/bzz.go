@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -27,12 +26,12 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 	ctx := r.Context()
 
-	addressHex := mux.Vars(r)["address"]
+	nameOrHex := mux.Vars(r)["address"]
 	path := mux.Vars(r)["path"]
 
-	address, err := swarm.ParseHexAddress(addressHex)
+	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.Logger.Debugf("bzz download: parse address %s: %v", addressHex, err)
+		s.Logger.Debugf("bzz download: parse address %s: %v", nameOrHex, err)
 		s.Logger.Error("bzz download: parse address")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
