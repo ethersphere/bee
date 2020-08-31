@@ -5,20 +5,19 @@
 package resolver
 
 import (
-	"errors"
+	"fmt"
 	"path"
 	"strings"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// MultiResolver errors.
-var (
-	ErrInvalidTLD         = errors.New("invalid TLD")
-	ErrResolverChainEmpty = errors.New("resolver chain empty")
-)
+// Ensure MultiResolver implements Resolver interface.
+var _ Interface = (*MultiResolver)(nil)
 
 type resolverMap map[string][]Interface
 
-// MultiResolver performs name resolutions based on the TLD of the URL.
+// MultiResolver performs name resolutions based on the TLD label in the name.
 type MultiResolver struct {
 	resolvers resolverMap
 	// ForceDefault will force all names to be resolved by the default
@@ -43,8 +42,7 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 	return mr
 }
 
-// WithForceDefault will force resolution using the default resolver
-// chain.
+// WithForceDefault will force resolution using the default resolver chain.
 func WithForceDefault() Option {
 	return func(mr *MultiResolver) {
 		mr.ForceDefault = true
@@ -57,7 +55,7 @@ func WithForceDefault() Option {
 // to the default resolver chain.
 func (mr *MultiResolver) PushResolver(tld string, r Interface) error {
 	if tld != "" && !isTLD(tld) {
-		return ErrInvalidTLD
+		return fmt.Errorf("tld %s: %w", tld, ErrInvalidTLD)
 	}
 
 	mr.resolvers[tld] = append(mr.resolvers[tld], r)
@@ -70,12 +68,12 @@ func (mr *MultiResolver) PushResolver(tld string, r Interface) error {
 // from the default resolver chain.
 func (mr *MultiResolver) PopResolver(tld string) error {
 	if tld != "" && !isTLD(tld) {
-		return ErrInvalidTLD
+		return fmt.Errorf("tld %s: %w", tld, ErrInvalidTLD)
 	}
 
 	l := len(mr.resolvers[tld])
 	if l == 0 {
-		return ErrResolverChainEmpty
+		return fmt.Errorf("tld %s: %w", tld, ErrResolverChainEmpty)
 	}
 	mr.resolvers[tld] = mr.resolvers[tld][:l-1]
 	return nil
@@ -103,26 +101,41 @@ func (mr *MultiResolver) GetChain(tld string) []Interface {
 // returning the result of the first Resolver that succeeds. If all resolvers
 // in the chain return an error, the function will return an ErrResolveFailed.
 func (mr *MultiResolver) Resolve(name string) (Address, error) {
+
 	tld := ""
 	if !mr.ForceDefault {
 		tld = getTLD(name)
 	}
 	chain := mr.resolvers[tld]
 
+	// If no resolver chain is found, switch to the default chain.
 	if len(chain) == 0 {
-		return Address{}, ErrResolverChainEmpty
+		chain = mr.resolvers[""]
 	}
 
+	addr := swarm.ZeroAddress
 	var err error
 	for _, res := range chain {
-		adr, err := res.Resolve(name)
+		addr, err = res.Resolve(name)
 		if err == nil {
-			return adr, nil
+			return addr, nil
 		}
 	}
 
-	// TODO: consider wrapping errors from the resolver chain.
-	return Address{}, err
+	return addr, err
+}
+
+// Close all will call Close on all resolvers in all resolver chains.
+func (mr *MultiResolver) Close() error {
+	errs := new(CloseError)
+
+	for _, chain := range mr.resolvers {
+		for _, r := range chain {
+			errs.add(r.Close())
+		}
+	}
+
+	return errs.errorOrNil()
 }
 
 func isTLD(tld string) bool {

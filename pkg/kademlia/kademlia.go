@@ -41,6 +41,7 @@ type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
 type Options struct {
 	SaturationFunc binSaturationFunc
 	Bootnodes      []ma.Multiaddr
+	Standalone     bool
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -61,8 +62,9 @@ type Kad struct {
 	peerSig        []chan struct{}
 	peerSigMtx     sync.Mutex
 	logger         logging.Logger // logger
-	quit           chan struct{}  // quit channel
-	done           chan struct{}  // signal that `manage` has quit
+	standalone     bool
+	quit           chan struct{} // quit channel
+	done           chan struct{} // signal that `manage` has quit
 	wg             sync.WaitGroup
 }
 
@@ -89,6 +91,7 @@ func New(base swarm.Address, addressbook addressbook.Interface, discovery discov
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]retryInfo),
 		logger:         logger,
+		standalone:     o.Standalone,
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		wg:             sync.WaitGroup{},
@@ -130,8 +133,11 @@ func (k *Kad) manage() {
 				return
 			default:
 			}
-
+			if k.standalone {
+				continue
+			}
 			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
@@ -232,34 +238,33 @@ func (k *Kad) Start(ctx context.Context) error {
 }
 
 func (k *Kad) connectBootnodes(ctx context.Context) {
-	var wg sync.WaitGroup
+	var count int
+
 	for _, addr := range k.bootnodes {
-		wg.Add(1)
-		go func(a ma.Multiaddr) {
-			defer wg.Done()
-			var count int
-			if _, err := p2p.Discover(ctx, a, func(addr ma.Multiaddr) (stop bool, err error) {
-				k.logger.Tracef("connecting to bootnode %s", addr)
-				_, err = k.p2p.ConnectNotify(ctx, addr)
-				if err != nil {
-					if !errors.Is(err, p2p.ErrAlreadyConnected) {
-						k.logger.Debugf("connect fail %s: %v", addr, err)
-						k.logger.Warningf("connect to bootnode %s", addr)
-					}
-					return false, nil
+		if count == 3 {
+			return
+		}
+
+		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+			k.logger.Tracef("connecting to bootnode %s", addr)
+			_, err = k.p2p.ConnectNotify(ctx, addr)
+			if err != nil {
+				if !errors.Is(err, p2p.ErrAlreadyConnected) {
+					k.logger.Debugf("connect fail %s: %v", addr, err)
+					k.logger.Warningf("connect to bootnode %s", addr)
 				}
-				k.logger.Tracef("connected to bootnode %s", addr)
-				count++
-				// connect to max 3 bootnodes
-				return count > 3, nil
-			}); err != nil {
-				k.logger.Debugf("discover fail %s: %v", a, err)
-				k.logger.Warningf("discover to bootnode %s", a)
-				return
+				return false, nil
 			}
-		}(addr)
+			k.logger.Tracef("connected to bootnode %s", addr)
+			count++
+			// connect to max 3 bootnodes
+			return count == 3, nil
+		}); err != nil {
+			k.logger.Debugf("discover fail %s: %v", addr, err)
+			k.logger.Warningf("discover to bootnode %s", addr)
+			return
+		}
 	}
-	wg.Wait()
 }
 
 // binSaturated indicates whether a certain bin is saturated or not.

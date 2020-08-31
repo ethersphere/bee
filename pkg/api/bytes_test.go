@@ -75,7 +75,7 @@ func TestBytes(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "not found",
+				Message: "Not Found",
 				Code:    http.StatusNotFound,
 			}),
 		)

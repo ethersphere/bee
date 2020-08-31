@@ -20,9 +20,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -229,35 +227,34 @@ type fileUploadInfo struct {
 
 // fileDownloadHandler downloads the file given the entry's reference.
 func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["addr"]
-	address, err := swarm.ParseHexAddress(addr)
+	nameOrHex := mux.Vars(r)["addr"]
+
+	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.Logger.Debugf("file download: parse file address %s: %v", addr, err)
-		s.Logger.Errorf("file download: parse file address %s", addr)
+		s.Logger.Debugf("file download: parse file address %s: %v", nameOrHex, err)
+		s.Logger.Errorf("file download: parse file address %s", nameOrHex)
 		jsonhttp.BadRequest(w, "invalid file address")
 		return
 	}
-
-	toDecrypt := len(address.Bytes()) == (swarm.HashSize + encryption.KeyLength)
 
 	targets := r.URL.Query().Get("targets")
 	sctx.SetTargets(r.Context(), targets)
 
 	// read entry.
-	j := joiner.NewSimpleJoiner(s.Storer)
+	j := seekjoiner.NewSimpleJoiner(s.Storer)
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(r.Context(), j, address, buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, address, buf)
 	if err != nil {
-		s.Logger.Debugf("file download: read entry %s: %v", addr, err)
-		s.Logger.Errorf("file download: read entry %s", addr)
+		s.Logger.Debugf("file download: read entry %s: %v", address, err)
+		s.Logger.Errorf("file download: read entry %s", address)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	e := &entry.Entry{}
 	err = e.UnmarshalBinary(buf.Bytes())
 	if err != nil {
-		s.Logger.Debugf("file download: unmarshal entry %s: %v", addr, err)
-		s.Logger.Errorf("file download: unmarshal entry %s", addr)
+		s.Logger.Debugf("file download: unmarshal entry %s: %v", address, err)
+		s.Logger.Errorf("file download: unmarshal entry %s", address)
 		jsonhttp.InternalServerError(w, "error unmarshaling entry")
 		return
 	}
@@ -274,18 +271,18 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Read metadata.
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf, toDecrypt)
+	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf)
 	if err != nil {
-		s.Logger.Debugf("file download: read metadata %s: %v", addr, err)
-		s.Logger.Errorf("file download: read metadata %s", addr)
+		s.Logger.Debugf("file download: read metadata %s: %v", nameOrHex, err)
+		s.Logger.Errorf("file download: read metadata %s", nameOrHex)
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	metaData := &entry.Metadata{}
 	err = json.Unmarshal(buf.Bytes(), metaData)
 	if err != nil {
-		s.Logger.Debugf("file download: unmarshal metadata %s: %v", addr, err)
-		s.Logger.Errorf("file download: unmarshal metadata %s", addr)
+		s.Logger.Debugf("file download: unmarshal metadata %s: %v", nameOrHex, err)
+		s.Logger.Errorf("file download: unmarshal metadata %s", nameOrHex)
 		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 		return
 	}
@@ -314,7 +311,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		}
 		s.Logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
 		s.Logger.Error("api download: invalid root chunk")
-		jsonhttp.BadRequest(w, "invalid root chunk")
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 

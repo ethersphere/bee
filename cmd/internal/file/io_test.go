@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"

@@ -8,14 +8,13 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -24,7 +23,7 @@ import (
 
 var (
 	start = 0
-	end   = test.GetVectorCount()
+	end   = test.GetVectorCount() - 2
 )
 
 // TestSplitThenJoin splits a file with the splitter implementation and
@@ -45,8 +44,8 @@ func testSplitThenJoin(t *testing.T) {
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
 		store       = mock.NewStorer()
-		s           = splitter.NewSimpleSplitter(store, storage.ModePutUpload)
-		j           = joiner.NewSimpleJoiner(store)
+		p           = pipeline.NewPipelineBuilder(context.Background(), store, storage.ModePutUpload, false)
+		j           = seekjoiner.NewSimpleJoiner(store)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
 
@@ -54,13 +53,13 @@ func testSplitThenJoin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
-	resultAddress, err := s.Split(ctx, dataReader, int64(len(data)), false)
+	resultAddress, err := pipeline.FeedPipeline(ctx, p, dataReader, int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// then join
-	r, l, err := j.Join(ctx, resultAddress, false)
+	r, l, err := j.Join(ctx, resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,49 +84,5 @@ func testSplitThenJoin(t *testing.T) {
 	// compare result
 	if !bytes.Equal(resultData[:len(data)], data) {
 		t.Fatalf("data mismatch %d", len(data))
-	}
-}
-
-// TestJoinReadAll verifies that data in excess of a single chunk is returned
-// in its entirety.
-func TestJoinReadAll(t *testing.T) {
-	var dataLength int64 = swarm.ChunkSize + 2
-	j := newMockJoiner(dataLength)
-	buf := bytes.NewBuffer(nil)
-	c, err := file.JoinReadAll(context.Background(), j, swarm.ZeroAddress, buf, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dataLength != c {
-		t.Fatalf("expected readall return length %d, got %d", dataLength, c)
-	}
-	if dataLength != int64(len(buf.Bytes())) {
-		t.Fatalf("expected length %d, got %d", dataLength, len(buf.Bytes()))
-	}
-
-}
-
-// mockJoiner is an implementation of file,Joiner that short-circuits that returns
-// a mock byte vector of the length given at initialization.
-type mockJoiner struct {
-	l int64
-}
-
-// Join implements file.Joiner.
-func (j *mockJoiner) Join(ctx context.Context, address swarm.Address, toDecrypt bool) (dataOut io.ReadCloser, dataLength int64, err error) {
-	data := make([]byte, j.l)
-	buf := bytes.NewBuffer(data)
-	readCloser := ioutil.NopCloser(buf)
-	return readCloser, j.l, nil
-}
-
-func (j *mockJoiner) Size(ctx context.Context, address swarm.Address) (dataSize int64, err error) {
-	return j.l, nil
-}
-
-// newMockJoiner creates a new mockJoiner.
-func newMockJoiner(l int64) file.Joiner {
-	return &mockJoiner{
-		l: l,
 	}
 }

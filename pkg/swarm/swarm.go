@@ -12,20 +12,17 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/sha3"
-
-	"github.com/ethersphere/bee/pkg/encryption"
 )
 
 const (
-	SpanSize                     = 8
-	SectionSize                  = 32
-	Branches                     = 128
-	ChunkSize                    = SectionSize * Branches
-	HashSize                     = 32
-	EncryptedReferenceSize       = HashSize + encryption.KeyLength
-	MaxPO                  uint8 = 15
-	MaxBins                      = MaxPO + 1
-	ChunkWithSpanSize            = ChunkSize + SpanSize
+	SpanSize                = 8
+	SectionSize             = 32
+	Branches                = 128
+	ChunkSize               = SectionSize * Branches
+	HashSize                = 32
+	MaxPO             uint8 = 15
+	MaxBins                 = MaxPO + 1
+	ChunkWithSpanSize       = ChunkSize + SpanSize
 )
 
 var (

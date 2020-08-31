@@ -32,6 +32,7 @@ const (
 	optionNameNetworkID            = "network-id"
 	optionWelcomeMessage           = "welcome-message"
 	optionCORSAllowedOrigins       = "cors-allowed-origins"
+	optionNameStandalone           = "standalone"
 	optionNameTracingEnabled       = "tracing-enable"
 	optionNameTracingEndpoint      = "tracing-endpoint"
 	optionNameTracingServiceName   = "tracing-service-name"
@@ -39,6 +40,7 @@ const (
 	optionNameGlobalPinningEnabled = "global-pinning-enable"
 	optionNamePaymentThreshold     = "payment-threshold"
 	optionNamePaymentTolerance     = "payment-tolerance"
+	optionNameResolverEndpoints    = "resolver-options"
 )
 
 func init() {
@@ -172,6 +174,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameDebugAPIAddr, ":6060", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
+	cmd.Flags().Bool(optionNameStandalone, false, "whether we want the node to start with no listen addresses for p2p")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
@@ -180,4 +183,5 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameGlobalPinningEnabled, false, "enable global pinning")
 	cmd.Flags().Uint64(optionNamePaymentThreshold, 100000, "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Uint64(optionNamePaymentTolerance, 10000, "excess debt above payment threshold in BZZ where you disconnect from your peer")
+	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "resolver connection string, see help for format")
 }
