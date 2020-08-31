@@ -80,7 +80,7 @@ func TestTags(t *testing.T) {
 				Message: "cannot get or create tag",
 				Code:    http.StatusInternalServerError,
 			}),
-			jsonhttptest.WithRequestHeader(api.SwarmTagUIDHeader, "invalid_id.jpg"), // the value should be uint32
+			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, "invalid_id.jpg"), // the value should be uint32
 		)
 	})
 
@@ -135,7 +135,7 @@ func TestTags(t *testing.T) {
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
 			}),
-			jsonhttptest.WithRequestHeader(api.SwarmTagUIDHeader, strconv.FormatUint(uint64(tr.UID), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10)),
 		)
 
 		isTagFoundInResponse(t, rcvdHeaders, &tr)
@@ -162,7 +162,7 @@ func TestTags(t *testing.T) {
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
 			}),
-			jsonhttptest.WithRequestHeader(api.SwarmTagUIDHeader, fmt.Sprint(tr.UID)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, fmt.Sprint(tr.Uid)),
 		)
 
 		isTagFoundInResponse(t, rcvdHeaders, &tr)
@@ -177,7 +177,7 @@ func TestTags(t *testing.T) {
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
 			}),
-			jsonhttptest.WithRequestHeader(api.SwarmTagUIDHeader, fmt.Sprint(tr.UID)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, fmt.Sprint(tr.Uid)),
 		)
 
 		isTagFoundInResponse(t, rcvdHeaders, &tr)
@@ -208,7 +208,7 @@ func TestTags(t *testing.T) {
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
 			}),
-			jsonhttptest.WithRequestHeader(api.SwarmTagUIDHeader, fmt.Sprint(tr.UID)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, fmt.Sprint(tr.Uid)),
 		)
 
 		// see if the tag id is present and has valid values
@@ -217,8 +217,8 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
 
-		if id != tr.UID {
-			t.Fatalf("expected tag id to be %d but is %d", id, tr.UID)
+		if id != tr.Uid {
+			t.Fatalf("expected tag id to be %d but is %d", id, tr.Uid)
 		}
 		if tr.Stored != 2 {
 			t.Fatalf("expected stored counter to be %d but is %d", 2, tr.Stored)
@@ -240,8 +240,8 @@ func TestTags(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(id), http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
-		if id != tr.UID {
-			t.Fatalf("expected tag id to be %d but is %d", id, tr.UID)
+		if id != tr.Uid {
+			t.Fatalf("expected tag id to be %d but is %d", id, tr.Uid)
 		}
 	})
 
@@ -319,12 +319,12 @@ func TestTags(t *testing.T) {
 		)
 
 		// delete tag through API
-		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(tRes.UID), http.StatusNoContent,
+		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(tRes.Uid), http.StatusNoContent,
 			jsonhttptest.WithNoResponseBody(),
 		)
 
 		// try to get tag
-		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(tRes.UID), http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(tRes.Uid), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "tag not present",
 				Code:    http.StatusNotFound,
@@ -361,7 +361,7 @@ func TestTags(t *testing.T) {
 			}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
-		tagId := tRes.UID
+		tagId := tRes.Uid
 
 		// generate address to be supplied to the done split
 		addr := test.RandomAddress()
@@ -369,7 +369,7 @@ func TestTags(t *testing.T) {
 		// upload content with tag
 		jsonhttptest.Request(t, client, http.MethodPost, chunksResource(someHash), http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(someContent)),
-			jsonhttptest.WithRequestHeader(api.SwarmTagUIDHeader, fmt.Sprint(tagId)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, fmt.Sprint(tagId)),
 		)
 
 		// call done split
@@ -432,7 +432,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithRequestHeader("Content-Type", "application/octet-stream"),
 		)
 
-		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUIDHeader))
+		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUidHeader))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -484,7 +484,7 @@ func TestTags(t *testing.T) {
 			t.Fatalf("expected file reference, did not got any")
 		}
 
-		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUIDHeader))
+		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUidHeader))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -520,7 +520,7 @@ func TestTags(t *testing.T) {
 		}
 
 		sentHeaders := make(http.Header)
-		sentHeaders.Set(api.SwarmTagUIDHeader, strconv.FormatUint(uint64(tr.UID), 10))
+		sentHeaders.Set(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10))
 
 		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 		dataChunk, err := g.SequentialBytes(swarm.ChunkSize)
@@ -539,7 +539,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(fileUploadResponse{
 				Reference: rootAddress,
 			}),
-			jsonhttptest.WithRequestHeader(api.SwarmTagUIDHeader, strconv.FormatUint(uint64(tr.UID), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10)),
 		)
 		id := isTagFoundInResponse(t, rcvdHeaders, nil)
 
@@ -548,8 +548,8 @@ func TestTags(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if tagToVerify.Uid != tr.UID {
-			t.Fatalf("expected tag id to be %d but is %d", tagToVerify.Uid, tr.UID)
+		if tagToVerify.Uid != tr.Uid {
+			t.Fatalf("expected tag id to be %d but is %d", tagToVerify.Uid, tr.Uid)
 		}
 
 		finalTag := api.TagResponse{}
@@ -576,7 +576,7 @@ func TestTags(t *testing.T) {
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
 // if an API tag response is supplied, it also verifies that it contains an id which matches the headers
 func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {
-	idStr := headers.Get(api.SwarmTagUIDHeader)
+	idStr := headers.Get(api.SwarmTagUidHeader)
 	if idStr == "" {
 		t.Fatalf("could not find tag id header in chunk upload response")
 	}
@@ -586,8 +586,8 @@ func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse
 		t.Fatal(err)
 	}
 	if tr != nil {
-		if id != tr.UID {
-			t.Fatalf("expected created tag id to be %d, but got %d when uploading chunk", tr.UID, id)
+		if id != tr.Uid {
+			t.Fatalf("expected created tag id to be %d, but got %d when uploading chunk", tr.Uid, id)
 		}
 	}
 	return id

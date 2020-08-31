@@ -33,7 +33,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, _, err := s.getOrCreateTag(r.Header.Get(SwarmTagUIDHeader))
+	tag, _, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
 	if err != nil {
 		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
 		s.Logger.Error("chunk upload: get or create tag")
@@ -71,8 +71,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Indicate that the chunk is stored
 	tag.Inc(tags.StateStored)
 
-	w.Header().Set(SwarmTagUIDHeader, fmt.Sprint(tag.Uid))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUIDHeader)
+	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
 	jsonhttp.OK(w, nil)
 }
 

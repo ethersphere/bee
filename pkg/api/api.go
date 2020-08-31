@@ -24,7 +24,7 @@ import (
 // Swarm headers.
 const (
 	SwarmPinHeader     = "Swarm-Pin"
-	SwarmTagUIDHeader  = "Swarm-Tag-Uid"
+	SwarmTagUidHeader  = "Swarm-Tag-Uid"
 	SwarmEncryptHeader = "Swarm-Encrypt"
 )
 
@@ -69,9 +69,9 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, co
 
 // getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
 // If no id is supplied, it will attempt to create a new tag with a generated name and return it.
-func (s *server) getOrCreateTag(tagUID string) (*tags.Tag, bool, error) {
+func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	// if tag ID is not supplied, create a new tag
-	if tagUID == "" {
+	if tagUid == "" {
 		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
 		var err error
 		tag, err := s.Tags.Create(tagName, 0)
@@ -80,7 +80,7 @@ func (s *server) getOrCreateTag(tagUID string) (*tags.Tag, bool, error) {
 		}
 		return tag, true, nil
 	}
-	uid, err := strconv.Atoi(tagUID)
+	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot parse taguid: %w", err)
 	}
