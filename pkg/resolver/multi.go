@@ -106,8 +106,9 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 	}
 	chain := mr.resolvers[tld]
 
+	// If no resolver chain is found, switch to the default chain.
 	if len(chain) == 0 {
-		return Address{}, fmt.Errorf("tld %s: %w", tld, ErrResolverChainEmpty)
+		chain = mr.resolvers[""]
 	}
 
 	var err error

@@ -188,8 +188,9 @@ func TestResolve(t *testing.T) {
 			wantAdr: testAdr,
 		},
 		{
+			// Switch to the default chain:
 			name:    "this.empty",
-			wantErr: resolver.ErrResolverChainEmpty,
+			wantAdr: testAdr,
 		},
 		{
 			name:    "this.dies",
