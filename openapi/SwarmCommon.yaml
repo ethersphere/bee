@@ -195,10 +195,16 @@ components:
       pattern: '^[A-Fa-f0-9]{128}$'
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f2d2810619d29b5dbefd5d74abce25d58b81b251baddb9c3871cf0d6967deaae2"
 
+    DomainName:
+      type: string
+      pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
+      example: "swarm.eth"
+
     SwarmReference:
       oneOf:
         - $ref: '#/components/schemas/SwarmAddress'
         - $ref: '#/components/schemas/SwarmEncryptedReference'
+        - $ref: '#/components/schemas/DomainName'
 
     TagName:
       type: string
