@@ -20,9 +20,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 ```
 
 
-Our documentation is hosted at:
-- https://swarm-gateways.net/bzz:/docs.swarm.eth/
-- https://docs.ethswarm.org
+Our documentation is hosted at https://docs.ethswarm.org.
 
 ## Contributing
 
@@ -30,7 +28,7 @@ Please read the [coding guidelines](CODING.md).
 
 ## Installing
 
-[Install instructions](https://swarm-gateways.net/bzz:/docs.swarm.eth/bee-docs/installation.html)
+[Install instructions](https://docs.ethswarm.org/docs/installation/quick-start)
 
 ## License
 
