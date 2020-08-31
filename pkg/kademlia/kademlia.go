@@ -431,8 +431,6 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 		k.knownPeers.Add(addr, po)
 	}
 
-	fmt.Println("triggering manage C from addPeers")
-
 	select {
 	case k.manageC <- struct{}{}:
 	default:
@@ -447,7 +445,6 @@ func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
 		return err
 	}
 
-	fmt.Println("triggering manage C from connected")
 	select {
 	case k.manageC <- struct{}{}:
 	default:
@@ -490,7 +487,6 @@ func (k *Kad) Disconnected(addr swarm.Address) {
 	k.depthMu.Lock()
 	k.depth = recalcDepth(k.connectedPeers)
 	k.depthMu.Unlock()
-	fmt.Println("triggering manage C from disconnected")
 
 	select {
 	case k.manageC <- struct{}{}:
