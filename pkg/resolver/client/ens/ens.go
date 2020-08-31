@@ -56,7 +56,7 @@ func NewClient(opts ...Option) *Client {
 // Connect implements the resolver.Client interface.
 func (c *Client) Connect(ep string) error {
 	if c.dialFn == nil {
-		return fmt.Errorf("dialFn: %w", ErrNotImplemented)
+		return fmt.Errorf("dialFn: %w", errNotImplemented)
 	}
 
 	ethCl, err := c.dialFn(ep)
@@ -87,7 +87,7 @@ func (c *Client) IsConnected() bool {
 // Function obtains a read lock while interacting with the Ethereum client.
 func (c *Client) Resolve(name string) (Address, error) {
 	if c.resolveFn == nil {
-		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", ErrNotImplemented)
+		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", errNotImplemented)
 	}
 
 	// Obtain our copy of the client under lock.

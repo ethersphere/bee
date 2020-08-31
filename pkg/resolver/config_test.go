@@ -19,6 +19,8 @@ func TestParseConnectionStrings(t *testing.T) {
 		wantErr    error
 	}{
 		{
+			// Defined as per RFC 1034. For reference, see:
+			// https://en.wikipedia.org/wiki/Domain_Name_System#cite_note-rfc1034-1
 			desc: "tld too long",
 			conStrings: []string{
 				"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff:example.com",

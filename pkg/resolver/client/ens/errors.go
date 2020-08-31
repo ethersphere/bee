@@ -9,8 +9,6 @@ import (
 )
 
 var (
-	// ErrNotImplemented denotes that the function has not been implemented.
-	ErrNotImplemented = errors.New("function not implemented")
 	// ErrInvalidContentHash denotes that the value of the contenthash record is
 	// not valid.
 	ErrInvalidContentHash = errors.New("invalid swarm content hash")
@@ -19,4 +17,9 @@ var (
 	// ErrNameNotFound is returned when a name resolves to an empty contenthash
 	// record.
 	ErrNameNotFound = errors.New("name not found")
+)
+
+var (
+	// errNotImplemented denotes that the function has not been implemented.
+	errNotImplemented = errors.New("function not implemented")
 )

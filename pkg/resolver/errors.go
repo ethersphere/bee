@@ -12,7 +12,7 @@ import (
 
 var (
 	// ErrTLDTooLong denotes when a TLD in a name exceeds maximum length.
-	ErrTLDTooLong = fmt.Errorf("TLD exceeds maximum length of %d characters", maxLabelLength)
+	ErrTLDTooLong = fmt.Errorf("TLD exceeds maximum length of %d characters", maxTLDLength)
 	// ErrInvalidTLD denotes passing an invalid TLD to the MultiResolver.
 	ErrInvalidTLD = errors.New("invalid TLD")
 	// ErrResolverChainEmpty denotes trying to pop an empty resolver chain.

@@ -11,6 +11,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+var (
+	ErrNotImplemented = errNotImplemented
+)
+
 func SetEthClient(c *Client, ethCl *ethclient.Client) {
 	c.ethCl = ethCl
 }

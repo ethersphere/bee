@@ -14,7 +14,7 @@ import (
 
 // Defined as per RFC 1034. For reference, see:
 // https://en.wikipedia.org/wiki/Domain_Name_System#cite_note-rfc1034-1
-const maxLabelLength = 63
+const maxTLDLength = 63
 
 // ConnectionConfig contains the TLD, endpoint and contract address used to
 // establish to a resolver.
@@ -47,7 +47,7 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 		// Eg. in http://... the "http" is NOT a tld.
 		if isAllUnicodeLetters(endpoint[:i]) && len(endpoint) > i+2 && endpoint[i+1:i+3] != "//" {
 			tld = endpoint[:i]
-			if len(tld) > maxLabelLength {
+			if len(tld) > maxTLDLength {
 				return nil, fmt.Errorf("%w: %s", ErrTLDTooLong, tld)
 
 			}
