@@ -238,34 +238,33 @@ func (k *Kad) Start(ctx context.Context) error {
 }
 
 func (k *Kad) connectBootnodes(ctx context.Context) {
-	var wg sync.WaitGroup
+	var count int
+
 	for _, addr := range k.bootnodes {
-		wg.Add(1)
-		go func(a ma.Multiaddr) {
-			defer wg.Done()
-			var count int
-			if _, err := p2p.Discover(ctx, a, func(addr ma.Multiaddr) (stop bool, err error) {
-				k.logger.Tracef("connecting to bootnode %s", addr)
-				_, err = k.p2p.ConnectNotify(ctx, addr)
-				if err != nil {
-					if !errors.Is(err, p2p.ErrAlreadyConnected) {
-						k.logger.Debugf("connect fail %s: %v", addr, err)
-						k.logger.Warningf("connect to bootnode %s", addr)
-					}
-					return false, nil
+		if count == 3 {
+			return
+		}
+
+		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
+			k.logger.Tracef("connecting to bootnode %s", addr)
+			_, err = k.p2p.ConnectNotify(ctx, addr)
+			if err != nil {
+				if !errors.Is(err, p2p.ErrAlreadyConnected) {
+					k.logger.Debugf("connect fail %s: %v", addr, err)
+					k.logger.Warningf("connect to bootnode %s", addr)
 				}
-				k.logger.Tracef("connected to bootnode %s", addr)
-				count++
-				// connect to max 3 bootnodes
-				return count > 3, nil
-			}); err != nil {
-				k.logger.Debugf("discover fail %s: %v", a, err)
-				k.logger.Warningf("discover to bootnode %s", a)
-				return
+				return false, nil
 			}
-		}(addr)
+			k.logger.Tracef("connected to bootnode %s", addr)
+			count++
+			// connect to max 3 bootnodes
+			return count == 3, nil
+		}); err != nil {
+			k.logger.Debugf("discover fail %s: %v", addr, err)
+			k.logger.Warningf("discover to bootnode %s", addr)
+			return
+		}
 	}
-	wg.Wait()
 }
 
 // binSaturated indicates whether a certain bin is saturated or not.
