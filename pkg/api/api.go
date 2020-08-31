@@ -5,6 +5,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -13,7 +14,9 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
@@ -24,6 +27,12 @@ const (
 	SwarmEncryptHeader = "Swarm-Encrypt"
 )
 
+var (
+	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
+	errNoResolver           = errors.New("no resolver connected")
+)
+
+// Service is the API service interface.
 type Service interface {
 	http.Handler
 	m.Collector
@@ -32,6 +41,7 @@ type Service interface {
 type server struct {
 	Tags               *tags.Tags
 	Storer             storage.Storer
+	Resolver           resolver.Interface
 	CORSAllowedOrigins []string
 	Logger             logging.Logger
 	Tracer             *tracing.Tracer
@@ -44,10 +54,12 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-func New(tags *tags.Tags, storer storage.Storer, corsAllowedOrigins []string, logger logging.Logger, tracer *tracing.Tracer) Service {
+// New will create a and initialize a new API service.
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, corsAllowedOrigins []string, logger logging.Logger, tracer *tracing.Tracer) Service {
 	s := &server{
 		Tags:               tags,
 		Storer:             storer,
+		Resolver:           resolver,
 		CORSAllowedOrigins: corsAllowedOrigins,
 		Logger:             logger,
 		Tracer:             tracer,
@@ -78,6 +90,32 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	}
 	t, err := s.Tags.Get(uint32(uid))
 	return t, false, err
+}
+
+func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
+	log := s.Logger
+
+	// Try and parse the name as a bzz address.
+	addr, err := swarm.ParseHexAddress(str)
+	if err == nil {
+		log.Tracef("name resolve: valid bzz address %q", str)
+		return addr, nil
+	}
+
+	// If no resolver is not available, return an error.
+	if s.Resolver == nil {
+		return swarm.ZeroAddress, errNoResolver
+	}
+
+	// Try and resolve the name using the provided resolver.
+	log.Debugf("name resolve: attempting to resolve %s to bzz address", str)
+	addr, err = s.Resolver.Resolve(str)
+	if err == nil {
+		log.Tracef("name resolve: resolved name %s to %s", str, addr)
+		return addr, nil
+	}
+
+	return swarm.ZeroAddress, fmt.Errorf("%w: %v", errInvalidNameOrAddress, err)
 }
 
 // requestModePut returns the desired storage.ModePut for this request based on the request headers.
