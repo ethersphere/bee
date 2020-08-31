@@ -351,29 +351,6 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 	return addr.Encapsulate(hostAddr), nil
 }
 
-func (s *Service) ConnectNotify(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
-	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
-	if err != nil {
-		return nil, fmt.Errorf("addr from p2p: %w", err)
-	}
-
-	address, err = s.Connect(ctx, addr)
-	if err != nil {
-		return nil, fmt.Errorf("connect notify: %w", err)
-	}
-
-	if len(s.topologyNotifiers) > 0 {
-		for _, tn := range s.topologyNotifiers {
-			if err := tn.Connected(ctx, address.Overlay); err != nil {
-				_ = s.disconnect(info.ID)
-				return nil, fmt.Errorf("notify topology: %w", err)
-			}
-		}
-	}
-
-	return address, nil
-}
-
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
