@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 
@@ -75,10 +76,17 @@ var (
 	ErrDisconnectThresholdExceeded = errors.New("disconnect threshold exceeded")
 	// ErrInvalidPaymentTolerance is the error returned if the payment tolerance is too high compared to the payment threshold
 	ErrInvalidPaymentTolerance = errors.New("payment tolerance must be less than half the payment threshold")
+	//
+	ErrOverflow = errors.New("Overflow error")
 )
 
 // NewAccounting creates a new Accounting instance with the provided options
 func NewAccounting(o Options) (*Accounting, error) {
+
+	if o.PaymentTolerance+o.PaymentThreshold > math.MaxInt64 {
+		return nil, fmt.Errorf("Tolerance plus threshhold too big: %w", ErrOverflow)
+	}
+
 	if o.PaymentTolerance > o.PaymentThreshold/2 {
 		return nil, ErrInvalidPaymentTolerance
 	}
@@ -109,7 +117,12 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		return fmt.Errorf("failed to load balance: %w", err)
 	}
 
-	expectedDebt := -(currentBalance - int64(accountingPeer.reservedBalance))
+	expectedBalance, err := SubstractI64mU64(currentBalance, accountingPeer.reservedBalance)
+	if err != nil {
+		return err
+	}
+
+	expectedDebt := -expectedBalance
 	if expectedDebt < 0 {
 		expectedDebt = 0
 	}
@@ -118,6 +131,11 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	if uint64(expectedDebt) > a.paymentThreshold {
 		a.metrics.AccountingBlocksCount.Inc()
 		return ErrOverdraft
+	}
+
+	//
+	if accountingPeer.reservedBalance+price < accountingPeer.reservedBalance {
+		return ErrOverflow
 	}
 
 	accountingPeer.reservedBalance += price
@@ -159,12 +177,20 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 		return fmt.Errorf("failed to load balance: %w", err)
 	}
 
-	nextBalance := currentBalance - int64(price)
+	nextBalance, err := SubstractI64mU64(currentBalance, price)
+	if err != nil {
+		return err
+	}
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
+	expectedBalance, err := SubstractI64mU64(currentBalance, accountingPeer.reservedBalance)
+	if err != nil {
+		return err
+	}
+
 	// compute expected debt before update because reserve still includes the amount that is deducted from the balance
-	expectedDebt := -(currentBalance - int64(accountingPeer.reservedBalance))
+	expectedDebt := -expectedBalance
 	if expectedDebt < 0 {
 		expectedDebt = 0
 	}
@@ -202,8 +228,12 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		return nil
 	}
 
+	if oldBalance == math.MinInt64 {
+		return ErrOverflow
+	}
+
 	paymentAmount := uint64(-oldBalance)
-	nextBalance := oldBalance + int64(paymentAmount)
+	nextBalance := 0
 
 	// try to save the next balance first
 	// otherwise we might pay and then not be able to save, thus paying again after restart
@@ -238,7 +268,11 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	if err != nil {
 		return fmt.Errorf("failed to load balance: %w", err)
 	}
-	nextBalance := currentBalance + int64(price)
+
+	nextBalance, err := AddI64pU64(currentBalance, price)
+	if err != nil {
+		return err
+	}
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
@@ -350,7 +384,8 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	if err != nil {
 		return err
 	}
-	nextBalance := currentBalance - int64(amount)
+
+	nextBalance, err := SubstractI64mU64(currentBalance, amount)
 
 	// don't allow a payment to put use more into debt than the tolerance
 	// this is to prevent another node tricking us into settling by settling first (e.g. send a bouncing cheque to trigger an honest cheque in swap)
@@ -366,4 +401,39 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	}
 
 	return nil
+}
+
+func SubstractI64mU64(base int64, substracted uint64) (result int64, err error) {
+
+	result = base - int64(substracted)
+
+	if substracted > math.MaxInt64 {
+		return 0, ErrOverflow
+	}
+
+	if result > base {
+		return 0, ErrOverflow
+	}
+
+	if result == math.MinInt64 {
+		return 0, ErrOverflow
+	}
+
+	return result, nil
+}
+
+func AddI64pU64(a int64, b uint64) (result int64, err error) {
+
+	if b > math.MaxInt64 {
+		return 0, ErrOverflow
+	}
+
+	result = a + int64(b)
+
+	if result < a {
+		return 0, ErrOverflow
+	}
+
+	return result, nil
+
 }
