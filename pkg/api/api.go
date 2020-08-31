@@ -21,11 +21,15 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
-// Swarm headers.
 const (
 	SwarmPinHeader     = "Swarm-Pin"
 	SwarmTagUidHeader  = "Swarm-Tag-Uid"
 	SwarmEncryptHeader = "Swarm-Encrypt"
+)
+
+var (
+	errInvalidChunkAddress = errors.New("invalid chunk address")
+	errNoResolver          = errors.New("no resolver connected")
 )
 
 // Service is the API service interface.
@@ -87,9 +91,6 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	t, err := s.Tags.Get(uint32(uid))
 	return t, false, err
 }
-
-var errInvalidChunkAddress = errors.New("invalid chunk address")
-var errNoResolver = errors.New("no resolver connected")
 
 func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	log := s.Logger
