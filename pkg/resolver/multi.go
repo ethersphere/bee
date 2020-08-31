@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"path"
 	"strings"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // Ensure MultiResolver implements Resolver interface.
@@ -111,15 +113,16 @@ func (mr *MultiResolver) Resolve(name string) (Address, error) {
 		chain = mr.resolvers[""]
 	}
 
+	addr := swarm.ZeroAddress
 	var err error
 	for _, res := range chain {
-		addr, err := res.Resolve(name)
+		addr, err = res.Resolve(name)
 		if err == nil {
 			return addr, nil
 		}
 	}
 
-	return Address{}, err
+	return addr, err
 }
 
 // Close all will call Close on all resolvers in all resolver chains.

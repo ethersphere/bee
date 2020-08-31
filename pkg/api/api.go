@@ -110,7 +110,7 @@ func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	// Try and resolve the name using the provided resolver.
 	log.Debugf("name resolve: attempting to resolve %s to bzz address", str)
 	addr, err = s.Resolver.Resolve(str)
-	if err == nil && !addr.IsZero() {
+	if err == nil {
 		log.Tracef("name resolve: resolved name %s to %s", str, addr)
 		return addr, nil
 	}
