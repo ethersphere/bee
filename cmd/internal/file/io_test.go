@@ -18,7 +18,7 @@ import (
 	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
-	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -154,7 +154,9 @@ func TestLimitWriter(t *testing.T) {
 // newTestServer creates an http server to serve the bee http api endpoints.
 func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	t.Helper()
-	s := api.New(tags.NewTags(), storer, resolverMock.NewResolver(), nil, logging.New(ioutil.Discard, 0), nil)
+	logger := logging.New(ioutil.Discard, 0)
+	store := statestore.NewStateStore()
+	s := api.New(tags.NewTags(store, logger), storer, nil, nil, logger, nil)
 	ts := httptest.NewServer(s)
 	srvUrl, err := url.Parse(ts.URL)
 	if err != nil {

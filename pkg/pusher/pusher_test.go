@@ -7,6 +7,7 @@ package pusher_test
 import (
 	"context"
 	"errors"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"sync"
 	"testing"
@@ -227,7 +228,8 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 		t.Fatal(err)
 	}
 
-	mtags := tags.NewTags()
+	mockStatestore := statestore.NewStateStore()
+	mtags := tags.NewTags(mockStatestore, logger)
 	pusherStorer := &Store{
 		Storer:    storer,
 		modeSet:   make(map[string]storage.ModeSet),

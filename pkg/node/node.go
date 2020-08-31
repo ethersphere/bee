@@ -61,6 +61,7 @@ type Bee struct {
 	resolverCloser   io.Closer
 	errorLogWriter   *io.PipeWriter
 	tracerCloser     io.Closer
+	tagsCloser       io.Closer
 	stateStoreCloser io.Closer
 	localstoreCloser io.Closer
 	topologyCloser   io.Closer
@@ -243,7 +244,8 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
 	retrieve := retrieval.New(p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator)
-	tagg := tags.NewTags()
+	tagg := tags.NewTags(stateStore, logger)
+	b.tagsCloser = tagg
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
@@ -411,6 +413,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.tracerCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("tracer: %w", err))
+	}
+
+	if err := b.tagsCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("tag persistence: %w", err))
 	}
 
 	if err := b.stateStoreCloser.Close(); err != nil {

@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io"
 	"io/ioutil"
 	"mime"
@@ -33,9 +34,11 @@ func TestBzz(t *testing.T) {
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		storer              = smock.NewStorer()
 		ctx                 = context.Background()
+		mockStatestore      = statestore.NewStateStore()
+		logger              = logging.New(ioutil.Discard, 0)
 		client              = newTestServer(t, testServerOptions{
 			Storer: storer,
-			Tags:   tags.NewTags(),
+			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logging.New(ioutil.Discard, 5),
 		})
 		pipeWriteAll = func(r io.Reader, l int64) (swarm.Address, error) {
