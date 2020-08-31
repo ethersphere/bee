@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -157,7 +156,7 @@ func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 	store := statestore.NewStateStore()
-	s := api.New(tags.NewTags(store, logger), storer, nil, logger, nil)
+	s := api.New(tags.NewTags(store, logger), storer, nil, nil, logger, nil)
 	ts := httptest.NewServer(s)
 	srvUrl, err := url.Parse(ts.URL)
 	if err != nil {
