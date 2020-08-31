@@ -41,7 +41,13 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if created {
-		tag.DoneSplit(address)
+		_, err = tag.DoneSplit(address)
+		if err != nil {
+			s.Logger.Debugf("bytes upload: done split: %v", err)
+			s.Logger.Error("bytes upload: done split failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
 	}
 	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)

@@ -247,7 +247,10 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 				// run to end from db.pushIndex.DeleteInBatch
 				db.logger.Errorf("localstore: get tags on push sync set uid %d: %v", i.Tag, err)
 			} else {
-				t.Inc(tags.StateSynced)
+				err = t.Inc(tags.StateSynced)
+				if err != nil {
+					return 0, err
+				}
 			}
 		}
 

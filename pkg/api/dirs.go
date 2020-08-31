@@ -54,13 +54,19 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger, requestEncrypt(r))
 	if err != nil {
-		s.Logger.Debugf("dir upload, store dir err: %v", err)
-		s.Logger.Errorf("dir upload, store dir")
+		s.Logger.Debugf("dir upload: store dir err: %v", err)
+		s.Logger.Errorf("dir upload: store dir")
 		jsonhttp.InternalServerError(w, "could not store dir")
 		return
 	}
 	if created {
-		tag.DoneSplit(reference)
+		_, err = tag.DoneSplit(reference)
+		if err != nil {
+			s.Logger.Debugf("dir upload: done split: %v", err)
+			s.Logger.Error("dir upload: done split failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
 	}
 	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	jsonhttp.OK(w, fileUploadResponse{

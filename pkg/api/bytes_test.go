@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -24,13 +25,15 @@ import (
 // downloading and requesting a resource that cannot be found.
 func TestBytes(t *testing.T) {
 	var (
-		resource   = "/bytes"
-		targets    = "0x222"
-		expHash    = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
-		mockStorer = mock.NewStorer()
-		client     = newTestServer(t, testServerOptions{
+		resource       = "/bytes"
+		targets        = "0x222"
+		expHash        = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
+		mockStorer     = mock.NewStorer()
+		mockStatestore = statestore.NewStateStore()
+		logger         = logging.New(ioutil.Discard, 0)
+		client         = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
-			Tags:   tags.NewTags(),
+			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)

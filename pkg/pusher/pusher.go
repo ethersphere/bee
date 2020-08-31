@@ -123,7 +123,12 @@ LOOP:
 					}
 					return
 				}
-				s.setChunkAsSynced(ctx, ch)
+				err = s.setChunkAsSynced(ctx, ch)
+				if err != nil {
+					s.logger.Debugf("pusher: error setting chunk as synced: %v", err)
+					return
+				}
+
 			}(ctx, ch)
 		case <-timer.C:
 			// initially timer is set to go off as well as every time we hit the end of push index
@@ -165,15 +170,19 @@ LOOP:
 	}
 }
 
-func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) {
+func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
 	if err := s.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
 		s.logger.Errorf("pusher: error setting chunk as synced: %v", err)
 		s.metrics.ErrorSettingChunkToSynced.Inc()
 	}
 	t, err := s.tagg.Get(ch.TagID())
 	if err == nil && t != nil {
-		t.Inc(tags.StateSynced)
+		err = t.Inc(tags.StateSynced)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (s *Service) Close() error {

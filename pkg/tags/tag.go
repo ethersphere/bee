@@ -20,10 +20,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
@@ -62,18 +65,22 @@ type Tag struct {
 	StartedAt time.Time     // tag started to calculate ETA
 
 	// end-to-end tag tracing
-	ctx      context.Context  // tracing context
-	span     opentracing.Span // tracing root span
-	spanOnce sync.Once        // make sure we close root span only once
+	ctx        context.Context     // tracing context
+	span       opentracing.Span    // tracing root span
+	spanOnce   sync.Once           // make sure we close root span only once
+	stateStore storage.StateStorer // to persist the tag
+	logger     logging.Logger      // logger instance for logging
 }
 
 // NewTag creates a new tag, and returns it
-func NewTag(ctx context.Context, uid uint32, s string, total int64, tracer *tracing.Tracer) *Tag {
+func NewTag(ctx context.Context, uid uint32, s string, total int64, tracer *tracing.Tracer, stateStore storage.StateStorer, logger logging.Logger) *Tag {
 	t := &Tag{
-		Uid:       uid,
-		Name:      s,
-		StartedAt: time.Now(),
-		Total:     total,
+		Uid:        uid,
+		Name:       s,
+		StartedAt:  time.Now(),
+		Total:      total,
+		stateStore: stateStore,
+		logger:     logger,
 	}
 
 	// context here is used only to store the root span `new.upload.tag` within Tag,
@@ -95,7 +102,7 @@ func (t *Tag) FinishRootSpan() {
 }
 
 // IncN increments the count for a state
-func (t *Tag) IncN(state State, n int) {
+func (t *Tag) IncN(state State, n int) error {
 	var v *int64
 	switch state {
 	case TotalChunks:
@@ -112,11 +119,23 @@ func (t *Tag) IncN(state State, n int) {
 		v = &t.Synced
 	}
 	atomic.AddInt64(v, int64(n))
+
+	// check if syncing is over and persist the tag
+	if state == StateSynced {
+		total := atomic.LoadInt64(&t.Total)
+		seen := atomic.LoadInt64(&t.Seen)
+		synced := atomic.LoadInt64(&t.Synced)
+		totalUnique := total - seen
+		if synced >= totalUnique {
+			return t.saveTag()
+		}
+	}
+	return nil
 }
 
 // Inc increments the count for a state
-func (t *Tag) Inc(state State) {
-	t.IncN(state, 1)
+func (t *Tag) Inc(state State) error {
+	return t.IncN(state, 1)
 }
 
 // Get returns the count for a state on a tag
@@ -172,7 +191,7 @@ func (t *Tag) Done(s State) bool {
 
 // DoneSplit sets total count to SPLIT count and sets the associated swarm hash for this tag
 // is meant to be called when splitter finishes for input streams of unknown size
-func (t *Tag) DoneSplit(address swarm.Address) int64 {
+func (t *Tag) DoneSplit(address swarm.Address) (int64, error) {
 	total := atomic.LoadInt64(&t.Split)
 	atomic.StoreInt64(&t.Total, total)
 
@@ -180,7 +199,12 @@ func (t *Tag) DoneSplit(address swarm.Address) int64 {
 		t.Address = address
 	}
 
-	return total
+	// persist the tag
+	err := t.saveTag()
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // Status returns the value of state and the total count
@@ -220,12 +244,12 @@ func (t *Tag) ETA(state State) (time.Time, error) {
 func (tag *Tag) MarshalBinary() (data []byte, err error) {
 	buffer := make([]byte, 4)
 	binary.BigEndian.PutUint32(buffer, tag.Uid)
-	encodeInt64Append(&buffer, tag.Total)
-	encodeInt64Append(&buffer, tag.Split)
-	encodeInt64Append(&buffer, tag.Seen)
-	encodeInt64Append(&buffer, tag.Stored)
-	encodeInt64Append(&buffer, tag.Sent)
-	encodeInt64Append(&buffer, tag.Synced)
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Total))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Split))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Seen))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Stored))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Sent))
+	encodeInt64Append(&buffer, atomic.LoadInt64(&tag.Synced))
 
 	intBuffer := make([]byte, 8)
 
@@ -248,12 +272,12 @@ func (tag *Tag) UnmarshalBinary(buffer []byte) error {
 	tag.Uid = binary.BigEndian.Uint32(buffer)
 	buffer = buffer[4:]
 
-	tag.Total = decodeInt64Splice(&buffer)
-	tag.Split = decodeInt64Splice(&buffer)
-	tag.Seen = decodeInt64Splice(&buffer)
-	tag.Stored = decodeInt64Splice(&buffer)
-	tag.Sent = decodeInt64Splice(&buffer)
-	tag.Synced = decodeInt64Splice(&buffer)
+	atomic.AddInt64(&tag.Total, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Split, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Seen, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Stored, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Sent, decodeInt64Splice(&buffer))
+	atomic.AddInt64(&tag.Synced, decodeInt64Splice(&buffer))
 
 	t, n := binary.Varint(buffer)
 	tag.StartedAt = time.Unix(t, 0)
@@ -279,4 +303,25 @@ func decodeInt64Splice(buffer *[]byte) int64 {
 	val, n := binary.Varint((*buffer))
 	*buffer = (*buffer)[n:]
 	return val
+}
+
+// saveTag update the tag in the state store
+func (tag *Tag) saveTag() error {
+	key := getKey(tag.Uid)
+	value, err := tag.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	if tag.stateStore != nil {
+		err = tag.stateStore.Put(key, value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getKey(uid uint32) string {
+	return fmt.Sprintf("tags_%d", uid)
 }
