@@ -84,7 +84,7 @@ var (
 func NewAccounting(o Options) (*Accounting, error) {
 
 	if o.PaymentTolerance+o.PaymentThreshold > math.MaxInt64 {
-		return nil, fmt.Errorf("Tolerance plus threshhold too big: %w", ErrOverflow)
+		return nil, fmt.Errorf("Tolerance plus threshold too big: %w", ErrOverflow)
 	}
 
 	if o.PaymentTolerance > o.PaymentThreshold/2 {
@@ -117,7 +117,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		return fmt.Errorf("failed to load balance: %w", err)
 	}
 
-	expectedBalance, err := SubstractI64mU64(currentBalance, accountingPeer.reservedBalance)
+	expectedBalance, err := SubtractI64mU64(currentBalance, accountingPeer.reservedBalance)
 	if err != nil {
 		return err
 	}
@@ -177,14 +177,14 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 		return fmt.Errorf("failed to load balance: %w", err)
 	}
 
-	nextBalance, err := SubstractI64mU64(currentBalance, price)
+	nextBalance, err := SubtractI64mU64(currentBalance, price)
 	if err != nil {
 		return err
 	}
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	expectedBalance, err := SubstractI64mU64(currentBalance, accountingPeer.reservedBalance)
+	expectedBalance, err := SubtractI64mU64(currentBalance, accountingPeer.reservedBalance)
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	}
 
 	// don't do anything if there is no actual debt
-	// this might be the case if the peer owes us and the total reserve for a peer exceeds the payment treshhold
+	// this might be the case if the peer owes us and the total reserve for a peer exceeds the payment treshold
 	if oldBalance >= 0 {
 		return nil
 	}
@@ -385,7 +385,10 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		return err
 	}
 
-	nextBalance, err := SubstractI64mU64(currentBalance, amount)
+	nextBalance, err := SubtractI64mU64(currentBalance, amount)
+	if err != nil {
+		return err
+	}
 
 	// don't allow a payment to put use more into debt than the tolerance
 	// this is to prevent another node tricking us into settling by settling first (e.g. send a bouncing cheque to trigger an honest cheque in swap)
@@ -403,11 +406,11 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	return nil
 }
 
-func SubstractI64mU64(base int64, substracted uint64) (result int64, err error) {
+func SubtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
 
-	result = base - int64(substracted)
+	result = base - int64(subtracted)
 
-	if substracted > math.MaxInt64 {
+	if subtracted > math.MaxInt64 {
 		return 0, ErrOverflow
 	}
 
