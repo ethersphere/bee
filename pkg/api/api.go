@@ -97,13 +97,12 @@ func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	// Try and parse the name as a bzz address.
 	addr, err := swarm.ParseHexAddress(str)
 	if err == nil {
-		log.Debugf("name resolve: valid bzz address %q", str)
+		log.Tracef("name resolve: valid bzz address %q", str)
 		return addr, nil
 	}
 
 	// If no resolver is not available, return an error.
 	if s.Resolver == nil {
-		log.Errorf("name resolve: no name resolver available", str)
 		return swarm.ZeroAddress, errNoResolver
 	}
 
@@ -111,10 +110,9 @@ func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	log.Debugf("name resolve: attempting to resolve %s to bzz address", str)
 	addr, err = s.Resolver.Resolve(str)
 	if err == nil && !addr.IsZero() {
-		log.Infof("name resolve: resolved name %s to %s", str, addr)
+		log.Tracef("name resolve: resolved name %s to %s", str, addr)
 		return addr, nil
 	}
-	log.Errorf("name resolve: failed to resolve name %s", str)
 
 	return swarm.ZeroAddress, fmt.Errorf("%w: %v", errInvalidChunkAddress, err)
 }
