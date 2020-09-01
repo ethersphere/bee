@@ -50,7 +50,7 @@ type Interface interface {
 type accountingPeer struct {
 	lock             sync.Mutex // lock to be held during any accounting action for this peer
 	reservedBalance  uint64     // amount currently reserved for active peer interaction
-	paymentThreshold uint64     // threshold to expect settlement at
+	paymentThreshold uint64     // the threshold at which the peer expects us to pay
 }
 
 // Options are options provided to Accounting.
@@ -78,7 +78,7 @@ type Accounting struct {
 	paymentTolerance uint64
 	earlyPayment     uint64
 	settlement       settlement.Interface
-	pricing           pricing.Interface
+	pricing          pricing.Interface
 	metrics          metrics
 }
 
@@ -372,7 +372,8 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
-			reservedBalance:  0,
+			reservedBalance: 0,
+			// initially assume the peer has the same threshold as us
 			paymentThreshold: a.paymentThreshold,
 		}
 		a.accountingPeers[peer.String()] = peerData
