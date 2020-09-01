@@ -139,6 +139,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 	}
 
 	accountingPeer.reservedBalance += price
+
 	return nil
 }
 
