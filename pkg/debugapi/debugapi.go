@@ -28,7 +28,7 @@ type server struct {
 	Overlay        swarm.Address
 	P2P            p2p.DebugService
 	Pingpong       pingpong.Interface
-	TopologyDriver topology.PeerAdder
+	TopologyDriver topology.Driver
 	Storer         storage.Storer
 	Logger         logging.Logger
 	Tracer         *tracing.Tracer
@@ -39,7 +39,7 @@ type server struct {
 	metricsRegistry *prometheus.Registry
 }
 
-func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.PeerAdder, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface) Service {
+func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface) Service {
 	s := &server{
 		Overlay:         overlay,
 		P2P:             p2p,
