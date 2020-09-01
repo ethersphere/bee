@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io/ioutil"
+	"math"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -18,9 +19,10 @@ import (
 )
 
 const (
-	testPaymentThreshold = 10000
-	testPaymentTolerance = 1000
-	testPrice            = uint64(10)
+	testPaymentThreshold      = 10000
+	testPaymentThresholdLarge = math.MaxInt64 - 1
+	testPaymentTolerance      = 1000
+	testPrice                 = uint64(10)
 )
 
 // booking represents an accounting action and the expected result afterwards
@@ -197,7 +199,207 @@ func TestAccountingReserve(t *testing.T) {
 	}
 }
 
-// TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.BlockPeerError
+func TestAccountingOverflowsettle(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThresholdLarge,
+		Logger:           logger,
+		Store:            store,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Credit(peer1Addr, math.MaxInt64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Credit(peer1Addr, 1)
+	if err == nil {
+		t.Fatal("Expecting error overflow from settle() func")
+	}
+
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatal("Expecting error overflow from settle() func")
+	}
+}
+
+func TestAccountingOverflowReserve(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	settlement := &settlementMock{}
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThresholdLarge,
+		Logger:           logger,
+		Store:            store,
+		Settlement:       settlement,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Reserve(peer1Addr, math.MaxInt64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Reserve(peer1Addr, math.MaxInt64)
+	if err == nil {
+		t.Fatal("Expected error")
+	}
+	//
+
+}
+
+func TestAccountingOverflowNotifyPayment(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	settlement := &settlementMock{}
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThresholdLarge,
+		Logger:           logger,
+		Store:            store,
+		Settlement:       settlement,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Credit(peer1Addr, math.MaxInt64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.NotifyPayment(peer1Addr, math.MaxInt64)
+	if err == nil {
+		t.Fatal("Expected overflow from NotifyPayment")
+	}
+
+}
+
+func TestAccountingOverflowDebit(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThresholdLarge,
+		Logger:           logger,
+		Store:            store,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Debit(peer1Addr, math.MaxInt64-2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Debit(peer1Addr, math.MaxInt64-2)
+	if err == nil {
+		t.Fatal("Expected error from overflow Debit")
+	}
+	//
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Credit, got %v", err)
+	}
+	//
+	err = acc.Debit(peer1Addr, math.MaxInt64)
+	if err == nil {
+		t.Fatal("Expected error from overflow Debit")
+	}
+	//
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Debit, got %v", err)
+	}
+}
+
+func TestAccountingOverflowCredit(t *testing.T) {
+
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThresholdLarge,
+		Logger:           logger,
+		Store:            store,
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Credit(peer1Addr, math.MaxInt64-2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	err = acc.Credit(peer1Addr, math.MaxInt64-2)
+	if err == nil {
+		t.Fatal("Expected error from overflow Credit")
+	}
+	//
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Credit, got %v", err)
+	}
+	//
+	err = acc.Credit(peer1Addr, math.MaxInt64)
+	if err == nil {
+		t.Fatal("Expected error from overflow Credit")
+	}
+	//
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Credit, got %v", err)
+	}
+}
+
+// TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.DisconnectError
 func TestAccountingDisconnect(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
