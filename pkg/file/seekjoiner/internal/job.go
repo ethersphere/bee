@@ -142,8 +142,6 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 	wg.Done()
 	wg.Wait()
 	return int(bytesToRead), nil
-
-	return 0, errOffset
 }
 
 var errWhence = errors.New("seek: invalid whence")
