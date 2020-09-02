@@ -316,6 +316,9 @@ func TestPrefetch(t *testing.T) {
 			}
 			b := make([]byte, tc.bufferSize)
 			n, err := j.ReadAt(b, tc.readOffset)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if n != tc.expRead {
 				t.Errorf("read %d bytes out of %d", n, tc.expRead)
 			}
