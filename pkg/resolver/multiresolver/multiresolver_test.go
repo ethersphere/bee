@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package resolver_test
+package multiresolver_test
 
 import (
 	"errors"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/mock"
+	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -22,8 +23,8 @@ func newAddr(s string) Address {
 }
 
 func TestWithForceDefault(t *testing.T) {
-	mr := resolver.NewMultiResolver(
-		resolver.WithForceDefault(),
+	mr := multiresolver.NewMultiResolver(
+		multiresolver.WithForceDefault(),
 	)
 
 	if !mr.ForceDefault {
@@ -48,13 +49,13 @@ func TestPushResolver(t *testing.T) {
 		{
 			desc:    "invalid tld",
 			tld:     "invalid",
-			wantErr: resolver.ErrInvalidTLD,
+			wantErr: multiresolver.ErrInvalidTLD,
 		},
 	}
 
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			mr := resolver.NewMultiResolver()
+			mr := multiresolver.NewMultiResolver()
 
 			if mr.ChainCount(tC.tld) != 0 {
 				t.Fatal("chain should start empty")
@@ -85,16 +86,16 @@ func TestPushResolver(t *testing.T) {
 }
 
 func TestPopResolver(t *testing.T) {
-	mr := resolver.NewMultiResolver()
+	mr := multiresolver.NewMultiResolver()
 
 	t.Run("error on bad tld", func(t *testing.T) {
-		if err := mr.PopResolver("invalid"); !errors.Is(err, resolver.ErrInvalidTLD) {
+		if err := mr.PopResolver("invalid"); !errors.Is(err, multiresolver.ErrInvalidTLD) {
 			t.Fatal("invalid error type")
 		}
 	})
 
 	t.Run("error on empty", func(t *testing.T) {
-		if err := mr.PopResolver(".tld"); !errors.Is(err, resolver.ErrResolverChainEmpty) {
+		if err := mr.PopResolver(".tld"); !errors.Is(err, multiresolver.ErrResolverChainEmpty) {
 			t.Fatal("invalid error type")
 		}
 	})
@@ -181,35 +182,35 @@ func TestResolve(t *testing.T) {
 		wantAdr Address
 		wantErr error
 	}{
-		// {
-		// 	name:    "",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "hello",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "example.tld",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    ".tld",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "get.good",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	// Switch to the default chain:
-		// 	name:    "this.empty",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "this.dies",
-		// 	wantErr: fmt.Errorf("Failed to resolve name %q", "this.dies"),
-		// },
+		{
+			name:    "",
+			wantAdr: addr,
+		},
+		{
+			name:    "hello",
+			wantAdr: addr,
+		},
+		{
+			name:    "example.tld",
+			wantAdr: addr,
+		},
+		{
+			name:    ".tld",
+			wantAdr: addr,
+		},
+		{
+			name:    "get.good",
+			wantAdr: addr,
+		},
+		{
+			// Switch to the default chain:
+			name:    "this.empty",
+			wantAdr: addr,
+		},
+		{
+			name:    "this.dies",
+			wantErr: fmt.Errorf("Failed to resolve name %q", "this.dies"),
+		},
 		{
 			name:    "iam.unregistered",
 			wantAdr: swarm.ZeroAddress,
@@ -218,7 +219,7 @@ func TestResolve(t *testing.T) {
 	}
 
 	// Load the test fixture.
-	mr := resolver.NewMultiResolver()
+	mr := multiresolver.NewMultiResolver()
 	for _, tE := range testFixture {
 		for _, r := range tE.res {
 			if err := mr.PushResolver(tE.tld, r); err != nil {

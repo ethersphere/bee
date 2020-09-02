@@ -37,8 +37,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/recovery"
-	"github.com/ethersphere/bee/pkg/resolver"
-	resolverSvc "github.com/ethersphere/bee/pkg/resolver/service"
+	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -91,7 +90,7 @@ type Options struct {
 	GlobalPinningEnabled   bool
 	PaymentThreshold       uint64
 	PaymentTolerance       uint64
-	ResolverConnectionCfgs []*resolver.ConnectionConfig
+	ResolverConnectionCfgs []*multiresolver.ConnectionConfig
 	GatewayMode            bool
 }
 
@@ -296,7 +295,10 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	b.pullerCloser = puller
 
-	multiResolver := resolverSvc.InitMultiResolver(logger, o.ResolverConnectionCfgs)
+	multiResolver := multiresolver.NewMultiResolver(
+		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
+		multiresolver.WithLogger(o.Logger),
+	)
 	b.resolverCloser = multiResolver
 
 	var apiService api.Service
