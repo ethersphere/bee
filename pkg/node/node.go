@@ -90,7 +90,7 @@ type Options struct {
 	GlobalPinningEnabled   bool
 	PaymentThreshold       uint64
 	PaymentTolerance       uint64
-	ResolverConnectionCfgs []*multiresolver.ConnectionConfig
+	ResolverConnectionCfgs []multiresolver.ConnectionConfig
 	GatewayMode            bool
 }
 

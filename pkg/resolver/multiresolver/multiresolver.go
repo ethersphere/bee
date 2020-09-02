@@ -5,6 +5,7 @@
 package multiresolver
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"path"
@@ -13,11 +14,25 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/resolver/multiresolver/multierror"
 )
 
 // Ensure MultiResolver implements Resolver interface.
 var _ resolver.Interface = (*MultiResolver)(nil)
+
+var (
+	// ErrTLDTooLong denotes when a TLD in a name exceeds maximum length.
+	ErrTLDTooLong = fmt.Errorf("TLD exceeds maximum length of %d characters", maxTLDLength)
+	// ErrInvalidTLD denotes passing an invalid TLD to the MultiResolver.
+	ErrInvalidTLD = errors.New("invalid TLD")
+	// ErrResolverChainEmpty denotes trying to pop an empty resolver chain.
+	ErrResolverChainEmpty = errors.New("resolver chain empty")
+	// ErrResolverChainFailed denotes that an entire name resolution chain
+	// for a given TLD failed.
+	ErrResolverChainFailed = errors.New("resolver chain failed")
+	// ErrCloseFailed denotes that closing the multiresolver failed.
+	ErrCloseFailed = errors.New("close failed")
+)
 
 type resolverMap map[string][]resolver.Interface
 
@@ -25,7 +40,7 @@ type resolverMap map[string][]resolver.Interface
 type MultiResolver struct {
 	resolvers resolverMap
 	logger    logging.Logger
-	cfgs      []*ConnectionConfig
+	cfgs      []ConnectionConfig
 	// ForceDefault will force all names to be resolved by the default
 	// resolution chain, regadless of their TLD.
 	ForceDefault bool
@@ -68,11 +83,11 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 		switch c.TLD {
 		case "eth":
 			// FIXME: MultiResolver expects "." in front of the TLD label.
-			mr.connectENS("."+c.TLD, c.Endpoint)
+			mr.connectENSClient("."+c.TLD, c.Endpoint)
 		case "rsk":
-			mr.connectENS("."+c.TLD, c.Endpoint)
+			mr.connectENSClient("."+c.TLD, c.Endpoint)
 		case "":
-			mr.connectENS("", c.Endpoint)
+			mr.connectENSClient("", c.Endpoint)
 		default:
 			log.Errorf("default domain resolution not supported")
 		}
@@ -82,7 +97,7 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 }
 
 // WithConnectionConfigs will set the initial connection configuration.
-func WithConnectionConfigs(cfgs []*ConnectionConfig) Option {
+func WithConnectionConfigs(cfgs []ConnectionConfig) Option {
 	return func(mr *MultiResolver) {
 		mr.cfgs = cfgs
 	}
@@ -153,8 +168,7 @@ func (mr *MultiResolver) GetChain(tld string) []resolver.Interface {
 // The resolution will be performed iteratively on the resolution chain,
 // returning the result of the first Resolver that succeeds. If all resolvers
 // in the chain return an error, the function will return an ErrResolveFailed.
-func (mr *MultiResolver) Resolve(name string) (resolver.Address, error) {
-
+func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error) {
 	tld := ""
 	if !mr.ForceDefault {
 		tld = getTLD(name)
@@ -166,29 +180,32 @@ func (mr *MultiResolver) Resolve(name string) (resolver.Address, error) {
 		chain = mr.resolvers[""]
 	}
 
-	addr := swarm.ZeroAddress
-	var err error
+	errs := multierror.New()
 	for _, res := range chain {
 		addr, err = res.Resolve(name)
 		if err == nil {
 			return addr, nil
 		}
+		errs.Append(err)
 	}
 
-	return addr, err
+	return addr, errs.WrapErrorOrNil(
+		fmt.Errorf("resolve chain for tld %q: %w", tld, ErrResolverChainFailed))
 }
 
 // Close all will call Close on all resolvers in all resolver chains.
 func (mr *MultiResolver) Close() error {
-	errs := new(CloseError)
+	errs := multierror.New()
 
 	for _, chain := range mr.resolvers {
 		for _, r := range chain {
-			errs.add(r.Close())
+			if err := r.Close(); err != nil {
+				errs.Append(err)
+			}
 		}
 	}
 
-	return errs.errorOrNil()
+	return errs.WrapErrorOrNil(ErrCloseFailed)
 }
 
 func isTLD(tld string) bool {
@@ -199,15 +216,15 @@ func getTLD(name string) string {
 	return path.Ext(strings.ToLower(name))
 }
 
-func (mr *MultiResolver) connectENS(tld string, ep string) {
+func (mr *MultiResolver) connectENSClient(tld string, endpoint string) {
 	log := mr.logger
-	ensCl := ens.NewClient()
 
-	log.Debugf("name resolver: resolver for %q: connecting to endpoint %s", tld, ep)
-	if err := ensCl.Connect(ep); err != nil {
-		log.Errorf("name resolver: resolver for %q domain: failed to connect to %q: %v", tld, ep, err)
+	log.Debugf("name resolver: resolver for %q: connecting to endpoint %s", tld, endpoint)
+	ensCl, err := ens.NewClient(endpoint)
+	if err != nil {
+		log.Errorf("name resolver: resolver for %q domain: failed to connect to %q: %v", tld, endpoint, err)
 	} else {
-		log.Infof("name resolver: resolver for %q domain: connected to %s", tld, ep)
+		log.Infof("name resolver: resolver for %q domain: connected to %s", tld, endpoint)
 		if err := mr.PushResolver(tld, ensCl); err != nil {
 			log.Errorf("name resolver: failed to push resolver to %q resolver chain: %v", tld, err)
 		}

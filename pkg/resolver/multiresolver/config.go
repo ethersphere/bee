@@ -27,7 +27,7 @@ type ConnectionConfig struct {
 // ParseConnectionString will try to parse a connection string used to connect
 // the Resolver to a name resolution service. The resulting config can be
 // used to initialize a resovler Service.
-func parseConnectionString(cs string) (*ConnectionConfig, error) {
+func parseConnectionString(cs string) (ConnectionConfig, error) {
 	isAllUnicodeLetters := func(s string) bool {
 		for _, r := range s {
 			if !unicode.IsLetter(r) {
@@ -48,7 +48,7 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 		if isAllUnicodeLetters(endpoint[:i]) && len(endpoint) > i+2 && endpoint[i+1:i+3] != "//" {
 			tld = endpoint[:i]
 			if len(tld) > maxTLDLength {
-				return nil, fmt.Errorf("%w: %s", ErrTLDTooLong, tld)
+				return ConnectionConfig{}, fmt.Errorf("tld %s: %w", tld, ErrTLDTooLong)
 
 			}
 			endpoint = endpoint[i+1:]
@@ -60,7 +60,7 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 		endpoint = endpoint[i+1:]
 	}
 
-	return &ConnectionConfig{
+	return ConnectionConfig{
 		Endpoint: endpoint,
 		Address:  addr,
 		TLD:      tld,
@@ -69,8 +69,8 @@ func parseConnectionString(cs string) (*ConnectionConfig, error) {
 
 // ParseConnectionStrings will apply ParseConnectionString to each connection
 // string. Returns first error found.
-func ParseConnectionStrings(cstrs []string) ([]*ConnectionConfig, error) {
-	var res []*ConnectionConfig
+func ParseConnectionStrings(cstrs []string) ([]ConnectionConfig, error) {
+	var res []ConnectionConfig
 
 	for _, cs := range cstrs {
 		cfg, err := parseConnectionString(cs)
