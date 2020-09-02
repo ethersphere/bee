@@ -105,6 +105,7 @@ func TestResolve(t *testing.T) {
 	addr := newAddr("aaaabbbbccccdddd")
 	addrAlt := newAddr("ddddccccbbbbaaaa")
 	errUnregisteredName := fmt.Errorf("unregistered name")
+	errResolutionFailed := fmt.Errorf("name resolution failed")
 
 	newOKResolver := func(addr Address) resolver.Interface {
 		return mock.NewResolver(
@@ -116,8 +117,7 @@ func TestResolve(t *testing.T) {
 	newErrResolver := func() resolver.Interface {
 		return mock.NewResolver(
 			mock.WithResolveFunc(func(name string) (Address, error) {
-				err := fmt.Errorf("name resolution failed for %q", name)
-				return swarm.ZeroAddress, err
+				return swarm.ZeroAddress, errResolutionFailed
 			}),
 		)
 	}
@@ -209,7 +209,7 @@ func TestResolve(t *testing.T) {
 		},
 		{
 			name:    "this.dies",
-			wantErr: fmt.Errorf("Failed to resolve name %q", "this.dies"),
+			wantErr: errResolutionFailed,
 		},
 		{
 			name:    "iam.unregistered",
