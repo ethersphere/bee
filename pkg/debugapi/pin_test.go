@@ -6,6 +6,9 @@ package debugapi_test
 
 import (
 	"bytes"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"io/ioutil"
 	"net/http"
 	"testing"
 
@@ -29,7 +32,9 @@ func TestPinChunkHandler(t *testing.T) {
 		data                 = []byte("bbaatt")
 		mockValidator        = validator.NewMockValidator(hash, data)
 		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
-		tag                  = tags.NewTags()
+		mockStatestore       = statestore.NewStateStore()
+		logger               = logging.New(ioutil.Discard, 0)
+		tag                  = tags.NewTags(mockStatestore, logger)
 
 		debugTestServer = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,

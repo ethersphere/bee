@@ -17,6 +17,8 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/resolver"
+	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -30,6 +32,7 @@ type testServerOptions struct {
 	P2P            *p2pmock.Service
 	Pingpong       pingpong.Interface
 	Storer         storage.Storer
+	Resolver       resolver.Interface
 	TopologyOpts   []topologymock.Option
 	Tags           *tags.Tags
 	AccountingOpts []accountingmock.Option
@@ -65,7 +68,10 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 }
 
 func newBZZTestServer(t *testing.T, o testServerOptions) *http.Client {
-	s := api.New(o.Tags, o.Storer, nil, logging.New(ioutil.Discard, 0), nil)
+	if o.Resolver == nil {
+		o.Resolver = resolverMock.NewResolver()
+	}
+	s := api.New(o.Tags, o.Storer, o.Resolver, nil, logging.New(ioutil.Discard, 0), nil)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

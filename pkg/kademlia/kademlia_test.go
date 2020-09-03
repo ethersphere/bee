@@ -479,7 +479,7 @@ func TestClosestPeer(t *testing.T) {
 	ab := addressbook.New(mockstate.NewStateStore())
 	var conns int32
 
-	kad := kademlia.New(base, ab, disc, p2pMock(ab, &conns, nil), logger, kademlia.Options{})
+	kad := kademlia.New(base, ab, disc, p2pMock(ab, nil, &conns, nil), logger, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -674,8 +674,7 @@ func TestMarshal(t *testing.T) {
 
 func TestStart(t *testing.T) {
 	var bootnodes []ma.Multiaddr
-
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		multiaddr, err := ma.NewMultiaddr(underlayBase + test.RandomAddress().String())
 		if err != nil {
 			t.Fatal(err)
@@ -721,26 +720,28 @@ func TestStart(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		waitCounter(t, &conns, 5)
+		waitCounter(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
 	})
 }
 
 func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, peers, connected *pslice.PSlice) bool, bootnodes []ma.Multiaddr) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+	pk, _ := crypto.GenerateSecp256k1Key()
+
 	var (
+		signer = beeCrypto.NewDefaultSigner(pk)
 		base   = test.RandomAddress()                       // base address
 		ab     = addressbook.New(mockstate.NewStateStore()) // address book
-		p2p    = p2pMock(ab, connCounter, failedConnCounter)
+		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter)
 		logger = logging.New(ioutil.Discard, 0) // logger
 		disc   = mock.NewDiscovery()
 		kad    = kademlia.New(base, ab, disc, p2p, logger, kademlia.Options{SaturationFunc: f, Bootnodes: bootnodes}) // kademlia instance
 	)
 
-	pk, _ := crypto.GenerateSecp256k1Key()
-	return base, kad, ab, disc, beeCrypto.NewDefaultSigner(pk)
+	return base, kad, ab, disc, signer
 }
 
-func p2pMock(ab addressbook.Interface, counter, failedCounter *int32) p2p.Service {
+func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedCounter *int32) p2p.Service {
 	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 		if addr.Equal(nonConnectableAddress) {
 			_ = atomic.AddInt32(failedCounter, 1)
@@ -761,7 +762,17 @@ func p2pMock(ab addressbook.Interface, counter, failedCounter *int32) p2p.Servic
 			}
 		}
 
-		return nil, nil
+		address := test.RandomAddress()
+		bzzAddr, err := bzz.NewAddress(signer, addr, address, 0)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := ab.Put(address, *bzzAddr); err != nil {
+			return nil, err
+		}
+
+		return bzzAddr, nil
 	}))
 
 	return p2ps

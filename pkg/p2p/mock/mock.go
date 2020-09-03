@@ -7,7 +7,6 @@ package mock
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -27,7 +26,6 @@ type Service struct {
 	setWelcomeMessageFunc func(string) error
 	getWelcomeMessageFunc func() string
 	welcomeMessage        string
-	notifyCalled          int32
 }
 
 // WithAddProtocolFunc sets the mock implementation of the AddProtocol function
@@ -102,14 +100,6 @@ func (s *Service) AddProtocol(spec p2p.ProtocolSpec) error {
 	return s.addProtocolFunc(spec)
 }
 
-func (s *Service) ConnectNotify(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
-	if s.connectFunc == nil {
-		return nil, errors.New("function Connect not configured")
-	}
-	atomic.AddInt32(&s.notifyCalled, 1)
-	return s.connectFunc(ctx, addr)
-}
-
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	if s.connectFunc == nil {
 		return nil, errors.New("function Connect not configured")
@@ -144,11 +134,6 @@ func (s *Service) Peers() []p2p.Peer {
 		return nil
 	}
 	return s.peersFunc()
-}
-
-func (s *Service) ConnectNotifyCalls() int32 {
-	c := atomic.LoadInt32(&s.notifyCalled)
-	return c
 }
 
 func (s *Service) SetWelcomeMessage(val string) error {

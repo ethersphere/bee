@@ -5,6 +5,7 @@
 package resolver_test
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -62,7 +63,7 @@ func TestPushResolver(t *testing.T) {
 			want := mock.NewResolver()
 			err := mr.PushResolver(tC.tld, want)
 			if err != nil {
-				if err != tC.wantErr {
+				if !errors.Is(err, tC.wantErr) {
 					t.Fatal(err)
 				}
 				return
@@ -87,30 +88,27 @@ func TestPopResolver(t *testing.T) {
 	mr := resolver.NewMultiResolver()
 
 	t.Run("error on bad tld", func(t *testing.T) {
-		err := mr.PopResolver("invalid")
-		want := resolver.ErrInvalidTLD
-		if err != want {
-			t.Fatalf("bad error: got %v, want %v", err, want)
+		if err := mr.PopResolver("invalid"); !errors.Is(err, resolver.ErrInvalidTLD) {
+			t.Fatal("invalid error type")
 		}
 	})
 
 	t.Run("error on empty", func(t *testing.T) {
-		err := mr.PopResolver(".tld")
-		want := resolver.ErrResolverChainEmpty
-		if err != want {
-			t.Fatalf("bad error: got %v, want %v", err, want)
+		if err := mr.PopResolver(".tld"); !errors.Is(err, resolver.ErrResolverChainEmpty) {
+			t.Fatal("invalid error type")
 		}
 	})
 }
 
 func TestResolve(t *testing.T) {
-	testAdr := newAddr("aaaabbbbccccdddd")
-	testAdrAlt := newAddr("ddddccccbbbbaaaa")
+	addr := newAddr("aaaabbbbccccdddd")
+	addrAlt := newAddr("ddddccccbbbbaaaa")
+	errUnregisteredName := fmt.Errorf("unregistered name")
 
-	newOKResolver := func(adr Address) resolver.Interface {
+	newOKResolver := func(addr Address) resolver.Interface {
 		return mock.NewResolver(
 			mock.WithResolveFunc(func(_ string) (Address, error) {
-				return adr, nil
+				return addr, nil
 			}),
 		)
 	}
@@ -118,7 +116,14 @@ func TestResolve(t *testing.T) {
 		return mock.NewResolver(
 			mock.WithResolveFunc(func(name string) (Address, error) {
 				err := fmt.Errorf("name resolution failed for %q", name)
-				return Address{}, err
+				return swarm.ZeroAddress, err
+			}),
+		)
+	}
+	newUnregisteredNameResolver := func() resolver.Interface {
+		return mock.NewResolver(
+			mock.WithResolveFunc(func(name string) (Address, error) {
+				return swarm.ZeroAddress, errUnregisteredName
 			}),
 		)
 	}
@@ -132,35 +137,41 @@ func TestResolve(t *testing.T) {
 			// Default chain:
 			tld: "",
 			res: []resolver.Interface{
-				newOKResolver(testAdr),
+				newOKResolver(addr),
 			},
-			expectAdr: testAdr,
+			expectAdr: addr,
 		},
 		{
 			tld: ".tld",
 			res: []resolver.Interface{
 				newErrResolver(),
 				newErrResolver(),
-				newOKResolver(testAdr),
+				newOKResolver(addr),
 			},
-			expectAdr: testAdr,
+			expectAdr: addr,
 		},
 		{
 			tld: ".good",
 			res: []resolver.Interface{
-				newOKResolver(testAdr),
-				newOKResolver(testAdrAlt),
+				newOKResolver(addr),
+				newOKResolver(addrAlt),
 			},
-			expectAdr: testAdr,
+			expectAdr: addr,
 		},
 		{
 			tld: ".empty",
 		},
 		{
-			tld: ".errors",
+			tld: ".dies",
 			res: []resolver.Interface{
 				newErrResolver(),
 				newErrResolver(),
+			},
+		},
+		{
+			tld: ".unregistered",
+			res: []resolver.Interface{
+				newUnregisteredNameResolver(),
 			},
 		},
 	}
@@ -170,33 +181,39 @@ func TestResolve(t *testing.T) {
 		wantAdr Address
 		wantErr error
 	}{
+		// {
+		// 	name:    "",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "hello",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "example.tld",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    ".tld",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "get.good",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	// Switch to the default chain:
+		// 	name:    "this.empty",
+		// 	wantAdr: testAdr,
+		// },
+		// {
+		// 	name:    "this.dies",
+		// 	wantErr: fmt.Errorf("Failed to resolve name %q", "this.dies"),
+		// },
 		{
-			name:    "",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "hello",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "example.tld",
-			wantAdr: testAdr,
-		},
-		{
-			name:    ".tld",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "get.good",
-			wantAdr: testAdr,
-		},
-		{
-			name:    "this.empty",
-			wantErr: resolver.ErrResolverChainEmpty,
-		},
-		{
-			name:    "this.errors",
-			wantErr: fmt.Errorf("name resolution failed for %q", "this.errors"),
+			name:    "iam.unregistered",
+			wantAdr: swarm.ZeroAddress,
+			wantErr: errUnregisteredName,
 		},
 	}
 
@@ -212,18 +229,31 @@ func TestResolve(t *testing.T) {
 
 	for _, tC := range testCases {
 		t.Run(tC.name, func(t *testing.T) {
-			adr, err := mr.Resolve(tC.name)
+			addr, err := mr.Resolve(tC.name)
 			if err != nil {
 				if tC.wantErr == nil {
 					t.Fatalf("unexpected error: got %v", err)
 				}
-				if err.Error() != tC.wantErr.Error() {
+				if !errors.Is(err, tC.wantErr) {
 					t.Fatalf("got %v, want %v", err, tC.wantErr)
 				}
 			}
-			if !adr.Equal(tC.wantAdr) {
-				t.Errorf("got %q, want %q", adr, tC.wantAdr)
+			if !addr.Equal(tC.wantAdr) {
+				t.Errorf("got %q, want %q", addr, tC.wantAdr)
 			}
 		})
 	}
+
+	t.Run("close all", func(t *testing.T) {
+		if err := mr.Close(); err != nil {
+			t.Fatal(err)
+		}
+		for _, tE := range testFixture {
+			for _, r := range mr.GetChain(tE.tld) {
+				if !r.(*mock.Resolver).IsClosed {
+					t.Errorf("expected %q resolver closed", tE.tld)
+				}
+			}
+		}
+	})
 }

@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -36,20 +38,24 @@ var (
 
 // Tags hold tag information indexed by a unique random uint32
 type Tags struct {
-	tags *sync.Map
+	tags       *sync.Map
+	stateStore storage.StateStorer
+	logger     logging.Logger
 }
 
 // NewTags creates a tags object
-func NewTags() *Tags {
+func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
 	return &Tags{
-		tags: &sync.Map{},
+		tags:       &sync.Map{},
+		stateStore: stateStore,
+		logger:     logger,
 	}
 }
 
 // Create creates a new tag, stores it by the name and returns it
 // it returns an error if the tag with this name already exists
 func (ts *Tags) Create(s string, total int64) (*Tag, error) {
-	t := NewTag(context.Background(), TagUidFunc(), s, total, nil)
+	t := NewTag(context.Background(), TagUidFunc(), s, total, nil, ts.stateStore, ts.logger)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
 		return nil, errExists
@@ -74,7 +80,14 @@ func (ts *Tags) All() (t []*Tag) {
 func (ts *Tags) Get(uid uint32) (*Tag, error) {
 	t, ok := ts.tags.Load(uid)
 	if !ok {
-		return nil, ErrNotFound
+		// see if the tag is present in the store
+		// if yes, load it in to the memory
+		ta, err := ts.getTagFromStore(uid)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		ts.tags.LoadOrStore(ta.Uid, ta)
+		return ta, nil
 	}
 	return t.(*Tag), nil
 }
@@ -142,4 +155,34 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 	}
 
 	return err
+}
+
+// getTagFromStore get a given tag from the state store.
+func (ts *Tags) getTagFromStore(uid uint32) (*Tag, error) {
+	key := "tags_" + strconv.Itoa(int(uid))
+	var data []byte
+	err := ts.stateStore.Get(key, &data)
+	if err != nil {
+		return nil, err
+	}
+	var ta Tag
+	err = ta.UnmarshalBinary(data)
+	if err != nil {
+		return nil, err
+	}
+	return &ta, nil
+}
+
+// Close is called when the node goes down. This is when all the tags in memory is persisted.
+func (ts *Tags) Close() (err error) {
+	// store all the tags in memory
+	tags := ts.All()
+	for _, t := range tags {
+		ts.logger.Trace("updating tag: ", t.Uid)
+		err := t.saveTag()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

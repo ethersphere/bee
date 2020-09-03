@@ -23,10 +23,11 @@ import (
 )
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["addr"]
-	address, err := swarm.ParseHexAddress(addr)
+	nameOrHex := mux.Vars(r)["addr"]
+
+	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.Logger.Debugf("chunk upload: parse chunk address %s: %v", addr, err)
+		s.Logger.Debugf("chunk upload: parse chunk address %s: %v", nameOrHex, err)
 		s.Logger.Error("chunk upload: parse chunk address")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
@@ -44,7 +45,13 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := sctx.SetTag(r.Context(), tag)
 
 	// Increment the StateSplit here since we dont have a splitter for the file upload
-	tag.Inc(tags.StateSplit)
+	err = tag.Inc(tags.StateSplit)
+	if err != nil {
+		s.Logger.Debugf("chunk upload: increment tag: %v", err)
+		s.Logger.Error("chunk upload: increment tag")
+		jsonhttp.InternalServerError(w, "increment tag")
+		return
+	}
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -64,11 +71,23 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
 	} else if len(seen) > 0 && seen[0] {
-		tag.Inc(tags.StateSeen)
+		err := tag.Inc(tags.StateSeen)
+		if err != nil {
+			s.Logger.Debugf("chunk upload: increment tag", err)
+			s.Logger.Error("chunk upload: increment tag")
+			jsonhttp.BadRequest(w, "increment tag")
+			return
+		}
 	}
 
 	// Indicate that the chunk is stored
-	tag.Inc(tags.StateStored)
+	err = tag.Inc(tags.StateStored)
+	if err != nil {
+		s.Logger.Debugf("chunk upload: increment tag", err)
+		s.Logger.Error("chunk upload: increment tag")
+		jsonhttp.BadRequest(w, "increment tag")
+		return
+	}
 
 	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
@@ -79,12 +98,12 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
 	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 
-	addr := mux.Vars(r)["addr"]
+	nameOrHex := mux.Vars(r)["addr"]
 	ctx := r.Context()
 
-	address, err := swarm.ParseHexAddress(addr)
+	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.Logger.Debugf("chunk: parse chunk address %s: %v", addr, err)
+		s.Logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
 		s.Logger.Error("chunk: parse chunk address error")
 		jsonhttp.BadRequest(w, "invalid chunk address")
 		return

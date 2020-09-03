@@ -37,6 +37,8 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/recovery"
+	"github.com/ethersphere/bee/pkg/resolver"
+	resolverSvc "github.com/ethersphere/bee/pkg/resolver/service"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -56,8 +58,10 @@ type Bee struct {
 	p2pCancel        context.CancelFunc
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
+	resolverCloser   io.Closer
 	errorLogWriter   *io.PipeWriter
 	tracerCloser     io.Closer
+	tagsCloser       io.Closer
 	stateStoreCloser io.Closer
 	localstoreCloser io.Closer
 	topologyCloser   io.Closer
@@ -67,25 +71,27 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir              string
-	DBCapacity           uint64
-	Password             string
-	APIAddr              string
-	DebugAPIAddr         string
-	Addr                 string
-	NATAddr              string
-	EnableWS             bool
-	EnableQUIC           bool
-	WelcomeMessage       string
-	Bootnodes            []string
-	CORSAllowedOrigins   []string
-	Logger               logging.Logger
-	TracingEnabled       bool
-	TracingEndpoint      string
-	TracingServiceName   string
-	GlobalPinningEnabled bool
-	PaymentThreshold     uint64
-	PaymentTolerance     uint64
+	DataDir                string
+	DBCapacity             uint64
+	Password               string
+	APIAddr                string
+	DebugAPIAddr           string
+	Addr                   string
+	NATAddr                string
+	EnableWS               bool
+	EnableQUIC             bool
+	WelcomeMessage         string
+	Bootnodes              []string
+	CORSAllowedOrigins     []string
+	Logger                 logging.Logger
+	Standalone             bool
+	TracingEnabled         bool
+	TracingEndpoint        string
+	TracingServiceName     string
+	GlobalPinningEnabled   bool
+	PaymentThreshold       uint64
+	PaymentTolerance       uint64
+	ResolverConnectionCfgs []*resolver.ConnectionConfig
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, swarmPrivateKey *ecdsa.PrivateKey, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
@@ -136,6 +142,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
 		EnableQUIC:     o.EnableQUIC,
+		Standalone:     o.Standalone,
 		WelcomeMessage: o.WelcomeMessage,
 	})
 	if err != nil {
@@ -170,18 +177,22 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 
 	var bootnodes []ma.Multiaddr
-	for _, a := range o.Bootnodes {
-		addr, err := ma.NewMultiaddr(a)
-		if err != nil {
-			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("invalid bootnode address %s", a)
-			continue
-		}
+	if o.Standalone {
+		logger.Info("Starting node in standalone mode, no p2p connections will be made or accepted")
+	} else {
+		for _, a := range o.Bootnodes {
+			addr, err := ma.NewMultiaddr(a)
+			if err != nil {
+				logger.Debugf("multiaddress fail %s: %v", a, err)
+				logger.Warningf("invalid bootnode address %s", a)
+				continue
+			}
 
-		bootnodes = append(bootnodes, addr)
+			bootnodes = append(bootnodes, addr)
+		}
 	}
 
-	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes})
+	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.AddNotifier(kad)
@@ -233,7 +244,8 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
 	retrieve := retrieval.New(p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator)
-	tagg := tags.NewTags()
+	tagg := tags.NewTags(stateStore, logger)
+	b.tagsCloser = tagg
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
@@ -283,10 +295,13 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	b.pullerCloser = puller
 
+	multiResolver := resolverSvc.InitMultiResolver(logger, o.ResolverConnectionCfgs)
+	b.resolverCloser = multiResolver
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagg, ns, o.CORSAllowedOrigins, logger, tracer)
+		apiService = api.New(tagg, ns, multiResolver, o.CORSAllowedOrigins, logger, tracer)
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)
@@ -374,6 +389,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 			return nil
 		})
 	}
+
 	if err := eg.Wait(); err != nil {
 		errs.add(err)
 	}
@@ -399,6 +415,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(fmt.Errorf("tracer: %w", err))
 	}
 
+	if err := b.tagsCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("tag persistence: %w", err))
+	}
+
 	if err := b.stateStoreCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("statestore: %w", err))
 	}
@@ -413,6 +433,13 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.errorLogWriter.Close(); err != nil {
 		errs.add(fmt.Errorf("error log writer: %w", err))
+	}
+
+	// Shutdown the resolver service only if it has been initialized.
+	if b.resolverCloser != nil {
+		if err := b.resolverCloser.Close(); err != nil {
+			errs.add(fmt.Errorf("resolver service: %w", err))
+		}
 	}
 
 	if errs.hasErrors() {

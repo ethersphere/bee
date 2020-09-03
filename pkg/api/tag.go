@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-
 	"github.com/gorilla/mux"
 )
 
@@ -197,6 +196,12 @@ func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag.DoneSplit(tagr.Address)
+	_, err = tag.DoneSplit(tagr.Address)
+	if err != nil {
+		s.Logger.Debugf("done split: failed for address %v", tagr.Address)
+		s.Logger.Error("done split: failed for address %v", tagr.Address)
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
 	jsonhttp.OK(w, "ok")
 }
