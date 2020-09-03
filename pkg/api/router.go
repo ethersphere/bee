@@ -37,21 +37,35 @@ func (s *server) setupRouting() {
 	})
 
 	handle(router, "/files", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.fileUploadHandler),
+		"POST": web.ChainHandlers(
+			s.instrumentOpenTracing(),
+			http.HandlerFunc(s.fileUploadHandler),
+		),
 	})
 	handle(router, "/files/{addr}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.fileDownloadHandler),
+		"GET": web.ChainHandlers(
+			s.instrumentOpenTracing(),
+			http.HandlerFunc(s.fileDownloadHandler),
+		),
 	})
 
 	handle(router, "/dirs", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.dirUploadHandler),
+		"POST": web.ChainHandlers(
+			s.instrumentOpenTracing(),
+			http.HandlerFunc(s.dirUploadHandler),
+		),
 	})
 
 	handle(router, "/bytes", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.bytesUploadHandler),
+		"POST": web.ChainHandlers(
+			s.instrumentOpenTracing(),
+			http.HandlerFunc(s.bytesUploadHandler),
+		),
 	})
 	handle(router, "/bytes/{address}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.bytesGetHandler),
+		"GET": web.ChainHandlers(
+			s.instrumentOpenTracing(), http.HandlerFunc(s.bytesGetHandler),
+		),
 	})
 
 	handle(router, "/chunks/{addr}", jsonhttp.MethodHandler{
@@ -63,7 +77,9 @@ func (s *server) setupRouting() {
 	})
 
 	handle(router, "/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.bzzDownloadHandler),
+		"GET": web.ChainHandlers(
+			s.instrumentOpenTracing(), http.HandlerFunc(s.bzzDownloadHandler),
+		),
 	})
 
 	handle(router, "/tags", jsonhttp.MethodHandler{
