@@ -93,11 +93,42 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		return n, nil
 	}
 
+	// treat the root hash case:
+	// let's assume we have a trie of size x
+	// then we can assume that at least all of the forks
+	// except for the last one on the right are of equal size
+	// this is due to how the splitter wraps levels - ie in the process
+	// of chunking, it may be that the last address of each fork is not a whole level
+	// so for the branches on the left, we can assume that
+	// y = (branching factor - 1) * x + l
+	// where y is the size of the subtrie, x is constant and l is the size of the last subtrie
+	// we know how many refs we have in the current chunk
+
+	// now branchSize should describe the subtrie size for each of the
+	// hashes in this intermediate chunk except for the last one, therefore, we can
+	// fast forward the cursor now
+	//cursor := 0
+
+	//for c := int64(1); ; c++ {
+	//fmt.Println("c * branchSize", c*branchSize)
+	//if c*branchSize > off {
+	//break
+	//}
+	//cursor += j.refLength
+	//cur += branchSize
+	//}
+	//fmt.Println("cursor", cursor)
+
 	btr := bytesToRead
 	fmt.Println("btr start", btr)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if btr == 0 {
 			break
+		}
+		sec := subtrieSection(data, j.refLength, subTrieSize)
+		if cur+sec < off {
+			cur += sec
+			continue
 		}
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
 		ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
@@ -142,6 +173,27 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 	wg.Done()
 	wg.Wait()
 	return int(bytesToRead), nil
+}
+
+func subtrieSection(data []byte, refLen int, subtrieSize int64) int64 {
+	refs := int64(len(data) / refLen)
+	branching := int64(128)
+	if refLen == 64 {
+		branching = int64(64)
+	}
+	branchSize := int64(4096)
+	for {
+		//fmt.Println("branchSize1", branchSize)
+		whatsLeft := subtrieSize - int64(branchSize*(refs-1))
+		//fmt.Println("branchSize2", branchSize, "subtrie size", subtrieSize, "refs", refs)
+		//fmt.Println("whats left", whatsLeft)
+		if whatsLeft <= branchSize {
+			break
+		}
+		branchSize = branchSize * branching
+	}
+	//fmt.Println("branchSize", branchSize)
+	return branchSize
 }
 
 var errWhence = errors.New("seek: invalid whence")
