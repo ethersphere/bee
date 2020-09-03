@@ -82,10 +82,9 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 		// Select the appropriate resolver.
 		switch c.TLD {
 		case "eth":
-			// FIXME: MultiResolver expects "." in front of the TLD label.
-			mr.connectENSClient("."+c.TLD, c.Endpoint)
+			mr.connectENSClient(c.TLD, c.Endpoint)
 		case "rsk":
-			mr.connectENSClient("."+c.TLD, c.Endpoint)
+			mr.connectENSClient(c.TLD, c.Endpoint)
 		case "":
 			mr.connectENSClient("", c.Endpoint)
 		default:
@@ -118,27 +117,14 @@ func WithForceDefault() Option {
 }
 
 // PushResolver will push a new Resolver to the name resolution chain for the
-// given TLD.
-// TLD names should be prepended with a dot (eg ".tld"). An empty TLD will push
-// to the default resolver chain.
-func (mr *MultiResolver) PushResolver(tld string, r resolver.Interface) error {
-	if tld != "" && !isTLD(tld) {
-		return fmt.Errorf("tld %s: %w", tld, ErrInvalidTLD)
-	}
-
+// given TLD. An empty TLD will push to the default resolver chain.
+func (mr *MultiResolver) PushResolver(tld string, r resolver.Interface) {
 	mr.resolvers[tld] = append(mr.resolvers[tld], r)
-	return nil
 }
 
 // PopResolver will pop the last reslover from the name resolution chain for the
-// given TLD.
-// TLD names should be prepended with a dot (eg ".tld"). An empty TLD will pop
-// from the default resolver chain.
+// given TLD. An empty TLD will pop from the default resolver chain.
 func (mr *MultiResolver) PopResolver(tld string) error {
-	if tld != "" && !isTLD(tld) {
-		return fmt.Errorf("tld %s: %w", tld, ErrInvalidTLD)
-	}
-
 	l := len(mr.resolvers[tld])
 	if l == 0 {
 		return fmt.Errorf("tld %s: %w", tld, ErrResolverChainEmpty)
@@ -208,10 +194,6 @@ func (mr *MultiResolver) Close() error {
 	return errs.WrapErrorOrNil(ErrCloseFailed)
 }
 
-func isTLD(tld string) bool {
-	return len(tld) > 1 && tld[0] == '.'
-}
-
 func getTLD(name string) string {
 	return path.Ext(strings.ToLower(name))
 }
@@ -225,8 +207,6 @@ func (mr *MultiResolver) connectENSClient(tld string, endpoint string) {
 		log.Errorf("name resolver: resolver for %q domain: failed to connect to %q: %v", tld, endpoint, err)
 	} else {
 		log.Infof("name resolver: resolver for %q domain: connected to %s", tld, endpoint)
-		if err := mr.PushResolver(tld, ensCl); err != nil {
-			log.Errorf("name resolver: failed to push resolver to %q resolver chain: %v", tld, err)
-		}
+		mr.PushResolver(tld, ensCl)
 	}
 }
