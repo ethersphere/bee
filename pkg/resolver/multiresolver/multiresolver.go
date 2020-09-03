@@ -79,17 +79,9 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 			log.Warningf("name resolver: connection string %q contains resolver address field, which is currently unused", c.Address)
 		}
 
-		// Select the appropriate resolver.
-		switch c.TLD {
-		case "eth":
-			mr.connectENSClient(c.TLD, c.Endpoint)
-		case "rsk":
-			mr.connectENSClient(c.TLD, c.Endpoint)
-		case "":
-			mr.connectENSClient("", c.Endpoint)
-		default:
-			log.Errorf("default domain resolution not supported")
-		}
+		// NOTE: if we want to create a specific client based on the TLD
+		// we can do it here.
+		mr.connectENSClient(c.TLD, c.Endpoint)
 	}
 
 	return mr
