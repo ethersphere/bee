@@ -135,10 +135,5 @@ func wrapResolve(backend bind.ContractBackend, name string) (string, error) {
 		return "", err
 	}
 
-	addr, err := goens.ContenthashToString(ch)
-	if err != nil {
-		return "", err
-	}
-
-	return addr, nil
+	return goens.ContenthashToString(ch)
 }
