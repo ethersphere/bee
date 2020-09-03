@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -55,6 +56,7 @@ type Service struct {
 	peers             *peerRegistry
 	topologyNotifiers []topology.Notifier
 	connectionBreaker breaker.Interface
+	blocklist         *blocklist
 	logger            logging.Logger
 	tracer            *tracing.Tracer
 }
@@ -69,7 +71,7 @@ type Options struct {
 	WelcomeMessage string
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
@@ -199,6 +201,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		networkID:         networkID,
 		peers:             peerRegistry,
 		addressbook:       ab,
+		blocklist:         &blocklist{store: storer},
 		logger:            logger,
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
@@ -221,6 +224,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			_ = handshakeStream.Reset()
 			_ = s.disconnect(peerID)
 			return
+		}
+
+		blocked, err := s.blocklist.exists(i.BzzAddress.Overlay)
+		if err != nil {
+			s.logger.Debugf("blocklisting: eixsts %s: %v", peerID, err)
+			s.logger.Errorf("internal error while connecting with peer %s", peerID)
+			_ = s.disconnect(peerID)
+		}
+
+		if blocked {
+			s.logger.Errorf("blocked connection from blocklisted peer %s", peerID)
+			_ = s.disconnect(peerID)
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
@@ -311,9 +326,18 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 			s.metrics.HandledStreamCount.Inc()
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay}, stream); err != nil {
-				var e *p2p.DisconnectError
-				if errors.As(err, &e) {
+				var de *p2p.DisconnectError
+				if errors.As(err, &de) {
 					_ = s.Disconnect(overlay)
+				}
+
+				var bpe *p2p.BlockPeerError
+				if errors.As(err, &bpe) {
+					if err := s.blocklist.add(overlay, bpe.Duration()); err != nil {
+						s.logger.Debugf("blocklist: could blocklist peer %s: %v", peerID, err)
+						s.logger.Errorf("unable to blocklist peer %v", peerID)
+						_ = s.Disconnect(overlay)
+					}
 				}
 
 				logger.Debugf("error handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
@@ -381,6 +405,18 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		_ = handshakeStream.Reset()
 		_ = s.disconnect(info.ID)
 		return nil, fmt.Errorf("handshake: %w", err)
+	}
+
+	blocked, err := s.blocklist.exists(i.BzzAddress.Overlay)
+	if err != nil {
+		s.logger.Debugf("blocklisting: eixsts %s: %v", info.ID, err)
+		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
+		_ = s.disconnect(info.ID)
+	}
+
+	if blocked {
+		s.logger.Errorf("blocked connection from blocklisted peer %s", info.ID)
+		_ = s.disconnect(info.ID)
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {

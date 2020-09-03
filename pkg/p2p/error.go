@@ -88,6 +88,10 @@ func (e *BlockPeerError) Error() string {
 	return e.err.Error()
 }
 
+func (e *BlockPeerError) Duration() time.Duration {
+	return e.duration
+}
+
 // IncompatibleStreamError is the error that should be returned by p2p service
 // NewStream method when the stream or its version is not supported.
 type IncompatibleStreamError struct {
