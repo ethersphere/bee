@@ -81,12 +81,12 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/chunks-pin/{address}", jsonhttp.MethodHandler{
+	handle(router, "/pinning/chunks/{address}", jsonhttp.MethodHandler{
 		"GET":    http.HandlerFunc(s.getPinnedChunk),
 		"POST":   http.HandlerFunc(s.pinChunk),
 		"DELETE": http.HandlerFunc(s.unpinChunk),
 	})
-	handle(router, "/chunks-pin", jsonhttp.MethodHandler{
+	handle(router, "/pinning/chunks", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.listPinnedChunks),
 	})
 

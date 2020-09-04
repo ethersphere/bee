@@ -451,7 +451,7 @@ paths:
         default:
           description: Default response
 
-  '/chunks-pin/{address}':
+  '/pinning/chunks/{address}':
     parameters:
         - in: path
           name: address
@@ -509,7 +509,7 @@ paths:
         default:
           description: Default response
 
-  '/chunks-pin/':
+  '/pinning/chunks/':
     get:
       summary: Get list of pinned chunks
       tags:
