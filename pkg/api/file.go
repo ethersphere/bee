@@ -241,7 +241,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targets := r.URL.Query().Get("targets")
-	sctx.SetTargets(r.Context(), targets)
+	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 
 	// read entry.
 	j := seekjoiner.NewSimpleJoiner(s.Storer)
