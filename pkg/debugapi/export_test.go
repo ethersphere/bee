@@ -21,7 +21,7 @@ type (
 var (
 	ErrCantBalance     = errCantBalance
 	ErrCantBalances    = errCantBalances
-	ErrCantSettlement  = errCantSettlements
+	ErrCantSettlement  = errCantSettlementsPeer
 	ErrCantSettlements = errCantSettlements
 	ErrInvaliAddress   = errInvaliAddress
 )

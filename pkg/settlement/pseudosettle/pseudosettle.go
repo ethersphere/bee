@@ -139,7 +139,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		if err != ErrPeerNoSettlements {
 			return err
 		}
-		totalSent = uint64(0)
+		totalSent = 0
 	}
 	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent+amount)
 	if err != nil {
