@@ -130,10 +130,10 @@ func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
 }
 
-func (s *server) instrumentOpenTracing() func(h http.Handler) http.Handler {
+func (s *server) newTracingHandler(spanTag string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			spanName := fmt.Sprintf("http.%s", r.Method)
+			spanName := fmt.Sprintf("http.%s.%s", r.Method, spanTag)
 			span, _, ctx := s.Tracer.StartSpanFromContext(r.Context(), spanName, s.Logger)
 			defer span.Finish()
 
