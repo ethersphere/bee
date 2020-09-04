@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/langos"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -332,5 +333,5 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set(TargetsRecoveryHeader, targets)
 
-	http.ServeContent(w, r, "", time.Now(), reader)
+	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedReadSeeker(reader, getFileBufferSize))
 }
