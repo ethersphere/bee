@@ -22,7 +22,7 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger).Logger
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
 	if err != nil {
