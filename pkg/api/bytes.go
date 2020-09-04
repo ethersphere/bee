@@ -22,11 +22,12 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger).Logger
+
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
 	if err != nil {
-		s.Logger.Debugf("bytes upload: get or create tag: %v", err)
-		s.Logger.Error("bytes upload: get or create tag")
+		logger.Debugf("bytes upload: get or create tag: %v", err)
+		logger.Error("bytes upload: get or create tag")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
@@ -37,16 +38,16 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	pipe := pipeline.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r))
 	address, err := pipeline.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
 	if err != nil {
-		s.Logger.Debugf("bytes upload: split write all: %v", err)
-		s.Logger.Error("bytes upload: split write all")
+		logger.Debugf("bytes upload: split write all: %v", err)
+		logger.Error("bytes upload: split write all")
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 	if created {
 		_, err = tag.DoneSplit(address)
 		if err != nil {
-			s.Logger.Debugf("bytes upload: done split: %v", err)
-			s.Logger.Error("bytes upload: done split failed")
+			logger.Debugf("bytes upload: done split: %v", err)
+			logger.Error("bytes upload: done split failed")
 			jsonhttp.InternalServerError(w, nil)
 			return
 		}
@@ -60,12 +61,13 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger).Logger
 	nameOrHex := mux.Vars(r)["address"]
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.Logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
-		s.Logger.Error("bytes: parse address error")
+		logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
+		logger.Error("bytes: parse address error")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
 	}
