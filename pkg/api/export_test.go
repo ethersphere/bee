@@ -9,10 +9,12 @@ import "github.com/ethersphere/bee/pkg/swarm"
 type Server = server
 
 type (
-	BytesPostResponse  = bytesPostResponse
-	FileUploadResponse = fileUploadResponse
-	TagResponse        = tagResponse
-	TagRequest         = tagRequest
+	BytesPostResponse        = bytesPostResponse
+	FileUploadResponse       = fileUploadResponse
+	TagResponse              = tagResponse
+	TagRequest               = tagRequest
+	PinnedChunk              = pinnedChunk
+	ListPinnedChunksResponse = listPinnedChunksResponse
 )
 
 var (
