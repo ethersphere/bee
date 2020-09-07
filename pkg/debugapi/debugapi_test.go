@@ -17,7 +17,6 @@ import (
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/resolver"
-	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	settlementmock "github.com/ethersphere/bee/pkg/settlement/pseudosettle/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
