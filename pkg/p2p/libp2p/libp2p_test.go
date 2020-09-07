@@ -50,8 +50,8 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		o.Logger = logging.New(ioutil.Discard, 0)
 	}
 
+	statestore := mock.NewStateStore()
 	if o.Addressbook == nil {
-		statestore := mock.NewStateStore()
 		o.Addressbook = addressbook.New(statestore)
 	}
 
@@ -65,7 +65,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, o.Logger, nil, o.libp2pOpts)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.Logger, nil, o.libp2pOpts)
 	if err != nil {
 		t.Fatal(err)
 	}

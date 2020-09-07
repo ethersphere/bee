@@ -458,6 +458,48 @@ func TestTopologySupportMultipleNotifiers(t *testing.T) {
 	waitAddrSet(t, &n22connectedAddr, &mtx, overlay2)
 }
 
+func TestBlocklisting(t *testing.T) {
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+
+	addr1 := serviceUnderlayAddress(t, s1)
+	addr2 := serviceUnderlayAddress(t, s2)
+
+	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	_, err := s2.Connect(context.Background(), addr1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
+
+	if err := s2.Blocklist(overlay1, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2)
+	expectPeersEventually(t, s1)
+
+	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	_, err = s2.Connect(context.Background(), addr1)
+	if err == nil {
+		t.Fatal("expected error during connection, got nil")
+	}
+
+	expectPeers(t, s2)
+	expectPeersEventually(t, s1)
+
+	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	_, err = s1.Connect(context.Background(), addr2)
+	if err == nil {
+		t.Fatal("expected error during connection, got nil")
+	}
+
+	expectPeers(t, s1)
+	expectPeersEventually(t, s2)
+}
+
 func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.Address) {
 	t.Helper()
 	for i := 0; i < 20; i++ {
