@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/recovery"
@@ -24,6 +25,10 @@ type store struct {
 	logger           logging.Logger
 	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
 }
+
+const (
+	repairTimeout = 10 * time.Second
+)
 
 var (
 	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
@@ -51,13 +56,16 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				if err != nil {
 					return nil, err
 				}
-				go func() {
-					err := s.recoveryCallback(addr, targets)
-					if err != nil {
-						s.logger.Debugf("netstore: error while recovering chunk: %v", err)
-					}
-				}()
-				return nil, ErrRecoveryAttempt
+				chunkC := make(chan swarm.Chunk,0)
+				err = s.recoveryCallback(addr, targets, chunkC)
+				if err != nil {
+					s.logger.Debugf("netstore: error while recovering chunk: %v", err)
+				}
+				select {
+				case ch = <- chunkC:
+				case <-time.After(repairTimeout):
+					return nil, fmt.Errorf("netstore repair timeout")
+				}
 			}
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {

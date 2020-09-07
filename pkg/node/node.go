@@ -319,9 +319,11 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	b.pssCloser = psss
 
 	var ns storage.Storer
+	var repair *recovery.Repair
 	if o.GlobalPinningEnabled {
+		repair = recovery.NewRepair()
 		// create recovery callback for content repair
-		recoverFunc := recovery.NewRecoveryHook(psss)
+		recoverFunc := repair.GetRecoveryHook(psss, swarmAddress)
 		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
 	} else {
 		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)

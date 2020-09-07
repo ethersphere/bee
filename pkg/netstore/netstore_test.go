@@ -161,6 +161,7 @@ func newRetrievingNetstore(rec *mockRecovery) (ret *retrievalMock, mockStore, ns
 	validator := swarm.NewChunkValidator(validatormock.NewValidator(true))
 
 	var nstore storage.Storer
+	var repair
 	if rec != nil {
 		nstore = netstore.New(store, rec.recovery, retrieve, logger, validator)
 	} else {
