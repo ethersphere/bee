@@ -24,8 +24,15 @@ func TestExist(t *testing.T) {
 		t.Fatal("got exists, expected not exists")
 	}
 
-	bl.Add(addr1, 0)                   // add forever
-	bl.Add(addr2, time.Millisecond*50) // add for 50 miliseconds
+	// add forever
+	if err := bl.Add(addr1, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// add for 50 miliseconds
+	if err := bl.Add(addr2, time.Millisecond*50); err != nil {
+		t.Fatal(err)
+	}
 
 	blocklist.SetTimeNow(func() time.Time { return time.Now().Add(100 * time.Millisecond) })
 
