@@ -306,7 +306,6 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		"Content-Type":        {metaData.MimeType},
 	}
 	fmt.Println("got data", e)
-	panic(1)
 
 	s.downloadHandler(w, r, e.Reference(), additionalHeaders)
 }
@@ -349,5 +348,5 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set(TargetsRecoveryHeader, targets)
 
-	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedReadSeeker(reader, getFileBufferSize))
+	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, getFileBufferSize))
 }
