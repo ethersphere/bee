@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime/debug"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -65,6 +66,8 @@ func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 
 func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
+	debug.PrintStack()
+	fmt.Println("simple joiner ReadAt", "offset", off, "buffer size", cap(b))
 	readLen := int64(cap(b))
 	if readLen > j.span-off {
 		readLen = j.span - off
@@ -75,6 +78,7 @@ func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 }
 
 func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) (read int, err error) {
+	fmt.Println("simple joiner readAtOffset", "offset", off, "cursor", cur, "bytesToRead", bytesToRead)
 	if off >= j.span {
 		return 0, io.EOF
 	}
@@ -106,18 +110,6 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 
 	// now branchSize should describe the subtrie size for each of the
 	// hashes in this intermediate chunk except for the last one, therefore, we can
-	// fast forward the cursor now
-	//cursor := 0
-
-	//for c := int64(1); ; c++ {
-	//fmt.Println("c * branchSize", c*branchSize)
-	//if c*branchSize > off {
-	//break
-	//}
-	//cursor += j.refLength
-	//cur += branchSize
-	//}
-	//fmt.Println("cursor", cursor)
 
 	btr := bytesToRead
 	fmt.Println("btr start", btr)
@@ -125,8 +117,10 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		if btr == 0 {
 			break
 		}
+		// fast forward the cursor now
 		sec := subtrieSection(data, j.refLength, subTrieSize)
 		if cur+sec < off {
+			fmt.Println("fast forward cursor", cur)
 			cur += sec
 			continue
 		}
@@ -183,16 +177,12 @@ func subtrieSection(data []byte, refLen int, subtrieSize int64) int64 {
 	}
 	branchSize := int64(4096)
 	for {
-		//fmt.Println("branchSize1", branchSize)
 		whatsLeft := subtrieSize - int64(branchSize*(refs-1))
-		//fmt.Println("branchSize2", branchSize, "subtrie size", subtrieSize, "refs", refs)
-		//fmt.Println("whats left", whatsLeft)
 		if whatsLeft <= branchSize {
 			break
 		}
 		branchSize = branchSize * branching
 	}
-	//fmt.Println("branchSize", branchSize)
 	return branchSize
 }
 
