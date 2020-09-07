@@ -7,6 +7,7 @@ package p2p
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -20,6 +21,9 @@ type Service interface {
 	// Connect to a peer but do not notify topology about the established connection.
 	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	Disconnect(overlay swarm.Address) error
+	// Blocklist will disconnect a peer and put it on a blocklist (blocking in & out connections) for provided duration
+	// duration 0 is treated as an infinite duration
+	Blocklist(overlay swarm.Address, duration time.Duration) error
 	Peers() []Peer
 	AddNotifier(topology.Notifier)
 	Addresses() ([]ma.Multiaddr, error)
