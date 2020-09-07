@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
@@ -232,11 +233,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			s.logger.Debugf("blocklisting: eixsts %s: %v", peerID, err)
 			s.logger.Errorf("internal error while connecting with peer %s", peerID)
 			_ = s.disconnect(peerID)
+			return
 		}
 
 		if blocked {
 			s.logger.Errorf("blocked connection from blocklisted peer %s", peerID)
 			_ = s.disconnect(peerID)
+			return
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
@@ -252,6 +255,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			_ = s.disconnect(peerID)
+			return
 		}
 
 		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
@@ -339,6 +343,9 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 						s.logger.Errorf("unable to blocklist peer %v", peerID)
 						_ = s.Disconnect(overlay)
 					}
+
+					s.logger.Trace("blocklistted a peer %s", peerID)
+					_ = s.Disconnect(overlay)
 				}
 
 				logger.Debugf("error handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
@@ -364,6 +371,17 @@ func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
 
 func (s *Service) NATManager() basichost.NATManager {
 	return s.natManager
+}
+
+func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error {
+	if err := s.blocklist.Add(overlay, duration); err != nil {
+		s.logger.Debugf("blocklist: blocklist peer %s: %v", overlay, err)
+		_ = s.Disconnect(overlay)
+		return err
+	}
+
+	_ = s.Disconnect(overlay)
+	return nil
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
@@ -413,11 +431,13 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		s.logger.Debugf("blocklisting: eixsts %s: %v", info.ID, err)
 		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
 		_ = s.disconnect(info.ID)
+		return nil, fmt.Errorf("peer blocklistted")
 	}
 
 	if blocked {
 		s.logger.Errorf("blocked connection from blocklisted peer %s", info.ID)
 		_ = s.disconnect(info.ID)
+		return nil, fmt.Errorf("peer blocklistted")
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
