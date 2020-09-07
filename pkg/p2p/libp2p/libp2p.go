@@ -16,6 +16,7 @@ import (
 	beecrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -56,7 +57,7 @@ type Service struct {
 	peers             *peerRegistry
 	topologyNotifiers []topology.Notifier
 	connectionBreaker breaker.Interface
-	blocklist         *blocklist
+	blocklist         *blocklist.Blocklist
 	logger            logging.Logger
 	tracer            *tracing.Tracer
 }
@@ -201,7 +202,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		networkID:         networkID,
 		peers:             peerRegistry,
 		addressbook:       ab,
-		blocklist:         &blocklist{store: storer},
+		blocklist:         blocklist.NewBlocklist(storer),
 		logger:            logger,
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
@@ -226,7 +227,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		blocked, err := s.blocklist.exists(i.BzzAddress.Overlay)
+		blocked, err := s.blocklist.Exists(i.BzzAddress.Overlay)
 		if err != nil {
 			s.logger.Debugf("blocklisting: eixsts %s: %v", peerID, err)
 			s.logger.Errorf("internal error while connecting with peer %s", peerID)
@@ -333,7 +334,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 				var bpe *p2p.BlockPeerError
 				if errors.As(err, &bpe) {
-					if err := s.blocklist.add(overlay, bpe.Duration()); err != nil {
+					if err := s.blocklist.Add(overlay, bpe.Duration()); err != nil {
 						s.logger.Debugf("blocklist: could blocklist peer %s: %v", peerID, err)
 						s.logger.Errorf("unable to blocklist peer %v", peerID)
 						_ = s.Disconnect(overlay)
@@ -407,7 +408,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
-	blocked, err := s.blocklist.exists(i.BzzAddress.Overlay)
+	blocked, err := s.blocklist.Exists(i.BzzAddress.Overlay)
 	if err != nil {
 		s.logger.Debugf("blocklisting: eixsts %s: %v", info.ID, err)
 		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
