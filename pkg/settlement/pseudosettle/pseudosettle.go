@@ -29,7 +29,7 @@ const (
 var (
 	SettlementReceivedPrefix = "pseudosettle_total_received_"
 	SettlementSentPrefix     = "pseudosettle_total_sent_"
-	ErrPeerNoSettlements     = errors.New("No settlements for peer")
+	ErrPeerNoSettlements     = errors.New("no settlements for peer")
 )
 
 type Service struct {
