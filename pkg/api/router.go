@@ -7,6 +7,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -66,29 +67,41 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.bzzDownloadHandler),
 	})
 
-	handle(router, "/tags", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(1024),
-			web.FinalHandlerFunc(s.createTag),
-		),
-	})
-	handle(router, "/tags/{id}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.getTag),
-		"DELETE": http.HandlerFunc(s.deleteTag),
-		"PATCH": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(1024),
-			web.FinalHandlerFunc(s.doneSplit),
-		),
-	})
+	handle(router, "/tags", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(1024),
+				web.FinalHandlerFunc(s.createTag),
+			),
+		})),
+	)
+	handle(router, "/tags/{id}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.getTag),
+			"DELETE": http.HandlerFunc(s.deleteTag),
+			"PATCH": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(1024),
+				web.FinalHandlerFunc(s.doneSplit),
+			),
+		})),
+	)
 
-	handle(router, "/pinning/chunks/{address}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.getPinnedChunk),
-		"POST":   http.HandlerFunc(s.pinChunk),
-		"DELETE": http.HandlerFunc(s.unpinChunk),
-	})
-	handle(router, "/pinning/chunks", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.listPinnedChunks),
-	})
+	handle(router, "/pinning/chunks/{address}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.getPinnedChunk),
+			"POST":   http.HandlerFunc(s.pinChunk),
+			"DELETE": http.HandlerFunc(s.unpinChunk),
+		})),
+	)
+	handle(router, "/pinning/chunks", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.listPinnedChunks),
+		})),
+	)
 
 	s.Handler = web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
@@ -107,6 +120,7 @@ func (s *server) setupRouting() {
 				h.ServeHTTP(w, r)
 			})
 		},
+		s.gatewayModeForbidHeadersHandler,
 		web.FinalHandler(router),
 	)
 }
@@ -118,4 +132,33 @@ func containsOrigin(s string, l []string) (ok bool) {
 		}
 	}
 	return false
+}
+
+func (s *server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.GatewayMode {
+			s.Logger.Tracef("gateway mode: forbidden %s", r.URL.String())
+			jsonhttp.Forbidden(w, nil)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func (s *server) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.GatewayMode {
+			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+				s.Logger.Tracef("gateway mode: forbidden pinning %s", r.URL.String())
+				jsonhttp.Forbidden(w, "pinning is disabled")
+				return
+			}
+			if strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true" {
+				s.Logger.Tracef("gateway mode: forbidden encryption %s", r.URL.String())
+				jsonhttp.Forbidden(w, "encryption is disabled")
+				return
+			}
+		}
+		h.ServeHTTP(w, r)
+	})
 }
