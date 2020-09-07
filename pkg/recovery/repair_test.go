@@ -338,6 +338,9 @@ func TestRepair_GetRepairResponseHandler(t *testing.T) {
 	// send recovery message
 	chunkC := make(chan swarm.Chunk, 1)
 	targets, err := sctx.GetTargets(targetContext)
+	if err != nil {
+		t.Error(err)
+	}
 	err = recoverFunc(overlayAddress, targets, chunkC)
 	if err != nil {
 		t.Error(err)
