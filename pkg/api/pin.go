@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package debugapi
+package api
 
 import (
 	"errors"
@@ -52,7 +52,7 @@ func (s *server) pinChunk(w http.ResponseWriter, r *http.Request) {
 func (s *server) unpinChunk(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: parse chunk ddress: %v", err)
+		s.Logger.Debugf("debug api: pin chunk: parse chunk address: %v", err)
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}

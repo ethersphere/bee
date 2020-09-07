@@ -12,13 +12,11 @@ import (
 	"testing"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/resolver"
-	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -64,26 +62,6 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	return &testServer{
 		Client:  client,
 		P2PMock: o.P2P,
-	}
-}
-
-func newBZZTestServer(t *testing.T, o testServerOptions) *http.Client {
-	if o.Resolver == nil {
-		o.Resolver = resolverMock.NewResolver()
-	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, nil, logging.New(ioutil.Discard, 0), nil)
-	ts := httptest.NewServer(s)
-	t.Cleanup(ts.Close)
-
-	return &http.Client{
-		Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-			u, err := url.Parse(ts.URL + r.URL.String())
-			if err != nil {
-				return nil, err
-			}
-			r.URL = u
-			return ts.Client().Transport.RoundTrip(r)
-		}),
 	}
 }
 

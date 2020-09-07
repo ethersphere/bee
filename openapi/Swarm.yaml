@@ -443,10 +443,85 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Status'       
+                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         '404':
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/pinning/chunks/{address}':
+    parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of chunk
+    post:
+      summary: Pin chunk with given address
+      tags:
+        - Chunk pinning
+      responses:
+        '200':
+          description: Pinning chunk with address
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        default:
+          description: Default response
+    delete:
+      summary: Unpin chunk with given address
+      tags:
+        - Chunk pinning
+      responses:
+        '200':
+          description: Unpinning chunk with address
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        default:
+          description: Default response
+    get:
+      summary: Get pinning status of chunk with given address
+      tags:
+        - Chunk pinning
+      responses:
+        '200':
+          description: Pinning state of chunk  with address
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/PinningState'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/pinning/chunks/':
+    get:
+      summary: Get list of pinned chunks
+      tags:
+        - Chunk pinning
+      responses:
+        '200':
+          description: List of pinned chunks
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/BzzChunksPinned'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
