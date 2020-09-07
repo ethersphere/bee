@@ -92,6 +92,7 @@ type Options struct {
 	PaymentThreshold       uint64
 	PaymentTolerance       uint64
 	ResolverConnectionCfgs []*resolver.ConnectionConfig
+	GatewayMode            bool
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, swarmPrivateKey *ecdsa.PrivateKey, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
@@ -301,7 +302,10 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagg, ns, multiResolver, o.CORSAllowedOrigins, logger, tracer)
+		apiService = api.New(tagg, ns, multiResolver, logger, tracer, api.Options{
+			CORSAllowedOrigins: o.CORSAllowedOrigins,
+			GatewayMode:        o.GatewayMode,
+		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)

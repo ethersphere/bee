@@ -39,14 +39,19 @@ type Service interface {
 }
 
 type server struct {
-	Tags               *tags.Tags
-	Storer             storage.Storer
-	Resolver           resolver.Interface
-	CORSAllowedOrigins []string
-	Logger             logging.Logger
-	Tracer             *tracing.Tracer
+	Tags     *tags.Tags
+	Storer   storage.Storer
+	Resolver resolver.Interface
+	Logger   logging.Logger
+	Tracer   *tracing.Tracer
+	Options
 	http.Handler
 	metrics metrics
+}
+
+type Options struct {
+	CORSAllowedOrigins []string
+	GatewayMode        bool
 }
 
 const (
@@ -55,15 +60,15 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, corsAllowedOrigins []string, logger logging.Logger, tracer *tracing.Tracer) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
-		Tags:               tags,
-		Storer:             storer,
-		Resolver:           resolver,
-		CORSAllowedOrigins: corsAllowedOrigins,
-		Logger:             logger,
-		Tracer:             tracer,
-		metrics:            newMetrics(),
+		Tags:     tags,
+		Storer:   storer,
+		Resolver: resolver,
+		Options:  o,
+		Logger:   logger,
+		Tracer:   tracer,
+		metrics:  newMetrics(),
 	}
 
 	s.setupRouting()
