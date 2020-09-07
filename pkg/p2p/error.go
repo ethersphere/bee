@@ -72,7 +72,6 @@ type BlockPeerError struct {
 
 // NewBlockPeerError wraps error and creates a special error that is treated specially
 // by p2p. It causes peer to be disconnected and blocks any new connection for this peer for the provided duration.
-//
 func NewBlockPeerError(duration time.Duration, err error) error {
 	return &BlockPeerError{
 		duration: duration,
@@ -88,6 +87,8 @@ func (e *BlockPeerError) Error() string {
 	return e.err.Error()
 }
 
+// Duration represents the period for which the peer will be blocked.
+// 0 duration is treated as infinity
 func (e *BlockPeerError) Duration() time.Duration {
 	return e.duration
 }

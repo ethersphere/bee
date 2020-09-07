@@ -230,7 +230,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 		blocked, err := s.blocklist.Exists(i.BzzAddress.Overlay)
 		if err != nil {
-			s.logger.Debugf("blocklisting: eixsts %s: %v", peerID, err)
+			s.logger.Debugf("blocklisting: exists %s: %v", peerID, err)
 			s.logger.Errorf("internal error while connecting with peer %s", peerID)
 			_ = s.disconnect(peerID)
 			return
@@ -344,7 +344,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 						_ = s.Disconnect(overlay)
 					}
 
-					s.logger.Trace("blocklistted a peer %s", peerID)
+					s.logger.Trace("blocklisted a peer %s", peerID)
 					_ = s.Disconnect(overlay)
 				}
 
@@ -428,16 +428,16 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	blocked, err := s.blocklist.Exists(i.BzzAddress.Overlay)
 	if err != nil {
-		s.logger.Debugf("blocklisting: eixsts %s: %v", info.ID, err)
+		s.logger.Debugf("blocklisting: exists %s: %v", info.ID, err)
 		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
 		_ = s.disconnect(info.ID)
-		return nil, fmt.Errorf("peer blocklistted")
+		return nil, fmt.Errorf("peer blocklisted")
 	}
 
 	if blocked {
 		s.logger.Errorf("blocked connection from blocklisted peer %s", info.ID)
 		_ = s.disconnect(info.ID)
-		return nil, fmt.Errorf("peer blocklistted")
+		return nil, fmt.Errorf("peer blocklisted")
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
