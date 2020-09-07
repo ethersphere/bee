@@ -95,7 +95,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	totalReceived, err := s.TotalReceived(p.Address)
 	if err != nil {
-		if !error.Is(err, ErrPeerNoSettlements) {
+		if !errors.Is(err, ErrPeerNoSettlements) {
 			return err
 		}
 		totalReceived = 0
@@ -136,7 +136,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	}
 	totalSent, err := s.TotalSent(peer)
 	if err != nil {
-		if error.Is(err, ErrPeerNoSettlements) {
+		if errors.Is(err, ErrPeerNoSettlements) {
 			return err
 		}
 		totalSent = 0
