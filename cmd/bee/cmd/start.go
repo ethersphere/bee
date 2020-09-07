@@ -161,6 +161,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				PaymentThreshold:       c.config.GetUint64(optionNamePaymentThreshold),
 				PaymentTolerance:       c.config.GetUint64(optionNamePaymentTolerance),
 				ResolverConnectionCfgs: resolverCfgs,
+				GatewayMode:            c.config.GetBool(optionNameGatewayMode),
 			})
 			if err != nil {
 				return err

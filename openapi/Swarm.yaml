@@ -69,6 +69,8 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -169,6 +171,8 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -227,6 +231,8 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -301,6 +307,8 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -367,6 +375,8 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -393,6 +403,8 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -413,6 +425,8 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/204'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '404':
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
@@ -444,6 +458,8 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '404':
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
@@ -472,6 +488,8 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Response'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '404':
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         default:
@@ -489,6 +507,8 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Response'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '404':
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         default:
@@ -504,12 +524,14 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/PinningState'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
 
-  '/pinning/chunks/':
+  '/pinning/chunks':
     get:
       summary: Get list of pinned chunks
       tags:
@@ -521,6 +543,8 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/BzzChunksPinned'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
