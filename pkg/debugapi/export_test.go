@@ -19,9 +19,9 @@ type (
 )
 
 var (
-	ErrCantBalance     = errCantBalance
-	ErrCantBalances    = errCantBalances
-	ErrCantSettlement  = errCantSettlementsPeer
-	ErrCantSettlements = errCantSettlements
-	ErrInvaliAddress   = errInvaliAddress
+	ErrCantBalance         = errCantBalance
+	ErrCantBalances        = errCantBalances
+	ErrCantSettlementsPeer = errCantSettlementsPeer
+	ErrCantSettlements     = errCantSettlements
+	ErrInvaliAddress       = errInvaliAddress
 )

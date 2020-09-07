@@ -124,7 +124,7 @@ func TestSettlementsPeersError(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrCantSettlement,
+			Message: debugapi.ErrCantSettlementsPeer,
 			Code:    http.StatusInternalServerError,
 		}),
 	)
@@ -151,6 +151,7 @@ func equalSettlements(a, b *debugapi.SettlementsResponse) bool {
 		for bkeys := range b.Settlements {
 			if reflect.DeepEqual(a.Settlements[akeys], b.Settlements[bkeys]) {
 				state = true
+				break
 			}
 		}
 		if !state {
@@ -163,6 +164,7 @@ func equalSettlements(a, b *debugapi.SettlementsResponse) bool {
 		for akeys := range a.Settlements {
 			if reflect.DeepEqual(a.Settlements[akeys], b.Settlements[bkeys]) {
 				state = true
+				break
 			}
 		}
 		if !state {

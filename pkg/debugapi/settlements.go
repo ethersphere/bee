@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	errCantSettlements     = "Cannot get settlements"
-	errCantSettlementsPeer = "Cannot get settlements for peer"
+	errCantSettlements     = "can not get settlements"
+	errCantSettlementsPeer = "can not get settlements for peer"
 )
 
 type settlementResponse struct {
