@@ -5,7 +5,9 @@
 package recovery_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"testing"
@@ -42,8 +44,14 @@ func TestRecoveryHook(t *testing.T) {
 	}
 
 	// create recovery hook and call it
-	recoveryHook := recovery.NewRecoveryHook(pssSender)
-	if err := recoveryHook(chunkAddr, targets); err != nil {
+	repair := recovery.NewRepair()
+	overlayAddress, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryHook := repair.GetRecoveryHook(pssSender, overlayAddress)
+	chunkC := make(chan swarm.Chunk)
+	if err := recoveryHook(chunkAddr, targets, chunkC); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -91,12 +99,17 @@ func TestRecoveryHookCalls(t *testing.T) {
 			pssSender := &mockPssSender{
 				hookC: hookWasCalled,
 			}
-			recoverFunc := recovery.NewRecoveryHook(pssSender)
-			ns := newTestNetStore(t, recoverFunc)
+			repair := recovery.NewRepair()
+			overlayAddress, err := swarm.ParseHexAddress("00112233")
+			if err != nil {
+				t.Fatal(err)
+			}
+			recoverFunc := repair.GetRecoveryHook(pssSender, overlayAddress)
+			ns, _ := newTestNetStore(t, recoverFunc)
 
 			// fetch test chunk
-			_, err := ns.Get(tc.ctx, storage.ModeGetRequest, ref)
-			if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) && err.Error() != "error decoding prefix string" {
+			_, err = ns.Get(tc.ctx, storage.ModeGetRequest, ref)
+			if err != nil && !errors.Is(err, netstore.ErrRecoveryTimeout) && err.Error() != "error decoding prefix string" {
 				t.Fatal(err)
 			}
 
@@ -133,6 +146,12 @@ func TestNewRepairHandler(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		//setup the sender
+		hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+		pssSender := &mockPssSender{
+			hookC: hookWasCalled,
+		}
+
 		// create a mock pushsync service to push the chunk to its destination
 		var receipt *pushsync.Receipt
 		pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
@@ -143,13 +162,24 @@ func TestNewRepairHandler(t *testing.T) {
 		})
 
 		// create the chunk repair handler
-		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
+		repair := recovery.NewRepair()
+		repairHandler := repair.GetRepairHandler(mockStorer, logger, pushSyncService, pssSender)
 
 		//create a trojan message to trigger the repair of the chunk
 		testTopic := trojan.NewTopic("foo")
-		maxPayload := make([]byte, swarm.SectionSize)
 		var msg trojan.Message
-		copy(maxPayload, c1.Address().Bytes())
+		overlayAddress, err := swarm.ParseHexAddress("00112233")
+		if err != nil {
+			t.Fatal(err)
+		}
+		reqMessage := &recovery.RequestRepairMessage{
+			DownloaderOverlay:  overlayAddress.String(),
+			ReferencesToRepair: []string{c1.Address().String()},
+		}
+		maxPayload, err := json.Marshal(reqMessage)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if msg, err = trojan.NewMessage(testTopic, maxPayload); err != nil {
 			t.Fatal(err)
 		}
@@ -164,6 +194,14 @@ func TestNewRepairHandler(t *testing.T) {
 
 		if !receipt.Address.Equal(c1.Address()) {
 			t.Fatalf("invalid address in receipt: expected %s received %s", c1.Address(), receipt.Address)
+		}
+
+		// check if the chunk is sent to the destination through a pss message
+		select {
+		case <-hookWasCalled:
+			break
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("repaired chunk not sent to destination")
 		}
 
 	})
@@ -183,15 +221,32 @@ func TestNewRepairHandler(t *testing.T) {
 			return nil, nil
 		})
 
+		//setup the sender
+		hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+		pssSender := &mockPssSender{
+			hookC: hookWasCalled,
+		}
+
 		// create the chunk repair handler
-		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
+		repair := recovery.NewRepair()
+		repairHandler := repair.GetRepairHandler(mockStorer, logger, pushSyncService, pssSender)
 
 		//create a trojan message to trigger the repair of the chunk
 		testTopic := trojan.NewTopic("foo")
-		maxPayload := make([]byte, swarm.SectionSize)
 		var msg trojan.Message
-		copy(maxPayload, c2.Address().Bytes())
-		msg, err := trojan.NewMessage(testTopic, maxPayload)
+		overlayAddress, err := swarm.ParseHexAddress("00112233")
+		if err != nil {
+			t.Fatal(err)
+		}
+		reqMessage := &recovery.RequestRepairMessage{
+			DownloaderOverlay:  overlayAddress.String(),
+			ReferencesToRepair: []string{c2.Address().String()},
+		}
+		maxPayload, err := json.Marshal(reqMessage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg, err = trojan.NewMessage(testTopic, maxPayload)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,14 +278,31 @@ func TestNewRepairHandler(t *testing.T) {
 			return nil, receiptError
 		})
 
+		//setup the sender
+		hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+		pssSender := &mockPssSender{
+			hookC: hookWasCalled,
+		}
+
 		// create the chunk repair handler
-		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
+		repair := recovery.NewRepair()
+		repairHandler := repair.GetRepairHandler(mockStorer, logger, pushSyncService, pssSender)
 
 		//create a trojan message to trigger the repair of the chunk
 		testTopic := trojan.NewTopic("foo")
-		maxPayload := make([]byte, swarm.SectionSize)
 		var msg trojan.Message
-		copy(maxPayload, c3.Address().Bytes())
+		overlayAddress, err := swarm.ParseHexAddress("00112233")
+		if err != nil {
+			t.Fatal(err)
+		}
+		reqMessage := &recovery.RequestRepairMessage{
+			DownloaderOverlay:  overlayAddress.String(),
+			ReferencesToRepair: []string{c3.Address().String()},
+		}
+		maxPayload, err := json.Marshal(reqMessage)
+		if err != nil {
+			t.Fatal(err)
+		}
 		msg, err = trojan.NewMessage(testTopic, maxPayload)
 		if err != nil {
 			t.Fatal(err)
@@ -245,8 +317,60 @@ func TestNewRepairHandler(t *testing.T) {
 	})
 }
 
+func TestRepair_GetRepairResponseHandler(t *testing.T) {
+	c := chunktesting.GenerateTestRandomChunk()
+	target := "BE"
+	targetContext := sctx.SetTargets(context.Background(), target)
+
+	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+
+	// setup the sender
+	pssSender := &mockPssSender{
+		hookC: hookWasCalled,
+	}
+	repair := recovery.NewRepair()
+	overlayAddress, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoverFunc := repair.GetRecoveryHook(pssSender, overlayAddress)
+
+	// send recovery message
+	chunkC := make(chan swarm.Chunk, 1)
+	targets, err := sctx.GetTargets(targetContext)
+	err = recoverFunc(overlayAddress, targets, chunkC)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// simulate the recovery response
+	logger := logging.New(ioutil.Discard, 0)
+	repairResponseHandler := repair.GetRepairResponseHandler(logger)
+
+	testTopic := trojan.NewTopic("foo")
+	msg, err := trojan.NewMessage(testTopic, c.Data())
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = repairResponseHandler(context.Background(), &msg)
+	if err != nil {
+		t.Error(err)
+	}
+
+	ch := <-chunkC
+	if !ch.Address().Equal(c.Address()) {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(ch.Data(), c.Data()) {
+		t.Fatal(err)
+	}
+
+}
+
 // newTestNetStore creates a test store with a set RemoteGet func.
-func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.Storer {
+func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) (storage.Storer, *storemock.MockStorer) {
 	t.Helper()
 	storer := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 5)
@@ -268,7 +392,8 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.S
 	retrieve := retrieval.New(swarm.ZeroAddress, recorder, ps, logger, serverMockAccounting, pricerMock, nil, nil)
 	retrieve.SetStorer(mockStorer)
 	ns := netstore.New(storer, recoveryFunc, retrieve, logger, nil)
-	return ns
+	netstore.SetTimeout(250 * time.Millisecond)
+	return ns, mockStorer
 }
 
 type mockPeerSuggester struct {

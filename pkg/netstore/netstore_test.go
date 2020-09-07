@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	testing2 "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
@@ -100,7 +101,8 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 func TestRecovery(t *testing.T) {
 	hookWasCalled := make(chan bool, 1)
 	rec := &mockRecovery{
-		hookC: hookWasCalled,
+		hookC:       hookWasCalled,
+		repairChunk: true,
 	}
 
 	retrieve, _, nstore := newRetrievingNetstore(rec)
@@ -110,7 +112,34 @@ func TestRecovery(t *testing.T) {
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
 	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) {
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-hookWasCalled:
+		break
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("recovery hook was not called")
+	}
+}
+
+func TestRecoveryTimeout(t *testing.T) {
+	hookWasCalled := make(chan bool, 1)
+	rec := &mockRecovery{
+		hookC:       hookWasCalled,
+		repairChunk: false,
+	}
+
+	retrieve, _, nstore := newRetrievingNetstore(rec)
+	addr := swarm.MustParseHexAddress("deadbeef")
+	retrieve.failure = true
+	ctx := context.Background()
+	ctx = sctx.SetTargets(ctx, "be, cd")
+
+	netstore.SetTimeout(50 * time.Millisecond)
+	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
+	if err != nil && !errors.Is(err, netstore.ErrRecoveryTimeout) {
 		t.Fatal(err)
 	}
 
@@ -161,7 +190,6 @@ func newRetrievingNetstore(rec *mockRecovery) (ret *retrievalMock, mockStore, ns
 	validator := swarm.NewChunkValidator(validatormock.NewValidator(true))
 
 	var nstore storage.Storer
-	var repair
 	if rec != nil {
 		nstore = netstore.New(store, rec.recovery, retrieve, logger, validator)
 	} else {
@@ -188,12 +216,16 @@ func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (
 }
 
 type mockRecovery struct {
-	hookC chan bool
+	hookC       chan bool
+	repairChunk bool
 }
 
 // Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets) error {
+func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) error {
 	mr.hookC <- true
+	if mr.repairChunk {
+		chunkC <- testing2.GenerateTestRandomChunk()
+	}
 	return nil
 }
 

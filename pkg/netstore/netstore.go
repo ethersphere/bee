@@ -26,18 +26,22 @@ type store struct {
 	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
 }
 
-const (
+var (
 	repairTimeout = 10 * time.Second
 )
 
 var (
-	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
+	ErrRecoveryTimeout = errors.New("timeout during chunk repair")
 )
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
 	validator swarm.Validator) storage.Storer {
 	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validator: validator}
+}
+
+func SetTimeout(timeout time.Duration) {
+	repairTimeout = timeout
 }
 
 // Get retrieves a given chunk address.
@@ -56,15 +60,15 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				if err != nil {
 					return nil, err
 				}
-				chunkC := make(chan swarm.Chunk,0)
+				chunkC := make(chan swarm.Chunk, 1)
 				err = s.recoveryCallback(addr, targets, chunkC)
 				if err != nil {
 					s.logger.Debugf("netstore: error while recovering chunk: %v", err)
 				}
 				select {
-				case ch = <- chunkC:
+				case ch = <-chunkC:
 				case <-time.After(repairTimeout):
-					return nil, fmt.Errorf("netstore repair timeout")
+					return nil, ErrRecoveryTimeout
 				}
 			}
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
