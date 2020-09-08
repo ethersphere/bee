@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tracing"
 )
 
 const (
@@ -33,18 +34,19 @@ const (
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 	err := validateRequest(r)
 	if err != nil {
-		s.Logger.Errorf("dir upload, validate request")
-		s.Logger.Debugf("dir upload, validate request err: %v", err)
+		logger.Errorf("dir upload, validate request")
+		logger.Debugf("dir upload, validate request err: %v", err)
 		jsonhttp.BadRequest(w, "could not validate request")
 		return
 	}
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
 	if err != nil {
-		s.Logger.Debugf("dir upload: get or create tag: %v", err)
-		s.Logger.Error("dir upload: get or create tag")
+		logger.Debugf("dir upload: get or create tag: %v", err)
+		logger.Error("dir upload: get or create tag")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
@@ -54,16 +56,16 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger, requestEncrypt(r))
 	if err != nil {
-		s.Logger.Debugf("dir upload: store dir err: %v", err)
-		s.Logger.Errorf("dir upload: store dir")
+		logger.Debugf("dir upload: store dir err: %v", err)
+		logger.Errorf("dir upload: store dir")
 		jsonhttp.InternalServerError(w, "could not store dir")
 		return
 	}
 	if created {
 		_, err = tag.DoneSplit(reference)
 		if err != nil {
-			s.Logger.Debugf("dir upload: done split: %v", err)
-			s.Logger.Error("dir upload: done split failed")
+			logger.Debugf("dir upload: done split: %v", err)
+			logger.Error("dir upload: done split failed")
 			jsonhttp.InternalServerError(w, nil)
 			return
 		}
@@ -92,7 +94,8 @@ func validateRequest(r *http.Request) error {
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode storage.ModePut, logger logging.Logger, encrypt bool) (swarm.Address, error) {
+func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode storage.ModePut, log logging.Logger, encrypt bool) (swarm.Address, error) {
+	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
 	dirManifest, err := manifest.NewDefaultManifest(encrypt, s)
 	if err != nil {
