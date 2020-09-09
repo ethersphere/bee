@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -43,6 +44,7 @@ type server struct {
 	Tags     *tags.Tags
 	Storer   storage.Storer
 	Resolver resolver.Interface
+	Pss      pss.Interface
 	Logger   logging.Logger
 	Tracer   *tracing.Tracer
 	Options
@@ -61,11 +63,12 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		Tags:     tags,
 		Storer:   storer,
 		Resolver: resolver,
+		Pss:      pss,
 		Options:  o,
 		Logger:   logger,
 		Tracer:   tracer,

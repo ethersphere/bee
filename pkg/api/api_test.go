@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -25,6 +26,7 @@ import (
 type testServerOptions struct {
 	Storer      storage.Storer
 	Resolver    resolver.Interface
+	Pss         pss.Interface
 	Tags        *tags.Tags
 	GatewayMode bool
 	Logger      logging.Logger
@@ -37,7 +39,7 @@ func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
 	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, o.Logger, nil, api.Options{
+	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Logger, nil, api.Options{
 		GatewayMode: o.GatewayMode,
 	})
 	ts := httptest.NewServer(s)
