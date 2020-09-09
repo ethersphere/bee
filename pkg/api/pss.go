@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
+	"github.com/ethersphere/bee/pkg/trojan"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
@@ -48,12 +50,21 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	addr, ok := mux.Vars(r)["topic"]
-
+	t, ok := mux.Vars(r)["topic"]
 	if !ok {
 		panic(err)
 	}
-	fmt.Println(addr)
+
+	handler := func(ctx context.Context, m *trojan.Message) error {
+		fmt.Println("pss writing to handler")
+		fmt.Println("writing payload", string(m.Payload))
+		conn.WriteMessage(websocket.TextMessage, m.Payload)
+		return nil
+	}
+	topic := trojan.NewTopic(t)
+	s.Pss.Register(topic, handler)
+	fmt.Println(topic)
+	fmt.Println(conn)
 	//client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
 	//client.hub.register <- client
 

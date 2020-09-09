@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -55,9 +56,25 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 	fmt.Println(url)
 	fmt.Println(server.Listener.Addr().String())
 	cl := newWsClient(t, server.Listener.Addr().String())
-	fmt.Println(cl)
-	t.Fatal(1)
-
+	pongWait := time.Second
+	cl.SetReadLimit(1024)
+	cl.SetReadDeadline(time.Now().Add(pongWait))
+	go func() {
+		for {
+			_, message, err := cl.ReadMessage()
+			if err != nil {
+				fmt.Println(err)
+			}
+			fmt.Println("got message", string(message))
+			//if err != nil {
+			//if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			//log.Printf("error: %v", err)
+			//}
+			//break
+			//}
+			//message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
+		}
+	}()
 	target := trojan.Target([]byte{1}) // arbitrary test target
 	targets := trojan.Targets([]trojan.Target{target})
 	payload := []byte("testdata")
@@ -78,6 +95,8 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	time.Sleep(time.Second)
 
 	// assert the websocket got the correct data
 }
