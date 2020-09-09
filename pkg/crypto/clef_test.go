@@ -43,7 +43,7 @@ func TestNewClefSigner(t *testing.T) {
 
 	clef := &mockClef{
 		accounts: []accounts.Account{
-			accounts.Account{
+			{
 				Address: ethAddress,
 			},
 		},
