@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -24,6 +25,8 @@ type store struct {
 	validator        swarm.Validator
 	logger           logging.Logger
 	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
+	chunkChanMap     map[string]chan swarm.Chunk
+	chunkChanMu      *sync.RWMutex
 }
 
 var (
@@ -37,7 +40,15 @@ var (
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
 	validator swarm.Validator) storage.Storer {
-	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validator: validator}
+	return &store{
+		Storer:           s,
+		recoveryCallback: rcb,
+		retrieval:        r,
+		logger:           logger,
+		validator:        validator,
+		chunkChanMap:     make(map[string]chan swarm.Chunk),
+		chunkChanMu:      &sync.RWMutex{},
+	}
 }
 
 func SetTimeout(timeout time.Duration) {
@@ -61,10 +72,16 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 					return nil, err
 				}
 				chunkC := make(chan swarm.Chunk, 1)
-				err = s.recoveryCallback(addr, targets, chunkC)
+				socAddress, err := s.recoveryCallback(addr, targets, chunkC)
 				if err != nil {
 					s.logger.Debugf("netstore: error while recovering chunk: %v", err)
 				}
+				// add the expected soc address and the channel in which the chunk is awaited
+				s.chunkChanMu.Lock()
+				s.chunkChanMap[socAddress.String()] = chunkC
+				s.chunkChanMu.Unlock()
+
+				// wait for chunk or timeout
 				select {
 				case ch = <-chunkC:
 				case <-time.After(repairTimeout):
@@ -86,10 +103,22 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 // returns a storage.ErrInvalidChunk error when
 // encountering an invalid chunk.
 func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+
 	for _, ch := range chs {
 		if !s.validator.Validate(ch) {
 			return nil, storage.ErrInvalidChunk
 		}
+
+		// if the chunk is expected as part of the repair process, then deliver it
+		s.chunkChanMu.Lock()
+		key := ch.Address().String()
+		if chunkC, ok := s.chunkChanMap[key]; ok {
+			chunkC <- ch
+			close(chunkC)
+			delete(s.chunkChanMap, key)
+		}
+		s.chunkChanMu.Unlock()
 	}
+
 	return s.Storer.Put(ctx, mode, chs...)
 }

@@ -12,10 +12,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"math/big"
-	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -27,9 +25,8 @@ import (
 )
 
 const (
-	// RecoveryTopicText is the string used to construct the recovery topic.
-	RecoveryTopicText         = "RECOVERY"
-	RecoveryResponseTopicText = "RECOVERY_RESPONSE"
+	// recoveryTopicText is the string used to construct the recovery topic.
+	recoveryTopicText = "RECOVERY"
 )
 
 var (
@@ -38,36 +35,19 @@ var (
 )
 
 // RecoveryHook defines code to be executed upon failing to retrieve chunks.
-type RecoveryHook func(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) error
+type RecoveryHook func(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) (swarm.Address, error)
 
 // sender is the function call for sending trojan chunks.
 type PssSender interface {
 	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error
 }
 
-type Repair struct {
-	chunkChanMap map[string]chan swarm.Chunk
-	chunkChanMu  *sync.RWMutex
-}
-
-type RequestRepairMessage struct {
-	DownloaderOverlay  string   `json:"target"`
-	ReferencesToRepair []string `json:"references"`
-}
-
-func NewRepair() *Repair {
-	return &Repair{
-		chunkChanMap: make(map[string]chan swarm.Chunk),
-		chunkChanMu:  &sync.RWMutex{},
-	}
-}
-
-// GetNewRecoveryHook returns a new RecoveryHook with the sender function defined.
-func (r *Repair) GetRecoveryHook(pss PssSender, overlay swarm.Address, privateKey *ecdsa.PrivateKey) RecoveryHook {
-	return func(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) error {
+// NewRecoveryHook returns a new RecoveryHook with the sender function defined.
+func NewRecoveryHook(pss PssSender, overlay swarm.Address, privateKey *ecdsa.PrivateKey) RecoveryHook {
+	return func(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) (swarm.Address, error) {
 		socEnvelope, err := createSelfAddressedEnvelope(overlay, 1, chunkAddress, privateKey)
 		if err != nil {
-			return err
+			return swarm.ZeroAddress, err
 		}
 		payload := append(socEnvelope.Address().Bytes(), socEnvelope.Data()...)
 		ctx := context.Background()
