@@ -10,6 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 )
 
+var (
+	ErrNoAccounts = errors.New("no accounts found in clef")
+)
+
 type clefSigner struct {
 	clef    clefSignerInterface
 	account accounts.Account // the account this signer will use
@@ -49,7 +53,7 @@ func NewClefSigner(clef clefSignerInterface) (signer Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {
-		return nil, errors.New("no accounts found in clef")
+		return nil, ErrNoAccounts
 	}
 
 	// pick the first account as the one we use
