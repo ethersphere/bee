@@ -118,7 +118,7 @@ func TestParseName(t *testing.T) {
 				}))
 		}
 
-		s := api.New(nil, nil, tC.res, tC.log, nil, api.Options{}).(*api.Server)
+		s := api.New(nil, nil, tC.res, nil, tC.log, nil, api.Options{}).(*api.Server)
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)

@@ -26,7 +26,7 @@ func newTestWsServer(t *testing.T, o testServerOptions) *httptest.Server {
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
 	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, o.Logger, nil, api.Options{
+	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Logger, nil, api.Options{
 		GatewayMode: o.GatewayMode,
 	})
 	ts := httptest.NewServer(s)
@@ -42,7 +42,7 @@ func newTestWsServer(t *testing.T, o testServerOptions) *httptest.Server {
 	//return ts.Client().Transport.RoundTrip(r)
 	//}),
 	//}
-
+	return ts
 }
 
 // creates a single websocket handler for an arbitrary topic, and receives a message
@@ -64,7 +64,9 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 
 	url := server.URL
 	fmt.Println(url)
-	fmt.Println(server.Listener())
+	fmt.Println(server.Listener.Addr().String())
+	cl := newWsClient(t, server.Listener.Addr().String())
+	fmt.Println(cl)
 	t.Fatal(1)
 
 	target := trojan.Target([]byte{1}) // arbitrary test target
@@ -91,20 +93,20 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 	// assert the websocket got the correct data
 }
 
-func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
+//func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 
-}
+//}
 
-func TestPssWebsocketMultiHandler(t *testing.T) {
+//func TestPssWebsocketMultiHandler(t *testing.T) {
 
-}
+//}
 
-func TestPssPostWebsocket(t *testing.T) {
+//func TestPssPostWebsocket(t *testing.T) {
 
-}
+//}
 
-func newWsClient(t *testing.T) *websocket.Conn {
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/o"}
+func newWsClient(t *testing.T, addr string) *websocket.Conn {
+	u := url.URL{Scheme: "ws", Host: addr, Path: "/pss/ws"}
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
