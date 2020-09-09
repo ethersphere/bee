@@ -6,7 +6,6 @@ package node
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"io"
 	"log"
@@ -95,7 +94,7 @@ type Options struct {
 	GatewayMode            bool
 }
 
-func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, swarmPrivateKey *ecdsa.PrivateKey, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
+func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -136,7 +135,6 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
-	signer := crypto.NewDefaultSigner(swarmPrivateKey)
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
