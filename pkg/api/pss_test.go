@@ -95,7 +95,7 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 //}
 
 func newWsClient(t *testing.T, addr string) *websocket.Conn {
-	u := url.URL{Scheme: "ws", Host: addr, Path: "/pss/ws"}
+	u := url.URL{Scheme: "ws", Host: addr, Path: "/pss/testtopic/ws"}
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {

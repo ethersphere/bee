@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
@@ -43,11 +44,16 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("pss upgrading request")
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("error", err)
 		return
 	}
 
-	fmt.Println(conn)
+	addr, ok := mux.Vars(r)["topic"]
+
+	if !ok {
+		panic(err)
+	}
+	fmt.Println(addr)
 	//client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
 	//client.hub.register <- client
 

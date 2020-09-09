@@ -90,9 +90,9 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/pss/ws", jsonhttp.MethodHandler{
-		"GET":  http.HandlerFunc(s.pssPostHandler),
-		"POST": http.HandlerFunc(s.pssPostHandler),
+	handle(router, "/pss/{topic}/ws", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.pssPostHandler),
+		//"POST": http.HandlerFunc(s.pssPostHandler), // WS does not use verbs
 	})
 
 	handle(router, "/tags", web.ChainHandlers(
