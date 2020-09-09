@@ -213,12 +213,12 @@ func TestResolve(t *testing.T) {
 		},
 		{
 			name:    "this.dies",
-			wantErr: multiresolver.ErrResolverChainFailed,
+			wantErr: errResolutionFailed,
 		},
 		{
 			name:    "iam.unregistered",
 			wantAdr: swarm.ZeroAddress,
-			wantErr: multiresolver.ErrResolverChainFailed,
+			wantErr: errUnregisteredName,
 		},
 	}
 

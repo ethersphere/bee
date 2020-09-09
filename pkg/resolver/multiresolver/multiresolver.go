@@ -167,8 +167,7 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 		errs.Append(err)
 	}
 
-	return addr, errs.WrapErrorOrNil(
-		fmt.Errorf("resolve chain for tld %q: %w", tld, ErrResolverChainFailed))
+	return addr, errs.ErrorOrNil()
 }
 
 // Close all will call Close on all resolvers in all resolver chains.
@@ -183,7 +182,7 @@ func (mr *MultiResolver) Close() error {
 		}
 	}
 
-	return errs.WrapErrorOrNil(ErrCloseFailed)
+	return errs.ErrorOrNil()
 }
 
 func getTLD(name string) string {
