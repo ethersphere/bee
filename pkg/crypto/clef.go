@@ -8,17 +8,21 @@ import (
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/external"
 )
 
 type clefSigner struct {
-	clef    *external.ExternalSigner
+	clef    clefSignerInterface
 	account accounts.Account // the account this signer will use
 	pubKey  *ecdsa.PublicKey // the public key for the account
 }
 
-// defaultIpcPath returns the os-dependent default ipc path for clef
-func defaultIpcPath() (string, error) {
+type clefSignerInterface interface {
+	SignData(account accounts.Account, mimeType string, data []byte) ([]byte, error)
+	Accounts() []accounts.Account
+}
+
+// DefaultClefIpcPath returns the os-dependent default ipc path for clef
+func DefaultClefIpcPath() (string, error) {
 	socket := "clef.ipc"
 	// on windows clef uses top level pipes
 	if runtime.GOOS == "windows" {
@@ -41,19 +45,7 @@ func defaultIpcPath() (string, error) {
 
 // NewClefSigner creates a new connection to the signer at endpoint
 // As clef does not expose public keys it signs a test message to recover the public key
-func NewClefSigner(endpoint string) (signer Signer, err error) {
-	if endpoint == "" {
-		endpoint, err = defaultIpcPath()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	clef, err := external.NewExternalSigner(endpoint)
-	if err != nil {
-		return nil, err
-	}
-
+func NewClefSigner(clef clefSignerInterface) (signer Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {

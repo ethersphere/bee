@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
@@ -128,10 +129,24 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			var address swarm.Address
 
 			if c.config.GetBool(optionNameClefSignerEnable) {
-				signer, err = crypto.NewClefSigner(c.config.GetString(optionNameClefSignerEndpoint))
+				endpoint := c.config.GetString(optionNameClefSignerEndpoint)
+				if endpoint == "" {
+					endpoint, err = crypto.DefaultClefIpcPath()
+					if err != nil {
+						return err
+					}
+				}
+
+				clef, err := external.NewExternalSigner(endpoint)
 				if err != nil {
 					return err
 				}
+
+				signer, err = crypto.NewClefSigner(clef)
+				if err != nil {
+					return err
+				}
+
 				publicKey, err := signer.PublicKey()
 				if err != nil {
 					return err
