@@ -17,6 +17,7 @@ import (
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/resolver"
+	settlementmock "github.com/ethersphere/bee/pkg/settlement/pseudosettle/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -34,6 +35,7 @@ type testServerOptions struct {
 	TopologyOpts   []topologymock.Option
 	Tags           *tags.Tags
 	AccountingOpts []accountingmock.Option
+	SettlementOpts []settlementmock.Option
 }
 
 type testServer struct {
@@ -44,8 +46,9 @@ type testServer struct {
 func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
+	settlement := settlementmock.NewSettlement(o.SettlementOpts...)
 
-	s := debugapi.New(o.Overlay, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc)
+	s := debugapi.New(o.Overlay, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

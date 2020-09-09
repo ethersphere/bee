@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -34,12 +35,12 @@ type server struct {
 	Tracer         *tracing.Tracer
 	Tags           *tags.Tags
 	Accounting     accounting.Interface
+	Settlement     settlement.Interface
 	http.Handler
-
 	metricsRegistry *prometheus.Registry
 }
 
-func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface) Service {
+func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface) Service {
 	s := &server{
 		Overlay:         overlay,
 		P2P:             p2p,
@@ -50,6 +51,7 @@ func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interfac
 		Tracer:          tracer,
 		Tags:            tags,
 		Accounting:      accounting,
+		Settlement:      settlement,
 		metricsRegistry: newMetricsRegistry(),
 	}
 
