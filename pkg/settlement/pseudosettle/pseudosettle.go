@@ -136,7 +136,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	}
 	totalSent, err := s.TotalSent(peer)
 	if err != nil {
-		if errors.Is(err, ErrPeerNoSettlements) {
+		if !errors.Is(err, ErrPeerNoSettlements) {
 			return err
 		}
 		totalSent = 0
