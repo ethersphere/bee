@@ -12,6 +12,10 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 )
 
+var (
+	ErrInvalidLength = errors.New("invalid signature length")
+)
+
 type Signer interface {
 	Sign(data []byte) ([]byte, error)
 	PublicKey() (*ecdsa.PublicKey, error)
@@ -31,7 +35,7 @@ func hashWithEthereumPrefix(data []byte) ([]byte, error) {
 // It is using `btcec.RecoverCompact` function
 func Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
 	if len(signature) != 65 {
-		return nil, errors.New("invalid signature length")
+		return nil, ErrInvalidLength
 	}
 	// Convert to btcec input format with 'recovery id' v at the beginning.
 	btcsig := make([]byte, 65)
