@@ -32,16 +32,6 @@ func newTestWsServer(t *testing.T, o testServerOptions) *httptest.Server {
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
-	//return &http.Client{
-	//Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-	//u, err := url.Parse(ts.URL + r.URL.String())
-	//if err != nil {
-	//return nil, err
-	//}
-	//r.URL = u
-	//return ts.Client().Transport.RoundTrip(r)
-	//}),
-	//}
 	return ts
 }
 
@@ -54,7 +44,6 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 		logger = logging.New(ioutil.Discard, 0)
 		pss    = pss.New(logger, nil)
 
-		//mockStatestore = statestore.NewStateStore()
 		server = newTestWsServer(t, testServerOptions{
 			Pss:    pss,
 			Storer: mock.NewStorer(),

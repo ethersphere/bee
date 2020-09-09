@@ -90,6 +90,11 @@ func (s *server) setupRouting() {
 		),
 	})
 
+	handle(router, "/pss/ws", jsonhttp.MethodHandler{
+		"GET":  http.HandlerFunc(s.pssPostHandler),
+		"POST": http.HandlerFunc(s.pssPostHandler),
+	})
+
 	handle(router, "/tags", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
