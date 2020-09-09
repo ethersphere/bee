@@ -292,6 +292,13 @@ paths:
             type: boolean
           required: false
           description: Represents the encrypting state of the collection
+        - in: header
+          name: swarm-index
+          schema:
+            type: string
+            example: index.html
+          required: false
+          description: Default file to be referenced on path, if exists under that path
       requestBody:
         content:
           application/x-tar:

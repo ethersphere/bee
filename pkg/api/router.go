@@ -78,6 +78,12 @@ func (s *server) setupRouting() {
 		),
 	})
 
+	handle(router, "/bzz/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.newTracingHandler("bzz-download"),
+			web.FinalHandlerFunc(s.bzzDownloadHandler),
+		),
+	})
 	handle(router, "/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.newTracingHandler("bzz-download"),
