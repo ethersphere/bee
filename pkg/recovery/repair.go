@@ -5,15 +5,22 @@
 package recovery
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
+	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
@@ -28,7 +35,6 @@ const (
 var (
 	// RecoveryTopic is the topic used for repairing globally pinned chunks.
 	RecoveryTopic         = trojan.NewTopic(RecoveryTopicText)
-	RecoveryResponseTopic = trojan.NewTopic(RecoveryResponseTopicText)
 )
 
 // RecoveryHook defines code to be executed upon failing to retrieve chunks.
@@ -57,23 +63,20 @@ func NewRepair() *Repair {
 }
 
 // GetNewRecoveryHook returns a new RecoveryHook with the sender function defined.
-func (r *Repair) GetRecoveryHook(pss PssSender, overlay swarm.Address) RecoveryHook {
+func (r *Repair) GetRecoveryHook(pss PssSender, overlay swarm.Address, privateKey *ecdsa.PrivateKey) RecoveryHook {
 	return func(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) error {
-		var references []string
-		message := &RequestRepairMessage{
-			DownloaderOverlay:  overlay.String(),
-			ReferencesToRepair: append(references, chunkAddress.String()),
-		}
-		payload, err := json.Marshal(message)
+		socEnvelope, err := createSelfAddressedEnvelope(overlay, 1, chunkAddress, privateKey)
 		if err != nil {
 			return err
 		}
+		payload := append(socEnvelope.Address().Bytes(), socEnvelope.Data()...)
 		ctx := context.Background()
 		err = pss.Send(ctx, targets, RecoveryTopic, payload)
 		r.chunkChanMap[chunkAddress.String()] = chunkC
 		return err
 	}
 }
+
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store.
 func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
@@ -82,7 +85,8 @@ func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsy
 
 		// check if the chunk exists in the local store and proceed.
 		// otherwise the Get will trigger a unnecessary network retrieve
-		exists, err := s.Has(ctx, chAddr)
+		addrToRetrieve := swarm.NewAddress(envelopePayloadId)
+		exists, err := s.Has(ctx, addrToRetrieve)
 		if err != nil {
 			return
 		}
@@ -91,7 +95,7 @@ func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsy
 		}
 
 		// retrieve the chunk from the local store
-		ch, err := s.Get(ctx, storage.ModeGetRequest, chAddr)
+		ch, err := s.Get(ctx, storage.ModeGetRequest, addrToRetrieve)
 		if err != nil {
 			logger.Tracef("chunk repair: error while getting chunk for repairing: %v", err)
 			return
