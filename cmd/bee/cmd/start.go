@@ -142,7 +142,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 					return err
 				}
 
-				signer, err = crypto.NewClefSigner(clef)
+				signer, err = crypto.NewClefSigner(clef, crypto.Recover)
 				if err != nil {
 					return err
 				}

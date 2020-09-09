@@ -11,18 +11,20 @@ import (
 )
 
 var (
-	ErrNoAccounts = errors.New("no accounts found in clef")
+	ErrNoAccounts       = errors.New("no accounts found in clef")
+	ClefRecoveryMessage = []byte("public key recovery message")
 )
 
-type clefSigner struct {
-	clef    clefSignerInterface
-	account accounts.Account // the account this signer will use
-	pubKey  *ecdsa.PublicKey // the public key for the account
-}
-
-type clefSignerInterface interface {
+// ClefSignerInterface is the interface for the clef client from go-ethereum
+type ClefSignerInterface interface {
 	SignData(account accounts.Account, mimeType string, data []byte) ([]byte, error)
 	Accounts() []accounts.Account
+}
+
+type clefSigner struct {
+	clef    ClefSignerInterface
+	account accounts.Account // the account this signer will use
+	pubKey  *ecdsa.PublicKey // the public key for the account
 }
 
 // DefaultClefIpcPath returns the os-dependent default ipc path for clef
@@ -49,7 +51,7 @@ func DefaultClefIpcPath() (string, error) {
 
 // NewClefSigner creates a new connection to the signer at endpoint
 // As clef does not expose public keys it signs a test message to recover the public key
-func NewClefSigner(clef clefSignerInterface) (signer Signer, err error) {
+func NewClefSigner(clef ClefSignerInterface, recoverFunc RecoverFunc) (signer Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {
@@ -61,13 +63,12 @@ func NewClefSigner(clef clefSignerInterface) (signer Signer, err error) {
 
 	// clef currently does not expose the public key
 	// sign some data so we can recover it
-	recoveryMessage := []byte("public key recovery message")
-	sig, err := clef.SignData(account, accounts.MimetypeTextPlain, recoveryMessage)
+	sig, err := clef.SignData(account, accounts.MimetypeTextPlain, ClefRecoveryMessage)
 	if err != nil {
 		return nil, err
 	}
 
-	pubKey, err := Recover(sig, recoveryMessage)
+	pubKey, err := recoverFunc(sig, ClefRecoveryMessage)
 	if err != nil {
 		return nil, err
 	}
