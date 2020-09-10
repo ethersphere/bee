@@ -115,7 +115,7 @@ func (m *Message) Wrap(ctx context.Context, targets Targets) (swarm.Chunk, error
 		chunk := swarm.NewChunk(swarm.NewAddress(hash), append(span, append(nonce, b...)...))
 		return chunk, nil
 	}
-	return mine(ctx, f)
+	return Mine(ctx, f)
 }
 
 // Unwrap creates a new trojan message from the given chunk payload
@@ -214,7 +214,7 @@ func (m *Message) UnmarshalBinary(data []byte) (err error) {
 	return nil
 }
 
-func mine(ctx context.Context, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
+func Mine(ctx context.Context, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
 	seeds := make([]uint32, 8)
 	for i := range seeds {
 		seeds[i] = random.Uint32()
