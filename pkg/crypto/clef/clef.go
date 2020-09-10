@@ -1,4 +1,8 @@
-package crypto
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package clef
 
 import (
 	"crypto/ecdsa"
@@ -8,6 +12,7 @@ import (
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethersphere/bee/pkg/crypto"
 )
 
 var (
@@ -51,7 +56,7 @@ func DefaultClefIpcPath() (string, error) {
 
 // NewClefSigner creates a new connection to the signer at endpoint
 // As clef does not expose public keys it signs a test message to recover the public key
-func NewClefSigner(clef ClefSignerInterface, recoverFunc RecoverFunc) (signer Signer, err error) {
+func NewClefSigner(clef ClefSignerInterface, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {

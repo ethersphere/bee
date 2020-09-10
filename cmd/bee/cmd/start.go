@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/crypto/clef"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
@@ -131,18 +132,18 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			if c.config.GetBool(optionNameClefSignerEnable) {
 				endpoint := c.config.GetString(optionNameClefSignerEndpoint)
 				if endpoint == "" {
-					endpoint, err = crypto.DefaultClefIpcPath()
+					endpoint, err = clef.DefaultClefIpcPath()
 					if err != nil {
 						return err
 					}
 				}
 
-				clef, err := external.NewExternalSigner(endpoint)
+				externalSigner, err := external.NewExternalSigner(endpoint)
 				if err != nil {
 					return err
 				}
 
-				signer, err = crypto.NewClefSigner(clef, crypto.Recover)
+				signer, err = clef.NewClefSigner(externalSigner, crypto.Recover)
 				if err != nil {
 					return err
 				}

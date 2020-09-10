@@ -1,4 +1,8 @@
-package crypto_test
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package clef_test
 
 import (
 	"bytes"
@@ -9,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/crypto/clef"
 )
 
 type mockClef struct {
@@ -41,7 +46,7 @@ func TestNewClefSigner(t *testing.T) {
 	}
 	publicKey := &key.PublicKey
 
-	clef := &mockClef{
+	mock := &mockClef{
 		accounts: []accounts.Account{
 			{
 				Address: ethAddress,
@@ -50,13 +55,13 @@ func TestNewClefSigner(t *testing.T) {
 		signature: testSignature,
 	}
 
-	signer, err := crypto.NewClefSigner(clef, func(signature, data []byte) (*ecdsa.PublicKey, error) {
+	signer, err := clef.NewClefSigner(mock, func(signature, data []byte) (*ecdsa.PublicKey, error) {
 		if !bytes.Equal(testSignature, signature) {
 			t.Fatalf("wrong data used for recover. expected %v got %v", testSignature, signature)
 		}
 
-		if !bytes.Equal(crypto.ClefRecoveryMessage, data) {
-			t.Fatalf("wrong data used for recover. expected %v got %v", crypto.ClefRecoveryMessage, data)
+		if !bytes.Equal(clef.ClefRecoveryMessage, data) {
+			t.Fatalf("wrong data used for recover. expected %v got %v", clef.ClefRecoveryMessage, data)
 		}
 		return publicKey, nil
 	})
@@ -64,16 +69,16 @@ func TestNewClefSigner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if clef.signedAccount.Address != ethAddress {
-		t.Fatalf("wrong account used for signing. expected %v got %v", ethAddress, clef.signedAccount.Address)
+	if mock.signedAccount.Address != ethAddress {
+		t.Fatalf("wrong account used for signing. expected %v got %v", ethAddress, mock.signedAccount.Address)
 	}
 
-	if clef.signedMimeType != accounts.MimetypeTextPlain {
-		t.Fatalf("wrong mime type used for signing. expected %v got %v", accounts.MimetypeTextPlain, clef.signedMimeType)
+	if mock.signedMimeType != accounts.MimetypeTextPlain {
+		t.Fatalf("wrong mime type used for signing. expected %v got %v", accounts.MimetypeTextPlain, mock.signedMimeType)
 	}
 
-	if !bytes.Equal(clef.signedData, crypto.ClefRecoveryMessage) {
-		t.Fatalf("wrong data used for signing. expected %v got %v", crypto.ClefRecoveryMessage, clef.signedData)
+	if !bytes.Equal(mock.signedData, clef.ClefRecoveryMessage) {
+		t.Fatalf("wrong data used for signing. expected %v got %v", clef.ClefRecoveryMessage, mock.signedData)
 	}
 
 	signerPublicKey, err := signer.PublicKey()
@@ -87,15 +92,15 @@ func TestNewClefSigner(t *testing.T) {
 }
 
 func TestClefNoAccounts(t *testing.T) {
-	clef := &mockClef{
+	mock := &mockClef{
 		accounts: []accounts.Account{},
 	}
 
-	_, err := crypto.NewClefSigner(clef, nil)
+	_, err := clef.NewClefSigner(mock, nil)
 	if err == nil {
 		t.Fatal("expected ErrNoAccounts error if no accounts")
 	}
-	if !errors.Is(err, crypto.ErrNoAccounts) {
+	if !errors.Is(err, clef.ErrNoAccounts) {
 		t.Fatalf("expected ErrNoAccounts error but got %v", err)
 	}
 }
