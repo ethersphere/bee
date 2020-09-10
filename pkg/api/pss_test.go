@@ -1,11 +1,13 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,49 +45,55 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 	// the handler to be notified
 	var (
 		logger = logging.New(ioutil.Discard, 0)
-		pss    = pss.New(logger, nil)
+		pss    = pss.New(logger)
 
 		server = newTestWsServer(t, testServerOptions{
 			Pss:    pss,
 			Storer: mock.NewStorer(),
 			Logger: logger,
 		})
+
+		target     = trojan.Target([]byte{1})
+		targets    = trojan.Targets([]trojan.Target{target})
+		payload    = []byte("testdata")
+		topic      = trojan.NewTopic("testtopic")
+		msgContent = make([]byte, len(payload))
+		tc         swarm.Chunk
+		mtx        sync.Mutex
+		cl         = newWsClient(t, server.Listener.Addr().String())
+		timeout    = 5 * time.Second
+		done       = make(chan struct{})
 	)
 
-	url := server.URL
-	fmt.Println(url)
-	fmt.Println(server.Listener.Addr().String())
-	cl := newWsClient(t, server.Listener.Addr().String())
-	pongWait := time.Second
-	cl.SetReadLimit(1024)
-	cl.SetReadDeadline(time.Now().Add(pongWait))
+	cl.SetReadLimit(4096)
+	cl.SetReadDeadline(time.Now().Add(timeout))
+	defer close(done)
 	go func() {
 		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
 			_, message, err := cl.ReadMessage()
 			if err != nil {
-				fmt.Println(err)
+				return
 			}
-			fmt.Println("got message", string(message))
-			//if err != nil {
-			//if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-			//log.Printf("error: %v", err)
-			//}
-			//break
-			//}
-			//message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
+			fmt.Println("got msg", message, msgContent)
+
+			if message != nil {
+				mtx.Lock()
+				copy(msgContent, message)
+				mtx.Unlock()
+			}
 		}
 	}()
-	target := trojan.Target([]byte{1}) // arbitrary test target
-	targets := trojan.Targets([]trojan.Target{target})
-	payload := []byte("testdata")
-	topic := trojan.NewTopic("testtopic")
-
 	m, err := trojan.NewMessage(topic, payload)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var tc swarm.Chunk
 	tc, err = m.Wrap(targets)
 	if err != nil {
 		t.Fatal(err)
@@ -95,10 +103,24 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitMessage(t, msgContent, payload, timeout, &mtx)
+}
 
-	time.Sleep(time.Second)
-
-	// assert the websocket got the correct data
+func waitMessage(t *testing.T, data, expData []byte, timeout time.Duration, mtx *sync.Mutex) {
+	ttl := time.After(timeout)
+	for {
+		select {
+		case <-ttl:
+			t.Fatal("timed out waiting for pss message")
+		default:
+		}
+		mtx.Lock()
+		if bytes.Equal(data, expData) {
+			return
+		}
+		mtx.Unlock()
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 //func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
@@ -114,7 +136,7 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 //}
 
 func newWsClient(t *testing.T, addr string) *websocket.Conn {
-	u := url.URL{Scheme: "ws", Host: addr, Path: "/pss/testtopic/ws"}
+	u := url.URL{Scheme: "ws", Host: addr, Path: "/pss/subscribe/testtopic"}
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {

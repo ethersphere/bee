@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -20,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -50,6 +52,9 @@ type server struct {
 	Options
 	http.Handler
 	metrics metrics
+
+	wsWg      sync.WaitGroup // wait for all websockets to close on exit
+	wsHandles map[string]*websocket.Conn
 }
 
 type Options struct {

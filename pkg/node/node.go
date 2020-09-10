@@ -247,7 +247,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 
 	// instantiate the pss object
-	psss := pss.New(logger, nil)
+	psss := pss.New(logger)
 
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
@@ -262,7 +262,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10))
 
 	// set the pushSyncer in the PSS
-	psss.WithPushSyncer(pushSyncProtocol)
+	psss.SetPushSyncer(pushSyncProtocol)
 
 	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
 		return nil, fmt.Errorf("pushsync service: %w", err)

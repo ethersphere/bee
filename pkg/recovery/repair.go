@@ -50,7 +50,7 @@ func NewRecoveryHook(pss PssSender) RecoveryHook {
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store.
 func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
-	return func(ctx context.Context, m *trojan.Message) error {
+	return func(ctx context.Context, m *trojan.Message) {
 		chAddr := m.Payload
 
 		// check if the chunk exists in the local store and proceed.

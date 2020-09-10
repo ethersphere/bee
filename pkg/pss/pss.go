@@ -22,54 +22,55 @@ var (
 )
 
 type Interface interface {
-	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error
-	Register(topic trojan.Topic, hndlr Handler)
-	GetHandler(topic trojan.Topic) Handler
-	TryUnwrap(ctx context.Context, c swarm.Chunk) error
-	WithPushSyncer(pushSyncer pushsync.PushSyncer)
+	// Send arbitrary byte slice with the given topic to Targets.
+	Send(context.Context, trojan.Targets, trojan.Topic, []byte) error
+	// Register a Handler for a given Topic.
+	Register(trojan.Topic, Handler) func()
+	// TryUnwrap tries to unwrap a wrapped trojan message.
+	TryUnwrap(context.Context, swarm.Chunk) error
+
+	SetPushSyncer(pushSyncer pushsync.PushSyncer)
 }
 
-// pss is the top-level struct, which takes care of message sending
 type pss struct {
-	pusher     pushsync.PushSyncer
-	handlers   map[trojan.Topic]Handler
-	handlersMu sync.RWMutex
-	metrics    metrics
-	logger     logging.Logger
+	pusher        pushsync.PushSyncer
+	handlers      map[trojan.Topic]map[int]Handler
+	handlersCount int // monotonically increasing counter
+	handlersMu    sync.Mutex
+	metrics       metrics
+	logger        logging.Logger
 }
 
-// New inits the pss struct with the storer
-func New(logger logging.Logger, pusher pushsync.PushSyncer) Interface {
+// New returns a new pss service.
+func New(logger logging.Logger) Interface {
 	return &pss{
 		logger:   logger,
-		pusher:   pusher,
-		handlers: make(map[trojan.Topic]Handler),
+		handlers: make(map[trojan.Topic]map[int]Handler),
 		metrics:  newMetrics(),
 	}
 }
 
-func (ps *pss) WithPushSyncer(pushSyncer pushsync.PushSyncer) {
+func (ps *pss) SetPushSyncer(pushSyncer pushsync.PushSyncer) {
 	ps.pusher = pushSyncer
 }
 
-// Handler defines code to be executed upon reception of a trojan message
-type Handler func(context.Context, *trojan.Message) error
+// Handler defines code to be executed upon reception of a trojan message.
+type Handler func(context.Context, *trojan.Message)
 
 // Send constructs a padded message with topic and payload,
-// wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address
-// uses push-sync to deliver message
+// wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address.
+// Uses push-sync to deliver message.
 func (p *pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error {
 	p.metrics.TotalMessagesSentCounter.Inc()
 
-	//construct Trojan Chunk
 	m, err := trojan.NewMessage(topic, payload)
 	if err != nil {
 		return err
 	}
+
 	var tc swarm.Chunk
 	tc, err = m.Wrap(ctx, targets)
 	if err != nil {
-
 		return err
 	}
 
@@ -81,33 +82,57 @@ func (p *pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Top
 	return nil
 }
 
-// Register allows the definition of a Handler func for a specific topic on the pss struct
-func (p *pss) Register(topic trojan.Topic, hndlr Handler) {
+// Register allows the definition of a Handler func for a specific topic on the pss struct.
+func (p *pss) Register(topic trojan.Topic, handler Handler) (cleanup func()) {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
-	p.handlers[topic] = hndlr
+
+	if p.handlers[topic] == nil {
+		p.handlers[topic] = make(map[int]Handler)
+	}
+
+	p.handlers[topic][p.handlersCount] = handler
+	cleanup = func(id int) func() {
+		return func() {
+			p.handlersMu.Lock()
+			defer p.handlersMu.Unlock()
+
+			h := p.handlers[topic]
+			delete(h, id)
+		}
+	}(p.handlersCount)
+	p.handlersCount++
+
+	return cleanup
 }
 
-// TryUnwrap allows unwrapping a chunk as a trojan message and calling its handler func based on its topic
+// TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
 func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
-
 	if !trojan.IsPotential(c) {
 		return nil
 	}
-	m, err := trojan.Unwrap(c) // if err occurs unwrapping, there will be no handler
+	m, err := trojan.Unwrap(c)
 	if err != nil {
 		return err
 	}
-	h := p.GetHandler(m.Topic)
+	h := p.getHandlers(m.Topic)
 	if h == nil {
 		return fmt.Errorf("topic %v, %w", m.Topic, ErrNoHandler)
 	}
-	return h(ctx, m)
+	for _, hh := range h {
+		hh(ctx, m)
+	}
+	return nil
 }
 
-// GetHandler returns the Handler func registered in pss for the given topic
-func (p *pss) GetHandler(topic trojan.Topic) Handler {
-	p.handlersMu.RLock()
-	defer p.handlersMu.RUnlock()
-	return p.handlers[topic]
+func (p *pss) getHandlers(topic trojan.Topic) (handlers []Handler) {
+	p.handlersMu.Lock()
+	defer p.handlersMu.Unlock()
+
+	for _, v := range p.handlers[topic] {
+		v := v
+		handlers = append(handlers, v)
+	}
+
+	return handlers
 }

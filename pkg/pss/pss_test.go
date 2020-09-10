@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"sync"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -21,7 +22,7 @@ import (
 // TestSend creates a trojan chunk and sends it using push sync
 func TestSend(t *testing.T) {
 	var err error
-	ctx := context.TODO()
+	ctx := context.Background()
 
 	// create a mock pushsync service to push the chunk to its destination
 	var receipt *pushsync.Receipt
@@ -35,7 +36,8 @@ func TestSend(t *testing.T) {
 		return rcpt, nil
 	})
 
-	pss := pss.New(logging.New(ioutil.Discard, 0), pushSyncService)
+	pss := pss.New(logging.New(ioutil.Discard, 0))
+	pss.SetPushSyncer(pushSyncService)
 
 	target := trojan.Target([]byte{1}) // arbitrary test target
 	targets := trojan.Targets([]trojan.Target{target})
@@ -64,54 +66,11 @@ func TestSend(t *testing.T) {
 	}
 }
 
-// TestRegister verifies that handler funcs are able to be registered correctly in pss
-func TestRegister(t *testing.T) {
-	pss := pss.New(logging.New(ioutil.Discard, 0), nil)
-
-	handlerVerifier := 0 // test variable to check handler funcs are correctly retrieved
-
-	// register first handler
-	testHandler := func(ctx context.Context, m *trojan.Message) error {
-		handlerVerifier = 1
-		return nil
-	}
-	testTopic := trojan.NewTopic("FIRST_HANDLER")
-	pss.Register(testTopic, testHandler)
-
-	registeredHandler := pss.GetHandler(testTopic)
-	err := registeredHandler(context.Background(), &trojan.Message{}) // call handler to verify the retrieved func is correct
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if handlerVerifier != 1 {
-		t.Fatalf("unexpected handler retrieved, verifier variable should be 1 but is %d instead", handlerVerifier)
-	}
-
-	// register second handler
-	testHandler = func(ctx context.Context, m *trojan.Message) error {
-		handlerVerifier = 2
-		return nil
-	}
-	testTopic = trojan.NewTopic("SECOND_HANDLER")
-	pss.Register(testTopic, testHandler)
-
-	registeredHandler = pss.GetHandler(testTopic)
-	err = registeredHandler(context.Background(), &trojan.Message{}) // call handler to verify the retrieved func is correct
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if handlerVerifier != 2 {
-		t.Fatalf("unexpected handler retrieved, verifier variable should be 2 but is %d instead", handlerVerifier)
-	}
-}
-
 // TestDeliver verifies that registering a handler on pss for a given topic and then submitting a trojan chunk with said topic to it
 // results in the execution of the expected handler func
 func TestDeliver(t *testing.T) {
-	pss := pss.New(logging.New(ioutil.Discard, 0), nil)
-	ctx := context.TODO()
+	pss := pss.New(logging.New(ioutil.Discard, 0))
+	ctx := context.Background()
 
 	// test message
 	topic := trojan.NewTopic("footopic")
@@ -130,9 +89,8 @@ func TestDeliver(t *testing.T) {
 
 	// create and register handler
 	var tt trojan.Topic // test variable to check handler func was correctly called
-	hndlr := func(ctx context.Context, m *trojan.Message) error {
+	hndlr := func(ctx context.Context, m *trojan.Message) {
 		tt = m.Topic // copy the message topic to the test variable
-		return nil
 	}
 	pss.Register(topic, hndlr)
 
@@ -146,23 +104,100 @@ func TestDeliver(t *testing.T) {
 	}
 }
 
-func TestHandler(t *testing.T) {
-	pss := pss.New(logging.New(ioutil.Discard, 0), nil)
-	testTopic := trojan.NewTopic("TEST_TOPIC")
+// TestRegister verifies that handler funcs are able to be registered correctly in pss
+func TestRegister(t *testing.T) {
+	var (
+		pss     = pss.New(logging.New(ioutil.Discard, 0))
+		h1Calls = 0
+		h2Calls = 0
+		h3Calls = 0
+		mtx     sync.Mutex
 
-	// verify handler is null
-	if pss.GetHandler(testTopic) != nil {
-		t.Errorf("handler should be null")
+		topic1  = trojan.NewTopic("one")
+		topic2  = trojan.NewTopic("two")
+		payload = []byte("payload")
+		target  = trojan.Target([]byte{1})
+		targets = trojan.Targets([]trojan.Target{target})
+
+		h1 = func(_ context.Context, m *trojan.Message) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			h1Calls++
+		}
+
+		h2 = func(_ context.Context, m *trojan.Message) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			h2Calls++
+		}
+
+		h3 = func(_ context.Context, m *trojan.Message) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			h3Calls++
+		}
+	)
+
+	_ = pss.Register(topic1, h1)
+	_ = pss.Register(topic2, h2)
+
+	// send a message on topic1, check that only h1 is called
+	msg, err := trojan.NewMessage(topic1, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := msg.Wrap(targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = pss.TryUnwrap(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkCalls(t, h1Calls, 1)
+	checkCalls(t, h2Calls, 0)
+
+	// register another topic handler on the same topic
+	cleanup := pss.Register(topic1, h3)
+	err = pss.TryUnwrap(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkCalls(t, h1Calls, 2)
+	checkCalls(t, h2Calls, 0)
+	checkCalls(t, h3Calls, 1)
+
+	cleanup() // remove the last handler
+
+	err = pss.TryUnwrap(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkCalls(t, h1Calls, 3)
+	checkCalls(t, h2Calls, 0)
+	checkCalls(t, h3Calls, 1)
+
+	msg, err = trojan.NewMessage(topic2, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err = msg.Wrap(targets)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// register first handler
-	testHandler := func(ctx context.Context, m *trojan.Message) error { return nil }
-
-	// set handler for test topic
-	pss.Register(testTopic, testHandler)
-
-	if pss.GetHandler(testTopic) == nil {
-		t.Errorf("handler should be registered")
+	err = pss.TryUnwrap(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
 	}
+	checkCalls(t, h1Calls, 3)
+	checkCalls(t, h2Calls, 1)
+	checkCalls(t, h3Calls, 1)
+}
 
+func checkCalls(t *testing.T, calls, exp int) {
+	t.Helper()
+	if calls != exp {
+		t.Fatalf("expected %d calls on handler but got %d", exp, calls)
+	}
 }
