@@ -12,14 +12,13 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/gorilla/mux"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/gorilla/mux"
 )
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -116,11 +115,6 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
-		}
-		if errors.Is(err, netstore.ErrRecoveryAttempt) {
-			s.Logger.Trace("chunk: chunk recovery initiated. addr %s", address)
-			jsonhttp.Accepted(w, "chunk recovery initiated. retry after sometime.")
-			return
 		}
 		s.Logger.Debugf("chunk: chunk read error: %v ,addr %s", err, address)
 		s.Logger.Error("chunk: chunk read error")

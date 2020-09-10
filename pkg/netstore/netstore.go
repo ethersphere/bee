@@ -53,7 +53,7 @@ func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, log
 	}
 }
 
-func setTimeout(timeout time.Duration) {
+func SetTimeout(timeout time.Duration) {
 	repairTimeout = timeout
 }
 
