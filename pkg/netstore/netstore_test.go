@@ -7,6 +7,7 @@ package netstore_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -14,13 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/content"
 	validatormock "github.com/ethersphere/bee/pkg/content/mock"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	testing2 "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
@@ -98,20 +101,32 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 	}
 }
 
+// TestRecovery verifies if the recovery hook is called if the chunk is not there in the network
+// and the targets are present
 func TestRecovery(t *testing.T) {
 	hookWasCalled := make(chan bool, 1)
+	payload := make([]byte, swarm.ChunkSize)
+	_, err := rand.Read(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := content.NewChunk(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rec := &mockRecovery{
-		hookC:       hookWasCalled,
-		repairChunk: true,
+		hookC:     hookWasCalled,
+		sendChunk: c,
 	}
 
 	retrieve, _, nstore := newRetrievingNetstore(rec)
-	addr := swarm.MustParseHexAddress("deadbeef")
+	netstore.SetTimeout(50 * time.Millisecond)
+
 	retrieve.failure = true
 	ctx := context.Background()
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
+	rcvdChunk, err := nstore.Get(ctx, storage.ModeGetRequest, c.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,23 +137,39 @@ func TestRecovery(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("recovery hook was not called")
 	}
+
+	if !c.Address().Equal(rcvdChunk.Address()) {
+		t.Fatal()
+	}
+	if !bytes.Equal(c.Data(), rcvdChunk.Data()) {
+		t.Fatal()
+	}
 }
 
+// TestRecoveryTimeout verifies if the timout function of the netstore works properly
 func TestRecoveryTimeout(t *testing.T) {
 	hookWasCalled := make(chan bool, 1)
+	payload := make([]byte, swarm.ChunkSize)
+	_, err := rand.Read(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := content.NewChunk(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rec := &mockRecovery{
-		hookC:       hookWasCalled,
-		repairChunk: false,
+		hookC:     hookWasCalled,
+		sendChunk: nil,
 	}
 
 	retrieve, _, nstore := newRetrievingNetstore(rec)
-	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
 	ctx := context.Background()
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
 	netstore.SetTimeout(50 * time.Millisecond)
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
+	_, err = nstore.Get(ctx, storage.ModeGetRequest, c.Address())
 	if err != nil && !errors.Is(err, netstore.ErrRecoveryTimeout) {
 		t.Fatal(err)
 	}
@@ -216,19 +247,36 @@ func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (
 }
 
 type mockRecovery struct {
-	hookC       chan bool
-	repairChunk bool
+	hookC     chan bool
+	sendChunk swarm.Chunk
 }
 
 // Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) error {
+func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) (swarm.Address, error) {
 	mr.hookC <- true
-	if mr.repairChunk {
-		chunkC <- testing2.GenerateTestRandomChunk()
+	if mr.sendChunk != nil {
+		sch := getSocChunk(mr.sendChunk)
+		chunkC <- sch
+		return sch.Address(), nil
 	}
-	return nil
+	return swarm.NewAddress([]byte("deadbeef")), nil
 }
 
 func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
 	return nil, fmt.Errorf("chunk not found")
+}
+
+func getSocChunk(c swarm.Chunk) swarm.Chunk {
+	var dummyChunk swarm.Chunk
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		return dummyChunk
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	id := make([]byte, 32)
+	sch, err := soc.NewChunk(id, c, signer)
+	if err != nil {
+		return dummyChunk
+	}
+	return sch
 }

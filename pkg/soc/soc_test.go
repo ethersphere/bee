@@ -7,7 +7,9 @@ package soc_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/content"
@@ -94,7 +96,11 @@ func TestFromChunk(t *testing.T) {
 
 	id := make([]byte, 32)
 
-	payload := []byte("foo")
+	payload := make([]byte, swarm.ChunkSize)
+	_, err = rand.Read(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ch, err := content.NewChunk(payload)
 	if err != nil {
 		t.Fatal(err)
@@ -122,4 +128,7 @@ func TestFromChunk(t *testing.T) {
 	if !bytes.Equal(ownerEthereumAddress, u2.OwnerAddress()) {
 		t.Fatalf("owner address mismatch %x %x", ownerEthereumAddress, u2.OwnerAddress())
 	}
+
+	fmt.Println(ch.Address(), ch.Data())
+	fmt.Println(u2.Chunk.Address(), u2.Chunk.Data())
 }

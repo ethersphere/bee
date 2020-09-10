@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -34,7 +35,8 @@ var (
 )
 
 var (
-	ErrRecoveryTimeout = errors.New("timeout during chunk repair")
+	ErrRecoveryTimeout          = errors.New("timeout during chunk repair")
+	errDecodingRecoveryResponse = errors.New("error decoding recovery response")
 )
 
 // New returns a new NetStore that wraps a given Storer.
@@ -51,7 +53,7 @@ func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, log
 	}
 }
 
-func SetTimeout(timeout time.Duration) {
+func setTimeout(timeout time.Duration) {
 	repairTimeout = timeout
 }
 
@@ -76,17 +78,29 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				if err != nil {
 					s.logger.Debugf("netstore: error while recovering chunk: %v", err)
 				}
+
 				// add the expected soc address and the channel in which the chunk is awaited
 				s.chunkChanMu.Lock()
 				s.chunkChanMap[socAddress.String()] = chunkC
 				s.chunkChanMu.Unlock()
 
 				// wait for chunk or timeout
+				var socChunk swarm.Chunk
 				select {
-				case ch = <-chunkC:
+				case socChunk = <-chunkC:
 				case <-time.After(repairTimeout):
+					if chunkC, ok := s.chunkChanMap[socAddress.String()]; ok {
+						close(chunkC)
+						delete(s.chunkChanMap, socAddress.String())
+					}
 					return nil, ErrRecoveryTimeout
 				}
+
+				s, err := soc.FromChunk(socChunk)
+				if err != nil {
+					return nil, errDecodingRecoveryResponse
+				}
+				ch = s.Chunk
 			}
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
@@ -103,7 +117,6 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 // returns a storage.ErrInvalidChunk error when
 // encountering an invalid chunk.
 func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-
 	for _, ch := range chs {
 		if !s.validator.Validate(ch) {
 			return nil, storage.ErrInvalidChunk
@@ -119,6 +132,5 @@ func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chun
 		}
 		s.chunkChanMu.Unlock()
 	}
-
 	return s.Storer.Put(ctx, mode, chs...)
 }
