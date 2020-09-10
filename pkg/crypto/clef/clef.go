@@ -17,7 +17,7 @@ import (
 
 var (
 	ErrNoAccounts       = errors.New("no accounts found in clef")
-	ClefRecoveryMessage = []byte("public key recovery message")
+	clefRecoveryMessage = []byte("public key recovery message")
 )
 
 // ExternalSignerInterface is the interface for the clef client from go-ethereum
@@ -68,12 +68,12 @@ func NewSigner(clef ExternalSignerInterface, recoverFunc crypto.RecoverFunc) (si
 
 	// clef currently does not expose the public key
 	// sign some data so we can recover it
-	sig, err := clef.SignData(account, accounts.MimetypeTextPlain, ClefRecoveryMessage)
+	sig, err := clef.SignData(account, accounts.MimetypeTextPlain, clefRecoveryMessage)
 	if err != nil {
 		return nil, err
 	}
 
-	pubKey, err := recoverFunc(sig, ClefRecoveryMessage)
+	pubKey, err := recoverFunc(sig, clefRecoveryMessage)
 	if err != nil {
 		return nil, err
 	}
