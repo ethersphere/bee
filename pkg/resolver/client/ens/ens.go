@@ -5,16 +5,19 @@
 package ens
 
 import (
+	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
+	goens "github.com/wealdtech/go-ens/v3"
 
 	"github.com/ethersphere/bee/pkg/resolver/client"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+const swarmContentHashPrefix = "/swarm/"
 
 // Address is the swarm bzz address.
 type Address = swarm.Address
@@ -22,26 +25,36 @@ type Address = swarm.Address
 // Make sure Client implements the resolver.Client interface.
 var _ client.Interface = (*Client)(nil)
 
-type dialType func(string) (*ethclient.Client, error)
-type resolveType func(bind.ContractBackend, string) (string, error)
+var (
+	// ErrFailedToConnect denotes that the resolver failed to connect to the
+	// provided endpoint.
+	ErrFailedToConnect = errors.New("failed to connect")
+	// ErrResolveFailed denotes that a name could not be resolved.
+	ErrResolveFailed = errors.New("resolve failed")
+	// ErrInvalidContentHash denotes that the value of the contenthash record is
+	// not valid.
+	ErrInvalidContentHash = errors.New("invalid swarm content hash")
+	// errNotImplemented denotes that the function has not been implemented.
+	errNotImplemented = errors.New("function not implemented")
+)
 
 // Client is a name resolution client that can connect to ENS via an
 // Ethereum endpoint.
 type Client struct {
-	mu        sync.Mutex
-	Endpoint  string
+	endpoint  string
 	ethCl     *ethclient.Client
-	dialFn    dialType
-	resolveFn resolveType
+	dialFn    func(string) (*ethclient.Client, error)
+	resolveFn func(bind.ContractBackend, string) (string, error)
 }
 
 // Option is a function that applies an option to a Client.
 type Option func(*Client)
 
 // NewClient will return a new Client.
-func NewClient(opts ...Option) *Client {
+func NewClient(endpoint string, opts ...Option) (client.Interface, error) {
 	c := &Client{
-		dialFn:    wrapDial,
+		endpoint:  endpoint,
+		dialFn:    ethclient.Dial,
 		resolveFn: wrapResolve,
 	}
 
@@ -50,83 +63,77 @@ func NewClient(opts ...Option) *Client {
 		o(c)
 	}
 
-	return c
-}
-
-// Connect implements the resolver.Client interface.
-func (c *Client) Connect(ep string) error {
+	// Connect to the name resolution service.
 	if c.dialFn == nil {
-		return fmt.Errorf("dialFn: %w", errNotImplemented)
+		return nil, fmt.Errorf("dialFn: %w", errNotImplemented)
 	}
 
-	ethCl, err := c.dialFn(ep)
+	ethCl, err := c.dialFn(c.endpoint)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("%v: %w", err, ErrFailedToConnect)
 	}
-
-	// Lock and set the parameters.
-	c.mu.Lock()
 	c.ethCl = ethCl
-	c.Endpoint = ep
-	c.mu.Unlock()
 
-	return nil
+	return c, nil
 }
 
 // IsConnected returns true if there is an active RPC connection with an
 // Ethereum node at the configured endpoint.
-// Function obtains a write lock while interacting with the Ethereum client.
 func (c *Client) IsConnected() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	return c.ethCl != nil
 }
 
+// Endpoint returns the endpoint the client was connected to.
+func (c *Client) Endpoint() string {
+	return c.endpoint
+}
+
 // Resolve implements the resolver.Client interface.
-// Function obtains a read lock while interacting with the Ethereum client.
 func (c *Client) Resolve(name string) (Address, error) {
 	if c.resolveFn == nil {
 		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", errNotImplemented)
 	}
 
-	// Obtain our copy of the client under lock.
-	c.mu.Lock()
-	ethCl := c.ethCl
-	c.mu.Unlock()
-
-	hash, err := c.resolveFn(ethCl, name)
+	hash, err := c.resolveFn(c.ethCl, name)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("%v: %w", err, ErrResolveFailed)
 	}
 
-	// In case the implementation returns a zero address return an NameNotFound
-	// error.
-	if hash == "" {
-		return swarm.ZeroAddress, fmt.Errorf("name %s: %w", name, ErrNameNotFound)
-	}
-
 	// Ensure that the content hash string is in a valid format, eg.
 	// "/swarm/<address>".
-	if !strings.HasPrefix(hash, "/swarm/") {
+	if !strings.HasPrefix(hash, swarmContentHashPrefix) {
 		return swarm.ZeroAddress, fmt.Errorf("contenthash %s: %w", hash, ErrInvalidContentHash)
 	}
 
 	// Trim the prefix and try to parse the result as a bzz address.
-	return swarm.ParseHexAddress(strings.TrimPrefix(hash, "/swarm/"))
+	return swarm.ParseHexAddress(strings.TrimPrefix(hash, swarmContentHashPrefix))
 }
 
 // Close closes the RPC connection with the client, terminating all unfinished
-// requests.
-// Function obtains a write lock while interacting with the Ethereum client.
+// requests. If the connection is already closed, this call is a noop.
 func (c *Client) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.ethCl != nil {
-		c.ethCl.Close() // TODO: consider mocking out the eth client.
+		c.ethCl.Close()
+
 	}
 	c.ethCl = nil
 
 	return nil
+}
+
+func wrapResolve(backend bind.ContractBackend, name string) (string, error) {
+
+	// Connect to the ENS resolver for the provided name.
+	ensR, err := goens.NewResolver(backend, name)
+	if err != nil {
+		return "", err
+	}
+
+	// Try and read out the content hash record.
+	ch, err := ensR.Contenthash()
+	if err != nil {
+		return "", err
+	}
+
+	return goens.ContenthashToString(ch)
 }

@@ -248,6 +248,22 @@ func (s *settlementMock) Pay(ctx context.Context, peer swarm.Address, amount uin
 	return nil
 }
 
+func (s *settlementMock) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
+	return 0, nil
+}
+
+func (s *settlementMock) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
+	return 0, nil
+}
+
+func (s *settlementMock) SettlementsSent() (SettlementSent map[string]uint64, err error) {
+	return nil, nil
+}
+
+func (s *settlementMock) SettlementsReceived() (SettlementReceived map[string]uint64, err error) {
+	return nil, nil
+}
+
 // TestAccountingCallSettlement tests that settlement is called correctly if the payment threshold is hit
 func TestAccountingCallSettlement(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)

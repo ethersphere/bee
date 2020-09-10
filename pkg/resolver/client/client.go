@@ -9,9 +9,9 @@ import (
 )
 
 // Interface is a resolver client that can connect/disconnect to an external
-// Name Resolution Service via an edpoint.
+// Name Resolution Service via an endpoint.
 type Interface interface {
 	resolver.Interface
-	Connect(endpoint string) error
+	Endpoint() string
 	IsConnected() bool
 }

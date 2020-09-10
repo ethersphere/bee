@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle/pb"
+	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -34,20 +35,21 @@ func (t *testObserver) NotifyPayment(peer swarm.Address, amount uint64) error {
 func TestPayment(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
+	storeRecipient := mock.NewStateStore()
+	defer storeRecipient.Close()
+
 	observer := &testObserver{}
-	recipient := pseudosettle.New(pseudosettle.Options{
-		Logger: logger,
-	})
+	recipient := pseudosettle.New(nil, logger, storeRecipient)
 	recipient.SetPaymentObserver(observer)
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
 	)
 
-	payer := pseudosettle.New(pseudosettle.Options{
-		Streamer: recorder,
-		Logger:   logger,
-	})
+	storePayer := mock.NewStateStore()
+	defer storePayer.Close()
+
+	payer := pseudosettle.New(recorder, logger, storePayer)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	amount := uint64(10000)
@@ -95,5 +97,23 @@ func TestPayment(t *testing.T) {
 
 	if !observer.peer.Equal(peerID) {
 		t.Fatalf("observer called with wrong peer. got %v, want %v", observer.peer, peerID)
+	}
+
+	totalSent, err := payer.TotalSent(peerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if totalSent != sentAmount {
+		t.Fatalf("stored wrong totalSent. got %d, want %d", totalSent, sentAmount)
+	}
+
+	totalReceived, err := recipient.TotalReceived(peerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if totalReceived != sentAmount {
+		t.Fatalf("stored wrong totalReceived. got %d, want %d", totalReceived, sentAmount)
 	}
 }
