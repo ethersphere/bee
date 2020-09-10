@@ -137,7 +137,6 @@ func TestRegister(t *testing.T) {
 			h3Calls++
 		}
 	)
-
 	_ = pss.Register(topic1, h1)
 	_ = pss.Register(topic2, h2)
 

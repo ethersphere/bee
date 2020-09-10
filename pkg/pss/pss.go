@@ -33,19 +33,18 @@ type Interface interface {
 }
 
 type pss struct {
-	pusher        pushsync.PushSyncer
-	handlers      map[trojan.Topic]map[int]Handler
-	handlersCount int // monotonically increasing counter
-	handlersMu    sync.Mutex
-	metrics       metrics
-	logger        logging.Logger
+	pusher     pushsync.PushSyncer
+	handlers   map[trojan.Topic][]*Handler
+	handlersMu sync.Mutex
+	metrics    metrics
+	logger     logging.Logger
 }
 
 // New returns a new pss service.
 func New(logger logging.Logger) Interface {
 	return &pss{
 		logger:   logger,
-		handlers: make(map[trojan.Topic]map[int]Handler),
+		handlers: make(map[trojan.Topic][]*Handler),
 		metrics:  newMetrics(),
 	}
 }
@@ -87,23 +86,20 @@ func (p *pss) Register(topic trojan.Topic, handler Handler) (cleanup func()) {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 
-	if p.handlers[topic] == nil {
-		p.handlers[topic] = make(map[int]Handler)
-	}
+	p.handlers[topic] = append(p.handlers[topic], &handler)
 
-	p.handlers[topic][p.handlersCount] = handler
-	cleanup = func(id int) func() {
-		return func() {
-			p.handlersMu.Lock()
-			defer p.handlersMu.Unlock()
+	return func() {
+		p.handlersMu.Lock()
+		defer p.handlersMu.Unlock()
 
-			h := p.handlers[topic]
-			delete(h, id)
+		h := p.handlers[topic]
+		for i := 0; i < len(h); i++ {
+			if h[i] == &handler {
+				p.handlers[topic] = append(h[:i], h[i+1:]...)
+				return
+			}
 		}
-	}(p.handlersCount)
-	p.handlersCount++
-
-	return cleanup
+	}
 }
 
 // TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
@@ -120,19 +116,14 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 		return fmt.Errorf("topic %v, %w", m.Topic, ErrNoHandler)
 	}
 	for _, hh := range h {
-		hh(ctx, m)
+		(*hh)(ctx, m)
 	}
 	return nil
 }
 
-func (p *pss) getHandlers(topic trojan.Topic) (handlers []Handler) {
+func (p *pss) getHandlers(topic trojan.Topic) []*Handler {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 
-	for _, v := range p.handlers[topic] {
-		v := v
-		handlers = append(handlers, v)
-	}
-
-	return handlers
+	return p.handlers[topic]
 }
