@@ -2,16 +2,19 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package resolver_test
+package multiresolver_test
 
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"reflect"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/mock"
+	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -21,11 +24,33 @@ func newAddr(s string) Address {
 	return swarm.NewAddress([]byte(s))
 }
 
-func TestWithForceDefault(t *testing.T) {
-	mr := resolver.NewMultiResolver(
-		resolver.WithForceDefault(),
+func TestMultiresolverOpts(t *testing.T) {
+	wantLog := logging.New(ioutil.Discard, 1)
+	wantCfgs := []multiresolver.ConnectionConfig{
+		{
+			Address:  "testadr1",
+			Endpoint: "testEndpoint1",
+			TLD:      "testtld1",
+		},
+		{
+			Address:  "testadr2",
+			Endpoint: "testEndpoint2",
+			TLD:      "testtld2",
+		},
+	}
+
+	mr := multiresolver.NewMultiResolver(
+		multiresolver.WithLogger(wantLog),
+		multiresolver.WithConnectionConfigs(wantCfgs),
+		multiresolver.WithForceDefault(),
 	)
 
+	if got := multiresolver.GetLogger(mr); got != wantLog {
+		t.Errorf("log: got: %v, want %v", got, wantLog)
+	}
+	if got := multiresolver.GetCfgs(mr); !reflect.DeepEqual(got, wantCfgs) {
+		t.Errorf("cfg: got: %v, want %v", got, wantCfgs)
+	}
 	if !mr.ForceDefault {
 		t.Error("did not set ForceDefault")
 	}
@@ -45,29 +70,18 @@ func TestPushResolver(t *testing.T) {
 			desc: "regular tld, named chain",
 			tld:  ".tld",
 		},
-		{
-			desc:    "invalid tld",
-			tld:     "invalid",
-			wantErr: resolver.ErrInvalidTLD,
-		},
 	}
 
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			mr := resolver.NewMultiResolver()
+			mr := multiresolver.NewMultiResolver()
 
 			if mr.ChainCount(tC.tld) != 0 {
 				t.Fatal("chain should start empty")
 			}
 
 			want := mock.NewResolver()
-			err := mr.PushResolver(tC.tld, want)
-			if err != nil {
-				if !errors.Is(err, tC.wantErr) {
-					t.Fatal(err)
-				}
-				return
-			}
+			mr.PushResolver(tC.tld, want)
 
 			got := mr.GetChain(tC.tld)[0]
 			if !reflect.DeepEqual(got, want) {
@@ -82,20 +96,11 @@ func TestPushResolver(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestPopResolver(t *testing.T) {
-	mr := resolver.NewMultiResolver()
-
-	t.Run("error on bad tld", func(t *testing.T) {
-		if err := mr.PopResolver("invalid"); !errors.Is(err, resolver.ErrInvalidTLD) {
-			t.Fatal("invalid error type")
-		}
-	})
-
-	t.Run("error on empty", func(t *testing.T) {
-		if err := mr.PopResolver(".tld"); !errors.Is(err, resolver.ErrResolverChainEmpty) {
-			t.Fatal("invalid error type")
+	t.Run("pop empty chain", func(t *testing.T) {
+		mr := multiresolver.NewMultiResolver()
+		err := mr.PopResolver("")
+		if !errors.Is(err, multiresolver.ErrResolverChainEmpty) {
+			t.Errorf("got %v, want %v", err, multiresolver.ErrResolverChainEmpty)
 		}
 	})
 }
@@ -104,6 +109,7 @@ func TestResolve(t *testing.T) {
 	addr := newAddr("aaaabbbbccccdddd")
 	addrAlt := newAddr("ddddccccbbbbaaaa")
 	errUnregisteredName := fmt.Errorf("unregistered name")
+	errResolutionFailed := fmt.Errorf("name resolution failed")
 
 	newOKResolver := func(addr Address) resolver.Interface {
 		return mock.NewResolver(
@@ -115,8 +121,7 @@ func TestResolve(t *testing.T) {
 	newErrResolver := func() resolver.Interface {
 		return mock.NewResolver(
 			mock.WithResolveFunc(func(name string) (Address, error) {
-				err := fmt.Errorf("name resolution failed for %q", name)
-				return swarm.ZeroAddress, err
+				return swarm.ZeroAddress, errResolutionFailed
 			}),
 		)
 	}
@@ -181,35 +186,35 @@ func TestResolve(t *testing.T) {
 		wantAdr Address
 		wantErr error
 	}{
-		// {
-		// 	name:    "",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "hello",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "example.tld",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    ".tld",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "get.good",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	// Switch to the default chain:
-		// 	name:    "this.empty",
-		// 	wantAdr: testAdr,
-		// },
-		// {
-		// 	name:    "this.dies",
-		// 	wantErr: fmt.Errorf("Failed to resolve name %q", "this.dies"),
-		// },
+		{
+			name:    "",
+			wantAdr: addr,
+		},
+		{
+			name:    "hello",
+			wantAdr: addr,
+		},
+		{
+			name:    "example.tld",
+			wantAdr: addr,
+		},
+		{
+			name:    ".tld",
+			wantAdr: addr,
+		},
+		{
+			name:    "get.good",
+			wantAdr: addr,
+		},
+		{
+			// Switch to the default chain:
+			name:    "this.empty",
+			wantAdr: addr,
+		},
+		{
+			name:    "this.dies",
+			wantErr: errResolutionFailed,
+		},
 		{
 			name:    "iam.unregistered",
 			wantAdr: swarm.ZeroAddress,
@@ -218,12 +223,10 @@ func TestResolve(t *testing.T) {
 	}
 
 	// Load the test fixture.
-	mr := resolver.NewMultiResolver()
+	mr := multiresolver.NewMultiResolver()
 	for _, tE := range testFixture {
 		for _, r := range tE.res {
-			if err := mr.PushResolver(tE.tld, r); err != nil {
-				t.Fatal(err)
-			}
+			mr.PushResolver(tE.tld, r)
 		}
 	}
 

@@ -7,53 +7,56 @@
 package ens_test
 
 import (
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestENSntegration(t *testing.T) {
 	// TODO: consider using a stable gateway instead of INFURA.
 	defaultEndpoint := "https://goerli.infura.io/v3/59d83a5a4be74f86b9851190c802297b"
+	defaultAddr := swarm.MustParseHexAddress("00cb23598c2e520b6a6aae3ddc94fed4435a2909690bdd709bf9d9e7c2aadfad")
 
 	testCases := []struct {
-		desc            string
-		endpoint        string
-		name            string
-		wantAdr         string
-		wantFailConnect bool
-		wantFailResolve bool
+		desc     string
+		endpoint string
+		name     string
+		wantAdr  swarm.Address
+		wantErr  error
 	}{
+		// TODO: add a test targeting a resolver with an invalid contenthash
+		// record.
 		{
-			desc:            "bad ethclient endpoint",
-			endpoint:        "fail",
-			wantFailConnect: true,
+			desc:     "invalid resolver endpoint",
+			endpoint: "example.com",
+			wantErr:  ens.ErrFailedToConnect,
 		},
 		{
-			desc:            "no domain",
-			name:            "idonthaveadomain",
-			wantFailResolve: true,
+			desc:    "no domain",
+			name:    "idonthaveadomain",
+			wantErr: ens.ErrResolveFailed,
 		},
 		{
-			desc:            "no eth domain",
-			name:            "centralized.com",
-			wantFailResolve: true,
+			desc:    "no eth domain",
+			name:    "centralized.com",
+			wantErr: ens.ErrResolveFailed,
 		},
 		{
-			desc:            "not registered",
-			name:            "unused.test.swarm.eth",
-			wantFailResolve: true,
+			desc:    "not registered",
+			name:    "unused.test.swarm.eth",
+			wantErr: ens.ErrResolveFailed,
 		},
 		{
-			desc:            "no content hash",
-			name:            "nocontent.resolver.test.swarm.eth",
-			wantFailResolve: true,
+			desc:    "no content hash",
+			name:    "nocontent.resolver.test.swarm.eth",
+			wantErr: ens.ErrResolveFailed,
 		},
 		{
 			desc:    "ok",
 			name:    "example.resolver.test.swarm.eth",
-			wantAdr: "00cb23598c2e520b6a6aae3ddc94fed4435a2909690bdd709bf9d9e7c2aadfad",
+			wantAdr: defaultAddr,
 		},
 	}
 	for _, tC := range testCases {
@@ -62,34 +65,30 @@ func TestENSntegration(t *testing.T) {
 				tC.endpoint = defaultEndpoint
 			}
 
-			eC := ens.NewClient()
-			defer eC.Close()
-
-			err := eC.Connect(tC.endpoint)
+			ensClient, err := ens.NewClient(tC.endpoint)
 			if err != nil {
-				if !tC.wantFailConnect {
-					t.Fatalf("failed to connect: %v", err)
+				if !errors.Is(err, ens.ErrFailedToConnect) {
+					t.Errorf("got %v, want %v", err, tC.wantErr)
+				}
+				return
+			}
+			defer ensClient.Close()
+
+			addr, err := ensClient.Resolve(tC.name)
+			if err != nil {
+				if !errors.Is(err, tC.wantErr) {
+					t.Errorf("got %v, want %v", err, tC.wantErr)
 				}
 				return
 			}
 
-			addr, err := eC.Resolve(tC.name)
+			if !addr.Equal(defaultAddr) {
+				t.Errorf("bad addr: got %s, want %s", addr, defaultAddr)
+			}
+
+			err = ensClient.Close()
 			if err != nil {
-				if !tC.wantFailResolve {
-					t.Fatalf("failed to resolve name: %v", err)
-				}
-				return
-			}
-
-			want := strings.ToLower(tC.wantAdr)
-			got := strings.ToLower(addr.String())
-			if got != want {
-				t.Errorf("bad addr: got %q, want %q", got, want)
-			}
-
-			eC.Close()
-			if eC.IsConnected() {
-				t.Errorf("IsConnected: got true, want false")
+				t.Fatal(err)
 			}
 		})
 	}

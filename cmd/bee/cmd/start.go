@@ -22,7 +22,7 @@ import (
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
-	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -57,10 +57,10 @@ func (c *command) initStartCmd() (err error) {
 
 			// If the resolver is specified, resolve all connection strings
 			// and fail on any errors.
-			var resolverCfgs []*resolver.ConnectionConfig
+			var resolverCfgs []multiresolver.ConnectionConfig
 			resolverEndpoints := c.config.GetStringSlice(optionNameResolverEndpoints)
 			if len(resolverEndpoints) > 0 {
-				resolverCfgs, err = resolver.ParseConnectionStrings(resolverEndpoints)
+				resolverCfgs, err = multiresolver.ParseConnectionStrings(resolverEndpoints)
 				if err != nil {
 					return err
 				}
