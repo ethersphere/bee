@@ -7,12 +7,15 @@ package soc
 
 import (
 	"bytes"
+	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 const (
@@ -231,4 +234,37 @@ func recoverAddress(signature, digest []byte) ([]byte, error) {
 		return nil, err
 	}
 	return recoveredEthereumAddress, nil
+}
+
+// CreateSelfAddressedEnvelope create a SOC chunk without the payload (called envelope) addressed to its neighbourhood
+func CreateSelfAddressedEnvelope(ctx context.Context, owner *Owner, overlay swarm.Address, targetLen int, payloadId swarm.Address, signer crypto.Signer) (swarm.Chunk, error) {
+	f := func(id []byte) (swarm.Chunk, error) {
+		newAddr, err := CreateAddress(id, owner)
+		if err != nil {
+			return nil, err
+		}
+
+		if !bytes.Equal(overlay.Bytes()[:targetLen], newAddr.Bytes()[:targetLen]) {
+			return nil, nil
+		}
+
+		// build the soc envelope
+		data := make([]byte, swarm.SpanSize+swarm.HashSize)
+		binary.BigEndian.PutUint64(data[:swarm.SpanSize], swarm.HashSize)
+		copy(data[swarm.SpanSize:], payloadId.Bytes())
+		chunk := swarm.NewChunk(payloadId, data)
+		s := New(id, chunk)
+		err = s.AddSigner(signer)
+		if err != nil {
+			return nil, err
+		}
+		return s.ToChunk()
+	}
+	return trojan.Mine(ctx, f)
+}
+
+// GetAddressAndPayloadId extracts the Address and PayloadID from the envelope
+func GetAddressAndPayloadId(payload []byte) ([]byte, []byte) {
+	cursor := swarm.HashSize + IdSize + SignatureSize + swarm.SpanSize
+	return payload[0:swarm.HashSize], payload[cursor : cursor+swarm.HashSize]
 }
