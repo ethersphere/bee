@@ -2,20 +2,20 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package resolver_test
+package multiresolver_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 )
 
 func TestParseConnectionStrings(t *testing.T) {
 	testCases := []struct {
 		desc       string
 		conStrings []string
-		wantCfg    []resolver.ConnectionConfig
+		wantCfg    []multiresolver.ConnectionConfig
 		wantErr    error
 	}{
 		{
@@ -25,14 +25,14 @@ func TestParseConnectionStrings(t *testing.T) {
 			conStrings: []string{
 				"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff:example.com",
 			},
-			wantErr: resolver.ErrTLDTooLong,
+			wantErr: multiresolver.ErrTLDTooLong,
 		},
 		{
 			desc: "single endpoint default tld",
 			conStrings: []string{
 				"https://example.com",
 			},
-			wantCfg: []resolver.ConnectionConfig{
+			wantCfg: []multiresolver.ConnectionConfig{
 				{
 					TLD:      "",
 					Endpoint: "https://example.com",
@@ -44,7 +44,7 @@ func TestParseConnectionStrings(t *testing.T) {
 			conStrings: []string{
 				"tld:https://example.com",
 			},
-			wantCfg: []resolver.ConnectionConfig{
+			wantCfg: []multiresolver.ConnectionConfig{
 				{
 					TLD:      "tld",
 					Endpoint: "https://example.com",
@@ -56,7 +56,7 @@ func TestParseConnectionStrings(t *testing.T) {
 			conStrings: []string{
 				"0x314159265dD8dbb310642f98f50C066173C1259b@https://example.com",
 			},
-			wantCfg: []resolver.ConnectionConfig{
+			wantCfg: []multiresolver.ConnectionConfig{
 				{
 					TLD:      "",
 					Address:  "0x314159265dD8dbb310642f98f50C066173C1259b",
@@ -69,7 +69,7 @@ func TestParseConnectionStrings(t *testing.T) {
 			conStrings: []string{
 				"tld:0x314159265dD8dbb310642f98f50C066173C1259b@https://example.com",
 			},
-			wantCfg: []resolver.ConnectionConfig{
+			wantCfg: []multiresolver.ConnectionConfig{
 				{
 					TLD:      "tld",
 					Address:  "0x314159265dD8dbb310642f98f50C066173C1259b",
@@ -85,7 +85,7 @@ func TestParseConnectionStrings(t *testing.T) {
 				"yesyesyes:0x314159265dD8dbb310642f98f50C066173C1259b@2.2.2.2",
 				"cloudflare-ethereum.org",
 			},
-			wantCfg: []resolver.ConnectionConfig{
+			wantCfg: []multiresolver.ConnectionConfig{
 				{
 					TLD:      "tld",
 					Endpoint: "https://example.com",
@@ -112,12 +112,12 @@ func TestParseConnectionStrings(t *testing.T) {
 				"testdomain:wowzers.map",
 				"nonononononononononononononononononononononononononononononononononono:yes",
 			},
-			wantErr: resolver.ErrTLDTooLong,
+			wantErr: multiresolver.ErrTLDTooLong,
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			got, err := resolver.ParseConnectionStrings(tC.conStrings)
+			got, err := multiresolver.ParseConnectionStrings(tC.conStrings)
 			if err != nil {
 				if !errors.Is(err, tC.wantErr) {
 					t.Errorf("got error %v", err)
