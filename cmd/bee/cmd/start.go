@@ -132,7 +132,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			if c.config.GetBool(optionNameClefSignerEnable) {
 				endpoint := c.config.GetString(optionNameClefSignerEndpoint)
 				if endpoint == "" {
-					endpoint, err = clef.DefaultClefIpcPath()
+					endpoint, err = clef.DefaultIpcPath()
 					if err != nil {
 						return err
 					}
@@ -143,7 +143,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 					return err
 				}
 
-				signer, err = clef.NewClefSigner(externalSigner, crypto.Recover)
+				signer, err = clef.NewSigner(externalSigner, crypto.Recover)
 				if err != nil {
 					return err
 				}

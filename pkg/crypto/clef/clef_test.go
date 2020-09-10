@@ -55,7 +55,7 @@ func TestNewClefSigner(t *testing.T) {
 		signature: testSignature,
 	}
 
-	signer, err := clef.NewClefSigner(mock, func(signature, data []byte) (*ecdsa.PublicKey, error) {
+	signer, err := clef.NewSigner(mock, func(signature, data []byte) (*ecdsa.PublicKey, error) {
 		if !bytes.Equal(testSignature, signature) {
 			t.Fatalf("wrong data used for recover. expected %v got %v", testSignature, signature)
 		}
@@ -96,7 +96,7 @@ func TestClefNoAccounts(t *testing.T) {
 		accounts: []accounts.Account{},
 	}
 
-	_, err := clef.NewClefSigner(mock, nil)
+	_, err := clef.NewSigner(mock, nil)
 	if err == nil {
 		t.Fatal("expected ErrNoAccounts error if no accounts")
 	}

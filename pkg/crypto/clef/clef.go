@@ -20,20 +20,20 @@ var (
 	ClefRecoveryMessage = []byte("public key recovery message")
 )
 
-// ClefSignerInterface is the interface for the clef client from go-ethereum
-type ClefSignerInterface interface {
+// ExternalSignerInterface is the interface for the clef client from go-ethereum
+type ExternalSignerInterface interface {
 	SignData(account accounts.Account, mimeType string, data []byte) ([]byte, error)
 	Accounts() []accounts.Account
 }
 
 type clefSigner struct {
-	clef    ClefSignerInterface
+	clef    ExternalSignerInterface
 	account accounts.Account // the account this signer will use
 	pubKey  *ecdsa.PublicKey // the public key for the account
 }
 
-// DefaultClefIpcPath returns the os-dependent default ipc path for clef
-func DefaultClefIpcPath() (string, error) {
+// DefaultIpcPath returns the os-dependent default ipc path for clef
+func DefaultIpcPath() (string, error) {
 	socket := "clef.ipc"
 	// on windows clef uses top level pipes
 	if runtime.GOOS == "windows" {
@@ -54,9 +54,9 @@ func DefaultClefIpcPath() (string, error) {
 	return filepath.Join(home, ".clef", socket), nil
 }
 
-// NewClefSigner creates a new connection to the signer at endpoint
+// NewSigner creates a new connection to the signer at endpoint
 // As clef does not expose public keys it signs a test message to recover the public key
-func NewClefSigner(clef ClefSignerInterface, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
+func NewSigner(clef ExternalSignerInterface, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {
