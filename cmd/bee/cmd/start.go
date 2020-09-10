@@ -16,13 +16,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/crypto/clef"
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -123,23 +126,60 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				}
 			}
 
-			swarmPrivateKey, created, err := keystore.Key("swarm", password)
-			if err != nil {
-				return fmt.Errorf("swarm key: %w", err)
-			}
+			var signer crypto.Signer
+			var address swarm.Address
 
-			address, err := crypto.NewOverlayAddress(swarmPrivateKey.PublicKey, c.config.GetUint64(optionNameNetworkID))
-			if err != nil {
-				return err
-			}
+			if c.config.GetBool(optionNameClefSignerEnable) {
+				endpoint := c.config.GetString(optionNameClefSignerEndpoint)
+				if endpoint == "" {
+					endpoint, err = clef.DefaultIpcPath()
+					if err != nil {
+						return err
+					}
+				}
 
-			if created {
-				logger.Infof("new swarm network address created: %s", address)
+				externalSigner, err := external.NewExternalSigner(endpoint)
+				if err != nil {
+					return err
+				}
+
+				signer, err = clef.NewSigner(externalSigner, crypto.Recover)
+				if err != nil {
+					return err
+				}
+
+				publicKey, err := signer.PublicKey()
+				if err != nil {
+					return err
+				}
+
+				address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
+				if err != nil {
+					return err
+				}
+
+				logger.Infof("using swarm network address through clef: %s", address)
 			} else {
-				logger.Infof("using existing swarm network address: %s", address)
+				swarmPrivateKey, created, err := keystore.Key("swarm", password)
+				if err != nil {
+					return fmt.Errorf("swarm key: %w", err)
+				}
+				signer = crypto.NewDefaultSigner(swarmPrivateKey)
+				publicKey := swarmPrivateKey.PublicKey
+
+				address, err = crypto.NewOverlayAddress(publicKey, c.config.GetUint64(optionNameNetworkID))
+				if err != nil {
+					return err
+				}
+
+				if created {
+					logger.Infof("new swarm network address created: %s", address)
+				} else {
+					logger.Infof("using existing swarm network address: %s", address)
+				}
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), address, keystore, swarmPrivateKey, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), address, keystore, signer, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
 				DataDir:                c.config.GetString(optionNameDataDir),
 				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
 				Password:               password,
