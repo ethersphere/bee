@@ -70,7 +70,7 @@ func TestRecoveryHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	overlayAddres := swarm.NewAddress(overlayBytes)
-	recoveryHook := recovery.NewRecoveryHook(pssSender, overlayAddres, privKey)
+	recoveryHook := recovery.NewRecoveryHook(pssSender, overlayAddres, signer)
 	chunkC := make(chan swarm.Chunk)
 	socAddress, err := recoveryHook(c1.Address(), targets, chunkC)
 	if err != nil {
@@ -129,7 +129,7 @@ func Test_Miner(t *testing.T) {
 	overlayAddres := swarm.NewAddress(overlayBytes)
 
 	// with target len 1
-	envelope1, err := recovery.CreateSelfAddressedEnvelope(overlayAddres, 1, c1.Address(), privKey)
+	envelope1, err := recovery.CreateSelfAddressedEnvelope(overlayAddres, 1, c1.Address(), signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func Test_Miner(t *testing.T) {
 	}
 
 	// with target len 2
-	envelope2, err := recovery.CreateSelfAddressedEnvelope(overlayAddres, 2, c1.Address(), privKey)
+	envelope2, err := recovery.CreateSelfAddressedEnvelope(overlayAddres, 2, c1.Address(), signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestRecoveryHookCalls(t *testing.T) {
 				t.Fatal(err)
 			}
 			overlayAddres := swarm.NewAddress(overlayBytes)
-			recoverFunc := recovery.NewRecoveryHook(pssSender, overlayAddres, privKey)
+			recoverFunc := recovery.NewRecoveryHook(pssSender, overlayAddres, signer)
 			ns, _ := newTestNetStore(t, recoverFunc)
 
 			// fetch test chunk
