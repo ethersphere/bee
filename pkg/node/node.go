@@ -322,9 +322,11 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
 		recoverFunc := recovery.NewRecoveryHook(psss, swarmAddress, signer)
-		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
+		// because the miner timeout is 20 seconds, we give enough time for the miner to be over
+		repairTimeout := 20 * time.Second
+		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator, repairTimeout)
 	} else {
-		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)
+		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator, 0)
 	}
 	retrieve.SetStorer(ns)
 

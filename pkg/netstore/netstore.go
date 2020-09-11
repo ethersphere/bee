@@ -28,11 +28,8 @@ type store struct {
 	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
 	chunkChanMap     map[string]chan swarm.Chunk
 	chunkChanMu      *sync.RWMutex
+	repairTimeout    time.Duration
 }
-
-var (
-	repairTimeout = 10 * time.Second
-)
 
 var (
 	ErrRecoveryTimeout          = errors.New("timeout during chunk repair")
@@ -41,7 +38,7 @@ var (
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
-	validator swarm.Validator) storage.Storer {
+	validator swarm.Validator, timeout time.Duration) storage.Storer {
 	return &store{
 		Storer:           s,
 		recoveryCallback: rcb,
@@ -50,11 +47,8 @@ func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, log
 		validator:        validator,
 		chunkChanMap:     make(map[string]chan swarm.Chunk),
 		chunkChanMu:      &sync.RWMutex{},
+		repairTimeout:    timeout,
 	}
-}
-
-func SetTimeout(timeout time.Duration) {
-	repairTimeout = timeout
 }
 
 // Get retrieves a given chunk address.
@@ -88,7 +82,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				var socChunk swarm.Chunk
 				select {
 				case socChunk = <-chunkC:
-				case <-time.After(repairTimeout):
+				case <-time.After(s.repairTimeout):
 					if chunkC, ok := s.chunkChanMap[socAddress.String()]; ok {
 						close(chunkC)
 						delete(s.chunkChanMap, socAddress.String())

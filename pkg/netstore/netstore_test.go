@@ -120,7 +120,6 @@ func TestRecovery(t *testing.T) {
 	}
 
 	retrieve, _, nstore := newRetrievingNetstore(rec)
-	netstore.SetTimeout(50 * time.Millisecond)
 
 	retrieve.failure = true
 	ctx := context.Background()
@@ -168,7 +167,6 @@ func TestRecoveryTimeout(t *testing.T) {
 	ctx := context.Background()
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
-	netstore.SetTimeout(50 * time.Millisecond)
 	_, err = nstore.Get(ctx, storage.ModeGetRequest, c.Address())
 	if err != nil && !errors.Is(err, netstore.ErrRecoveryTimeout) {
 		t.Fatal(err)
@@ -222,9 +220,9 @@ func newRetrievingNetstore(rec *mockRecovery) (ret *retrievalMock, mockStore, ns
 
 	var nstore storage.Storer
 	if rec != nil {
-		nstore = netstore.New(store, rec.recovery, retrieve, logger, validator)
+		nstore = netstore.New(store, rec.recovery, retrieve, logger, validator, 50 * time.Millisecond)
 	} else {
-		nstore = netstore.New(store, nil, retrieve, logger, validator)
+		nstore = netstore.New(store, nil, retrieve, logger, validator, 0)
 	}
 	return retrieve, store, nstore
 }
