@@ -7,7 +7,6 @@ package api
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -67,7 +66,6 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, nil)
 			return
 		}
-		fmt.Println(target)
 		targets = append(targets, target)
 	}
 
