@@ -25,6 +25,7 @@ const (
 	SwarmPinHeader     = "Swarm-Pin"
 	SwarmTagUidHeader  = "Swarm-Tag-Uid"
 	SwarmEncryptHeader = "Swarm-Encrypt"
+	SwarmIndextHeader  = "Swarm-Index"
 )
 
 var (
