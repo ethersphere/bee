@@ -319,15 +319,9 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	b.pssCloser = psss
 
 	var ns storage.Storer
-	if o.GlobalPinningEnabled {
-		// create recovery callback for content repair
-		recoverFunc := recovery.NewRecoveryHook(psss, swarmAddress, signer)
-		// because the miner timeout is 20 seconds, we give enough time for the miner to be over
-		repairTimeout := 20 * time.Second
-		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator, repairTimeout)
-	} else {
-		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator, 0)
-	}
+	// create recovery callback for content repair
+	recoverFunc := recovery.NewRecoveryHook(psss, swarmAddress, signer)
+	ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
 	retrieve.SetStorer(ns)
 
 	silenceNoHandlerFunc := func(ctx context.Context, ch swarm.Chunk) error {
@@ -349,7 +343,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
-		chunkRepairHandler := recovery.NewRepairHandler(ns, pushSyncProtocol)
+		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
 		psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
