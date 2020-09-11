@@ -51,11 +51,10 @@ func TestDelivery(t *testing.T) {
 	pricerMock := accountingmock.NewPricer(price, price)
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(nil, nil, logger, serverMockAccounting, pricerMock, mockValidator)
-	server.SetStorer(mockStorer)
-	recorder := streamtest.New(
+	server := retrieval.New(nil, mockStorer, nil, logger, serverMockAccounting, pricerMock, mockValidator)
+	recorder := streamtest.NewRecorderDisconnecter(streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
-	)
+	))
 
 	clientMockAccounting := accountingmock.NewAccounting()
 
@@ -70,8 +69,7 @@ func TestDelivery(t *testing.T) {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	client := retrieval.New(recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator)
-	client.SetStorer(clientMockStorer)
+	client := retrieval.New(recorder, clientMockStorer, ps, logger, clientMockAccounting, pricerMock, mockValidator)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, reqAddr)

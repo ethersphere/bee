@@ -6,6 +6,7 @@ package retrieval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,7 +36,7 @@ type Interface interface {
 }
 
 type Service struct {
-	streamer      p2p.Streamer
+	streamer      p2p.StreamerDisconnecter
 	peerSuggester topology.EachPeerer
 	storer        storage.Storer
 	singleflight  singleflight.Group
@@ -45,10 +46,11 @@ type Service struct {
 	validator     swarm.Validator
 }
 
-func New(streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator) *Service {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Storer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator) *Service {
 	return &Service{
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
+		storer:        storer,
 		logger:        logger,
 		accounting:    accounting,
 		pricer:        pricer,
@@ -72,11 +74,10 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	maxPeers             = 5
 	retrieveChunkTimeout = 10 * time.Second
+	blocklistDuration    = time.Minute
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	ctx, cancel := context.WithTimeout(ctx, maxPeers*retrieveChunkTimeout)
-	defer cancel()
 
 	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
 		var skipPeers []swarm.Address
@@ -89,6 +90,14 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				}
 				s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
 				skipPeers = append(skipPeers, peer)
+				if errors.Is(err, context.DeadlineExceeded) {
+					if err := s.streamer.Blocklist(peer, blocklistDuration); err != nil {
+						s.logger.Errorf("retrieval: unable to block peer %s", peer)
+						s.logger.Debugf("retrieval: blocking peer %s: %v", peer, err)
+					} else {
+						s.logger.Warningf("retrieval: peer %s blocked as unresponsive", peer)
+					}
+				}
 				continue
 			}
 			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
@@ -124,7 +133,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 	err = s.accounting.Reserve(peer, chunkPrice)
 	if err != nil {
-		return nil, peer, err
+		return nil, peer, fmt.Errorf("accounting retrieve: %w", err)
 	}
 	defer s.accounting.Release(peer, chunkPrice)
 
@@ -146,26 +155,26 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
 		Addr: addr.Bytes(),
 	}); err != nil {
-		return nil, peer, fmt.Errorf("write request: %w peer %s", err, peer.String())
+		return nil, peer, fmt.Errorf("write request: %w", err)
 	}
 
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
-		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
+		return nil, peer, fmt.Errorf("read delivery: %w", err)
 	}
 
 	// credit the peer after successful delivery
 	chunk = swarm.NewChunk(addr, d.Data)
 	if !s.validator.Validate(chunk) {
-		return nil, peer, err
+		return nil, peer, fmt.Errorf("new chunk: %w", err)
 	}
 
 	err = s.accounting.Credit(peer, chunkPrice)
 	if err != nil {
-		return nil, peer, err
+		return nil, peer, fmt.Errorf("accounting credit: %w", err)
 	}
 
-	return chunk, peer, err
+	return chunk, peer, nil
 }
 
 func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
@@ -219,18 +228,27 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}()
 	var req pb.Request
 	if err := r.ReadMsg(&req); err != nil {
-		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
+		return fmt.Errorf("read request: %w", err)
 	}
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
-	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
+	addr := swarm.NewAddress(req.Addr)
+	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
 	if err != nil {
-		return fmt.Errorf("get from store: %w peer %s", err, p.Address.String())
+		if errors.Is(err, storage.ErrNotFound) {
+			// forward the request
+			chunk, err = s.RetrieveChunk(ctx, addr)
+			if err != nil {
+				return fmt.Errorf("retrieve chunk: %w", err)
+			}
+		} else {
+			return fmt.Errorf("get from store: %w", err)
+		}
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data: chunk.Data(),
 	}); err != nil {
-		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
+		return fmt.Errorf("write delivery: %w", err)
 	}
 
 	// compute the price we charge for this chunk and debit it from p's balance
@@ -241,9 +259,4 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	return nil
-}
-
-// SetStorer sets the storer. This call is not goroutine safe.
-func (s *Service) SetStorer(storer storage.Storer) {
-	s.storer = storer
 }
