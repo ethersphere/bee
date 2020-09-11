@@ -76,7 +76,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				chunkC := make(chan swarm.Chunk, 1)
 				socAddress, err := s.recoveryCallback(addr, targets, chunkC)
 				if err != nil {
-					s.logger.Debugf("netstore: error while recovering chunk: %v", err)
+					return nil, err
 				}
 
 				// add the expected soc address and the channel in which the chunk is awaited

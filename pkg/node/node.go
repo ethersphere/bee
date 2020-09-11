@@ -347,7 +347,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
-		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
+		chunkRepairHandler := recovery.NewRepairHandler(ns, pushSyncProtocol)
 		psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
