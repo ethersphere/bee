@@ -128,10 +128,3 @@ func (s *server) pumpWs(conn *websocket.Conn, topic string) {
 
 	}
 }
-
-//if err != nil {
-//if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-//log.Printf("error: %v", err)
-//}
-//break
-//}
