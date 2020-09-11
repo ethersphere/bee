@@ -220,7 +220,7 @@ func newRetrievingNetstore(rec *mockRecovery) (ret *retrievalMock, mockStore, ns
 
 	var nstore storage.Storer
 	if rec != nil {
-		nstore = netstore.New(store, rec.recovery, retrieve, logger, validator, 50 * time.Millisecond)
+		nstore = netstore.New(store, rec.recovery, retrieve, logger, validator, 50*time.Millisecond)
 	} else {
 		nstore = netstore.New(store, nil, retrieve, logger, validator, 0)
 	}
