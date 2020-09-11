@@ -52,7 +52,7 @@ type accountingPeer struct {
 	reservedBalance uint64
 }
 
-// Options ar options provided to Accounting.
+// Options are options provided to Accounting.
 type Options struct {
 	PaymentThreshold uint64
 	PaymentTolerance uint64
@@ -235,7 +235,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	}
 
 	// Don't do anything if there is no actual debt.
-	// This might be the case if the peer owes us and the total reserve	for a
+	// This might be the case if the peer owes us and the total reserve for a
 	// peer exceeds the payment treshold.
 	if oldBalance >= 0 {
 		return nil
@@ -249,7 +249,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	nextBalance := 0
 
 	// Try to save the next balance first.
-	// Otherwise we might pay and then not be able to save, forcing us ti pay
+	// Otherwise we might pay and then not be able to save, forcing us to pay
 	// again after restart.
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
