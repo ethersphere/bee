@@ -320,5 +320,9 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 	}
 
 	// since all PSS messages comes through push sync, deliver them here if this node is the destination
-	return ps.deliverToPSS(ctx, chunk)
+	err = ps.deliverToPSS(ctx, chunk)
+	if err != nil {
+		ps.logger.Debugf("error pss delivery for chunk %v: %v", chunk.Address(), err)
+	}
+	return nil
 }
