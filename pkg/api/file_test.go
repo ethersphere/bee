@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io"
 	"io/ioutil"
 	"mime"
@@ -17,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -35,7 +36,7 @@ func TestFiles(t *testing.T) {
 		simpleData           = []byte("this is a simple text")
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
-		client               = newTestServer(t, testServerOptions{
+		client, _            = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tags.NewTags(mockStatestore, logger),
 		})
@@ -338,7 +339,7 @@ func TestRangeRequests(t *testing.T) {
 		t.Run(upload.name, func(t *testing.T) {
 			mockStatestore := statestore.NewStateStore()
 			logger := logging.New(ioutil.Discard, 0)
-			client := newTestServer(t, testServerOptions{
+			client, _ := newTestServer(t, testServerOptions{
 				Storer: mock.NewStorer(),
 				Tags:   tags.NewTags(mockStatestore, logger),
 				Logger: logging.New(ioutil.Discard, 5),

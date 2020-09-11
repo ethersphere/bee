@@ -37,7 +37,7 @@ func TestPinChunkHandler(t *testing.T) {
 		logger               = logging.New(ioutil.Discard, 0)
 		tag                  = tags.NewTags(mockStatestore, logger)
 
-		client = newTestServer(t, testServerOptions{
+		client, _ = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
 			Tags:   tag,
 			Logger: logger,

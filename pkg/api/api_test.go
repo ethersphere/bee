@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/gorilla/websocket"
 	"resenje.org/web"
 )
 
@@ -27,12 +28,13 @@ type testServerOptions struct {
 	Storer      storage.Storer
 	Resolver    resolver.Interface
 	Pss         pss.Interface
+	WsPath      string
 	Tags        *tags.Tags
 	GatewayMode bool
 	Logger      logging.Logger
 }
 
-func newTestServer(t *testing.T, o testServerOptions) *http.Client {
+func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn) {
 	if o.Logger == nil {
 		o.Logger = logging.New(ioutil.Discard, 0)
 	}
@@ -45,16 +47,30 @@ func newTestServer(t *testing.T, o testServerOptions) *http.Client {
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
-	return &http.Client{
-		Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-			u, err := url.Parse(ts.URL + r.URL.String())
-			if err != nil {
-				return nil, err
-			}
-			r.URL = u
-			return ts.Client().Transport.RoundTrip(r)
-		}),
+	var (
+		httpClient = &http.Client{
+			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				u, err := url.Parse(ts.URL + r.URL.String())
+				if err != nil {
+					return nil, err
+				}
+				r.URL = u
+				return ts.Client().Transport.RoundTrip(r)
+			}),
+		}
+		conn *websocket.Conn
+		err  error
+	)
+
+	if o.WsPath != "" {
+		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
+		conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+
 	}
+	return httpClient, conn
 }
 
 func TestParseName(t *testing.T) {

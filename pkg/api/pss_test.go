@@ -9,20 +9,23 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
-	"github.com/gorilla/websocket"
 )
 
 func newTestWsServer(t *testing.T, o testServerOptions) *httptest.Server {
@@ -51,8 +54,9 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 		logger = logging.New(ioutil.Discard, 0)
 		pss    = pss.New(logger)
 
-		server = newTestWsServer(t, testServerOptions{
+		_, cl = newTestServer(t, testServerOptions{
 			Pss:    pss,
+			WsPath: "/pss/subscribe/testtopic",
 			Storer: mock.NewStorer(),
 			Logger: logger,
 		})
@@ -64,16 +68,14 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 		msgContent = make([]byte, len(payload))
 		tc         swarm.Chunk
 		mtx        sync.Mutex
-		cl         = newWsClient(t, server.Listener.Addr().String())
 		timeout    = 5 * time.Second
 		done       = make(chan struct{})
 	)
 
-	cl.SetReadLimit(4096)
 	cl.SetReadDeadline(time.Now().Add(timeout))
 	cl.SetReadLimit(swarm.ChunkSize)
-	cl.SetReadDeadline(time.Now().Add(pongWait))
-	cl.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	//cl.SetReadDeadline(time.Now().Add(pongWait))
+	//cl.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 
 	defer close(done)
 	go func() {
@@ -142,82 +144,106 @@ func waitMessage(t *testing.T, data, expData []byte, timeout time.Duration, mtx 
 // TestPssSend tests that the pss message sending over http works correctly.
 func TestPssSend(t *testing.T) {
 	var (
-		logger = logging.New(ioutil.Discard, 0)
-		pss    = pss.New(logger)
+		logger = logging.New(os.Stdout, 5)
 
-		server = newTestWsServer(t, testServerOptions{
+		mtx       sync.Mutex
+		rxTargets trojan.Targets
+		rxTopic   trojan.Topic
+		rxBytes   []byte
+		done      bool
+
+		sendFn = func(_ context.Context, targets trojan.Targets, topic trojan.Topic, bytes []byte) error {
+			mtx.Lock()
+			rxTargets = targets
+			rxTopic = topic
+			rxBytes = bytes
+			done = true
+			mtx.Unlock()
+			return nil
+		}
+
+		pss       = newMockPss(sendFn)
+		client, _ = newTestServer(t, testServerOptions{
 			Pss:    pss,
 			Storer: mock.NewStorer(),
 			Logger: logger,
 		})
 
-		target     = trojan.Target([]byte{1})
-		targets    = trojan.Targets([]trojan.Target{target})
-		payload    = []byte("testdata")
-		topic      = trojan.NewTopic("testtopic")
-		msgContent = make([]byte, len(payload))
-		tc         swarm.Chunk
-		mtx        sync.Mutex
-		cl         = newWsClient(t, server.Listener.Addr().String())
-		timeout    = 5 * time.Second
-		done       = make(chan struct{})
+		targets   = fmt.Sprintf("[[%d]]", 0x12)
+		payload   = []byte("testdata")
+		topic     = "testtopic"
+		hasher    = swarm.NewHasher()
+		_, err    = hasher.Write([]byte(topic))
+		topicHash = hasher.Sum(nil)
+
+		//timeout = 5 * time.Second
 	)
-
-}
-
-func newWsClient(t *testing.T, addr string) *websocket.Conn {
-	u := url.URL{Scheme: "ws", Host: addr, Path: "/pss/subscribe/testtopic"}
-
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		t.Fatalf("dial: %v", err)
+		t.Fatal(err)
 	}
 
-	return c
+	t.Run("ok", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12", http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "OK",
+				Code:    http.StatusOK,
+			}),
+		)
+		waitDone(t, &mtx, &done)
+		if !bytes.Equal(rxBytes, payload) {
+			t.Fatalf("payload mismatch. want %v got %v", payload, rxBytes)
+		}
+		if targets != fmt.Sprint(rxTargets) {
+			t.Fatalf("targets mismatch. want %v got %v", targets, rxTargets)
+		}
+		if string(topicHash) != string(rxTopic[:]) {
+			t.Fatalf("topic mismatch. want %v got %v", topic, string(rxTopic[:]))
+		}
+	})
+}
 
-	//done := make(chan struct{})
+func waitDone(t *testing.T, mtx *sync.Mutex, done *bool) {
+	for i := 0; i < 10; i++ {
+		mtx.Lock()
+		if *done {
+			mtx.Unlock()
+			return
+		}
+		mtx.Unlock()
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for send")
+}
 
-	//go func() {
-	//defer close(done)
-	//for {
-	//_, message, err := c.ReadMessage()
-	//if err != nil {
-	//log.Println("read:", err)
-	//return
-	//}
-	//log.Printf("recv: %s", message)
-	//}
-	//}()
+type pssSendFn func(context.Context, trojan.Targets, trojan.Topic, []byte) error
+type mpss struct {
+	f pssSendFn
+}
 
-	//ticker := time.NewTicker(time.Second)
-	//defer ticker.Stop()
+func newMockPss(f pssSendFn) *mpss {
+	return &mpss{f}
+}
 
-	//for {
-	//select {
-	//case <-done:
-	//return
-	//case t := <-ticker.C:
-	//err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
-	//if err != nil {
-	//log.Println("write:", err)
-	//return
-	//}
-	//case <-interrupt:
-	//log.Println("interrupt")
+// Send arbitrary byte slice with the given topic to Targets.
+func (m *mpss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, bytes []byte) error {
+	return m.f(ctx, targets, topic, bytes)
+}
 
-	//// Cleanly close the connection by sending a close message and then
-	//// waiting (with timeout) for the server to close the connection.
-	//err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	//if err != nil {
-	//log.Println("write close:", err)
-	//return
-	//}
-	//select {
-	//case <-done:
-	//case <-time.After(time.Second):
-	//}
-	//return
-	//}
-	//}
+// Register a Handler for a given Topic.
+func (m *mpss) Register(_ trojan.Topic, _ pss.Handler) func() {
+	panic("not implemented") // TODO: Implement
+}
 
+// TryUnwrap tries to unwrap a wrapped trojan message.
+func (m *mpss) TryUnwrap(_ context.Context, _ swarm.Chunk) error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mpss) SetPushSyncer(pushSyncer pushsync.PushSyncer) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *mpss) Close() error {
+	panic("not implemented") // TODO: Implement
 }

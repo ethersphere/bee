@@ -20,7 +20,7 @@ import (
 
 func TestGatewayMode(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	client := newTestServer(t, testServerOptions{
+	client, _ := newTestServer(t, testServerOptions{
 		Storer:      mock.NewStorer(),
 		Tags:        tags.NewTags(statestore.NewStateStore(), logger),
 		Logger:      logger,

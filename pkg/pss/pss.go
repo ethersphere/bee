@@ -54,6 +54,11 @@ func New(logger logging.Logger) Interface {
 
 func (ps *pss) Close() error {
 	close(ps.quit)
+	ps.handlersMu.Lock()
+	defer ps.handlersMu.Unlock()
+
+	ps.handlers = make(map[trojan.Topic][]*Handler) //unset handlers on shutdown
+
 	return nil
 }
 

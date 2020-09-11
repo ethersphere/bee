@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -66,6 +67,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, nil)
 			return
 		}
+		fmt.Println(target)
 		targets = append(targets, target)
 	}
 
@@ -121,11 +123,8 @@ func (s *server) pumpWs(conn *websocket.Conn, t string) {
 		ticker.Stop()
 		conn.Close()
 	}()
-	cleanup := s.Pss.Register(topic, func(ctx context.Context, m *trojan.Message) {
-		select {
-		case dataC <- m.Payload:
-		default:
-		}
+	cleanup := s.Pss.Register(topic, func(_ context.Context, m *trojan.Message) {
+		dataC <- m.Payload
 	})
 
 	defer cleanup()

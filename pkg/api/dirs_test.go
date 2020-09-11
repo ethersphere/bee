@@ -14,6 +14,8 @@ import (
 	"path"
 	"testing"
 
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
@@ -35,7 +37,7 @@ func TestDirs(t *testing.T) {
 		storer               = mock.NewStorer()
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
-		client               = newTestServer(t, testServerOptions{
+		client, _            = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logging.New(ioutil.Discard, 5),

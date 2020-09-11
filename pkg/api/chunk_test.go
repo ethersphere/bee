@@ -6,12 +6,13 @@ package api_test
 
 import (
 	"bytes"
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/tags"
 
@@ -41,7 +42,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		logger               = logging.New(ioutil.Discard, 0)
 		tag                  = tags.NewTags(mockStatestore, logger)
 		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
-		client               = newTestServer(t, testServerOptions{
+		client, _            = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
 			Tags:   tag,
 		})
