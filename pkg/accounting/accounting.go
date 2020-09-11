@@ -432,7 +432,6 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 }
 
 func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
-
 	result = base - int64(subtracted)
 
 	if subtracted > math.MaxInt64 {
@@ -451,17 +450,14 @@ func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
 }
 
 func addI64pU64(a int64, b uint64) (result int64, err error) {
-
 	if b > math.MaxInt64 {
 		return 0, ErrOverflow
 	}
 
 	result = a + int64(b)
-
 	if result < a {
 		return 0, ErrOverflow
 	}
 
 	return result, nil
-
 }
