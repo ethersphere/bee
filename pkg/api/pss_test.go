@@ -139,9 +139,31 @@ func waitMessage(t *testing.T, data, expData []byte, timeout time.Duration, mtx 
 
 //}
 
-//func TestPssPostWebsocket(t *testing.T) {
+// TestPssSend tests that the pss message sending over http works correctly.
+func TestPssSend(t *testing.T) {
+	var (
+		logger = logging.New(ioutil.Discard, 0)
+		pss    = pss.New(logger)
 
-//}
+		server = newTestWsServer(t, testServerOptions{
+			Pss:    pss,
+			Storer: mock.NewStorer(),
+			Logger: logger,
+		})
+
+		target     = trojan.Target([]byte{1})
+		targets    = trojan.Targets([]trojan.Target{target})
+		payload    = []byte("testdata")
+		topic      = trojan.NewTopic("testtopic")
+		msgContent = make([]byte, len(payload))
+		tc         swarm.Chunk
+		mtx        sync.Mutex
+		cl         = newWsClient(t, server.Listener.Addr().String())
+		timeout    = 5 * time.Second
+		done       = make(chan struct{})
+	)
+
+}
 
 func newWsClient(t *testing.T, addr string) *websocket.Conn {
 	u := url.URL{Scheme: "ws", Host: addr, Path: "/pss/subscribe/testtopic"}

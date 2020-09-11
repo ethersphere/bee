@@ -90,7 +90,7 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/pss", jsonhttp.MethodHandler{
+	handle(router, "/pss/send/{topic}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.pssPostHandler),
 	})
 

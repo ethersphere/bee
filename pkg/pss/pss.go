@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -30,6 +31,7 @@ type Interface interface {
 	TryUnwrap(context.Context, swarm.Chunk) error
 
 	SetPushSyncer(pushSyncer pushsync.PushSyncer)
+	io.Closer
 }
 
 type pss struct {

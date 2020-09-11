@@ -54,6 +54,7 @@ import (
 type Bee struct {
 	p2pService       io.Closer
 	p2pCancel        context.CancelFunc
+	apiCloser        io.Closer
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
 	resolverCloser   io.Closer
@@ -64,8 +65,10 @@ type Bee struct {
 	localstoreCloser io.Closer
 	topologyCloser   io.Closer
 	pusherCloser     io.Closer
+	pushSyncCloser   io.Closer
 	pullerCloser     io.Closer
 	pullSyncCloser   io.Closer
+	pssCloser        io.Closer
 }
 
 type Options struct {
@@ -248,6 +251,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	// instantiate the pss object
 	psss := pss.New(logger)
+	b.pssCloser = psss
 
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
@@ -260,6 +264,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10))
+	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
 	psss.SetPushSyncer(pushSyncProtocol)
@@ -299,7 +304,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagg, ns, multiResolver, logger, tracer, api.Options{
+		apiService = api.New(tagg, ns, multiResolver, psss, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 		})
@@ -323,6 +328,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		}()
 
 		b.apiServer = apiServer
+		b.apiCloser = apiService
 	}
 
 	if o.DebugAPIAddr != "" {
@@ -373,7 +379,11 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	errs := new(multiError)
 
-	apiCloser.Close()
+	if b.apiCloser != nil {
+		if err := b.apiCloser.Close(); err != nil {
+			errs.add(fmt.Errorf("api: %w", err))
+		}
+	}
 
 	var eg errgroup.Group
 	if b.apiServer != nil {
@@ -401,7 +411,9 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(fmt.Errorf("pusher: %w", err))
 	}
 
-	pushsyncCloser.Close()
+	if err := b.pushSyncCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("pushsync: %w", err))
+	}
 
 	if err := b.pullerCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("puller: %w", err))
@@ -411,7 +423,9 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(fmt.Errorf("pull sync: %w", err))
 	}
 
-	pss.Close()
+	if err := b.pssCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("pss: %w", err))
+	}
 
 	b.p2pCancel()
 	if err := b.p2pService.Close(); err != nil {

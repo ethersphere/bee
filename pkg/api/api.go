@@ -7,6 +7,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/gorilla/websocket"
 )
 
 const (
@@ -40,6 +40,7 @@ var (
 type Service interface {
 	http.Handler
 	m.Collector
+	io.Closer
 }
 
 type server struct {
@@ -53,9 +54,8 @@ type server struct {
 	http.Handler
 	metrics metrics
 
-	wsWg      sync.WaitGroup // wait for all websockets to close on exit
-	wsHandles map[string]*websocket.Conn
-	quit      chan struct{}
+	wsWg sync.WaitGroup // wait for all websockets to close on exit
+	quit chan struct{}
 }
 
 type Options struct {
@@ -89,7 +89,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 
 // Close hangs up running websockets on shutdown.
 func (s *server) Close() error {
-	s.logger.Info("api shutting down")
+	s.Logger.Info("api shutting down")
 	close(s.quit)
 
 	done := make(chan struct{})
@@ -101,10 +101,11 @@ func (s *server) Close() error {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		s.logger.Warning("api shutting down with open websockets")
+		s.Logger.Warning("api shutting down with open websockets")
+		return errors.New("api shutting down with open websockets")
 	}
 
-	return
+	return nil
 }
 
 // getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
