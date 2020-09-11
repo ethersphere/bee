@@ -373,6 +373,8 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	errs := new(multiError)
 
+	apiCloser.Close()
+
 	var eg errgroup.Group
 	if b.apiServer != nil {
 		eg.Go(func() error {
@@ -399,6 +401,8 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(fmt.Errorf("pusher: %w", err))
 	}
 
+	pushsyncCloser.Close()
+
 	if err := b.pullerCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("puller: %w", err))
 	}
@@ -406,6 +410,8 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	if err := b.pullSyncCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("pull sync: %w", err))
 	}
+
+	pss.Close()
 
 	b.p2pCancel()
 	if err := b.p2pService.Close(); err != nil {

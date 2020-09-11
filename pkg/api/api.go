@@ -55,6 +55,7 @@ type server struct {
 
 	wsWg      sync.WaitGroup // wait for all websockets to close on exit
 	wsHandles map[string]*websocket.Conn
+	quit      chan struct{}
 }
 
 type Options struct {
@@ -78,11 +79,32 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		Logger:   logger,
 		Tracer:   tracer,
 		metrics:  newMetrics(),
+		quit:     make(chan struct{}),
 	}
 
 	s.setupRouting()
 
 	return s
+}
+
+// Close hangs up running websockets on shutdown.
+func (s *server) Close() error {
+	s.logger.Info("api shutting down")
+	close(s.quit)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.wsWg.Wait()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		s.logger.Warning("api shutting down with open websockets")
+	}
+
+	return
 }
 
 // getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.

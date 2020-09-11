@@ -67,6 +67,10 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 
 	cl.SetReadLimit(4096)
 	cl.SetReadDeadline(time.Now().Add(timeout))
+	cl.SetReadLimit(swarm.ChunkSize)
+	cl.SetReadDeadline(time.Now().Add(pongWait))
+	cl.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+
 	defer close(done)
 	go func() {
 		for {

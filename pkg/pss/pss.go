@@ -38,6 +38,7 @@ type pss struct {
 	handlersMu sync.Mutex
 	metrics    metrics
 	logger     logging.Logger
+	quit       chan struct{}
 }
 
 // New returns a new pss service.
@@ -47,6 +48,11 @@ func New(logger logging.Logger) Interface {
 		handlers: make(map[trojan.Topic][]*Handler),
 		metrics:  newMetrics(),
 	}
+}
+
+func (ps *pss) Close() error {
+	close(ps.quit)
+	return nil
 }
 
 func (ps *pss) SetPushSyncer(pushSyncer pushsync.PushSyncer) {
@@ -115,9 +121,29 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 	if h == nil {
 		return fmt.Errorf("topic %v, %w", m.Topic, ErrNoHandler)
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	go func() {
+		defer cancel()
+		select {
+		case <-p.quit:
+		case <-done:
+		}
+	}()
 	for _, hh := range h {
-		(*hh)(ctx, m)
+		wg.Add(1)
+		go func(hh Handler) {
+			defer wg.Done()
+			hh(ctx, m)
+		}(*hh)
 	}
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
 	return nil
 }
 
