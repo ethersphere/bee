@@ -10,40 +10,20 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
-	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
 )
-
-func newTestWsServer(t *testing.T, o testServerOptions) *httptest.Server {
-
-	if o.Logger == nil {
-		o.Logger = logging.New(ioutil.Discard, 0)
-	}
-	if o.Resolver == nil {
-		o.Resolver = resolverMock.NewResolver()
-	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Logger, nil, api.Options{
-		GatewayMode: o.GatewayMode,
-	})
-	ts := httptest.NewServer(s)
-	t.Cleanup(ts.Close)
-
-	return ts
-}
 
 // creates a single websocket handler for an arbitrary topic, and receives a message
 func TestPssWebsocketSingleHandler(t *testing.T) {
