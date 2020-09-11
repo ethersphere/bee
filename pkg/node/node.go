@@ -238,7 +238,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
-	retrieve := retrieval.New(p2ps, storer, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator)
+	retrieve := retrieval.New(p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator)
 	tagg := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagg
 
@@ -257,6 +257,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	} else {
 		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)
 	}
+	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10))
 
