@@ -5,11 +5,12 @@
 package trojan_test
 
 import (
-	"bytes"
-	"crypto/rand"
+	"context"
 	"encoding/binary"
+	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -69,7 +70,7 @@ func TestNewMessage(t *testing.T) {
 // its resulting data should have a hash that matches its address exactly
 func TestWrap(t *testing.T) {
 	m := newTestMessage(t)
-	c, err := m.Wrap(testTargets)
+	c, err := m.Wrap(context.Background(), testTargets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,21 +99,14 @@ func TestWrap(t *testing.T) {
 		t.Fatalf("chunk span set to %d, but rest of chunk data is of size %d", span, remainingDataLen)
 	}
 
-	dataHash, err := trojan.HashBytes(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(addr.Bytes(), dataHash) {
-		t.Fatal("chunk address does not match its data hash")
-	}
 }
 
 // TestWrapError tests that the creation of a chunk fails when given targets are invalid
 func TestWrapError(t *testing.T) {
 	m := newTestMessage(t)
-
+	ctx := context.Background()
 	emptyTargets := trojan.Targets([]trojan.Target{})
-	if _, err := m.Wrap(emptyTargets); err != trojan.ErrEmptyTargets {
+	if _, err := m.Wrap(ctx, emptyTargets); err != trojan.ErrEmptyTargets {
 		t.Fatalf("expected error when creating chunk for empty targets to be %q, but got %v", trojan.ErrEmptyTargets, err)
 	}
 
@@ -120,62 +114,30 @@ func TestWrapError(t *testing.T) {
 	t2 := trojan.Target([]byte{25, 120})
 	t3 := trojan.Target([]byte{180, 18, 255})
 	varLenTargets := trojan.Targets([]trojan.Target{t1, t2, t3})
-	if _, err := m.Wrap(varLenTargets); err != trojan.ErrVarLenTargets {
+	if _, err := m.Wrap(ctx, varLenTargets); err != trojan.ErrVarLenTargets {
 		t.Fatalf("expected error when creating chunk for variable-length targets to be %q, but got %v", trojan.ErrVarLenTargets, err)
 	}
 }
 
 // TestWrapTimeout tests for mining timeout and avoid forever loop
 func TestWrapTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 	m := newTestMessage(t)
 
 	// a large target will take more than MinerTimeout seconds, so timeout error will be triggered
-	buf := make([]byte, swarm.SectionSize)
-	_, err := rand.Read(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	buf := make([]byte, 16)
 	target := trojan.Target(buf)
 	targets := trojan.Targets([]trojan.Target{target})
-	if _, err := m.Wrap(targets); err != trojan.ErrMinerTimeout {
-		t.Fatalf("expected error when having lengthy target to be %q, but got %v", trojan.ErrMinerTimeout, err)
-	}
-}
-
-// TestPadBytes tests that different types of byte slices are correctly padded with leading 0s
-// all slices are interpreted as big-endian
-func TestPadBytes(t *testing.T) {
-	s := make([]byte, 32)
-
-	// empty slice should be unchanged
-	p := trojan.PadBytes(s)
-	if !bytes.Equal(p, s) {
-		t.Fatalf("expected byte padding to result in %x, but is %x", s, p)
-	}
-
-	// slice of length 3
-	s = []byte{255, 128, 64}
-	p = trojan.PadBytes(s)
-	e := append(make([]byte, 29), s...) // 29 zeros plus the 3 original bytes
-	if !bytes.Equal(p, e) {
-		t.Fatalf("expected byte padding to result in %x, but is %x", e, p)
-	}
-
-	// simulate toChunk behavior
-	s = []byte{1, 0, 0, 0}
-
-	p = trojan.PadBytes(s)
-	e = append(make([]byte, 28), s...) // 28 zeros plus the 4 original bytes
-	if !bytes.Equal(p, e) {
-		t.Fatalf("expected byte padding to result in %x, but is %x", e, p)
+	if _, err := m.Wrap(ctx, targets); err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context timeout, got %v", err)
 	}
 }
 
 // TestUnwrap tests the correct unwrapping of a trojan chunk to obtain a message
 func TestUnwrap(t *testing.T) {
 	m := newTestMessage(t)
-	c, err := m.Wrap(testTargets)
+	c, err := m.Wrap(context.Background(), testTargets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +175,7 @@ func TestIsPotential(t *testing.T) {
 
 	// valid potential trojan
 	m := newTestMessage(t)
-	c, err := m.Wrap(testTargets)
+	c, err := m.Wrap(context.Background(), testTargets)
 	if err != nil {
 		t.Fatal(err)
 	}
