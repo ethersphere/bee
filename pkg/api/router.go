@@ -97,7 +97,7 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/pss/{topic}/ws", jsonhttp.MethodHandler{
+	handle(router, "/pss/subscribe/{topic}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.pssWsHandler),
 	})
 

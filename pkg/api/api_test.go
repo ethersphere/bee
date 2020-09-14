@@ -66,7 +66,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
 		conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 		if err != nil {
-			t.Fatalf("dial: %v", err)
+			t.Fatalf("dial: %v. url %v", err, u.String())
 		}
 
 	}

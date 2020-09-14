@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/trojan"
+	"github.com/gorilla/websocket"
 )
 
 // creates a single websocket handler for an arbitrary topic, and receives a message
@@ -66,11 +67,14 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 			default:
 			}
 
-			_, message, err := cl.ReadMessage()
+			msgType, message, err := cl.ReadMessage()
 			if err != nil {
 				return
 			}
-			fmt.Println("got msg", message, msgContent)
+			if msgType == websocket.PingMessage {
+				// ignore pings
+				continue
+			}
 
 			if message != nil {
 				mtx.Lock()
@@ -101,6 +105,9 @@ func waitMessage(t *testing.T, data, expData []byte, timeout time.Duration, mtx 
 	for {
 		select {
 		case <-ttl:
+			if expData == nil {
+				return
+			}
 			t.Fatal("timed out waiting for pss message")
 		default:
 		}
@@ -113,9 +120,83 @@ func waitMessage(t *testing.T, data, expData []byte, timeout time.Duration, mtx 
 	}
 }
 
-//func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
+func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
+	// create a new pss instance, register a handle through ws, call
+	// pss.TryUnwrap with a chunk designated for this handler and expect
+	// the handler to be notified
+	var (
+		logger = logging.New(ioutil.Discard, 0)
+		pss    = pss.New(logger)
 
-//}
+		_, cl = newTestServer(t, testServerOptions{
+			Pss:    pss,
+			WsPath: "/pss/subscribe/testtopic",
+			Storer: mock.NewStorer(),
+			Logger: logger,
+		})
+
+		target     = trojan.Target([]byte{1})
+		targets    = trojan.Targets([]trojan.Target{target})
+		payload    = []byte("testdata")
+		topic      = trojan.NewTopic("testtopic")
+		msgContent = make([]byte, len(payload))
+		tc         swarm.Chunk
+		mtx        sync.Mutex
+		timeout    = 1 * time.Second
+		done       = make(chan struct{})
+	)
+
+	cl.SetReadDeadline(time.Now().Add(timeout))
+	cl.SetReadLimit(swarm.ChunkSize)
+	//cl.SetReadDeadline(time.Now().Add(pongWait))
+	//cl.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
+			msgType, message, err := cl.ReadMessage()
+			if err != nil {
+				return
+			}
+			if msgType == websocket.PingMessage {
+				// ignore pings
+				continue
+			}
+
+			if message != nil {
+				mtx.Lock()
+				copy(msgContent, message)
+				mtx.Unlock()
+			}
+		}
+	}()
+	m, err := trojan.NewMessage(topic, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tc, err = m.Wrap(targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// close the websocket before calling pss with the message
+
+	err = cl.WriteMessage(websocket.CloseMessage, []byte{})
+	err = pss.TryUnwrap(context.Background(), tc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitMessage(t, msgContent, nil, timeout, &mtx)
+
+}
 
 //func TestPssWebsocketMultiHandler(t *testing.T) {
 
@@ -155,12 +236,20 @@ func TestPssSend(t *testing.T) {
 		hasher    = swarm.NewHasher()
 		_, err    = hasher.Write([]byte(topic))
 		topicHash = hasher.Sum(nil)
-
-		//timeout = 5 * time.Second
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("err - bad targets", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget", http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "Bad Request",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12", http.StatusOK,
