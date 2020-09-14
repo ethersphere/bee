@@ -34,7 +34,7 @@ type testServerOptions struct {
 	Logger      logging.Logger
 }
 
-func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn) {
+func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string) {
 	if o.Logger == nil {
 		o.Logger = logging.New(ioutil.Discard, 0)
 	}
@@ -70,7 +70,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		}
 
 	}
-	return httpClient, conn
+	return httpClient, conn, ts.Listener.Addr().String()
 }
 
 func TestParseName(t *testing.T) {

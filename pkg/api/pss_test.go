@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"testing"
@@ -35,7 +36,7 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 		logger = logging.New(ioutil.Discard, 0)
 		pss    = pss.New(logger)
 
-		_, cl = newTestServer(t, testServerOptions{
+		_, cl, _ = newTestServer(t, testServerOptions{
 			Pss:    pss,
 			WsPath: "/pss/subscribe/testtopic",
 			Storer: mock.NewStorer(),
@@ -128,7 +129,7 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 		logger = logging.New(ioutil.Discard, 0)
 		pss    = pss.New(logger)
 
-		_, cl = newTestServer(t, testServerOptions{
+		_, cl, _ = newTestServer(t, testServerOptions{
 			Pss:    pss,
 			WsPath: "/pss/subscribe/testtopic",
 			Storer: mock.NewStorer(),
@@ -195,12 +196,103 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 	}
 
 	waitMessage(t, msgContent, nil, timeout, &mtx)
-
 }
 
-//func TestPssWebsocketMultiHandler(t *testing.T) {
+func TestPssWebsocketMultiHandler(t *testing.T) {
+	var (
+		logger = logging.New(ioutil.Discard, 0)
+		pss    = pss.New(logger)
 
-//}
+		_, cl, listener = newTestServer(t, testServerOptions{
+			Pss:    pss,
+			WsPath: "/pss/subscribe/testtopic",
+			Storer: mock.NewStorer(),
+			Logger: logger,
+		})
+		u           = url.URL{Scheme: "ws", Host: listener, Path: "/pss/subscribe/testtopic"}
+		cl2, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+
+		target      = trojan.Target([]byte{1})
+		targets     = trojan.Targets([]trojan.Target{target})
+		payload     = []byte("testdata")
+		topic       = trojan.NewTopic("testtopic")
+		msgContent  = make([]byte, len(payload))
+		msgContent2 = make([]byte, len(payload))
+		tc          swarm.Chunk
+		mtx         sync.Mutex
+		timeout     = 1 * time.Second
+		done        = make(chan struct{})
+	)
+	if err != nil {
+		t.Fatalf("dial: %v. url %v", err, u.String())
+	}
+
+	cl.SetReadDeadline(time.Now().Add(timeout))
+	cl.SetReadLimit(swarm.ChunkSize)
+
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
+			msgType, message, err := cl.ReadMessage()
+			if err != nil {
+				return
+			}
+			if msgType == websocket.PingMessage {
+				// ignore pings
+				continue
+			}
+
+			if message != nil {
+				mtx.Lock()
+				copy(msgContent, message)
+				mtx.Unlock()
+			}
+
+			msgType, message, err = cl2.ReadMessage()
+			if err != nil {
+				return
+			}
+			if msgType == websocket.PingMessage {
+				// ignore pings
+				continue
+			}
+
+			if message != nil {
+				mtx.Lock()
+				copy(msgContent2, message)
+				mtx.Unlock()
+			}
+
+		}
+	}()
+	m, err := trojan.NewMessage(topic, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tc, err = m.Wrap(targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// close the websocket before calling pss with the message
+
+	err = cl.WriteMessage(websocket.CloseMessage, []byte{})
+	err = pss.TryUnwrap(context.Background(), tc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitMessage(t, msgContent, nil, timeout, &mtx)
+	waitMessage(t, msgContent2, nil, timeout, &mtx)
+
+}
 
 // TestPssSend tests that the pss message sending over http works correctly.
 func TestPssSend(t *testing.T) {
@@ -223,8 +315,8 @@ func TestPssSend(t *testing.T) {
 			return nil
 		}
 
-		pss       = newMockPss(sendFn)
-		client, _ = newTestServer(t, testServerOptions{
+		pss          = newMockPss(sendFn)
+		client, _, _ = newTestServer(t, testServerOptions{
 			Pss:    pss,
 			Storer: mock.NewStorer(),
 			Logger: logger,

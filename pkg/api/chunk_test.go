@@ -42,7 +42,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		logger               = logging.New(ioutil.Discard, 0)
 		tag                  = tags.NewTags(mockStatestore, logger)
 		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
-		client, _            = newTestServer(t, testServerOptions{
+		client, _, _         = newTestServer(t, testServerOptions{
 			Storer: mockValidatingStorer,
 			Tags:   tag,
 		})

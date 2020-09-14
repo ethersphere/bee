@@ -36,7 +36,7 @@ func TestFiles(t *testing.T) {
 		simpleData           = []byte("this is a simple text")
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
-		client, _            = newTestServer(t, testServerOptions{
+		client, _, _         = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tags.NewTags(mockStatestore, logger),
 		})
@@ -339,7 +339,7 @@ func TestRangeRequests(t *testing.T) {
 		t.Run(upload.name, func(t *testing.T) {
 			mockStatestore := statestore.NewStateStore()
 			logger := logging.New(ioutil.Discard, 0)
-			client, _ := newTestServer(t, testServerOptions{
+			client, _, _ := newTestServer(t, testServerOptions{
 				Storer: mock.NewStorer(),
 				Tags:   tags.NewTags(mockStatestore, logger),
 				Logger: logging.New(ioutil.Discard, 5),

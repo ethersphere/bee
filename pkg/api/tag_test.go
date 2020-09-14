@@ -47,7 +47,7 @@ func TestTags(t *testing.T) {
 		logger             = logging.New(ioutil.Discard, 0)
 		tag                = tags.NewTags(mockStatestore, logger)
 		mockPusher         = mp.NewMockPusher(tag)
-		client, _          = newTestServer(t, testServerOptions{
+		client, _, _       = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tag,
 		})
