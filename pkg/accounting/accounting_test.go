@@ -199,42 +199,6 @@ func TestAccountingReserve(t *testing.T) {
 	}
 }
 
-func TestAccountingOverflowsettle(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
-
-	store := mock.NewStateStore()
-	defer store.Close()
-
-	acc, err := accounting.NewAccounting(accounting.Options{
-		PaymentThreshold: testPaymentThresholdLarge,
-		Logger:           logger,
-		Store:            store,
-	})
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	peer1Addr, err := swarm.ParseHexAddress("00112233")
-	if err != nil {
-		t.Fatal(err)
-	}
-	//
-	err = acc.Credit(peer1Addr, math.MaxInt64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	//
-	err = acc.Credit(peer1Addr, 1)
-	if err == nil {
-		t.Fatal("Expecting error overflow from settle() func")
-	}
-
-	if !errors.Is(err, accounting.ErrOverflow) {
-		t.Fatal("Expecting error overflow from settle() func")
-	}
-}
-
 func TestAccountingOverflowReserve(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -258,17 +222,35 @@ func TestAccountingOverflowReserve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
+
+	// Try crediting near maximal value for peer
+	err = acc.Credit(peer1Addr, math.MaxInt64-2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Try reserving further maximal value
 	err = acc.Reserve(peer1Addr, math.MaxInt64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
-	err = acc.Reserve(peer1Addr, math.MaxInt64)
+	// Try reserving further value, should overflow
+	err = acc.Reserve(peer1Addr, 1)
 	if err == nil {
-		t.Fatal("Expected error")
+		t.Fatal("expected error")
 	}
-	//
+	// If we had other error, assert fail
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Debit, got %v", err)
+	}
+	// Try reserving further near maximal value
+	err = acc.Reserve(peer1Addr, math.MaxInt64-2)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// If we had other error, assert fail
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Debit, got %v", err)
+	}
 
 }
 
@@ -286,24 +268,26 @@ func TestAccountingOverflowNotifyPayment(t *testing.T) {
 		Store:            store,
 		Settlement:       settlement,
 	})
-
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
+	// Try Crediting a large amount to peer so balance is negative
 	err = acc.Credit(peer1Addr, math.MaxInt64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
+	// Notify of incoming payment from same peer, further decreasing balance, this should overflow
 	err = acc.NotifyPayment(peer1Addr, math.MaxInt64)
 	if err == nil {
 		t.Fatal("Expected overflow from NotifyPayment")
+	}
+	// If we had other error, assert fail
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Debit, got %v", err)
 	}
 
 }
@@ -328,26 +312,26 @@ func TestAccountingOverflowDebit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
+	// Try increasing peer debit with near maximal value
 	err = acc.Debit(peer1Addr, math.MaxInt64-2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
+	// Try further increasing peer debit with near maximal value, this should fail
 	err = acc.Debit(peer1Addr, math.MaxInt64-2)
 	if err == nil {
 		t.Fatal("Expected error from overflow Debit")
 	}
-	//
+	// If we had other error, assert fail
 	if !errors.Is(err, accounting.ErrOverflow) {
 		t.Fatalf("expected overflow error from Credit, got %v", err)
 	}
-	//
+	// Try further increasing peer debit with near maximal value, this should fail
 	err = acc.Debit(peer1Addr, math.MaxInt64)
 	if err == nil {
 		t.Fatal("Expected error from overflow Debit")
 	}
-	//
+	// If we had other error, assert fail
 	if !errors.Is(err, accounting.ErrOverflow) {
 		t.Fatalf("expected overflow error from Debit, got %v", err)
 	}
@@ -374,26 +358,31 @@ func TestAccountingOverflowCredit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
+	// Try increasing peer credit with near maximal value
 	err = acc.Credit(peer1Addr, math.MaxInt64-2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
+	// Try increasing with a further near maximal value, this must overflow
 	err = acc.Credit(peer1Addr, math.MaxInt64-2)
 	if err == nil {
 		t.Fatal("Expected error from overflow Credit")
 	}
-	//
+	// Try increasing with a small amount, which should also overflow
+	err = acc.Credit(peer1Addr, 3)
+	if err == nil {
+		t.Fatal("Expected error from overflow Credit")
+	}
+	// If we had other error, assert fail
 	if !errors.Is(err, accounting.ErrOverflow) {
 		t.Fatalf("expected overflow error from Credit, got %v", err)
 	}
-	//
+	// Try increasing with maximal value
 	err = acc.Credit(peer1Addr, math.MaxInt64)
 	if err == nil {
 		t.Fatal("Expected error from overflow Credit")
 	}
-	//
+	// If we had other error, assert fail
 	if !errors.Is(err, accounting.ErrOverflow) {
 		t.Fatalf("expected overflow error from Credit, got %v", err)
 	}
