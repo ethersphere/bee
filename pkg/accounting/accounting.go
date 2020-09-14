@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -253,7 +254,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	if nextBalance >= int64(a.paymentThreshold+a.paymentTolerance) {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
-		return p2p.NewDisconnectError(ErrDisconnectThresholdExceeded)
+		return p2p.NewBlockPeerError(10000*time.Hour, ErrDisconnectThresholdExceeded)
 	}
 
 	return nil
