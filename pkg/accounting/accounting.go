@@ -75,6 +75,8 @@ var (
 	ErrDisconnectThresholdExceeded = errors.New("disconnect threshold exceeded")
 	// ErrInvalidPaymentTolerance is the error returned if the payment tolerance is too high compared to the payment threshold
 	ErrInvalidPaymentTolerance = errors.New("payment tolerance must be less than half the payment threshold")
+	// ErrPeerNoBalance is the error returned if no balance in store exists for a peer
+	ErrPeerNoBalance = errors.New("no balance for peer")
 )
 
 // NewAccounting creates a new Accounting instance with the provided options
@@ -106,7 +108,9 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
-		return fmt.Errorf("failed to load balance: %w", err)
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return fmt.Errorf("failed to load balance: %w", err)
+		}
 	}
 
 	expectedDebt := -(currentBalance - int64(accountingPeer.reservedBalance))
@@ -156,7 +160,9 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
-		return fmt.Errorf("failed to load balance: %w", err)
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return fmt.Errorf("failed to load balance: %w", err)
+		}
 	}
 
 	nextBalance := currentBalance - int64(price)
@@ -193,7 +199,9 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	oldBalance, err := a.Balance(peer)
 	if err != nil {
-		return fmt.Errorf("failed to load balance: %w", err)
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return fmt.Errorf("failed to load balance: %w", err)
+		}
 	}
 
 	// don't do anything if there is no actual debt
@@ -236,7 +244,9 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
-		return fmt.Errorf("failed to load balance: %w", err)
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return fmt.Errorf("failed to load balance: %w", err)
+		}
 	}
 	nextBalance := currentBalance + int64(price)
 
@@ -264,7 +274,7 @@ func (a *Accounting) Balance(peer swarm.Address) (balance int64, err error) {
 	err = a.store.Get(peerBalanceKey(peer), &balance)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, nil
+			return 0, ErrPeerNoBalance
 		}
 		return 0, err
 	}
@@ -348,7 +358,9 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
-		return err
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return err
+		}
 	}
 	nextBalance := currentBalance - int64(amount)
 
