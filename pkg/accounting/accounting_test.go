@@ -197,7 +197,7 @@ func TestAccountingReserve(t *testing.T) {
 	}
 }
 
-// TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.DisconnectError
+// TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.BlockPeerError
 func TestAccountingDisconnect(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -231,9 +231,9 @@ func TestAccountingDisconnect(t *testing.T) {
 		t.Fatal("expected Add to return error")
 	}
 
-	var e *p2p.DisconnectError
+	var e *p2p.BlockPeerError
 	if !errors.As(err, &e) {
-		t.Fatalf("expected DisconnectError, got %v", err)
+		t.Fatalf("expected BlockPeerError, got %v", err)
 	}
 }
 
