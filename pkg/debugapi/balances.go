@@ -17,7 +17,7 @@ import (
 var (
 	errCantBalances  = "Cannot get balances"
 	errCantBalance   = "Cannot get balance"
-	errPeerNoBalance = "No balance for peer"
+	errNoBalance     = "No balance for peer"
 	errInvaliAddress = "Invalid address"
 )
 
@@ -65,7 +65,7 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	balance, err := s.Accounting.Balance(peer)
 	if err != nil {
 		if errors.Is(err, accounting.ErrPeerNoBalance) {
-			jsonhttp.NotFound(w, errPeerNoBalance)
+			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
 		s.Logger.Debugf("debug api: balances peer: get peer %s balance: %v", peer.String(), err)
