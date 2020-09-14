@@ -46,8 +46,6 @@ const (
 	TopicSize = 32
 )
 
-// var MinerTimeout = 20 * time.Second
-
 // NewTopic creates a new Topic variable with the given input string
 // the input string is taken as a byte slice and hashed
 func NewTopic(topic string) Topic {
@@ -106,7 +104,7 @@ func (m *Message) Wrap(ctx context.Context, targets Targets) (swarm.Chunk, error
 	span := make([]byte, 8)
 	binary.LittleEndian.PutUint64(span, uint64(len(b)+NonceSize))
 	h := hasher(span, b)
-	f := func(nonce []byte) (interface{}, error) {
+	f := func(nonce []byte) (swarm.Chunk, error) {
 		hash, err := h(nonce)
 		if err != nil {
 			return nil, err
@@ -117,11 +115,7 @@ func (m *Message) Wrap(ctx context.Context, targets Targets) (swarm.Chunk, error
 		chunk := swarm.NewChunk(swarm.NewAddress(hash), append(span, append(nonce, b...)...))
 		return chunk, nil
 	}
-	chunk, err := mine(ctx, f)
-	if err != nil {
-		return nil, err
-	}
-	return chunk.(swarm.Chunk), nil
+	return mine(ctx, f)
 }
 
 // Unwrap creates a new trojan message from the given chunk payload
@@ -220,7 +214,7 @@ func (m *Message) UnmarshalBinary(data []byte) (err error) {
 	return nil
 }
 
-func mine(ctx context.Context, f func(nonce []byte) (interface{}, error)) (interface{}, error) {
+func mine(ctx context.Context, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
 	seeds := make([]uint32, 8)
 	for i := range seeds {
 		seeds[i] = random.Uint32()
@@ -231,7 +225,7 @@ func mine(ctx context.Context, f func(nonce []byte) (interface{}, error)) (inter
 	}
 	quit := make(chan struct{})
 	// make both  errs  and result channels buffered so they never block
-	result := make(chan interface{}, 8)
+	result := make(chan swarm.Chunk, 8)
 	errs := make(chan error, 8)
 	for i := 0; i < 8; i++ {
 		go func(j int) {
