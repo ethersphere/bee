@@ -253,7 +253,10 @@ type mockRecovery struct {
 func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) (swarm.Address, error) {
 	mr.hookC <- true
 	if mr.sendChunk != nil {
-		sch := getSocChunk(mr.sendChunk)
+		sch, err := getSocChunk(mr.sendChunk)
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
 		chunkC <- sch
 		return sch.Address(), nil
 	}
@@ -264,17 +267,17 @@ func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address) (c
 	return nil, fmt.Errorf("chunk not found")
 }
 
-func getSocChunk(c swarm.Chunk) swarm.Chunk {
+func getSocChunk(c swarm.Chunk) (swarm.Chunk, error) {
 	var dummyChunk swarm.Chunk
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
-		return dummyChunk
+		return dummyChunk, err
 	}
 	signer := crypto.NewDefaultSigner(privKey)
 	id := make([]byte, 32)
 	sch, err := soc.NewChunk(id, c, signer)
 	if err != nil {
-		return dummyChunk
+		return dummyChunk, err
 	}
-	return sch
+	return sch, nil
 }

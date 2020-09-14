@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"fmt"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/content"
@@ -129,6 +128,8 @@ func TestFromChunk(t *testing.T) {
 		t.Fatalf("owner address mismatch %x %x", ownerEthereumAddress, u2.OwnerAddress())
 	}
 
-	fmt.Println(ch.Address(), ch.Data())
-	fmt.Println(u2.Chunk.Address(), u2.Chunk.Data())
+	if !bytes.Equal(ch.Data(), u2.Chunk.Data()) {
+		t.Fatalf("data mismatch %d %d", len(ch.Data()), u2.Chunk.Data())
+	}
+
 }
