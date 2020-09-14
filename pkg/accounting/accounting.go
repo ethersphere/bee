@@ -95,7 +95,7 @@ var (
 // NewAccounting creates a new Accounting instance with the provided options.
 func NewAccounting(o Options) (*Accounting, error) {
 	if o.PaymentTolerance+o.PaymentThreshold > math.MaxInt64 {
-		return nil, fmt.Errorf("Tolerance plus threshold too big: %w", ErrOverflow)
+		return nil, fmt.Errorf("tolerance plus threshold too big: %w", ErrOverflow)
 	}
 
 	if o.PaymentTolerance > o.PaymentThreshold/2 {
