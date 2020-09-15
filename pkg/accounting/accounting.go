@@ -130,11 +130,14 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		}
 	}
 
+	// Subtract already reserved amount from actual balance, to get expected balance
 	expectedBalance, err := subtractI64mU64(currentBalance, accountingPeer.reservedBalance)
 	if err != nil {
 		return err
 	}
 
+	// Determine if we owe anything to the peer, if we owe less than 0, we conclude we owe nothing
+	// This conversion is made safe by previous subtractI64mU64 not allowing MinInt64
 	expectedDebt := -expectedBalance
 	if expectedDebt < 0 {
 		expectedDebt = 0
@@ -146,7 +149,7 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		return ErrOverdraft
 	}
 
-	//
+	// Check for safety of increase of reservedBalance by price
 	if accountingPeer.reservedBalance+price < accountingPeer.reservedBalance {
 		return ErrOverflow
 	}
@@ -194,6 +197,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 		}
 	}
 
+	// Calculate next balance by safely decreasing current balance with the price we credit
 	nextBalance, err := subtractI64mU64(currentBalance, price)
 	if err != nil {
 		return err
@@ -201,6 +205,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
+	// Get expectedbalance by safely decreasing current balance with reserved amounts
 	expectedBalance, err := subtractI64mU64(currentBalance, accountingPeer.reservedBalance)
 	if err != nil {
 		return err
@@ -208,6 +213,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	// Compute expected debt before update because reserve still includes the
 	// amount that is deducted from the balance.
+	// This conversion is made safe by previous subtractI64mU64 not allowing MinInt64
 	expectedDebt := -expectedBalance
 	if expectedDebt < 0 {
 		expectedDebt = 0
@@ -250,10 +256,12 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		return nil
 	}
 
+	// check safety of the following -1 * int64 conversion, all negative int64 have positive int64 equals except MinInt64
 	if oldBalance == math.MinInt64 {
 		return ErrOverflow
 	}
 
+	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
 	paymentAmount := uint64(-oldBalance)
 	nextBalance := 0
 
@@ -297,6 +305,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 		}
 	}
 
+	// Get nextBalance by safely increasing current balance with price
 	nextBalance, err := addI64pU64(currentBalance, price)
 	if err != nil {
 		return err
@@ -444,6 +453,16 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	return nil
 }
 
+// subtractI64mU64 is a helper function for safe subtraction of Int64 - Uint64
+// It checks for
+//   - overflow safety in conversion of uint64 to int64
+//   - safety of the arithmetic
+//   - whether ( -1 * result ) is still Int64, as MinInt64 in absolute sense is 1 larger than MaxInt64
+// If result is MinInt64, we also return overflow error, for two reasons:
+//   - in some cases we are going to use -1 * result in the following operations, which is secured by this check
+//   - we also do not want to possibly store this value as balance, even if ( -1 * result ) is not used immediately afterwards, because it could
+//		disable settleing for this amount as the value would create overflow
+
 func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
 	result = base - int64(subtracted)
 
@@ -461,6 +480,11 @@ func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
 
 	return result, nil
 }
+
+// addI64pU64 is a helper function for safe addition of Int64 + Uint64
+// It checks for
+//   - overflow safety in conversion of uint64 to int64
+//   - safety of the arithmetic
 
 func addI64pU64(a int64, b uint64) (result int64, err error) {
 	if b > math.MaxInt64 {
