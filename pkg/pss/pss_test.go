@@ -108,7 +108,7 @@ func TestDeliver(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		mtx.Lock()
 
-		eq := !bytes.Equal(tt[:], msg.Topic[:])
+		eq := bytes.Equal(tt[:], msg.Topic[:])
 		mtx.Unlock()
 		if eq {
 			return
