@@ -270,7 +270,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		err = fmt.Errorf("settlement for amount %d failed: %w", paymentAmount, err)
 		// If the payment didn't succeed we should restore the old balance in
 		// the state store.
-		if storeErr := a.store.Put(peerBalanceKey(peer), nextBalance); storeErr != nil {
+		if storeErr := a.store.Put(peerBalanceKey(peer), oldBalance); storeErr != nil {
 			a.logger.Errorf("failed to restore balance after failed settlement for peer %v: %v", peer, storeErr)
 		}
 		return err
