@@ -15,7 +15,7 @@ type mock struct {
 	sendChunk func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error)
 }
 
-func New(sendChunk func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error)) pushsync.Interface {
+func New(sendChunk func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error)) pushsync.PushSyncer {
 	return &mock{sendChunk: sendChunk}
 }
 
