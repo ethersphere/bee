@@ -72,6 +72,7 @@ func TestSend(t *testing.T) {
 func TestDeliver(t *testing.T) {
 	pss := pss.New(logging.New(ioutil.Discard, 0))
 	ctx := context.Background()
+	var mtx sync.Mutex
 
 	// test message
 	topic := trojan.NewTopic("footopic")
@@ -91,7 +92,9 @@ func TestDeliver(t *testing.T) {
 	// create and register handler
 	var tt trojan.Topic // test variable to check handler func was correctly called
 	hndlr := func(ctx context.Context, m *trojan.Message) {
+		mtx.Lock()
 		copy(tt[:], m.Topic[:]) // copy the message topic to the test variable
+		mtx.Unlock()
 	}
 	pss.Register(topic, hndlr)
 
@@ -101,6 +104,9 @@ func TestDeliver(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime.Gosched() // schedule the handler goroutine
+
+	mtx.Lock()
+	defer mtx.Unlock()
 
 	if !bytes.Equal(tt[:], msg.Topic[:]) {
 		t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
@@ -156,8 +162,11 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkCalls(t, h1Calls, 1)
-	checkCalls(t, h2Calls, 0)
+
+	runtime.Gosched()
+
+	checkCalls(t, &mtx, &h1Calls, 1)
+	checkCalls(t, &mtx, &h2Calls, 0)
 
 	// register another topic handler on the same topic
 	cleanup := pss.Register(topic1, h3)
@@ -165,9 +174,12 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkCalls(t, h1Calls, 2)
-	checkCalls(t, h2Calls, 0)
-	checkCalls(t, h3Calls, 1)
+
+	runtime.Gosched()
+
+	checkCalls(t, &mtx, &h1Calls, 2)
+	checkCalls(t, &mtx, &h2Calls, 0)
+	checkCalls(t, &mtx, &h3Calls, 1)
 
 	cleanup() // remove the last handler
 
@@ -175,9 +187,12 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkCalls(t, h1Calls, 3)
-	checkCalls(t, h2Calls, 0)
-	checkCalls(t, h3Calls, 1)
+
+	runtime.Gosched()
+
+	checkCalls(t, &mtx, &h1Calls, 3)
+	checkCalls(t, &mtx, &h2Calls, 0)
+	checkCalls(t, &mtx, &h3Calls, 1)
 
 	msg, err = trojan.NewMessage(topic2, payload)
 	if err != nil {
@@ -192,14 +207,20 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkCalls(t, h1Calls, 3)
-	checkCalls(t, h2Calls, 1)
-	checkCalls(t, h3Calls, 1)
+
+	runtime.Gosched()
+
+	checkCalls(t, &mtx, &h1Calls, 3)
+	checkCalls(t, &mtx, &h2Calls, 1)
+	checkCalls(t, &mtx, &h3Calls, 1)
 }
 
-func checkCalls(t *testing.T, calls, exp int) {
+func checkCalls(t *testing.T, mtx *sync.Mutex, calls *int, exp int) {
 	t.Helper()
-	if calls != exp {
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	if *calls != exp {
 		t.Fatalf("expected %d calls on handler but got %d", exp, calls)
 	}
 }

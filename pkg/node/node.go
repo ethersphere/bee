@@ -306,6 +306,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		apiService = api.New(tagg, ns, multiResolver, psss, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
+			WsPingPeriod:       60 * time.Second,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
