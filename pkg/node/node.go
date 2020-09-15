@@ -52,23 +52,23 @@ import (
 )
 
 type Bee struct {
-	p2pService       io.Closer
-	p2pCancel        context.CancelFunc
-	apiCloser        io.Closer
-	apiServer        *http.Server
-	debugAPIServer   *http.Server
-	resolverCloser   io.Closer
-	errorLogWriter   *io.PipeWriter
-	tracerCloser     io.Closer
-	tagsCloser       io.Closer
-	stateStoreCloser io.Closer
-	localstoreCloser io.Closer
-	topologyCloser   io.Closer
-	pusherCloser     io.Closer
-	pushSyncCloser   io.Closer
-	pullerCloser     io.Closer
-	pullSyncCloser   io.Closer
-	pssCloser        io.Closer
+	p2pService            io.Closer
+	p2pCancel             context.CancelFunc
+	apiCloser             io.Closer
+	apiServer             *http.Server
+	debugAPIServer        *http.Server
+	resolverCloser        io.Closer
+	errorLogWriter        *io.PipeWriter
+	tracerCloser          io.Closer
+	tagsCloser            io.Closer
+	stateStoreCloser      io.Closer
+	localstoreCloser      io.Closer
+	topologyCloser        io.Closer
+	pusherCloser          io.Closer
+	pullerCloser          io.Closer
+	pullSyncCloser        io.Closer
+	pssCloser             io.Closer
+	recoveryHandleCleanup func()
 }
 
 type Options struct {
@@ -264,7 +264,6 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	retrieve.SetStorer(ns)
 
 	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10))
-	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
 	psss.SetPushSyncer(pushSyncProtocol)
@@ -276,7 +275,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
 		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
-		psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
+		b.recoveryHandleCleanup = psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
 	pushSyncPusher := pusher.New(storer, kad, pushSyncProtocol, tagg, logger)
@@ -407,12 +406,12 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(err)
 	}
 
-	if err := b.pusherCloser.Close(); err != nil {
-		errs.add(fmt.Errorf("pusher: %w", err))
+	if b.recoveryHandleCleanup != nil {
+		b.recoveryHandleCleanup()
 	}
 
-	if err := b.pushSyncCloser.Close(); err != nil {
-		errs.add(fmt.Errorf("pushsync: %w", err))
+	if err := b.pusherCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("pusher: %w", err))
 	}
 
 	if err := b.pullerCloser.Close(); err != nil {

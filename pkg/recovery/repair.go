@@ -76,6 +76,5 @@ func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsy
 			logger.Tracef("chunk repair: error while sending chunk or receiving receipt: %v", err)
 			return
 		}
-		return
 	}
 }

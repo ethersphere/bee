@@ -44,7 +44,10 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 		done       = make(chan struct{})
 	)
 
-	cl.SetReadDeadline(time.Now().Add(timeout))
+	err := cl.SetReadDeadline(time.Now().Add(timeout))
+	if err != nil {
+		t.Fatal(err)
+	}
 	cl.SetReadLimit(swarm.ChunkSize)
 
 	defer close(done)
@@ -78,7 +81,11 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 		done       = make(chan struct{})
 	)
 
-	cl.SetReadDeadline(time.Now().Add(timeout))
+	err := cl.SetReadDeadline(time.Now().Add(timeout))
+
+	if err != nil {
+		t.Fatal(err)
+	}
 	cl.SetReadLimit(swarm.ChunkSize)
 	defer close(done)
 	go waitReadMessage(t, &mtx, cl, msgContent, done)
@@ -94,6 +101,10 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 
 	// close the websocket before calling pss with the message
 	err = cl.WriteMessage(websocket.CloseMessage, []byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	err = pss.TryUnwrap(context.Background(), tc)
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +129,10 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 		t.Fatalf("dial: %v. url %v", err, u.String())
 	}
 
-	cl.SetReadDeadline(time.Now().Add(timeout))
+	err = cl.SetReadDeadline(time.Now().Add(timeout))
+	if err != nil {
+		t.Fatal(err)
+	}
 	cl.SetReadLimit(swarm.ChunkSize)
 
 	defer close(done)
@@ -136,6 +150,10 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 
 	// close the websocket before calling pss with the message
 	err = cl.WriteMessage(websocket.CloseMessage, []byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	err = pss.TryUnwrap(context.Background(), tc)
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +161,6 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 
 	waitMessage(t, msgContent, nil, timeout, &mtx)
 	waitMessage(t, msgContent2, nil, timeout, &mtx)
-
 }
 
 // TestPssSend tests that the pss message sending over http works correctly.
@@ -230,7 +247,10 @@ func TestPssPingPong(t *testing.T) {
 	)
 
 	cl.SetReadLimit(swarm.ChunkSize)
-	cl.SetReadDeadline(time.Now().Add(pongWait))
+	err := cl.SetReadDeadline(time.Now().Add(pongWait))
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer close(done)
 	go waitReadMessage(t, &mtx, cl, msgContent, done)
 
@@ -310,6 +330,7 @@ func waitMessage(t *testing.T, data, expData []byte, timeout time.Duration, mtx 
 		}
 		mtx.Lock()
 		if bytes.Equal(data, expData) {
+			mtx.Unlock()
 			return
 		}
 		mtx.Unlock()

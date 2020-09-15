@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -30,11 +29,6 @@ const (
 
 type PushSyncer interface {
 	PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error)
-}
-
-type Interface interface {
-	PushSyncer
-	io.Closer
 }
 
 type Receipt struct {
@@ -330,10 +324,5 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 	if err != nil {
 		ps.logger.Debugf("error pss delivery for chunk %v: %v", chunk.Address(), err)
 	}
-	return nil
-}
-
-func (ps *PushSync) Close() error {
-	panic("implement cancel pss subscription")
 	return nil
 }
