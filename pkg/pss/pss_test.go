@@ -104,12 +104,14 @@ func TestDeliver(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime.Gosched() // schedule the handler goroutine
+	for i := 0; i < 10; i++ {
+		mtx.Lock()
 
-	mtx.Lock()
-	defer mtx.Unlock()
-
-	if !bytes.Equal(tt[:], msg.Topic[:]) {
-		t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
+		eq := !bytes.Equal(tt[:], msg.Topic[:])
+		mtx.Unlock()
+		if eq {
+			t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
+		}
 	}
 }
 
