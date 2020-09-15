@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -150,19 +149,19 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 // TestPssSend tests that the pss message sending over http works correctly.
 func TestPssSend(t *testing.T) {
 	var (
-		logger = logging.New(os.Stdout, 5)
+		logger = logging.New(ioutil.Discard, 0)
 
-		mtx       sync.Mutex
-		rxTargets trojan.Targets
-		rxTopic   trojan.Topic
-		rxBytes   []byte
-		done      bool
+		mtx             sync.Mutex
+		recievedTargets trojan.Targets
+		recievedTopic   trojan.Topic
+		recievedBytes   []byte
+		done            bool
 
 		sendFn = func(_ context.Context, targets trojan.Targets, topic trojan.Topic, bytes []byte) error {
 			mtx.Lock()
-			rxTargets = targets
-			rxTopic = topic
-			rxBytes = bytes
+			recievedTargets = targets
+			recievedTopic = topic
+			recievedBytes = bytes
 			done = true
 			mtx.Unlock()
 			return nil
@@ -204,14 +203,14 @@ func TestPssSend(t *testing.T) {
 			}),
 		)
 		waitDone(t, &mtx, &done)
-		if !bytes.Equal(rxBytes, payload) {
-			t.Fatalf("payload mismatch. want %v got %v", payload, rxBytes)
+		if !bytes.Equal(recievedBytes, payload) {
+			t.Fatalf("payload mismatch. want %v got %v", payload, recievedBytes)
 		}
-		if targets != fmt.Sprint(rxTargets) {
-			t.Fatalf("targets mismatch. want %v got %v", targets, rxTargets)
+		if targets != fmt.Sprint(recievedTargets) {
+			t.Fatalf("targets mismatch. want %v got %v", targets, recievedTargets)
 		}
-		if string(topicHash) != string(rxTopic[:]) {
-			t.Fatalf("topic mismatch. want %v got %v", topic, string(rxTopic[:]))
+		if string(topicHash) != string(recievedTopic[:]) {
+			t.Fatalf("topic mismatch. want %v got %v", topic, string(recievedTopic[:]))
 		}
 	})
 }

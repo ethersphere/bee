@@ -14,8 +14,6 @@ import (
 	"path"
 	"testing"
 
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"

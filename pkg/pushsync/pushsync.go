@@ -30,6 +30,10 @@ const (
 
 type PushSyncer interface {
 	PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error)
+}
+
+type Interface interface {
+	PushSyncer
 	io.Closer
 }
 

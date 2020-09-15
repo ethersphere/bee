@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -90,7 +91,7 @@ func TestDeliver(t *testing.T) {
 	// create and register handler
 	var tt trojan.Topic // test variable to check handler func was correctly called
 	hndlr := func(ctx context.Context, m *trojan.Message) {
-		tt = m.Topic // copy the message topic to the test variable
+		copy(tt[:], m.Topic[:]) // copy the message topic to the test variable
 	}
 	pss.Register(topic, hndlr)
 
@@ -99,7 +100,9 @@ func TestDeliver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tt != msg.Topic {
+	runtime.Gosched() // schedule the handler goroutine
+
+	if !bytes.Equal(tt[:], msg.Topic[:]) {
 		t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
 	}
 }
