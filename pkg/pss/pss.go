@@ -49,6 +49,7 @@ func New(logger logging.Logger) Interface {
 		logger:   logger,
 		handlers: make(map[trojan.Topic][]*Handler),
 		metrics:  newMetrics(),
+		quit:     make(chan struct{}),
 	}
 }
 

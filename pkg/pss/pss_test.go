@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -110,9 +111,11 @@ func TestDeliver(t *testing.T) {
 		eq := !bytes.Equal(tt[:], msg.Topic[:])
 		mtx.Unlock()
 		if eq {
-			t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
+			return
 		}
+		<-time.After(50 * time.Millisecond)
 	}
+	t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
 }
 
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
