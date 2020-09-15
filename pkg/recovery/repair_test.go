@@ -95,6 +95,7 @@ func TestRecoveryHook(t *testing.T) {
 	}
 }
 
+
 // TestNewRepairHandler tests the function of repairing a chunk when a request for chunk repair is received.
 func TestNewRepairHandler(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
