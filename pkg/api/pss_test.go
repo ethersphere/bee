@@ -31,7 +31,7 @@ var (
 	targets = trojan.Targets([]trojan.Target{target})
 	payload = []byte("testdata")
 	topic   = trojan.NewTopic("testtopic")
-	timeout = 1 * time.Second
+	timeout = 3 * time.Second
 )
 
 // creates a single websocket handler for an arbitrary topic, and receives a message
@@ -66,7 +66,7 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitMessage(t, msgContent, payload, timeout, &mtx)
+	waitMessage(t, msgContent, payload, &mtx)
 }
 
 func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
@@ -110,7 +110,7 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitMessage(t, msgContent, nil, timeout, &mtx)
+	waitMessage(t, msgContent, nil, &mtx)
 }
 
 func TestPssWebsocketMultiHandler(t *testing.T) {
@@ -159,8 +159,8 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitMessage(t, msgContent, nil, timeout, &mtx)
-	waitMessage(t, msgContent2, nil, timeout, &mtx)
+	waitMessage(t, msgContent, nil, &mtx)
+	waitMessage(t, msgContent2, nil, &mtx)
 }
 
 // TestPssSend tests that the pss message sending over http works correctly.
@@ -270,12 +270,12 @@ func TestPssPingPong(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitMessage(t, msgContent, nil, timeout, &mtx)
+	waitMessage(t, msgContent, nil, &mtx)
 }
 
 func waitReadMessage(t *testing.T, mtx *sync.Mutex, cl *websocket.Conn, targetContent []byte, done <-chan struct{}) {
 	t.Helper()
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(timeout)
 	for {
 		select {
 		case <-done:
@@ -317,7 +317,7 @@ func waitDone(t *testing.T, mtx *sync.Mutex, done *bool) {
 	t.Fatal("timed out waiting for send")
 }
 
-func waitMessage(t *testing.T, data, expData []byte, timeout time.Duration, mtx *sync.Mutex) {
+func waitMessage(t *testing.T, data, expData []byte, mtx *sync.Mutex) {
 	ttl := time.After(timeout)
 	for {
 		select {
