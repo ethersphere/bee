@@ -111,7 +111,7 @@ func (s *server) pumpWs(conn *websocket.Conn, t string) {
 	)
 	defer func() {
 		ticker.Stop()
-		conn.Close()
+		_ = conn.Close()
 	}()
 	cleanup := s.Pss.Register(topic, func(_ context.Context, m *trojan.Message) {
 		dataC <- m.Payload
