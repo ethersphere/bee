@@ -61,6 +61,7 @@ type server struct {
 type Options struct {
 	CORSAllowedOrigins []string
 	GatewayMode        bool
+	WsPingPeriod       time.Duration
 }
 
 const (

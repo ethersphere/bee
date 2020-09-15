@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -25,13 +26,14 @@ import (
 )
 
 type testServerOptions struct {
-	Storer      storage.Storer
-	Resolver    resolver.Interface
-	Pss         pss.Interface
-	WsPath      string
-	Tags        *tags.Tags
-	GatewayMode bool
-	Logger      logging.Logger
+	Storer       storage.Storer
+	Resolver     resolver.Interface
+	Pss          pss.Interface
+	WsPath       string
+	Tags         *tags.Tags
+	GatewayMode  bool
+	WsPingPeriod time.Duration
+	Logger       logging.Logger
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string) {
@@ -41,8 +43,12 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
 	}
+	if o.WsPingPeriod == 0 {
+		o.WsPingPeriod = 60 * time.Second
+	}
 	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Logger, nil, api.Options{
-		GatewayMode: o.GatewayMode,
+		GatewayMode:  o.GatewayMode,
+		WsPingPeriod: o.WsPingPeriod,
 	})
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)

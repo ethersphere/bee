@@ -24,16 +24,8 @@ var (
 		ReadBufferSize:  swarm.ChunkSize,
 		WriteBufferSize: swarm.ChunkSize,
 	}
-
-	writeDeadline = 4 * time.Second // write deadline. should be smaller than the shutdown timeout on api close
-
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	targetMaxLength = 2 // max target length in bytes, in order to prevent grieving by excess computation
+	writeDeadline   = 4 * time.Second // write deadline. should be smaller than the shutdown timeout on api close
+	targetMaxLength = 2               // max target length in bytes, in order to prevent grieving by excess computation
 )
 
 type PssMessage struct {
@@ -114,7 +106,7 @@ func (s *server) pumpWs(conn *websocket.Conn, t string) {
 		dataC  = make(chan []byte)
 		gone   = make(chan struct{})
 		topic  = trojan.NewTopic(t)
-		ticker = time.NewTicker(pingPeriod)
+		ticker = time.NewTicker(s.WsPingPeriod)
 		err    error
 	)
 	defer func() {
