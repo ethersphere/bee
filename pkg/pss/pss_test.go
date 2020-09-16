@@ -168,10 +168,8 @@ func TestRegister(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime.Gosched()
-
-	checkCalls(t, &mtx, &h1Calls, 1)
-	checkCalls(t, &mtx, &h2Calls, 0)
+	ensureCalls(t, &mtx, &h1Calls, 1)
+	ensureCalls(t, &mtx, &h2Calls, 0)
 
 	// register another topic handler on the same topic
 	cleanup := pss.Register(topic1, h3)
@@ -180,11 +178,9 @@ func TestRegister(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime.Gosched()
-
-	checkCalls(t, &mtx, &h1Calls, 2)
-	checkCalls(t, &mtx, &h2Calls, 0)
-	checkCalls(t, &mtx, &h3Calls, 1)
+	ensureCalls(t, &mtx, &h1Calls, 2)
+	ensureCalls(t, &mtx, &h2Calls, 0)
+	ensureCalls(t, &mtx, &h3Calls, 1)
 
 	cleanup() // remove the last handler
 
@@ -193,11 +189,9 @@ func TestRegister(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime.Gosched()
-
-	checkCalls(t, &mtx, &h1Calls, 3)
-	checkCalls(t, &mtx, &h2Calls, 0)
-	checkCalls(t, &mtx, &h3Calls, 1)
+	ensureCalls(t, &mtx, &h1Calls, 3)
+	ensureCalls(t, &mtx, &h2Calls, 0)
+	ensureCalls(t, &mtx, &h3Calls, 1)
 
 	msg, err = trojan.NewMessage(topic2, payload)
 	if err != nil {
@@ -213,19 +207,22 @@ func TestRegister(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime.Gosched()
-
-	checkCalls(t, &mtx, &h1Calls, 3)
-	checkCalls(t, &mtx, &h2Calls, 1)
-	checkCalls(t, &mtx, &h3Calls, 1)
+	ensureCalls(t, &mtx, &h1Calls, 3)
+	ensureCalls(t, &mtx, &h2Calls, 1)
+	ensureCalls(t, &mtx, &h3Calls, 1)
 }
 
-func checkCalls(t *testing.T, mtx *sync.Mutex, calls *int, exp int) {
+func ensureCalls(t *testing.T, mtx *sync.Mutex, calls *int, exp int) {
 	t.Helper()
-	mtx.Lock()
-	defer mtx.Unlock()
 
-	if *calls != exp {
-		t.Fatalf("expected %d calls on handler but got %d", exp, calls)
+	for i := 0; i < 10; i++ {
+		mtx.Lock()
+		if *calls == exp {
+			mtx.Unlock()
+			return
+		}
+		mtx.Unlock()
+		<-time.After(100 * time.Millisecond)
 	}
+	t.Fatal("timed out waiting for value")
 }
