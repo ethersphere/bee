@@ -6,14 +6,13 @@ package trojan
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
-	"math/big"
-	"time"
-
-	bmtlegacy "github.com/ethersphere/bmt/legacy"
+	random "math/rand"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
 // Topic is an alias for a 32 byte fixed-size array which contains an encoding of a message topic
@@ -39,12 +38,13 @@ const (
 	// MaxPayloadSize + Topic + Length + Nonce = Default ChunkSize
 	//    (4030)      +  (32) +   (2)  +  (32) = 4096 Bytes
 	MaxPayloadSize = swarm.ChunkSize - NonceSize - LengthSize - TopicSize
-	NonceSize      = 32
-	LengthSize     = 2
-	TopicSize      = 32
+	// NonceSize is a hash bit sequence
+	NonceSize = 32
+	// LengthSize is the byte length to represent message
+	LengthSize = 2
+	// TopicSize is a hash bit sequence
+	TopicSize = 32
 )
-
-var minerTimeout = 20 * time.Second
 
 // NewTopic creates a new Topic variable with the given input string
 // the input string is taken as a byte slice and hashed
@@ -89,14 +89,33 @@ func NewMessage(topic Topic, payload []byte) (Message, error) {
 // Wrap creates a new trojan chunk for the given targets and Message
 // a trojan chunk is a content-addressed chunk made up of span, a nonce, and a payload which contains the Message
 // the chunk address will have one of the targets as its prefix and thus will be forwarded to the neighbourhood of the recipient overlay address the target is derived from
-func (m *Message) Wrap(targets Targets) (swarm.Chunk, error) {
+// this is done by iteratively enumerating different nonces until the BMT hash of the serialization of the trojan chunk fields results in a chunk address that has one of the targets as its prefix
+func (m *Message) Wrap(ctx context.Context, targets Targets) (swarm.Chunk, error) {
 	if err := checkTargets(targets); err != nil {
 		return nil, err
 	}
+	targetsLen := len(targets[0])
 
+	// serialize message
+	b, err := m.MarshalBinary() // TODO: this should be encrypted
+	if err != nil {
+		return nil, err
+	}
 	span := make([]byte, 8)
-	binary.LittleEndian.PutUint64(span, swarm.ChunkSize)
-	return m.toChunk(targets, span)
+	binary.LittleEndian.PutUint64(span, uint64(len(b)+NonceSize))
+	h := hasher(span, b)
+	f := func(nonce []byte) (swarm.Chunk, error) {
+		hash, err := h(nonce)
+		if err != nil {
+			return nil, err
+		}
+		if !contains(targets, hash[:targetsLen]) {
+			return nil, nil
+		}
+		chunk := swarm.NewChunk(swarm.NewAddress(hash), append(span, append(nonce, b...)...))
+		return chunk, nil
+	}
+	return mine(ctx, f)
 }
 
 // Unwrap creates a new trojan message from the given chunk payload
@@ -141,81 +160,19 @@ func checkTargets(targets Targets) error {
 	return nil
 }
 
-// toChunk finds a nonce so that when the given trojan chunk fields are hashed, the result will fall in the neighbourhood of one of the given targets
-// this is done by iteratively enumerating different nonces until the BMT hash of the serialization of the trojan chunk fields results in a chunk address that has one of the targets as its prefix
-// the function returns a new chunk, with the found matching hash to be used as its address,
-// and its data set to the serialization of the trojan chunk fields which correctly hash into the matching address
-func (m *Message) toChunk(targets Targets, span []byte) (swarm.Chunk, error) {
-	// start out with random nonce
-	nonce := make([]byte, NonceSize)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
-	}
-	nonceInt := new(big.Int).SetBytes(nonce)
-	targetsLen := len(targets[0])
-
-	// serialize message
-	b, err := m.MarshalBinary() // TODO: this should be encrypted
-	if err != nil {
-		return nil, err
-	}
-
-	errC := make(chan error)
-	var hash, s []byte
-	go func() {
-		defer close(errC)
-
-		// mining operation: hash chunk fields with different nonces until an acceptable one is found
-		for {
-			s = append(append(span, nonce...), b...) // serialize chunk fields
-			hash, err = hashBytes(s)
-			if err != nil {
-				errC <- err
-				return
-			}
-
-			// take as much of the hash as the targets are long
-			if contains(targets, hash[:targetsLen]) {
-				// if nonce found, stop loop and return chunk
-				errC <- nil
-				return
-			}
-			// else, add 1 to nonce and try again
-			nonceInt.Add(nonceInt, big.NewInt(1))
-			// loop around in case of overflow after 256 bits
-			if nonceInt.BitLen() > (NonceSize * swarm.SpanSize) {
-				nonceInt = big.NewInt(0)
-			}
-			nonce = padBytesLeft(nonceInt.Bytes()) // pad in case Bytes call is not 32 bytes long
-		}
-	}()
-
-	// checks whether the mining is completed or times out
-	select {
-	case err := <-errC:
-		if err == nil {
-			return swarm.NewChunk(swarm.NewAddress(hash), s), nil
-		}
-		return nil, err
-	case <-time.After(minerTimeout):
-		return nil, ErrMinerTimeout
-	}
-}
-
-// hashBytes hashes the given serialization of chunk fields with the hashing func
-func hashBytes(s []byte) ([]byte, error) {
+func hasher(span, b []byte) func([]byte) ([]byte, error) {
 	hashPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
-	hasher := bmtlegacy.New(hashPool)
-	hasher.Reset()
-	span := binary.LittleEndian.Uint64(s[:8])
-	err := hasher.SetSpan(int64(span))
-	if err != nil {
-		return nil, err
+	return func(nonce []byte) ([]byte, error) {
+		s := append(nonce, b...) // serialize chunk fields
+		hasher := bmtlegacy.New(hashPool)
+		if err := hasher.SetSpanBytes(span); err != nil {
+			return nil, err
+		}
+		if _, err := hasher.Write(s); err != nil {
+			return nil, err
+		}
+		return hasher.Sum(nil), nil
 	}
-	if _, err := hasher.Write(s[8:]); err != nil {
-		return nil, err
-	}
-	return hasher.Sum(nil), nil
 }
 
 // contains returns whether the given collection contains the given element
@@ -226,19 +183,6 @@ func contains(col Targets, elem []byte) bool {
 		}
 	}
 	return false
-}
-
-// padBytesLeft adds 0s to the given byte slice as left padding,
-// returning this as a new byte slice with a length of exactly 32
-// given param is assumed to be at most 32 bytes long
-func padBytesLeft(b []byte) []byte {
-	l := len(b)
-	if l == 32 {
-		return b
-	}
-	bb := make([]byte, 32)
-	copy(bb[32-l:], b)
-	return bb
 }
 
 // MarshalBinary serializes a message struct
@@ -268,4 +212,51 @@ func (m *Message) UnmarshalBinary(data []byte) (err error) {
 	m.Payload = data[LengthSize+TopicSize : payloadEnd]
 	m.padding = data[payloadEnd:]
 	return nil
+}
+
+func mine(ctx context.Context, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
+	seeds := make([]uint32, 8)
+	for i := range seeds {
+		seeds[i] = random.Uint32()
+	}
+	initnonce := make([]byte, 32)
+	for i := 0; i < 8; i++ {
+		binary.LittleEndian.PutUint32(initnonce[i*4:i*4+4], seeds[i])
+	}
+	quit := make(chan struct{})
+	// make both  errs  and result channels buffered so they never block
+	result := make(chan swarm.Chunk, 8)
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		go func(j int) {
+			nonce := make([]byte, 32)
+			copy(nonce, initnonce)
+			for seed := seeds[j]; ; seed++ {
+				binary.LittleEndian.PutUint32(nonce[j*4:j*4+4], seed)
+				res, err := f(nonce)
+				if err != nil {
+					errs <- err
+					return
+				}
+				if res != nil {
+					result <- res
+					return
+				}
+				select {
+				case <-quit:
+					return
+				default:
+				}
+			}
+		}(i)
+	}
+	defer close(quit)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case err := <-errs:
+		return nil, err
+	case res := <-result:
+		return res, nil
+	}
 }

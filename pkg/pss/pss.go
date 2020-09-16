@@ -67,7 +67,7 @@ func (p *pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Top
 		return err
 	}
 	var tc swarm.Chunk
-	tc, err = m.Wrap(targets)
+	tc, err = m.Wrap(ctx, targets)
 	if err != nil {
 
 		return err
