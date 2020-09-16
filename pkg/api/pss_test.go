@@ -31,7 +31,7 @@ var (
 	targets = trojan.Targets([]trojan.Target{target})
 	payload = []byte("testdata")
 	topic   = trojan.NewTopic("testtopic")
-	timeout = 3 * time.Second
+	timeout = 10 * time.Second
 )
 
 // creates a single websocket handler for an arbitrary topic, and receives a message
@@ -334,7 +334,7 @@ func waitMessage(t *testing.T, data, expData []byte, mtx *sync.Mutex) {
 			return
 		}
 		mtx.Unlock()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
