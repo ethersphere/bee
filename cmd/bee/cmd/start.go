@@ -202,6 +202,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				PaymentTolerance:       c.config.GetUint64(optionNamePaymentTolerance),
 				ResolverConnectionCfgs: resolverCfgs,
 				GatewayMode:            c.config.GetBool(optionNameGatewayMode),
+				SwapEndpoint:           c.config.GetString(optionNameSwapEndpoint),
+				SwapFactoryAddress:     c.config.GetString(optionNameSwapFactoryAddress),
 			})
 			if err != nil {
 				return err

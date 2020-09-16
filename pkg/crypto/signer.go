@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 var (
@@ -18,7 +19,9 @@ var (
 
 type Signer interface {
 	Sign(data []byte) ([]byte, error)
+	SignTx(transaction *types.Transaction) (*types.Transaction, error)
 	PublicKey() (*ecdsa.PublicKey, error)
+	EthereumAddress() ([]byte, error)
 }
 
 // addEthereumPrefix adds the ethereum prefix to the data
@@ -81,4 +84,27 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 	copy(signature, signature[1:])
 	signature[64] = v
 	return signature, nil
+}
+
+func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
+	hash := (&types.HomesteadSigner{}).Hash(transaction).Bytes()
+	signature, err := btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(d.key), hash, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to Ethereum signature format with 'recovery id' v at the end.
+	v := signature[0]
+	copy(signature, signature[1:])
+	// v value needs to be adjusted by 27 as transaction.WithSignature expects it to be 0 or 1
+	signature[64] = v - 27
+	return transaction.WithSignature(&types.HomesteadSigner{}, signature)
+}
+
+func (d *defaultSigner) EthereumAddress() ([]byte, error) {
+	publicKey, err := d.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+	return NewEthereumAddress(*publicKey)
 }

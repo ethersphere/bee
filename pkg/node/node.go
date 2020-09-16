@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"path/filepath"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -39,6 +42,7 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -91,6 +95,9 @@ type Options struct {
 	PaymentTolerance       uint64
 	ResolverConnectionCfgs []multiresolver.ConnectionConfig
 	GatewayMode            bool
+	SwapEndpoint           string
+	SwapFactoryAddress     string
+	SwapInitialDeposit     uint64
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
@@ -134,6 +141,87 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
+
+	swapBackend, err := ethclient.Dial(o.SwapEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	transactionService, err := chequebook.NewTransactionService(swapBackend, signer)
+	if err != nil {
+		return nil, err
+	}
+
+	overlayEthAddress, err := signer.EthereumAddress()
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Infof("using ethereum address %x", overlayEthAddress)
+
+	chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress))
+	if err != nil {
+		return nil, err
+	}
+
+	err = chequebookFactory.VerifyBytecode(p2pCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var chequebookService chequebook.Service
+	var chequebookAddress common.Address
+	err = stateStore.Get("chequebook", &chequebookAddress)
+	if err != nil {
+		if err != storage.ErrNotFound {
+			return nil, err
+		}
+		logger.Info("deploying new chequebook")
+
+		chequebookAddress, err = chequebookFactory.Deploy(p2pCtx, common.BytesToAddress(overlayEthAddress), big.NewInt(0))
+		if err != nil {
+			return nil, err
+		}
+
+		logger.Infof("deployed to address %x", chequebookAddress)
+
+		err = stateStore.Put("chequebook", chequebookAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		chequebookService, err = chequebook.New(swapBackend, transactionService, chequebookAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		if o.SwapInitialDeposit != 0 {
+			logger.Info("depositing into new chequebook")
+
+			depositHash, err := chequebookService.Deposit(p2pCtx, big.NewInt(20))
+			if err != nil {
+				return nil, err
+			}
+
+			err = chequebookService.WaitForDeposit(p2pCtx, depositHash)
+			if err != nil {
+				return nil, err
+			}
+
+			logger.Infof("deposited to cheque %x in transaction %x", chequebookAddress, depositHash)
+		}
+	} else {
+		chequebookService, err = chequebook.New(swapBackend, transactionService, chequebookAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		logger.Infof("using existing chequebook %x", chequebookAddress)
+	}
+
+	err = chequebookFactory.VerifyChequebook(p2pCtx, chequebookService.Address())
+	if err != nil {
+		return nil, err
+	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
