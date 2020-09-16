@@ -7,8 +7,10 @@ package soc_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/content"
@@ -130,6 +132,108 @@ func TestFromChunk(t *testing.T) {
 
 	if !bytes.Equal(ch.Data(), u2.Chunk.Data()) {
 		t.Fatalf("data mismatch %d %d", len(ch.Data()), u2.Chunk.Data())
+	}
+}
+
+// TestSelfAddressedEnvelope check the creation of a self addressed soc envelope chunk
+func TestSelfAddressedEnvelope(t *testing.T) {
+	payload := make([]byte, swarm.ChunkSize)
+	_, err := rand.Read(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c1, err := content.NewChunk(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	publicKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayBytes, err := crypto.NewEthereumAddress(*publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayAddres := swarm.NewAddress(overlayBytes)
+	owner, err := soc.NewOwner(overlayBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// with target len 1
+	ctx := context.Background()
+	envelope1, err := soc.CreateSelfAddressedEnvelope(ctx, owner, overlayAddres, 1, c1.Address(), signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if envelope1.Address().Bytes()[0] != overlayAddres.Bytes()[0] {
+		t.Fatal(" invalid prefix mined")
+	}
+
+	// with target len 2
+	envelope2, err := soc.CreateSelfAddressedEnvelope(ctx, owner, overlayAddres, 2, c1.Address(), signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if envelope2.Address().Bytes()[0] != overlayAddres.Bytes()[0] {
+		t.Fatal(" invalid prefix mined")
+	}
+}
+
+// BenchmarkEnvelopeMiner benchmarks the mining of the ID to create a self addressed envelope
+func BenchmarkEnvelopeMiner(b *testing.B) {
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		b.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	publicKey, err := signer.PublicKey()
+	if err != nil {
+		b.Fatal(err)
+	}
+	overlayBytes, err := crypto.NewEthereumAddress(*publicKey)
+	if err != nil {
+		b.Fatal(err)
+	}
+	overlay := swarm.NewAddress(overlayBytes)
+	owner, err := soc.NewOwner(overlayBytes)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	ctx := context.Background()
+	cases := []struct {
+		payloadId string
+		targetLen int
+	}{
+		{"b93d610abfbc7e77ce64ecb0aef3c4f40914894702a3903ef8b857b89e74748d", 1},
+		{"8df825f58ede92e2ef6a1bbfb1ebeb6268653e748a87f4ed439216a83147457b", 1},
+		{"7a5f7fff51debee4133a4876f4e1c8e9899d177f63df703ea334f1371c9e26bc", 1},
+		{"b93d610abfbc7e77ce64ecb0aef3c4f40914894702a3903ef8b857b89e74748d", 2},
+		{"8df825f58ede92e2ef6a1bbfb1ebeb6268653e748a87f4ed439216a83147457b", 2},
+		{"7a5f7fff51debee4133a4876f4e1c8e9899d177f63df703ea334f1371c9e26bc", 2},
+		{"b93d610abfbc7e77ce64ecb0aef3c4f40914894702a3903ef8b857b89e74748d", 3},
+		{"8df825f58ede92e2ef6a1bbfb1ebeb6268653e748a87f4ed439216a83147457b", 3},
+		{"7a5f7fff51debee4133a4876f4e1c8e9899d177f63df703ea334f1371c9e26bc", 3},
+	}
+	for _, c := range cases {
+		address, err := swarm.ParseHexAddress(c.payloadId)
+		if err != nil {
+			b.Fatal(err)
+		}
+		name := fmt.Sprintf("payload Id:%s, targetLen:%d", c.payloadId, c.targetLen)
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := soc.CreateSelfAddressedEnvelope(ctx, owner, overlay, c.targetLen, address, signer); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 
 }

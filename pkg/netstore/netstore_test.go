@@ -9,7 +9,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"sync/atomic"
 	"testing"
@@ -29,6 +28,10 @@ import (
 )
 
 var chunkData = []byte("mockdata")
+
+var (
+	errChunkNotFound = errors.New("chunk not found")
+)
 
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
@@ -165,11 +168,13 @@ func TestRecoveryTimeout(t *testing.T) {
 	retrieve, _, nstore := newRetrievingNetstore(rec)
 	retrieve.failure = true
 	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
 	_, err = nstore.Get(ctx, storage.ModeGetRequest, c.Address())
-	if err != nil && !errors.Is(err, netstore.ErrRecoveryTimeout) {
-		t.Fatal(err)
+	if err != nil && !errors.Is(err, errChunkNotFound) {
+		t.Error(err)
 	}
 
 	select {
@@ -236,7 +241,7 @@ type retrievalMock struct {
 
 func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
 	if r.failure {
-		return nil, fmt.Errorf("chunk not found")
+		return nil, errChunkNotFound
 	}
 	r.called = true
 	atomic.AddInt32(&r.callCount, 1)
@@ -250,7 +255,7 @@ type mockRecovery struct {
 }
 
 // Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) (swarm.Address, error) {
+func (mr *mockRecovery) recovery(ctx context.Context, chunkAddress swarm.Address, targets trojan.Targets, chunkC chan swarm.Chunk) (swarm.Address, error) {
 	mr.hookC <- true
 	if mr.sendChunk != nil {
 		sch, err := getSocChunk(mr.sendChunk)
@@ -264,7 +269,7 @@ func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targ
 }
 
 func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
-	return nil, fmt.Errorf("chunk not found")
+	return nil, errChunkNotFound
 }
 
 func getSocChunk(c swarm.Chunk) (swarm.Chunk, error) {
