@@ -6,10 +6,6 @@ package recovery
 
 import (
 	"context"
-<<<<<<< HEAD
-=======
-	"errors"
->>>>>>> fix review commenst from Viktor
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -30,14 +26,6 @@ var (
 	// recoveryTopic is the topic used for repairing globally pinned chunks.
 	RecoveryTopic       = trojan.NewTopic(recoveryTopicText)
 	defaultTargetLength = 2
-<<<<<<< HEAD
-=======
-)
-
-var (
-	errChunkNotPresent = errors.New("chunk repair: chunk not present in local store for repairing")
-	errInvalidEnvelope = errors.New("invalid envelope")
->>>>>>> fix review commenst from Viktor
 )
 
 // RecoveryHook defines code to be executed upon failing to retrieve chunks.
@@ -77,18 +65,11 @@ func NewRecoveryHook(pss PssSender, overlay swarm.Address, signer crypto.Signer)
 }
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store.
-<<<<<<< HEAD
 func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
 	return func(ctx context.Context, m *trojan.Message) {
 		if len(m.Payload) != swarm.HashSize+soc.IdSize+soc.SignatureSize+swarm.SpanSize+swarm.HashSize {
 			logger.Tracef("chunk repair: invalid payload length: %d", len(m.Payload))
 			return
-=======
-func NewRepairHandler(s storage.Storer, pushSyncer pushsync.PushSyncer) pss.Handler {
-	return func(ctx context.Context, m *trojan.Message) error {
-		if len(m.Payload) != swarm.HashSize+soc.IdSize+soc.SignatureSize+swarm.SpanSize+swarm.HashSize {
-			return errInvalidEnvelope
->>>>>>> fix review commenst from Viktor
 		}
 
 		// get the envelopeAddress and the payloadId from the soc envelope
@@ -127,15 +108,9 @@ func NewRepairHandler(s storage.Storer, pushSyncer pushsync.PushSyncer) pss.Hand
 		// send the soc envelope which has the chunk data, to the requester
 		_, err = pushSyncer.PushChunkToClosest(ctx, recoveryResponse)
 		if err != nil {
-<<<<<<< HEAD
 			logger.Tracef("chunk repair: error while sending chunk repair response: %v", err)
 			return
 		}
-=======
-			return err
-		}
-		return nil
->>>>>>> fix review commenst from Viktor
 	}
 }
 
