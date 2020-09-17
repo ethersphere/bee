@@ -20,22 +20,26 @@ func TestMockValidator(t *testing.T) {
 	validator := validator.NewMockValidator(validAddr, validContent)
 
 	ch := swarm.NewChunk(validAddr, validContent)
-	if !validator.Validate(ch) {
+	yes, _ := validator.Validate(ch)
+	if !yes {
 		t.Fatalf("chunk '%v' should be valid", ch)
 	}
 
 	ch = swarm.NewChunk(invalidAddr, validContent)
-	if validator.Validate(ch) {
+	yes, _ = validator.Validate(ch)
+	if yes {
 		t.Fatalf("chunk '%v' should be invalid", ch)
 	}
 
 	ch = swarm.NewChunk(validAddr, invalidContent)
-	if validator.Validate(ch) {
+	yes, _ = validator.Validate(ch)
+	if yes {
 		t.Fatalf("chunk '%v' should be invalid", ch)
 	}
 
 	ch = swarm.NewChunk(invalidAddr, invalidContent)
-	if validator.Validate(ch) {
+	yes, _ = validator.Validate(ch)
+	if yes {
 		t.Fatalf("chunk '%v' should be invalid", ch)
 	}
 }

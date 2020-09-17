@@ -31,13 +31,13 @@ func (v *MockValidator) AddPair(address swarm.Address, data []byte) {
 }
 
 // Validate checks the passed chunk for validity
-func (v *MockValidator) Validate(ch swarm.Chunk) (valid bool) {
+func (v *MockValidator) Validate(ch swarm.Chunk) (valid bool, cType swarm.ChunkType) {
 	if data, ok := v.addressDataPair[ch.Address().String()]; ok {
 		if bytes.Equal(data, ch.Data()) {
-			return true
+			return true, swarm.ContentChunk
 		} else if len(ch.Data()) > 8 && bytes.Equal(data, ch.Data()[8:]) {
-			return true
+			return true, swarm.ContentChunk
 		}
 	}
-	return false
+	return false, swarm.InvalidChunk
 }

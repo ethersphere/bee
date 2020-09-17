@@ -41,13 +41,15 @@ func TestValidator(t *testing.T) {
 
 	// check valid chunk
 	v := soc.NewValidator()
-	if !v.Validate(sch) {
+	yes, _ := v.Validate(sch)
+	if !yes {
 		t.Fatal("valid chunk evaluates to invalid")
 	}
 
 	// check invalid data
 	sch.Data()[0] = 0x01
-	if v.Validate(sch) {
+	yes, cType := v.Validate(sch)
+	if yes && cType == swarm.SingleOwnerChunk {
 		t.Fatal("chunk with invalid data evaluates to valid")
 	}
 
@@ -57,7 +59,8 @@ func TestValidator(t *testing.T) {
 	wrongAddressBytes[0] = 255 - wrongAddressBytes[0]
 	wrongAddress := swarm.NewAddress(wrongAddressBytes)
 	sch = swarm.NewChunk(wrongAddress, sch.Data())
-	if v.Validate(sch) {
+	yes, cType = v.Validate(sch)
+	if yes && cType == swarm.SingleOwnerChunk {
 		t.Fatal("chunk with invalid address evaluates to valid")
 	}
 }

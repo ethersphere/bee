@@ -30,13 +30,15 @@ func TestValidator(t *testing.T) {
 	binary.LittleEndian.PutUint64(fooBytes, uint64(fooLength))
 	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
-	if !validator.Validate(ch) {
+	yes, _ := validator.Validate(ch)
+	if !yes {
 		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 
 	// now test with incorrect data
 	ch = swarm.NewChunk(address, fooBytes[:len(fooBytes)-1])
-	if validator.Validate(ch) {
+	yes, cType := validator.Validate(ch)
+	if yes && cType == swarm.ContentChunk {
 		t.Fatalf("data '%s' should not have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 }

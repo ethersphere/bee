@@ -5,11 +5,15 @@
 package swarm_test
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -79,5 +83,48 @@ func TestAddress_jsonMarshalling(t *testing.T) {
 
 	if !a1.Equal(a2) {
 		t.Error("unmarshalled address is not equal to the original")
+	}
+}
+
+func TestValidators(t *testing.T) {
+	cv := content.NewValidator()
+	sv := soc.NewValidator()
+	chunkValidator := swarm.NewChunkValidator(sv, cv)
+
+	// test a content chunk validation
+	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
+	address := swarm.MustParseHexAddress(bmtHashOfFoo)
+	foo := "foo"
+	fooLength := len(foo)
+	fooBytes := make([]byte, 8+fooLength)
+	binary.LittleEndian.PutUint64(fooBytes, uint64(fooLength))
+	copy(fooBytes[8:], foo)
+	ch := swarm.NewChunk(address, fooBytes)
+	yes, cType := chunkValidator.Validate(ch)
+	if !yes {
+		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
+	}
+	if cType != swarm.ContentChunk {
+		t.Fatal("invalid chunk type")
+	}
+
+	// test a SOC chunk validation
+	id := make([]byte, soc.IdSize)
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	sch, err := soc.NewChunk(id, ch, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yes, cType = chunkValidator.Validate(sch)
+	if !yes {
+		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
+	}
+	if cType != swarm.SingleOwnerChunk {
+		t.Fatal("invalid chunk type")
 	}
 }

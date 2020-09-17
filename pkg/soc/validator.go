@@ -20,15 +20,19 @@ func NewValidator() swarm.Validator {
 }
 
 // Validate performs the validation check.
-func (v *Validator) Validate(ch swarm.Chunk) (valid bool) {
+func (v *Validator) Validate(ch swarm.Chunk) (valid bool, cType swarm.ChunkType) {
 	s, err := FromChunk(ch)
 	if err != nil {
-		return false
+		return false, swarm.InvalidChunk
 	}
 
 	address, err := s.Address()
 	if err != nil {
-		return false
+		return false, swarm.InvalidChunk
 	}
-	return ch.Address().Equal(address)
+	yes := ch.Address().Equal(address)
+	if yes {
+		return true, swarm.SingleOwnerChunk
+	}
+	return false, swarm.InvalidChunk
 }

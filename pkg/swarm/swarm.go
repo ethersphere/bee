@@ -29,6 +29,14 @@ var (
 	NewHasher = sha3.NewLegacyKeccak256
 )
 
+type ChunkType uint8
+const (
+	InvalidChunk = iota
+	ContentChunk
+	SingleOwnerChunk
+)
+
+
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.
 type Address struct {
@@ -161,7 +169,7 @@ func (c *chunk) Equal(cp Chunk) bool {
 }
 
 type Validator interface {
-	Validate(ch Chunk) (valid bool)
+	Validate(ch Chunk) (valid bool, chunkType ChunkType)
 }
 
 type chunkValidator struct {
@@ -175,12 +183,13 @@ func NewChunkValidator(v ...Validator) Validator {
 	}
 }
 
-func (c *chunkValidator) Validate(ch Chunk) bool {
+func (c *chunkValidator) Validate(ch Chunk) (bool, ChunkType) {
 	for _, v := range c.set {
-		if v.Validate(ch) {
-			return true
+		yes, cType := v.Validate(ch)
+		if yes {
+			return yes, cType
 		}
 	}
 
-	return false
+	return false, InvalidChunk
 }

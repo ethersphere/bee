@@ -165,7 +165,8 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 
 	// credit the peer after successful delivery
 	chunk = swarm.NewChunk(addr, d.Data)
-	if !s.validator.Validate(chunk) {
+	yes, _ := s.validator.Validate(chunk)
+	if !yes {
 		return nil, peer, err
 	}
 
