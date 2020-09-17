@@ -197,7 +197,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		if o.SwapInitialDeposit != 0 {
 			logger.Info("depositing into new chequebook")
 
-			depositHash, err := chequebookService.Deposit(p2pCtx, big.NewInt(20))
+			depositHash, err := chequebookService.Deposit(p2pCtx, big.NewInt(int64(o.SwapInitialDeposit)))
 			if err != nil {
 				return nil, err
 			}
