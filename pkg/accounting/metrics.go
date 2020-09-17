@@ -64,6 +64,7 @@ func newMetrics() metrics {
 	}
 }
 
+// Metrics returns the prometheus Collector for the accounting service.
 func (a *Accounting) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(a.metrics)
 }
