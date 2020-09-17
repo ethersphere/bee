@@ -462,14 +462,12 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 //   - in some cases we are going to use -1 * result in the following operations, which is secured by this check
 //   - we also do not want to possibly store this value as balance, even if ( -1 * result ) is not used immediately afterwards, because it could
 //		disable settleing for this amount as the value would create overflow
-
 func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
-	result = base - int64(subtracted)
-
 	if subtracted > math.MaxInt64 {
 		return 0, ErrOverflow
 	}
 
+	result = base - int64(subtracted)
 	if result > base {
 		return 0, ErrOverflow
 	}
@@ -485,7 +483,6 @@ func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
 // It checks for
 //   - overflow safety in conversion of uint64 to int64
 //   - safety of the arithmetic
-
 func addI64pU64(a int64, b uint64) (result int64, err error) {
 	if b > math.MaxInt64 {
 		return 0, ErrOverflow
