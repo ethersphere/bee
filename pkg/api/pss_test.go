@@ -57,7 +57,7 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tc, err = m.Wrap(targets)
+	tc, err = m.Wrap(context.Background(), targets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tc, err = m.Wrap(targets)
+	tc, err = m.Wrap(context.Background(), targets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tc, err = m.Wrap(targets)
+	tc, err = m.Wrap(context.Background(), targets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestPssPingPong(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tc, err = m.Wrap(targets)
+	tc, err = m.Wrap(context.Background(), targets)
 	if err != nil {
 		t.Fatal(err)
 	}
