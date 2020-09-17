@@ -167,20 +167,24 @@ func TestSelfAddressedEnvelope(t *testing.T) {
 	}
 	// with target len 1
 	ctx := context.Background()
-	envelope1, err := soc.CreateSelfAddressedEnvelope(ctx, owner, overlayAddres, 1, c1.Address(), signer)
+	targetLength := 1
+	envelope1, err := soc.CreateSelfAddressedEnvelope(ctx, owner, overlayAddres, targetLength, c1.Address(), signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if envelope1.Address().Bytes()[0] != overlayAddres.Bytes()[0] {
+
+	if !bytes.Equal(envelope1.Address().Bytes()[:targetLength], overlayAddres.Bytes()[:targetLength]) {
 		t.Fatal(" invalid prefix mined")
 	}
 
 	// with target len 2
-	envelope2, err := soc.CreateSelfAddressedEnvelope(ctx, owner, overlayAddres, 2, c1.Address(), signer)
+	targetLength = 2
+	envelope2, err := soc.CreateSelfAddressedEnvelope(ctx, owner, overlayAddres, targetLength, c1.Address(), signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if envelope2.Address().Bytes()[0] != overlayAddres.Bytes()[0] {
+
+	if !bytes.Equal(envelope2.Address().Bytes()[:targetLength], overlayAddres.Bytes()[:targetLength]) {
 		t.Fatal(" invalid prefix mined")
 	}
 }
