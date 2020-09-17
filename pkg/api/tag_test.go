@@ -8,13 +8,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -46,7 +47,7 @@ func TestTags(t *testing.T) {
 		logger             = logging.New(ioutil.Discard, 0)
 		tag                = tags.NewTags(mockStatestore, logger)
 		mockPusher         = mp.NewMockPusher(tag)
-		client             = newTestServer(t, testServerOptions{
+		client, _, _       = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tag,
 		})

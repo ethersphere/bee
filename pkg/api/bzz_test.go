@@ -9,13 +9,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io"
 	"io/ioutil"
 	"mime"
 	"net/http"
 	"strings"
 	"testing"
+
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
@@ -36,7 +37,7 @@ func TestBzz(t *testing.T) {
 		ctx                 = context.Background()
 		mockStatestore      = statestore.NewStateStore()
 		logger              = logging.New(ioutil.Discard, 0)
-		client              = newTestServer(t, testServerOptions{
+		client, _, _        = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logging.New(ioutil.Discard, 5),

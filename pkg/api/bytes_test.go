@@ -6,10 +6,11 @@ package api_test
 
 import (
 	"bytes"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"net/http"
 	"testing"
+
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -31,7 +32,7 @@ func TestBytes(t *testing.T) {
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 0)
-		client         = newTestServer(t, testServerOptions{
+		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logging.New(ioutil.Discard, 5),
