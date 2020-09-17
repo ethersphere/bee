@@ -34,10 +34,10 @@ type PssMessage struct {
 }
 
 func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
-	t, _ := mux.Vars(r)["topic"]
+	t := mux.Vars(r)["topic"]
 	topic := trojan.NewTopic(t)
 
-	tg, _ := mux.Vars(r)["targets"]
+	tg := mux.Vars(r)["targets"]
 	var targets trojan.Targets
 	tgts := strings.Split(tg, ",")
 
@@ -80,7 +80,7 @@ func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t, _ := mux.Vars(r)["topic"]
+	t := mux.Vars(r)["topic"]
 	s.wsWg.Add(1)
 	go s.pumpWs(conn, t)
 }
