@@ -263,7 +263,7 @@ func TestPssPingPong(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-time.After(500 * time.Millisecond) // wait to see that the websocket is kept alive
+	time.Sleep(500 * time.Millisecond) // wait to see that the websocket is kept alive
 
 	err = pss.TryUnwrap(context.Background(), tc)
 	if err != nil {
@@ -300,7 +300,7 @@ func waitReadMessage(t *testing.T, mtx *sync.Mutex, cl *websocket.Conn, targetCo
 			copy(targetContent, message)
 			mtx.Unlock()
 		}
-		<-time.After(50 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

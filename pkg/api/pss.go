@@ -34,22 +34,13 @@ type PssMessage struct {
 }
 
 func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
-	t, ok := mux.Vars(r)["topic"]
-	if !ok {
-		s.Logger.Error("pss send: no topic")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
+	t, _ := mux.Vars(r)["topic"]
 	topic := trojan.NewTopic(t)
 
-	tg, ok := mux.Vars(r)["targets"]
-	if !ok {
-		s.Logger.Error("pss send: no targets")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
+	tg, _ := mux.Vars(r)["targets"]
 	var targets trojan.Targets
 	tgts := strings.Split(tg, ",")
+
 	for _, v := range tgts {
 		target, err := hex.DecodeString(v)
 		if err != nil || len(target) > targetMaxLength {
@@ -71,7 +62,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.Pss.Send(r.Context(), targets, topic, payload)
 	if err != nil {
-		s.Logger.Debugf("pss send payload: %v", err)
+		s.Logger.Debugf("pss send payload: %v. topic: %s", err, t)
 		s.Logger.Error("pss send payload")
 		jsonhttp.InternalServerError(w, nil)
 		return
@@ -89,12 +80,7 @@ func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t, ok := mux.Vars(r)["topic"]
-	if !ok {
-		s.Logger.Error("pss ws: no topic")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
+	t, _ := mux.Vars(r)["topic"]
 	s.wsWg.Add(1)
 	go s.pumpWs(conn, t)
 }
@@ -162,6 +148,7 @@ func (s *server) pumpWs(conn *websocket.Conn, t string) {
 				return
 			}
 			if err = conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				// error encountered while pinging client. client probably gone
 				return
 			}
 		}
