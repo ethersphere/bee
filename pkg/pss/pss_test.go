@@ -159,7 +159,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := msg.Wrap(targets)
+	c, err := msg.Wrap(context.Background(), targets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err = msg.Wrap(targets)
+	c, err = msg.Wrap(context.Background(), targets)
 	if err != nil {
 		t.Fatal(err)
 	}
