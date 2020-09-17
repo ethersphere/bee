@@ -155,10 +155,7 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		err = repairHandler(context.Background(), &msg)
-		if err != nil {
-			t.Fatal(err)
-		}
+		repairHandler(context.Background(), &msg)
 
 		// check if receipt is received
 		if receipt == nil {
@@ -200,10 +197,7 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		err = repairHandler(context.Background(), &msg)
-		if !errors.Is(err, recovery.ErrChunkNotPresent) {
-			t.Fatal(err)
-		}
+		repairHandler(context.Background(), &msg)
 
 		if pushServiceCalled {
 			t.Fatal("push service called even if the chunk is not present")
@@ -243,10 +237,7 @@ func TestNewRepairHandler(t *testing.T) {
 		}
 
 		// invoke the chunk repair handler
-		err = repairHandler(context.Background(), &msg)
-		if err != nil && err != receiptError {
-			t.Fatal(err)
-		}
+		repairHandler(context.Background(), &msg)
 
 		if receiptError == nil {
 			t.Fatal("pushsync did not generate a receipt error")
