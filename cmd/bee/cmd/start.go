@@ -204,6 +204,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				GatewayMode:            c.config.GetBool(optionNameGatewayMode),
 				SwapEndpoint:           c.config.GetString(optionNameSwapEndpoint),
 				SwapFactoryAddress:     c.config.GetString(optionNameSwapFactoryAddress),
+				SwapInitialDeposit:     c.config.GetUint64(optionNameSwapInitialDeposit),
 			})
 			if err != nil {
 				return err

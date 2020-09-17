@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -158,67 +157,14 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	logger.Infof("using ethereum address %x", overlayEthAddress)
 
+	// TODO: factory address discovery
+
 	chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress))
 	if err != nil {
 		return nil, err
 	}
 
-	err = chequebookFactory.VerifyBytecode(p2pCtx)
-	if err != nil {
-		return nil, err
-	}
-
-	var chequebookService chequebook.Service
-	var chequebookAddress common.Address
-	err = stateStore.Get("chequebook", &chequebookAddress)
-	if err != nil {
-		if err != storage.ErrNotFound {
-			return nil, err
-		}
-		logger.Info("deploying new chequebook")
-
-		chequebookAddress, err = chequebookFactory.Deploy(p2pCtx, common.BytesToAddress(overlayEthAddress), big.NewInt(0))
-		if err != nil {
-			return nil, err
-		}
-
-		logger.Infof("deployed to address %x", chequebookAddress)
-
-		err = stateStore.Put("chequebook", chequebookAddress)
-		if err != nil {
-			return nil, err
-		}
-
-		chequebookService, err = chequebook.New(swapBackend, transactionService, chequebookAddress)
-		if err != nil {
-			return nil, err
-		}
-
-		if o.SwapInitialDeposit != 0 {
-			logger.Info("depositing into new chequebook")
-
-			depositHash, err := chequebookService.Deposit(p2pCtx, big.NewInt(int64(o.SwapInitialDeposit)))
-			if err != nil {
-				return nil, err
-			}
-
-			err = chequebookService.WaitForDeposit(p2pCtx, depositHash)
-			if err != nil {
-				return nil, err
-			}
-
-			logger.Infof("deposited to cheque %x in transaction %x", chequebookAddress, depositHash)
-		}
-	} else {
-		chequebookService, err = chequebook.New(swapBackend, transactionService, chequebookAddress)
-		if err != nil {
-			return nil, err
-		}
-
-		logger.Infof("using existing chequebook %x", chequebookAddress)
-	}
-
-	err = chequebookFactory.VerifyChequebook(p2pCtx, chequebookService.Address())
+	_, err = chequebook.Init(p2pCtx, chequebookFactory, stateStore, logger, o.SwapInitialDeposit, transactionService, swapBackend, common.BytesToAddress(overlayEthAddress))
 	if err != nil {
 		return nil, err
 	}
