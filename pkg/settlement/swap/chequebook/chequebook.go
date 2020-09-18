@@ -17,10 +17,12 @@ import (
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
+// Deposit contains the information for a deposit request
 type Deposit struct {
 	amount *big.Int
 }
 
+// Service is the main interface for interacting with the nodes chequebook
 type Service interface {
 	Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 	DepositStatus(hash common.Hash) (*Deposit, error)

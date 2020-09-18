@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
+// SimpleSwapBinding is the interface for the generated go bindings for ERC20SimpleSwap
 type SimpleSwapBinding interface {
 	Balance(*bind.CallOpts) (*big.Int, error)
 	Token(*bind.CallOpts) (common.Address, error)
@@ -20,20 +21,24 @@ type SimpleSwapBinding interface {
 
 type SimpleSwapBindingFunc = func(common.Address, bind.ContractBackend) (SimpleSwapBinding, error)
 
+// NewSimpleSwapBindings generates the default go bindings
 func NewSimpleSwapBindings(address common.Address, backend bind.ContractBackend) (SimpleSwapBinding, error) {
 	return simpleswapfactory.NewERC20SimpleSwap(address, backend)
 }
 
+// ERC20Binding is the interface for the generated go bindings for ERC20
 type ERC20Binding interface {
 	BalanceOf(*bind.CallOpts, common.Address) (*big.Int, error)
 }
 
 type ERC20BindingFunc = func(common.Address, bind.ContractBackend) (ERC20Binding, error)
 
+// NewERC20Bindings generates the default go bindings
 func NewERC20Bindings(address common.Address, backend bind.ContractBackend) (ERC20Binding, error) {
 	return simpleswapfactory.NewERC20(address, backend)
 }
 
+// SimpleSwapFactoryBinding is the interface for the generated go bindings for SimpleSwapFactory
 type SimpleSwapFactoryBinding interface {
 	ParseSimpleSwapDeployed(types.Log) (*simpleswapfactory.SimpleSwapFactorySimpleSwapDeployed, error)
 	DeployedContracts(*bind.CallOpts, common.Address) (bool, error)
@@ -42,6 +47,7 @@ type SimpleSwapFactoryBinding interface {
 
 type SimpleSwapFactoryBindingFunc = func(common.Address, bind.ContractBackend) (SimpleSwapFactoryBinding, error)
 
+// NewSimpleSwapFactoryBindingFunc generates the default go bindings
 func NewSimpleSwapFactoryBindingFunc(address common.Address, backend bind.ContractBackend) (SimpleSwapFactoryBinding, error) {
 	return simpleswapfactory.NewSimpleSwapFactory(address, backend)
 }

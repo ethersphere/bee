@@ -88,6 +88,7 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 
 func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
 	hash := (&types.HomesteadSigner{}).Hash(transaction).Bytes()
+	// isCompressedKey is false here so we get the expected v value (27 or 28)
 	signature, err := btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(d.key), hash, false)
 	if err != nil {
 		return nil, err

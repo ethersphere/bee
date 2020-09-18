@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -151,21 +152,31 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		if err != nil {
 			return nil, err
 		}
-
 		overlayEthAddress, err := signer.EthereumAddress()
 		if err != nil {
 			return nil, err
 		}
 
+		// print ethereum address so users know which address we need to fund
 		logger.Infof("using ethereum address %x", overlayEthAddress)
 
-		// TODO: factory address discovery
+		// TODO: factory address discovery for well-known networks (goerli for beta)
+
+		if o.SwapFactoryAddress == "" {
+			return nil, errors.New("no known factory address")
+		} else {
+			if !common.IsHexAddress(o.SwapFactoryAddress) {
+				return nil, errors.New("invalid factory address")
+			}
+		}
 
 		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress), chequebook.NewSimpleSwapFactoryBindingFunc)
 		if err != nil {
 			return nil, err
 		}
 
+		// intialize chequebook logic
+		// return value is ignored because we don't do anything yet after initialization. this will be passed into swap settlement.
 		_, err = chequebook.Init(p2pCtx,
 			chequebookFactory,
 			stateStore,
