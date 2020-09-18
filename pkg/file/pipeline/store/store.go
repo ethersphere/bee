@@ -6,6 +6,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -13,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
+
+var errInvalidData = errors.New("store: invalid data")
 
 type storeWriter struct {
 	l    storage.Putter
@@ -28,6 +31,9 @@ func NewStoreWriter(ctx context.Context, l storage.Putter, mode storage.ModePut,
 }
 
 func (w *storeWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
+	if p.Ref == nil || p.Data == nil {
+		return errInvalidData
+	}
 	tag := sctx.GetTag(w.ctx)
 	var c swarm.Chunk
 	if tag != nil {
