@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/logging"
 	"golang.org/x/net/context"
 )
 
@@ -45,18 +46,20 @@ type TransactionService interface {
 }
 
 type transactionService struct {
+	logger  logging.Logger
 	backend Backend
 	signer  crypto.Signer
 	sender  common.Address
 }
 
 // NewTransactionService creates a new transaction service
-func NewTransactionService(backend Backend, signer crypto.Signer) (TransactionService, error) {
+func NewTransactionService(logger logging.Logger, backend Backend, signer crypto.Signer) (TransactionService, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
 	return &transactionService{
+		logger:  logger,
 		backend: backend,
 		signer:  signer,
 		sender:  common.BytesToAddress(senderAddress),
@@ -86,12 +89,17 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 // WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled
 func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	for {
-		receipt, _ := t.backend.TransactionReceipt(ctx, txHash)
+		receipt, err := t.backend.TransactionReceipt(ctx, txHash)
 		if receipt != nil {
 			return receipt, nil
 		}
+		if err != nil {
+			// some node implementations return an error if the transaction is not yet mined
+			t.logger.Tracef("waiting for transaction %x to be mined: %v", txHash, err)
+		} else {
+			t.logger.Tracef("waiting for transaction %x to be mined", txHash)
+		}
 
-		// Wait for the next round.
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

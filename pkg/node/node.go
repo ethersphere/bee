@@ -148,7 +148,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		if err != nil {
 			return nil, err
 		}
-		transactionService, err := chequebook.NewTransactionService(swapBackend, signer)
+		transactionService, err := chequebook.NewTransactionService(logger, swapBackend, signer)
 		if err != nil {
 			return nil, err
 		}
