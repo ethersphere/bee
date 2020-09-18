@@ -134,6 +134,69 @@ func TestDelivery(t *testing.T) {
 	}
 }
 
+func TestRetrieveChunk(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
+	pricer := accountingmock.NewPricer(1, 1)
+
+	// requesting a chunk from downstream peer is expected
+	t.Run("downstream", func(t *testing.T) {
+		serverAddress := swarm.MustParseHexAddress("03")
+		chunkAddress := swarm.MustParseHexAddress("02")
+		clientAddress := swarm.MustParseHexAddress("01")
+
+		serverStorer := storemock.NewStorer()
+		chunk := swarm.NewChunk(chunkAddress, []byte("some data"))
+		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+		server.SetStorer(serverStorer)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+
+		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+			_, _, _ = f(serverAddress, 0)
+			return nil
+		}}
+		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+
+		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+	})
+
+	// requesting a chunk from the upstream peer should not be possible to avoid request forwarding loops
+	t.Run("upstream", func(t *testing.T) {
+		serverAddress := swarm.MustParseHexAddress("01")
+		chunkAddress := swarm.MustParseHexAddress("02")
+		clientAddress := swarm.MustParseHexAddress("03")
+
+		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+
+		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+			_, _, _ = f(serverAddress, 0)
+			return nil
+		}}
+		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+
+		// do not request from the upstream peer
+		_, err := client.RetrieveChunk(context.Background(), chunkAddress)
+		if !errors.Is(err, topology.ErrNotFound) {
+			t.Fatalf("got error %v, want %v", err, topology.ErrNotFound)
+		}
+	})
+}
+
 type mockPeerSuggester struct {
 	eachPeerRevFunc func(f topology.EachPeerFunc) error
 }
