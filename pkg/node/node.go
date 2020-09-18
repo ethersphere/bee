@@ -164,10 +164,8 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 		if o.SwapFactoryAddress == "" {
 			return nil, errors.New("no known factory address")
-		} else {
-			if !common.IsHexAddress(o.SwapFactoryAddress) {
-				return nil, errors.New("invalid factory address")
-			}
+		} else if !common.IsHexAddress(o.SwapFactoryAddress) {
+			return nil, errors.New("invalid factory address")
 		}
 
 		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress), chequebook.NewSimpleSwapFactoryBindingFunc)
@@ -175,7 +173,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 			return nil, err
 		}
 
-		// intialize chequebook logic
+		// initialize chequebook logic
 		// return value is ignored because we don't do anything yet after initialization. this will be passed into swap settlement.
 		_, err = chequebook.Init(p2pCtx,
 			chequebookFactory,

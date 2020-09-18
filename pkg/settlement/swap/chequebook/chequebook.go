@@ -48,7 +48,7 @@ type service struct {
 	deposits   map[common.Hash]Deposit
 }
 
-func New(backend Backend, transactionService TransactionService, address common.Address, erc20Address common.Address, ownerAddress common.Address, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
+func New(backend Backend, transactionService TransactionService, address, erc20Address, ownerAddress common.Address, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
 	chequebookABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20SimpleSwapABI))
 	if err != nil {
 		return nil, err
