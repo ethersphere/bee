@@ -5,6 +5,7 @@
 package bmt
 
 import (
+	"errors"
 	"hash"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
@@ -12,6 +13,10 @@ import (
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
+)
+
+var (
+	errInvalidData = errors.New("bmt: invalid data")
 )
 
 type bmtWriter struct {
@@ -31,6 +36,9 @@ func NewBmtWriter(branches int, next pipeline.ChainWriter) pipeline.ChainWriter 
 // ChainWrite writes data in chain. It assumes span has been prepended to the data.
 // The span can be encrypted or unencrypted.
 func (w *bmtWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
+	if len(p.Data) < swarm.SpanSize {
+		return errInvalidData
+	}
 	w.b.Reset()
 	err := w.b.SetSpanBytes(p.Data[:swarm.SpanSize])
 	if err != nil {

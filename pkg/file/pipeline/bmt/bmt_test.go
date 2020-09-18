@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
@@ -23,6 +24,7 @@ func TestBmtWriter(t *testing.T) {
 		data    []byte
 		expHash []byte
 		expErr  error
+		noSpan  bool
 	}{
 		{
 			// this is a special case, since semantically it can be considered the hash
@@ -36,17 +38,32 @@ func TestBmtWriter(t *testing.T) {
 			data:    []byte("hello world"),
 			expHash: mustDecodeString(t, "92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f"),
 		},
+		{
+			name:   "no data",
+			data:   []byte{},
+			noSpan: true,
+			expErr: bmt.ErrInvalidData,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mockChainWriter := mock.NewChainWriter()
 			writer := bmt.NewBmtWriter(128, mockChainWriter)
 
-			span := make([]byte, 8)
-			binary.LittleEndian.PutUint64(span, uint64(len(tc.data)))
-			data := append(span, tc.data...)
+			var data []byte
+
+			if !tc.noSpan {
+				data = make([]byte, 8)
+				binary.LittleEndian.PutUint64(data, uint64(len(tc.data)))
+			}
+
+			data = append(data, tc.data...)
 			args := pipeline.PipeWriteArgs{Data: data}
 
 			err := writer.ChainWrite(&args)
+			if err != nil && tc.expErr != nil && errors.Is(err, tc.expErr) {
+				return
+			}
+
 			if err != nil {
 				t.Fatal(err)
 			}
