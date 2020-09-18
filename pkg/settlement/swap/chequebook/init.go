@@ -10,7 +10,7 @@ import (
 )
 
 func Init(
-	p2pCtx context.Context,
+	ctx context.Context,
 	chequebookFactory Factory,
 	stateStore storage.StateStorer,
 	logger logging.Logger,
@@ -18,7 +18,12 @@ func Init(
 	transactionService TransactionService,
 	swapBackend Backend,
 	overlayEthAddress common.Address) (chequebookService Service, err error) {
-	err = chequebookFactory.VerifyBytecode(p2pCtx)
+	err = chequebookFactory.VerifyBytecode(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	erc20Address, err := chequebookFactory.ERC20Address(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +36,7 @@ func Init(
 		}
 		logger.Info("deploying new chequebook")
 
-		chequebookAddress, err = chequebookFactory.Deploy(p2pCtx, overlayEthAddress, big.NewInt(0))
+		chequebookAddress, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +48,7 @@ func Init(
 			return nil, err
 		}
 
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, NewSimpleSwapBindings, NewERC20Bindings)
 		if err != nil {
 			return nil, err
 		}
@@ -51,12 +56,12 @@ func Init(
 		if swapInitialDeposit != 0 {
 			logger.Info("depositing into new chequebook")
 
-			depositHash, err := chequebookService.Deposit(p2pCtx, big.NewInt(int64(swapInitialDeposit)))
+			depositHash, err := chequebookService.Deposit(ctx, big.NewInt(int64(swapInitialDeposit)))
 			if err != nil {
 				return nil, err
 			}
 
-			err = chequebookService.WaitForDeposit(p2pCtx, depositHash)
+			err = chequebookService.WaitForDeposit(ctx, depositHash)
 			if err != nil {
 				return nil, err
 			}
@@ -64,7 +69,7 @@ func Init(
 			logger.Infof("deposited to chequebook %x in transaction %x", chequebookAddress, depositHash)
 		}
 	} else {
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, NewSimpleSwapBindings, NewERC20Bindings)
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +77,7 @@ func Init(
 		logger.Infof("using existing chequebook %x", chequebookAddress)
 	}
 
-	err = chequebookFactory.VerifyChequebook(p2pCtx, chequebookService.Address())
+	err = chequebookFactory.VerifyChequebook(ctx, chequebookService.Address())
 	if err != nil {
 		return nil, err
 	}

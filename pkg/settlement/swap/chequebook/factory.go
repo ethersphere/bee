@@ -24,6 +24,7 @@ var (
 )
 
 type Factory interface {
+	ERC20Address(ctx context.Context) (common.Address, error)
 	Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Address, error)
 	VerifyBytecode(ctx context.Context) error
 	VerifyChequebook(ctx context.Context, chequebook common.Address) error
@@ -130,4 +131,14 @@ func (c *factory) VerifyChequebook(ctx context.Context, chequebook common.Addres
 		return ErrNotDeployedByFactory
 	}
 	return nil
+}
+
+func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
+	erc20Address, err := c.instance.ERC20Address(&bind.CallOpts{
+		Context: ctx,
+	})
+	if err != nil {
+		return common.Address{}, err
+	}
+	return erc20Address, nil
 }

@@ -32,18 +32,21 @@ type Service interface {
 type service struct {
 	backend            Backend
 	transactionService TransactionService
+
 	address            common.Address
-
 	chequebookABI      abi.ABI
-	chequebookInstance *simpleswapfactory.ERC20SimpleSwap
+	chequebookInstance SimpleSwapBinding
+	ownerAddress       common.Address
 
-	erc20ABI abi.ABI
+	erc20Address  common.Address
+	erc20ABI      abi.ABI
+	erc20Instance ERC20Binding
 
 	depositsMu sync.Mutex
 	deposits   map[common.Hash]Deposit
 }
 
-func New(backend Backend, transactionService TransactionService, address common.Address) (Service, error) {
+func New(backend Backend, transactionService TransactionService, address common.Address, erc20Address common.Address, ownerAddress common.Address, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
 	chequebookABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20SimpleSwapABI))
 	if err != nil {
 		return nil, err
@@ -54,7 +57,12 @@ func New(backend Backend, transactionService TransactionService, address common.
 		return nil, err
 	}
 
-	chequebookInstance, err := simpleswapfactory.NewERC20SimpleSwap(address, backend)
+	chequebookInstance, err := simpleSwapBindingFunc(address, backend)
+	if err != nil {
+		return nil, err
+	}
+
+	erc20Instance, err := erc20BindingFunc(erc20Address, backend)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +73,10 @@ func New(backend Backend, transactionService TransactionService, address common.
 		address:            address,
 		chequebookABI:      chequebookABI,
 		chequebookInstance: chequebookInstance,
+		ownerAddress:       ownerAddress,
+		erc20Address:       erc20Address,
 		erc20ABI:           erc20ABI,
+		erc20Instance:      erc20Instance,
 		deposits:           make(map[common.Hash]Deposit),
 	}, nil
 }
@@ -75,20 +86,24 @@ func (s *service) Address() common.Address {
 }
 
 func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	balance, err := s.erc20Instance.BalanceOf(&bind.CallOpts{
+		Context: ctx,
+	}, s.ownerAddress)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	if balance.Cmp(amount) < 0 {
+		return common.Hash{}, errors.New("insufficient token balance")
+	}
+
 	callData, err := s.erc20ABI.Pack("transfer", s.address, amount)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
-	erc20Address, err := s.chequebookInstance.Token(&bind.CallOpts{
-		Context: ctx,
-	})
-	if err != nil {
-		return common.Hash{}, err
-	}
-
 	request := &TxRequest{
-		To:       erc20Address,
+		To:       s.erc20Address,
 		Data:     callData,
 		GasPrice: nil,
 		GasLimit: 0,
