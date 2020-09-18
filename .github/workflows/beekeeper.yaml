@@ -98,4 +98,7 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
-          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T ${{ secrets.TUNSHELL_KEY }} eu.relay.tunshell.com
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) {TUNSHELL_SECRET} eu.relay.tunshell.com"
