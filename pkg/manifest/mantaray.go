@@ -68,7 +68,7 @@ func (m *mantarayManifest) Add(path string, entry Entry) error {
 	p := []byte(path)
 	e := entry.Reference().Bytes()
 
-	return m.trie.Add(p, e, m.loader)
+	return m.trie.Add(p, e, entry.Metadata(), m.loader)
 }
 
 func (m *mantarayManifest) Remove(path string) error {
@@ -88,14 +88,14 @@ func (m *mantarayManifest) Remove(path string) error {
 func (m *mantarayManifest) Lookup(path string) (Entry, error) {
 	p := []byte(path)
 
-	ref, err := m.trie.Lookup(p, m.loader)
+	node, err := m.trie.LookupNode(p, m.loader)
 	if err != nil {
 		return nil, ErrNotFound
 	}
 
-	address := swarm.NewAddress(ref)
+	address := swarm.NewAddress(node.Entry())
 
-	entry := NewEntry(address)
+	entry := NewEntry(address, node.Metadata())
 
 	return entry, nil
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -30,8 +31,8 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	nameOrHex := mux.Vars(r)["address"]
-	path := mux.Vars(r)["path"]
-	path = strings.TrimRight(path, "/")
+	pathVar := mux.Vars(r)["path"]
+	pathVar = strings.TrimRight(pathVar, "/")
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
@@ -96,12 +97,69 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	me, err := m.Lookup(path)
+	if pathVar == "" {
+		logger.Tracef("bzz download: handle empty path %s", address)
+
+		indexDocumentSuffixKey := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
+		if indexDocumentSuffixKey != "" {
+			u := r.URL
+			u.Path += "/"
+			u.Path += indexDocumentSuffixKey
+			redirectURL := u.String()
+
+			logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
+
+			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+			return
+		}
+	}
+
+	me, err := m.Lookup(pathVar)
 	if err != nil {
-		logger.Debugf("bzz download: invalid path %s/%s: %v", address, path, err)
+		logger.Debugf("bzz download: invalid path %s/%s: %v", address, pathVar, err)
 		logger.Error("bzz download: invalid path")
 
 		if errors.Is(err, manifest.ErrNotFound) {
+
+			// check index path first
+			indexDocumentSuffixPath := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
+			if indexDocumentSuffixPath != "" {
+				if !strings.HasSuffix(pathVar, indexDocumentSuffixPath) {
+					// check if path is directory with index
+					pathWithIndex := path.Join(pathVar, indexDocumentSuffixPath)
+					_, err = m.Lookup(pathWithIndex)
+					if err == nil {
+						// redirect to index file in directory
+						u := r.URL
+						u.Path += "/"
+						u.Path += indexDocumentSuffixPath
+						redirectURL := u.String()
+
+						logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
+
+						http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+						return
+					}
+				}
+			}
+
+			// check if error document is to be shown
+			errorDocumentPath := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteErrorDocumentPathKey)
+			if errorDocumentPath != "" {
+				if pathVar != errorDocumentPath {
+					u := r.URL
+					redirectURL := u.String()
+					redirectURL = strings.TrimRight(redirectURL, "/")
+					redirectURL = strings.TrimRight(redirectURL, pathVar)
+					redirectURL += errorDocumentPath
+
+					logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
+
+					http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+					return
+				}
+			}
+
 			jsonhttp.NotFound(w, "path address not found")
 		} else {
 			jsonhttp.BadRequest(w, "invalid path address")
@@ -155,4 +213,20 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	fileEntryAddress := fe.Reference()
 
 	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders)
+}
+
+func bzzDownloadHandlerManifestRedirect(manifest manifest.Interface, metadataKey string) string {
+	// check for root path
+	me, err := manifest.Lookup(manifestRootPath)
+	if err != nil {
+		// ignore missing manifest root path
+		return ""
+	}
+
+	manifestRootMetadata := me.Metadata()
+	if val, ok := manifestRootMetadata[metadataKey]; ok {
+		return val
+	}
+
+	return ""
 }

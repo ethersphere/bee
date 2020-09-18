@@ -66,7 +66,7 @@ func (m *simpleManifest) Type() string {
 func (m *simpleManifest) Add(path string, entry Entry) error {
 	e := entry.Reference().String()
 
-	return m.manifest.Add(path, e)
+	return m.manifest.Add(path, e, entry.Metadata())
 }
 
 func (m *simpleManifest) Remove(path string) error {
@@ -94,7 +94,7 @@ func (m *simpleManifest) Lookup(path string) (Entry, error) {
 		return nil, fmt.Errorf("parse swarm address: %w", err)
 	}
 
-	entry := NewEntry(address)
+	entry := NewEntry(address, n.Metadata())
 
 	return entry, nil
 }

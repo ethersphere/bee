@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"path"
@@ -32,13 +33,15 @@ func TestDirs(t *testing.T) {
 	var (
 		dirUploadResource    = "/dirs"
 		fileDownloadResource = func(addr string) string { return "/files/" + addr }
+		bzzDownloadResource  = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		storer               = mock.NewStorer()
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
 		client, _, _         = newTestServer(t, testServerOptions{
-			Storer: storer,
-			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(ioutil.Discard, 5),
+			Storer:          storer,
+			Tags:            tags.NewTags(mockStatestore, logger),
+			Logger:          logging.New(ioutil.Discard, 5),
+			PreventRedirect: true,
 		})
 	)
 
@@ -87,7 +90,9 @@ func TestDirs(t *testing.T) {
 	for _, tc := range []struct {
 		name                string
 		wantIndexFilename   string
+		wantErrorFilename   string
 		indexFilenameOption jsonhttptest.Option
+		errorFilenameOption jsonhttptest.Option
 		files               []f // files in dir for test case
 	}{
 		{
@@ -162,7 +167,7 @@ func TestDirs(t *testing.T) {
 		{
 			name:                "explicit index filename",
 			wantIndexFilename:   "index.html",
-			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndextHeader, "index.html"),
+			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
 			files: []f{
 				{
 					data:      []byte("<h1>Swarm"),
@@ -178,13 +183,40 @@ func TestDirs(t *testing.T) {
 		{
 			name:                "nested index filename",
 			wantIndexFilename:   "index.html",
-			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndextHeader, "index.html"),
+			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
 			files: []f{
 				{
 					data:      []byte("<h1>Swarm"),
 					name:      "index.html",
 					dir:       "dir",
 					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
+					header: http.Header{
+						"Content-Type": {"text/html; charset=utf-8"},
+					},
+				},
+			},
+		},
+		{
+			name:                "explicit index and error filename",
+			wantIndexFilename:   "index.html",
+			wantErrorFilename:   "error.html",
+			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
+			errorFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmErrorDocumentHeader, "error.html"),
+			files: []f{
+				{
+					data:      []byte("<h1>Swarm"),
+					name:      "index.html",
+					dir:       "",
+					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
+					header: http.Header{
+						"Content-Type": {"text/html; charset=utf-8"},
+					},
+				},
+				{
+					data:      []byte("<h2>404"),
+					name:      "error.html",
+					dir:       "",
+					reference: swarm.MustParseHexAddress("b1f309c095d650521b75760b23122a9c59c2b581af28fc6daaf9c58da86a204d"),
 					header: http.Header{
 						"Content-Type": {"text/html; charset=utf-8"},
 					},
@@ -205,6 +237,9 @@ func TestDirs(t *testing.T) {
 			}
 			if tc.indexFilenameOption != nil {
 				options = append(options, tc.indexFilenameOption)
+			}
+			if tc.errorFilenameOption != nil {
+				options = append(options, tc.errorFilenameOption)
 			}
 
 			// verify directory tar upload response
@@ -271,15 +306,57 @@ func TestDirs(t *testing.T) {
 				)
 			}
 
+			validateIsRedirect := func(t *testing.T, fromPath, toPath string) {
+				t.Helper()
+
+				expectedResponse := fmt.Sprintf("<a href=\"%s\">Temporary Redirect</a>.\n\n", bzzDownloadResource(resp.Reference.String(), toPath))
+
+				jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(resp.Reference.String(), fromPath), http.StatusTemporaryRedirect,
+					jsonhttptest.WithExpectedResponse([]byte(expectedResponse)),
+				)
+			}
+
 			// check if each file can be located and read
 			for _, file := range tc.files {
 				validateFile(t, file, path.Join(file.dir, file.name))
+			}
 
-				// if there is an index filename to be tested
-				// try to download it using only the directory as the path
-				if file.name == tc.wantIndexFilename {
-					validateFile(t, file, file.dir)
+			// check index filename
+			if tc.wantIndexFilename != "" {
+				entry, err := verifyManifest.Lookup(api.ManifestRootPath)
+				if err != nil {
+					t.Fatal(err)
 				}
+
+				manifestRootMetadata := entry.Metadata()
+				indexDocumentSuffixPath, ok := manifestRootMetadata[api.ManifestWebsiteIndexDocumentSuffixKey]
+				if !ok {
+					t.Fatalf("expected index filename '%s', did not find any", tc.wantIndexFilename)
+				}
+
+				// check index suffix for each dir
+				for _, file := range tc.files {
+					if file.dir != "" {
+						validateIsRedirect(t, file.dir, path.Join(file.dir, indexDocumentSuffixPath))
+					}
+				}
+			}
+
+			// check error filename
+			if tc.wantErrorFilename != "" {
+				entry, err := verifyManifest.Lookup(api.ManifestRootPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				manifestRootMetadata := entry.Metadata()
+				errorDocumentPath, ok := manifestRootMetadata[api.ManifestWebsiteErrorDocumentPathKey]
+				if !ok {
+					t.Fatalf("expected error filename '%s', did not find any", tc.wantErrorFilename)
+				}
+
+				// check error document redirection works
+				validateIsRedirect(t, "_non_existent_file_path_", errorDocumentPath)
 			}
 
 		})
