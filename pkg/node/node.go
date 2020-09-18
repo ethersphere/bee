@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -263,7 +264,15 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 	retrieve.SetStorer(ns)
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
+	silenceNoHandlerFunc := func(ctx context.Context, ch swarm.Chunk) error {
+		err := psss.TryUnwrap(ctx, ch)
+		if errors.Is(err, pss.ErrNoHandler) {
+			return nil
+		}
+		return err
+	}
+
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, silenceNoHandlerFunc, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
 
 	// set the pushSyncer in the PSS
 	psss.SetPushSyncer(pushSyncProtocol)

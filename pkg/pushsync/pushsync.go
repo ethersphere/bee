@@ -90,11 +90,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			_ = stream.FullClose()
 		}
 	}()
-	// Get the delivery
-	chunk, err := ps.getChunkDelivery(r)
-	if err != nil {
-		return fmt.Errorf("chunk delivery from peer %s: %w", p.Address.String(), err)
+
+	var ch pb.Delivery
+	if err = r.ReadMsgWithContext(ctx, &ch); err != nil {
+		ps.metrics.ReceivedChunkErrorCounter.Inc()
+		return fmt.Errorf("pushsync read delivery: %w", err)
 	}
+	ps.metrics.ChunksReceivedCounter.Inc()
+
+	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger)
 	span = span.SetTag("address", chunk.Address().String())
 	defer span.Finish()
@@ -167,20 +171,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	ps.metrics.ReceiptsSentCounter.Inc()
 
 	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
-}
-
-func (ps *PushSync) getChunkDelivery(r protobuf.Reader) (chunk swarm.Chunk, err error) {
-	var ch pb.Delivery
-	if err = r.ReadMsg(&ch); err != nil {
-		ps.metrics.ReceivedChunkErrorCounter.Inc()
-		return nil, err
-	}
-	ps.metrics.ChunksSentCounter.Inc()
-
-	// create chunk
-	addr := swarm.NewAddress(ch.Address)
-	chunk = swarm.NewChunk(addr, ch.Data)
-	return chunk, nil
 }
 
 func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err error) {
@@ -299,14 +289,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	return rec, nil
 }
 
-func (ps *PushSync) deliverToPSS(ctx context.Context, ch swarm.Chunk) error {
-	// if callback is defined, call it for every new, valid chunk
-	if ps.deliveryCallback != nil {
-		return ps.deliveryCallback(ctx, ch)
-	}
-	return nil
-}
-
 func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Writer, p p2p.Peer, chunk swarm.Chunk) error {
 	// Store the chunk in the local store
 	_, err := ps.storer.Put(ctx, storage.ModePutSync, chunk)
@@ -327,10 +309,12 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 		return err
 	}
 
-	// since all PSS messages comes through push sync, deliver them here if this node is the destination
-	err = ps.deliverToPSS(ctx, chunk)
-	if err != nil {
-		ps.logger.Debugf("error pss delivery for chunk %v: %v", chunk.Address(), err)
+	if ps.deliveryCallback != nil {
+		err = ps.deliveryCallback(ctx, chunk)
+		if err != nil {
+			ps.logger.Debugf("pushsync delivery callback: %v", err)
+		}
 	}
+
 	return nil
 }
