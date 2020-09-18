@@ -477,9 +477,8 @@ func TestClosestPeer(t *testing.T) {
 
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
-	var conns int32
 
-	kad := kademlia.New(base, ab, disc, p2pMock(ab, nil, &conns, nil), logger, kademlia.Options{})
+	kad := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), logger, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
