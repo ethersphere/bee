@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/sw3-bindings/simpleswapfactory"
+	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 	"golang.org/x/net/context"
 )
 

@@ -167,8 +167,8 @@ github.com/ethersphere/bmt v0.1.2 h1:FEuvQY9xuK+rDp3VwDVyde8T396Matv/u9PdtKa2r9Q
 github.com/ethersphere/bmt v0.1.2/go.mod h1:fqRBDmYwn3lX2MH4lkImXQgFWeNP8ikLkS/hgi/HRws=
 github.com/ethersphere/manifest v0.2.0 h1:HD2ufiIaw/5Vgrl4XyeGduDJ5tn50wIhqMQoWdT2GME=
 github.com/ethersphere/manifest v0.2.0/go.mod h1:ygAx0KLhXYmKqsjUab95RCbXf8UcO7yMDjyfP0lY76Y=
-github.com/ethersphere/sw3-bindings v2.0.0+incompatible h1:lp7kxWEkciOJrJDoaxbReq3X+27A724lQaIMjjQ8Aqw=
-github.com/ethersphere/sw3-bindings v2.0.0+incompatible/go.mod h1:JdmS+qI3KdMdolP4C+KtrsjTxdG9mTGiHqA+jF2ZYjQ=
+github.com/ethersphere/sw3-bindings/v2 v2.0.0 h1:uc+wBqEMMq7c4NWj+MSkKkkpObgrUYxfAxz6FYJWkI4=
+github.com/ethersphere/sw3-bindings/v2 v2.0.0/go.mod h1:OA34yk7ludjNag+yBDY9Gp3czWoFUVMsiK7gUXnZ26U=
 github.com/fatih/color v1.3.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fjl/memsize v0.0.0-20180418122429-ca190fb6ffbc/go.mod h1:VvhXpOYNQvB+uIk2RvXzuaQtkQJzzIx6lSBe1xv7hi0=
