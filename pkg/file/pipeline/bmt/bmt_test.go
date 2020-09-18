@@ -6,53 +6,65 @@ package bmt_test
 
 import (
 	"bytes"
-	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
 	mock "github.com/ethersphere/bee/pkg/file/pipeline/mock"
-	"github.com/ethersphere/bee/pkg/file/pipeline/store"
-	"github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	addr = []byte{0xaa, 0xbb, 0xcc}
-	data = []byte("hello world")
-)
-
 // TestStoreWriter tests that store writer stores the provided data and calls the next chain writer.
-func TestStoreWriter(t *testing.T) {
-	mockStore := storer.NewStorer()
-	mockChainWriter := mock.NewChainWriter()
-	ctx := context.Background()
-	writer := store.NewStoreWriter(ctx, mockStore, storage.ModePutUpload, mockChainWriter)
+func TestBmtWriter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		data    []byte
+		expHash []byte
+		expErr  error
+	}{
+		{
+			// this is a special case, since semantically it can be considered the hash
+			// of an empty file (since data is all zeros).
+			name:    "all zeros",
+			data:    make([]byte, swarm.ChunkSize),
+			expHash: mustDecodeString(t, "09ae927d0f3aaa37324df178928d3826820f3dd3388ce4aaebfc3af410bde23a"),
+		},
+		{
+			name:    "hello world",
+			data:    []byte("hello world"),
+			expHash: mustDecodeString(t, "92672a471f4419b255d7cb0cf313474a6f5856fb347c5ece85fb706d644b630f"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockChainWriter := mock.NewChainWriter()
+			writer := bmt.NewBmtWriter(128, mockChainWriter)
 
-	args := pipeline.PipeWriteArgs{Ref: addr, Data: data}
-	err := writer.ChainWrite(&args)
-	if err != nil {
-		t.Fatal(err)
-	}
+			span := make([]byte, 8)
+			binary.LittleEndian.PutUint64(span, uint64(len(tc.data)))
+			data := append(span, tc.data...)
+			args := pipeline.PipeWriteArgs{Data: data}
 
-	d, err := mockStore.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(addr))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, d.Data()) {
-		t.Fatal("data mismatch")
-	}
+			err := writer.ChainWrite(&args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(tc.expHash, args.Ref) {
+				t.Fatalf("ref mismatch. got %v want %v", args.Ref, tc.expHash)
+			}
 
-	if calls := mockChainWriter.ChainWriteCalls(); calls != 1 {
-		t.Errorf("wanted 1 ChainWrite call, got %d", calls)
+			if calls := mockChainWriter.ChainWriteCalls(); calls != 1 {
+				t.Errorf("wanted 1 ChainWrite call, got %d", calls)
+			}
+		})
 	}
 }
 
-// TestSum tests that calling Sum on the store writer results in Sum on the next writer in the chain.
+// TestSum tests that calling Sum on the writer calls the next writer's Sum.
 func TestSum(t *testing.T) {
 	mockChainWriter := mock.NewChainWriter()
-	ctx := context.Background()
-	writer := store.NewStoreWriter(ctx, nil, storage.ModePutUpload, mockChainWriter)
+	writer := bmt.NewBmtWriter(128, mockChainWriter)
 	_, err := writer.Sum()
 	if err != nil {
 		t.Fatal(err)
@@ -60,4 +72,14 @@ func TestSum(t *testing.T) {
 	if calls := mockChainWriter.SumCalls(); calls != 1 {
 		t.Fatalf("wanted 1 Sum call but got %d", calls)
 	}
+}
+
+func mustDecodeString(t *testing.T, s string) []byte {
+	t.Helper()
+	v, err := hex.DecodeString(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return v
 }
