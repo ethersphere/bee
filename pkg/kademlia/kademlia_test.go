@@ -872,7 +872,7 @@ func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 		default:
 		}
 		i := 0
-		k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
+		_ = k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
 			return false, false, nil
 		})
