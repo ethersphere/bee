@@ -21,6 +21,7 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 )
 
+// Backend is the minimum of blockchain backend functions we need
 type Backend interface {
 	bind.ContractBackend
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
@@ -35,8 +36,11 @@ type TxRequest struct {
 	Value    *big.Int       // amount of wei to send
 }
 
+// TransactionService is the service to send transactions. It takes care of gas price, gas limit and nonce management.
 type TransactionService interface {
+	// Send creates a transaction based on the request and sends it
 	Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error)
+	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled
 	WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 }
 
@@ -46,6 +50,7 @@ type transactionService struct {
 	sender  common.Address
 }
 
+// NewTransactionService creates a new transaction service
 func NewTransactionService(backend Backend, signer crypto.Signer) (TransactionService, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
@@ -58,6 +63,7 @@ func NewTransactionService(backend Backend, signer crypto.Signer) (TransactionSe
 	}, nil
 }
 
+// Send creates and signs a transaction based on the request and sends it
 func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error) {
 	tx, err := prepareTransaction(ctx, request, t.sender, t.backend)
 	if err != nil {
@@ -77,8 +83,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 	return signedTx.Hash(), nil
 }
 
-// WaitMined waits until either the transaction with the given hash has been mined or the context is cancelled
-// this is an adapted version of go-ethereums bind.WaitMined
+// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled
 func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	for {
 		receipt, _ := t.backend.TransactionReceipt(ctx, txHash)
@@ -95,6 +100,7 @@ func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.H
 	}
 }
 
+// prepareTransaction creates a signable transaction based on a request
 func prepareTransaction(ctx context.Context, request *TxRequest, from common.Address, backend Backend) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -17,17 +16,15 @@ import (
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
-// Deposit contains the information for a deposit request
-type Deposit struct {
-	amount *big.Int
-}
-
 // Service is the main interface for interacting with the nodes chequebook
 type Service interface {
+	// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
 	Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
-	DepositStatus(hash common.Hash) (*Deposit, error)
+	// WaitForDeposit waits for the deposit transaction to confirm and verifies the result
 	WaitForDeposit(ctx context.Context, txHash common.Hash) error
+	// Balance returns the token balance of the chequebook
 	Balance(ctx context.Context) (*big.Int, error)
+	// Address returns the address of the used chequebook contract
 	Address() common.Address
 }
 
@@ -43,11 +40,9 @@ type service struct {
 	erc20Address  common.Address
 	erc20ABI      abi.ABI
 	erc20Instance ERC20Binding
-
-	depositsMu sync.Mutex
-	deposits   map[common.Hash]Deposit
 }
 
+// New creates a new chequebook service for the provided chequebook contract
 func New(backend Backend, transactionService TransactionService, address, erc20Address, ownerAddress common.Address, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
 	chequebookABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20SimpleSwapABI))
 	if err != nil {
@@ -79,14 +74,15 @@ func New(backend Backend, transactionService TransactionService, address, erc20A
 		erc20Address:       erc20Address,
 		erc20ABI:           erc20ABI,
 		erc20Instance:      erc20Instance,
-		deposits:           make(map[common.Hash]Deposit),
 	}, nil
 }
 
+// Address returns the address of the used chequebook contract
 func (s *service) Address() common.Address {
 	return s.address
 }
 
+// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
 func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 	balance, err := s.erc20Instance.BalanceOf(&bind.CallOpts{
 		Context: ctx,
@@ -95,6 +91,7 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 		return common.Hash{}, err
 	}
 
+	// check we can afford this so we don't waste gas
 	if balance.Cmp(amount) < 0 {
 		return common.Hash{}, errors.New("insufficient token balance")
 	}
@@ -117,34 +114,17 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 		return common.Hash{}, err
 	}
 
-	s.depositsMu.Lock()
-	defer s.depositsMu.Unlock()
-
-	s.deposits[txHash] = Deposit{
-		amount: amount,
-	}
-
 	return txHash, nil
 }
 
-func (s *service) DepositStatus(txHash common.Hash) (*Deposit, error) {
-	s.depositsMu.Lock()
-	defer s.depositsMu.Unlock()
-
-	deposit, ok := s.deposits[txHash]
-	if !ok {
-		return nil, errors.New("deposit not found")
-	}
-
-	return &deposit, nil
-}
-
+// Balance returns the token balance of the chequebook
 func (s *service) Balance(ctx context.Context) (*big.Int, error) {
 	return s.chequebookInstance.Balance(&bind.CallOpts{
 		Context: ctx,
 	})
 }
 
+// WaitForDeposit waits for the deposit transaction to confirm and verifies the result
 func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error {
 	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {

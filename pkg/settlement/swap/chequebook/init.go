@@ -13,6 +13,9 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
+const chequebookKey = "chequebook"
+
+// Init initialises the chequebook service
 func Init(
 	ctx context.Context,
 	chequebookFactory Factory,
@@ -24,6 +27,7 @@ func Init(
 	overlayEthAddress common.Address,
 	simpleSwapBindingFunc SimpleSwapBindingFunc,
 	erc20BindingFunc ERC20BindingFunc) (chequebookService Service, err error) {
+	// verify that the supplied factory is valid
 	err = chequebookFactory.VerifyBytecode(ctx)
 	if err != nil {
 		return nil, err
@@ -35,11 +39,12 @@ func Init(
 	}
 
 	var chequebookAddress common.Address
-	err = stateStore.Get("chequebook", &chequebookAddress)
+	err = stateStore.Get(chequebookKey, &chequebookAddress)
 	if err != nil {
 		if err != storage.ErrNotFound {
 			return nil, err
 		}
+		// if we don't yet have a chequebook, deploy a new one
 		logger.Info("deploying new chequebook")
 
 		chequebookAddress, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
@@ -47,9 +52,10 @@ func Init(
 			return nil, err
 		}
 
-		logger.Infof("deployed to address %x", chequebookAddress)
+		logger.Infof("deployed chequebook at address %x", chequebookAddress)
 
-		err = stateStore.Put("chequebook", chequebookAddress)
+		// save the address for later use
+		err = stateStore.Put(chequebookKey, chequebookAddress)
 		if err != nil {
 			return nil, err
 		}
@@ -83,6 +89,7 @@ func Init(
 		logger.Infof("using existing chequebook %x", chequebookAddress)
 	}
 
+	// regardless of how the chequebook service was initialised make sure that the chequebook is valid
 	err = chequebookFactory.VerifyChequebook(ctx, chequebookService.Address())
 	if err != nil {
 		return nil, err

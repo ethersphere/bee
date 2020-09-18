@@ -23,10 +23,15 @@ var (
 	ErrNotDeployedByFactory = errors.New("chequebook not deployed by factory")
 )
 
+// Factory is the main interface for interacting with the chequebook factory
 type Factory interface {
+	// ERC20Address returns the token for which this factory deploys chequebooks
 	ERC20Address(ctx context.Context) (common.Address, error)
+	// Deploy deploys a new chequebook and returns once confirmed
 	Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Address, error)
+	// VerifyBytecode checks that the factory is valid
 	VerifyBytecode(ctx context.Context) error
+	// VerifyChequebook checks that the supplied chequebook has been deployed by this factory
 	VerifyChequebook(ctx context.Context, chequebook common.Address) error
 }
 
@@ -39,6 +44,7 @@ type factory struct {
 	instance SimpleSwapFactoryBinding
 }
 
+// NewFactory creates a new factory service for the provided factory contract
 func NewFactory(backend Backend, transactionService TransactionService, address common.Address, simpleSwapFactoryBindingFunc SimpleSwapFactoryBindingFunc) (Factory, error) {
 	ABI, err := abi.JSON(strings.NewReader(simpleswapfactory.SimpleSwapFactoryABI))
 	if err != nil {
@@ -59,6 +65,7 @@ func NewFactory(backend Backend, transactionService TransactionService, address 
 	}, nil
 }
 
+// Deploy deploys a new chequebook and returns once confirmed
 func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Address, error) {
 	callData, err := c.ABI.Pack("deploySimpleSwap", issuer, big.NewInt(0).Set(defaultHardDepositTimeoutDuration))
 	if err != nil {
@@ -91,7 +98,11 @@ func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHard
 	return chequebookAddress, nil
 }
 
+// parseDeployReceipt parses the address of the deployed chequebook from the receipt
 func (c *factory) parseDeployReceipt(receipt *types.Receipt) (address common.Address, err error) {
+	if receipt.Status != 1 {
+		return common.Address{}, ErrTransactionReverted
+	}
 	for _, log := range receipt.Logs {
 		if log.Address != c.address {
 			continue
@@ -107,6 +118,7 @@ func (c *factory) parseDeployReceipt(receipt *types.Receipt) (address common.Add
 	return address, nil
 }
 
+// VerifyBytecode checks that the factory is valid
 func (c *factory) VerifyBytecode(ctx context.Context) (err error) {
 	code, err := c.backend.CodeAt(ctx, c.address, nil)
 	if err != nil {
@@ -120,6 +132,7 @@ func (c *factory) VerifyBytecode(ctx context.Context) (err error) {
 	return nil
 }
 
+// VerifyChequebook checks that the supplied chequebook has been deployed by this factory
 func (c *factory) VerifyChequebook(ctx context.Context, chequebook common.Address) error {
 	deployed, err := c.instance.DeployedContracts(&bind.CallOpts{
 		Context: ctx,
@@ -133,6 +146,7 @@ func (c *factory) VerifyChequebook(ctx context.Context, chequebook common.Addres
 	return nil
 }
 
+// ERC20Address returns the token for which this factory deploys chequebooks
 func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
 	erc20Address, err := c.instance.ERC20Address(&bind.CallOpts{
 		Context: ctx,
