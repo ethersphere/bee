@@ -22,10 +22,10 @@ func newTestFactory(t *testing.T, factoryAddress common.Address, backend chequeb
 	return chequebook.NewFactory(backend, transactionService, factoryAddress,
 		func(addr common.Address, b bind.ContractBackend) (chequebook.SimpleSwapFactoryBinding, error) {
 			if addr != factoryAddress {
-				t.Fatalf("initalised binding with wrong address. wanted %x, got %x", factoryAddress, addr)
+				t.Fatalf("initialised binding with wrong address. wanted %x, got %x", factoryAddress, addr)
 			}
 			if b != backend {
-				t.Fatal("initalised binding with bindnig")
+				t.Fatal("initialised binding with wrong backend")
 			}
 			return simpleSwapFactoryBinding, nil
 		})
@@ -200,10 +200,10 @@ func TestFactoryDeploy(t *testing.T) {
 				return &types.Receipt{
 					Status: 1,
 					Logs: []*types.Log{
-						&types.Log{
+						{
 							Data: logData,
 						},
-						&types.Log{
+						{
 							Address: factoryAddress,
 							Data:    logData,
 						},

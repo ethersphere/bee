@@ -17,7 +17,8 @@ import (
 )
 
 type backendMock struct {
-	codeAt func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
+	codeAt          func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
+	sendTransaction func(ctx context.Context, tx *types.Transaction) error
 }
 
 func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
@@ -44,8 +45,8 @@ func (*backendMock) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas
 	return 0, nil
 }
 
-func (*backendMock) SendTransaction(ctx context.Context, tx *types.Transaction) error {
-	return nil
+func (m *backendMock) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+	return m.sendTransaction(ctx, tx)
 }
 
 func (*backendMock) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
@@ -63,10 +64,6 @@ func (*backendMock) TransactionReceipt(ctx context.Context, txHash common.Hash) 
 type transactionServiceMock struct {
 	send           func(ctx context.Context, request *chequebook.TxRequest) (txHash common.Hash, err error)
 	waitForReceipt func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
-}
-
-func newTransactionServiceMock() *transactionServiceMock {
-	return &transactionServiceMock{}
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *chequebook.TxRequest) (txHash common.Hash, err error) {
