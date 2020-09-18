@@ -95,3 +95,10 @@ jobs:
       #     repository: ethersphere/bee-argo
       #     event-type: trigger-argo
       #     client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
+      # - name: Debug workflow if failed
+      #   if: failure()
+      #   run: |
+      #     KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+      #     echo "Connect to github actions node using"
+      #     echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) {TUNSHELL_SECRET} eu.relay.tunshell.com"
+      #     curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
