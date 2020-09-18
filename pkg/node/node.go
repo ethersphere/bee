@@ -161,12 +161,21 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 		// TODO: factory address discovery
 
-		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress))
+		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress), chequebook.NewSimpleSwapFactoryBindingFunc)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = chequebook.Init(p2pCtx, chequebookFactory, stateStore, logger, o.SwapInitialDeposit, transactionService, swapBackend, common.BytesToAddress(overlayEthAddress))
+		_, err = chequebook.Init(p2pCtx,
+			chequebookFactory,
+			stateStore,
+			logger,
+			o.SwapInitialDeposit,
+			transactionService,
+			swapBackend,
+			common.BytesToAddress(overlayEthAddress),
+			chequebook.NewSimpleSwapBindings,
+			chequebook.NewERC20Bindings)
 		if err != nil {
 			return nil, err
 		}

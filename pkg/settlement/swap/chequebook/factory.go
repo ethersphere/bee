@@ -36,16 +36,16 @@ type factory struct {
 	address            common.Address
 
 	ABI      abi.ABI
-	instance *simpleswapfactory.SimpleSwapFactory
+	instance SimpleSwapFactoryBinding
 }
 
-func NewFactory(backend Backend, transactionService TransactionService, address common.Address) (Factory, error) {
+func NewFactory(backend Backend, transactionService TransactionService, address common.Address, simpleSwapFactoryBindingFunc SimpleSwapFactoryBindingFunc) (Factory, error) {
 	ABI, err := abi.JSON(strings.NewReader(simpleswapfactory.SimpleSwapFactoryABI))
 	if err != nil {
 		return nil, err
 	}
 
-	instance, err := simpleswapfactory.NewSimpleSwapFactory(address, backend)
+	instance, err := simpleSwapFactoryBindingFunc(address, backend)
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,9 @@ func Init(
 	swapInitialDeposit uint64,
 	transactionService TransactionService,
 	swapBackend Backend,
-	overlayEthAddress common.Address) (chequebookService Service, err error) {
+	overlayEthAddress common.Address,
+	simpleSwapBindingFunc SimpleSwapBindingFunc,
+	erc20BindingFunc ERC20BindingFunc) (chequebookService Service, err error) {
 	err = chequebookFactory.VerifyBytecode(ctx)
 	if err != nil {
 		return nil, err
@@ -52,7 +54,7 @@ func Init(
 			return nil, err
 		}
 
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, NewSimpleSwapBindings, NewERC20Bindings)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, simpleSwapBindingFunc, erc20BindingFunc)
 		if err != nil {
 			return nil, err
 		}
@@ -73,7 +75,7 @@ func Init(
 			logger.Infof("deposited to chequebook %x in transaction %x", chequebookAddress, depositHash)
 		}
 	} else {
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, NewSimpleSwapBindings, NewERC20Bindings)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, simpleSwapBindingFunc, erc20BindingFunc)
 		if err != nil {
 			return nil, err
 		}
