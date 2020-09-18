@@ -93,3 +93,19 @@ func (m *simpleSwapFactoryBindingMock) DeployedContracts(o *bind.CallOpts, a com
 func (m *simpleSwapFactoryBindingMock) ERC20Address(o *bind.CallOpts) (common.Address, error) {
 	return m.erc20Address(o)
 }
+
+type simpleSwapBindingMock struct {
+	balance func(*bind.CallOpts) (*big.Int, error)
+}
+
+func (m *simpleSwapBindingMock) Balance(o *bind.CallOpts) (*big.Int, error) {
+	return m.balance(o)
+}
+
+type erc20BindingMock struct {
+	balanceOf func(*bind.CallOpts, common.Address) (*big.Int, error)
+}
+
+func (m *erc20BindingMock) BalanceOf(o *bind.CallOpts, a common.Address) (*big.Int, error) {
+	return m.balanceOf(o, a)
+}
