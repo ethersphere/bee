@@ -1,8 +1,16 @@
 name: Beekeeper
 
+# on:
+#   repository_dispatch:
+#     types: [trigger-beekeeper]
+
 on:
-  repository_dispatch:
-    types: [trigger-beekeeper]
+  push:
+    branches:
+      - 'master'
+  pull_request:
+    branches:
+      - '**'
 
 jobs:
   beekeeper:
@@ -14,6 +22,18 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 1
+      - id: cache-docker
+        uses: actions/cache@v1
+        with:
+          path: |
+            /var/lib/docker/volumes/k3d-registry
+            /var/lib/docker/volumes/registry
+            /var/lib/docker/image/overlay2
+          key: docker-registry-buildkit-${{ hashFiles('Dockerfile') }}
+      - name: Fix file ownership
+        run: |
+          sudo chown -R root: /var/lib/docker/volumes/
+          sudo chown -R root: /var/lib/docker/image/
       - name: Install bee-local
         run: |
           export URL=$(curl -s https://api.github.com/repos/ethersphere/bee-local/releases/latest | jq -r .tarball_url)
@@ -78,23 +98,28 @@ jobs:
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2
       - name: Test localpinning 3
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2 --large-file-count 10
-      - name: Retag Docker image and push
+      # - name: Retag Docker image and push
+      #   if: success()
+      #   run: |
+      #     docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
+      #     printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+      #     docker push ethersphere/bee:latest
+      - name: Fix file ownership
         if: success()
         run: |
-          docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
-          printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          docker push ethersphere/bee:latest
+          sudo chown -R $(whoami): /var/lib/docker/volumes/
+          sudo chown -R $(whoami): /var/lib/docker/image/
       - name: Set IMAGE_DIGEST variable
         if: success()
         run: echo "::set-env name=IMAGE_DIGEST::$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')"
-      - name: Trigger ArgoCD
-        if: success()
-        uses: peter-evans/repository-dispatch@v1
-        with:
-          token: ${{ secrets.REPO_GHA_PAT }}
-          repository: ethersphere/bee-argo
-          event-type: trigger-argo
-          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
+      # - name: Trigger ArgoCD
+      #   if: success()
+      #   uses: peter-evans/repository-dispatch@v1
+      #   with:
+      #     token: ${{ secrets.REPO_GHA_PAT }}
+      #     repository: ethersphere/bee-argo
+      #     event-type: trigger-argo
+      #     client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
       - name: Debug workflow if failed
         if: failure()
         run: |
