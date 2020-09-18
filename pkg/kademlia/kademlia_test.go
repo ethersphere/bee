@@ -489,7 +489,8 @@ func TestClosestPeer(t *testing.T) {
 	for _, v := range connectedPeers {
 		addOne(t, beeCrypto.NewDefaultSigner(pk), kad, ab, v.Address)
 	}
-	waitCounter(t, &conns, 3)
+
+	waitPeers(t, kad, 3)
 
 	for _, tc := range []struct {
 		chunkAddress swarm.Address // chunk address to test
@@ -861,6 +862,26 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for counter to reach expected value. got %d want %d", got, exp)
+}
+
+func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for peers")
+		default:
+		}
+		i := 0
+		k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
+			i++
+			return false, false, nil
+		})
+		if i == peers {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // wait for discovery BroadcastPeers to happen
