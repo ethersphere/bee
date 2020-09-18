@@ -97,6 +97,7 @@ type Options struct {
 	SwapEndpoint           string
 	SwapFactoryAddress     string
 	SwapInitialDeposit     uint64
+	SwapEnable             bool
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
@@ -141,32 +142,34 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
 
-	swapBackend, err := ethclient.Dial(o.SwapEndpoint)
-	if err != nil {
-		return nil, err
-	}
-	transactionService, err := chequebook.NewTransactionService(swapBackend, signer)
-	if err != nil {
-		return nil, err
-	}
+	if o.SwapEnable {
+		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		transactionService, err := chequebook.NewTransactionService(swapBackend, signer)
+		if err != nil {
+			return nil, err
+		}
 
-	overlayEthAddress, err := signer.EthereumAddress()
-	if err != nil {
-		return nil, err
-	}
+		overlayEthAddress, err := signer.EthereumAddress()
+		if err != nil {
+			return nil, err
+		}
 
-	logger.Infof("using ethereum address %x", overlayEthAddress)
+		logger.Infof("using ethereum address %x", overlayEthAddress)
 
-	// TODO: factory address discovery
+		// TODO: factory address discovery
 
-	chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress))
-	if err != nil {
-		return nil, err
-	}
+		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress))
+		if err != nil {
+			return nil, err
+		}
 
-	_, err = chequebook.Init(p2pCtx, chequebookFactory, stateStore, logger, o.SwapInitialDeposit, transactionService, swapBackend, common.BytesToAddress(overlayEthAddress))
-	if err != nil {
-		return nil, err
+		_, err = chequebook.Init(p2pCtx, chequebookFactory, stateStore, logger, o.SwapInitialDeposit, transactionService, swapBackend, common.BytesToAddress(overlayEthAddress))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
