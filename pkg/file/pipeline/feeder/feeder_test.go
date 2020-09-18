@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package feeder
+package feeder_test
 
 import (
 	"bytes"
@@ -11,8 +11,10 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/pipeline/feeder"
 )
 
+// TestFeeder tests that partial writes work correctly.
 func TestFeeder(t *testing.T) {
 	var (
 		chunkSize = 5
@@ -75,7 +77,7 @@ func TestFeeder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var results pipeline.PipeWriteArgs
 			rr := newMockResultWriter(&results)
-			cf := NewChunkFeederWriter(chunkSize, rr)
+			cf := feeder.NewChunkFeederWriter(chunkSize, rr)
 			i := 0
 			for _, v := range tc.dataSize {
 				d := data[i : i+v]
@@ -112,7 +114,7 @@ func TestFeeder(t *testing.T) {
 }
 
 // TestFeederFlush tests that the feeder flushes the data in the buffer correctly
-// when Summing
+// on Sum().
 func TestFeederFlush(t *testing.T) {
 	var (
 		chunkSize = 5
@@ -176,7 +178,7 @@ func TestFeederFlush(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var results pipeline.PipeWriteArgs
 			rr := newMockResultWriter(&results)
-			cf := NewChunkFeederWriter(chunkSize, rr)
+			cf := feeder.NewChunkFeederWriter(chunkSize, rr)
 			i := 0
 			for _, v := range tc.dataSize {
 				d := data[i : i+v]
