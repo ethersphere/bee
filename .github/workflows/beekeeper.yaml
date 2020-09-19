@@ -34,10 +34,10 @@ jobs:
         run: |
           sudo chown -fR root: /var/lib/docker/volumes/
           echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
-          docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1
-          docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2
-          docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1 rancher/k3s:v1.17.3-k3s1
-          docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2 registry:2
+          docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/k3s
+          docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/registry
+          docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/k3s rancher/k3s:v1.17.3-k3s1
+          docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/registry registry:2
         continue-on-error: true
       - name: Install bee-local
         run: |
@@ -113,10 +113,10 @@ jobs:
         if: success()
         run: |
           echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
-          docker tag rancher/k3s:v1.17.3-k3s1 docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1
-          docker tag registry:2 docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2
-          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1
-          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2
+          docker tag rancher/k3s:v1.17.3-k3s1 docker.pkg.github.com/$GITHUB_REPOSITORY/k3s
+          docker tag registry:2 docker.pkg.github.com/$GITHUB_REPOSITORY/registry
+          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/k3s
+          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/registry
           sudo chown -fR $(whoami): /var/lib/docker/volumes/
         continue-on-error: true
       - name: Set IMAGE_DIGEST variable
