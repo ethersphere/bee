@@ -26,17 +26,17 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            /tmp/k3d-registry
-            /tmp/registry
+            k3d-registry
+            registry
           key: docker-registry-buildkit-${{ hashFiles('Dockerfile') }}
       - name: Fix file ownership
         run: |
           sudo mv $(command -v brew){,_disable}
-          mkdir -p /tmp/k3d-registry /tmp/registry
-          sudo chown -fR root: /tmp/k3d-registry
-          sudo ln -s /tmp/k3d-registry /var/lib/docker/volumes/k3d-registry
-          sudo chown -fR root: /tmp/registry
-          sudo ln -s /tmp/registry /var/lib/docker/volumes/registry
+          mkdir -p k3d-registry registry
+          sudo chown -fR root: k3d-registry
+          sudo ln -s $(pwd)/k3d-registry /var/lib/docker/volumes/k3d-registry
+          sudo chown -fR root: registry
+          sudo ln -s $(pwd)/registry /var/lib/docker/volumes/registry
           echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
           docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/k3s
           docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/registry
@@ -129,8 +129,8 @@ jobs:
           docker tag registry:2 docker.pkg.github.com/$GITHUB_REPOSITORY/registry
           docker push docker.pkg.github.com/$GITHUB_REPOSITORY/k3s
           docker push docker.pkg.github.com/$GITHUB_REPOSITORY/registry
-          sudo chown -fR $(whoami): /tmp/k3d-registry
-          sudo chown -fR $(whoami): /tmp/registry
+          sudo chown -fR $(whoami): k3d-registry
+          sudo chown -fR $(whoami): registry
         continue-on-error: true
       - name: Set IMAGE_DIGEST variable
         if: success()
