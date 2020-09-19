@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
@@ -23,8 +24,8 @@ type signerMock struct {
 	signTx func(transaction *types.Transaction) (*types.Transaction, error)
 }
 
-func (*signerMock) EthereumAddress() ([]byte, error) {
-	return nil, nil
+func (*signerMock) EthereumAddress() (crypto.EthAddress, error) {
+	return crypto.EthAddress{}, nil
 }
 
 func (*signerMock) Sign(data []byte) ([]byte, error) {

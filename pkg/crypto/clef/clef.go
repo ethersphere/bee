@@ -103,6 +103,6 @@ func (c *clefSigner) SignTx(transaction *types.Transaction) (*types.Transaction,
 	return c.clef.SignTx(c.account, transaction, nil)
 }
 
-func (c *clefSigner) EthereumAddress() ([]byte, error) {
-	return c.account.Address.Bytes(), nil
+func (c *clefSigner) EthereumAddress() (crypto.EthAddress, error) {
+	return c.account.Address, nil
 }

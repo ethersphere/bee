@@ -21,7 +21,7 @@ type Signer interface {
 	Sign(data []byte) ([]byte, error)
 	SignTx(transaction *types.Transaction) (*types.Transaction, error)
 	PublicKey() (*ecdsa.PublicKey, error)
-	EthereumAddress() ([]byte, error)
+	EthereumAddress() (EthAddress, error)
 }
 
 // addEthereumPrefix adds the ethereum prefix to the data
@@ -102,10 +102,18 @@ func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transacti
 	return transaction.WithSignature(&types.HomesteadSigner{}, signature)
 }
 
-func (d *defaultSigner) EthereumAddress() ([]byte, error) {
+type EthAddress = [20]byte
+
+func (d *defaultSigner) EthereumAddress() (EthAddress, error) {
 	publicKey, err := d.PublicKey()
 	if err != nil {
-		return nil, err
+		return EthAddress{}, err
 	}
-	return NewEthereumAddress(*publicKey)
+	eth, err := NewEthereumAddress(*publicKey)
+	if err != nil {
+		return EthAddress{}, err
+	}
+	var ethAddress EthAddress
+	copy(ethAddress[:], eth)
+	return ethAddress, nil
 }

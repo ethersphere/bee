@@ -62,7 +62,7 @@ func NewTransactionService(logger logging.Logger, backend Backend, signer crypto
 		logger:  logger,
 		backend: backend,
 		signer:  signer,
-		sender:  common.BytesToAddress(senderAddress),
+		sender:  senderAddress,
 	}, nil
 }
 

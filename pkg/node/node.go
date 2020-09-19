@@ -182,7 +182,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 			o.SwapInitialDeposit,
 			transactionService,
 			swapBackend,
-			common.BytesToAddress(overlayEthAddress),
+			overlayEthAddress,
 			chequebook.NewSimpleSwapBindings,
 			chequebook.NewERC20Bindings)
 		if err != nil {
