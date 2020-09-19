@@ -32,8 +32,8 @@ jobs:
           key: docker-registry-buildkit-${{ hashFiles('Dockerfile') }}
       - name: Fix file ownership
         run: |
-          sudo chown -R root: /var/lib/docker/volumes/
-          sudo chown -R root: /var/lib/docker/image/
+          sudo chown -fR root: /var/lib/docker/volumes/
+          sudo chown -fR root: /var/lib/docker/image/
       - name: Install bee-local
         run: |
           export URL=$(curl -s https://api.github.com/repos/ethersphere/bee-local/releases/latest | jq -r .tarball_url)
@@ -107,8 +107,8 @@ jobs:
       - name: Fix file ownership
         if: success()
         run: |
-          sudo chown -R $(whoami): /var/lib/docker/volumes/
-          sudo chown -R $(whoami): /var/lib/docker/image/
+          sudo chown -fR $(whoami): /var/lib/docker/volumes/
+          sudo chown -fR $(whoami): /var/lib/docker/image/
       - name: Set IMAGE_DIGEST variable
         if: success()
         run: echo "::set-env name=IMAGE_DIGEST::$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')"
