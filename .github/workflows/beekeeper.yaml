@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 1
       - id: cache-docker
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: |
             /var/lib/docker/volumes/k3d-registry
@@ -32,6 +32,7 @@ jobs:
       - name: Fix file ownership
         if: success()
         run: |
+          sudo mv $(command -v brew){,_disable}
           sudo chown -fR root: /var/lib/docker/volumes/
           echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
           docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/k3s
