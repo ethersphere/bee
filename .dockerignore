@@ -1,3 +1,5 @@
+registry
+k3d-registry
 .dockerignore
 .DS_Store
 .git
