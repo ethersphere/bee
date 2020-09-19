@@ -28,12 +28,17 @@ jobs:
           path: |
             /var/lib/docker/volumes/k3d-registry
             /var/lib/docker/volumes/registry
-            /var/lib/docker/image/overlay2
           key: docker-registry-buildkit-${{ hashFiles('Dockerfile') }}
       - name: Fix file ownership
+        if: success()
         run: |
           sudo chown -fR root: /var/lib/docker/volumes/
-          sudo chown -fR root: /var/lib/docker/image/
+          # echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
+          docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1
+          docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2
+          docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1 rancher/k3s:v1.17.3-k3s1
+          docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2 registry:2
+        continue-on-error: true
       - name: Install bee-local
         run: |
           export URL=$(curl -s https://api.github.com/repos/ethersphere/bee-local/releases/latest | jq -r .tarball_url)
@@ -107,8 +112,13 @@ jobs:
       - name: Fix file ownership
         if: success()
         run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
+          docker tag rancher/k3s:v1.17.3-k3s1 docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1
+          docker tag registry:2 docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2
+          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1
+          docker push docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2
           sudo chown -fR $(whoami): /var/lib/docker/volumes/
-          sudo chown -fR $(whoami): /var/lib/docker/image/
+        continue-on-error: true
       - name: Set IMAGE_DIGEST variable
         if: success()
         run: echo "::set-env name=IMAGE_DIGEST::$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')"
