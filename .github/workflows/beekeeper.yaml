@@ -30,9 +30,9 @@ jobs:
             /tmp/registry
           key: docker-registry-buildkit-${{ hashFiles('Dockerfile') }}
       - name: Fix file ownership
-        if: success()
         run: |
           sudo mv $(command -v brew){,_disable}
+          mkdir -p /tmp/k3d-registry /tmp/registry
           sudo chown -fR root: /tmp/k3d-registry
           sudo ln -s /tmp/k3d-registry /var/lib/docker/volumes/k3d-registry
           sudo chown -fR root: /tmp/registry
@@ -43,13 +43,12 @@ jobs:
           docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/k3s rancher/k3s:v1.17.3-k3s1
           docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/registry registry:2
         continue-on-error: true
-      - name: Temp debug workflow
-        run: |
-          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          echo "Connect to github actions node using"
-          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) {TUNSHELL_SECRET} eu.relay.tunshell.com"
-          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
-
+      # - name: Temp debug workflow
+      #   run: |
+      #     KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+      #     echo "Connect to github actions node using"
+      #     echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) {TUNSHELL_SECRET} eu.relay.tunshell.com"
+      #     curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
       - name: Install bee-local
         run: |
           export URL=$(curl -s https://api.github.com/repos/ethersphere/bee-local/releases/latest | jq -r .tarball_url)
