@@ -33,7 +33,7 @@ jobs:
         if: success()
         run: |
           sudo chown -fR root: /var/lib/docker/volumes/
-          # echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u $GITHUB_ACTOR --password-stdin
           docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1
           docker pull docker.pkg.github.com/$GITHUB_REPOSITORY/registry:2
           docker tag docker.pkg.github.com/$GITHUB_REPOSITORY/rancher/k3s:v1.17.3-k3s1 rancher/k3s:v1.17.3-k3s1
