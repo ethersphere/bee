@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 1
-      - id: cache-docker
+      - name: Cache multiple paths
         uses: actions/cache@v2
         with:
           path: |
