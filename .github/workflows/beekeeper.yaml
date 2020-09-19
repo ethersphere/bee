@@ -57,47 +57,47 @@ jobs:
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pingpong
         run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Clean the cluster
-        run: |
-          helm uninstall bee -n bee
-      - name: Set testing cluster (Node connection)
-        run: ./beeinfra.sh install --local -r "${REPLICA}"
-      - name: Test fullconnectivity
-        run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test pingpong
-        run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test balances
-        run: ./beekeeper check balances --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}"
-      - name: Test pushsync (bytes)
-        run: ./beekeeper check pushsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
-      - name: Test pushsync (chunks)
-        run: ./beekeeper check pushsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3 --upload-chunks
-      - name: Test retrieval
-        run: ./beekeeper check retrieval --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
-      - name: Test pullsync
-        run: ./beekeeper check pullsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
-      - name: Test chunkrepair
-        run: ./beekeeper check chunkrepair --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test manifest
-        run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Clean the cluster
-        run: |
-          helm uninstall bee -n bee
-          grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
-      - name: Increase REPLICA to 5
-        run: |
-          echo "::set-env name=REPLICA::5"
-      - name: Set testing cluster (Node connection) 5 bee nodes
-        run: |
-          echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
-          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          ./beeinfra.sh install --local -r "${REPLICA}"
-      - name: Test localpinning 1
-        run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test localpinning 2
-        run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2
-      - name: Test localpinning 3
-        run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2 --large-file-count 10
+      # - name: Clean the cluster
+      #   run: |
+      #     helm uninstall bee -n bee
+      # - name: Set testing cluster (Node connection)
+      #   run: ./beeinfra.sh install --local -r "${REPLICA}"
+      # - name: Test fullconnectivity
+      #   run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      # - name: Test pingpong
+      #   run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      # - name: Test balances
+      #   run: ./beekeeper check balances --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}"
+      # - name: Test pushsync (bytes)
+      #   run: ./beekeeper check pushsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
+      # - name: Test pushsync (chunks)
+      #   run: ./beekeeper check pushsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3 --upload-chunks
+      # - name: Test retrieval
+      #   run: ./beekeeper check retrieval --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
+      # - name: Test pullsync
+      #   run: ./beekeeper check pullsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
+      # - name: Test chunkrepair
+      #   run: ./beekeeper check chunkrepair --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      # - name: Test manifest
+      #   run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      # - name: Clean the cluster
+      #   run: |
+      #     helm uninstall bee -n bee
+      #     grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
+      # - name: Increase REPLICA to 5
+      #   run: |
+      #     echo "::set-env name=REPLICA::5"
+      # - name: Set testing cluster (Node connection) 5 bee nodes
+      #   run: |
+      #     echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
+      #     for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
+      #     ./beeinfra.sh install --local -r "${REPLICA}"
+      # - name: Test localpinning 1
+      #   run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      # - name: Test localpinning 2
+      #   run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2
+      # - name: Test localpinning 3
+      #   run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2 --large-file-count 10
       # - name: Retag Docker image and push
       #   if: success()
       #   run: |
