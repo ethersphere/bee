@@ -10,7 +10,7 @@ COPY . ./
 
 RUN make binary COMMIT=$COMMIT
 
-FROM debian:10.2-slim
+FROM debian:10.2-slim AS runtime
 
 ENV DEBIAN_FRONTEND noninteractive
 
