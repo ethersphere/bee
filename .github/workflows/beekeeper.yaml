@@ -32,6 +32,7 @@ jobs:
       - name: Fix file ownership
         run: |
           sudo mv $(command -v brew){,_disable}
+          sudo snap install yq
           mkdir -p k3d-registry registry
           sudo chown -fR root: k3d-registry
           sudo ln -s $(pwd)/k3d-registry /var/lib/docker/volumes/k3d-registry
