@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"net/http"
 	"path"
@@ -23,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -35,7 +35,7 @@ func TestDirs(t *testing.T) {
 		storer               = mock.NewStorer()
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
-		client               = newTestServer(t, testServerOptions{
+		client, _, _         = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logging.New(ioutil.Discard, 5),
@@ -85,8 +85,10 @@ func TestDirs(t *testing.T) {
 
 	// valid tars
 	for _, tc := range []struct {
-		name  string
-		files []f // files in dir for test case
+		name                string
+		wantIndexFilename   string
+		indexFilenameOption jsonhttptest.Option
+		files               []f // files in dir for test case
 	}{
 		{
 			name: "non-nested files without extension",
@@ -143,6 +145,52 @@ func TestDirs(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "no index filename",
+			files: []f{
+				{
+					data:      []byte("<h1>Swarm"),
+					name:      "index.html",
+					dir:       "",
+					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
+					header: http.Header{
+						"Content-Type": {"text/html; charset=utf-8"},
+					},
+				},
+			},
+		},
+		{
+			name:                "explicit index filename",
+			wantIndexFilename:   "index.html",
+			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndextHeader, "index.html"),
+			files: []f{
+				{
+					data:      []byte("<h1>Swarm"),
+					name:      "index.html",
+					dir:       "",
+					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
+					header: http.Header{
+						"Content-Type": {"text/html; charset=utf-8"},
+					},
+				},
+			},
+		},
+		{
+			name:                "nested index filename",
+			wantIndexFilename:   "index.html",
+			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndextHeader, "index.html"),
+			files: []f{
+				{
+					data:      []byte("<h1>Swarm"),
+					name:      "index.html",
+					dir:       "dir",
+					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
+					header: http.Header{
+						"Content-Type": {"text/html; charset=utf-8"},
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// tar all the test case files
@@ -150,12 +198,17 @@ func TestDirs(t *testing.T) {
 
 			var respBytes []byte
 
-			// verify directory tar upload response
-			jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK,
+			options := []jsonhttptest.Option{
 				jsonhttptest.WithRequestBody(tarReader),
 				jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 				jsonhttptest.WithPutResponseBody(&respBytes),
-			)
+			}
+			if tc.indexFilenameOption != nil {
+				options = append(options, tc.indexFilenameOption)
+			}
+
+			// verify directory tar upload response
+			jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
 
 			read := bytes.NewReader(respBytes)
 
@@ -198,9 +251,8 @@ func TestDirs(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// check if each file can be located and read
-			for _, file := range tc.files {
-				filePath := path.Join(file.dir, file.name)
+			validateFile := func(t *testing.T, file f, filePath string) {
+				t.Helper()
 
 				entry, err := verifyManifest.Lookup(filePath)
 				if err != nil {
@@ -210,14 +262,24 @@ func TestDirs(t *testing.T) {
 				fileReference := entry.Reference()
 
 				if !bytes.Equal(file.reference.Bytes(), fileReference.Bytes()) {
-					t.Fatalf("expected file reference to match %x, got %x", file.reference, fileReference)
+					t.Fatalf("expected file reference to match %s, got %s", file.reference, fileReference)
 				}
 
 				jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(fileReference.String()), http.StatusOK,
 					jsonhttptest.WithExpectedResponse(file.data),
 					jsonhttptest.WithRequestHeader("Content-Type", file.header.Get("Content-Type")),
 				)
+			}
 
+			// check if each file can be located and read
+			for _, file := range tc.files {
+				validateFile(t, file, path.Join(file.dir, file.name))
+
+				// if there is an index filename to be tested
+				// try to download it using only the directory as the path
+				if file.name == tc.wantIndexFilename {
+					validateFile(t, file, file.dir)
+				}
 			}
 
 		})

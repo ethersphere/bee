@@ -7,13 +7,16 @@ package api
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -25,6 +28,7 @@ const (
 	SwarmPinHeader     = "Swarm-Pin"
 	SwarmTagUidHeader  = "Swarm-Tag-Uid"
 	SwarmEncryptHeader = "Swarm-Encrypt"
+	SwarmIndextHeader  = "Swarm-Index"
 )
 
 var (
@@ -36,22 +40,28 @@ var (
 type Service interface {
 	http.Handler
 	m.Collector
+	io.Closer
 }
 
 type server struct {
 	Tags     *tags.Tags
 	Storer   storage.Storer
 	Resolver resolver.Interface
+	Pss      pss.Interface
 	Logger   logging.Logger
 	Tracer   *tracing.Tracer
 	Options
 	http.Handler
 	metrics metrics
+
+	wsWg sync.WaitGroup // wait for all websockets to close on exit
+	quit chan struct{}
 }
 
 type Options struct {
 	CORSAllowedOrigins []string
 	GatewayMode        bool
+	WsPingPeriod       time.Duration
 }
 
 const (
@@ -60,20 +70,42 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		Tags:     tags,
 		Storer:   storer,
 		Resolver: resolver,
+		Pss:      pss,
 		Options:  o,
 		Logger:   logger,
 		Tracer:   tracer,
 		metrics:  newMetrics(),
+		quit:     make(chan struct{}),
 	}
 
 	s.setupRouting()
 
 	return s
+}
+
+// Close hangs up running websockets on shutdown.
+func (s *server) Close() error {
+	s.Logger.Info("api shutting down")
+	close(s.quit)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.wsWg.Wait()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		return errors.New("api shutting down with open websockets")
+	}
+
+	return nil
 }
 
 // getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.

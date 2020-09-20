@@ -78,12 +78,26 @@ func (s *server) setupRouting() {
 		),
 	})
 
+	handle(router, "/bzz/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL
+		u.Path += "/"
+		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+	}))
 	handle(router, "/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.newTracingHandler("bzz-download"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
 	})
+
+	handle(router, "/pss/send/{topic}/{targets}", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
+			web.FinalHandlerFunc(s.pssPostHandler),
+		),
+	})
+
+	handle(router, "/pss/subscribe/{topic}", http.HandlerFunc(s.pssWsHandler))
 
 	handle(router, "/tags", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
