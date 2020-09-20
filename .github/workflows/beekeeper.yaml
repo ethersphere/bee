@@ -180,7 +180,7 @@ jobs:
           if ${{ steps.localpinning-2.outcome=='failure' }}; then FAILED=localpinning-2; fi
           if ${{ steps.localpinning-3.outcome=='failure' }}; then FAILED=localpinning-3; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -i -X POST -H "Content-Type: application/json" -d "{\"text\": \"Failed -> ${FAILED}\nDebug -> sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\"}" https://beehive.ethswarm.org/hooks/cpscyhnjdibg7pm4m47a46ubco
+          curl -i -X POST -H "Content-Type: application/json" -d "{\"text\": \"Failed -> `${FAILED}`\nDebug -> `sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com`\"}" https://beehive.ethswarm.org/hooks/cpscyhnjdibg7pm4m47a46ubco
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
