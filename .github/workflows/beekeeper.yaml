@@ -22,13 +22,13 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 1
-      - name: Cache multiple paths
-        uses: actions/cache@v2
-        with:
-          path: |
-            k3d-registry
-            registry
-          key: docker-registry-buildkit-${{ hashFiles('Dockerfile') }}
+      # - name: Cache multiple paths
+      #   uses: actions/cache@v2
+      #   with:
+      #     path: |
+      #       k3d-registry
+      #       registry
+      #     key: docker-registry-buildkit-${{ hashFiles('Dockerfile') }}
       - name: Fix file ownership
         run: |
           sudo mv $(command -v brew){,_disable}
