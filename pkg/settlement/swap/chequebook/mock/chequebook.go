@@ -13,19 +13,26 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
 
-// Service is the mock settlement service.
+// Service is the mock chequebook service.
 type Service struct {
 	chequebookBalanceFunc func(context.Context) (*big.Int, error)
+	chequebookAddressFunc func() common.Address
 }
 
-// WithsettlementFunc sets the mock settlement function
+// WithChequebook*Functions set the mock chequebook functions
 func WithChequebookBalanceFunc(f func(ctx context.Context) (*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookBalanceFunc = f
 	})
 }
 
-// Newsettlement creates the mock settlement implementation
+func WithChequebookAddressFunc(f func() common.Address) Option {
+	return optionFunc(func(s *Service) {
+		s.chequebookAddressFunc = f
+	})
+}
+
+// NewChequebook creates the mock chequebook implementation
 func NewChequebook(opts ...Option) chequebook.Service {
 	mock := new(Service)
 	for _, o := range opts {
@@ -47,11 +54,15 @@ func (s *Service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 func (s *Service) WaitForDeposit(ctx context.Context, txHash common.Hash) error {
 	return errors.New("Error")
 }
+
 func (s *Service) Address() common.Address {
+	if s.chequebookAddressFunc != nil {
+		return s.chequebookAddressFunc()
+	}
 	return common.Address{}
 }
 
-// Option is the option passed to the mock settlement service
+// Option is the option passed to the mock Chequebook service
 type Option interface {
 	apply(*Service)
 }

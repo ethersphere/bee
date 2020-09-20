@@ -13,10 +13,15 @@ import (
 
 var (
 	errCantChequebookBalance = "Cannot get chequebook balance"
+	errCantChequebookAddress = "Cannot get chequebook address"
 )
 
 type chequebookBalanceResponse struct {
 	Balance *big.Int `json:"balance"`
+}
+
+type chequebookAddressResponse struct {
+	Address string `json:"chequebookaddress"`
 }
 
 func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
@@ -29,4 +34,9 @@ func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonhttp.OK(w, chequebookBalanceResponse{Balance: balance})
+}
+
+func (s *server) chequebookAddressHandler(w http.ResponseWriter, r *http.Request) {
+	address := s.Chequebook.Address()
+	jsonhttp.OK(w, chequebookAddressResponse{Address: address.String()})
 }

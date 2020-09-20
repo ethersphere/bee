@@ -12,10 +12,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 )
 
@@ -60,4 +60,30 @@ func TestChequebookBalanceError(t *testing.T) {
 			Code:    http.StatusInternalServerError,
 		}),
 	)
+}
+
+func TestChequebookAddress(t *testing.T) {
+	chequebookAddressFunc := func() common.Address {
+		return common.HexToAddress("0xfffff")
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		ChequebookOpts: []mock.Option{mock.WithChequebookAddressFunc(chequebookAddressFunc)},
+	})
+
+	address := common.HexToAddress("0xfffff")
+
+	expected := &debugapi.ChequebookAddressResponse{
+		Address: address.String(),
+	}
+
+	var got *debugapi.ChequebookAddressResponse
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/address", http.StatusOK,
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
+	)
+
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("got address: %+v, expected: %+v", got, expected)
+	}
+
 }

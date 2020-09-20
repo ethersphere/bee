@@ -17,6 +17,7 @@ type (
 	SettlementResponse        = settlementResponse
 	SettlementsResponse       = settlementsResponse
 	ChequebookBalanceResponse = chequebookBalanceResponse
+	ChequebookAddressResponse = chequebookAddressResponse
 )
 
 var (
