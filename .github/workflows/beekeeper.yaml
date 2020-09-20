@@ -69,7 +69,7 @@ jobs:
           ./beeinfra.sh dns-disco -r "${REPLICA}" &
       - name: Set testing cluster (Node connection)
         run: |
-          ./beeinfra.sh install --local -r "${REPLICA}"
+          ./beeinfra.sh install-template --local -r "${REPLICA}"
       - name: Test fullconnectivity
         id: fullconnectivity-1
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
@@ -78,10 +78,10 @@ jobs:
         run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Clean the cluster
         run: |
-          helm uninstall bee -n bee
+          ./beeinfra.sh uninstall-template
       - name: Set testing cluster (DNS discovery)
         run: |
-          ./beeinfra.sh install --dns-disco --local -r "${REPLICA}" --bootnode /dnsaddr/localhost
+          ./beeinfra.sh install-template --dns-disco --local -r "${REPLICA}" --bootnode /dnsaddr/localhost
       - name: Test fullconnectivity
         id: fullconnectivity-2
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
@@ -111,7 +111,7 @@ jobs:
         run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Clean the cluster
         run: |
-          helm uninstall bee -n bee
+          ./beeinfra.sh uninstall-template
           grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
       - name: Increase REPLICA to 5
         run: |
@@ -120,7 +120,7 @@ jobs:
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          ./beeinfra.sh install --local -r "${REPLICA}"
+          ./beeinfra.sh install-template --local -r "${REPLICA}"
       - name: Test localpinning 1
         id: localpinning-1
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
