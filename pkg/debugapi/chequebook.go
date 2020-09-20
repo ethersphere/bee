@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	errChequebookBalance = "Cannot get chequebook balance"
+	errCantChequebookBalance = "Cannot get chequebook balance"
 )
 
 type chequebookBalanceResponse struct {
@@ -22,7 +22,7 @@ type chequebookBalanceResponse struct {
 func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	balance, err := s.Chequebook.Balance(r.Context())
 	if err != nil {
-		jsonhttp.InternalServerError(w, errChequebookBalance)
+		jsonhttp.InternalServerError(w, errCantChequebookBalance)
 		s.Logger.Debugf("debug api: chequebook balance: %v", err)
 		s.Logger.Error("debug api: can not get chequebook balance")
 		return

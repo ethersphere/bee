@@ -6,13 +6,16 @@ package debugapi_test
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"net/http"
 	"reflect"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 )
 
@@ -36,7 +39,25 @@ func TestChequebookBalance(t *testing.T) {
 	)
 
 	if !reflect.DeepEqual(got, expected) {
-		t.Errorf("got settlements: %+v, expected: %+v", got, expected)
+		t.Errorf("got balance: %+v, expected: %+v", got, expected)
 	}
 
+}
+
+func TestChequebookBalanceError(t *testing.T) {
+	wantErr := errors.New("New errors")
+	chequebookBalanceFunc := func(context.Context) (ret *big.Int, err error) {
+		return big.NewInt(0), wantErr
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrCantChequebookBalance,
+			Code:    http.StatusInternalServerError,
+		}),
+	)
 }
