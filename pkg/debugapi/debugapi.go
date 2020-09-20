@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/settlement"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -36,11 +37,12 @@ type server struct {
 	Tags           *tags.Tags
 	Accounting     accounting.Interface
 	Settlement     settlement.Interface
+	Chequebook     chequebook.Service
 	http.Handler
 	metricsRegistry *prometheus.Registry
 }
 
-func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface) Service {
+func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebook chequebook.Service) Service {
 	s := &server{
 		Overlay:         overlay,
 		P2P:             p2p,
@@ -53,6 +55,7 @@ func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interfac
 		Accounting:      accounting,
 		Settlement:      settlement,
 		metricsRegistry: newMetricsRegistry(),
+		Chequebook:      chequebook,
 	}
 
 	s.setupRouting()
