@@ -71,8 +71,10 @@ jobs:
         run: |
           ./beeinfra.sh install --local -r "${REPLICA}"
       - name: Test fullconnectivity
+        id: fullconnectivity-1
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pingpong
+        id: pingpong-1
         run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Clean the cluster
         run: |
@@ -81,22 +83,31 @@ jobs:
         run: |
           ./beeinfra.sh install --dns-disco --local -r "${REPLICA}" --bootnode /dnsaddr/localhost
       - name: Test fullconnectivity
+        id: fullconnectivity-2
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pingpong
+        id: pingpong-2
         run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test balances
+        id: balances
         run: ./beekeeper check balances --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}"
       - name: Test pushsync (bytes)
+        id: pushsync-bytes
         run: ./beekeeper check pushsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
       - name: Test pushsync (chunks)
+        id: pushsync-chunks
         run: ./beekeeper check pushsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3 --upload-chunks
       - name: Test retrieval
+        id: retrieval
         run: ./beekeeper check retrieval --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
       - name: Test pullsync
+        id: pullsync
         run: ./beekeeper check pullsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
       - name: Test chunkrepair
+        id: chunkrepair
         run: ./beekeeper check chunkrepair --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test manifest
+        id: manifest
         run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Clean the cluster
         run: |
@@ -111,10 +122,13 @@ jobs:
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
           ./beeinfra.sh install --local -r "${REPLICA}"
       - name: Test localpinning 1
+        id: localpinning-1
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test localpinning 2
+        id: localpinning-2
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2
       - name: Test localpinning 3
+        id: localpinning-3
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"  --large-file-disk-ratio 2 --large-file-count 10
       - name: Retag Docker image and push
         if: success()
@@ -150,7 +164,23 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
+          export FAILED='no-test'
+          if ${{ steps.fullconnectivity-1.outcome=='failure' }}; then FAILED=fullconnectivity-1; fi
+          if ${{ steps.pingpong-1.outcome=='failure' }}; then FAILED=pingpong-1; fi
+          if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
+          if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
+          if ${{ steps.balances.outcome=='failure' }}; then FAILED=balances; fi
+          if ${{ steps.pushsync-bytes.outcome=='failure' }}; then FAILED=pushsync-bytes; fi
+          if ${{ steps.pushsync-chunks.outcome=='failure' }}; then FAILED=pushsync-chunks; fi
+          if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
+          if ${{ steps.pullsync.outcome=='failure' }}; then FAILED=pullsync; fi
+          if ${{ steps.chunkrepair.outcome=='failure' }}; then FAILED=chunkrepair; fi
+          if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
+          if ${{ steps.localpinning-1.outcome=='failure' }}; then FAILED=localpinning-1; fi
+          if ${{ steps.localpinning-2.outcome=='failure' }}; then FAILED=localpinning-2; fi
+          if ${{ steps.localpinning-3.outcome=='failure' }}; then FAILED=localpinning-3; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
-          echo 'sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) ${TUNSHELL_SECRET} eu.relay.tunshell.com'
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
