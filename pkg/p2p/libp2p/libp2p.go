@@ -57,7 +57,7 @@ type Service struct {
 	peers             *peerRegistry
 	connectionBreaker breaker.Interface
 	blocklist         *blocklist.Blocklist
-	protocols         []*p2p.ProtocolSpec
+	protocols         []p2p.ProtocolSpec
 	notifier          p2p.Notifier
 	logger            logging.Logger
 	tracer            *tracing.Tracer
@@ -369,7 +369,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		})
 	}
 
-	s.protocols = append(s.protocols, &p)
+	s.protocols = append(s.protocols, p)
 	return nil
 }
 
