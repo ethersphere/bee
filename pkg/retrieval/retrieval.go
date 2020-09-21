@@ -35,6 +35,7 @@ type Interface interface {
 }
 
 type Service struct {
+	addr          swarm.Address
 	streamer      p2p.Streamer
 	peerSuggester topology.EachPeerer
 	storer        storage.Storer
@@ -45,8 +46,9 @@ type Service struct {
 	validator     swarm.Validator
 }
 
-func New(streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator) *Service {
+func New(addr swarm.Address, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator) *Service {
 	return &Service{
+		addr:          addr,
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
 		logger:        logger,
@@ -202,6 +204,14 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (sw
 
 	// check if found
 	if closest.IsZero() {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), s.addr.Bytes())
+	if err != nil {
+		return swarm.Address{}, fmt.Errorf("distance compare addr %s closest %s base address %s: %w", addr.String(), closest.String(), s.addr.String(), err)
+	}
+	if dcmp != 1 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
