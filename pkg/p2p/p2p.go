@@ -29,7 +29,7 @@ type Service interface {
 }
 
 type Notifier interface {
-	Connected(context.Context, *Peer) error
+	Connected(context.Context, Peer) error
 	Disconnected(Peer)
 }
 

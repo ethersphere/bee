@@ -440,7 +440,7 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 }
 
 // Connected is called when a peer has dialed in.
-func (k *Kad) Connected(ctx context.Context, peer *p2p.Peer) error {
+func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
 	if err := k.connected(ctx, peer.Address); err != nil {
 		return err
 	}

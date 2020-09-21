@@ -269,11 +269,19 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
+		peer := p2p.Peer{Address: i.BzzAddress.Overlay}
+
 		for _, tn := range s.protocols {
 			if tn.ConnectIn != nil {
-				if err := tn.ConnectIn(ctx, p2p.Peer{Address: i.BzzAddress.Overlay}); err != nil {
+				if err := tn.ConnectIn(ctx, peer); err != nil {
 					s.logger.Debugf("connectIn: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, i.BzzAddress.Overlay, err)
 				}
+			}
+		}
+
+		if s.notifier != nil {
+			if err := s.notifier.Connected(ctx, peer); err != nil {
+				s.logger.Debugf("notifier.Connected: peer: %s: %v", i.BzzAddress.Overlay, err)
 			}
 		}
 
