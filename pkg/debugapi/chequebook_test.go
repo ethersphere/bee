@@ -20,9 +20,11 @@ import (
 )
 
 func TestChequebookBalance(t *testing.T) {
+	returnedBalance := big.NewInt(9000)
+
 	chequebookBalanceFunc := func(context.Context) (ret *big.Int, err error) {
-		ret = big.NewInt(9000)
-		return ret, nil
+
+		return returnedBalance, nil
 	}
 
 	testServer := newTestServer(t, testServerOptions{
@@ -30,7 +32,7 @@ func TestChequebookBalance(t *testing.T) {
 	})
 
 	expected := &debugapi.ChequebookBalanceResponse{
-		Balance: big.NewInt(9000),
+		Balance: returnedBalance,
 	}
 	// We expect a list of items unordered by peer:
 	var got *debugapi.ChequebookBalanceResponse
@@ -56,7 +58,7 @@ func TestChequebookBalanceError(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrCantChequebookBalance,
+			Message: debugapi.ErrChequebookBalance,
 			Code:    http.StatusInternalServerError,
 		}),
 	)

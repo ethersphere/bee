@@ -41,6 +41,7 @@ func NewChequebook(opts ...Option) chequebook.Service {
 	return mock
 }
 
+// Balance mocks the chequebook .Balance function
 func (s *Service) Balance(ctx context.Context) (bal *big.Int, err error) {
 	if s.chequebookBalanceFunc != nil {
 		return s.chequebookBalanceFunc(ctx)
@@ -48,13 +49,17 @@ func (s *Service) Balance(ctx context.Context) (bal *big.Int, err error) {
 	return big.NewInt(0), errors.New("Error")
 }
 
+// Deposit mocks the chequebook .Deposit function
 func (s *Service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 	return common.Hash{}, errors.New("Error")
 }
+
+// WaitForDeposit mocks the chequebook .WaitForDeposit function
 func (s *Service) WaitForDeposit(ctx context.Context, txHash common.Hash) error {
 	return errors.New("Error")
 }
 
+// Address mocks the chequebook .Address function
 func (s *Service) Address() common.Address {
 	if s.chequebookAddressFunc != nil {
 		return s.chequebookAddressFunc()
