@@ -45,6 +45,7 @@ func TestTransactionSend(t *testing.T) {
 	value := big.NewInt(1)
 	suggestedGasPrice := big.NewInt(2)
 	estimatedGasLimit := uint64(3)
+	nonce := uint64(2)
 
 	request := &chequebook.TxRequest{
 		To:    recipient,
@@ -72,6 +73,9 @@ func TestTransactionSend(t *testing.T) {
 			suggestGasPrice: func(ctx context.Context) (*big.Int, error) {
 				return suggestedGasPrice, nil
 			},
+			pendingNonceAt: func(ctx context.Context, account common.Address) (uint64, error) {
+				return nonce, nil
+			},
 		},
 		&signerMock{
 			signTx: func(transaction *types.Transaction) (*types.Transaction, error) {
@@ -89,6 +93,10 @@ func TestTransactionSend(t *testing.T) {
 				}
 				if transaction.GasPrice().Cmp(suggestedGasPrice) != 0 {
 					t.Fatalf("signing transaction with wrong gasprice. wanted %d, got %d", suggestedGasPrice, transaction.GasPrice())
+				}
+
+				if transaction.Nonce() != nonce {
+					t.Fatalf("signing transaction with wrong nonce. wanted %d, got %d", nonce, transaction.Nonce())
 				}
 
 				return signedTx, nil

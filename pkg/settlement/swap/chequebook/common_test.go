@@ -22,6 +22,7 @@ type backendMock struct {
 	suggestGasPrice    func(ctx context.Context) (*big.Int, error)
 	estimateGas        func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)
 	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	pendingNonceAt     func(ctx context.Context, account common.Address) (uint64, error)
 }
 
 func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
@@ -29,15 +30,15 @@ func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, block
 }
 
 func (*backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	return nil, nil
+	panic("not implemented")
 }
 
 func (*backendMock) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
-	return nil, nil
+	panic("not implemented")
 }
 
-func (*backendMock) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
-	return 0, nil
+func (m *backendMock) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
+	return m.pendingNonceAt(ctx, account)
 }
 
 func (m *backendMock) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
@@ -53,11 +54,11 @@ func (m *backendMock) SendTransaction(ctx context.Context, tx *types.Transaction
 }
 
 func (*backendMock) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	return nil, nil
+	panic("not implemented")
 }
 
 func (*backendMock) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
-	return nil, nil
+	panic("not implemented")
 }
 
 func (m *backendMock) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
