@@ -14,8 +14,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/crypto/eip712"
 )
 
 var (
@@ -30,7 +32,13 @@ type ExternalSignerInterface interface {
 	Accounts() []accounts.Account
 }
 
+// ExternalSignerInterface is the interface for rpc.RpcClient
+type RpcClient interface {
+	Call(result interface{}, method string, args ...interface{}) error
+}
+
 type clefSigner struct {
+	client  RpcClient // low-level rpc client to clef as ExternalSigner does not implement account_signTypedData
 	clef    ExternalSignerInterface
 	account accounts.Account // the account this signer will use
 	pubKey  *ecdsa.PublicKey // the public key for the account
@@ -60,7 +68,7 @@ func DefaultIpcPath() (string, error) {
 
 // NewSigner creates a new connection to the signer at endpoint
 // As clef does not expose public keys it signs a test message to recover the public key
-func NewSigner(clef ExternalSignerInterface, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
+func NewSigner(clef ExternalSignerInterface, client RpcClient, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {
@@ -83,6 +91,7 @@ func NewSigner(clef ExternalSignerInterface, recoverFunc crypto.RecoverFunc) (si
 	}
 
 	return &clefSigner{
+		client:  client,
 		clef:    clef,
 		account: account,
 		pubKey:  pubKey,
@@ -108,4 +117,15 @@ func (c *clefSigner) SignTx(transaction *types.Transaction) (*types.Transaction,
 // EthereumAddress returns the ethereum address this signer uses
 func (c *clefSigner) EthereumAddress() (common.Address, error) {
 	return c.account.Address, nil
+}
+
+// SignTypedData signs data according to eip712
+func (c *clefSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, error) {
+	var sig hexutil.Bytes
+	err := c.client.Call(&sig, "account_signTypedData", c.account.Address, typedData)
+	if err != nil {
+		return nil, err
+	}
+
+	return sig, nil
 }

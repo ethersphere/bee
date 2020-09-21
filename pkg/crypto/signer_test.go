@@ -5,6 +5,7 @@
 package crypto_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"math/big"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/crypto/eip712"
 )
 
 func TestDefaultSigner(t *testing.T) {
@@ -120,5 +122,60 @@ func TestDefaultSignerSignTx(t *testing.T) {
 
 	if expectedS.Cmp(s) != 0 {
 		t.Fatalf("wrong s value. expected %x, got %x", expectedS, s)
+	}
+}
+
+func TestDefaultSignerTypedData(t *testing.T) {
+	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := crypto.NewDefaultSigner(privKey)
+
+	sig, err := signer.SignTypedData(&eip712.TypedData{
+		Domain: eip712.TypedDataDomain{
+			Name:    "test",
+			Version: "1.0",
+		},
+		Types: eip712.Types{
+			"EIP712Domain": {
+				{
+					Name: "name",
+					Type: "string",
+				},
+				{
+					Name: "version",
+					Type: "string",
+				},
+			},
+			"MyType": {
+				{
+					Name: "test",
+					Type: "string",
+				},
+			},
+		},
+		Message: eip712.TypedDataMessage{
+			"test": "abc",
+		},
+		PrimaryType: "MyType",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected, err := hex.DecodeString("60f054c45d37a0359d4935da0454bc19f02a8c01ceee8a112cfe48c8e2357b842e897f76389fb96947c6d2c80cbfe081052204e7b0c3cc1194a973a09b1614f71c")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(expected, sig) {
+		t.Fatalf("wrong signature. expected %x, got %x", expected, sig)
 	}
 }

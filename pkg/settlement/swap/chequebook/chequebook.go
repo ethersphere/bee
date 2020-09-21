@@ -7,12 +7,14 @@ package chequebook
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
@@ -26,6 +28,8 @@ type Service interface {
 	Balance(ctx context.Context) (*big.Int, error)
 	// Address returns the address of the used chequebook contract
 	Address() common.Address
+	// Issue a new cheque for the beneficiary with an cumulativePayout amount higher than the last
+	IssueCheque(beneficiary common.Address, amount *big.Int) (*SignedCheque, error)
 }
 
 type service struct {
@@ -40,10 +44,13 @@ type service struct {
 	erc20Address  common.Address
 	erc20ABI      abi.ABI
 	erc20Instance ERC20Binding
+
+	store        storage.StateStorer
+	chequeSigner ChequeSigner
 }
 
 // New creates a new chequebook service for the provided chequebook contract
-func New(backend Backend, transactionService TransactionService, address, erc20Address, ownerAddress common.Address, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
+func New(backend Backend, transactionService TransactionService, address, erc20Address, ownerAddress common.Address, store storage.StateStorer, chequeSigner ChequeSigner, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
 	chequebookABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20SimpleSwapABI))
 	if err != nil {
 		return nil, err
@@ -74,6 +81,8 @@ func New(backend Backend, transactionService TransactionService, address, erc20A
 		erc20Address:       erc20Address,
 		erc20ABI:           erc20ABI,
 		erc20Instance:      erc20Instance,
+		store:              store,
+		chequeSigner:       chequeSigner,
 	}, nil
 }
 
@@ -134,4 +143,45 @@ func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error 
 		return ErrTransactionReverted
 	}
 	return nil
+}
+
+// Issue a new cheque
+func (s *service) IssueCheque(beneficiary common.Address, amount *big.Int) (*SignedCheque, error) {
+	storeKey := fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
+
+	var cumulativePayout *big.Int
+	var lastCheque Cheque
+	err := s.store.Get(storeKey, &lastCheque)
+	if err != nil {
+		if err != storage.ErrNotFound {
+			return nil, err
+		}
+		cumulativePayout = big.NewInt(0)
+	} else {
+		cumulativePayout = lastCheque.CumulativePayout
+	}
+
+	// increase cumulativePayout by amount
+	cumulativePayout = cumulativePayout.Add(cumulativePayout, amount)
+
+	cheque := Cheque{
+		Chequebook:       s.address,
+		CumulativePayout: cumulativePayout,
+		Beneficiary:      beneficiary,
+	}
+
+	sig, err := s.chequeSigner.Sign(&cheque)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.store.Put(storeKey, cheque)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SignedCheque{
+		Cheque:    cheque,
+		Signature: sig,
+	}, nil
 }
