@@ -7,11 +7,14 @@ package clef
 import (
 	"crypto/ecdsa"
 	"errors"
+	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 )
 
@@ -23,6 +26,7 @@ var (
 // ExternalSignerInterface is the interface for the clef client from go-ethereum
 type ExternalSignerInterface interface {
 	SignData(account accounts.Account, mimeType string, data []byte) ([]byte, error)
+	SignTx(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error)
 	Accounts() []accounts.Account
 }
 
@@ -93,4 +97,15 @@ func (c *clefSigner) PublicKey() (*ecdsa.PublicKey, error) {
 // SignData signs with the text/plain type which is the standard Ethereum prefix method
 func (c *clefSigner) Sign(data []byte) ([]byte, error) {
 	return c.clef.SignData(c.account, accounts.MimetypeTextPlain, data)
+}
+
+// SignTx signs an ethereum transaction
+func (c *clefSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
+	// chainId is nil here because it is set on the clef side
+	return c.clef.SignTx(c.account, transaction, nil)
+}
+
+// EthereumAddress returns the ethereum address this signer uses
+func (c *clefSigner) EthereumAddress() (common.Address, error) {
+	return c.account.Address, nil
 }
