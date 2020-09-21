@@ -75,16 +75,14 @@ func newShortEncryptionPipelineFunc(ctx context.Context, s storage.Storer, mode 
 func FeedPipeline(ctx context.Context, pipeline pipeline.Interface, r io.Reader, dataLength int64) (addr swarm.Address, err error) {
 	var total int64
 	data := make([]byte, swarm.ChunkSize)
-	var eof bool
-	for !eof {
+	for {
 		c, err := r.Read(data)
 		total += int64(c)
 		if err != nil {
 			if err == io.EOF {
 				if total < dataLength {
-					return swarm.ZeroAddress, fmt.Errorf("pipline short write: read %d out of %d bytes", total+int64(c), dataLength)
+					return swarm.ZeroAddress, fmt.Errorf("pipline short write: read %d out of %d bytes", total, dataLength)
 				}
-				eof = true
 				if c > 0 {
 					cc, err := pipeline.Write(data[:c])
 					if err != nil {
@@ -94,7 +92,7 @@ func FeedPipeline(ctx context.Context, pipeline pipeline.Interface, r io.Reader,
 						return swarm.ZeroAddress, fmt.Errorf("pipeline short write: %d mismatches %d", cc, c)
 					}
 				}
-				continue
+				break
 			} else {
 				return swarm.ZeroAddress, err
 			}

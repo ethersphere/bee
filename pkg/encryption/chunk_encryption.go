@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package encryption
 
 import (
@@ -10,11 +14,11 @@ type ChunkEncrypter interface {
 	EncryptChunk([]byte) (key Key, encryptedSpan, encryptedData []byte, err error)
 }
 
-type ce struct{}
+type chunkEncrypter struct{}
 
-func NewChunkEncrypter() ChunkEncrypter { return &ce{} }
+func NewChunkEncrypter() ChunkEncrypter { return &chunkEncrypter{} }
 
-func (c *ce) EncryptChunk(chunkData []byte) (Key, []byte, []byte, error) {
+func (c *chunkEncrypter) EncryptChunk(chunkData []byte) (Key, []byte, []byte, error) {
 	key := GenerateRandomKey(KeyLength)
 	encryptedSpan, err := newSpanEncryption(key).Encrypt(chunkData[:8])
 	if err != nil {
