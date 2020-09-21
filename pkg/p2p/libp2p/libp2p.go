@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -61,6 +62,8 @@ type Service struct {
 	notifier          p2p.Notifier
 	logger            logging.Logger
 	tracer            *tracing.Tracer
+
+	protocolsmu sync.RWMutex
 }
 
 type Options struct {
@@ -271,6 +274,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 		peer := p2p.Peer{Address: i.BzzAddress.Overlay}
 
+		s.protocolsmu.RLock()
 		for _, tn := range s.protocols {
 			if tn.ConnectIn != nil {
 				if err := tn.ConnectIn(ctx, peer); err != nil {
@@ -278,6 +282,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				}
 			}
 		}
+
+		s.protocolsmu.RUnlock()
 
 		if s.notifier != nil {
 			if err := s.notifier.Connected(ctx, peer); err != nil {
@@ -369,7 +375,9 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		})
 	}
 
+	s.protocolsmu.Lock()
 	s.protocols = append(s.protocols, p)
+	s.protocolsmu.Unlock()
 	return nil
 }
 
@@ -477,6 +485,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("storing bzz address: %w", err)
 	}
 
+	s.protocolsmu.FLock()
 	for _, tn := range s.protocols {
 		if tn.ConnectOut != nil {
 			if err := tn.ConnectOut(ctx, p2p.Peer{Address: i.BzzAddress.Overlay}); err != nil {
@@ -484,6 +493,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 			}
 		}
 	}
+
+	s.protocolsmu.RUnlock()
 
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("successfully connected to peer (outbound) %s", i.BzzAddress.ShortString())
@@ -500,6 +511,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 
 	peer := p2p.Peer{Address: overlay}
 
+	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
 		if tn.DisconnectOut != nil {
 			if err := tn.DisconnectOut(peer); err != nil {
@@ -508,6 +520,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 		}
 	}
 
+	s.protocolsmu.RUnlock()
 	if s.notifier != nil {
 		s.notifier.Disconnected(peer)
 	}
@@ -518,6 +531,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 // disconnected is a registered peer registry event
 func (s *Service) disconnected(address swarm.Address) {
 	peer := p2p.Peer{Address: address}
+	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
 		if tn.DisconnectIn != nil {
 			if err := tn.DisconnectIn(peer); err != nil {
@@ -525,6 +539,8 @@ func (s *Service) disconnected(address swarm.Address) {
 			}
 		}
 	}
+
+	s.protocolsmu.RUnlock()
 
 	if s.notifier != nil {
 		s.notifier.Disconnected(peer)
