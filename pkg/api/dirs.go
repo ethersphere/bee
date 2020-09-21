@@ -18,7 +18,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -182,8 +182,8 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	pipe := pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
-	mr, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+	pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+	mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
 	}
@@ -195,8 +195,8 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
 
-	pipe = pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
-	manifestFileReference, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+	pipe = builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+	manifestFileReference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
 	}
@@ -208,8 +208,8 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code
 func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, mode storage.ModePut, encrypt bool) (swarm.Address, error) {
 	// first store the file and get its reference
-	pipe := pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
-	fr, err := pipeline.FeedPipeline(ctx, pipe, fileInfo.reader, fileInfo.size)
+	pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+	fr, err := builder.FeedPipeline(ctx, pipe, fileInfo.reader, fileInfo.size)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file: %w", err)
 	}
@@ -227,8 +227,8 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	pipe = pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
-	mr, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+	pipe = builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+	mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
 	}
@@ -239,8 +239,8 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, s storage.Storer, 
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
-	pipe = pipeline.NewPipelineBuilder(ctx, s, mode, encrypt)
-	reference, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+	pipe = builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+	reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
 	}

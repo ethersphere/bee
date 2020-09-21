@@ -7,10 +7,11 @@ package pushsync_test
 import (
 	"bytes"
 	"context"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"testing"
 	"time"
+
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
@@ -293,7 +294,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	mockAccounting := accountingmock.NewAccounting()
 	mockPricer := accountingmock.NewPricer(fixedPrice, fixedPrice)
 
-	return pushsync.New(recorder, storer, mockTopology, mtag, pssDeliver, logger, mockAccounting, mockPricer), storer, mtag, mockAccounting
+	return pushsync.New(recorder, storer, mockTopology, mtag, pssDeliver, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

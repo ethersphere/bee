@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -35,6 +36,7 @@ type Interface interface {
 }
 
 type Service struct {
+	addr          swarm.Address
 	streamer      p2p.Streamer
 	peerSuggester topology.EachPeerer
 	storer        storage.Storer
@@ -43,16 +45,19 @@ type Service struct {
 	accounting    accounting.Interface
 	pricer        accounting.Pricer
 	validator     swarm.Validator
+	tracer        *tracing.Tracer
 }
 
-func New(streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator) *Service {
+func New(addr swarm.Address, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator, tracer *tracing.Tracer) *Service {
 	return &Service{
+		addr:          addr,
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
 		logger:        logger,
 		accounting:    accounting,
 		pricer:        pricer,
 		validator:     validator,
+		tracer:        tracer,
 	}
 }
 
@@ -79,6 +84,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 	defer cancel()
 
 	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
+		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger)
+		span = span.SetTag("address", addr.String())
+		defer span.Finish()
+
 		var skipPeers []swarm.Address
 		for i := 0; i < maxPeers; i++ {
 			var peer swarm.Address
@@ -87,14 +96,14 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				if peer.IsZero() {
 					return nil, err
 				}
-				s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
+				logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
 				skipPeers = append(skipPeers, peer)
 				continue
 			}
-			s.logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
+			logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
 			return chunk, nil
 		}
-		s.logger.Tracef("retrieval: failed to get chunk %s: reached max peers of %v", addr, maxPeers)
+		logger.Tracef("retrieval: failed to get chunk %s: reached max peers of %v", addr, maxPeers)
 		return nil, storage.ErrNotFound
 	})
 	if err != nil {
@@ -205,6 +214,14 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (sw
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
+	dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), s.addr.Bytes())
+	if err != nil {
+		return swarm.Address{}, fmt.Errorf("distance compare addr %s closest %s base address %s: %w", addr.String(), closest.String(), s.addr.String(), err)
+	}
+	if dcmp != 1 {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
 	return closest, nil
 }
 
@@ -221,6 +238,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err := r.ReadMsg(&req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger)
+	span = span.SetTag("address", swarm.NewAddress(req.Addr).String())
+	defer span.Finish()
+
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
 	if err != nil {

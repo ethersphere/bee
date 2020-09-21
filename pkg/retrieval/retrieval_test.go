@@ -51,7 +51,7 @@ func TestDelivery(t *testing.T) {
 	pricerMock := accountingmock.NewPricer(price, price)
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(nil, nil, logger, serverMockAccounting, pricerMock, mockValidator)
+	server := retrieval.New(swarm.MustParseHexAddress("00112234"), nil, nil, logger, serverMockAccounting, pricerMock, mockValidator, nil)
 	server.SetStorer(mockStorer)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
@@ -70,7 +70,7 @@ func TestDelivery(t *testing.T) {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	client := retrieval.New(recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator)
+	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator, nil)
 	client.SetStorer(clientMockStorer)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
@@ -132,6 +132,69 @@ func TestDelivery(t *testing.T) {
 	if serverBalance != int64(price) {
 		t.Fatalf("unexpected balance on server. want %d got %d", price, serverBalance)
 	}
+}
+
+func TestRetrieveChunk(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
+	pricer := accountingmock.NewPricer(1, 1)
+
+	// requesting a chunk from downstream peer is expected
+	t.Run("downstream", func(t *testing.T) {
+		serverAddress := swarm.MustParseHexAddress("03")
+		chunkAddress := swarm.MustParseHexAddress("02")
+		clientAddress := swarm.MustParseHexAddress("01")
+
+		serverStorer := storemock.NewStorer()
+		chunk := swarm.NewChunk(chunkAddress, []byte("some data"))
+		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+		server.SetStorer(serverStorer)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+
+		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+			_, _, _ = f(serverAddress, 0)
+			return nil
+		}}
+		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+	})
+
+	// requesting a chunk from the upstream peer should not be possible to avoid request forwarding loops
+	t.Run("upstream", func(t *testing.T) {
+		serverAddress := swarm.MustParseHexAddress("01")
+		chunkAddress := swarm.MustParseHexAddress("02")
+		clientAddress := swarm.MustParseHexAddress("03")
+
+		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+
+		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+			_, _, _ = f(serverAddress, 0)
+			return nil
+		}}
+		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+
+		// do not request from the upstream peer
+		_, err := client.RetrieveChunk(context.Background(), chunkAddress)
+		if !errors.Is(err, topology.ErrNotFound) {
+			t.Fatalf("got error %v, want %v", err, topology.ErrNotFound)
+		}
+	})
 }
 
 type mockPeerSuggester struct {
