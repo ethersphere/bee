@@ -8,10 +8,12 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"errors"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/crypto/clef"
 )
@@ -34,6 +36,10 @@ func (m *mockClef) SignData(account accounts.Account, mimeType string, data []by
 
 func (m *mockClef) Accounts() []accounts.Account {
 	return m.accounts
+}
+
+func (m *mockClef) SignTx(account accounts.Account, transaction *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
+	return nil, nil
 }
 
 func TestNewClefSigner(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 var (
@@ -17,8 +19,14 @@ var (
 )
 
 type Signer interface {
+	// Sign signs data with ethereum prefix (eip191 type 0x45)
 	Sign(data []byte) ([]byte, error)
+	// SignTx signs an ethereum transaction
+	SignTx(transaction *types.Transaction) (*types.Transaction, error)
+	// PublicKey returns the public key this signer uses
 	PublicKey() (*ecdsa.PublicKey, error)
+	// EthereumAddress returns the ethereum address this signer uses
+	EthereumAddress() (common.Address, error)
 }
 
 // addEthereumPrefix adds the ethereum prefix to the data
@@ -61,10 +69,12 @@ func NewDefaultSigner(key *ecdsa.PrivateKey) Signer {
 	}
 }
 
+// PublicKey returns the public key this signer uses
 func (d *defaultSigner) PublicKey() (*ecdsa.PublicKey, error) {
 	return &d.key.PublicKey, nil
 }
 
+// Sign signs data with ethereum prefix (eip191 type 0x45)
 func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 	hash, err := hashWithEthereumPrefix(data)
 	if err != nil {
@@ -81,4 +91,36 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 	copy(signature, signature[1:])
 	signature[64] = v
 	return signature, nil
+}
+
+// SignTx signs an ethereum transaction
+func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
+	hash := (&types.HomesteadSigner{}).Hash(transaction).Bytes()
+	// isCompressedKey is false here so we get the expected v value (27 or 28)
+	signature, err := btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(d.key), hash, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to Ethereum signature format with 'recovery id' v at the end.
+	v := signature[0]
+	copy(signature, signature[1:])
+	// v value needs to be adjusted by 27 as transaction.WithSignature expects it to be 0 or 1
+	signature[64] = v - 27
+	return transaction.WithSignature(&types.HomesteadSigner{}, signature)
+}
+
+// EthereumAddress returns the ethereum address this signer uses
+func (d *defaultSigner) EthereumAddress() (common.Address, error) {
+	publicKey, err := d.PublicKey()
+	if err != nil {
+		return common.Address{}, err
+	}
+	eth, err := NewEthereumAddress(*publicKey)
+	if err != nil {
+		return common.Address{}, err
+	}
+	var ethAddress common.Address
+	copy(ethAddress[:], eth)
+	return ethAddress, nil
 }
