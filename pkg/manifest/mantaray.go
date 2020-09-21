@@ -100,6 +100,12 @@ func (m *mantarayManifest) Lookup(path string) (Entry, error) {
 	return entry, nil
 }
 
+func (m *mantarayManifest) HasPrefix(prefix string) (bool, error) {
+	p := []byte(prefix)
+
+	return m.trie.HasPrefix(p, m.loader)
+}
+
 func (m *mantarayManifest) Store(ctx context.Context, mode storage.ModePut) (swarm.Address, error) {
 
 	saver := newMantaraySaver(ctx, m.encrypted, m.storer, mode)

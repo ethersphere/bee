@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"path"
@@ -37,9 +38,10 @@ func TestDirs(t *testing.T) {
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
 		client, _, _         = newTestServer(t, testServerOptions{
-			Storer: storer,
-			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(ioutil.Discard, 5),
+			Storer:          storer,
+			Tags:            tags.NewTags(mockStatestore, logger),
+			Logger:          logging.New(ioutil.Discard, 5),
+			PreventRedirect: true,
 		})
 	)
 
@@ -304,6 +306,16 @@ func TestDirs(t *testing.T) {
 				)
 			}
 
+			validateIsPermanentRedirect := func(t *testing.T, fromPath, toPath string) {
+				t.Helper()
+
+				expectedResponse := fmt.Sprintf("<a href=\"%s\">Permanent Redirect</a>.\n\n", bzzDownloadResource(resp.Reference.String(), toPath))
+
+				jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(resp.Reference.String(), fromPath), http.StatusPermanentRedirect,
+					jsonhttptest.WithExpectedResponse([]byte(expectedResponse)),
+				)
+			}
+
 			validateBzzPath := func(t *testing.T, fromPath, toPath string) {
 				t.Helper()
 
@@ -344,7 +356,8 @@ func TestDirs(t *testing.T) {
 				// check index suffix for each dir
 				for _, file := range tc.files {
 					if file.dir != "" {
-						validateBzzPath(t, file.dir, path.Join(file.dir, indexDocumentSuffixPath))
+						validateIsPermanentRedirect(t, file.dir, file.dir+"/")
+						validateBzzPath(t, file.dir+"/", path.Join(file.dir, indexDocumentSuffixPath))
 					}
 				}
 			}

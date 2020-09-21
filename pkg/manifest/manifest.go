@@ -33,6 +33,8 @@ type Interface interface {
 	Remove(string) error
 	// Lookup returns a manifest entry if one is found in the specified path.
 	Lookup(string) (Entry, error)
+	// HasPrefix tests whether the specified prefix path exists.
+	HasPrefix(string) (bool, error)
 	// Store stores the manifest, returning the resulting address.
 	Store(context.Context, storage.ModePut) (swarm.Address, error)
 }

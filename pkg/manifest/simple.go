@@ -99,6 +99,10 @@ func (m *simpleManifest) Lookup(path string) (Entry, error) {
 	return entry, nil
 }
 
+func (m *simpleManifest) HasPrefix(prefix string) (bool, error) {
+	return m.manifest.HasPrefix(prefix), nil
+}
+
 func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm.Address, error) {
 
 	data, err := m.manifest.MarshalBinary()

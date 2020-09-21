@@ -34,7 +34,11 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	nameOrHex := mux.Vars(r)["address"]
 	pathVar := mux.Vars(r)["path"]
-	pathVar = strings.TrimRight(pathVar, "/")
+	if strings.HasSuffix(pathVar, "/") {
+		pathVar = strings.TrimRight(pathVar, "/")
+		// NOTE: leave one slash if there was some
+		pathVar += "/"
+	}
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
@@ -123,7 +127,24 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 		if errors.Is(err, manifest.ErrNotFound) {
 
-			// check index path first
+			if !strings.HasPrefix(pathVar, "/") {
+				// check for directory
+				dirPath := pathVar + "/"
+				exists, err := m.HasPrefix(dirPath)
+				if err == nil && exists {
+					// redirect to directory
+					u := r.URL
+					u.Path += "/"
+					redirectURL := u.String()
+
+					logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
+
+					http.Redirect(w, r, redirectURL, http.StatusPermanentRedirect)
+					return
+				}
+			}
+
+			// check index suffix path
 			indexDocumentSuffixKey := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
 			if indexDocumentSuffixKey != "" {
 				if !strings.HasSuffix(pathVar, indexDocumentSuffixKey) {
