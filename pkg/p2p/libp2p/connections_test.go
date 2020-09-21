@@ -509,8 +509,3 @@ func mockNotifier(c cFunc, d dFunc) p2p.Notifier {
 
 type cFunc func(context.Context, p2p.Peer) error
 type dFunc func(p2p.Peer)
-
-var noopNotifier = mockNotifier(
-	func(_ context.Context, _ p2p.Peer) error { return nil },
-	func(_ p2p.Peer) {},
-)

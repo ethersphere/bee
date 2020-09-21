@@ -515,7 +515,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return nil
 }
 
-// disconnected is a registerred peer registry event
+// disconnected is a registered peer registry event
 func (s *Service) disconnected(address swarm.Address) {
 	peer := p2p.Peer{Address: address}
 	for _, tn := range s.protocols {
