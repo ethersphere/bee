@@ -203,7 +203,11 @@ func TestRecoverEIP712(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !privKey.PublicKey.Equal(pubKey) {
+	if privKey.PublicKey.X.Cmp(pubKey.X) != 0 {
+		t.Fatalf("recovered wrong public key. wanted %x, got %x", privKey.PublicKey, pubKey)
+	}
+
+	if privKey.PublicKey.Y.Cmp(pubKey.Y) != 0 {
 		t.Fatalf("recovered wrong public key. wanted %x, got %x", privKey.PublicKey, pubKey)
 	}
 }
