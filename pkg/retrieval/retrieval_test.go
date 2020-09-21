@@ -51,7 +51,7 @@ func TestDelivery(t *testing.T) {
 	pricerMock := accountingmock.NewPricer(price, price)
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(swarm.MustParseHexAddress("00112234"), nil, nil, logger, serverMockAccounting, pricerMock, mockValidator)
+	server := retrieval.New(swarm.MustParseHexAddress("00112234"), nil, nil, logger, serverMockAccounting, pricerMock, mockValidator, nil)
 	server.SetStorer(mockStorer)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
@@ -70,7 +70,7 @@ func TestDelivery(t *testing.T) {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator)
+	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator, nil)
 	client.SetStorer(clientMockStorer)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
@@ -153,7 +153,7 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
 		server.SetStorer(serverStorer)
 
 		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
@@ -162,7 +162,7 @@ func TestRetrieveChunk(t *testing.T) {
 			_, _, _ = f(serverAddress, 0)
 			return nil
 		}}
-		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
 		if err != nil {
@@ -179,7 +179,7 @@ func TestRetrieveChunk(t *testing.T) {
 		chunkAddress := swarm.MustParseHexAddress("02")
 		clientAddress := swarm.MustParseHexAddress("03")
 
-		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
 
 		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
 
@@ -187,7 +187,7 @@ func TestRetrieveChunk(t *testing.T) {
 			_, _, _ = f(serverAddress, 0)
 			return nil
 		}}
-		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator)
+		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
 
 		// do not request from the upstream peer
 		_, err := client.RetrieveChunk(context.Background(), chunkAddress)

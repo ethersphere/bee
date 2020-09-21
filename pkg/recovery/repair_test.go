@@ -260,12 +260,12 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.S
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	server := retrieval.New(swarm.ZeroAddress, nil, nil, logger, serverMockAccounting, nil, nil)
+	server := retrieval.New(swarm.ZeroAddress, nil, nil, logger, serverMockAccounting, nil, nil, nil)
 	server.SetStorer(mockStorer)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
-	retrieve := retrieval.New(swarm.ZeroAddress, recorder, ps, logger, serverMockAccounting, pricerMock, nil)
+	retrieve := retrieval.New(swarm.ZeroAddress, recorder, ps, logger, serverMockAccounting, pricerMock, nil, nil)
 	retrieve.SetStorer(mockStorer)
 	ns := netstore.New(storer, recoveryFunc, retrieve, logger, nil)
 	return ns
