@@ -2,50 +2,59 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package pipeline
+package bmt
 
 import (
+	"errors"
 	"hash"
 
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bmt"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
 	"golang.org/x/crypto/sha3"
 )
 
+var (
+	errInvalidData = errors.New("bmt: invalid data")
+)
+
 type bmtWriter struct {
 	b    bmt.Hash
-	next chainWriter
+	next pipeline.ChainWriter
 }
 
-// newBmtWriter returns a new bmtWriter. Partial writes are not supported.
+// NewBmtWriter returns a new bmtWriter. Partial writes are not supported.
 // Note: branching factor is the BMT branching factor, not the merkle trie branching factor.
-func newBmtWriter(branches int, next chainWriter) chainWriter {
+func NewBmtWriter(branches int, next pipeline.ChainWriter) pipeline.ChainWriter {
 	return &bmtWriter{
 		b:    bmtlegacy.New(bmtlegacy.NewTreePool(hashFunc, branches, bmtlegacy.PoolSize)),
 		next: next,
 	}
 }
 
-// chainWrite writes data in chain. It assumes span has been prepended to the data.
+// ChainWrite writes data in chain. It assumes span has been prepended to the data.
 // The span can be encrypted or unencrypted.
-func (w *bmtWriter) chainWrite(p *pipeWriteArgs) error {
+func (w *bmtWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
+	if len(p.Data) < swarm.SpanSize {
+		return errInvalidData
+	}
 	w.b.Reset()
-	err := w.b.SetSpanBytes(p.data[:swarm.SpanSize])
+	err := w.b.SetSpanBytes(p.Data[:swarm.SpanSize])
 	if err != nil {
 		return err
 	}
-	_, err = w.b.Write(p.data[swarm.SpanSize:])
+	_, err = w.b.Write(p.Data[swarm.SpanSize:])
 	if err != nil {
 		return err
 	}
-	p.ref = w.b.Sum(nil)
-	return w.next.chainWrite(p)
+	p.Ref = w.b.Sum(nil)
+	return w.next.ChainWrite(p)
 }
 
 // sum calls the next writer for the cryptographic sum
-func (w *bmtWriter) sum() ([]byte, error) {
-	return w.next.sum()
+func (w *bmtWriter) Sum() ([]byte, error) {
+	return w.next.Sum()
 }
 
 func hashFunc() hash.Hash {

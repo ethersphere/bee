@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/encryption/store"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	joiner "github.com/ethersphere/bee/pkg/file/seekjoiner"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
@@ -191,9 +191,9 @@ func TestEncryptDecrypt(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx := context.Background()
-			pipe := pipeline.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true)
+			pipe := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true)
 			testDataReader := bytes.NewReader(testData)
-			resultAddress, err := pipeline.FeedPipeline(ctx, pipe, testDataReader, int64(len(testData)))
+			resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader, int64(len(testData)))
 			if err != nil {
 				t.Fatal(err)
 			}

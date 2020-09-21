@@ -11,7 +11,7 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -106,8 +106,8 @@ func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm
 		return swarm.ZeroAddress, fmt.Errorf("manifest marshal error: %w", err)
 	}
 
-	pipe := pipeline.NewPipelineBuilder(ctx, m.storer, mode, m.encrypted)
-	address, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+	pipe := builder.NewPipelineBuilder(ctx, m.storer, mode, m.encrypted)
+	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)
 	}

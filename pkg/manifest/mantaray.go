@@ -11,7 +11,7 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -165,8 +165,8 @@ func (ls *mantarayLoadSaver) Load(ref []byte) ([]byte, error) {
 func (ls *mantarayLoadSaver) Save(data []byte) ([]byte, error) {
 	ctx := ls.ctx
 
-	pipe := pipeline.NewPipelineBuilder(ctx, ls.storer, ls.modePut, ls.encrypted)
-	address, err := pipeline.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+	pipe := builder.NewPipelineBuilder(ctx, ls.storer, ls.modePut, ls.encrypted)
+	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
 
 	if err != nil {
 		return swarm.ZeroAddress.Bytes(), err
