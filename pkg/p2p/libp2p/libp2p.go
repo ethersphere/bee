@@ -485,7 +485,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("storing bzz address: %w", err)
 	}
 
-	s.protocolsmu.FLock()
+	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
 		if tn.ConnectOut != nil {
 			if err := tn.ConnectOut(ctx, p2p.Peer{Address: i.BzzAddress.Overlay}); err != nil {
