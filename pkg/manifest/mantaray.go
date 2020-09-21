@@ -93,6 +93,10 @@ func (m *mantarayManifest) Lookup(path string) (Entry, error) {
 		return nil, ErrNotFound
 	}
 
+	if !node.IsValueType() {
+		return nil, ErrNotFound
+	}
+
 	address := swarm.NewAddress(node.Entry())
 
 	entry := NewEntry(address, node.Metadata())
