@@ -58,6 +58,7 @@ type Service struct {
 	connectionBreaker breaker.Interface
 	blocklist         *blocklist.Blocklist
 	protocols         []*p2p.ProtocolSpec
+	notifier          p2p.Notifier
 	logger            logging.Logger
 	tracer            *tracing.Tracer
 }
@@ -289,6 +290,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	return s, nil
 }
 
+func (s *Service) SetNotifier(n p2p.Notifier) {
+	s.notifier = n
+}
+
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	for _, ss := range p.StreamSpecs {
 		ss := ss
@@ -485,12 +490,18 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 
 	_ = s.host.Network().ClosePeer(peerID)
 
+	peer := p2p.Peer{Address: overlay}
+
 	for _, tn := range s.protocols {
 		if tn.DisconnectOut != nil {
-			if err := tn.DisconnectOut(p2p.Peer{Address: overlay}); err != nil {
+			if err := tn.DisconnectOut(peer); err != nil {
 				s.logger.Debugf("disconnectOut: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, overlay, err)
 			}
 		}
+	}
+
+	if s.notifier != nil {
+		s.notifier.Disconnected(peer)
 	}
 
 	return nil
@@ -498,12 +509,17 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 
 // disconnected is a registerred peer registry event
 func (s *Service) disconnected(address swarm.Address) {
+	peer := p2p.Peer{Address: address}
 	for _, tn := range s.protocols {
 		if tn.DisconnectIn != nil {
-			if err := tn.DisconnectIn(p2p.Peer{Address: address}); err != nil {
+			if err := tn.DisconnectIn(peer); err != nil {
 				s.logger.Debugf("disconnectIn: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, address.String(), err)
 			}
 		}
+	}
+
+	if s.notifier != nil {
+		s.notifier.Disconnected(peer)
 	}
 }
 

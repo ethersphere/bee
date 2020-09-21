@@ -25,6 +25,12 @@ type Service interface {
 	Blocklist(overlay swarm.Address, duration time.Duration) error
 	Peers() []Peer
 	Addresses() ([]ma.Multiaddr, error)
+	SetNotifier(Notifier)
+}
+
+type Notifier interface {
+	Connected(context.Context, *Peer) error
+	Disconnected(Peer)
 }
 
 // DebugService extends the Service with method used for debugging.

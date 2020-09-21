@@ -22,6 +22,7 @@ type Service struct {
 	disconnectFunc        func(overlay swarm.Address) error
 	peersFunc             func() []p2p.Peer
 	addressesFunc         func() ([]ma.Multiaddr, error)
+	setNotifierFunc       func(p2p.Notifier)
 	setWelcomeMessageFunc func(string) error
 	getWelcomeMessageFunc func() string
 	blocklistFunc         func(swarm.Address, time.Duration) error
@@ -32,6 +33,13 @@ type Service struct {
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
 	return optionFunc(func(s *Service) {
 		s.addProtocolFunc = f
+	})
+}
+
+// WithSetNotifierFunc sets the mock implementation of the SetNotifier function
+func WithSetNotifierFunc(f func(p2p.Notifier)) Option {
+	return optionFunc(func(s *Service) {
+		s.setNotifierFunc = f
 	})
 }
 
@@ -147,6 +155,14 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error
 		return errors.New("function blocklist not configured")
 	}
 	return s.blocklistFunc(overlay, duration)
+}
+
+func (s *Service) SetNotifier(f p2p.Notifier) {
+	if s.setNotifierFunc == nil {
+		return
+	}
+
+	s.setNotifierFunc(f)
 }
 
 type Option interface {

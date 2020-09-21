@@ -288,7 +288,7 @@ func TestNotifierHooks(t *testing.T) {
 	}
 
 	// disconnect the peer, expect error
-	kad.Disconnected(peer)
+	kad.Disconnected(p2p.Peer{Address: peer})
 	_, err = kad.ClosestPeer(addr)
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
@@ -779,7 +779,7 @@ func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedC
 }
 
 func removeOne(k *kademlia.Kad, peer swarm.Address) {
-	k.Disconnected(peer)
+	k.Disconnected(p2p.Peer{Address: peer})
 }
 
 const underlayBase = "/ip4/127.0.0.1/tcp/7070/dns/"
@@ -798,7 +798,7 @@ func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addre
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	_ = k.Connected(context.Background(), peer)
+	_ = k.Connected(context.Background(), &p2p.Peer{Address: peer})
 }
 
 func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address) {

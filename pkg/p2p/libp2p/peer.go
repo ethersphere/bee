@@ -56,7 +56,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	r.mu.Lock()
 
 	// remove only the related connection,
-	// not eventually newly created one for the same peer
+	// not eventusally newly created one for the same peer
 	if _, ok := r.connections[peerID][c]; !ok {
 		r.mu.Unlock()
 		return
