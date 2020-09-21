@@ -98,11 +98,13 @@ func (c *clefSigner) Sign(data []byte) ([]byte, error) {
 	return c.clef.SignData(c.account, accounts.MimetypeTextPlain, data)
 }
 
+// SignTx signs an ethereum transaction
 func (c *clefSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
 	// chainId is nil here because it is set on the clef side
 	return c.clef.SignTx(c.account, transaction, nil)
 }
 
+// EthereumAddress returns the ethereum address this signer uses
 func (c *clefSigner) EthereumAddress() (crypto.EthAddress, error) {
 	return c.account.Address, nil
 }

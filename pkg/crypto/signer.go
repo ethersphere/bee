@@ -18,9 +18,13 @@ var (
 )
 
 type Signer interface {
+	// Sign signs data with ethereum prefix (eip191 type 0x45)
 	Sign(data []byte) ([]byte, error)
+	// SignTx signs an ethereum transaction
 	SignTx(transaction *types.Transaction) (*types.Transaction, error)
+	// PublicKey returns the public key this signer uses
 	PublicKey() (*ecdsa.PublicKey, error)
+	// EthereumAddress returns the ethereum address this signer uses
 	EthereumAddress() (EthAddress, error)
 }
 
@@ -64,10 +68,12 @@ func NewDefaultSigner(key *ecdsa.PrivateKey) Signer {
 	}
 }
 
+// PublicKey returns the public key this signer uses
 func (d *defaultSigner) PublicKey() (*ecdsa.PublicKey, error) {
 	return &d.key.PublicKey, nil
 }
 
+// Sign signs data with ethereum prefix (eip191 type 0x45)
 func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 	hash, err := hashWithEthereumPrefix(data)
 	if err != nil {
@@ -86,6 +92,7 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 	return signature, nil
 }
 
+// SignTx signs an ethereum transaction
 func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
 	hash := (&types.HomesteadSigner{}).Hash(transaction).Bytes()
 	// isCompressedKey is false here so we get the expected v value (27 or 28)
@@ -104,6 +111,7 @@ func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transacti
 
 type EthAddress = [20]byte
 
+// EthereumAddress returns the ethereum address this signer uses
 func (d *defaultSigner) EthereumAddress() (EthAddress, error) {
 	publicKey, err := d.PublicKey()
 	if err != nil {
