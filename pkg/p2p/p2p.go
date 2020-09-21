@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -25,7 +24,6 @@ type Service interface {
 	// duration 0 is treated as an infinite duration
 	Blocklist(overlay swarm.Address, duration time.Duration) error
 	Peers() []Peer
-	AddNotifier(topology.Notifier)
 	Addresses() ([]ma.Multiaddr, error)
 }
 
@@ -52,9 +50,13 @@ type Stream interface {
 
 // ProtocolSpec defines a collection of Stream specifications with handlers.
 type ProtocolSpec struct {
-	Name        string
-	Version     string
-	StreamSpecs []StreamSpec
+	Name          string
+	Version       string
+	StreamSpecs   []StreamSpec
+	ConnectIn     func(context.Context, Peer) error
+	ConnectOut    func(context.Context, Peer) error
+	DisconnectIn  func(Peer) error
+	DisconnectOut func(Peer) error
 }
 
 // StreamSpec defines a Stream handling within the protocol.
