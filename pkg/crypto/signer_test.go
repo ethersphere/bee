@@ -125,6 +125,35 @@ func TestDefaultSignerSignTx(t *testing.T) {
 	}
 }
 
+var testTypedData = &eip712.TypedData{
+	Domain: eip712.TypedDataDomain{
+		Name:    "test",
+		Version: "1.0",
+	},
+	Types: eip712.Types{
+		"EIP712Domain": {
+			{
+				Name: "name",
+				Type: "string",
+			},
+			{
+				Name: "version",
+				Type: "string",
+			},
+		},
+		"MyType": {
+			{
+				Name: "test",
+				Type: "string",
+			},
+		},
+	},
+	Message: eip712.TypedDataMessage{
+		"test": "abc",
+	},
+	PrimaryType: "MyType",
+}
+
 func TestDefaultSignerTypedData(t *testing.T) {
 	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
 	if err != nil {
@@ -138,34 +167,7 @@ func TestDefaultSignerTypedData(t *testing.T) {
 
 	signer := crypto.NewDefaultSigner(privKey)
 
-	sig, err := signer.SignTypedData(&eip712.TypedData{
-		Domain: eip712.TypedDataDomain{
-			Name:    "test",
-			Version: "1.0",
-		},
-		Types: eip712.Types{
-			"EIP712Domain": {
-				{
-					Name: "name",
-					Type: "string",
-				},
-				{
-					Name: "version",
-					Type: "string",
-				},
-			},
-			"MyType": {
-				{
-					Name: "test",
-					Type: "string",
-				},
-			},
-		},
-		Message: eip712.TypedDataMessage{
-			"test": "abc",
-		},
-		PrimaryType: "MyType",
-	})
+	sig, err := signer.SignTypedData(testTypedData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,5 +179,31 @@ func TestDefaultSignerTypedData(t *testing.T) {
 
 	if !bytes.Equal(expected, sig) {
 		t.Fatalf("wrong signature. expected %x, got %x", expected, sig)
+	}
+}
+
+func TestRecoverEIP712(t *testing.T) {
+	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected, err := hex.DecodeString("60f054c45d37a0359d4935da0454bc19f02a8c01ceee8a112cfe48c8e2357b842e897f76389fb96947c6d2c80cbfe081052204e7b0c3cc1194a973a09b1614f71c")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pubKey, err := crypto.RecoverEIP712(expected, testTypedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !privKey.PublicKey.Equal(pubKey) {
+		t.Fatalf("recovered wrong public key. wanted %x, got %x", privKey.PublicKey, pubKey)
 	}
 }
