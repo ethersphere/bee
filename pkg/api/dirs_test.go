@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"path"
@@ -38,10 +37,9 @@ func TestDirs(t *testing.T) {
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
 		client, _, _         = newTestServer(t, testServerOptions{
-			Storer:          storer,
-			Tags:            tags.NewTags(mockStatestore, logger),
-			Logger:          logging.New(ioutil.Discard, 5),
-			PreventRedirect: true,
+			Storer: storer,
+			Tags:   tags.NewTags(mockStatestore, logger),
+			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
 
@@ -306,13 +304,22 @@ func TestDirs(t *testing.T) {
 				)
 			}
 
-			validateIsRedirect := func(t *testing.T, fromPath, toPath string) {
+			validateBzzPath := func(t *testing.T, fromPath, toPath string) {
 				t.Helper()
 
-				expectedResponse := fmt.Sprintf("<a href=\"%s\">Temporary Redirect</a>.\n\n", bzzDownloadResource(resp.Reference.String(), toPath))
+				toEntry, err := verifyManifest.Lookup(toPath)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-				jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(resp.Reference.String(), fromPath), http.StatusTemporaryRedirect,
-					jsonhttptest.WithExpectedResponse([]byte(expectedResponse)),
+				var respBytes []byte
+
+				jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(toEntry.Reference().String()), http.StatusOK,
+					jsonhttptest.WithPutResponseBody(&respBytes),
+				)
+
+				jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(resp.Reference.String(), fromPath), http.StatusOK,
+					jsonhttptest.WithExpectedResponse(respBytes),
 				)
 			}
 
@@ -337,7 +344,7 @@ func TestDirs(t *testing.T) {
 				// check index suffix for each dir
 				for _, file := range tc.files {
 					if file.dir != "" {
-						validateIsRedirect(t, file.dir, path.Join(file.dir, indexDocumentSuffixPath))
+						validateBzzPath(t, file.dir, path.Join(file.dir, indexDocumentSuffixPath))
 					}
 				}
 			}
@@ -355,8 +362,8 @@ func TestDirs(t *testing.T) {
 					t.Fatalf("expected error filename '%s', did not find any", tc.wantErrorFilename)
 				}
 
-				// check error document redirection works
-				validateIsRedirect(t, "_non_existent_file_path_", errorDocumentPath)
+				// check error document
+				validateBzzPath(t, "_non_existent_file_path_", errorDocumentPath)
 			}
 
 		})

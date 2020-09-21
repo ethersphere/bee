@@ -6,6 +6,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
@@ -102,15 +104,15 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 		indexDocumentSuffixKey := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
 		if indexDocumentSuffixKey != "" {
-			u := r.URL
-			u.Path += "/"
-			u.Path += indexDocumentSuffixKey
-			redirectURL := u.String()
+			pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
+			indexDocumentManifestEntry, err := m.Lookup(pathWithIndex)
+			if err == nil {
+				// index document exists
+				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-			logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
-
-			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
-			return
+				s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
+				return
+			}
 		}
 	}
 
@@ -122,22 +124,17 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, manifest.ErrNotFound) {
 
 			// check index path first
-			indexDocumentSuffixPath := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
-			if indexDocumentSuffixPath != "" {
-				if !strings.HasSuffix(pathVar, indexDocumentSuffixPath) {
+			indexDocumentSuffixKey := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
+			if indexDocumentSuffixKey != "" {
+				if !strings.HasSuffix(pathVar, indexDocumentSuffixKey) {
 					// check if path is directory with index
-					pathWithIndex := path.Join(pathVar, indexDocumentSuffixPath)
-					_, err = m.Lookup(pathWithIndex)
+					pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
+					indexDocumentManifestEntry, err := m.Lookup(pathWithIndex)
 					if err == nil {
-						// redirect to index file in directory
-						u := r.URL
-						u.Path += "/"
-						u.Path += indexDocumentSuffixPath
-						redirectURL := u.String()
+						// index document exists
+						logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-						logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
-
-						http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+						s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
 						return
 					}
 				}
@@ -147,16 +144,14 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 			errorDocumentPath := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteErrorDocumentPathKey)
 			if errorDocumentPath != "" {
 				if pathVar != errorDocumentPath {
-					u := r.URL
-					redirectURL := u.String()
-					redirectURL = strings.TrimRight(redirectURL, "/")
-					redirectURL = strings.TrimRight(redirectURL, pathVar)
-					redirectURL += errorDocumentPath
+					errorDocumentManifestEntry, err := m.Lookup(errorDocumentPath)
+					if err == nil {
+						// error document exists
+						logger.Debugf("bzz download: serving path: %s", errorDocumentPath)
 
-					logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
-
-					http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
-					return
+						s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, errorDocumentManifestEntry.Reference())
+						return
+					}
 				}
 			}
 
@@ -167,11 +162,23 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manifestEntryAddress := me.Reference()
+	// serve requested path
+	s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, me.Reference())
+}
+
+func (s *server) bzzDownloadHandlerServeManifestEntry(
+	w http.ResponseWriter,
+	r *http.Request,
+	ctx context.Context,
+	j file.JoinSeeker,
+	address swarm.Address,
+	manifestEntryAddress swarm.Address,
+) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 
 	// read file entry
-	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, manifestEntryAddress, buf)
+	buf := bytes.NewBuffer(nil)
+	_, err := file.JoinReadAll(ctx, j, manifestEntryAddress, buf)
 	if err != nil {
 		logger.Debugf("bzz download: read file entry %s: %v", address, err)
 		logger.Errorf("bzz download: read file entry %s", address)
