@@ -24,6 +24,7 @@ jobs:
           fetch-depth: 1
       - name: Install bee-local
         run: |
+          sudo mv $(command -v brew){,_disable}
           export URL=$(curl -s https://api.github.com/repos/ethersphere/bee-local/releases/latest | jq -r .tarball_url)
           curl -Ls ${URL} -o bee-local.tar.gz
           tar --strip-components=1 --wildcards -xzf bee-local.tar.gz ethersphere-bee-local-*/{beeinfra.sh,helm-values,hack}
