@@ -16,10 +16,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -43,8 +43,8 @@ func TestBzz(t *testing.T) {
 			Logger: logging.New(ioutil.Discard, 5),
 		})
 		pipeWriteAll = func(r io.Reader, l int64) (swarm.Address, error) {
-			pipe := pipeline.NewPipelineBuilder(ctx, storer, storage.ModePutUpload, false)
-			return pipeline.FeedPipeline(ctx, pipe, r, l)
+			pipe := builder.NewPipelineBuilder(ctx, storer, storage.ModePutUpload, false)
+			return builder.FeedPipeline(ctx, pipe, r, l)
 		}
 	)
 	t.Run("download-file-by-path", func(t *testing.T) {
