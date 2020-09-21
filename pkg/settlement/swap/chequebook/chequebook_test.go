@@ -20,8 +20,8 @@ func newTestChequebook(
 	t *testing.T,
 	backend chequebook.Backend,
 	transactionService chequebook.TransactionService,
-	address common.Address,
-	erc20address common.Address,
+	address,
+	erc20address,
 	ownerAdress common.Address,
 	simpleSwapBinding chequebook.SimpleSwapBinding,
 	erc20Binding chequebook.ERC20Binding) (chequebook.Service, error) {

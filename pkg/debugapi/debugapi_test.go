@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/resolver"
 	settlementmock "github.com/ethersphere/bee/pkg/settlement/pseudosettle/mock"
+	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -36,6 +37,7 @@ type testServerOptions struct {
 	Tags           *tags.Tags
 	AccountingOpts []accountingmock.Option
 	SettlementOpts []settlementmock.Option
+	ChequebookOpts []chequebookmock.Option
 }
 
 type testServer struct {
@@ -47,8 +49,8 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := settlementmock.NewSettlement(o.SettlementOpts...)
-
-	s := debugapi.New(o.Overlay, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement)
+	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
+	s := debugapi.New(o.Overlay, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, chequebook)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
