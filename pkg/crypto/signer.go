@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -25,7 +26,7 @@ type Signer interface {
 	// PublicKey returns the public key this signer uses
 	PublicKey() (*ecdsa.PublicKey, error)
 	// EthereumAddress returns the ethereum address this signer uses
-	EthereumAddress() (EthAddress, error)
+	EthereumAddress() (common.Address, error)
 }
 
 // addEthereumPrefix adds the ethereum prefix to the data
@@ -109,19 +110,17 @@ func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transacti
 	return transaction.WithSignature(&types.HomesteadSigner{}, signature)
 }
 
-type EthAddress = [20]byte
-
 // EthereumAddress returns the ethereum address this signer uses
-func (d *defaultSigner) EthereumAddress() (EthAddress, error) {
+func (d *defaultSigner) EthereumAddress() (common.Address, error) {
 	publicKey, err := d.PublicKey()
 	if err != nil {
-		return EthAddress{}, err
+		return common.Address{}, err
 	}
 	eth, err := NewEthereumAddress(*publicKey)
 	if err != nil {
-		return EthAddress{}, err
+		return common.Address{}, err
 	}
-	var ethAddress EthAddress
+	var ethAddress common.Address
 	copy(ethAddress[:], eth)
 	return ethAddress, nil
 }

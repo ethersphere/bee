@@ -13,6 +13,7 @@ import (
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 )
@@ -105,6 +106,6 @@ func (c *clefSigner) SignTx(transaction *types.Transaction) (*types.Transaction,
 }
 
 // EthereumAddress returns the ethereum address this signer uses
-func (c *clefSigner) EthereumAddress() (crypto.EthAddress, error) {
+func (c *clefSigner) EthereumAddress() (common.Address, error) {
 	return c.account.Address, nil
 }
