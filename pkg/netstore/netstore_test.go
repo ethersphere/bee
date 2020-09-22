@@ -97,6 +97,7 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 	}
 }
 
+// TestRecovery verifies if recovery is called if it is not empty
 func TestRecovery(t *testing.T) {
 	hookWasCalled := make(chan bool, 1)
 	rec := &mockRecovery{
@@ -122,6 +123,7 @@ func TestRecovery(t *testing.T) {
 	}
 }
 
+// TestRecovery verifies that recovery function is not called if it is not set
 func TestInvalidRecoveryFunction(t *testing.T) {
 	retrieve, _, nstore := newRetrievingNetstore(nil)
 	addr := swarm.MustParseHexAddress("deadbeef")
@@ -135,6 +137,7 @@ func TestInvalidRecoveryFunction(t *testing.T) {
 	}
 }
 
+// TestInvalidTargets verifies that the recovery is not triggered if the target is invalid
 func TestInvalidTargets(t *testing.T) {
 	hookWasCalled := make(chan bool, 1)
 	rec := &mockRecovery{
@@ -153,6 +156,7 @@ func TestInvalidTargets(t *testing.T) {
 	}
 }
 
+// TestEmptyTarget verifies that the recovery is not triggered if the target is empty string
 func TestEmptyTarget(t *testing.T) {
 	hookWasCalled := make(chan bool, 1)
 	rec := &mockRecovery{
