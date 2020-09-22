@@ -31,8 +31,6 @@ const (
 type Interface interface {
 	// EmitCheque sends a signed cheque to a peer.
 	EmitCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) error
-	// SetSwap sets the swap to notify.
-	SetSwap(swap Swap)
 }
 
 // Swap is the interface the settlement layer should implement to receive cheques.
@@ -43,17 +41,17 @@ type Swap interface {
 	Handshake(peer swarm.Address, beneficiary common.Address) error
 }
 
-// service is the main implementation of the swap protocol.
-type service struct {
+// Service is the main implementation of the swap protocol.
+type Service struct {
 	streamer    p2p.Streamer
 	logger      logging.Logger
 	swap        Swap
 	beneficiary common.Address
 }
 
-// New creates a new swap protocol service.
-func New(streamer p2p.Streamer, logger logging.Logger, beneficiary common.Address) *service {
-	return &service{
+// New creates a new swap protocol Service.
+func New(streamer p2p.Streamer, logger logging.Logger, beneficiary common.Address) *Service {
+	return &Service{
 		streamer:    streamer,
 		logger:      logger,
 		beneficiary: beneficiary,
@@ -61,11 +59,11 @@ func New(streamer p2p.Streamer, logger logging.Logger, beneficiary common.Addres
 }
 
 // SetSwap sets the swap to notify.
-func (s *service) SetSwap(swap Swap) {
+func (s *Service) SetSwap(swap Swap) {
 	s.swap = swap
 }
 
-func (s *service) Protocol() p2p.ProtocolSpec {
+func (s *Service) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
 		Name:    protocolName,
 		Version: protocolVersion,
@@ -83,7 +81,7 @@ func (s *service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-func (s *service) initHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+func (s *Service) initHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer func() {
 		if err != nil {
@@ -113,7 +111,7 @@ func (s *service) initHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream
 }
 
 // init is called on outgoing connections and triggers handshake exchange
-func (s *service) init(ctx context.Context, p p2p.Peer) error {
+func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -152,7 +150,7 @@ func (s *service) init(ctx context.Context, p p2p.Peer) error {
 	return s.swap.Handshake(p.Address, beneficiary)
 }
 
-func (s *service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	r := protobuf.NewReader(stream)
 	defer func() {
 		if err != nil {
@@ -176,7 +174,7 @@ func (s *service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 // EmitCheque sends a signed cheque to a peer.
-func (s *service) EmitCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) error {
+func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
