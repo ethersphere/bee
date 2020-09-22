@@ -145,7 +145,7 @@ func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error 
 	return nil
 }
 
-// Issue a new cheque
+// IssueCheque issues a new cheque
 func (s *service) IssueCheque(beneficiary common.Address, amount *big.Int) (*SignedCheque, error) {
 	storeKey := fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
 

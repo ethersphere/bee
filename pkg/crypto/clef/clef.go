@@ -32,13 +32,13 @@ type ExternalSignerInterface interface {
 	Accounts() []accounts.Account
 }
 
-// ExternalSignerInterface is the interface for rpc.RpcClient
-type RpcClient interface {
+// Client is the interface for rpc.RpcClient
+type Client interface {
 	Call(result interface{}, method string, args ...interface{}) error
 }
 
 type clefSigner struct {
-	client  RpcClient // low-level rpc client to clef as ExternalSigner does not implement account_signTypedData
+	client  Client // low-level rpc client to clef as ExternalSigner does not implement account_signTypedData
 	clef    ExternalSignerInterface
 	account accounts.Account // the account this signer will use
 	pubKey  *ecdsa.PublicKey // the public key for the account
@@ -68,7 +68,7 @@ func DefaultIpcPath() (string, error) {
 
 // NewSigner creates a new connection to the signer at endpoint
 // As clef does not expose public keys it signs a test message to recover the public key
-func NewSigner(clef ExternalSignerInterface, client RpcClient, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
+func NewSigner(clef ExternalSignerInterface, client Client, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {
