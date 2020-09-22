@@ -324,7 +324,6 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
 	retrieve.SetStorer(ns)
 
-<<<<<<< HEAD
 	silenceNoHandlerFunc := func(ctx context.Context, ch swarm.Chunk) error {
 		err := psss.TryUnwrap(ctx, ch)
 		if errors.Is(err, pss.ErrNoHandler) {
@@ -333,10 +332,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		return err
 	}
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, silenceNoHandlerFunc, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
-=======
-	pushSyncProtocol := pushsync.New(p2ps, ns, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10))
->>>>>>> fixed issues from intergration testing
+	pushSyncProtocol := pushsync.New(p2ps, ns, kad, tagg, silenceNoHandlerFunc, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
 
 	// set the pushSyncer in the PSS
 	psss.SetPushSyncer(pushSyncProtocol)

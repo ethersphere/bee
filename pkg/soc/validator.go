@@ -25,7 +25,6 @@ func (v *Validator) Validate(ch swarm.Chunk) (valid bool, cType swarm.ChunkType)
 	if err != nil {
 		return false, swarm.InvalidChunk
 	}
-
 	address, err := s.Address()
 	if err != nil {
 		return false, swarm.InvalidChunk

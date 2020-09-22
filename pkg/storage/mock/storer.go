@@ -93,7 +93,8 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 	exist = make([]bool, len(chs))
 	for i, ch := range chs {
 		if m.validator != nil {
-			if !m.validator.Validate(ch) {
+			yes, _ := m.validator.Validate(ch)
+			if !yes {
 				return nil, storage.ErrInvalidChunk
 			}
 		}

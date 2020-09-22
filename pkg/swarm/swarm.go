@@ -30,12 +30,12 @@ var (
 )
 
 type ChunkType uint8
+
 const (
 	InvalidChunk = iota
 	ContentChunk
 	SingleOwnerChunk
 )
-
 
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.
@@ -190,6 +190,5 @@ func (c *chunkValidator) Validate(ch Chunk) (bool, ChunkType) {
 			return yes, cType
 		}
 	}
-
 	return false, InvalidChunk
 }
