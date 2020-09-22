@@ -15,7 +15,7 @@ import (
 
 const chequebookKey = "chequebook"
 
-// Init initialises the chequebook service
+// Init initialises the chequebook service.
 func Init(
 	ctx context.Context,
 	chequebookFactory Factory,
@@ -25,6 +25,7 @@ func Init(
 	transactionService TransactionService,
 	swapBackend Backend,
 	overlayEthAddress common.Address,
+	chequeSigner ChequeSigner,
 	simpleSwapBindingFunc SimpleSwapBindingFunc,
 	erc20BindingFunc ERC20BindingFunc) (chequebookService Service, err error) {
 	// verify that the supplied factory is valid
@@ -60,7 +61,7 @@ func Init(
 			return nil, err
 		}
 
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, simpleSwapBindingFunc, erc20BindingFunc)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, stateStore, chequeSigner, simpleSwapBindingFunc, erc20BindingFunc)
 		if err != nil {
 			return nil, err
 		}
@@ -81,7 +82,7 @@ func Init(
 			logger.Infof("deposited to chequebook %x in transaction %x", chequebookAddress, depositHash)
 		}
 	} else {
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, simpleSwapBindingFunc, erc20BindingFunc)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, stateStore, chequeSigner, simpleSwapBindingFunc, erc20BindingFunc)
 		if err != nil {
 			return nil, err
 		}
