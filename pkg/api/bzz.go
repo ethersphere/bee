@@ -106,15 +106,14 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if pathVar == "" {
 		logger.Tracef("bzz download: handle empty path %s", address)
 
-		indexDocumentSuffixKey := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
-		if indexDocumentSuffixKey != "" {
+		if indexDocumentSuffixKey, ok := manifestMetadataLoad(m, manifestRootPath, manifestWebsiteIndexDocumentSuffixKey); ok {
 			pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
 			indexDocumentManifestEntry, err := m.Lookup(pathWithIndex)
 			if err == nil {
 				// index document exists
 				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-				s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
+				s.serveManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
 				return
 			}
 		}
@@ -145,8 +144,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// check index suffix path
-			indexDocumentSuffixKey := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteIndexDocumentSuffixKey)
-			if indexDocumentSuffixKey != "" {
+			if indexDocumentSuffixKey, ok := manifestMetadataLoad(m, manifestRootPath, manifestWebsiteIndexDocumentSuffixKey); ok {
 				if !strings.HasSuffix(pathVar, indexDocumentSuffixKey) {
 					// check if path is directory with index
 					pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
@@ -155,22 +153,21 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 						// index document exists
 						logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-						s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
+						s.serveManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
 						return
 					}
 				}
 			}
 
 			// check if error document is to be shown
-			errorDocumentPath := bzzDownloadHandlerManifestRedirect(m, manifestWebsiteErrorDocumentPathKey)
-			if errorDocumentPath != "" {
+			if errorDocumentPath, ok := manifestMetadataLoad(m, manifestRootPath, manifestWebsiteErrorDocumentPathKey); ok {
 				if pathVar != errorDocumentPath {
 					errorDocumentManifestEntry, err := m.Lookup(errorDocumentPath)
 					if err == nil {
 						// error document exists
 						logger.Debugf("bzz download: serving path: %s", errorDocumentPath)
 
-						s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, errorDocumentManifestEntry.Reference())
+						s.serveManifestEntry(w, r, ctx, j, address, errorDocumentManifestEntry.Reference())
 						return
 					}
 				}
@@ -184,10 +181,10 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// serve requested path
-	s.bzzDownloadHandlerServeManifestEntry(w, r, ctx, j, address, me.Reference())
+	s.serveManifestEntry(w, r, ctx, j, address, me.Reference())
 }
 
-func (s *server) bzzDownloadHandlerServeManifestEntry(
+func (s *server) serveManifestEntry(
 	w http.ResponseWriter,
 	r *http.Request,
 	ctx context.Context,
@@ -243,18 +240,19 @@ func (s *server) bzzDownloadHandlerServeManifestEntry(
 	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders)
 }
 
-func bzzDownloadHandlerManifestRedirect(manifest manifest.Interface, metadataKey string) string {
-	// check for root path
-	me, err := manifest.Lookup(manifestRootPath)
+// manifestMetadataLoad returns the value for a key stored in the metadata of
+// manifest path, or empty string if no value is present.
+// The ok result indicates whether value was found in the metadata.
+func manifestMetadataLoad(manifest manifest.Interface, path, metadataKey string) (string, bool) {
+	me, err := manifest.Lookup(path)
 	if err != nil {
-		// ignore missing manifest root path
-		return ""
+		return "", false
 	}
 
 	manifestRootMetadata := me.Metadata()
 	if val, ok := manifestRootMetadata[metadataKey]; ok {
-		return val
+		return val, ok
 	}
 
-	return ""
+	return "", false
 }
