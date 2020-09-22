@@ -20,30 +20,30 @@ var (
 )
 
 type Signer interface {
-	// Sign signs data with ethereum prefix (eip191 type 0x45)
+	// Sign signs data with ethereum prefix (eip191 type 0x45).
 	Sign(data []byte) ([]byte, error)
-	// SignTx signs an ethereum transaction
+	// SignTx signs an ethereum transaction.
 	SignTx(transaction *types.Transaction) (*types.Transaction, error)
-	// SignTypedData signs data according to eip712
+	// SignTypedData signs data according to eip712.
 	SignTypedData(typedData *eip712.TypedData) ([]byte, error)
-	// PublicKey returns the public key this signer uses
+	// PublicKey returns the public key this signer uses.
 	PublicKey() (*ecdsa.PublicKey, error)
-	// EthereumAddress returns the ethereum address this signer uses
+	// EthereumAddress returns the ethereum address this signer uses.
 	EthereumAddress() (common.Address, error)
 }
 
-// addEthereumPrefix adds the ethereum prefix to the data
+// addEthereumPrefix adds the ethereum prefix to the data.
 func addEthereumPrefix(data []byte) []byte {
 	return []byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data))
 }
 
-// hashWithEthereumPrefix returns the hash that should be signed for the given data
+// hashWithEthereumPrefix returns the hash that should be signed for the given data.
 func hashWithEthereumPrefix(data []byte) ([]byte, error) {
 	return LegacyKeccak256(addEthereumPrefix(data))
 }
 
 // Recover verifies signature with the data base provided.
-// It is using `btcec.RecoverCompact` function
+// It is using `btcec.RecoverCompact` function.
 func Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
 	if len(signature) != 65 {
 		return nil, ErrInvalidLength
@@ -72,12 +72,12 @@ func NewDefaultSigner(key *ecdsa.PrivateKey) Signer {
 	}
 }
 
-// PublicKey returns the public key this signer uses
+// PublicKey returns the public key this signer uses.
 func (d *defaultSigner) PublicKey() (*ecdsa.PublicKey, error) {
 	return &d.key.PublicKey, nil
 }
 
-// Sign signs data with ethereum prefix (eip191 type 0x45)
+// Sign signs data with ethereum prefix (eip191 type 0x45).
 func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 	hash, err := hashWithEthereumPrefix(data)
 	if err != nil {
@@ -87,7 +87,7 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 	return d.sign(hash, true)
 }
 
-// SignTx signs an ethereum transaction
+// SignTx signs an ethereum transaction.
 func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
 	hash := (&types.HomesteadSigner{}).Hash(transaction).Bytes()
 	// isCompressedKey is false here so we get the expected v value (27 or 28)
@@ -101,7 +101,7 @@ func (d *defaultSigner) SignTx(transaction *types.Transaction) (*types.Transacti
 	return transaction.WithSignature(&types.HomesteadSigner{}, signature)
 }
 
-// EthereumAddress returns the ethereum address this signer uses
+// EthereumAddress returns the ethereum address this signer uses.
 func (d *defaultSigner) EthereumAddress() (common.Address, error) {
 	publicKey, err := d.PublicKey()
 	if err != nil {
@@ -116,7 +116,7 @@ func (d *defaultSigner) EthereumAddress() (common.Address, error) {
 	return ethAddress, nil
 }
 
-// SignTypedData signs data according to eip712
+// SignTypedData signs data according to eip712.
 func (d *defaultSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, error) {
 	rawData, err := eip712.EncodeForSigning(typedData)
 	if err != nil {
@@ -131,7 +131,7 @@ func (d *defaultSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, erro
 	return d.sign(sighash, false)
 }
 
-// sign the provided hash and convert it to the ethereum (r,s,v) format
+// sign the provided hash and convert it to the ethereum (r,s,v) format.
 func (d *defaultSigner) sign(sighash []byte, isCompressedKey bool) ([]byte, error) {
 	signature, err := btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(d.key), sighash, false)
 	if err != nil {
@@ -145,7 +145,7 @@ func (d *defaultSigner) sign(sighash []byte, isCompressedKey bool) ([]byte, erro
 	return signature, nil
 }
 
-// RecoverEIP712 recovers the public key for eip712 signed data
+// RecoverEIP712 recovers the public key for eip712 signed data.
 func RecoverEIP712(signature []byte, data *eip712.TypedData) (*ecdsa.PublicKey, error) {
 	if len(signature) != 65 {
 		return nil, errors.New("invalid length")
