@@ -21,34 +21,14 @@ type Driver interface {
 	PeerAdder
 	ClosestPeerer
 	EachPeerer
-	Notifier
 	NeighborhoodDepth() uint8
 	SubscribePeersChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
 }
 
-type Notifier interface {
-	Connecter
-	Disconnecter
-}
-
 type PeerAdder interface {
 	// AddPeers is called when peers are added to the topology backlog
 	AddPeers(ctx context.Context, addr ...swarm.Address) error
-}
-
-type Connecter interface {
-	// Connected is called when a peer dials in, or in case explicit
-	// notification to kademlia on dial out is requested.
-	Connected(context.Context, swarm.Address) error
-}
-
-type Disconnecter interface {
-	// Disconnected is called when a peer disconnects.
-	// The disconnect event can be initiated on the local
-	// node or on the remote node, this handle does not make
-	// any distinctions between either of them.
-	Disconnected(swarm.Address)
 }
 
 type ClosestPeerer interface {

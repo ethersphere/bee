@@ -7,8 +7,10 @@ package libp2p_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/multiformats/go-multistream"
@@ -213,6 +215,81 @@ func TestDisconnectError(t *testing.T) {
 	expectPeersEventually(t, s1)
 }
 
+func TestConnectDisconnectEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
+	testProtocol := newTestProtocol(func(_ context.Context, _ p2p.Peer, _ p2p.Stream) error {
+		return nil
+	})
+
+	cinCount, coutCount, dinCount, doutCount := 0, 0, 0, 0
+	var countMU sync.Mutex
+
+	testProtocol.ConnectIn = func(c context.Context, p p2p.Peer) error {
+		countMU.Lock()
+		cinCount++
+		countMU.Unlock()
+		return nil
+	}
+
+	testProtocol.ConnectOut = func(c context.Context, p p2p.Peer) error {
+		countMU.Lock()
+		coutCount++
+		countMU.Unlock()
+		return nil
+	}
+
+	testProtocol.DisconnectIn = func(p p2p.Peer) error {
+		countMU.Lock()
+		dinCount++
+		countMU.Unlock()
+		return nil
+	}
+
+	testProtocol.DisconnectOut = func(p p2p.Peer) error {
+		countMU.Lock()
+		doutCount++
+		countMU.Unlock()
+		return nil
+	}
+
+	if err := s1.AddProtocol(testProtocol); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s2.AddProtocol(testProtocol); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	expectCounter(t, &cinCount, 1, &countMU)
+	expectCounter(t, &coutCount, 1, &countMU)
+	expectCounter(t, &dinCount, 0, &countMU)
+	expectCounter(t, &doutCount, 0, &countMU)
+
+	if err := s2.Disconnect(overlay1); err != nil {
+		t.Fatal(err)
+	}
+
+	cinCount = 0
+	coutCount = 0
+
+	expectCounter(t, &cinCount, 0, &countMU)
+	expectCounter(t, &coutCount, 0, &countMU)
+	expectCounter(t, &dinCount, 1, &countMU)
+	expectCounter(t, &doutCount, 1, &countMU)
+
+}
+
 const (
 	testProtocolName     = "testing"
 	testProtocolVersion  = "2.3.4"
@@ -258,4 +335,19 @@ func expectErrNotSupported(t *testing.T, err error) {
 	if !errors.Is(err, multistream.ErrNotSupported) {
 		t.Fatalf("got error %v, want %v", err, multistream.ErrNotSupported)
 	}
+}
+
+func expectCounter(t *testing.T, c *int, expected int, mtx *sync.Mutex) {
+	for i := 0; i < 20; i++ {
+		mtx.Lock()
+		if *c == expected {
+			mtx.Unlock()
+			return
+		}
+
+		mtx.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("timed out waiting for counter to be set")
 }

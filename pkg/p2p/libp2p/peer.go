@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -25,8 +24,12 @@ type peerRegistry struct {
 	mu          sync.RWMutex
 
 	//nolint:misspell
-	disconnecters    []topology.Disconnecter // peerRegistry notifies topology on peer disconnection
-	network.Notifiee                         // peerRegistry can be the receiver for network.Notify
+	disconnecter     disconnecter // peerRegistry notifies libp2p on peer disconnection
+	network.Notifiee              // peerRegistry can be the receiver for network.Notify
+}
+
+type disconnecter interface {
+	disconnected(swarm.Address)
 }
 
 func newPeerRegistry() *peerRegistry {
@@ -53,7 +56,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	r.mu.Lock()
 
 	// remove only the related connection,
-	// not eventually newly created one for the same peer
+	// not eventusally newly created one for the same peer
 	if _, ok := r.connections[peerID][c]; !ok {
 		r.mu.Unlock()
 		return
@@ -74,14 +77,9 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 		cancel()
 	}
 	delete(r.streams, peerID)
-
 	r.mu.Unlock()
+	r.disconnecter.disconnected(overlay)
 
-	if len(r.disconnecters) > 0 {
-		for _, d := range r.disconnecters {
-			d.Disconnected(overlay)
-		}
-	}
 }
 
 func (r *peerRegistry) addStream(peerID libp2ppeer.ID, stream network.Stream, cancel context.CancelFunc) {
@@ -165,9 +163,9 @@ func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (swarm.Address, bool) {
 	return overlay, found
 }
 
-func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
+func (r *peerRegistry) remove(overlay swarm.Address) (bool, libp2ppeer.ID) {
 	r.mu.Lock()
-	overlay, found := r.overlays[peerID]
+	peerID, found := r.underlays[overlay.ByteString()]
 	delete(r.overlays, peerID)
 	delete(r.underlays, overlay.ByteString())
 	delete(r.connections, peerID)
@@ -177,14 +175,9 @@ func (r *peerRegistry) remove(peerID libp2ppeer.ID) {
 	delete(r.streams, peerID)
 	r.mu.Unlock()
 
-	// if overlay was not found disconnect handler should not be signaled.
-	if len(r.disconnecters) > 0 && found {
-		for _, d := range r.disconnecters {
-			d.Disconnected(overlay)
-		}
-	}
+	return found, peerID
 }
 
-func (r *peerRegistry) addDisconnecter(d topology.Disconnecter) {
-	r.disconnecters = append(r.disconnecters, d)
+func (r *peerRegistry) setDisconnecter(d disconnecter) {
+	r.disconnecter = d
 }
