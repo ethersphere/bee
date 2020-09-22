@@ -146,6 +146,8 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
 
+	var chequebookService chequebook.Service
+
 	if o.SwapEnable {
 		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
 		if err != nil {
@@ -185,7 +187,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 		// initialize chequebook logic
 		// return value is ignored because we don't do anything yet after initialization. this will be passed into swap settlement.
-		_, err = chequebook.Init(p2pCtx,
+		chequebookService, err = chequebook.Init(p2pCtx,
 			chequebookFactory,
 			stateStore,
 			logger,
@@ -396,7 +398,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
-		debugAPIService := debugapi.New(swarmAddress, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement)
+		debugAPIService := debugapi.New(swarmAddress, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, chequebookService)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
