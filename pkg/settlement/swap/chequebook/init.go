@@ -15,7 +15,7 @@ import (
 
 const chequebookKey = "chequebook"
 
-// Init initialises the chequebook service
+// Init initialises the chequebook service.
 func Init(
 	ctx context.Context,
 	chequebookFactory Factory,

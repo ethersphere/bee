@@ -66,7 +66,7 @@ type chequeSigner struct {
 	chainID int64         // the chainID used for EIP712
 }
 
-// NewChequeSigner creates a new cheque signer for the given chainID
+// NewChequeSigner creates a new cheque signer for the given chainID.
 func NewChequeSigner(signer crypto.Signer, chainID int64) ChequeSigner {
 	return &chequeSigner{
 		signer:  signer,
@@ -74,7 +74,7 @@ func NewChequeSigner(signer crypto.Signer, chainID int64) ChequeSigner {
 	}
 }
 
-// eip712DataForCheque converts a cheque into the correct TypedData structure
+// eip712DataForCheque converts a cheque into the correct TypedData structure.
 func eip712DataForCheque(cheque *Cheque, chainID int64) *eip712.TypedData {
 	return &eip712.TypedData{
 		Domain: chequebookDomain(chainID),
@@ -88,7 +88,7 @@ func eip712DataForCheque(cheque *Cheque, chainID int64) *eip712.TypedData {
 	}
 }
 
-// Sign signs a cheque
+// Sign signs a cheque.
 func (s *chequeSigner) Sign(cheque *Cheque) ([]byte, error) {
 	return s.signer.SignTypedData(eip712DataForCheque(cheque, s.chainID))
 }

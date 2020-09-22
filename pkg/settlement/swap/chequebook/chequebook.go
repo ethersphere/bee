@@ -18,17 +18,17 @@ import (
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
-// Service is the main interface for interacting with the nodes chequebook
+// Service is the main interface for interacting with the nodes chequebook.
 type Service interface {
 	// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
 	Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
-	// WaitForDeposit waits for the deposit transaction to confirm and verifies the result
+	// WaitForDeposit waits for the deposit transaction to confirm and verifies the result.
 	WaitForDeposit(ctx context.Context, txHash common.Hash) error
-	// Balance returns the token balance of the chequebook
+	// Balance returns the token balance of the chequebook.
 	Balance(ctx context.Context) (*big.Int, error)
-	// Address returns the address of the used chequebook contract
+	// Address returns the address of the used chequebook contract.
 	Address() common.Address
-	// Issue a new cheque for the beneficiary with an cumulativePayout amount higher than the last
+	// Issue a new cheque for the beneficiary with an cumulativePayout amount higher than the last.
 	IssueCheque(beneficiary common.Address, amount *big.Int) (*SignedCheque, error)
 }
 
@@ -49,7 +49,7 @@ type service struct {
 	chequeSigner ChequeSigner
 }
 
-// New creates a new chequebook service for the provided chequebook contract
+// New creates a new chequebook service for the provided chequebook contract.
 func New(backend Backend, transactionService TransactionService, address, erc20Address, ownerAddress common.Address, store storage.StateStorer, chequeSigner ChequeSigner, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
 	chequebookABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20SimpleSwapABI))
 	if err != nil {
@@ -86,7 +86,7 @@ func New(backend Backend, transactionService TransactionService, address, erc20A
 	}, nil
 }
 
-// Address returns the address of the used chequebook contract
+// Address returns the address of the used chequebook contract.
 func (s *service) Address() common.Address {
 	return s.address
 }
@@ -126,14 +126,14 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 	return txHash, nil
 }
 
-// Balance returns the token balance of the chequebook
+// Balance returns the token balance of the chequebook.
 func (s *service) Balance(ctx context.Context) (*big.Int, error) {
 	return s.chequebookInstance.Balance(&bind.CallOpts{
 		Context: ctx,
 	})
 }
 
-// WaitForDeposit waits for the deposit transaction to confirm and verifies the result
+// WaitForDeposit waits for the deposit transaction to confirm and verifies the result.
 func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error {
 	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
@@ -145,7 +145,7 @@ func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error 
 	return nil
 }
 
-// IssueCheque issues a new cheque
+// IssueCheque issues a new cheque.
 func (s *service) IssueCheque(beneficiary common.Address, amount *big.Int) (*SignedCheque, error) {
 	storeKey := fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
 
