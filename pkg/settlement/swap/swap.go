@@ -184,6 +184,16 @@ func (s *service) SettlementsReceived() (map[string]uint64, error) {
 
 // Handshake is called by the swap protocol when a handshake is received.
 func (s *service) Handshake(peer swarm.Address, beneficiary common.Address) error {
+	storedBeneficiary, known, err := s.addressbook.Beneficiary(peer)
+	if err != nil {
+		return err
+	}
+	if known {
+		if storedBeneficiary != beneficiary {
+			return errors.New("beneficiary changed")
+		}
+		return nil
+	}
 	s.logger.Tracef("swap handshake peer=%v beneficiary=%x", peer, beneficiary)
 	return s.addressbook.PutBeneficiary(peer, beneficiary)
 }
