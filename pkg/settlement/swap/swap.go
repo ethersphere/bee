@@ -72,6 +72,8 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		}
 	}
 
+	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
+
 	return s.observer.NotifyPayment(peer, amount.Uint64())
 }
 
@@ -84,9 +86,14 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	if !known {
 		return ErrUnknownBeneficary
 	}
-	return s.chequebook.Issue(beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
+	err = s.chequebook.Issue(beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
+	if err != nil {
+		return err
+	}
+	s.metrics.TotalSent.Add(float64(amount))
+	return nil
 }
 
 // SetPaymentObserver sets the payment observer which will be notified of incoming payments
