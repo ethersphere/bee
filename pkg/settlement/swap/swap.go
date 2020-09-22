@@ -22,8 +22,8 @@ var (
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 )
 
-// service is the implementation of the swap settlement layer.
-type service struct {
+// Service is the implementation of the swap settlement layer.
+type Service struct {
 	proto       swapprotocol.Interface
 	logger      logging.Logger
 	store       storage.StateStorer
@@ -34,9 +34,9 @@ type service struct {
 	addressbook Addressbook
 }
 
-// New creates a new swap service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook) *service {
-	return &service{
+// New creates a new swap Service.
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook) *Service {
+	return &Service{
 		proto:       proto,
 		logger:      logger,
 		store:       store,
@@ -48,7 +48,7 @@ func New(proto swapprotocol.Interface, logger logging.Logger, store storage.Stat
 }
 
 // ReceiveCheque is called by the swap protocol if a cheque is received.
-func (s *service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) (err error) {
+func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) (err error) {
 	// check this is the same chequebook for this peer as previously
 	expectedChequebook, known, err := s.addressbook.Chequebook(peer)
 	if err != nil {
@@ -76,7 +76,7 @@ func (s *service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 }
 
 // Pay initiates a payment to the given peer
-func (s *service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
@@ -90,12 +90,12 @@ func (s *service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 }
 
 // SetPaymentObserver sets the payment observer which will be notified of incoming payments
-func (s *service) SetPaymentObserver(observer settlement.PaymentObserver) {
+func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
 	s.observer = observer
 }
 
 // TotalSent returns the total amount sent to a peer
-func (s *service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
+func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return 0, err
@@ -114,7 +114,7 @@ func (s *service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
 }
 
 // TotalReceived returns the total amount received from a peer
-func (s *service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
+func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
 	chequebookAddress, known, err := s.addressbook.Chequebook(peer)
 	if err != nil {
 		return 0, err
@@ -134,7 +134,7 @@ func (s *service) TotalReceived(peer swarm.Address) (totalReceived uint64, err e
 }
 
 // SettlementsSent returns sent settlements for each individual known peer
-func (s *service) SettlementsSent() (map[string]uint64, error) {
+func (s *Service) SettlementsSent() (map[string]uint64, error) {
 	result := make(map[string]uint64)
 	cheques, err := s.chequebook.LastCheques()
 	if err != nil {
@@ -156,7 +156,7 @@ func (s *service) SettlementsSent() (map[string]uint64, error) {
 }
 
 // SettlementsReceived returns received settlements for each individual known peer.
-func (s *service) SettlementsReceived() (map[string]uint64, error) {
+func (s *Service) SettlementsReceived() (map[string]uint64, error) {
 	result := make(map[string]uint64)
 	err := s.store.Iterate(peerPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := keyPeer(key, peerPrefix)
@@ -183,7 +183,7 @@ func (s *service) SettlementsReceived() (map[string]uint64, error) {
 }
 
 // Handshake is called by the swap protocol when a handshake is received.
-func (s *service) Handshake(peer swarm.Address, beneficiary common.Address) error {
+func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) error {
 	storedBeneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
