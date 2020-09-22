@@ -47,6 +47,7 @@ func TestRecoveryHook(t *testing.T) {
 		hookC: hookWasCalled,
 	}
 
+	// create a new signer
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
