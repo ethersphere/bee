@@ -67,7 +67,15 @@ func (s *Service) Address() common.Address {
 	return common.Address{}
 }
 
-func (s *Service) Issue(beneficiary common.Address, amount *big.Int) (*chequebook.SignedCheque, error) {
+func (s *Service) Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
+	return errors.New("Error")
+}
+
+func (s *Service) LastCheque(beneficiary common.Address) (*chequebook.SignedCheque, error) {
+	return nil, errors.New("Error")
+}
+
+func (s *Service) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, errors.New("Error")
 }
 

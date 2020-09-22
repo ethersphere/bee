@@ -18,6 +18,13 @@ import (
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
+// SendChequeFunc is a function to send cheques.
+type SendChequeFunc func(cheque *SignedCheque) error
+
+const (
+	lastIssuedChequeKeyPrefix = "chequebook_last_issued_cheque_"
+)
+
 // Service is the main interface for interacting with the nodes chequebook.
 type Service interface {
 	// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
@@ -29,7 +36,11 @@ type Service interface {
 	// Address returns the address of the used chequebook contract.
 	Address() common.Address
 	// Issue a new cheque for the beneficiary with an cumulativePayout amount higher than the last.
-	Issue(beneficiary common.Address, amount *big.Int) (*SignedCheque, error)
+	Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error
+	// LastCheque returns the last cheque we issued for the beneficiary.
+	LastCheque(beneficiary common.Address) (*SignedCheque, error)
+	// LastCheque returns the last cheques for all beneficiaries.
+	LastCheques() (map[common.Address]*SignedCheque, error)
 }
 
 type service struct {
@@ -145,16 +156,19 @@ func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error 
 	return nil
 }
 
-// Issue issues a new cheque.
-func (s *service) Issue(beneficiary common.Address, amount *big.Int) (*SignedCheque, error) {
-	storeKey := fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
+// lastIssuedChequeKey computes the key where to store the last cheque for a beneficiary.
+func lastIssuedChequeKey(beneficiary common.Address) string {
+	return fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
+}
 
+// Issue issues a new cheque and passes it to sendChequeFunc
+// if sendChequeFunc succeeds the cheque is considered sent and saved
+func (s *service) Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error {
 	var cumulativePayout *big.Int
-	var lastCheque Cheque
-	err := s.store.Get(storeKey, &lastCheque)
+	lastCheque, err := s.LastCheque(beneficiary)
 	if err != nil {
-		if err != storage.ErrNotFound {
-			return nil, err
+		if err != ErrNoCheque {
+			return err
 		}
 		cumulativePayout = big.NewInt(0)
 	} else {
@@ -164,24 +178,79 @@ func (s *service) Issue(beneficiary common.Address, amount *big.Int) (*SignedChe
 	// increase cumulativePayout by amount
 	cumulativePayout = cumulativePayout.Add(cumulativePayout, amount)
 
+	// create and sign the new cheque
 	cheque := Cheque{
 		Chequebook:       s.address,
 		CumulativePayout: cumulativePayout,
 		Beneficiary:      beneficiary,
 	}
 
-	sig, err := s.chequeSigner.Sign(&cheque)
+	sig, err := s.chequeSigner.Sign(&Cheque{
+		Chequebook:       s.address,
+		CumulativePayout: cumulativePayout,
+		Beneficiary:      beneficiary,
+	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = s.store.Put(storeKey, cheque)
-	if err != nil {
-		return nil, err
-	}
-
-	return &SignedCheque{
+	// actually send the check before saving to avoid double payment
+	err = sendChequeFunc(&SignedCheque{
 		Cheque:    cheque,
 		Signature: sig,
-	}, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
+}
+
+// LastCheque returns the last cheque we issued for the beneficiary.
+func (s *service) LastCheque(beneficiary common.Address) (*SignedCheque, error) {
+	var lastCheque *SignedCheque
+	err := s.store.Get(lastIssuedChequeKey(beneficiary), &lastCheque)
+	if err != nil {
+		if err != storage.ErrNotFound {
+			return nil, err
+		}
+		return nil, ErrNoCheque
+	}
+	return lastCheque, nil
+}
+
+func keyBeneficiary(key []byte, prefix string) (beneficiary common.Address, err error) {
+	k := string(key)
+
+	split := strings.SplitAfter(k, prefix)
+	if len(split) != 2 {
+		return common.Address{}, errors.New("no beneficiary in key")
+	}
+	return common.HexToAddress(split[1]), nil
+}
+
+// LastCheque returns the last cheques for all beneficiaries.
+func (s *service) LastCheques() (map[common.Address]*SignedCheque, error) {
+	result := make(map[common.Address]*SignedCheque)
+	err := s.store.Iterate(lastIssuedChequeKeyPrefix, func(key, val []byte) (stop bool, err error) {
+		addr, err := keyBeneficiary(key, lastIssuedChequeKeyPrefix)
+		if err != nil {
+			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
+		}
+
+		if _, ok := result[addr]; !ok {
+
+			lastCheque, err := s.LastCheque(addr)
+			if err != nil {
+				return false, err
+			}
+
+			result[addr] = lastCheque
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }

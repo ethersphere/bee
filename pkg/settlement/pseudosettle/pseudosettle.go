@@ -29,7 +29,6 @@ const (
 var (
 	SettlementReceivedPrefix = "pseudosettle_total_received_"
 	SettlementSentPrefix     = "pseudosettle_total_sent_"
-	ErrPeerNoSettlements     = errors.New("no settlements for peer")
 )
 
 type Service struct {
@@ -95,7 +94,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	totalReceived, err := s.TotalReceived(p.Address)
 	if err != nil {
-		if !errors.Is(err, ErrPeerNoSettlements) {
+		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
 			return err
 		}
 		totalReceived = 0
@@ -136,7 +135,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	}
 	totalSent, err := s.TotalSent(peer)
 	if err != nil {
-		if !errors.Is(err, ErrPeerNoSettlements) {
+		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
 			return err
 		}
 		totalSent = 0
@@ -160,7 +159,7 @@ func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
 	err = s.store.Get(key, &totalSent)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, ErrPeerNoSettlements
+			return 0, settlement.ErrPeerNoSettlements
 		}
 		return 0, err
 	}
@@ -173,7 +172,7 @@ func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err e
 	err = s.store.Get(key, &totalReceived)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, ErrPeerNoSettlements
+			return 0, settlement.ErrPeerNoSettlements
 		}
 		return 0, err
 	}

@@ -6,8 +6,13 @@ package settlement
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+var (
+	ErrPeerNoSettlements = errors.New("no settlements for peer")
 )
 
 // Interface is the interface used by Accounting to trigger settlement
@@ -23,6 +28,8 @@ type Interface interface {
 	SettlementsSent() (map[string]uint64, error)
 	// SettlementsReceived returns received settlements for each individual known peer
 	SettlementsReceived() (map[string]uint64, error)
+
+	SetPaymentObserver(observer PaymentObserver)
 }
 
 // PaymentObserver is the interface Settlement uses to notify other components of an incoming payment

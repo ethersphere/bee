@@ -16,6 +16,7 @@ import (
 // SimpleSwapBinding is the interface for the generated go bindings for ERC20SimpleSwap
 type SimpleSwapBinding interface {
 	Balance(*bind.CallOpts) (*big.Int, error)
+	Issuer(*bind.CallOpts) (common.Address, error)
 }
 
 type SimpleSwapBindingFunc = func(common.Address, bind.ContractBackend) (SimpleSwapBinding, error)
