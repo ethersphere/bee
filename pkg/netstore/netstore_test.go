@@ -153,6 +153,24 @@ func TestInvalidTargets(t *testing.T) {
 	}
 }
 
+func TestEmptyTarget(t *testing.T) {
+	hookWasCalled := make(chan bool, 1)
+	rec := &mockRecovery{
+		hookC: hookWasCalled,
+	}
+
+	retrieve, _, nstore := newRetrievingNetstore(rec)
+	addr := swarm.MustParseHexAddress("deadbeef")
+	retrieve.failure = true
+	ctx := context.Background()
+	ctx = sctx.SetTargets(ctx, "")
+
+	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
+	if err != nil && !errors.Is(err, sctx.ErrTargetPrefix) {
+		t.Fatal(err)
+	}
+}
+
 // returns a mock retrieval protocol, a mock local storage and a netstore
 func newRetrievingNetstore(rec *mockRecovery) (ret *retrievalMock, mockStore, ns storage.Storer) {
 	retrieve := &retrievalMock{}

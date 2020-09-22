@@ -68,6 +68,9 @@ func GetTargets(ctx context.Context) (trojan.Targets, error) {
 	if !ok {
 		return nil, ErrTargetPrefix
 	}
+	if targetString == "" {
+		return nil, ErrTargetPrefix
+	}
 
 	prefixes := strings.Split(targetString, ",")
 	var targets trojan.Targets
