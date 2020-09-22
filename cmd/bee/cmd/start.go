@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/external"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/crypto/clef"
 	"github.com/ethersphere/bee/pkg/keystore"
@@ -143,7 +145,12 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 					return err
 				}
 
-				signer, err = clef.NewSigner(externalSigner, crypto.Recover)
+				clefRPC, err := rpc.Dial(endpoint)
+				if err != nil {
+					return err
+				}
+
+				signer, err = clef.NewSigner(externalSigner, clefRPC, crypto.Recover)
 				if err != nil {
 					return err
 				}
@@ -202,6 +209,10 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				PaymentTolerance:       c.config.GetUint64(optionNamePaymentTolerance),
 				ResolverConnectionCfgs: resolverCfgs,
 				GatewayMode:            c.config.GetBool(optionNameGatewayMode),
+				SwapEndpoint:           c.config.GetString(optionNameSwapEndpoint),
+				SwapFactoryAddress:     c.config.GetString(optionNameSwapFactoryAddress),
+				SwapInitialDeposit:     c.config.GetUint64(optionNameSwapInitialDeposit),
+				SwapEnable:             c.config.GetBool(optionNameSwapEnable),
 			})
 			if err != nil {
 				return err
