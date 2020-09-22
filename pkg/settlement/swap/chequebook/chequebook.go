@@ -29,7 +29,7 @@ type Service interface {
 	// Address returns the address of the used chequebook contract.
 	Address() common.Address
 	// Issue a new cheque for the beneficiary with an cumulativePayout amount higher than the last.
-	IssueCheque(beneficiary common.Address, amount *big.Int) (*SignedCheque, error)
+	Issue(beneficiary common.Address, amount *big.Int) (*SignedCheque, error)
 }
 
 type service struct {
@@ -145,8 +145,8 @@ func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error 
 	return nil
 }
 
-// IssueCheque issues a new cheque.
-func (s *service) IssueCheque(beneficiary common.Address, amount *big.Int) (*SignedCheque, error) {
+// Issue issues a new cheque.
+func (s *service) Issue(beneficiary common.Address, amount *big.Int) (*SignedCheque, error) {
 	storeKey := fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
 
 	var cumulativePayout *big.Int
