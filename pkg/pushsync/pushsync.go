@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/tracing"
 )
 
 const (
@@ -46,12 +45,11 @@ type PushSync struct {
 	accounting       accounting.Interface
 	pricer           accounting.Pricer
 	metrics          metrics
-	tracer           *tracing.Tracer
 }
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk) error, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk) error, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer) *PushSync {
 	ps := &PushSync{
 		streamer:         streamer,
 		storer:           storer,
@@ -90,14 +88,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			_ = stream.FullClose()
 		}
 	}()
+
 	// Get the delivery
 	chunk, err := ps.getChunkDelivery(r)
 	if err != nil {
 		return fmt.Errorf("chunk delivery from peer %s: %w", p.Address.String(), err)
 	}
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger)
-	span = span.SetTag("address", chunk.Address().String())
-	defer span.Finish()
 
 	// Select the closest peer to forward the chunk
 	peer, err := ps.peerSuggester.ClosestPeer(chunk.Address())
@@ -219,10 +215,6 @@ func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err e
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-push", ps.logger)
-	span = span.SetTag("address", ch.Address().String())
-	defer span.Finish()
-
 	peer, err := ps.peerSuggester.ClosestPeer(ch.Address())
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
