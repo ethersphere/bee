@@ -28,7 +28,7 @@ type Interface interface {
 	SettlementsSent() (map[string]uint64, error)
 	// SettlementsReceived returns received settlements for each individual known peer
 	SettlementsReceived() (map[string]uint64, error)
-
+	// SetPaymentObserver sets the PaymentObserver to notify
 	SetPaymentObserver(observer PaymentObserver)
 }
 

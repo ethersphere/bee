@@ -31,6 +31,8 @@ const (
 type Interface interface {
 	// EmitCheque sends a signed cheque to a peer.
 	EmitCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) error
+	// SetSwap sets the swap to notify.
+	SetSwap(swap Swap)
 }
 
 // Swap is the interface the settlement layer should implement to receive cheques.

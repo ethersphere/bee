@@ -16,16 +16,17 @@ var (
 	peerBeneficiaryPrefix = "peer_beneficiary_"
 )
 
-// Addressbook maps peers to beneficaries, chequebooks and in reverse
+// Addressbook maps peers to beneficaries, chequebooks and in reverse.
 type Addressbook interface {
-	// Beneficiary returns the beneficiary for the given peer
+	// Beneficiary returns the beneficiary for the given peer.
 	Beneficiary(peer swarm.Address) (beneficiary common.Address, known bool, err error)
-	// Chequebook returns the chequebook for the given peer
+	// Chequebook returns the chequebook for the given peer.
 	Chequebook(peer swarm.Address) (chequebookAddress common.Address, known bool, err error)
+	// BeneficiaryPeer returns the peer for a beneficiary.
 	BeneficiaryPeer(beneficiary common.Address) (peer swarm.Address, known bool, err error)
-	// PutBeneficiary stores the beneficiary for the given peer
+	// PutBeneficiary stores the beneficiary for the given peer.
 	PutBeneficiary(peer swarm.Address, beneficiary common.Address) error
-	// PutChequebook stores the chequebook for the given peer
+	// PutChequebook stores the chequebook for the given peer.
 	PutChequebook(peer swarm.Address, chequebook common.Address) error
 }
 
@@ -33,14 +34,14 @@ type addressbook struct {
 	store storage.StateStorer
 }
 
-// NewAddressbook creates a new addressbook using the store
+// NewAddressbook creates a new addressbook using the store.
 func NewAddressbook(store storage.StateStorer) Addressbook {
 	return &addressbook{
 		store: store,
 	}
 }
 
-// Beneficiary returns the beneficiary for the given peer
+// Beneficiary returns the beneficiary for the given peer.
 func (a *addressbook) Beneficiary(peer swarm.Address) (beneficiary common.Address, known bool, err error) {
 	err = a.store.Get(peerBeneficiaryKey(peer), &beneficiary)
 	if err != nil {
@@ -52,7 +53,7 @@ func (a *addressbook) Beneficiary(peer swarm.Address) (beneficiary common.Addres
 	return beneficiary, true, nil
 }
 
-// Beneficiary returns the peer for a beneficiary
+// BeneficiaryPeer returns the peer for a beneficiary.
 func (a *addressbook) BeneficiaryPeer(beneficiary common.Address) (peer swarm.Address, known bool, err error) {
 	err = a.store.Get(beneficiaryPeerKey(beneficiary), &beneficiary)
 	if err != nil {
@@ -64,7 +65,7 @@ func (a *addressbook) BeneficiaryPeer(beneficiary common.Address) (peer swarm.Ad
 	return peer, true, nil
 }
 
-// Chequebook returns the chequebook for the given peer
+// Chequebook returns the chequebook for the given peer.
 func (a *addressbook) Chequebook(peer swarm.Address) (chequebookAddress common.Address, known bool, err error) {
 	err = a.store.Get(peerKey(peer), &chequebookAddress)
 	if err != nil {
@@ -76,7 +77,7 @@ func (a *addressbook) Chequebook(peer swarm.Address) (chequebookAddress common.A
 	return chequebookAddress, true, nil
 }
 
-// PutBeneficiary stores the beneficiary for the given peer
+// PutBeneficiary stores the beneficiary for the given peer.
 func (a *addressbook) PutBeneficiary(peer swarm.Address, beneficiary common.Address) error {
 	err := a.store.Put(peerBeneficiaryKey(peer), beneficiary)
 	if err != nil {
@@ -85,7 +86,7 @@ func (a *addressbook) PutBeneficiary(peer swarm.Address, beneficiary common.Addr
 	return a.store.Put(beneficiaryPeerKey(beneficiary), peer)
 }
 
-// PutChequebook stores the chequebook for the given peer
+// PutChequebook stores the chequebook for the given peer.
 func (a *addressbook) PutChequebook(peer swarm.Address, chequebook common.Address) error {
 	return a.store.Put(peerKey(peer), chequebook)
 }
@@ -105,7 +106,7 @@ func beneficiaryPeerKey(peer common.Address) string {
 	return fmt.Sprintf("%s%s", beneficiaryPeerPrefix, peer)
 }
 
-// keyPeer computes the peer a store entry is for
+// keyPeer computes the peer a store entry is for.
 func keyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
 	k := string(key)
 
