@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -22,7 +23,6 @@ import (
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat-svc"
@@ -56,11 +56,14 @@ type Service struct {
 	handshakeService  *handshake.Service
 	addressbook       addressbook.Putter
 	peers             *peerRegistry
-	topologyNotifiers []topology.Notifier
 	connectionBreaker breaker.Interface
 	blocklist         *blocklist.Blocklist
+	protocols         []p2p.ProtocolSpec
+	notifier          p2p.Notifier
 	logger            logging.Logger
 	tracer            *tracing.Tracer
+
+	protocolsmu sync.RWMutex
 }
 
 type Options struct {
@@ -208,6 +211,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 	}
+
+	peerRegistry.setDisconnecter(s)
+
 	// Construct protocols.
 	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
 	matcher, err := s.protocolSemverMatcher(id)
@@ -224,7 +230,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
 			_ = handshakeStream.Reset()
-			_ = s.disconnect(peerID)
+			_ = s.host.Network().ClosePeer(peerID)
 			return
 		}
 
@@ -232,13 +238,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if err != nil {
 			s.logger.Debugf("blocklisting: exists %s: %v", peerID, err)
 			s.logger.Errorf("internal error while connecting with peer %s", peerID)
-			_ = s.disconnect(peerID)
+			_ = s.host.Network().ClosePeer(peerID)
 			return
 		}
 
 		if blocked {
 			s.logger.Errorf("blocked connection from blocklisted peer %s", peerID)
-			_ = s.disconnect(peerID)
+			_ = s.host.Network().ClosePeer(peerID)
 			return
 		}
 
@@ -246,7 +252,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if err = handshakeStream.FullClose(); err != nil {
 				s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
 				s.logger.Errorf("unable to handshake with peer %v", peerID)
-				_ = s.disconnect(peerID)
+				_ = s.Disconnect(i.BzzAddress.Overlay)
 			}
 			return
 		}
@@ -254,7 +260,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if err = handshakeStream.FullClose(); err != nil {
 			s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
-			_ = s.disconnect(peerID)
+			_ = s.Disconnect(i.BzzAddress.Overlay)
 			return
 		}
 
@@ -262,15 +268,26 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if err != nil {
 			s.logger.Debugf("handshake: addressbook put error %s: %v", peerID, err)
 			s.logger.Errorf("unable to persist peer %v", peerID)
-			_ = s.disconnect(peerID)
+			_ = s.Disconnect(i.BzzAddress.Overlay)
 			return
 		}
 
-		if len(s.topologyNotifiers) > 0 {
-			for _, tn := range s.topologyNotifiers {
-				if err := tn.Connected(ctx, i.BzzAddress.Overlay); err != nil {
-					s.logger.Debugf("topology notifier: %s: %v", peerID, err)
+		peer := p2p.Peer{Address: i.BzzAddress.Overlay}
+
+		s.protocolsmu.RLock()
+		for _, tn := range s.protocols {
+			if tn.ConnectIn != nil {
+				if err := tn.ConnectIn(ctx, peer); err != nil {
+					s.logger.Debugf("connectIn: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, i.BzzAddress.Overlay, err)
 				}
+			}
+		}
+
+		s.protocolsmu.RUnlock()
+
+		if s.notifier != nil {
+			if err := s.notifier.Connected(ctx, peer); err != nil {
+				s.logger.Debugf("notifier.Connected: peer: %s: %v", i.BzzAddress.Overlay, err)
 			}
 		}
 
@@ -287,6 +304,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	return s, nil
 }
 
+func (s *Service) SetNotifier(n p2p.Notifier) {
+	s.notifier = n
+}
+
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	for _, ss := range p.StreamSpecs {
 		ss := ss
@@ -300,7 +321,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			peerID := streamlibp2p.Conn().RemotePeer()
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
-				_ = s.disconnect(peerID)
+				_ = s.Disconnect(overlay)
 				s.logger.Debugf("overlay address for peer %q not found", peerID)
 				return
 			}
@@ -353,6 +374,10 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			}
 		})
 	}
+
+	s.protocolsmu.Lock()
+	s.protocols = append(s.protocols, p)
+	s.protocolsmu.Unlock()
 	return nil
 }
 
@@ -414,7 +439,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
-		_ = s.disconnect(info.ID)
+		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("connect new stream: %w", err)
 	}
 
@@ -422,7 +447,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	i, err := s.handshakeService.Handshake(handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
 		_ = handshakeStream.Reset()
-		_ = s.disconnect(info.ID)
+		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
@@ -430,19 +455,19 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if err != nil {
 		s.logger.Debugf("blocklisting: exists %s: %v", info.ID, err)
 		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
-		_ = s.disconnect(info.ID)
+		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("peer blocklisted")
 	}
 
 	if blocked {
 		s.logger.Errorf("blocked connection from blocklisted peer %s", info.ID)
-		_ = s.disconnect(info.ID)
+		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("peer blocklisted")
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := handshakeStream.FullClose(); err != nil {
-			_ = s.disconnect(info.ID)
+			_ = s.Disconnect(i.BzzAddress.Overlay)
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
@@ -450,15 +475,26 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	if err := handshakeStream.FullClose(); err != nil {
-		_ = s.disconnect(info.ID)
+		_ = s.Disconnect(i.BzzAddress.Overlay)
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
 	err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 	if err != nil {
-		_ = s.disconnect(info.ID)
+		_ = s.Disconnect(i.BzzAddress.Overlay)
 		return nil, fmt.Errorf("storing bzz address: %w", err)
 	}
+
+	s.protocolsmu.RLock()
+	for _, tn := range s.protocols {
+		if tn.ConnectOut != nil {
+			if err := tn.ConnectOut(ctx, p2p.Peer{Address: i.BzzAddress.Overlay}); err != nil {
+				s.logger.Debugf("connectOut: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, i.BzzAddress.Overlay, err)
+			}
+		}
+	}
+
+	s.protocolsmu.RUnlock()
 
 	s.metrics.CreatedConnectionCount.Inc()
 	s.logger.Infof("successfully connected to peer (outbound) %s", i.BzzAddress.ShortString())
@@ -466,29 +502,53 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
-	peerID, found := s.peers.peerID(overlay)
+	found, peerID := s.peers.remove(overlay)
 	if !found {
 		return p2p.ErrPeerNotFound
 	}
 
-	return s.disconnect(peerID)
+	_ = s.host.Network().ClosePeer(peerID)
+
+	peer := p2p.Peer{Address: overlay}
+
+	s.protocolsmu.RLock()
+	for _, tn := range s.protocols {
+		if tn.DisconnectOut != nil {
+			if err := tn.DisconnectOut(peer); err != nil {
+				s.logger.Debugf("disconnectOut: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, overlay, err)
+			}
+		}
+	}
+
+	s.protocolsmu.RUnlock()
+	if s.notifier != nil {
+		s.notifier.Disconnected(peer)
+	}
+
+	return nil
 }
 
-func (s *Service) disconnect(peerID libp2ppeer.ID) error {
-	if err := s.host.Network().ClosePeer(peerID); err != nil {
-		return err
+// disconnected is a registered peer registry event
+func (s *Service) disconnected(address swarm.Address) {
+	peer := p2p.Peer{Address: address}
+	s.protocolsmu.RLock()
+	for _, tn := range s.protocols {
+		if tn.DisconnectIn != nil {
+			if err := tn.DisconnectIn(peer); err != nil {
+				s.logger.Debugf("disconnectIn: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, address.String(), err)
+			}
+		}
 	}
-	s.peers.remove(peerID)
-	return nil
+
+	s.protocolsmu.RUnlock()
+
+	if s.notifier != nil {
+		s.notifier.Disconnected(peer)
+	}
 }
 
 func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
-}
-
-func (s *Service) AddNotifier(n topology.Notifier) {
-	s.topologyNotifiers = append(s.topologyNotifiers, n)
-	s.peers.addDisconnecter(n)
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {

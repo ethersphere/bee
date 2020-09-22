@@ -440,8 +440,8 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 }
 
 // Connected is called when a peer has dialed in.
-func (k *Kad) Connected(ctx context.Context, addr swarm.Address) error {
-	if err := k.connected(ctx, addr); err != nil {
+func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
+	if err := k.connected(ctx, peer.Address); err != nil {
 		return err
 	}
 
@@ -476,12 +476,12 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 }
 
 // Disconnected is called when peer disconnects.
-func (k *Kad) Disconnected(addr swarm.Address) {
-	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
-	k.connectedPeers.Remove(addr, po)
+func (k *Kad) Disconnected(peer p2p.Peer) {
+	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+	k.connectedPeers.Remove(peer.Address, po)
 
 	k.waitNextMu.Lock()
-	k.waitNext[addr.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
+	k.waitNext[peer.Address.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()

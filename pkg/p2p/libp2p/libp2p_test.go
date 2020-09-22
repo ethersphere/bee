@@ -70,8 +70,6 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		t.Fatal(err)
 	}
 
-	s.AddNotifier(noopNotifier)
-
 	t.Cleanup(func() {
 		cancel()
 		s.Close()
@@ -134,15 +132,6 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 		want := addrs[i]
 		if !got.Address.Equal(want) {
 			t.Errorf("got %v peer %s, want %s", i, got.Address, want)
-		}
-	}
-}
-
-func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
-	t.Helper()
-	for i, a := range addrs {
-		if !a.Equal(swarm.ZeroAddress) {
-			t.Fatalf("address did not equal zero address. index %d", i)
 		}
 	}
 }

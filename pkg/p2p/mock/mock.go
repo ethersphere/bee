@@ -12,7 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -22,8 +21,8 @@ type Service struct {
 	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	disconnectFunc        func(overlay swarm.Address) error
 	peersFunc             func() []p2p.Peer
-	addNotifierFunc       func(topology.Notifier)
 	addressesFunc         func() ([]ma.Multiaddr, error)
+	setNotifierFunc       func(p2p.Notifier)
 	setWelcomeMessageFunc func(string) error
 	getWelcomeMessageFunc func() string
 	blocklistFunc         func(swarm.Address, time.Duration) error
@@ -34,6 +33,13 @@ type Service struct {
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
 	return optionFunc(func(s *Service) {
 		s.addProtocolFunc = f
+	})
+}
+
+// WithSetNotifierFunc sets the mock implementation of the SetNotifier function
+func WithSetNotifierFunc(f func(p2p.Notifier)) Option {
+	return optionFunc(func(s *Service) {
+		s.setNotifierFunc = f
 	})
 }
 
@@ -55,13 +61,6 @@ func WithDisconnectFunc(f func(overlay swarm.Address) error) Option {
 func WithPeersFunc(f func() []p2p.Peer) Option {
 	return optionFunc(func(s *Service) {
 		s.peersFunc = f
-	})
-}
-
-// WithAddNotifierFunc sets the mock implementation of the AddNotifier function
-func WithAddNotifierFunc(f func(topology.Notifier)) Option {
-	return optionFunc(func(s *Service) {
-		s.addNotifierFunc = f
 	})
 }
 
@@ -122,14 +121,6 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	return s.disconnectFunc(overlay)
 }
 
-func (s *Service) AddNotifier(f topology.Notifier) {
-	if s.addNotifierFunc == nil {
-		return
-	}
-
-	s.addNotifierFunc(f)
-}
-
 func (s *Service) Addresses() ([]ma.Multiaddr, error) {
 	if s.addressesFunc == nil {
 		return nil, errors.New("function Addresses not configured")
@@ -164,6 +155,14 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error
 		return errors.New("function blocklist not configured")
 	}
 	return s.blocklistFunc(overlay, duration)
+}
+
+func (s *Service) SetNotifier(f p2p.Notifier) {
+	if s.setNotifierFunc == nil {
+		return
+	}
+
+	s.setNotifierFunc(f)
 }
 
 type Option interface {
