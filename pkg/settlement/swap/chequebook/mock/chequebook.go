@@ -67,6 +67,10 @@ func (s *Service) Address() common.Address {
 	return common.Address{}
 }
 
+func (s *Service) Issue(beneficiary common.Address, amount *big.Int) (*chequebook.SignedCheque, error) {
+	return nil, errors.New("Error")
+}
+
 // Option is the option passed to the mock Chequebook service
 type Option interface {
 	apply(*Service)

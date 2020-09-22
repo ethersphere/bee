@@ -13,9 +13,11 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/crypto/clef"
+	"github.com/ethersphere/bee/pkg/crypto/eip712"
 )
 
 type mockClef struct {
@@ -61,7 +63,7 @@ func TestNewClefSigner(t *testing.T) {
 		signature: testSignature,
 	}
 
-	signer, err := clef.NewSigner(mock, func(signature, data []byte) (*ecdsa.PublicKey, error) {
+	signer, err := clef.NewSigner(mock, nil, func(signature, data []byte) (*ecdsa.PublicKey, error) {
 		if !bytes.Equal(testSignature, signature) {
 			t.Fatalf("wrong data used for recover. expected %v got %v", testSignature, signature)
 		}
@@ -102,11 +104,71 @@ func TestClefNoAccounts(t *testing.T) {
 		accounts: []accounts.Account{},
 	}
 
-	_, err := clef.NewSigner(mock, nil)
+	_, err := clef.NewSigner(mock, nil, nil)
 	if err == nil {
 		t.Fatal("expected ErrNoAccounts error if no accounts")
 	}
 	if !errors.Is(err, clef.ErrNoAccounts) {
 		t.Fatalf("expected ErrNoAccounts error but got %v", err)
+	}
+}
+
+type mockRpc struct {
+	call func(result interface{}, method string, args ...interface{}) error
+}
+
+func (m *mockRpc) Call(result interface{}, method string, args ...interface{}) error {
+	return m.call(result, method, args...)
+}
+
+func TestClefTypedData(t *testing.T) {
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := &key.PublicKey
+	signature := common.FromHex("0xabcdef")
+
+	account := common.HexToAddress("21b26864067deb88e2d5cdca512167815f2910d3")
+
+	typedData := &eip712.TypedData{
+		PrimaryType: "MyType",
+	}
+
+	signer, err := clef.NewSigner(&mockClef{
+		accounts: []accounts.Account{
+			{
+				Address: account,
+			},
+		},
+		signature: make([]byte, 65),
+	}, &mockRpc{
+		call: func(result interface{}, method string, args ...interface{}) error {
+			if method != "account_signTypedData" {
+				t.Fatalf("called wrong method. was %s", method)
+			}
+			if args[0].(common.Address) != account {
+				t.Fatalf("called with wrong account. was %x, wanted %x", args[0].(common.Address), account)
+			}
+			if args[1].(*eip712.TypedData) != typedData {
+				t.Fatal("called with wrong data")
+			}
+			*result.(*hexutil.Bytes) = signature
+			return nil
+		},
+	}, func(signature, data []byte) (*ecdsa.PublicKey, error) {
+		return publicKey, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := signer.SignTypedData(typedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(s, signature) {
+		t.Fatalf("wrong signature. wanted %x, got %x", signature, s)
 	}
 }

@@ -7,7 +7,6 @@ package chequebook_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"io/ioutil"
 	"math/big"
 	"testing"
@@ -18,24 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
-
-type signerMock struct {
-	signTx func(transaction *types.Transaction) (*types.Transaction, error)
-}
-
-func (*signerMock) EthereumAddress() (common.Address, error) {
-	return common.Address{}, nil
-}
-
-func (*signerMock) Sign(data []byte) ([]byte, error) {
-	return nil, nil
-}
-func (m *signerMock) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
-	return m.signTx(transaction)
-}
-func (*signerMock) PublicKey() (*ecdsa.PublicKey, error) {
-	return nil, nil
-}
 
 func TestTransactionSend(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)

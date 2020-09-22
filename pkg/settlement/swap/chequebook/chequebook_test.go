@@ -31,6 +31,8 @@ func newTestChequebook(
 		address,
 		erc20address,
 		ownerAdress,
+		nil,
+		nil,
 		func(addr common.Address, b bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
 			if addr != address {
 				t.Fatalf("initialised binding with wrong address. wanted %x, got %x", address, addr)

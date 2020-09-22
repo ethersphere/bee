@@ -165,6 +165,11 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		// print ethereum address so users know which address we need to fund
 		logger.Infof("using ethereum address %x", overlayEthAddress)
 
+		chainId, err := swapBackend.ChainID(p2pCtx)
+		if err != nil {
+			return nil, err
+		}
+
 		// TODO: factory address discovery for well-known networks (goerli for beta)
 
 		if o.SwapFactoryAddress == "" {
@@ -178,6 +183,8 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 			return nil, err
 		}
 
+		chequeSigner := chequebook.NewChequeSigner(signer, chainId.Int64())
+
 		// initialize chequebook logic
 		// return value is ignored because we don't do anything yet after initialization. this will be passed into swap settlement.
 		chequebookService, err = chequebook.Init(p2pCtx,
@@ -188,6 +195,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 			transactionService,
 			swapBackend,
 			overlayEthAddress,
+			chequeSigner,
 			chequebook.NewSimpleSwapBindings,
 			chequebook.NewERC20Bindings)
 		if err != nil {

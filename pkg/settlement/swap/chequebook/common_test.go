@@ -6,12 +6,14 @@ package chequebook_test
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/crypto/eip712"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
@@ -103,10 +105,39 @@ func (m *simpleSwapBindingMock) Balance(o *bind.CallOpts) (*big.Int, error) {
 	return m.balance(o)
 }
 
+func (m *simpleSwapBindingMock) Issuer(*bind.CallOpts) (common.Address, error) {
+	return common.Address{}, nil
+}
+
 type erc20BindingMock struct {
 	balanceOf func(*bind.CallOpts, common.Address) (*big.Int, error)
 }
 
 func (m *erc20BindingMock) BalanceOf(o *bind.CallOpts, a common.Address) (*big.Int, error) {
 	return m.balanceOf(o, a)
+}
+
+type signerMock struct {
+	signTx        func(transaction *types.Transaction) (*types.Transaction, error)
+	signTypedData func(*eip712.TypedData) ([]byte, error)
+}
+
+func (*signerMock) EthereumAddress() (common.Address, error) {
+	return common.Address{}, nil
+}
+
+func (*signerMock) Sign(data []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *signerMock) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
+	return m.signTx(transaction)
+}
+
+func (*signerMock) PublicKey() (*ecdsa.PublicKey, error) {
+	return nil, nil
+}
+
+func (m *signerMock) SignTypedData(d *eip712.TypedData) ([]byte, error) {
+	return m.signTypedData(d)
 }
