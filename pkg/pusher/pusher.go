@@ -59,7 +59,6 @@ func (s *Service) chunksWorker() {
 		<-s.quit
 		cancel()
 	}()
-
 	sem := make(chan struct{}, 10)
 	inflight := make(map[string]struct{})
 	var mtx sync.Mutex

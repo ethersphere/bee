@@ -25,11 +25,12 @@ var (
 	// in p2p Headers or context.
 	ErrContextNotFound = errors.New("tracing context not found")
 
-	// contextKey is used to reference a tracing context span as context value.
-	contextKey = struct{}{}
 	// noopTracer is the tracer that does nothing to handle a nil Tracer usage.
 	noopTracer = &Tracer{tracer: new(opentracing.NoopTracer)}
 )
+
+// contextKey is used to reference a tracing context span as context value.
+type contextKey struct{}
 
 // LogField is the key in log message field that holds tracing id value.
 const LogField = "traceid"
@@ -160,13 +161,13 @@ func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers
 
 // WithContext adds tracing span context to go context.
 func WithContext(ctx context.Context, c opentracing.SpanContext) context.Context {
-	return context.WithValue(ctx, contextKey, c)
+	return context.WithValue(ctx, contextKey{}, c)
 }
 
 // FromContext return tracing span context from go context. If the tracing span
 // context is not present in go context, nil is returned.
 func FromContext(ctx context.Context) opentracing.SpanContext {
-	c, ok := ctx.Value(contextKey).(opentracing.SpanContext)
+	c, ok := ctx.Value(contextKey{}).(opentracing.SpanContext)
 	if !ok {
 		return nil
 	}

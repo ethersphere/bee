@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/opentracing/opentracing-go"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -84,8 +85,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 	defer cancel()
 
 	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
-		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger)
-		span = span.SetTag("address", addr.String())
+		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 		defer span.Finish()
 
 		var skipPeers []swarm.Address
@@ -238,8 +238,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err := r.ReadMsg(&req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger)
-	span = span.SetTag("address", swarm.NewAddress(req.Addr).String())
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
 
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
