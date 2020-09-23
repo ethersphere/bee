@@ -14,7 +14,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/trojan"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
@@ -28,17 +27,20 @@ var (
 	targetMaxLength = 2               // max target length in bytes, in order to prevent grieving by excess computation
 )
 
-type PssMessage struct {
-	Topic   string
-	Message string
-}
-
 func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	t := mux.Vars(r)["topic"]
-	topic := trojan.NewTopic(t)
+	topic := pss.NewTopic(t)
 
+	r := mux.Vars(r)["recipient"]
+	recipient, err := pss.ParseRecipient(r)
+	if err != nil {
+		s.Logger.Debugf("pss recipient: %v", err)
+		s.Logger.Error("pss recipient")
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
 	tg := mux.Vars(r)["targets"]
-	var targets trojan.Targets
+	var targets pss.Targets
 	tgts := strings.Split(tg, ",")
 
 	for _, v := range tgts {
@@ -60,7 +62,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.Pss.Send(r.Context(), targets, topic, payload)
+	err = s.Pss.Send(r.Context(), topic, payload, recipient, targets)
 	if err != nil {
 		s.Logger.Debugf("pss send payload: %v. topic: %s", err, t)
 		s.Logger.Error("pss send payload")
@@ -91,7 +93,7 @@ func (s *server) pumpWs(conn *websocket.Conn, t string) {
 	var (
 		dataC  = make(chan []byte)
 		gone   = make(chan struct{})
-		topic  = trojan.NewTopic(t)
+		topic  = pss.NewTopic(t)
 		ticker = time.NewTicker(s.WsPingPeriod)
 		err    error
 	)
@@ -99,8 +101,8 @@ func (s *server) pumpWs(conn *websocket.Conn, t string) {
 		ticker.Stop()
 		_ = conn.Close()
 	}()
-	cleanup := s.Pss.Register(topic, func(_ context.Context, m *trojan.Message) {
-		dataC <- m.Payload
+	cleanup := s.Pss.Register(topic, func(_ context.Context, m []byte) {
+		dataC <- m
 	})
 
 	defer cleanup()

@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 // TestSend creates a trojan chunk and sends it using push sync
@@ -27,7 +27,6 @@ func TestSend(t *testing.T) {
 	ctx := context.Background()
 
 	// create a mock pushsync service to push the chunk to its destination
-	var receipt *pushsync.Receipt
 	var storedChunk swarm.Chunk
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		rcpt := &pushsync.Receipt{
@@ -37,34 +36,39 @@ func TestSend(t *testing.T) {
 		receipt = rcpt
 		return rcpt, nil
 	})
+	p := pss.New(logging.New(ioutil.Discard, 0))
+	p.SetPushSyncer(pushSyncService)
 
-	pss := pss.New(logging.New(ioutil.Discard, 0))
-	pss.SetPushSyncer(pushSyncService)
-
-	target := trojan.Target([]byte{1}) // arbitrary test target
-	targets := trojan.Targets([]trojan.Target{target})
+	target := pss.Target([]byte{1}) // arbitrary test target
+	targets := pss.Targets([]pss.Target{target})
 	payload := []byte("RECOVERY CHUNK")
-	topic := trojan.NewTopic("RECOVERY TOPIC")
+	topic := pss.NewTopic("RECOVERY TOPIC")
+	privkey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipient := &privkey.PublicKey
 
 	// call Send to store trojan chunk in localstore
-	if err = pss.Send(ctx, targets, topic, payload); err != nil {
+	if err = p.Send(ctx, topic, payload, recipient, targets); err != nil {
 		t.Fatal(err)
 	}
 	if receipt == nil {
 		t.Fatal("no receipt")
 	}
 
-	m, err := trojan.Unwrap(storedChunk)
+	topics := []pss.Topic{topic, topic1, topic2, topic3}
+	topic, msg, err := pss.Unwrap(ctx, privkey, storedChunk, topics)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(m.Payload, payload) {
-		t.Fatalf("payload mismatch expected %v but is %v instead", m.Payload, payload)
+	if !bytes.Equal(msg, payload) {
+		t.Fatalf("message mismatch: expected %x, got %x", payload, msg)
 	}
 
-	if !bytes.Equal(m.Topic[:], topic[:]) {
-		t.Fatalf("topic mismatch expected %v but is %v instead", m.Topic, topic)
+	if !bytes.Equal(t[:], topic[:]) {
+		t.Fatalf("topic mismatch: expected %x, got %x", topic[:], t[:])
 	}
 }
 
@@ -76,23 +80,23 @@ func TestDeliver(t *testing.T) {
 	var mtx sync.Mutex
 
 	// test message
-	topic := trojan.NewTopic("footopic")
+	topic := pss.NewTopic("footopic")
 	payload := []byte("foopayload")
-	msg, err := trojan.NewMessage(topic, payload)
+	msg, err := pss.NewMessage(topic, payload)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// test chunk
-	target := trojan.Target([]byte{1}) // arbitrary test target
-	targets := trojan.Targets([]trojan.Target{target})
+	target := pss.Target([]byte{1}) // arbitrary test target
+	targets := pss.Targets([]pss.Target{target})
 	c, err := msg.Wrap(ctx, targets)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create and register handler
-	var tt trojan.Topic // test variable to check handler func was correctly called
-	hndlr := func(ctx context.Context, m *trojan.Message) {
+	var tt pss.Topic // test variable to check handler func was correctly called
+	hndlr := func(ctx context.Context, m *pss.Message) {
 		mtx.Lock()
 		copy(tt[:], m.Topic[:]) // copy the message topic to the test variable
 		mtx.Unlock()
@@ -127,25 +131,25 @@ func TestRegister(t *testing.T) {
 		h3Calls = 0
 		mtx     sync.Mutex
 
-		topic1  = trojan.NewTopic("one")
-		topic2  = trojan.NewTopic("two")
+		topic1  = pss.NewTopic("one")
+		topic2  = pss.NewTopic("two")
 		payload = []byte("payload")
-		target  = trojan.Target([]byte{1})
-		targets = trojan.Targets([]trojan.Target{target})
+		target  = pss.Target([]byte{1})
+		targets = pss.Targets([]pss.Target{target})
 
-		h1 = func(_ context.Context, m *trojan.Message) {
+		h1 = func(_ context.Context, m *pss.Message) {
 			mtx.Lock()
 			defer mtx.Unlock()
 			h1Calls++
 		}
 
-		h2 = func(_ context.Context, m *trojan.Message) {
+		h2 = func(_ context.Context, m *pss.Message) {
 			mtx.Lock()
 			defer mtx.Unlock()
 			h2Calls++
 		}
 
-		h3 = func(_ context.Context, m *trojan.Message) {
+		h3 = func(_ context.Context, m *pss.Message) {
 			mtx.Lock()
 			defer mtx.Unlock()
 			h3Calls++
@@ -155,7 +159,7 @@ func TestRegister(t *testing.T) {
 	_ = pss.Register(topic2, h2)
 
 	// send a message on topic1, check that only h1 is called
-	msg, err := trojan.NewMessage(topic1, payload)
+	msg, err := pss.NewMessage(topic1, payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +197,7 @@ func TestRegister(t *testing.T) {
 	ensureCalls(t, &mtx, &h2Calls, 0)
 	ensureCalls(t, &mtx, &h3Calls, 1)
 
-	msg, err = trojan.NewMessage(topic2, payload)
+	msg, err = pss.NewMessage(topic2, payload)
 	if err != nil {
 		t.Fatal(err)
 	}

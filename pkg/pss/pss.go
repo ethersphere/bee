@@ -6,6 +6,7 @@ package pss
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 var (
@@ -24,11 +24,11 @@ var (
 
 type Interface interface {
 	// Send arbitrary byte slice with the given topic to Targets.
-	Send(context.Context, trojan.Targets, trojan.Topic, []byte) error
+	Send(context.Context, Topic, []byte, *ecdsa.PublicKey, Targets) error
 	// Register a Handler for a given Topic.
-	Register(trojan.Topic, Handler) func()
+	Register(Topic, Handler) func()
 	// TryUnwrap tries to unwrap a wrapped trojan message.
-	TryUnwrap(context.Context, swarm.Chunk) error
+	TryUnwrap(context.Context, *ecdsa.PrivateKey, swarm.Chunk) error
 
 	SetPushSyncer(pushSyncer pushsync.PushSyncer)
 	io.Closer
@@ -36,7 +36,7 @@ type Interface interface {
 
 type pss struct {
 	pusher     pushsync.PushSyncer
-	handlers   map[trojan.Topic][]*Handler
+	handlers   map[Topic][]*Handler
 	handlersMu sync.Mutex
 	metrics    metrics
 	logger     logging.Logger
@@ -47,7 +47,7 @@ type pss struct {
 func New(logger logging.Logger) Interface {
 	return &pss{
 		logger:   logger,
-		handlers: make(map[trojan.Topic][]*Handler),
+		handlers: make(map[Topic][]*Handler),
 		metrics:  newMetrics(),
 		quit:     make(chan struct{}),
 	}
@@ -58,7 +58,7 @@ func (ps *pss) Close() error {
 	ps.handlersMu.Lock()
 	defer ps.handlersMu.Unlock()
 
-	ps.handlers = make(map[trojan.Topic][]*Handler) //unset handlers on shutdown
+	ps.handlers = make(map[Topic][]*Handler) //unset handlers on shutdown
 
 	return nil
 }
@@ -68,21 +68,15 @@ func (ps *pss) SetPushSyncer(pushSyncer pushsync.PushSyncer) {
 }
 
 // Handler defines code to be executed upon reception of a trojan message.
-type Handler func(context.Context, *trojan.Message)
+type Handler func(context.Context, []byte)
 
 // Send constructs a padded message with topic and payload,
 // wraps it in a trojan chunk such that one of the targets is a prefix of the chunk address.
 // Uses push-sync to deliver message.
-func (p *pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error {
+func (p *pss) Send(ctx context.Context, topic Topic, payload []byte, recipient *ecdsa.PublicKey, targets Targets) error {
 	p.metrics.TotalMessagesSentCounter.Inc()
 
-	m, err := trojan.NewMessage(topic, payload)
-	if err != nil {
-		return err
-	}
-
-	var tc swarm.Chunk
-	tc, err = m.Wrap(ctx, targets)
+	tc, err := Wrap(ctx, topic, payload, recipient, targets)
 	if err != nil {
 		return err
 	}
@@ -96,7 +90,7 @@ func (p *pss) Send(ctx context.Context, targets trojan.Targets, topic trojan.Top
 }
 
 // Register allows the definition of a Handler func for a specific topic on the pss struct.
-func (p *pss) Register(topic trojan.Topic, handler Handler) (cleanup func()) {
+func (p *pss) Register(topic Topic, handler Handler) (cleanup func()) {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 
@@ -116,18 +110,24 @@ func (p *pss) Register(topic trojan.Topic, handler Handler) (cleanup func()) {
 	}
 }
 
-// TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
-func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
-	if !trojan.IsPotential(c) {
-		return nil
+func (p *pss) topics() (ts []Topic) {
+	p.handlersMu.Lock()
+	defer p.handlersMu.Unlock()
+	for t, _ := range p.handlers {
+		ts = append(ts, t)
 	}
-	m, err := trojan.Unwrap(c)
+	return ts
+}
+
+// TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
+func (p *pss) TryUnwrap(ctx context.Context, key *ecdsa.PrivateKey, c swarm.Chunk) error {
+	topic, msg, err := Unwrap(ctx, key, c, p.topics())
 	if err != nil {
 		return err
 	}
-	h := p.getHandlers(m.Topic)
+	h := p.getHandlers(topic)
 	if h == nil {
-		return fmt.Errorf("topic %v, %w", m.Topic, ErrNoHandler)
+		return fmt.Errorf("topic %v, %w", topic, ErrNoHandler)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -144,7 +144,7 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 		wg.Add(1)
 		go func(hh Handler) {
 			defer wg.Done()
-			hh(ctx, m)
+			hh(ctx, msg)
 		}(*hh)
 	}
 	go func() {
@@ -155,7 +155,7 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 	return nil
 }
 
-func (p *pss) getHandlers(topic trojan.Topic) []*Handler {
+func (p *pss) getHandlers(topic Topic) []*Handler {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 
