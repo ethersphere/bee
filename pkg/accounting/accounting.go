@@ -525,3 +525,12 @@ func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold
 	accountingPeer.paymentThreshold = paymentThreshold
 	return nil
 }
+
+// Connected is called when a peer connects to us
+func (a *Accounting) Connected(ctx context.Context, peer swarm.Address) error {
+	return a.pricing.AnnouncePaymentThreshold(ctx, peer, a.paymentThreshold)
+}
+
+// Disconnected is called when a peer disconnects from us
+func (a *Accounting) Disconnected(peer swarm.Address) {
+}

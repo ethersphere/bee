@@ -684,7 +684,7 @@ func TestAccountingConnected(t *testing.T) {
 
 	pricing := &pricingMock{}
 
-	acc, err := accounting.NewAccounting(accounting.Options{
+	_, err := accounting.NewAccounting(accounting.Options{
 		PaymentThreshold: testPaymentThreshold,
 		Logger:           logger,
 		Store:            store,
@@ -699,7 +699,7 @@ func TestAccountingConnected(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Connected(context.Background(), peer1Addr)
+	err = pricing.AnnouncePaymentThreshold(context.Background(), peer1Addr, testPaymentThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
