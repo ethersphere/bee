@@ -383,3 +383,49 @@ func TestChequebookIssue(t *testing.T) {
 		t.Fatalf("wrong cheque stored. wanted %v got %v", expectedCheque, lastCheque)
 	}
 }
+
+func TestChequebookIssueFailedSend(t *testing.T) {
+	address := common.HexToAddress("0xabcd")
+	erc20address := common.HexToAddress("0xefff")
+	beneficiary := common.HexToAddress("0xdddd")
+	ownerAdress := common.HexToAddress("0xfff")
+	store := storemock.NewStateStore()
+	amount := big.NewInt(20)
+	sig := common.Hex2Bytes("0xffff")
+	chequeSigner := &chequeSignerMock{}
+
+	chequebookService, err := newTestChequebook(
+		t,
+		&backendMock{},
+		&transactionServiceMock{},
+		address,
+		erc20address,
+		ownerAdress,
+		store,
+		chequeSigner,
+		&simpleSwapBindingMock{},
+		&erc20BindingMock{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chequeSigner.sign = func(cheque *chequebook.Cheque) ([]byte, error) {
+		return sig, nil
+	}
+
+	err = chequebookService.Issue(beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
+		return errors.New("err")
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// verify the cheque was not saved
+	_, err = chequebookService.LastCheque(beneficiary)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrNoCheque, err)
+	}
+}
