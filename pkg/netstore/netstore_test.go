@@ -132,7 +132,7 @@ func TestInvalidRecoveryFunction(t *testing.T) {
 	ctx = sctx.SetTargets(ctx, "be, cd")
 
 	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && err.Error() != "chunk not found" {
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		t.Fatal(err)
 	}
 }
@@ -170,7 +170,7 @@ func TestEmptyTarget(t *testing.T) {
 	ctx = sctx.SetTargets(ctx, "")
 
 	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && !errors.Is(err, sctx.ErrTargetPrefix) {
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		t.Fatal(err)
 	}
 }
@@ -200,7 +200,7 @@ type retrievalMock struct {
 
 func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
 	if r.failure {
-		return nil, fmt.Errorf("chunk not found")
+		return nil, storage.ErrNotFound
 	}
 	r.called = true
 	atomic.AddInt32(&r.callCount, 1)

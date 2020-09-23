@@ -42,14 +42,17 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// request from network
-			ch, err = s.retrieval.RetrieveChunk(ctx, addr)
-			if err != nil {
+			ch, err1 := s.retrieval.RetrieveChunk(ctx, addr)
+			if err1 != nil {
 				if s.recoveryCallback == nil {
-					return nil, err
+					return nil, err1
 				}
-				targets, err := sctx.GetTargets(ctx)
-				if err != nil {
-					return nil, err
+				targets, err2 := sctx.GetTargets(ctx)
+				if err2 != nil {
+					if errors.Is(err2, sctx.ErrEmptyPrefix) {
+						return nil, err1
+					}
+					return nil, err2
 				}
 				go func() {
 					err := s.recoveryCallback(addr, targets)

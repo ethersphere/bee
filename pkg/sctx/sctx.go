@@ -19,6 +19,7 @@ import (
 var (
 	// ErrTargetPrefix is returned when target prefix decoding fails.
 	ErrTargetPrefix = errors.New("error decoding prefix string")
+	ErrEmptyPrefix  = errors.New("empty value in targets")
 )
 
 type (
@@ -69,7 +70,7 @@ func GetTargets(ctx context.Context) (trojan.Targets, error) {
 		return nil, ErrTargetPrefix
 	}
 	if targetString == "" {
-		return nil, ErrTargetPrefix
+		return nil, ErrEmptyPrefix
 	}
 
 	prefixes := strings.Split(targetString, ",")
