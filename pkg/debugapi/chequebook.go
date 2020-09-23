@@ -38,6 +38,10 @@ type chequebookLastChequeResponse struct {
 	Payout      *big.Int `json:"payout"`
 }
 
+type chequebookLastChequesResponse struct {
+	LastCheques []chequebookLastChequeResponse `json:"lastcheques"`
+}
+
 func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	balance, err := s.Chequebook.Balance(r.Context())
 	if err != nil {
@@ -95,6 +99,25 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
-	jsonhttp.OK(w, "ok")
+
+	lastcheques, err := s.Swap.LastCheques()
+	if err != nil {
+		jsonhttp.InternalServerError(w, errCantLastCheque)
+	}
+
+	lcr := make([]chequebookLastChequeResponse, len(lastcheques))
+
+	k := 0
+	for i, j := range lastcheques {
+		lcr[k] = chequebookLastChequeResponse{
+			Address:     i,
+			Beneficiary: j.Cheque.Beneficiary.String(),
+			Chequebook:  j.Cheque.Chequebook.String(),
+			Payout:      j.Cheque.CumulativePayout,
+		}
+		k++
+	}
+
+	jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcr})
 	return
 }

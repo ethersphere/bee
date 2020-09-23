@@ -30,6 +30,7 @@ var (
 
 type ApiInterface interface {
 	LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, error)
+	LastCheques() (map[string]*chequebook.SignedCheque, error)
 }
 
 // Service is the implementation of the swap settlement layer.
@@ -230,4 +231,23 @@ func (s *Service) LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, 
 	}
 
 	return s.chequebook.LastCheque(common)
+}
+
+func (s *Service) LastCheques() (map[string]*chequebook.SignedCheque, error) {
+	lastcheques, err := s.chequeStore.LastCheques()
+	if err != nil {
+		return nil, err
+	}
+
+	resultmap := make(map[string]*chequebook.SignedCheque, len(lastcheques))
+
+	for i, j := range lastcheques {
+		addr, known, err := s.addressbook.BeneficiaryPeer(i)
+		if err == nil && known == true {
+			resultmap[addr.String()] = j
+		}
+	}
+
+	return resultmap, nil
+
 }
