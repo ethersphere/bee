@@ -384,7 +384,7 @@ func TestChequebookIssue(t *testing.T) {
 	}
 }
 
-func TestChequebookIssueFailedSend(t *testing.T) {
+func TestChequebookIssueErrorSend(t *testing.T) {
 	address := common.HexToAddress("0xabcd")
 	erc20address := common.HexToAddress("0xefff")
 	beneficiary := common.HexToAddress("0xdddd")
