@@ -32,7 +32,7 @@ type chequebookAddressResponse struct {
 }
 
 type chequebookLastChequeResponse struct {
-	Address     string   `json:"peer"`
+	Address     string   `json:"address"`
 	Beneficiary string   `json:"beneficiary"`
 	Chequebook  string   `json:"chequebook"`
 	Payout      *big.Int `json:"payout"`
@@ -71,8 +71,8 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: settlements peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Error("debug api: settlements peer: invalid peer address %s", addr)
+		s.Logger.Debugf("debug api: chequebook lastcheque peer: invalid peer address %s: %v", addr, err)
+		s.Logger.Error("debug api: chequebook lastcheque peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
@@ -80,8 +80,8 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 	lastcheque, err := s.Swap.LastChequePeer(peer)
 	if err != nil {
 		if !errors.Is(err, swap.ErrUnknownBeneficary) {
-			s.Logger.Debugf("debug api: lastcheque peer: get peer %s last cheque: %v", peer.String(), err)
-			s.Logger.Errorf("debug api: settlements peer: can't get peer %s last cheque", peer.String())
+			s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v", peer.String(), err)
+			s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
 			jsonhttp.InternalServerError(w, errCantLastChequePeer)
 			return
 		}
