@@ -3,7 +3,6 @@ package swap
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -170,28 +169,22 @@ func (s *Service) SettlementsSent() (map[string]uint64, error) {
 // SettlementsReceived returns received settlements for each individual known peer.
 func (s *Service) SettlementsReceived() (map[string]uint64, error) {
 	result := make(map[string]uint64)
-	err := s.store.Iterate(peerPrefix, func(key, val []byte) (stop bool, err error) {
-		addr, err := keyPeer(key, peerPrefix)
-		if err != nil {
-			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
-		}
-
-		if _, ok := result[addr.String()]; !ok {
-			totalReceived, err := s.TotalReceived(addr)
-			if err != nil && err != settlement.ErrPeerNoSettlements {
-				return false, err
-			} else if err == settlement.ErrPeerNoSettlements {
-				return false, nil
-			}
-
-			result[addr.String()] = totalReceived
-		}
-		return false, nil
-	})
+	cheques, err := s.chequeStore.LastCheques()
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+
+	for chequebook, cheque := range cheques {
+		peer, known, err := s.addressbook.ChequebookPeer(chequebook)
+		if err != nil {
+			return nil, err
+		}
+		if !known {
+			continue
+		}
+		result[peer.String()] = cheque.CumulativePayout.Uint64()
+	}
+	return result, err
 }
 
 // Handshake is called by the swap protocol when a handshake is received.

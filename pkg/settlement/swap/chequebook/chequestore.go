@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,7 +23,8 @@ var (
 	// ErrWrongBeneficiary is the error returned if the cheque has the wrong beneficiary.
 	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrBouncingCheque is the error returned if the chequebook is demonstrably illiquid.
-	ErrBouncingCheque = errors.New("bouncing cheque")
+	ErrBouncingCheque        = errors.New("bouncing cheque")
+	lastReceivedChequePrefix = "chequebook_last_received_cheque_"
 )
 
 // ChequeStore handles the verification and storage of received cheques
@@ -31,6 +33,8 @@ type ChequeStore interface {
 	ReceiveCheque(ctx context.Context, cheque *SignedCheque) (*big.Int, error)
 	// LastCheque returns the last cheque we received from a specific chequebook.
 	LastCheque(chequebook common.Address) (*SignedCheque, error)
+	// LastCheques returns the last received cheques from every known chequebook.
+	LastCheques() (map[common.Address]*SignedCheque, error)
 }
 
 type chequeStore struct {
@@ -182,4 +186,42 @@ func RecoverCheque(cheque *SignedCheque, chaindID int64) (common.Address, error)
 	var issuer common.Address
 	copy(issuer[:], ethAddr)
 	return issuer, nil
+}
+
+// keyChequebook computes the chequebook a store entry is for.
+func keyChequebook(key []byte, prefix string) (chequebook common.Address, err error) {
+	k := string(key)
+
+	split := strings.SplitAfter(k, prefix)
+	if len(split) != 2 {
+		return common.Address{}, errors.New("no peer in key")
+	}
+	return common.HexToAddress(split[1]), nil
+}
+
+// LastCheques returns the last received cheques from every known chequebook.
+func (s *chequeStore) LastCheques() (map[common.Address]*SignedCheque, error) {
+	result := make(map[common.Address]*SignedCheque)
+	err := s.store.Iterate(lastReceivedChequePrefix, func(key, val []byte) (stop bool, err error) {
+		addr, err := keyChequebook(key, lastReceivedChequePrefix)
+		if err != nil {
+			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
+		}
+
+		if _, ok := result[addr]; !ok {
+			lastCheque, err := s.LastCheque(addr)
+			if err != nil && err != ErrNoCheque {
+				return false, err
+			} else if err == ErrNoCheque {
+				return false, nil
+			}
+
+			result[addr] = lastCheque
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
