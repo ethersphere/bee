@@ -122,6 +122,7 @@ jobs:
           if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
           if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
           if ${{ steps.balances.outcome=='failure' }}; then FAILED=balances; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
           if ${{ steps.pushsync-bytes.outcome=='failure' }}; then FAILED=pushsync-bytes; fi
           if ${{ steps.pushsync-chunks.outcome=='failure' }}; then FAILED=pushsync-chunks; fi
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
