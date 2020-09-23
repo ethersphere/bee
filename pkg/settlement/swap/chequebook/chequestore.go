@@ -40,10 +40,20 @@ type chequeStore struct {
 	simpleSwapBindingFunc SimpleSwapBindingFunc
 	backend               Backend
 	beneficiary           common.Address // the beneficiary we expect in cheques sent to us
+	recoverChequeFunc     RecoverChequeFunc
 }
 
+type RecoverChequeFunc func(cheque *SignedCheque, chainID int64) (common.Address, error)
+
 // NewChequeStore creates new ChequeStore
-func NewChequeStore(store storage.StateStorer, backend Backend, factory Factory, chainID int64, beneficiary common.Address, simpleSwapBindingFunc SimpleSwapBindingFunc) ChequeStore {
+func NewChequeStore(
+	store storage.StateStorer,
+	backend Backend,
+	factory Factory,
+	chainID int64,
+	beneficiary common.Address,
+	simpleSwapBindingFunc SimpleSwapBindingFunc,
+	recoverChequeFunc RecoverChequeFunc) ChequeStore {
 	return &chequeStore{
 		store:                 store,
 		factory:               factory,
@@ -51,6 +61,7 @@ func NewChequeStore(store storage.StateStorer, backend Backend, factory Factory,
 		chaindID:              chainID,
 		simpleSwapBindingFunc: simpleSwapBindingFunc,
 		beneficiary:           beneficiary,
+		recoverChequeFunc:     recoverChequeFunc,
 	}
 }
 
@@ -123,9 +134,13 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 	}
 
 	// verify the cheque signature
-	err = s.verifyChequeSignature(ctx, cheque, expectedIssuer)
+	issuer, err := s.recoverChequeFunc(cheque, s.chaindID)
 	if err != nil {
 		return nil, err
+	}
+
+	if issuer != expectedIssuer {
+		return nil, ErrChequeInvalid
 	}
 
 	// basic liquidity check
@@ -150,26 +165,21 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 	return amount, nil
 }
 
-// verifyChequeSignature recovers the signer and checks it against the onchain issuer
-func (s *chequeStore) verifyChequeSignature(ctx context.Context, cheque *SignedCheque, expectedIssuer common.Address) error {
-	eip712Data := eip712DataForCheque(&cheque.Cheque, s.chaindID)
+// RecoverCheque recovers the issuer ethereum address from a signed cheque
+func RecoverCheque(cheque *SignedCheque, chaindID int64) (common.Address, error) {
+	eip712Data := eip712DataForCheque(&cheque.Cheque, chaindID)
 
 	pubkey, err := crypto.RecoverEIP712(cheque.Signature, eip712Data)
 	if err != nil {
-		return err
+		return common.Address{}, err
 	}
 
 	ethAddr, err := crypto.NewEthereumAddress(*pubkey)
 	if err != nil {
-		return err
+		return common.Address{}, err
 	}
 
 	var issuer common.Address
 	copy(issuer[:], ethAddr)
-
-	if issuer != expectedIssuer {
-		return ErrChequeInvalid
-	}
-
-	return nil
+	return issuer, nil
 }
