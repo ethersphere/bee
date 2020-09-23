@@ -8,8 +8,6 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
-	"runtime"
-	"sync"
 	"testing"
 	"time"
 
@@ -29,20 +27,16 @@ func TestSend(t *testing.T) {
 	// create a mock pushsync service to push the chunk to its destination
 	var storedChunk swarm.Chunk
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-		rcpt := &pushsync.Receipt{
-			Address: swarm.NewAddress(chunk.Address().Bytes()),
-		}
 		storedChunk = chunk
-		receipt = rcpt
-		return rcpt, nil
+		return nil, nil
 	})
 	p := pss.New(logging.New(ioutil.Discard, 0))
 	p.SetPushSyncer(pushSyncService)
 
 	target := pss.Target([]byte{1}) // arbitrary test target
 	targets := pss.Targets([]pss.Target{target})
-	payload := []byte("RECOVERY CHUNK")
-	topic := pss.NewTopic("RECOVERY TOPIC")
+	payload := []byte("some payload")
+	topic := pss.NewTopic("topic")
 	privkey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -53,12 +47,13 @@ func TestSend(t *testing.T) {
 	if err = p.Send(ctx, topic, payload, recipient, targets); err != nil {
 		t.Fatal(err)
 	}
-	if receipt == nil {
-		t.Fatal("no receipt")
-	}
+
+	topic1 := pss.NewTopic("topic-1")
+	topic2 := pss.NewTopic("topic-2")
+	topic3 := pss.NewTopic("topic-3")
 
 	topics := []pss.Topic{topic, topic1, topic2, topic3}
-	topic, msg, err := pss.Unwrap(ctx, privkey, storedChunk, topics)
+	unwrapTopic, msg, err := pss.Unwrap(ctx, privkey, storedChunk, topics)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,69 +62,76 @@ func TestSend(t *testing.T) {
 		t.Fatalf("message mismatch: expected %x, got %x", payload, msg)
 	}
 
-	if !bytes.Equal(t[:], topic[:]) {
-		t.Fatalf("topic mismatch: expected %x, got %x", topic[:], t[:])
+	if !bytes.Equal(unwrapTopic[:], topic[:]) {
+		t.Fatalf("topic mismatch: expected %x, got %x", topic[:], unwrapTopic[:])
 	}
+}
+
+type topicMessage struct {
+	topic pss.Topic
+	msg   []byte
 }
 
 // TestDeliver verifies that registering a handler on pss for a given topic and then submitting a trojan chunk with said topic to it
 // results in the execution of the expected handler func
 func TestDeliver(t *testing.T) {
-	pss := pss.New(logging.New(ioutil.Discard, 0))
 	ctx := context.Background()
-	var mtx sync.Mutex
 
-	// test message
-	topic := pss.NewTopic("footopic")
-	payload := []byte("foopayload")
-	msg, err := pss.NewMessage(topic, payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// test chunk
+	p := pss.New(logging.New(ioutil.Discard, 0))
+
 	target := pss.Target([]byte{1}) // arbitrary test target
 	targets := pss.Targets([]pss.Target{target})
-	c, err := msg.Wrap(ctx, targets)
+	payload := []byte("some payload")
+	topic := pss.NewTopic("topic")
+	privkey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
+	recipient := &privkey.PublicKey
+
+	// test chunk
+	chunk, err := pss.Wrap(context.Background(), topic, payload, recipient, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msgChan := make(chan topicMessage)
 
 	// create and register handler
-	var tt pss.Topic // test variable to check handler func was correctly called
-	hndlr := func(ctx context.Context, m *pss.Message) {
-		mtx.Lock()
-		copy(tt[:], m.Topic[:]) // copy the message topic to the test variable
-		mtx.Unlock()
+	handler := func(ctx context.Context, m []byte) {
+		msgChan <- topicMessage{
+			topic: topic,
+			msg:   m,
+		}
 	}
-	pss.Register(topic, hndlr)
+	p.Register(topic, handler)
 
 	// call pss TryUnwrap on chunk and verify test topic variable value changes
-	err = pss.TryUnwrap(ctx, c)
+	err = p.TryUnwrap(ctx, privkey, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime.Gosched() // schedule the handler goroutine
-	for i := 0; i < 10; i++ {
-		mtx.Lock()
 
-		eq := bytes.Equal(tt[:], msg.Topic[:])
-		mtx.Unlock()
-		if eq {
-			return
-		}
-		<-time.After(50 * time.Millisecond)
+	message := <-msgChan
+
+	if !bytes.Equal(payload, message.msg) {
+		t.Fatalf("message mismatch: expected %x, got %x", payload, message.msg)
 	}
-	t.Fatalf("unexpected result for pss Deliver func, expected test variable to have a value of %v but is %v instead", msg.Topic, tt)
+
+	if !bytes.Equal(topic[:], message.topic[:]) {
+		t.Fatalf("topic mismatch: expected %x, got %x", topic[:], message.topic[:])
+	}
 }
 
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
 	var (
-		pss     = pss.New(logging.New(ioutil.Discard, 0))
+		p       = pss.New(logging.New(ioutil.Discard, 0))
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0
-		mtx     sync.Mutex
+
+		msgChan = make(chan struct{})
 
 		topic1  = pss.NewTopic("one")
 		topic2  = pss.NewTopic("two")
@@ -137,96 +139,109 @@ func TestRegister(t *testing.T) {
 		target  = pss.Target([]byte{1})
 		targets = pss.Targets([]pss.Target{target})
 
-		h1 = func(_ context.Context, m *pss.Message) {
-			mtx.Lock()
-			defer mtx.Unlock()
+		h1 = func(_ context.Context, m []byte) {
 			h1Calls++
+			msgChan <- struct{}{}
 		}
 
-		h2 = func(_ context.Context, m *pss.Message) {
-			mtx.Lock()
-			defer mtx.Unlock()
+		h2 = func(_ context.Context, m []byte) {
 			h2Calls++
+			msgChan <- struct{}{}
 		}
 
-		h3 = func(_ context.Context, m *pss.Message) {
-			mtx.Lock()
-			defer mtx.Unlock()
+		h3 = func(_ context.Context, m []byte) {
 			h3Calls++
+			msgChan <- struct{}{}
 		}
 	)
-	_ = pss.Register(topic1, h1)
-	_ = pss.Register(topic2, h2)
+	_ = p.Register(topic1, h1)
+	_ = p.Register(topic2, h2)
+
+	privkey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipient := &privkey.PublicKey
 
 	// send a message on topic1, check that only h1 is called
-	msg, err := pss.NewMessage(topic1, payload)
+	chunk1, err := pss.Wrap(context.Background(), topic1, payload, recipient, targets)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := msg.Wrap(context.Background(), targets)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = pss.TryUnwrap(context.Background(), c)
+	err = p.TryUnwrap(context.Background(), privkey, chunk1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ensureCalls(t, &mtx, &h1Calls, 1)
-	ensureCalls(t, &mtx, &h2Calls, 0)
+	waitHandlerCallback(t, &msgChan, 1)
+
+	ensureCalls(t, "h1", &h1Calls, 1)
+	ensureCalls(t, "h2", &h2Calls, 0)
 
 	// register another topic handler on the same topic
-	cleanup := pss.Register(topic1, h3)
-	err = pss.TryUnwrap(context.Background(), c)
+	cleanup := p.Register(topic1, h3)
+	err = p.TryUnwrap(context.Background(), privkey, chunk1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ensureCalls(t, &mtx, &h1Calls, 2)
-	ensureCalls(t, &mtx, &h2Calls, 0)
-	ensureCalls(t, &mtx, &h3Calls, 1)
+	waitHandlerCallback(t, &msgChan, 2)
+
+	ensureCalls(t, "h1", &h1Calls, 2)
+	ensureCalls(t, "h2", &h2Calls, 0)
+	ensureCalls(t, "h3", &h3Calls, 1)
 
 	cleanup() // remove the last handler
 
-	err = pss.TryUnwrap(context.Background(), c)
+	err = p.TryUnwrap(context.Background(), privkey, chunk1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ensureCalls(t, &mtx, &h1Calls, 3)
-	ensureCalls(t, &mtx, &h2Calls, 0)
-	ensureCalls(t, &mtx, &h3Calls, 1)
+	waitHandlerCallback(t, &msgChan, 1)
 
-	msg, err = pss.NewMessage(topic2, payload)
+	ensureCalls(t, "h1", &h1Calls, 3)
+	ensureCalls(t, "h2", &h2Calls, 0)
+	ensureCalls(t, "h3", &h3Calls, 1)
+
+	chunk2, err := pss.Wrap(context.Background(), topic2, payload, recipient, targets)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err = msg.Wrap(context.Background(), targets)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = pss.TryUnwrap(context.Background(), c)
+	err = p.TryUnwrap(context.Background(), privkey, chunk2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ensureCalls(t, &mtx, &h1Calls, 3)
-	ensureCalls(t, &mtx, &h2Calls, 1)
-	ensureCalls(t, &mtx, &h3Calls, 1)
+	waitHandlerCallback(t, &msgChan, 1)
+
+	ensureCalls(t, "h1", &h1Calls, 3)
+	ensureCalls(t, "h2", &h2Calls, 1)
+	ensureCalls(t, "h3", &h3Calls, 1)
 }
 
-func ensureCalls(t *testing.T, mtx *sync.Mutex, calls *int, exp int) {
+func waitHandlerCallback(t *testing.T, msgChan *chan struct{}, count int) {
 	t.Helper()
 
-	for i := 0; i < 10; i++ {
-		mtx.Lock()
-		if *calls == exp {
-			mtx.Unlock()
-			return
+	received := 0
+	for {
+		select {
+		case <-*msgChan:
+			received++
+			break
+		case <-time.After(1 * time.Second):
+			t.Fatal("reached timeout while waiting for handler message")
 		}
-		mtx.Unlock()
-		<-time.After(100 * time.Millisecond)
+		if received == count {
+			break
+		}
 	}
-	t.Fatal("timed out waiting for value")
+}
+
+func ensureCalls(t *testing.T, name string, calls *int, exp int) {
+	t.Helper()
+
+	if exp != *calls {
+		t.Fatalf("%s expected %d calls, found %d", name, exp, *calls)
+	}
 }
