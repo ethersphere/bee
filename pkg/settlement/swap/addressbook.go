@@ -55,7 +55,7 @@ func (a *addressbook) Beneficiary(peer swarm.Address) (beneficiary common.Addres
 
 // BeneficiaryPeer returns the peer for a beneficiary.
 func (a *addressbook) BeneficiaryPeer(beneficiary common.Address) (peer swarm.Address, known bool, err error) {
-	err = a.store.Get(beneficiaryPeerKey(beneficiary), &beneficiary)
+	err = a.store.Get(beneficiaryPeerKey(beneficiary), &peer)
 	if err != nil {
 		if err != storage.ErrNotFound {
 			return swarm.Address{}, false, err
