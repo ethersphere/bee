@@ -1,9 +1,7 @@
 package swap
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -128,15 +126,4 @@ func peerBeneficiaryKey(peer swarm.Address) string {
 // beneficiaryPeerKey computes the key where to store the peer for a beneficiary.
 func beneficiaryPeerKey(peer common.Address) string {
 	return fmt.Sprintf("%s%s", beneficiaryPeerPrefix, peer)
-}
-
-// keyPeer computes the peer a store entry is for.
-func keyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
-	k := string(key)
-
-	split := strings.SplitAfter(k, prefix)
-	if len(split) != 2 {
-		return swarm.ZeroAddress, errors.New("no peer in key")
-	}
-	return swarm.ParseHexAddress(split[1])
 }
