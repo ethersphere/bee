@@ -30,9 +30,17 @@ const (
 
 type Key []byte
 
-type Interface interface {
+type Encryptor interface {
 	Encrypt(data []byte) ([]byte, error)
+}
+
+type Decryptor interface {
 	Decrypt(data []byte) ([]byte, error)
+}
+
+type Interface interface {
+	Encryptor
+	Decryptor
 	Reset()
 }
 

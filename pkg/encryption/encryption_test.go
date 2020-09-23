@@ -20,10 +20,10 @@ import (
 	"bytes"
 	crand "crypto/rand"
 	"encoding/hex"
-	"github.com/ethersphere/bee/pkg/encryption"
 	"math/rand"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/sha3"
 )
