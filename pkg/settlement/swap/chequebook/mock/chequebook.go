@@ -17,6 +17,7 @@ import (
 type Service struct {
 	chequebookBalanceFunc func(context.Context) (*big.Int, error)
 	chequebookAddressFunc func() common.Address
+	chequebookIssueFunc   func(beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error
 }
 
 // WithChequebook*Functions set the mock chequebook functions
@@ -29,6 +30,12 @@ func WithChequebookBalanceFunc(f func(ctx context.Context) (*big.Int, error)) Op
 func WithChequebookAddressFunc(f func() common.Address) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookAddressFunc = f
+	})
+}
+
+func WithChequebookIssueFunc(f func(beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error) Option {
+	return optionFunc(func(s *Service) {
+		s.chequebookIssueFunc = f
 	})
 }
 
@@ -68,7 +75,10 @@ func (s *Service) Address() common.Address {
 }
 
 func (s *Service) Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
-	return errors.New("Error")
+	if s.chequebookIssueFunc != nil {
+		return s.chequebookIssueFunc(beneficiary, amount, sendChequeFunc)
+	}
+	return nil
 }
 
 func (s *Service) LastCheque(beneficiary common.Address) (*chequebook.SignedCheque, error) {
