@@ -100,7 +100,7 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 	// don't allow concurrent processing of cheques
 	// this would be sufficient on a per chequebook basis
 	s.lock.Lock()
-	defer s.lock.Lock()
+	defer s.lock.Unlock()
 
 	// load the lastCumulativePayout for the cheques chequebook
 	var lastCumulativePayout *big.Int
