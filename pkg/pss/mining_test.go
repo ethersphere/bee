@@ -25,7 +25,6 @@ func newTargets(length, depth int) pss.Targets {
 }
 
 func BenchmarkWrap(b *testing.B) {
-	payload := []byte("foopayload")
 	cases := []struct {
 		length int
 		depth  int
@@ -40,16 +39,16 @@ func BenchmarkWrap(b *testing.B) {
 		{4096, 3},
 		{16384, 3},
 	}
+	topic := pss.NewTopic("topic")
+	msg := []byte("this is my scariest")
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		b.Fatal(err)
+	}
+	pubkey := &key.PublicKey
 	for _, c := range cases {
 		name := fmt.Sprintf("length:%d,depth:%d", c.length, c.depth)
 		b.Run(name, func(b *testing.B) {
-			topic := pss.NewTopic("topic")
-			msg := []byte("this is my scariest")
-			key, err := crypto.GenerateSecp256k1Key()
-			if err != nil {
-				b.Fatal(err)
-			}
-			pubkey := &key.PublicKey
 			targets := newTargets(c.length, c.depth)
 			for i := 0; i < b.N; i++ {
 				if _, err := pss.Wrap(context.Background(), topic, msg, pubkey, targets); err != nil {

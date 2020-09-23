@@ -90,7 +90,7 @@ func Wrap(ctx context.Context, topic Topic, msg []byte, recipient *ecdsa.PublicK
 	// prepend serialised ephemeral public key to the ciphertext
 	// NOTE: only the random bytes of the compressed public key are used
 	// in order not to leak anything, the one bit parity info of the magic byte
-	// is encoded in the parity of the first byte of the mined nonce
+	// is encoded in the parity of the 28th byte of the mined nonce
 	ephpubBytes := (*btcec.PublicKey)(ephpub).SerializeCompressed()
 	payload := append(ephpubBytes[1:], ciphertext...)
 	odd := ephpubBytes[0]&0x1 != 0
@@ -112,9 +112,6 @@ func Wrap(ctx context.Context, topic Topic, msg []byte, recipient *ecdsa.PublicK
 	// it accepts the nonce if it has the parity required by the ephemeral public key  AND
 	// the chunk hashes to an address matching one of the targets
 	f := func(nonce []byte) (swarm.Chunk, error) {
-		if odd != (uint8(nonce[0])%2 == 1) {
-			return nil, nil
-		}
 		hash, err := h(nonce)
 		if err != nil {
 			return nil, err
@@ -125,7 +122,7 @@ func Wrap(ctx context.Context, topic Topic, msg []byte, recipient *ecdsa.PublicK
 		chunk := swarm.NewChunk(swarm.NewAddress(hash), append(hint, append(nonce, payload...)...))
 		return chunk, nil
 	}
-	return mine(ctx, f)
+	return mine(ctx, odd, f)
 }
 
 // Unwrap takes a chunk, a topic and a private key, and tries to decrypt the payload
@@ -197,7 +194,7 @@ func contains(col Targets, elem []byte) bool {
 }
 
 // mine iteratively enumerates different nonces until the address (BMT hash) of the chunkhas one of the targets as its prefix
-func mine(ctx context.Context, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
+func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
 	seeds := make([]uint32, 8)
 	for i := range seeds {
 		seeds[i] = random.Uint32()
@@ -206,6 +203,13 @@ func mine(ctx context.Context, f func(nonce []byte) (swarm.Chunk, error)) (swarm
 	for i := 0; i < 8; i++ {
 		binary.LittleEndian.PutUint32(initnonce[i*4:i*4+4], seeds[i])
 	}
+	if odd {
+		initnonce[28] |= 0x01
+	} else {
+		initnonce[28] &= 0xfe
+	}
+	seeds[7] = binary.LittleEndian.Uint32(initnonce[28:32])
+
 	quit := make(chan struct{})
 	// make both  errs  and result channels buffered so they never block
 	result := make(chan swarm.Chunk, 8)
@@ -249,7 +253,7 @@ func extractPublicKey(chunkData []byte) (*ecdsa.PublicKey, error) {
 	pubkeyBytes := make([]byte, 33)
 	pubkeyBytes[0] |= 0x2
 	copy(pubkeyBytes[1:], chunkData[40:72])
-	if int8(chunkData[8])%2 == 1 {
+	if chunkData[36]|0x1 != 0 {
 		pubkeyBytes[0] |= 0x1
 	}
 	pubkey, err := btcec.ParsePubKey(pubkeyBytes, btcec.S256())

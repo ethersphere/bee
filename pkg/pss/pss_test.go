@@ -30,7 +30,7 @@ func TestSend(t *testing.T) {
 		storedChunk = chunk
 		return nil, nil
 	})
-	p := pss.New(logging.New(ioutil.Discard, 0))
+	p := pss.New(nil, logging.New(ioutil.Discard, 0))
 	p.SetPushSyncer(pushSyncService)
 
 	target := pss.Target([]byte{1}) // arbitrary test target
@@ -77,16 +77,17 @@ type topicMessage struct {
 func TestDeliver(t *testing.T) {
 	ctx := context.Background()
 
-	p := pss.New(logging.New(ioutil.Discard, 0))
+	privkey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := pss.New(privkey, logging.New(ioutil.Discard, 0))
 
 	target := pss.Target([]byte{1}) // arbitrary test target
 	targets := pss.Targets([]pss.Target{target})
 	payload := []byte("some payload")
 	topic := pss.NewTopic("topic")
-	privkey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	recipient := &privkey.PublicKey
 
 	// test chunk
@@ -107,7 +108,7 @@ func TestDeliver(t *testing.T) {
 	p.Register(topic, handler)
 
 	// call pss TryUnwrap on chunk and verify test topic variable value changes
-	err = p.TryUnwrap(ctx, privkey, chunk)
+	err = p.TryUnwrap(ctx, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +126,14 @@ func TestDeliver(t *testing.T) {
 
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
+
+	privkey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipient := &privkey.PublicKey
 	var (
-		p       = pss.New(logging.New(ioutil.Discard, 0))
+		p       = pss.New(privkey, logging.New(ioutil.Discard, 0))
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0
@@ -157,18 +164,12 @@ func TestRegister(t *testing.T) {
 	_ = p.Register(topic1, h1)
 	_ = p.Register(topic2, h2)
 
-	privkey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	recipient := &privkey.PublicKey
-
 	// send a message on topic1, check that only h1 is called
 	chunk1, err := pss.Wrap(context.Background(), topic1, payload, recipient, targets)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.TryUnwrap(context.Background(), privkey, chunk1)
+	err = p.TryUnwrap(context.Background(), chunk1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +181,7 @@ func TestRegister(t *testing.T) {
 
 	// register another topic handler on the same topic
 	cleanup := p.Register(topic1, h3)
-	err = p.TryUnwrap(context.Background(), privkey, chunk1)
+	err = p.TryUnwrap(context.Background(), chunk1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +194,7 @@ func TestRegister(t *testing.T) {
 
 	cleanup() // remove the last handler
 
-	err = p.TryUnwrap(context.Background(), privkey, chunk1)
+	err = p.TryUnwrap(context.Background(), chunk1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +209,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.TryUnwrap(context.Background(), privkey, chunk2)
+	err = p.TryUnwrap(context.Background(), chunk2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,17 +224,11 @@ func TestRegister(t *testing.T) {
 func waitHandlerCallback(t *testing.T, msgChan *chan struct{}, count int) {
 	t.Helper()
 
-	received := 0
-	for {
+	for received := 0; received < count; received++ {
 		select {
 		case <-*msgChan:
-			received++
-			break
 		case <-time.After(1 * time.Second):
 			t.Fatal("reached timeout while waiting for handler message")
-		}
-		if received == count {
-			break
 		}
 	}
 }

@@ -28,13 +28,14 @@ type Interface interface {
 	// Register a Handler for a given Topic.
 	Register(Topic, Handler) func()
 	// TryUnwrap tries to unwrap a wrapped trojan message.
-	TryUnwrap(context.Context, *ecdsa.PrivateKey, swarm.Chunk) error
+	TryUnwrap(context.Context, swarm.Chunk) error
 
 	SetPushSyncer(pushSyncer pushsync.PushSyncer)
 	io.Closer
 }
 
 type pss struct {
+	key        *ecdsa.PrivateKey
 	pusher     pushsync.PushSyncer
 	handlers   map[Topic][]*Handler
 	handlersMu sync.Mutex
@@ -44,8 +45,9 @@ type pss struct {
 }
 
 // New returns a new pss service.
-func New(logger logging.Logger) Interface {
+func New(key *ecdsa.PrivateKey, logger logging.Logger) Interface {
 	return &pss{
+		key:      key,
 		logger:   logger,
 		handlers: make(map[Topic][]*Handler),
 		metrics:  newMetrics(),
@@ -120,8 +122,8 @@ func (p *pss) topics() (ts []Topic) {
 }
 
 // TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
-func (p *pss) TryUnwrap(ctx context.Context, key *ecdsa.PrivateKey, c swarm.Chunk) error {
-	topic, msg, err := Unwrap(ctx, key, c, p.topics())
+func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
+	topic, msg, err := Unwrap(ctx, p.key, c, p.topics())
 	if err != nil {
 		return err
 	}
