@@ -37,13 +37,15 @@ type PaymentThresholdObserver interface {
 type Service struct {
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
+	paymentThreshold         uint64
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold uint64) *Service {
 	return &Service{
-		streamer: streamer,
-		logger:   logger,
+		streamer:         streamer,
+		logger:           logger,
+		paymentThreshold: paymentThreshold,
 	}
 }
 
@@ -57,6 +59,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 				Handler: s.handler,
 			},
 		},
+		ConnectIn:  s.init,
+		ConnectOut: s.init,
 	}
 }
 
@@ -77,6 +81,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, req.PaymentThreshold)
 
 	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, req.PaymentThreshold)
+}
+
+func (s *Service) init(ctx context.Context, p p2p.Peer) error {
+	err := s.AnnouncePaymentThreshold(ctx, p.Address, s.paymentThreshold)
+	return err
 }
 
 // AnnouncePaymentThreshold announces the payment threshold to per
