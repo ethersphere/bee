@@ -290,12 +290,14 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		PaymentTolerance: o.PaymentTolerance,
 		EarlyPayment:     o.PaymentEarly,
 		Settlement:       settlement,
+		Pricing:          pricing,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
 
 	settlement.SetPaymentObserver(acc)
+	pricing.SetPaymentThresholdObserver(acc)
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
 	b.topologyCloser = kad
