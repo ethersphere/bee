@@ -2,6 +2,7 @@ package chequebook_test
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 
@@ -114,5 +115,250 @@ func TestReceiveCheque(t *testing.T) {
 	expectedReceived := big.NewInt(0).Sub(cumulativePayout2, cumulativePayout)
 	if received.Cmp(expectedReceived) != 0 {
 		t.Fatalf("calculated wrong received cumulativePayout. wanted %d, got %d", expectedReceived, received)
+	}
+}
+
+func TestReceiveChequeInvalidBeneficiary(t *testing.T) {
+	store := storemock.NewStateStore()
+	beneficiary := common.HexToAddress("0xffff")
+	issuer := common.HexToAddress("0xbeee")
+	cumulativePayout := big.NewInt(10)
+	chequebookAddress := common.HexToAddress("0xeeee")
+	sig := make([]byte, 65)
+	chainID := int64(1)
+
+	cheque := &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      issuer,
+			CumulativePayout: cumulativePayout,
+			Chequebook:       chequebookAddress,
+		},
+		Signature: sig,
+	}
+
+	chequestore := chequebook.NewChequeStore(
+		store,
+		&backendMock{},
+		&factoryMock{},
+		chainID,
+		beneficiary,
+		nil,
+		nil)
+
+	_, err := chequestore.ReceiveCheque(context.Background(), cheque)
+	if err == nil {
+		t.Fatal("accepted cheque with wrong beneficiary")
+	}
+	if !errors.Is(err, chequebook.ErrWrongBeneficiary) {
+		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrWrongBeneficiary, err)
+	}
+}
+
+func TestReceiveChequeInvalidAmount(t *testing.T) {
+	store := storemock.NewStateStore()
+	beneficiary := common.HexToAddress("0xffff")
+	issuer := common.HexToAddress("0xbeee")
+	cumulativePayout := big.NewInt(10)
+	cumulativePayoutLower := big.NewInt(5)
+	chequebookAddress := common.HexToAddress("0xeeee")
+	sig := make([]byte, 65)
+	chainID := int64(1)
+
+	chequestore := chequebook.NewChequeStore(
+		store,
+		&backendMock{},
+		&factoryMock{
+			verifyChequebook: func(ctx context.Context, address common.Address) error {
+				return nil
+			},
+		},
+		chainID,
+		beneficiary,
+		func(address common.Address, b bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
+			return &simpleSwapBindingMock{
+				issuer: func(*bind.CallOpts) (common.Address, error) {
+					return issuer, nil
+				},
+				balance: func(*bind.CallOpts) (*big.Int, error) {
+					return cumulativePayout, nil
+				},
+			}, nil
+		},
+		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
+			return issuer, nil
+		})
+
+	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout,
+			Chequebook:       chequebookAddress,
+		},
+		Signature: sig,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayoutLower,
+			Chequebook:       chequebookAddress,
+		},
+		Signature: sig,
+	})
+	if err == nil {
+		t.Fatal("accepted lower amount cheque")
+	}
+	if !errors.Is(err, chequebook.ErrChequeNotIncreasing) {
+		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrChequeNotIncreasing, err)
+	}
+}
+
+func TestReceiveChequeInvalidChequebook(t *testing.T) {
+	store := storemock.NewStateStore()
+	beneficiary := common.HexToAddress("0xffff")
+	issuer := common.HexToAddress("0xbeee")
+	cumulativePayout := big.NewInt(10)
+	chequebookAddress := common.HexToAddress("0xeeee")
+	sig := make([]byte, 65)
+	chainID := int64(1)
+
+	chequestore := chequebook.NewChequeStore(
+		store,
+		&backendMock{},
+		&factoryMock{
+			verifyChequebook: func(ctx context.Context, address common.Address) error {
+				return chequebook.ErrNotDeployedByFactory
+			},
+		},
+		chainID,
+		beneficiary,
+		func(address common.Address, b bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
+			return &simpleSwapBindingMock{
+				issuer: func(*bind.CallOpts) (common.Address, error) {
+					return issuer, nil
+				},
+				balance: func(*bind.CallOpts) (*big.Int, error) {
+					return cumulativePayout, nil
+				},
+			}, nil
+		},
+		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
+			return issuer, nil
+		})
+
+	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout,
+			Chequebook:       chequebookAddress,
+		},
+		Signature: sig,
+	})
+	if err == nil {
+		t.Fatal("accepted cheque from invalid chequebook")
+	}
+	if !errors.Is(err, chequebook.ErrNotDeployedByFactory) {
+		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrNotDeployedByFactory, err)
+	}
+}
+
+func TestReceiveChequeInvalidSignature(t *testing.T) {
+	store := storemock.NewStateStore()
+	beneficiary := common.HexToAddress("0xffff")
+	issuer := common.HexToAddress("0xbeee")
+	cumulativePayout := big.NewInt(10)
+	chequebookAddress := common.HexToAddress("0xeeee")
+	sig := make([]byte, 65)
+	chainID := int64(1)
+
+	chequestore := chequebook.NewChequeStore(
+		store,
+		&backendMock{},
+		&factoryMock{
+			verifyChequebook: func(ctx context.Context, address common.Address) error {
+				return nil
+			},
+		},
+		chainID,
+		beneficiary,
+		func(address common.Address, b bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
+			return &simpleSwapBindingMock{
+				issuer: func(*bind.CallOpts) (common.Address, error) {
+					return issuer, nil
+				},
+				balance: func(*bind.CallOpts) (*big.Int, error) {
+					return cumulativePayout, nil
+				},
+			}, nil
+		},
+		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
+			return common.Address{}, nil
+		})
+
+	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout,
+			Chequebook:       chequebookAddress,
+		},
+		Signature: sig,
+	})
+	if err == nil {
+		t.Fatal("accepted cheque with invalid signature")
+	}
+	if !errors.Is(err, chequebook.ErrChequeInvalid) {
+		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrChequeInvalid, err)
+	}
+}
+
+func TestReceiveChequeInsufficientBalance(t *testing.T) {
+	store := storemock.NewStateStore()
+	beneficiary := common.HexToAddress("0xffff")
+	issuer := common.HexToAddress("0xbeee")
+	cumulativePayout := big.NewInt(10)
+	chequebookAddress := common.HexToAddress("0xeeee")
+	sig := make([]byte, 65)
+	chainID := int64(1)
+
+	chequestore := chequebook.NewChequeStore(
+		store,
+		&backendMock{},
+		&factoryMock{
+			verifyChequebook: func(ctx context.Context, address common.Address) error {
+				return nil
+			},
+		},
+		chainID,
+		beneficiary,
+		func(address common.Address, b bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
+			return &simpleSwapBindingMock{
+				issuer: func(*bind.CallOpts) (common.Address, error) {
+					return issuer, nil
+				},
+				balance: func(*bind.CallOpts) (*big.Int, error) {
+					return big.NewInt(0).Sub(cumulativePayout, big.NewInt(1)), nil
+				},
+			}, nil
+		},
+		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
+			return issuer, nil
+		})
+
+	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout,
+			Chequebook:       chequebookAddress,
+		},
+		Signature: sig,
+	})
+	if err == nil {
+		t.Fatal("accepted cheque from illiquid chequebook")
+	}
+	if !errors.Is(err, chequebook.ErrBouncingCheque) {
+		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrBouncingCheque, err)
 	}
 }
