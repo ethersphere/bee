@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,6 +39,7 @@ type ChequeStore interface {
 }
 
 type chequeStore struct {
+	lock                  sync.Mutex
 	store                 storage.StateStorer
 	factory               Factory
 	chaindID              int64
@@ -94,6 +96,11 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 	if cheque.Beneficiary != s.beneficiary {
 		return nil, ErrWrongBeneficiary
 	}
+
+	// don't allow concurrent processing of cheques
+	// this would be sufficient on a per chequebook basis
+	s.lock.Lock()
+	defer s.lock.Lock()
 
 	// load the lastCumulativePayout for the cheques chequebook
 	var lastCumulativePayout *big.Int

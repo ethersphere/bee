@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -44,6 +45,7 @@ type Service interface {
 }
 
 type service struct {
+	lock               sync.Mutex
 	backend            Backend
 	transactionService TransactionService
 
@@ -164,6 +166,10 @@ func lastIssuedChequeKey(beneficiary common.Address) string {
 // Issue issues a new cheque and passes it to sendChequeFunc
 // if sendChequeFunc succeeds the cheque is considered sent and saved
 func (s *service) Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error {
+	// don't allow concurrent issuing of cheques
+	// this would be sufficient on a per beneficiary basis
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	var cumulativePayout *big.Int
 	lastCheque, err := s.LastCheque(beneficiary)
 	if err != nil {
