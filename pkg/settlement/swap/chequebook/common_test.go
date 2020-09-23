@@ -99,14 +99,15 @@ func (m *simpleSwapFactoryBindingMock) ERC20Address(o *bind.CallOpts) (common.Ad
 
 type simpleSwapBindingMock struct {
 	balance func(*bind.CallOpts) (*big.Int, error)
+	issuer  func(*bind.CallOpts) (common.Address, error)
 }
 
 func (m *simpleSwapBindingMock) Balance(o *bind.CallOpts) (*big.Int, error) {
 	return m.balance(o)
 }
 
-func (m *simpleSwapBindingMock) Issuer(*bind.CallOpts) (common.Address, error) {
-	return common.Address{}, nil
+func (m *simpleSwapBindingMock) Issuer(o *bind.CallOpts) (common.Address, error) {
+	return m.issuer(o)
 }
 
 type erc20BindingMock struct {
