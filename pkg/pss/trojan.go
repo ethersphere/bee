@@ -100,12 +100,13 @@ func Wrap(ctx context.Context, topic Topic, msg []byte, recipient *ecdsa.PublicK
 	}
 	targetsLen := len(targets[0])
 
-	// topic hint, the first 8 bytes is used as the span of the chunk
-	hint, err := crypto.LegacyKeccak256(append(enc.Key(), topic[:]...))
+	// topic hash, the first 8 bytes is used as the span of the chunk
+	hash, err := crypto.LegacyKeccak256(append(enc.Key(), topic[:]...))
 	if err != nil {
 		return nil, err
 	}
-	h := hasher(hint[:8], payload)
+	hint := hash[:8]
+	h := hasher(hint, payload)
 
 	// f is evaluating the mined nonce
 	// it accepts the nonce if it has the parity required by the ephemeral public key  AND
