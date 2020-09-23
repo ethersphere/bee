@@ -32,7 +32,7 @@ type chequebookAddressResponse struct {
 }
 
 type chequebookLastChequeResponse struct {
-	Peer        string   `json:"peer"`
+	Address     string   `json:"peer"`
 	Beneficiary string   `json:"beneficiary"`
 	Chequebook  string   `json:"chequebook"`
 	Payout      *big.Int `json:"payout"`
