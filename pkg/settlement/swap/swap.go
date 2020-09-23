@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -18,6 +19,8 @@ import (
 var (
 	// ErrWrongChequebook is the error if a peer uses a different chequebook from before.
 	ErrWrongChequebook = errors.New("wrong chequebook")
+	// ErrWrongBeneficiary is the error if a peer uses a different beneficiary than expected.
+	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrUnknownBeneficary is the error if a peer has never announced a beneficiary.
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 )
@@ -32,10 +35,11 @@ type Service struct {
 	chequebook  chequebook.Service
 	chequeStore chequebook.ChequeStore
 	addressbook Addressbook
+	networkID   uint64
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook) *Service {
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64) *Service {
 	return &Service{
 		proto:       proto,
 		logger:      logger,
@@ -44,6 +48,7 @@ func New(proto swapprotocol.Interface, logger logging.Logger, store storage.Stat
 		chequebook:  chequebook,
 		chequeStore: chequeStore,
 		addressbook: addressbook,
+		networkID:   networkID,
 	}
 }
 
@@ -191,16 +196,24 @@ func (s *Service) SettlementsReceived() (map[string]uint64, error) {
 
 // Handshake is called by the swap protocol when a handshake is received.
 func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) error {
+	// check that the overlay address was derived from the beneficiary (implying they have the same private key)
+	// while this is not strictly necessary for correct functionality we need to ensure no two peers use the same beneficiary
+	// as long as we enforce this we might not need the handshake message if the p2p layer exposed the overlay public key
+	expectedOverlay := crypto.NewOverlayFromEthereumAddress(beneficiary[:], s.networkID)
+	if !expectedOverlay.Equal(peer) {
+		return ErrWrongBeneficiary
+	}
+
 	storedBeneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
 	}
-	if known {
-		if storedBeneficiary != beneficiary {
-			return errors.New("beneficiary changed")
-		}
-		return nil
+	if !known {
+		s.logger.Tracef("initial swap handshake peer: %v beneficiary: %x", peer, beneficiary)
+		return s.addressbook.PutBeneficiary(peer, beneficiary)
 	}
-	s.logger.Tracef("swap handshake peer=%v beneficiary=%x", peer, beneficiary)
-	return s.addressbook.PutBeneficiary(peer, beneficiary)
+	if storedBeneficiary != beneficiary {
+		return ErrWrongBeneficiary
+	}
+	return nil
 }
