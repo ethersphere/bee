@@ -430,7 +430,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
-		debugAPIService := debugapi.New(swarmAddress, publicKey, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, chequebookService)
+
+		debugAPIService := debugapi.New(swarmAddress, publicKey, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, swapService, chequebookService)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)

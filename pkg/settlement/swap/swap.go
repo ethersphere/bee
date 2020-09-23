@@ -28,6 +28,10 @@ var (
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 )
 
+type ApiInterface interface {
+	LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, error)
+}
+
 // Service is the implementation of the swap settlement layer.
 type Service struct {
 	proto       swapprotocol.Interface
@@ -211,4 +215,19 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		return ErrWrongBeneficiary
 	}
 	return nil
+}
+
+func (s *Service) LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, error) {
+
+	common, known, err := s.addressbook.Beneficiary(peer)
+
+	if err != nil {
+		return nil, errors.New("error translating swarm address to chequebook address")
+	}
+
+	if known != true {
+		return nil, ErrUnknownBeneficary
+	}
+
+	return s.chequebook.LastCheque(common)
 }

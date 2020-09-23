@@ -5,14 +5,21 @@
 package debugapi
 
 import (
+	"errors"
 	"math/big"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/settlement/swap"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/gorilla/mux"
 )
 
 var (
-	errChequebookBalance = "cannot get chequebook balance"
+	errChequebookBalance  = "cannot get chequebook balance"
+	errCantLastChequePeer = "cannot get last cheque for peer"
+	errCantLastCheque     = "cannot get last cheque for all peers"
+	errUnknownBeneficary  = "unknown beneficiary for peer"
 )
 
 type chequebookBalanceResponse struct {
@@ -22,6 +29,13 @@ type chequebookBalanceResponse struct {
 
 type chequebookAddressResponse struct {
 	Address string `json:"chequebookaddress"`
+}
+
+type chequebookLastChequeResponse struct {
+	Peer        string   `json:"peer"`
+	Beneficiary string   `json:"beneficiary"`
+	Chequebook  string   `json:"chequebook"`
+	Payout      *big.Int `json:"payout"`
 }
 
 func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,4 +61,40 @@ func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request
 func (s *server) chequebookAddressHandler(w http.ResponseWriter, r *http.Request) {
 	address := s.Chequebook.Address()
 	jsonhttp.OK(w, chequebookAddressResponse{Address: address.String()})
+}
+
+func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Request) {
+	addr := mux.Vars(r)["peer"]
+	peer, err := swarm.ParseHexAddress(addr)
+	if err != nil {
+		s.Logger.Debugf("debug api: settlements peer: invalid peer address %s: %v", addr, err)
+		s.Logger.Error("debug api: settlements peer: invalid peer address %s", addr)
+		jsonhttp.NotFound(w, errInvaliAddress)
+		return
+	}
+
+	lastcheque, err := s.Swap.LastChequePeer(peer)
+	if err != nil {
+		if !errors.Is(err, swap.ErrUnknownBeneficary) {
+			s.Logger.Debugf("debug api: lastcheque peer: get peer %s last cheque: %v", peer.String(), err)
+			s.Logger.Errorf("debug api: settlements peer: can't get peer %s last cheque", peer.String())
+			jsonhttp.InternalServerError(w, errCantLastChequePeer)
+			return
+		}
+
+		jsonhttp.NotFound(w, errUnknownBeneficary)
+		return
+	}
+
+	jsonhttp.OK(w, chequebookLastChequeResponse{
+		Address:     addr,
+		Beneficiary: lastcheque.Cheque.Beneficiary.String(),
+		Chequebook:  lastcheque.Cheque.Chequebook.String(),
+		Payout:      lastcheque.Cheque.CumulativePayout,
+	})
+}
+
+func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
+	jsonhttp.OK(w, "ok")
+	return
 }
