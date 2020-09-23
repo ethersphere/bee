@@ -14,6 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 func newTestChequebook(
@@ -23,6 +25,8 @@ func newTestChequebook(
 	address,
 	erc20address,
 	ownerAdress common.Address,
+	store storage.StateStorer,
+	chequeSigner chequebook.ChequeSigner,
 	simpleSwapBinding chequebook.SimpleSwapBinding,
 	erc20Binding chequebook.ERC20Binding) (chequebook.Service, error) {
 	return chequebook.New(
@@ -31,8 +35,8 @@ func newTestChequebook(
 		address,
 		erc20address,
 		ownerAdress,
-		nil,
-		nil,
+		store,
+		chequeSigner,
 		func(addr common.Address, b bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
 			if addr != address {
 				t.Fatalf("initialised binding with wrong address. wanted %x, got %x", address, addr)
@@ -65,6 +69,8 @@ func TestChequebookAddress(t *testing.T) {
 		address,
 		erc20address,
 		ownerAdress,
+		nil,
+		&chequeSignerMock{},
 		&simpleSwapBindingMock{},
 		&erc20BindingMock{})
 	if err != nil {
@@ -88,6 +94,8 @@ func TestChequebookBalance(t *testing.T) {
 		address,
 		erc20address,
 		ownerAdress,
+		nil,
+		&chequeSignerMock{},
 		&simpleSwapBindingMock{
 			balance: func(*bind.CallOpts) (*big.Int, error) {
 				return balance, nil
@@ -132,6 +140,8 @@ func TestChequebookDeposit(t *testing.T) {
 		address,
 		erc20address,
 		ownerAdress,
+		nil,
+		&chequeSignerMock{},
 		&simpleSwapBindingMock{},
 		&erc20BindingMock{
 			balanceOf: func(b *bind.CallOpts, addr common.Address) (*big.Int, error) {
@@ -176,6 +186,8 @@ func TestChequebookWaitForDeposit(t *testing.T) {
 		address,
 		erc20address,
 		ownerAdress,
+		nil,
+		&chequeSignerMock{},
 		&simpleSwapBindingMock{},
 		&erc20BindingMock{})
 	if err != nil {
@@ -209,6 +221,8 @@ func TestChequebookWaitForDepositReverted(t *testing.T) {
 		address,
 		erc20address,
 		ownerAdress,
+		nil,
+		&chequeSignerMock{},
 		&simpleSwapBindingMock{},
 		&erc20BindingMock{})
 	if err != nil {
@@ -221,5 +235,151 @@ func TestChequebookWaitForDepositReverted(t *testing.T) {
 	}
 	if !errors.Is(err, chequebook.ErrTransactionReverted) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrTransactionReverted, err)
+	}
+}
+
+func TestChequebookIssue(t *testing.T) {
+	address := common.HexToAddress("0xabcd")
+	erc20address := common.HexToAddress("0xefff")
+	beneficiary := common.HexToAddress("0xdddd")
+	ownerAdress := common.HexToAddress("0xfff")
+	store := storemock.NewStateStore()
+	amount := big.NewInt(20)
+	amount2 := big.NewInt(30)
+	expectedCumulative := big.NewInt(50)
+	sig := common.Hex2Bytes("0xffff")
+	chequeSigner := &chequeSignerMock{}
+
+	chequebookService, err := newTestChequebook(
+		t,
+		&backendMock{},
+		&transactionServiceMock{},
+		address,
+		erc20address,
+		ownerAdress,
+		store,
+		chequeSigner,
+		&simpleSwapBindingMock{},
+		&erc20BindingMock{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// issue a cheque
+	expectedCheque := &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: amount,
+			Chequebook:       address,
+		},
+		Signature: sig,
+	}
+
+	chequeSigner.sign = func(cheque *chequebook.Cheque) ([]byte, error) {
+		if !cheque.Equal(&expectedCheque.Cheque) {
+			t.Fatalf("wrong cheque. wanted %v got %v", expectedCheque.Cheque, cheque)
+		}
+		return sig, nil
+	}
+
+	err = chequebookService.Issue(beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
+		if !cheque.Equal(expectedCheque) {
+			t.Fatalf("wrong cheque. wanted %v got %v", expectedCheque, cheque)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lastCheque, err := chequebookService.LastCheque(beneficiary)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !lastCheque.Equal(expectedCheque) {
+		t.Fatalf("wrong cheque stored. wanted %v got %v", expectedCheque, lastCheque)
+	}
+
+	// issue another cheque for the same beneficiary
+	expectedCheque = &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: expectedCumulative,
+			Chequebook:       address,
+		},
+		Signature: sig,
+	}
+
+	chequeSigner.sign = func(cheque *chequebook.Cheque) ([]byte, error) {
+		if !cheque.Equal(&expectedCheque.Cheque) {
+			t.Fatalf("wrong cheque. wanted %v got %v", expectedCheque, cheque)
+		}
+		return sig, nil
+	}
+
+	err = chequebookService.Issue(beneficiary, amount2, func(cheque *chequebook.SignedCheque) error {
+		if !cheque.Equal(expectedCheque) {
+			t.Fatalf("wrong cheque. wanted %v got %v", expectedCheque, cheque)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lastCheque, err = chequebookService.LastCheque(beneficiary)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !lastCheque.Equal(expectedCheque) {
+		t.Fatalf("wrong cheque stored. wanted %v got %v", expectedCheque, lastCheque)
+	}
+
+	// issue another cheque for the different beneficiary
+	expectedChequeOwner := &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      ownerAdress,
+			CumulativePayout: amount,
+			Chequebook:       address,
+		},
+		Signature: sig,
+	}
+
+	chequeSigner.sign = func(cheque *chequebook.Cheque) ([]byte, error) {
+		if !cheque.Equal(&expectedChequeOwner.Cheque) {
+			t.Fatalf("wrong cheque. wanted %v got %v", expectedCheque, cheque)
+		}
+		return sig, nil
+	}
+
+	err = chequebookService.Issue(ownerAdress, amount, func(cheque *chequebook.SignedCheque) error {
+		if !cheque.Equal(expectedChequeOwner) {
+			t.Fatalf("wrong cheque. wanted %v got %v", expectedChequeOwner, cheque)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lastCheque, err = chequebookService.LastCheque(ownerAdress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !lastCheque.Equal(expectedChequeOwner) {
+		t.Fatalf("wrong cheque stored. wanted %v got %v", expectedChequeOwner, lastCheque)
+	}
+
+	// finally check this did not interfere with the beneficiary cheque
+	lastCheque, err = chequebookService.LastCheque(beneficiary)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !lastCheque.Equal(expectedCheque) {
+		t.Fatalf("wrong cheque stored. wanted %v got %v", expectedCheque, lastCheque)
 	}
 }

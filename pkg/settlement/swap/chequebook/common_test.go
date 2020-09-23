@@ -141,3 +141,11 @@ func (*signerMock) PublicKey() (*ecdsa.PublicKey, error) {
 func (m *signerMock) SignTypedData(d *eip712.TypedData) ([]byte, error) {
 	return m.signTypedData(d)
 }
+
+type chequeSignerMock struct {
+	sign func(cheque *chequebook.Cheque) ([]byte, error)
+}
+
+func (m *chequeSignerMock) Sign(cheque *chequebook.Cheque) ([]byte, error) {
+	return m.sign(cheque)
+}

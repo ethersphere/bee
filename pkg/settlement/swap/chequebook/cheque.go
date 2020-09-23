@@ -5,6 +5,7 @@
 package chequebook
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 
@@ -95,4 +96,21 @@ func (s *chequeSigner) Sign(cheque *Cheque) ([]byte, error) {
 
 func (cheque *Cheque) String() string {
 	return fmt.Sprintf("Contract: %x Beneficiary: %x CumulativePayout: %v", cheque.Chequebook, cheque.Beneficiary, cheque.CumulativePayout)
+}
+
+func (cheque *Cheque) Equal(other *Cheque) bool {
+	if cheque.Beneficiary != other.Beneficiary {
+		return false
+	}
+	if cheque.CumulativePayout.Cmp(other.CumulativePayout) != 0 {
+		return false
+	}
+	return cheque.Chequebook == other.Chequebook
+}
+
+func (cheque *SignedCheque) Equal(other *SignedCheque) bool {
+	if !bytes.Equal(cheque.Signature, other.Signature) {
+		return false
+	}
+	return cheque.Cheque.Equal(&other.Cheque)
 }
