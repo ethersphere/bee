@@ -263,20 +263,6 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		}
 	}
 
-	var path string
-
-	if o.DataDir != "" {
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-	lo := &localstore.Options{
-		Capacity: o.DBCapacity,
-	}
-	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = storer
-
 	var settlement settlement.Interface
 	if o.SwapEnable {
 		swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
@@ -320,6 +306,20 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	for _, addr := range addrs {
 		logger.Debugf("p2p address: %s", addr)
 	}
+
+	var path string
+
+	if o.DataDir != "" {
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+	lo := &localstore.Options{
+		Capacity: o.DBCapacity,
+	}
+	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = storer
 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
