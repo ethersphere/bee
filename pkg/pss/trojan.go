@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	random "math/rand"
@@ -305,4 +306,17 @@ func decryptAndCheck(dec encryption.Decrypter, ciphertext []byte) ([]byte, error
 	}
 	// bingo
 	return msg, nil
+}
+
+// ParseRecipient extract ephemeral public key from the hexadecimal string to use with el-Gamal.
+func ParseRecipient(recipientHexString string) (*ecdsa.PublicKey, error) {
+	publicKeyBytes, err := hex.DecodeString(recipientHexString)
+	if err != nil {
+		return nil, err
+	}
+	pubkey, err := btcec.ParsePubKey(publicKeyBytes, btcec.S256())
+	if err != nil {
+		return nil, err
+	}
+	return (*ecdsa.PublicKey)(pubkey), err
 }

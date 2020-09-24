@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -31,8 +32,8 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	t := mux.Vars(r)["topic"]
 	topic := pss.NewTopic(t)
 
-	r := mux.Vars(r)["recipient"]
-	recipient, err := pss.ParseRecipient(r)
+	recipientVar := mux.Vars(r)["recipient"]
+	recipient, err := pss.ParseRecipient(recipientVar)
 	if err != nil {
 		s.Logger.Debugf("pss recipient: %v", err)
 		s.Logger.Error("pss recipient")
