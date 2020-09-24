@@ -170,6 +170,10 @@ LOOP:
 			if unsubscribe != nil {
 				unsubscribe()
 			}
+			if span != nil {
+				span.Finish()
+			}
+
 			break LOOP
 		}
 	}
