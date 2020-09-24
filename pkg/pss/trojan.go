@@ -264,8 +264,8 @@ func extractPublicKey(chunkData []byte) (*ecdsa.PublicKey, error) {
 // instead the hash of the secret key and the topic is matched against a hint (64 bit meta info)q
 // proper integrity check will disambiguate any potential collisions (false positives)
 // if the topic matches the hint, it returns the el-Gamal decryptor, otherwise an error
-func matchTopic(key *ecdsa.PrivateKey, pubkey *ecdsa.PublicKey, hint []byte, topic []byte) (encryption.Decryptor, error) {
-	dec, err := elgamal.NewDecryptor(key, pubkey, topic, swarm.NewHasher)
+func matchTopic(key *ecdsa.PrivateKey, pubkey *ecdsa.PublicKey, hint []byte, topic []byte) (encryption.Decrypter, error) {
+	dec, err := elgamal.NewDecrypter(key, pubkey, topic, swarm.NewHasher)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func matchTopic(key *ecdsa.PrivateKey, pubkey *ecdsa.PublicKey, hint []byte, top
 
 // decrypts the ciphertext with an el-Gamal decryptor using a topic that matched the hint
 // the msg is extracted from the plaintext and its integrity is checked
-func decryptAndCheck(dec encryption.Decryptor, ciphertext []byte) ([]byte, error) {
+func decryptAndCheck(dec encryption.Decrypter, ciphertext []byte) ([]byte, error) {
 	plaintext, err := dec.Decrypt(ciphertext)
 	if err != nil {
 		return nil, err
