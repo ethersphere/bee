@@ -24,16 +24,21 @@ const (
 	AddressSize = 20
 )
 
-// NewOverlayAddress constructs a Swarm Address from ECDSA private key.
+// NewOverlayAddress constructs a Swarm Address from ECDSA public key.
 func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64) (swarm.Address, error) {
 	ethAddr, err := NewEthereumAddress(p)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
+	return NewOverlayFromEthereumAddress(ethAddr, networkID), nil
+}
+
+// NewOverlayFromEthereumAddress constructs a Swarm Address for an Ethereum address.
+func NewOverlayFromEthereumAddress(ethAddr []byte, networkID uint64) swarm.Address {
 	netIDBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(netIDBytes, networkID)
 	h := sha3.Sum256(append(ethAddr, netIDBytes...))
-	return swarm.NewAddress(h[:]), nil
+	return swarm.NewAddress(h[:])
 }
 
 // GenerateSecp256k1Key generates an ECDSA private key using
