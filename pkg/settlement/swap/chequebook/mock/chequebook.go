@@ -28,6 +28,12 @@ func WithChequebookBalanceFunc(f func(ctx context.Context) (*big.Int, error)) Op
 	})
 }
 
+func WithChequebookAvailableBalanceFunc(f func(ctx context.Context) (*big.Int, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.chequebookAvailableBalanceFunc = f
+	})
+}
+
 func WithChequebookAddressFunc(f func() common.Address) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookAddressFunc = f
