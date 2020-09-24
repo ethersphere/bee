@@ -127,7 +127,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		// if we are here it means that either we are within the bounds of the data we need to read
 		// or that we are past it and then it means we need to stop
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
-		subtrieSpan := int64(sec)
+		subtrieSpan := sec
 		howMany := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
 
 		// upper bound alignments

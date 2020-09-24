@@ -101,6 +101,7 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
+	<-s.quit
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return 0, 0, fmt.Errorf("new stream: %w", err)
@@ -213,6 +214,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 // handler handles an incoming request to sync an interval
 func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	<-s.quit
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer func() {
 		if err != nil {
@@ -347,6 +349,8 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 }
 
 func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, err error) {
+
+	<-s.quit
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -405,6 +409,7 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) (err error) {
+	<-s.quit
 	stream, err := s.streamer.NewStream(context.Background(), peer, nil, protocolName, protocolVersion, cancelStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
