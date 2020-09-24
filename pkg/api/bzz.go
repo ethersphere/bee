@@ -6,7 +6,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,7 +112,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 				// index document exists
 				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-				s.serveManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
+				s.serveManifestEntry(w, r, j, address, indexDocumentManifestEntry.Reference())
 				return
 			}
 		}
@@ -153,7 +152,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 						// index document exists
 						logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-						s.serveManifestEntry(w, r, ctx, j, address, indexDocumentManifestEntry.Reference())
+						s.serveManifestEntry(w, r, j, address, indexDocumentManifestEntry.Reference())
 						return
 					}
 				}
@@ -167,7 +166,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 						// error document exists
 						logger.Debugf("bzz download: serving path: %s", errorDocumentPath)
 
-						s.serveManifestEntry(w, r, ctx, j, address, errorDocumentManifestEntry.Reference())
+						s.serveManifestEntry(w, r, j, address, errorDocumentManifestEntry.Reference())
 						return
 					}
 				}
@@ -181,18 +180,12 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// serve requested path
-	s.serveManifestEntry(w, r, ctx, j, address, me.Reference())
+	s.serveManifestEntry(w, r, j, address, me.Reference())
 }
 
-func (s *server) serveManifestEntry(
-	w http.ResponseWriter,
-	r *http.Request,
-	ctx context.Context,
-	j file.JoinSeeker,
-	address swarm.Address,
-	manifestEntryAddress swarm.Address,
-) {
+func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, j file.JoinSeeker, address, manifestEntryAddress swarm.Address) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	ctx := r.Context()
 
 	// read file entry
 	buf := bytes.NewBuffer(nil)
