@@ -32,8 +32,7 @@ const (
 	SwarmErrorDocumentHeader = "Swarm-Error-Document"
 )
 
-// The size of buffer used for bufio.Reader on LazyChunkReader passed to
-// http.ServeContent in HandleGetFile.
+// The size of buffer used for prefetching content with Langos.
 // Warning: This value influences the number of chunk requests and chunker join goroutines
 // per file request.
 // Recommended value is 4 times the io.Copy default buffer value which is 32kB.
