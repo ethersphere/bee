@@ -96,6 +96,7 @@ type Options struct {
 	GlobalPinningEnabled   bool
 	PaymentThreshold       uint64
 	PaymentTolerance       uint64
+	PaymentEarly           uint64
 	ResolverConnectionCfgs []multiresolver.ConnectionConfig
 	GatewayMode            bool
 	SwapEndpoint           string
@@ -296,6 +297,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		Store:            stateStore,
 		PaymentThreshold: o.PaymentThreshold,
 		PaymentTolerance: o.PaymentTolerance,
+		EarlyPayment:     o.PaymentEarly,
 		Settlement:       settlement,
 	})
 	if err != nil {

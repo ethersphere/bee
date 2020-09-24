@@ -57,6 +57,7 @@ type accountingPeer struct {
 type Options struct {
 	PaymentThreshold uint64
 	PaymentTolerance uint64
+	EarlyPayment     uint64
 	Logger           logging.Logger
 	Store            storage.StateStorer
 	Settlement       settlement.Interface
@@ -74,6 +75,7 @@ type Accounting struct {
 	// The amount in BZZ we let peers exceed the payment threshold before we
 	// disconnect them.
 	paymentTolerance uint64
+	earlyPayment     uint64
 	settlement       settlement.Interface
 	metrics          metrics
 }
@@ -106,6 +108,7 @@ func NewAccounting(o Options) (*Accounting, error) {
 		accountingPeers:  make(map[string]*accountingPeer),
 		paymentThreshold: o.PaymentThreshold,
 		paymentTolerance: o.PaymentTolerance,
+		earlyPayment:     o.EarlyPayment,
 		logger:           o.Logger,
 		store:            o.Store,
 		settlement:       o.Settlement,
@@ -229,7 +232,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	// If our expected debt exceeds our payment threshold (which we assume is
 	// also the peers payment threshold), trigger settlement.
-	if uint64(expectedDebt) >= a.paymentThreshold {
+	if uint64(expectedDebt) >= a.paymentThreshold-a.earlyPayment {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			a.logger.Errorf("failed to settle with peer %v: %v", peer, err)
