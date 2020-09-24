@@ -230,9 +230,17 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	a.metrics.TotalCreditedAmount.Add(float64(price))
 	a.metrics.CreditEventsCount.Inc()
 
-	// If our expected debt exceeds our payment threshold (which we assume is
+	// If our expected debt is less than earlyPayment away from our payment threshold (which we assume is
 	// also the peers payment threshold), trigger settlement.
-	if uint64(expectedDebt) >= a.paymentThreshold-a.earlyPayment {
+	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold
+	threshold := a.paymentThreshold
+	if threshold > a.earlyPayment {
+		threshold -= a.earlyPayment
+	} else {
+		threshold = 0
+	}
+
+	if uint64(expectedDebt) >= threshold {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			a.logger.Errorf("failed to settle with peer %v: %v", peer, err)
