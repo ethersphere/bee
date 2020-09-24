@@ -128,44 +128,45 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		// if we are here it means that either we are within the bounds of the data we need to read
 		// or that we are past it and then it means we need to stop
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
-		ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
-		if err != nil {
-			return 0, err
+		subtrieSpan := int64(sec)
+		howMany := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
+
+		// upper bound alignments
+		if howMany > btr {
+			howMany = btr
+		}
+		if howMany > subtrieSpan {
+			howMany = subtrieSpan
 		}
 
-		chunkData := ch.Data()[8:]
-		subtrieSpan := int64(chunkToSpan(ch.Data()))
-		fmt.Println("offset", off, "btr", btr, "current subtrie size", subtrieSpan, "cur", cur)
+		bufferOffset += howMany
+		btr -= howMany //how many left
+		cur += subtrieSpan
+		off = cur
+		wg.Add(1)
+		go func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
+			defer wg.Done()
+			ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
+			if err != nil {
+				return
+			}
 
-		// if requested offset is within this subtrie
-		if off < cur+subtrieSpan {
+			chunkData := ch.Data()[8:]
+			subtrieSpan := int64(chunkToSpan(ch.Data()))
+			fmt.Println("offset", off, "btr", btr, "current subtrie size", subtrieSpan, "cur", cur)
+
+			// if requested offset is within this subtrie
 			// subtrieSpan is how many bytes we CAN read
 			// due to the fact we are launching a new goroutine(s), we lose
 			// the original offset since we need to fetch multiple parts
 			// simultaneously. therefore we need to call the relative offset now
 			// with the new goroutine.
 			fmt.Println("howmany = span - (off - cur)", subtrieSpan, off, cur)
-			howMany := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
-
-			// upper bound alignments
-			if howMany > btr {
-				howMany = btr
-			}
-			if howMany > subtrieSpan {
-				howMany = subtrieSpan
-			}
-
 			wg.Add(1)
 			go func(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
 				_, _ = j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
 			}(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
-			bufferOffset += howMany
-			btr -= howMany //how many left
-			cur += subtrieSpan
-			off = cur
-			continue
-		}
-		cur += subtrieSpan
+		}(address, b, cur, subtrieSpan, off, bufferOffset, howMany, wg)
 	}
 	wg.Done()
 	wg.Wait()
