@@ -52,9 +52,6 @@ func NewDefaultManifest(
 	encrypted bool,
 	storer storage.Storer,
 ) (Interface, error) {
-	if encrypted {
-		panic(0)
-	}
 	return NewManifest(DefaultManifestType, encrypted, storer)
 }
 
