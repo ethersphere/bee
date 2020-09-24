@@ -77,6 +77,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 	if off >= j.span {
 		return 0, io.EOF
 	}
+	btr := bytesToRead
 
 	if subTrieSize <= int64(len(data)) {
 		dataOffsetStart := off - cur
@@ -103,12 +104,11 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 	// where y is the size of the subtrie, x is constant and l is the size of the last subtrie
 	// we know how many refs we have in the current chunk
 
-	btr := bytesToRead
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
-		if btr == 0 {
+		if bytesToRead == 0 {
 			break
 		}
-		// fast forward the cursor now
+		// fast forward the cursor
 		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
 		if cur+sec < off {
 			cur += sec
@@ -116,18 +116,18 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		}
 
 		// if we are here it means that either we are within the bounds of the data we need to read
-		// or that we are past it and then it means we need to stop
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
 		subtrieSpan := sec
-		howMany := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
+		currentReadSize := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
 
 		// upper bound alignments
-		if howMany > btr {
-			howMany = btr
+		if currentReadSize > bytesToRead {
+			currentReadSize = bytesToRead
 		}
-		if howMany > subtrieSpan {
-			howMany = subtrieSpan
+		if currentReadSize > subtrieSpan {
+			currentReadSize = subtrieSpan
 		}
+
 		wg.Add(1)
 		go func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
 			ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
@@ -137,30 +137,22 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 
 			chunkData := ch.Data()[8:]
 			subtrieSpan := int64(chunkToSpan(ch.Data()))
-
-			// if requested offset is within this subtrie
-			// subtrieSpan is how many bytes we CAN read
-			// due to the fact we are launching a new goroutine(s), we lose
-			// the original offset since we need to fetch multiple parts
-			// simultaneously. therefore we need to call the relative offset now
-			// with the new goroutine.
 			wg.Add(1)
 			go func(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
-				_, _ = j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
-			}(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
-
+				_, _ = j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, wg)
+			}(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, wg)
 			wg.Done()
-		}(address, b, cur, subtrieSpan, off, bufferOffset, howMany)
+		}(address, b, cur, subtrieSpan, off, bufferOffset, currentReadSize)
 
-		bufferOffset += howMany
-		btr -= howMany //how many left
+		bufferOffset += currentReadSize
+		bytesToRead -= currentReadSize
 		cur += subtrieSpan
 		off = cur
-
 	}
+
 	wg.Done()
 	wg.Wait()
-	return int(bytesToRead), nil
+	return int(btr), nil
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
