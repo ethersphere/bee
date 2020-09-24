@@ -20,12 +20,13 @@ type metrics struct {
 func newMetrics() metrics {
 	subsystem := "swap"
 
-	return metrics{TotalReceived: prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: m.Namespace,
-		Subsystem: subsystem,
-		Name:      "total_received",
-		Help:      "Amount of tokens received from peers (income of the node)",
-	}),
+	return metrics{
+		TotalReceived: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_received",
+			Help:      "Amount of tokens received from peers (income of the node)",
+		}),
 		TotalSent: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,

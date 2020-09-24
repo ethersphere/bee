@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package swap
 
 import (
@@ -58,10 +62,8 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 	if err != nil {
 		return err
 	}
-	if known {
-		if expectedChequebook != cheque.Chequebook {
-			return ErrWrongChequebook
-		}
+	if known && expectedChequebook != cheque.Chequebook {
+		return ErrWrongChequebook
 	}
 
 	amount, err := s.chequeStore.ReceiveCheque(ctx, cheque)

@@ -165,11 +165,11 @@ func TestReceiveChequeReject(t *testing.T) {
 		Signature: []byte{},
 	}
 
-	var reject = errors.New("reject")
+	var errReject = errors.New("reject")
 
 	chequeStore := mockchequestore.NewChequeStore(
 		mockchequestore.WithRetrieveChequeFunc(func(ctx context.Context, c *chequebook.SignedCheque) (*big.Int, error) {
-			return nil, reject
+			return nil, errReject
 		}),
 	)
 	networkID := uint64(1)
@@ -196,8 +196,8 @@ func TestReceiveChequeReject(t *testing.T) {
 	if err == nil {
 		t.Fatal("accepted invalid cheque")
 	}
-	if !errors.Is(err, reject) {
-		t.Fatal("returned wrong error")
+	if !errors.Is(err, errReject) {
+		t.Fatalf("wrong error. wanted %v, got %v", errReject, err)
 	}
 
 	if observer.called {
@@ -247,7 +247,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		t.Fatal("accepted invalid cheque")
 	}
 	if !errors.Is(err, swap.ErrWrongChequebook) {
-		t.Fatal("returned wrong error")
+		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrWrongChequebook, err)
 	}
 
 	if observer.called {
@@ -332,10 +332,10 @@ func TestPayIssueError(t *testing.T) {
 	beneficiary := common.HexToAddress("0xcd")
 
 	peer := swarm.MustParseHexAddress("abcd")
-	reject := errors.New("reject")
+	errReject := errors.New("reject")
 	chequebookService := mockchequebook.NewChequebook(
 		mockchequebook.WithChequebookIssueFunc(func(b common.Address, a *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
-			return reject
+			return errReject
 		}),
 	)
 
@@ -360,11 +360,8 @@ func TestPayIssueError(t *testing.T) {
 	)
 
 	err := swap.Pay(context.Background(), peer, amount)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !errors.Is(err, reject) {
-		t.Fatal("wrong error")
+	if !errors.Is(err, errReject) {
+		t.Fatalf("wrong error. wanted %, got %v", errReject, err)
 	}
 }
 
@@ -395,11 +392,8 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 	)
 
 	err := swapService.Pay(context.Background(), peer, amount)
-	if err == nil {
-		t.Fatal("expected error")
-	}
 	if !errors.Is(err, swap.ErrUnknownBeneficary) {
-		t.Fatal("wrong error")
+		t.Fatalf("wrong error. wanted %, got %v", swap.ErrUnknownBeneficary, err)
 	}
 }
 
@@ -496,9 +490,6 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
-	if err == nil {
-		t.Fatal("accepted invalid beneficiary")
-	}
 	if !errors.Is(err, swap.ErrWrongBeneficiary) {
 		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrWrongBeneficiary, err)
 	}

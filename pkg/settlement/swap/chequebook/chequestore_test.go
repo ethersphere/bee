@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package chequebook_test
 
 import (
@@ -257,9 +261,6 @@ func TestReceiveChequeInvalidChequebook(t *testing.T) {
 		},
 		Signature: sig,
 	})
-	if err == nil {
-		t.Fatal("accepted cheque from invalid chequebook")
-	}
 	if !errors.Is(err, chequebook.ErrNotDeployedByFactory) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrNotDeployedByFactory, err)
 	}
@@ -306,9 +307,6 @@ func TestReceiveChequeInvalidSignature(t *testing.T) {
 		},
 		Signature: sig,
 	})
-	if err == nil {
-		t.Fatal("accepted cheque with invalid signature")
-	}
 	if !errors.Is(err, chequebook.ErrChequeInvalid) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrChequeInvalid, err)
 	}
@@ -355,9 +353,6 @@ func TestReceiveChequeInsufficientBalance(t *testing.T) {
 		},
 		Signature: sig,
 	})
-	if err == nil {
-		t.Fatal("accepted cheque from illiquid chequebook")
-	}
 	if !errors.Is(err, chequebook.ErrBouncingCheque) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrBouncingCheque, err)
 	}
