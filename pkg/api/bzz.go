@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -20,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
@@ -30,8 +32,12 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	nameOrHex := mux.Vars(r)["address"]
-	path := mux.Vars(r)["path"]
-	path = strings.TrimRight(path, "/")
+	pathVar := mux.Vars(r)["path"]
+	if strings.HasSuffix(pathVar, "/") {
+		pathVar = strings.TrimRight(pathVar, "/")
+		// NOTE: leave one slash if there was some
+		pathVar += "/"
+	}
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
@@ -96,12 +102,76 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	me, err := m.Lookup(path)
+	if pathVar == "" {
+		logger.Tracef("bzz download: handle empty path %s", address)
+
+		if indexDocumentSuffixKey, ok := manifestMetadataLoad(m, manifestRootPath, manifestWebsiteIndexDocumentSuffixKey); ok {
+			pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
+			indexDocumentManifestEntry, err := m.Lookup(pathWithIndex)
+			if err == nil {
+				// index document exists
+				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
+
+				s.serveManifestEntry(w, r, j, address, indexDocumentManifestEntry.Reference())
+				return
+			}
+		}
+	}
+
+	me, err := m.Lookup(pathVar)
 	if err != nil {
-		logger.Debugf("bzz download: invalid path %s/%s: %v", address, path, err)
+		logger.Debugf("bzz download: invalid path %s/%s: %v", address, pathVar, err)
 		logger.Error("bzz download: invalid path")
 
 		if errors.Is(err, manifest.ErrNotFound) {
+
+			if !strings.HasPrefix(pathVar, "/") {
+				// check for directory
+				dirPath := pathVar + "/"
+				exists, err := m.HasPrefix(dirPath)
+				if err == nil && exists {
+					// redirect to directory
+					u := r.URL
+					u.Path += "/"
+					redirectURL := u.String()
+
+					logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
+
+					http.Redirect(w, r, redirectURL, http.StatusPermanentRedirect)
+					return
+				}
+			}
+
+			// check index suffix path
+			if indexDocumentSuffixKey, ok := manifestMetadataLoad(m, manifestRootPath, manifestWebsiteIndexDocumentSuffixKey); ok {
+				if !strings.HasSuffix(pathVar, indexDocumentSuffixKey) {
+					// check if path is directory with index
+					pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
+					indexDocumentManifestEntry, err := m.Lookup(pathWithIndex)
+					if err == nil {
+						// index document exists
+						logger.Debugf("bzz download: serving path: %s", pathWithIndex)
+
+						s.serveManifestEntry(w, r, j, address, indexDocumentManifestEntry.Reference())
+						return
+					}
+				}
+			}
+
+			// check if error document is to be shown
+			if errorDocumentPath, ok := manifestMetadataLoad(m, manifestRootPath, manifestWebsiteErrorDocumentPathKey); ok {
+				if pathVar != errorDocumentPath {
+					errorDocumentManifestEntry, err := m.Lookup(errorDocumentPath)
+					if err == nil {
+						// error document exists
+						logger.Debugf("bzz download: serving path: %s", errorDocumentPath)
+
+						s.serveManifestEntry(w, r, j, address, errorDocumentManifestEntry.Reference())
+						return
+					}
+				}
+			}
+
 			jsonhttp.NotFound(w, "path address not found")
 		} else {
 			jsonhttp.BadRequest(w, "invalid path address")
@@ -109,11 +179,17 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manifestEntryAddress := me.Reference()
+	// serve requested path
+	s.serveManifestEntry(w, r, j, address, me.Reference())
+}
+
+func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, j file.JoinSeeker, address, manifestEntryAddress swarm.Address) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	ctx := r.Context()
 
 	// read file entry
-	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, manifestEntryAddress, buf)
+	buf := bytes.NewBuffer(nil)
+	_, err := file.JoinReadAll(ctx, j, manifestEntryAddress, buf)
 	if err != nil {
 		logger.Debugf("bzz download: read file entry %s: %v", address, err)
 		logger.Errorf("bzz download: read file entry %s", address)
@@ -155,4 +231,21 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	fileEntryAddress := fe.Reference()
 
 	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders)
+}
+
+// manifestMetadataLoad returns the value for a key stored in the metadata of
+// manifest path, or empty string if no value is present.
+// The ok result indicates whether value was found in the metadata.
+func manifestMetadataLoad(manifest manifest.Interface, path, metadataKey string) (string, bool) {
+	me, err := manifest.Lookup(path)
+	if err != nil {
+		return "", false
+	}
+
+	manifestRootMetadata := me.Metadata()
+	if val, ok := manifestRootMetadata[metadataKey]; ok {
+		return val, ok
+	}
+
+	return "", false
 }

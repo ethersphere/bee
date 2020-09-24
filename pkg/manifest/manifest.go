@@ -33,6 +33,8 @@ type Interface interface {
 	Remove(string) error
 	// Lookup returns a manifest entry if one is found in the specified path.
 	Lookup(string) (Entry, error)
+	// HasPrefix tests whether the specified prefix path exists.
+	HasPrefix(string) (bool, error)
 	// Store stores the manifest, returning the resulting address.
 	Store(context.Context, storage.ModePut) (swarm.Address, error)
 }
@@ -41,6 +43,8 @@ type Interface interface {
 type Entry interface {
 	// Reference returns the address of the file.
 	Reference() swarm.Address
+	// Metadata returns the metadata of the file.
+	Metadata() map[string]string
 }
 
 // NewDefaultManifest creates a new manifest with default type.
@@ -87,15 +91,21 @@ func NewManifestReference(
 
 type manifestEntry struct {
 	reference swarm.Address
+	metadata  map[string]string
 }
 
 // NewEntry creates a new manifest entry.
-func NewEntry(reference swarm.Address) Entry {
+func NewEntry(reference swarm.Address, metadata map[string]string) Entry {
 	return &manifestEntry{
 		reference: reference,
+		metadata:  metadata,
 	}
 }
 
 func (e *manifestEntry) Reference() swarm.Address {
 	return e.reference
+}
+
+func (e *manifestEntry) Metadata() map[string]string {
+	return e.metadata
 }
