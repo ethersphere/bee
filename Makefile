@@ -11,7 +11,7 @@ LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
 all: build lint vet test-race binary
 
 .PHONY: binary
-binary: export CGO_ENABLED=1
+binary: export CGO_ENABLED=0
 binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee

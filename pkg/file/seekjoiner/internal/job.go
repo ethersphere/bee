@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime/debug"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -66,7 +65,7 @@ func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 
 func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
-	debug.PrintStack()
+	//debug.PrintStack()
 	fmt.Println("simple joiner ReadAt", "offset", off, "buffer size", cap(b))
 	readLen := int64(cap(b))
 	if readLen > j.span-off {
@@ -118,7 +117,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 			break
 		}
 		// fast forward the cursor now
-		sec := subtrieSection(data, j.refLength, subTrieSize)
+		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
 		if cur+sec < off {
 			fmt.Println("fast forward cursor", cur)
 			cur += sec
@@ -138,14 +137,9 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		if howMany > subtrieSpan {
 			howMany = subtrieSpan
 		}
-
-		bufferOffset += howMany
-		btr -= howMany //how many left
-		cur += subtrieSpan
-		off = cur
 		wg.Add(1)
-		go func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
-			defer wg.Done()
+		go func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
+			fmt.Println("spawning goroutine")
 			ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 			if err != nil {
 				return
@@ -166,7 +160,15 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 			go func(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
 				_, _ = j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
 			}(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
-		}(address, b, cur, subtrieSpan, off, bufferOffset, howMany, wg)
+
+			wg.Done()
+		}(address, b, cur, subtrieSpan, off, bufferOffset, howMany)
+
+		bufferOffset += howMany
+		btr -= howMany //how many left
+		cur += subtrieSpan
+		off = cur
+
 	}
 	wg.Done()
 	wg.Wait()
@@ -174,7 +176,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
-func subtrieSection(data []byte, refLen int, subtrieSize int64) int64 {
+func subtrieSection(data []byte, startIdx, refLen int, subtrieSize int64) int64 {
 	var (
 		refs       = int64(len(data) / refLen) // how many references in the intermediate chunk
 		branching  = int64(4096 / refLen)      // branching factor is chunkSize divided by reference length
@@ -185,7 +187,12 @@ func subtrieSection(data []byte, refLen int, subtrieSize int64) int64 {
 		if whatsLeft <= branchSize {
 			break
 		}
-		branchSize = branchSize * branching
+		branchSize *= branching
+	}
+
+	// handle last branch edge case
+	if startIdx == int(refs-1)*refLen {
+		return subtrieSize - (refs-1)*branchSize
 	}
 	return branchSize
 }
