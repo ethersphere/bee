@@ -24,6 +24,12 @@ type SendChequeFunc func(cheque *SignedCheque) error
 
 const (
 	lastIssuedChequeKeyPrefix = "chequebook_last_issued_cheque_"
+	totalIssuedKey            = "chequebook_total_issued_"
+)
+
+var (
+	// ErrOutOfFunds is the error when the chequebook has not enough free funds for a cheque
+	ErrOutOfFunds = errors.New("chequebook out of funds")
 )
 
 // Service is the main interface for interacting with the nodes chequebook.
@@ -34,10 +40,12 @@ type Service interface {
 	WaitForDeposit(ctx context.Context, txHash common.Hash) error
 	// Balance returns the token balance of the chequebook.
 	Balance(ctx context.Context) (*big.Int, error)
+	// AvailableBalance returns the token balance of the chequebook not yet used for uncashed cheques.
+	AvailableBalance(ctx context.Context) (*big.Int, error)
 	// Address returns the address of the used chequebook contract.
 	Address() common.Address
 	// Issue a new cheque for the beneficiary with an cumulativePayout amount higher than the last.
-	Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error
+	Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error
 	// LastCheque returns the last cheque we issued for the beneficiary.
 	LastCheque(beneficiary common.Address) (*SignedCheque, error)
 	// LastCheque returns the last cheques for all beneficiaries.
@@ -146,6 +154,32 @@ func (s *service) Balance(ctx context.Context) (*big.Int, error) {
 	})
 }
 
+// AvailableBalance returns the token balance of the chequebook not yet used for uncashed cheques.
+func (s *service) AvailableBalance(ctx context.Context) (*big.Int, error) {
+	totalIssued, err := s.totalIssued()
+	if err != nil {
+		return nil, err
+	}
+
+	balance, err := s.Balance(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPaidOut, err := s.chequebookInstance.TotalPaidOut(&bind.CallOpts{
+		Context: ctx,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// balance plus totalPaidOut is the total amount ever put into the chequebook (ignoring deposits and withdrawals which cancelled out)
+	// minus the total amount we issued from this chequebook this gives use the portion of the balance not covered by any cheques
+	availableBalance := big.NewInt(0).Add(balance, totalPaidOut)
+	availableBalance = availableBalance.Sub(availableBalance, totalIssued)
+	return availableBalance, nil
+}
+
 // WaitForDeposit waits for the deposit transaction to confirm and verifies the result.
 func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error {
 	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
@@ -165,11 +199,20 @@ func lastIssuedChequeKey(beneficiary common.Address) string {
 
 // Issue issues a new cheque and passes it to sendChequeFunc
 // if sendChequeFunc succeeds the cheque is considered sent and saved
-func (s *service) Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error {
+func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error {
 	// don't allow concurrent issuing of cheques
-	// this would be sufficient on a per beneficiary basis
 	s.lock.Lock()
 	defer s.lock.Unlock()
+
+	availableBalance, err := s.AvailableBalance(ctx)
+	if err != nil {
+		return err
+	}
+
+	if amount.Cmp(availableBalance) > 0 {
+		return ErrOutOfFunds
+	}
+
 	var cumulativePayout *big.Int
 	lastCheque, err := s.LastCheque(beneficiary)
 	if err != nil {
@@ -209,7 +252,28 @@ func (s *service) Issue(beneficiary common.Address, amount *big.Int, sendChequeF
 		return err
 	}
 
-	return s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
+	err = s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
+	if err != nil {
+		return err
+	}
+
+	totalIssued, err := s.totalIssued()
+	if err != nil {
+		return err
+	}
+	totalIssued = totalIssued.Add(totalIssued, amount)
+	return s.store.Put(totalIssuedKey, totalIssued)
+}
+
+func (s *service) totalIssued() (totalIssued *big.Int, err error) {
+	err = s.store.Get(totalIssuedKey, &totalIssued)
+	if err != nil {
+		if err != storage.ErrNotFound {
+			return nil, err
+		}
+		return big.NewInt(0), nil
+	}
+	return totalIssued, nil
 }
 
 // LastCheque returns the last cheque we issued for the beneficiary.

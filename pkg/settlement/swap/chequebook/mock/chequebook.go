@@ -15,9 +15,10 @@ import (
 
 // Service is the mock chequebook service.
 type Service struct {
-	chequebookBalanceFunc func(context.Context) (*big.Int, error)
-	chequebookAddressFunc func() common.Address
-	chequebookIssueFunc   func(beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error
+	chequebookBalanceFunc          func(context.Context) (*big.Int, error)
+	chequebookAvailableBalanceFunc func(context.Context) (*big.Int, error)
+	chequebookAddressFunc          func() common.Address
+	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error
 }
 
 // WithChequebook*Functions set the mock chequebook functions
@@ -33,7 +34,7 @@ func WithChequebookAddressFunc(f func() common.Address) Option {
 	})
 }
 
-func WithChequebookIssueFunc(f func(beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error) Option {
+func WithChequebookIssueFunc(f func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookIssueFunc = f
 	})
@@ -56,6 +57,13 @@ func (s *Service) Balance(ctx context.Context) (bal *big.Int, err error) {
 	return big.NewInt(0), errors.New("Error")
 }
 
+func (s *Service) AvailableBalance(ctx context.Context) (bal *big.Int, err error) {
+	if s.chequebookAvailableBalanceFunc != nil {
+		return s.chequebookAvailableBalanceFunc(ctx)
+	}
+	return big.NewInt(0), errors.New("Error")
+}
+
 // Deposit mocks the chequebook .Deposit function
 func (s *Service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 	return common.Hash{}, errors.New("Error")
@@ -74,9 +82,9 @@ func (s *Service) Address() common.Address {
 	return common.Address{}
 }
 
-func (s *Service) Issue(beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
+func (s *Service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
 	if s.chequebookIssueFunc != nil {
-		return s.chequebookIssueFunc(beneficiary, amount, sendChequeFunc)
+		return s.chequebookIssueFunc(ctx, beneficiary, amount, sendChequeFunc)
 	}
 	return nil
 }
