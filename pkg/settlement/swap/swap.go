@@ -62,8 +62,10 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 	if err != nil {
 		return err
 	}
-	if known && expectedChequebook != cheque.Chequebook {
-		return ErrWrongChequebook
+	if known {
+		if expectedChequebook != cheque.Chequebook {
+			return ErrWrongChequebook
+		}
 	}
 
 	amount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
