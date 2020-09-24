@@ -133,7 +133,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 
 	peer, err = s.closestPeer(addr, skipPeers, allowUpstream)
 	if err != nil {
-		return nil, peer, fmt.Errorf("get closest for address %s: %w", addr.String(), err)
+		return nil, peer, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
 	}
 
 	// compute the price we pay for this chunk and reserve it for the rest of this function
