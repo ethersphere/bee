@@ -24,6 +24,7 @@ type Encryptor struct {
 	encryptFunc func(data []byte) ([]byte, error)
 	decryptFunc func(data []byte) ([]byte, error)
 	resetFunc   func()
+	keyFunc     func() encryption.Key
 }
 
 // New returns a new Encryptor configured with provided options.
@@ -33,6 +34,14 @@ func New(opts ...Option) *Encryptor {
 		o(e)
 	}
 	return e
+}
+
+// Key has only bogus
+func (e *Encryptor) Key() encryption.Key {
+	if e.keyFunc == nil {
+		return nil
+	}
+	return e.keyFunc()
 }
 
 // Encrypt calls the configured encrypt function, or returns ErrNotImplemented
@@ -82,6 +91,13 @@ func WithDecryptFunc(f func([]byte) ([]byte, error)) Option {
 func WithResetFunc(f func()) Option {
 	return func(e *Encryptor) {
 		e.resetFunc = f
+	}
+}
+
+// WithKeyFunc sets the Encryptor Key function.
+func WithKeyFunc(f func() encryption.Key) Option {
+	return func(e *Encryptor) {
+		e.keyFunc = f
 	}
 }
 
