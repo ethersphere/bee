@@ -90,7 +90,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		}
 
 		bs := data[dataOffsetStart:dataOffsetEnd]
-		n := copy(b[bufferOffset:bufferOffset+len(bs)], bs)
+		n := copy(b[bufferOffset:bufferOffset+int64(len(bs))], bs)
 		wg.Done()
 		return n, nil
 	}
