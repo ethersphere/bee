@@ -33,6 +33,12 @@ const (
 	contentTypeTar    = "application/x-tar"
 )
 
+const (
+	manifestRootPath                      = "/"
+	manifestWebsiteIndexDocumentSuffixKey = "website-index-document"
+	manifestWebsiteErrorDocumentPathKey   = "website-error-document"
+)
+
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
@@ -55,7 +61,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger, requestEncrypt(r), r.Header.Get(SwarmIndextHeader))
+	reference, err := storeDir(ctx, r.Body, s.Storer, requestModePut(r), s.Logger, requestEncrypt(r), r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader))
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
 		logger.Errorf("dir upload: store dir")
@@ -95,12 +101,16 @@ func validateRequest(r *http.Request) error {
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode storage.ModePut, log logging.Logger, encrypt bool, indexFilename string) (swarm.Address, error) {
+func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode storage.ModePut, log logging.Logger, encrypt bool, indexFilename string, errorFilename string) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
 	dirManifest, err := manifest.NewDefaultManifest(encrypt, s)
 	if err != nil {
 		return swarm.ZeroAddress, err
+	}
+
+	if indexFilename != "" && strings.ContainsRune(indexFilename, '/') {
+		return swarm.ZeroAddress, fmt.Errorf("index document suffix must not include slash character")
 	}
 
 	// set up HTTP body reader
@@ -143,21 +153,9 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		logger.Tracef("uploaded dir file %v with reference %v", filePath, fileReference)
 
 		// add file entry to dir manifest
-		err = dirManifest.Add(filePath, manifest.NewEntry(fileReference))
+		err = dirManifest.Add(filePath, manifest.NewEntry(fileReference, nil))
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("add to manifest: %w", err)
-		}
-
-		if indexFilename != "" && filePath == indexFilename || strings.HasSuffix(filePath, "/"+indexFilename) {
-			filePath := strings.TrimSuffix(filePath, indexFilename)
-			filePath = strings.TrimRight(filePath, "/")
-
-			// add file entry to dir manifest
-			err = dirManifest.Add(filePath, manifest.NewEntry(fileReference))
-			if err != nil {
-				return swarm.ZeroAddress, fmt.Errorf("add to manifest: %w", err)
-			}
-
 		}
 
 		filesAdded++
@@ -166,6 +164,22 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 	// check if files were uploaded through the manifest
 	if filesAdded == 0 {
 		return swarm.ZeroAddress, fmt.Errorf("no files in tar")
+	}
+
+	// store website information
+	if indexFilename != "" || errorFilename != "" {
+		metadata := map[string]string{}
+		if indexFilename != "" {
+			metadata[manifestWebsiteIndexDocumentSuffixKey] = indexFilename
+		}
+		if errorFilename != "" {
+			metadata[manifestWebsiteErrorDocumentPathKey] = errorFilename
+		}
+		rootManifestEntry := manifest.NewEntry(swarm.ZeroAddress, metadata)
+		err = dirManifest.Add(manifestRootPath, rootManifestEntry)
+		if err != nil {
+			return swarm.ZeroAddress, fmt.Errorf("add to manifest: %w", err)
+		}
 	}
 
 	// save manifest

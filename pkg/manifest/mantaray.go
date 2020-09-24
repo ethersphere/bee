@@ -68,7 +68,7 @@ func (m *mantarayManifest) Add(path string, entry Entry) error {
 	p := []byte(path)
 	e := entry.Reference().Bytes()
 
-	return m.trie.Add(p, e, m.loader)
+	return m.trie.Add(p, e, entry.Metadata(), m.loader)
 }
 
 func (m *mantarayManifest) Remove(path string) error {
@@ -88,16 +88,26 @@ func (m *mantarayManifest) Remove(path string) error {
 func (m *mantarayManifest) Lookup(path string) (Entry, error) {
 	p := []byte(path)
 
-	ref, err := m.trie.Lookup(p, m.loader)
+	node, err := m.trie.LookupNode(p, m.loader)
 	if err != nil {
 		return nil, ErrNotFound
 	}
 
-	address := swarm.NewAddress(ref)
+	if !node.IsValueType() {
+		return nil, ErrNotFound
+	}
 
-	entry := NewEntry(address)
+	address := swarm.NewAddress(node.Entry())
+
+	entry := NewEntry(address, node.Metadata())
 
 	return entry, nil
+}
+
+func (m *mantarayManifest) HasPrefix(prefix string) (bool, error) {
+	p := []byte(prefix)
+
+	return m.trie.HasPrefix(p, m.loader)
 }
 
 func (m *mantarayManifest) Store(ctx context.Context, mode storage.ModePut) (swarm.Address, error) {
