@@ -24,11 +24,11 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/langos"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/swarm/api/http/langos"
 	"github.com/gorilla/mux"
 )
 
@@ -232,7 +232,7 @@ type fileUploadInfo struct {
 func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 	nameOrHex := mux.Vars(r)["addr"]
-	fmt.Println("resolve name or address", nameOrHex)
+
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
 		logger.Debugf("file download: parse file address %s: %v", nameOrHex, err)
@@ -240,8 +240,6 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid file address")
 		return
 	}
-
-	fmt.Println("resolved address", address.String())
 
 	targets := r.URL.Query().Get("targets")
 	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
@@ -256,8 +254,6 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
-
-	fmt.Println("read entry", buf)
 	e := &entry.Entry{}
 	err = e.UnmarshalBinary(buf.Bytes())
 	if err != nil {
@@ -266,8 +262,6 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "error unmarshaling entry")
 		return
 	}
-
-	fmt.Println("got entry", e)
 
 	// If none match header is set always send the reply as not modified
 	// TODO: when SOC comes, we need to revisit this concept
@@ -281,8 +275,6 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Read metadata.
 	buf = bytes.NewBuffer(nil)
-	fmt.Println("reading metadata", e)
-	j = seekjoiner.NewSimpleJoiner(s.Storer)
 	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf)
 	if err != nil {
 		logger.Debugf("file download: read metadata %s: %v", nameOrHex, err)
@@ -290,7 +282,6 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
-
 	metaData := &entry.Metadata{}
 	err = json.Unmarshal(buf.Bytes(), metaData)
 	if err != nil {
@@ -299,13 +290,11 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 		return
 	}
-	fmt.Println("got metadata", metaData)
 
 	additionalHeaders := http.Header{
 		"Content-Disposition": {fmt.Sprintf("inline; filename=\"%s\"", metaData.Filename)},
 		"Content-Type":        {metaData.MimeType},
 	}
-	fmt.Println("got data", e)
 
 	s.downloadHandler(w, r, e.Reference(), additionalHeaders)
 }
