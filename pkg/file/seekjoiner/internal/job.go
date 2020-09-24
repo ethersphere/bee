@@ -9,10 +9,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"sync"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 type SimpleJoiner struct {
@@ -68,17 +69,26 @@ func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	if readLen > j.span-off {
 		readLen = j.span - off
 	}
-	var wg sync.WaitGroup
-	wg.Add(1)
-	return j.readAtOffset(b, j.rootData, 0, j.span, off, 0, readLen, &wg)
+	var bytesRead int64
+	var eg errgroup.Group
+	err = j.readAtOffset(b, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, &eg)
+	if err != nil {
+		return 0, err
+	}
+	err = eg.Wait()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(atomic.LoadInt64(&bytesRead)), nil
 }
 
-func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) (read int, err error) {
+func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, bytesRead *int64, eg *errgroup.Group) (err error) {
 	if off >= j.span {
-		return 0, io.EOF
+		return io.EOF
 	}
-	btr := bytesToRead
 
+	// we are at a leaf data chunk
 	if subTrieSize <= int64(len(data)) {
 		dataOffsetStart := off - cur
 		dataOffsetEnd := dataOffsetStart + bytesToRead
@@ -89,8 +99,8 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 
 		bs := data[dataOffsetStart:dataOffsetEnd]
 		n := copy(b[bufferOffset:bufferOffset+int64(len(bs))], bs)
-		wg.Done()
-		return n, nil
+		atomic.AddInt64(bytesRead, int64(n))
+		return nil
 	}
 
 	// treat the root hash case:
@@ -128,20 +138,18 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 			currentReadSize = subtrieSpan
 		}
 
-		wg.Add(1)
-		go func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
-			ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
-			if err != nil {
-				return
-			}
+		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
 
-			chunkData := ch.Data()[8:]
-			subtrieSpan := int64(chunkToSpan(ch.Data()))
-			wg.Add(1)
-			go func(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
-				_, _ = j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, wg)
-			}(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, wg)
-			wg.Done()
+			eg.Go(func() error {
+				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
+				if err != nil {
+					return err
+				}
+
+				chunkData := ch.Data()[8:]
+				subtrieSpan := int64(chunkToSpan(ch.Data()))
+				return j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, eg)
+			})
 		}(address, b, cur, subtrieSpan, off, bufferOffset, currentReadSize)
 
 		bufferOffset += currentReadSize
@@ -150,9 +158,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		off = cur
 	}
 
-	wg.Done()
-	wg.Wait()
-	return int(btr), nil
+	return nil
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
