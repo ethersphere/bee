@@ -66,7 +66,7 @@ func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
 	if off >= j.span {
-		return io.EOF
+		return 0, io.EOF
 	}
 
 	readLen := int64(cap(b))
