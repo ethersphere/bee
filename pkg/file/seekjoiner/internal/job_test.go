@@ -100,7 +100,6 @@ func TestSeek(t *testing.T) {
 				want := data[i : i+count]
 				if !bytes.Equal(got, want) {
 					t.Fatal("data mismatch")
-					t.Errorf("read on seek to %v from %v: got data %x, want %s", name, i, got, want)
 				}
 			}
 
