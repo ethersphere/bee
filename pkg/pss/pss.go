@@ -22,9 +22,13 @@ var (
 	ErrNoHandler           = errors.New("no handler found")
 )
 
-type Interface interface {
+type Sender interface {
 	// Send arbitrary byte slice with the given topic to Targets.
 	Send(context.Context, Topic, []byte, *ecdsa.PublicKey, Targets) error
+}
+
+type Interface interface {
+	Sender
 	// Register a Handler for a given Topic.
 	Register(Topic, Handler) func()
 	// TryUnwrap tries to unwrap a wrapped trojan message.

@@ -341,7 +341,12 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 
 	// instantiate the pss object
-	psss := pss.New(logger)
+	swarmPrivateKey, _, err := keystore.Key("swarm", o.Password)
+	if err != nil {
+		return nil, fmt.Errorf("swarm key: %w", err)
+	}
+
+	psss := pss.New(swarmPrivateKey, logger)
 	b.pssCloser = psss
 
 	var ns storage.Storer

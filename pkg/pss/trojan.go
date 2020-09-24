@@ -142,7 +142,11 @@ func Unwrap(ctx context.Context, key *ecdsa.PrivateKey, chunk swarm.Chunk, topic
 		}
 		dec, err := matchTopic(key, pubkey, hint, topic[:])
 		if err != nil {
-			continue
+			privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), topic[:])
+			dec, err = matchTopic((*ecdsa.PrivateKey)(privk), pubkey, hint, topic[:])
+			if err != nil {
+				continue
+			}
 		}
 		ciphertext := chunkData[72:]
 		msg, err = decryptAndCheck(dec, ciphertext)

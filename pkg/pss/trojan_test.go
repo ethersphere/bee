@@ -7,8 +7,10 @@ package pss_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -52,6 +54,43 @@ func TestUnwrap(t *testing.T) {
 	targets := newTargets(4, depth)
 
 	chunk, err := pss.Wrap(context.Background(), topic, msg, pubkey, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topic1 := pss.NewTopic("topic-1")
+	topic2 := pss.NewTopic("topic-2")
+
+	unwrapTopic, unwrapMsg, err := pss.Unwrap(context.Background(), key, chunk, []pss.Topic{topic1, topic2, topic})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(msg, unwrapMsg) {
+		t.Fatalf("message mismatch: expected %x, got %x", msg, unwrapMsg)
+	}
+
+	if !bytes.Equal(topic[:], unwrapTopic[:]) {
+		t.Fatalf("topic mismatch: expected %x, got %x", topic[:], unwrapTopic[:])
+	}
+}
+
+func TestUnwrapTopicEncrypted(t *testing.T) {
+	topic := pss.NewTopic("topic")
+	msg := []byte("some payload")
+
+	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), topic[:])
+	pubkey := (ecdsa.PublicKey)(privk.PublicKey)
+
+	depth := 1
+	targets := newTargets(4, depth)
+
+	chunk, err := pss.Wrap(context.Background(), topic, msg, &pubkey, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
