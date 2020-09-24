@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 
@@ -66,7 +65,7 @@ func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
 	//debug.PrintStack()
-	fmt.Println("simple joiner ReadAt", "offset", off, "buffer size", cap(b))
+	//fmt.Println("simple joiner ReadAt", "offset", off, "buffer size", cap(b))
 	readLen := int64(cap(b))
 	if readLen > j.span-off {
 		readLen = j.span - off
@@ -77,7 +76,7 @@ func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 }
 
 func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) (read int, err error) {
-	fmt.Println("simple joiner readAtOffset", "offset", off, "cursor", cur, "bytesToRead", bytesToRead)
+	//fmt.Println("simple joiner readAtOffset", "offset", off, "cursor", cur, "bytesToRead", bytesToRead)
 	if off >= j.span {
 		return 0, io.EOF
 	}
@@ -111,7 +110,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 	// hashes in this intermediate chunk except for the last one, therefore, we can
 
 	btr := bytesToRead
-	fmt.Println("btr start", btr)
+	//fmt.Println("btr start", btr)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if btr == 0 {
 			break
@@ -119,7 +118,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		// fast forward the cursor now
 		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
 		if cur+sec < off {
-			fmt.Println("fast forward cursor", cur)
+			//fmt.Println("fast forward cursor", cur)
 			cur += sec
 			continue
 		}
@@ -139,7 +138,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		}
 		wg.Add(1)
 		go func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
-			fmt.Println("spawning goroutine")
+			//fmt.Println("spawning goroutine")
 			ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 			if err != nil {
 				return
@@ -147,7 +146,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 
 			chunkData := ch.Data()[8:]
 			subtrieSpan := int64(chunkToSpan(ch.Data()))
-			fmt.Println("offset", off, "btr", btr, "current subtrie size", subtrieSpan, "cur", cur)
+			//fmt.Println("offset", off, "btr", btr, "current subtrie size", subtrieSpan, "cur", cur)
 
 			// if requested offset is within this subtrie
 			// subtrieSpan is how many bytes we CAN read
@@ -155,7 +154,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 			// the original offset since we need to fetch multiple parts
 			// simultaneously. therefore we need to call the relative offset now
 			// with the new goroutine.
-			fmt.Println("howmany = span - (off - cur)", subtrieSpan, off, cur)
+			//fmt.Println("howmany = span - (off - cur)", subtrieSpan, off, cur)
 			wg.Add(1)
 			go func(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
 				_, _ = j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
