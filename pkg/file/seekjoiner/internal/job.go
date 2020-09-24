@@ -153,7 +153,6 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 				howMany = subtrieSpan
 			}
 
-			fmt.Println("btr read another", btr, "bytes", "how many now?", howMany, "bufferOffset", bufferOffset)
 			wg.Add(1)
 			go func(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, wg *sync.WaitGroup) {
 				_, _ = j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, howMany, wg)
@@ -171,13 +170,13 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 	return int(bytesToRead), nil
 }
 
+// brute-forces the subtrie size for each of the sections in this intermediate chunk
 func subtrieSection(data []byte, refLen int, subtrieSize int64) int64 {
-	refs := int64(len(data) / refLen)
-	branching := int64(128)
-	if refLen == 64 {
-		branching = int64(64)
-	}
-	branchSize := int64(4096)
+	var (
+		refs       = int64(len(data) / refLen) // how many references in the intermediate chunk
+		branching  = int64(4096 / refLen)      // branching factor is chunkSize divided by reference length
+		branchSize = int64(4096)
+	)
 	for {
 		whatsLeft := subtrieSize - (branchSize * (refs - 1))
 		if whatsLeft <= branchSize {
