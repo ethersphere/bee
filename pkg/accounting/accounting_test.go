@@ -540,6 +540,64 @@ func TestAccountingCallSettlement(t *testing.T) {
 	}
 }
 
+// TestAccountingCallSettlementEarly tests that settlement is called correctly if the payment threshold minus early payment is hit
+func TestAccountingCallSettlementEarly(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	settlement := &settlementMock{}
+	earlyPayment := uint64(1000)
+
+	acc, err := accounting.NewAccounting(accounting.Options{
+		PaymentThreshold: testPaymentThreshold,
+		PaymentTolerance: testPaymentTolerance,
+		EarlyPayment:     earlyPayment,
+		Logger:           logger,
+		Store:            store,
+		Settlement:       settlement,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	payment := testPaymentThreshold - earlyPayment
+	err = acc.Reserve(peer1Addr, payment)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Credit until payment treshold
+	err = acc.Credit(peer1Addr, payment)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	acc.Release(peer1Addr, payment)
+
+	if !settlement.paidPeer.Equal(peer1Addr) {
+		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	}
+
+	if settlement.paidAmount != payment {
+		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, payment)
+	}
+
+	balance, err := acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance != 0 {
+		t.Fatalf("expected balance to be reset. got %d", balance)
+	}
+}
+
 // TestAccountingNotifyPayment tests that payments adjust the balance and payment which put us into debt are rejected
 func TestAccountingNotifyPayment(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
