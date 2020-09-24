@@ -30,19 +30,19 @@ const (
 
 type Key []byte
 
-type Encryptor interface {
+type Encrypter interface {
 	Key() Key
 	Encrypt(data []byte) ([]byte, error)
 }
 
-type Decryptor interface {
+type Decrypter interface {
 	Key() Key
 	Decrypt(data []byte) ([]byte, error)
 }
 
 type Interface interface {
-	Encryptor
-	Decryptor
+	Encrypter
+	Decrypter
 	Reset()
 }
 
@@ -55,7 +55,7 @@ type Encryption struct {
 	hashFunc func() hash.Hash // hasher constructor function
 }
 
-// New constructs a new encryptor/decryptor
+// New constructs a new encrypter/decrypter
 func New(key Key, padding int, initCtr uint32, hashFunc func() hash.Hash) Interface {
 	return &Encryption{
 		key:      key,

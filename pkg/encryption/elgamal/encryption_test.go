@@ -27,7 +27,7 @@ func TestElgamalCorrect(t *testing.T) {
 		t.Fatal(err)
 	}
 	padding := 4032
-	enc, ephpub, err := elgamal.NewEncryptor(pub, salt, padding, swarm.NewHasher)
+	enc, ephpub, err := elgamal.NewEncrypter(pub, salt, padding, swarm.NewHasher)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestElgamalCorrect(t *testing.T) {
 		t.Fatalf("ciphertext has incorrect length: expected %v,  got %v", padding, len(ciphertext))
 	}
 
-	dec, err := elgamal.NewDecryptor(key, ephpub, salt, swarm.NewHasher)
+	dec, err := elgamal.NewDecrypter(key, ephpub, salt, swarm.NewHasher)
 	if err != nil {
 		t.Fatal(err)
 	}
