@@ -361,7 +361,7 @@ func TestPayIssueError(t *testing.T) {
 
 	err := swap.Pay(context.Background(), peer, amount)
 	if !errors.Is(err, errReject) {
-		t.Fatalf("wrong error. wanted %, got %v", errReject, err)
+		t.Fatalf("wrong error. wanted %v, got %v", errReject, err)
 	}
 }
 
@@ -393,7 +393,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 
 	err := swapService.Pay(context.Background(), peer, amount)
 	if !errors.Is(err, swap.ErrUnknownBeneficary) {
-		t.Fatalf("wrong error. wanted %, got %v", swap.ErrUnknownBeneficary, err)
+		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrUnknownBeneficary, err)
 	}
 }
 
