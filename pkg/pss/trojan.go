@@ -295,7 +295,7 @@ func decryptAndCheck(dec encryption.Decrypter, ciphertext []byte) ([]byte, error
 	if length > MaxPayloadSize {
 		return nil, errors.New("invalid length")
 	}
-	msg := plaintext[32 : 32+int(length)]
+	msg := plaintext[32 : 32+length]
 	integrity := plaintext[2:32]
 	hash, err := crypto.LegacyKeccak256(msg)
 	if err != nil {

@@ -7,7 +7,6 @@ package pss_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"testing"
 
 	"github.com/btcsuite/btcd/btcec"
@@ -80,7 +79,7 @@ func TestUnwrapTopicEncrypted(t *testing.T) {
 	msg := []byte("some payload")
 
 	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), topic[:])
-	pubkey := (ecdsa.PublicKey)(privk.PublicKey)
+	pubkey := privk.PublicKey
 
 	depth := 1
 	targets := newTargets(4, depth)

@@ -116,12 +116,15 @@ func (p *pss) Register(topic Topic, handler Handler) (cleanup func()) {
 	}
 }
 
-func (p *pss) topics() (ts []Topic) {
+func (p *pss) topics() []Topic {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
-	for t, _ := range p.handlers {
+
+	ts := make([]Topic, 0, len(p.handlers))
+	for t := range p.handlers {
 		ts = append(ts, t)
 	}
+
 	return ts
 }
 

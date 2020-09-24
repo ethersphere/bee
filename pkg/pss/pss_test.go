@@ -113,7 +113,14 @@ func TestDeliver(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	message := <-msgChan
+	var message topicMessage
+
+	select {
+	case message = <-msgChan:
+		break
+	case <-time.After(1 * time.Second):
+		t.Fatal("reached timeout while waiting for message")
+	}
 
 	if !bytes.Equal(payload, message.msg) {
 		t.Fatalf("message mismatch: expected %x, got %x", payload, message.msg)
