@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -453,6 +454,9 @@ func (s *settlementMock) SettlementsSent() (SettlementSent map[string]uint64, er
 
 func (s *settlementMock) SettlementsReceived() (SettlementReceived map[string]uint64, err error) {
 	return nil, nil
+}
+
+func (s *settlementMock) SetPaymentObserver(settlement.PaymentObserver) {
 }
 
 // TestAccountingCallSettlement tests that settlement is called correctly if the payment threshold is hit
