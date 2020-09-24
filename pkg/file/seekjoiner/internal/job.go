@@ -65,16 +65,18 @@ func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 
 func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
+	if off >= j.span {
+		return io.EOF
+	}
+
 	readLen := int64(cap(b))
 	if readLen > j.span-off {
 		readLen = j.span - off
 	}
 	var bytesRead int64
 	var eg errgroup.Group
-	err = j.readAtOffset(b, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, &eg)
-	if err != nil {
-		return 0, err
-	}
+	j.readAtOffset(b, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, &eg)
+
 	err = eg.Wait()
 	if err != nil {
 		return 0, err
@@ -83,11 +85,7 @@ func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	return int(atomic.LoadInt64(&bytesRead)), nil
 }
 
-func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, bytesRead *int64, eg *errgroup.Group) (err error) {
-	if off >= j.span {
-		return io.EOF
-	}
-
+func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, bytesRead *int64, eg *errgroup.Group) {
 	// we are at a leaf data chunk
 	if subTrieSize <= int64(len(data)) {
 		dataOffsetStart := off - cur
@@ -100,24 +98,14 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		bs := data[dataOffsetStart:dataOffsetEnd]
 		n := copy(b[bufferOffset:bufferOffset+int64(len(bs))], bs)
 		atomic.AddInt64(bytesRead, int64(n))
-		return nil
+		return
 	}
-
-	// treat the root hash case:
-	// let's assume we have a trie of size x
-	// then we can assume that at least all of the forks
-	// except for the last one on the right are of equal size
-	// this is due to how the splitter wraps levels - ie in the process
-	// of chunking, it may be that the last address of each fork is not a whole level
-	// so for the branches on the left, we can assume that
-	// y = (branching factor - 1) * x + l
-	// where y is the size of the subtrie, x is constant and l is the size of the last subtrie
-	// we know how many refs we have in the current chunk
 
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
 			break
 		}
+
 		// fast forward the cursor
 		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
 		if cur+sec < off {
@@ -125,7 +113,7 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 			continue
 		}
 
-		// if we are here it means that either we are within the bounds of the data we need to read
+		// if we are here it means that we are within the bounds of the data we need to read
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
 		subtrieSpan := sec
 		currentReadSize := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
@@ -139,7 +127,6 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		}
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
-
 			eg.Go(func() error {
 				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 				if err != nil {
@@ -148,7 +135,8 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 
 				chunkData := ch.Data()[8:]
 				subtrieSpan := int64(chunkToSpan(ch.Data()))
-				return j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, eg)
+				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, eg)
+				return nil
 			})
 		}(address, b, cur, subtrieSpan, off, bufferOffset, currentReadSize)
 
@@ -157,12 +145,17 @@ func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, buffe
 		cur += subtrieSpan
 		off = cur
 	}
-
-	return nil
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
 func subtrieSection(data []byte, startIdx, refLen int, subtrieSize int64) int64 {
+	// assume we have a trie of size `y` then we can assume that all of
+	// the forks except for the last one on the right are of equal size
+	// this is due to how the splitter wraps levels.
+	// so for the branches on the left, we can assume that
+	// y = (refs - 1) * x + l
+	// where y is the size of the subtrie, refs are the number of references
+	// x is constant (the brute forced value) and l is the size of the last subtrie
 	var (
 		refs       = int64(len(data) / refLen) // how many references in the intermediate chunk
 		branching  = int64(4096 / refLen)      // branching factor is chunkSize divided by reference length
