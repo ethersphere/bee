@@ -283,6 +283,8 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		settlement = pseudosettleService
 	}
 
+	pricing := pricing.New(p2ps, logger, o.PaymentThreshold)
+
 	acc, err := accounting.NewAccounting(accounting.Options{
 		Logger:           logger,
 		Store:            stateStore,
