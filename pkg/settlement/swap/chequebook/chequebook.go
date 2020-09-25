@@ -40,7 +40,7 @@ type Service interface {
 	WaitForDeposit(ctx context.Context, txHash common.Hash) error
 	// Balance returns the token balance of the chequebook.
 	Balance(ctx context.Context) (*big.Int, error)
-	// AvailableBalance returns the token balance of the chequebook not yet used for uncashed cheques.
+	// AvailableBalance returns the token balance of the chequebook which is not yet used for uncashed cheques.
 	AvailableBalance(ctx context.Context) (*big.Int, error)
 	// Address returns the address of the used chequebook contract.
 	Address() common.Address
@@ -154,7 +154,7 @@ func (s *service) Balance(ctx context.Context) (*big.Int, error) {
 	})
 }
 
-// AvailableBalance returns the token balance of the chequebook not yet used for uncashed cheques.
+// AvailableBalance returns the token balance of the chequebook which is not yet used for uncashed cheques.
 func (s *service) AvailableBalance(ctx context.Context) (*big.Int, error) {
 	totalIssued, err := s.totalIssued()
 	if err != nil {
@@ -265,6 +265,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	return s.store.Put(totalIssuedKey, totalIssued)
 }
 
+// returns the total amount in cheques issued so far
 func (s *service) totalIssued() (totalIssued *big.Int, err error) {
 	err = s.store.Get(totalIssuedKey, &totalIssued)
 	if err != nil {
