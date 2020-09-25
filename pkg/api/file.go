@@ -337,5 +337,5 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set(TargetsRecoveryHeader, targets)
 
-	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, getFileBufferSize))
+	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
