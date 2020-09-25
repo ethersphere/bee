@@ -183,8 +183,8 @@ func TestRegister(t *testing.T) {
 
 	waitHandlerCallback(t, &msgChan, 1)
 
-	ensureCalls(t, "h1", &h1Calls, 1)
-	ensureCalls(t, "h2", &h2Calls, 0)
+	ensureCalls(t, &h1Calls, 1)
+	ensureCalls(t, &h2Calls, 0)
 
 	// register another topic handler on the same topic
 	cleanup := p.Register(topic1, h3)
@@ -195,9 +195,9 @@ func TestRegister(t *testing.T) {
 
 	waitHandlerCallback(t, &msgChan, 2)
 
-	ensureCalls(t, "h1", &h1Calls, 2)
-	ensureCalls(t, "h2", &h2Calls, 0)
-	ensureCalls(t, "h3", &h3Calls, 1)
+	ensureCalls(t, &h1Calls, 2)
+	ensureCalls(t, &h2Calls, 0)
+	ensureCalls(t, &h3Calls, 1)
 
 	cleanup() // remove the last handler
 
@@ -208,9 +208,9 @@ func TestRegister(t *testing.T) {
 
 	waitHandlerCallback(t, &msgChan, 1)
 
-	ensureCalls(t, "h1", &h1Calls, 3)
-	ensureCalls(t, "h2", &h2Calls, 0)
-	ensureCalls(t, "h3", &h3Calls, 1)
+	ensureCalls(t, &h1Calls, 3)
+	ensureCalls(t, &h2Calls, 0)
+	ensureCalls(t, &h3Calls, 1)
 
 	chunk2, err := pss.Wrap(context.Background(), topic2, payload, recipient, targets)
 	if err != nil {
@@ -223,9 +223,9 @@ func TestRegister(t *testing.T) {
 
 	waitHandlerCallback(t, &msgChan, 1)
 
-	ensureCalls(t, "h1", &h1Calls, 3)
-	ensureCalls(t, "h2", &h2Calls, 1)
-	ensureCalls(t, "h3", &h3Calls, 1)
+	ensureCalls(t, &h1Calls, 3)
+	ensureCalls(t, &h2Calls, 1)
+	ensureCalls(t, &h3Calls, 1)
 }
 
 func waitHandlerCallback(t *testing.T, msgChan *chan struct{}, count int) {
@@ -240,10 +240,10 @@ func waitHandlerCallback(t *testing.T, msgChan *chan struct{}, count int) {
 	}
 }
 
-func ensureCalls(t *testing.T, name string, calls *int, exp int) {
+func ensureCalls(t *testing.T, calls *int, exp int) {
 	t.Helper()
 
 	if exp != *calls {
-		t.Fatalf("%s expected %d calls, found %d", name, exp, *calls)
+		t.Fatalf("expected %d calls, found %d", exp, *calls)
 	}
 }
