@@ -184,6 +184,5 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcresponses})
-	return
 
 }
