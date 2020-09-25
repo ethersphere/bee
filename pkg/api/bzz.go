@@ -28,7 +28,9 @@ import (
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
+	if targets != "" {
+		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
+	}
 	ctx := r.Context()
 
 	nameOrHex := mux.Vars(r)["address"]

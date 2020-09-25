@@ -47,18 +47,19 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				if s.recoveryCallback == nil {
 					return nil, err
 				}
-				targets, err := sctx.GetTargets(ctx)
-				if err != nil {
-					return nil, err
+				targets := sctx.GetTargets(ctx)
+				if targets != nil {
+					go func() {
+						err := s.recoveryCallback(addr, targets)
+						if err != nil {
+							s.logger.Debugf("netstore: error while recovering chunk: %v", err)
+						}
+					}()
+					return nil, ErrRecoveryAttempt
 				}
-				go func() {
-					err := s.recoveryCallback(addr, targets)
-					if err != nil {
-						s.logger.Debugf("netstore: error while recovering chunk: %v", err)
-					}
-				}()
-				return nil, ErrRecoveryAttempt
+				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
 			}
+
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve put: %w", err)

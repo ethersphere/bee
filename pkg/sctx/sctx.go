@@ -63,10 +63,10 @@ func SetTargets(ctx context.Context, targets string) context.Context {
 
 // GetTargets returns the specific target pinners for a corresponding chunk by
 // reading the prefix targets sent in the download API.
-func GetTargets(ctx context.Context) (trojan.Targets, error) {
+func GetTargets(ctx context.Context) trojan.Targets {
 	targetString, ok := ctx.Value(targetsContextKey{}).(string)
 	if !ok {
-		return nil, ErrTargetPrefix
+		return nil
 	}
 
 	prefixes := strings.Split(targetString, ",")
@@ -80,7 +80,7 @@ func GetTargets(ctx context.Context) (trojan.Targets, error) {
 		targets = append(targets, target)
 	}
 	if len(targets) <= 0 {
-		return nil, ErrTargetPrefix
+		return nil
 	}
-	return targets, nil
+	return targets
 }
