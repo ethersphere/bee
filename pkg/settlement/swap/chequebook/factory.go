@@ -161,7 +161,7 @@ func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
 func DiscoverFactoryAddress(chainID int64) (common.Address, bool) {
 	if chainID == 5 {
 		// goerli
-		return common.HexToAddress("0x334394E8c891E77b1449084aaDD659920BB25247"), true
+		return common.HexToAddress("0xA6B88705036F2a56807af157c116b7dfCDabf968"), true
 	}
 	return common.Address{}, false
 }
