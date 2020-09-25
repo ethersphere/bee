@@ -274,6 +274,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 
 	var settlement settlement.Interface
+	var swapService swap.ApiInterface
 	if o.SwapEnable {
 		swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
 		swapAddressBook := swap.NewAddressbook(stateStore)
