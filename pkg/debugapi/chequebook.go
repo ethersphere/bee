@@ -31,15 +31,20 @@ type chequebookAddressResponse struct {
 	Address string `json:"chequebookaddress"`
 }
 
-type chequebookLastChequeResponse struct {
+type chequebookLastChequePeerResponse struct {
 	Address     string   `json:"address"`
 	Beneficiary string   `json:"beneficiary"`
 	Chequebook  string   `json:"chequebook"`
 	Payout      *big.Int `json:"payout"`
 }
 
+type chequebookLastChequesPeerResponse struct {
+	LastChequeIn  chequebookLastChequePeerResponse `json:"lastchequein"`
+	LastChequeOut chequebookLastChequePeerResponse `json:"lastchequeout"`
+}
+
 type chequebookLastChequesResponse struct {
-	LastCheques []chequebookLastChequeResponse `json:"lastcheques"`
+	LastCheques []chequebookLastChequesPeerResponse `json:"lastcheques"`
 }
 
 func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +82,8 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	lastcheque, err := s.Swap.LastChequePeer(peer)
+	lastchequeIn, err := s.Swap.LastChequePeer(peer)
+	lastchequeOut, err := s.Swap.LastStoredChequePeer(peer)
 	if err != nil {
 		if !errors.Is(err, swap.ErrUnknownBeneficary) {
 			s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v", peer.String(), err)
@@ -90,34 +96,79 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	jsonhttp.OK(w, chequebookLastChequeResponse{
+	lastin := chequebookLastChequePeerResponse{
 		Address:     addr,
-		Beneficiary: lastcheque.Cheque.Beneficiary.String(),
-		Chequebook:  lastcheque.Cheque.Chequebook.String(),
-		Payout:      lastcheque.Cheque.CumulativePayout,
+		Beneficiary: lastchequeIn.Cheque.Beneficiary.String(),
+		Chequebook:  lastchequeIn.Cheque.Chequebook.String(),
+		Payout:      lastchequeIn.Cheque.CumulativePayout,
+	}
+
+	lastout := chequebookLastChequePeerResponse{
+		Address:     addr,
+		Beneficiary: lastchequeOut.Cheque.Beneficiary.String(),
+		Chequebook:  lastchequeOut.Cheque.Chequebook.String(),
+		Payout:      lastchequeOut.Cheque.CumulativePayout,
+	}
+
+	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
+		LastChequeIn:  lastin,
+		LastChequeOut: lastout,
 	})
 }
 
 func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
 
 	lastcheques, err := s.Swap.LastCheques()
+	laststoredcheques, err := s.Swap.LastStoredCheques()
+
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantLastCheque)
 	}
 
-	lcr := make([]chequebookLastChequeResponse, len(lastcheques))
+	lcr := make(map[string]chequebookLastChequesPeerResponse)
 
-	k := 0
 	for i, j := range lastcheques {
-		lcr[k] = chequebookLastChequeResponse{
-			Address:     i,
-			Beneficiary: j.Cheque.Beneficiary.String(),
-			Chequebook:  j.Cheque.Chequebook.String(),
-			Payout:      j.Cheque.CumulativePayout,
+		lcr[i] = chequebookLastChequesPeerResponse{
+			LastChequeIn: chequebookLastChequePeerResponse{
+				Address:     i,
+				Beneficiary: j.Cheque.Beneficiary.String(),
+				Chequebook:  j.Cheque.Chequebook.String(),
+				Payout:      j.Cheque.CumulativePayout,
+			},
+			LastChequeOut: chequebookLastChequePeerResponse{},
 		}
-		k++
 	}
 
-	jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcr})
-	return
+	for i, j := range laststoredcheques {
+		if _, ok := lcr[i]; ok {
+			t := lcr[i]
+			t.LastChequeOut = chequebookLastChequePeerResponse{
+				Address:     i,
+				Beneficiary: j.Cheque.Beneficiary.String(),
+				Chequebook:  j.Cheque.Chequebook.String(),
+				Payout:      j.Cheque.CumulativePayout,
+			}
+			lcr[i] = t
+		} else {
+			lcr[i] = chequebookLastChequesPeerResponse{
+				LastChequeIn: chequebookLastChequePeerResponse{},
+				LastChequeOut: chequebookLastChequePeerResponse{
+					Address:     i,
+					Beneficiary: j.Cheque.Beneficiary.String(),
+					Chequebook:  j.Cheque.Chequebook.String(),
+					Payout:      j.Cheque.CumulativePayout,
+				},
+			}
+		}
+
+		lcresponses := make([]chequebookLastChequesPeerResponse, len(lcr))
+		i := 0
+		for k := range lcr {
+			lcresponses[i] = lcr[k]
+			i++
+		}
+
+		jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcresponses})
+		return
+	}
 }
