@@ -40,7 +40,7 @@ func TestAccountingAddBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc, err = accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil, accounting.Options{})
+	acc, err = accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestAccountingReserve(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestAccountingOverflowReserve(t *testing.T) {
 
 	settlement := &settlementMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, settlement, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, settlement, nil)
 
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestAccountingOverflowNotifyPayment(t *testing.T) {
 
 	settlement := &settlementMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, settlement, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, settlement, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestAccountingOverflowDebit(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, nil, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ func TestAccountingOverflowCredit(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, nil, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestAccountingDisconnect(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 
 	settlement := &settlementMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, settlement, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, settlement, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +504,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	settlement := &settlementMock{}
 	earlyPayment := uint64(1000)
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, earlyPayment, logger, store, settlement, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, earlyPayment, logger, store, settlement, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +552,7 @@ func TestAccountingNotifyPayment(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, 1000, logger, store, nil, nil, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, 1000, logger, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,7 +590,7 @@ func TestAccountingInvalidPaymentTolerance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	_, err := accounting.NewAccounting(testPaymentThreshold, testPaymentThreshold/2+1, 1000, logger, store, nil, nil, accounting.Options{})
+	_, err := accounting.NewAccounting(testPaymentThreshold, testPaymentThreshold/2+1, 1000, logger, store, nil, nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -621,7 +621,7 @@ func TestAccountingConnected(t *testing.T) {
 
 	pricing := &pricingMock{}
 
-	_, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, pricing, accounting.Options{})
+	_, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, pricing)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -657,7 +657,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 
 	pricing := &pricingMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, pricing, accounting.Options{})
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, pricing)
 	if err != nil {
 		t.Fatal(err)
 	}

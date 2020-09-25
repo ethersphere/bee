@@ -53,10 +53,6 @@ type accountingPeer struct {
 	paymentThreshold uint64     // the threshold at which the peer expects us to pay
 }
 
-// Options are options provided to Accounting.
-type Options struct {
-}
-
 // Accounting is the main implementation of the accounting interface.
 type Accounting struct {
 	// Mutex for accessing the accountingPeers map.
@@ -98,7 +94,6 @@ func NewAccounting(
 	Store storage.StateStorer,
 	Settlement settlement.Interface,
 	Pricing pricing.Interface,
-	o Options,
 ) (*Accounting, error) {
 	if PaymentTolerance+PaymentThreshold > math.MaxInt64 {
 		return nil, fmt.Errorf("tolerance plus threshold too big: %w", ErrOverflow)

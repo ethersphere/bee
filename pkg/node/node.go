@@ -285,7 +285,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	pricing := pricing.New(p2ps, logger, o.PaymentThreshold)
 
-	acc, err := accounting.NewAccounting(o.PaymentThreshold, o.PaymentTolerance, o.PaymentEarly, logger, stateStore, settlement, pricing, accounting.Options{})
+	acc, err := accounting.NewAccounting(o.PaymentThreshold, o.PaymentTolerance, o.PaymentEarly, logger, stateStore, settlement, pricing)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
