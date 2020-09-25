@@ -72,6 +72,29 @@ func TestInit(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	gotBeneficiary := messages[0].(*pb.Handshake).Beneficiary
+	if bytes.Compare(gotBeneficiary, commonAddr2.Bytes()) != 0 {
+		t.Fatalf("got %v bytes, want %v bytes", gotBeneficiary, commonAddr2.Bytes())
+	}
+
+	if len(messages) != 1 {
+		t.Fatalf("got %v messages, want %v", len(messages), 1)
+	}
+
+	messages, err = protobuf.ReadMessages(
+		bytes.NewReader(record.Out()),
+		func() protobuf.Message { return new(pb.Handshake) },
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotBeneficiary = messages[0].(*pb.Handshake).Beneficiary
+	if bytes.Compare(gotBeneficiary, commonAddr.Bytes()) != 0 {
+		t.Fatalf("got %v bytes, want %v bytes", gotBeneficiary, commonAddr.Bytes())
+	}
+
 	if len(messages) != 1 {
 		t.Fatalf("got %v messages, want %v", len(messages), 1)
 	}
@@ -123,6 +146,9 @@ func TestEmitCheque(t *testing.T) {
 		bytes.NewReader(record.In()),
 		func() protobuf.Message { return new(pb.EmitCheque) },
 	)
+
+	// gotCheque := messages[0].(*pb.EmitCheque)
+	// Todo comparing field values in this response
 
 	if err != nil {
 		t.Fatal(err)

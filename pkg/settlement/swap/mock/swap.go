@@ -6,10 +6,8 @@ package mock
 
 import (
 	"context"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-
 	"github.com/ethersphere/bee/pkg/settlement"
 	//	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -18,7 +16,6 @@ import (
 )
 
 type Service struct {
-	lock            sync.Mutex
 	settlementsSent map[string]uint64
 	settlementsRecv map[string]uint64
 
