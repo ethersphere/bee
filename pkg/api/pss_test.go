@@ -169,14 +169,18 @@ func TestPssSend(t *testing.T) {
 		receivedTargets pss.Targets
 		done            bool
 
-		sendFn = func(_ context.Context, topic pss.Topic, bytes []byte, _ *ecdsa.PublicKey, targets pss.Targets) error {
+		privk, _       = crypto.GenerateSecp256k1Key()
+		publicKeyBytes = (*btcec.PublicKey)(&privk.PublicKey).SerializeCompressed()
+
+		sendFn = func(ctx context.Context, targets pss.Targets, chunk swarm.Chunk) error {
 			mtx.Lock()
+			topic, msg, err := pss.Unwrap(ctx, privk, chunk, []pss.Topic{topic})
 			receivedTopic = topic
-			receivedBytes = bytes
+			receivedBytes = msg
 			receivedTargets = targets
 			done = true
 			mtx.Unlock()
-			return nil
+			return err
 		}
 
 		p            = newMockPss(sendFn)
@@ -186,6 +190,7 @@ func TestPssSend(t *testing.T) {
 			Logger: logger,
 		})
 
+		recipient = hex.EncodeToString(publicKeyBytes)
 		targets   = fmt.Sprintf("[[%d]]", 0x12)
 		topic     = "testtopic"
 		hasher    = swarm.NewHasher()
@@ -195,11 +200,6 @@ func TestPssSend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	privk, _ := crypto.GenerateSecp256k1Key()
-	publicKeyBytes := (*btcec.PublicKey)(&privk.PublicKey).SerializeCompressed()
-
-	recipient := hex.EncodeToString(publicKeyBytes)
 
 	t.Run("err - bad targets", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to?targets=badtarget&recipient="+recipient, http.StatusBadRequest,
@@ -384,7 +384,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	return pss, &privkey.PublicKey, cl, listener
 }
 
-type pssSendFn func(context.Context, pss.Topic, []byte, *ecdsa.PublicKey, pss.Targets) error
+type pssSendFn func(context.Context, pss.Targets, swarm.Chunk) error
 type mpss struct {
 	f pssSendFn
 }
@@ -395,7 +395,11 @@ func newMockPss(f pssSendFn) *mpss {
 
 // Send arbitrary byte slice with the given topic to Targets.
 func (m *mpss) Send(ctx context.Context, topic pss.Topic, payload []byte, recipient *ecdsa.PublicKey, targets pss.Targets) error {
-	return m.f(ctx, topic, payload, recipient, targets)
+	chunk, err := pss.Wrap(ctx, topic, payload, recipient, targets)
+	if err != nil {
+		return err
+	}
+	return m.f(ctx, targets, chunk)
 }
 
 // Register a Handler for a given Topic.
