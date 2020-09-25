@@ -83,10 +83,11 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	lastchequeIn, err := s.Swap.LastChequePeer(peer)
-	lastchequeOut, err := s.Swap.LastStoredChequePeer(peer)
-	if err != nil {
-		if !errors.Is(err, swap.ErrUnknownBeneficary) {
-			s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v", peer.String(), err)
+	lastchequeOut, err2 := s.Swap.LastStoredChequePeer(peer)
+
+	if err != nil || err2 != nil {
+		if !errors.Is(err, swap.ErrUnknownBeneficary) && !errors.Is(err2, swap.ErrUnknownBeneficary) {
+			s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v, %v", peer.String(), err, err2)
 			s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
 			jsonhttp.InternalServerError(w, errCantLastChequePeer)
 			return
@@ -96,18 +97,24 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	lastin := chequebookLastChequePeerResponse{
-		Address:     addr,
-		Beneficiary: lastchequeIn.Cheque.Beneficiary.String(),
-		Chequebook:  lastchequeIn.Cheque.Chequebook.String(),
-		Payout:      lastchequeIn.Cheque.CumulativePayout,
+	lastin := chequebookLastChequePeerResponse{}
+	if err == nil {
+		lastin = chequebookLastChequePeerResponse{
+			Address:     addr,
+			Beneficiary: lastchequeIn.Cheque.Beneficiary.String(),
+			Chequebook:  lastchequeIn.Cheque.Chequebook.String(),
+			Payout:      lastchequeIn.Cheque.CumulativePayout,
+		}
 	}
 
-	lastout := chequebookLastChequePeerResponse{
-		Address:     addr,
-		Beneficiary: lastchequeOut.Cheque.Beneficiary.String(),
-		Chequebook:  lastchequeOut.Cheque.Chequebook.String(),
-		Payout:      lastchequeOut.Cheque.CumulativePayout,
+	lastout := chequebookLastChequePeerResponse{}
+	if err2 == nil {
+		lastout = chequebookLastChequePeerResponse{
+			Address:     addr,
+			Beneficiary: lastchequeOut.Cheque.Beneficiary.String(),
+			Chequebook:  lastchequeOut.Cheque.Chequebook.String(),
+			Payout:      lastchequeOut.Cheque.CumulativePayout,
+		}
 	}
 
 	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
