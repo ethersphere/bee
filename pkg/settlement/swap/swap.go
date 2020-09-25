@@ -228,7 +228,7 @@ func (s *Service) LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, 
 		return nil, errors.New("error translating swarm address to chequebook address")
 	}
 
-	if known != true {
+	if !known {
 		return nil, ErrUnknownBeneficary
 	}
 
@@ -243,7 +243,7 @@ func (s *Service) LastStoredChequePeer(peer swarm.Address) (*chequebook.SignedCh
 		return nil, errors.New("error translating swarm address to chequebook address")
 	}
 
-	if known != true {
+	if !known {
 		return nil, ErrUnknownBeneficary
 	}
 
@@ -260,7 +260,7 @@ func (s *Service) LastCheques() (map[string]*chequebook.SignedCheque, error) {
 
 	for i, j := range lastcheques {
 		addr, known, err := s.addressbook.BeneficiaryPeer(i)
-		if err == nil && known == true {
+		if err == nil && known {
 			resultmap[addr.String()] = j
 		}
 	}
@@ -279,7 +279,7 @@ func (s *Service) LastStoredCheques() (map[string]*chequebook.SignedCheque, erro
 
 	for i, j := range lastcheques {
 		addr, known, err := s.addressbook.BeneficiaryPeer(i)
-		if err == nil && known == true {
+		if err == nil && known {
 			resultmap[addr.String()] = j
 		}
 	}

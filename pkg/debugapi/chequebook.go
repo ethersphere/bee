@@ -126,10 +126,17 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
 
 	lastcheques, err := s.Swap.LastCheques()
+
+	if err != nil {
+		jsonhttp.InternalServerError(w, errCantLastCheque)
+		return
+	}
+
 	laststoredcheques, err := s.Swap.LastStoredCheques()
 
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantLastCheque)
+		return
 	}
 
 	lcr := make(map[string]chequebookLastChequesPeerResponse)

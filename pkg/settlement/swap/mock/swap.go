@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 
@@ -17,11 +16,6 @@ import (
 )
 
 type Service struct {
-	lock            sync.Mutex
-	settlementsSent map[string]uint64
-	settlementsRecv map[string]uint64
-
-	observer           settlement.PaymentObserver
 	settlementSentFunc func(swarm.Address) (uint64, error)
 	settlementRecvFunc func(swarm.Address) (uint64, error)
 
@@ -125,8 +119,6 @@ func New(opts ...Option) settlement.Interface {
 
 func NewApiInterface(opts ...Option) swap.ApiInterface {
 	mock := new(Service)
-	mock.settlementsSent = make(map[string]uint64)
-	mock.settlementsRecv = make(map[string]uint64)
 	for _, o := range opts {
 		o.apply(mock)
 	}
