@@ -5,16 +5,19 @@
 package debugapi
 
 import (
+	"encoding/hex"
 	"net/http"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/multiformats/go-multiaddr"
 )
 
 type addressesResponse struct {
-	Overlay  swarm.Address         `json:"overlay"`
-	Underlay []multiaddr.Multiaddr `json:"underlay"`
+	Overlay   swarm.Address         `json:"overlay"`
+	Underlay  []multiaddr.Multiaddr `json:"underlay"`
+	PublicKey string                `json:"public_key"`
 }
 
 func (s *server) addressesHandler(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +28,8 @@ func (s *server) addressesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonhttp.OK(w, addressesResponse{
-		Overlay:  s.Overlay,
-		Underlay: underlay,
+		Overlay:   s.Overlay,
+		Underlay:  underlay,
+		PublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.PublicKey)),
 	})
 }

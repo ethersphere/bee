@@ -5,6 +5,7 @@
 package debugapi
 
 import (
+	"crypto/ecdsa"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -28,6 +29,7 @@ type Service interface {
 
 type server struct {
 	Overlay           swarm.Address
+	PublicKey         ecdsa.PublicKey
 	P2P               p2p.DebugService
 	Pingpong          pingpong.Interface
 	TopologyDriver    topology.Driver
@@ -43,9 +45,10 @@ type server struct {
 	metricsRegistry *prometheus.Registry
 }
 
-func New(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, chequebook chequebook.Service) Service {
+func New(overlay swarm.Address, publicKey ecdsa.PublicKey, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, chequebook chequebook.Service) Service {
 	s := &server{
 		Overlay:           overlay,
+		PublicKey:         publicKey,
 		P2P:               p2p,
 		Pingpong:          pingpong,
 		TopologyDriver:    topologyDriver,
