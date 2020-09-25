@@ -160,15 +160,16 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 				},
 			}
 		}
-
-		lcresponses := make([]chequebookLastChequesPeerResponse, len(lcr))
-		i := 0
-		for k := range lcr {
-			lcresponses[i] = lcr[k]
-			i++
-		}
-
-		jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcresponses})
-		return
 	}
+
+	lcresponses := make([]chequebookLastChequesPeerResponse, len(lcr))
+	i := 0
+	for k := range lcr {
+		lcresponses[i] = lcr[k]
+		i++
+	}
+
+	jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcresponses})
+	return
+
 }
