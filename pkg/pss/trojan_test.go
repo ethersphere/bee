@@ -9,7 +9,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -78,7 +77,7 @@ func TestUnwrapTopicEncrypted(t *testing.T) {
 	topic := pss.NewTopic("topic")
 	msg := []byte("some payload")
 
-	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), topic[:])
+	privk := crypto.Secp256k1PrivateKeyFromBytes(topic[:])
 	pubkey := privk.PublicKey
 
 	depth := 1

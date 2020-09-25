@@ -7,7 +7,7 @@ package recovery
 import (
 	"context"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
@@ -30,7 +30,7 @@ type RecoveryHook func(chunkAddress swarm.Address, targets pss.Targets) error
 
 // NewRecoveryHook returns a new RecoveryHook with the sender function defined.
 func NewRecoveryHook(pssSender pss.Sender) RecoveryHook {
-	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), []byte(RecoveryTopicText))
+	privk := crypto.Secp256k1PrivateKeyFromBytes([]byte(RecoveryTopicText))
 	recipient := privk.PublicKey
 	return func(chunkAddress swarm.Address, targets pss.Targets) error {
 		payload := chunkAddress
