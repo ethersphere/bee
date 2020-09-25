@@ -34,9 +34,9 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	topicVar := mux.Vars(r)["topic"]
 	topic := pss.NewTopic(topicVar)
 
-	targetsQueryString := r.URL.Query().Get("targets")
+	targetsVar := mux.Vars(r)["targets"]
 	var targets pss.Targets
-	tgts := strings.Split(targetsQueryString, ",")
+	tgts := strings.Split(targetsVar, ",")
 
 	for _, v := range tgts {
 		target, err := hex.DecodeString(v)

@@ -202,7 +202,7 @@ func TestPssSend(t *testing.T) {
 	}
 
 	t.Run("err - bad targets", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to?targets=badtarget&recipient="+recipient, http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Bad Request",
@@ -212,7 +212,7 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic?targets=12&recipient="+recipient, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12?recipient="+recipient, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "OK",
@@ -232,7 +232,7 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("without recipient", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic?targets=12", http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12", http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "OK",
