@@ -16,10 +16,6 @@ import (
 )
 
 type Service struct {
-	settlementsSent map[string]uint64
-	settlementsRecv map[string]uint64
-
-	observer           settlement.PaymentObserver
 	settlementSentFunc func(swarm.Address) (uint64, error)
 	settlementRecvFunc func(swarm.Address) (uint64, error)
 
