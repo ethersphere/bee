@@ -73,7 +73,7 @@ func TestInit(t *testing.T) {
 	}
 
 	gotBeneficiary := messages[0].(*pb.Handshake).Beneficiary
-	if bytes.Compare(gotBeneficiary, commonAddr2.Bytes()) != 0 {
+	if bytes.Equal(gotBeneficiary, commonAddr2.Bytes()) {
 		t.Fatalf("got %v bytes, want %v bytes", gotBeneficiary, commonAddr2.Bytes())
 	}
 
@@ -91,7 +91,7 @@ func TestInit(t *testing.T) {
 	}
 
 	gotBeneficiary = messages[0].(*pb.Handshake).Beneficiary
-	if bytes.Compare(gotBeneficiary, commonAddr.Bytes()) != 0 {
+	if bytes.Equal(gotBeneficiary, commonAddr.Bytes()) {
 		t.Fatalf("got %v bytes, want %v bytes", gotBeneficiary, commonAddr.Bytes())
 	}
 
@@ -157,4 +157,7 @@ func TestEmitCheque(t *testing.T) {
 	if len(messages) != 1 {
 		t.Fatalf("got %v messages, want %v", len(messages), 1)
 	}
+
+	var Called bool
+
 }

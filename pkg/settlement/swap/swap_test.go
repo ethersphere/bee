@@ -494,3 +494,162 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrWrongBeneficiary, err)
 	}
 }
+
+func TestTotalSent(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	store := mockstore.NewStateStore()
+	chequebookAddress := common.HexToAddress("0xcd")
+
+	peer := swarm.MustParseHexAddress("abcd")
+	cheque := &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      common.HexToAddress("0xab"),
+			CumulativePayout: big.NewInt(10),
+			Chequebook:       chequebookAddress,
+		},
+		Signature: []byte{},
+	}
+
+	lastcheque := func(p common.Address) (*chequebook.SignedCheque, error) {
+		if p != chequebookAddress {
+			return nil, errors.New("Error")
+		}
+		return cheque, nil
+	}
+
+	chequebookService := mockchequebook.NewChequebook(mockchequebook.WithLastChequeFunc(lastcheque))
+
+	chequeStore := mockchequestore.NewChequeStore()
+
+	networkID := uint64(1)
+	addressbook := &addressbookMock{
+		beneficiary: func(p swarm.Address) (common.Address, bool, error) {
+			if !peer.Equal(p) {
+				t.Fatal("Getting lastcheque for wrong peer")
+			}
+			return chequebookAddress, true, nil
+		},
+	}
+
+	swap := swap.New(
+		&swapProtocolMock{},
+		logger,
+		store,
+		chequebookService,
+		chequeStore,
+		addressbook,
+		networkID,
+	)
+
+	observer := &testObserver{}
+	swap.SetPaymentObserver(observer)
+
+	total, err := swap.TotalSent(peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if total != 10 {
+		t.Fatal(err)
+	}
+}
+
+func TestTotalReceived(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	store := mockstore.NewStateStore()
+	chequebookAddress := common.HexToAddress("0xcd")
+	beneficiary := common.HexToAddress("0xcd")
+
+	peer := swarm.MustParseHexAddress("abcd")
+	cheque := &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			CumulativePayout: big.NewInt(20),
+			Chequebook:       chequebookAddress,
+		},
+		Signature: []byte{},
+	}
+
+	lastcheque := func(p common.Address) (*chequebook.SignedCheque, error) {
+		return cheque, nil
+	}
+
+	chequebookService := mockchequebook.NewChequebook(mockchequebook.WithLastChequeFunc(lastcheque))
+
+	chequeStore := mockchequestore.NewChequeStore(mockchequestore.WithLastChequeFunc(lastcheque))
+
+	networkID := uint64(1)
+
+	addressbook := &addressbookMock{
+		chequebook: func(p swarm.Address) (chequebookAddress common.Address, known bool, err error) {
+			if !peer.Equal(p) {
+				t.Fatal("Getting chequebook for wrong peer")
+			}
+			return chequebookAddress, true, nil
+		},
+		beneficiary: func(p swarm.Address) (common.Address, bool, error) {
+			if !peer.Equal(p) {
+				t.Fatal("Getting lastcheque for wrong peer")
+			}
+			return beneficiary, true, nil
+		},
+	}
+
+	swap := swap.New(
+		&swapProtocolMock{},
+		logger,
+		store,
+		chequebookService,
+		chequeStore,
+		addressbook,
+		networkID,
+	)
+
+	observer := &testObserver{}
+	swap.SetPaymentObserver(observer)
+
+	total, err := swap.TotalReceived(peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if total != 20 {
+		t.Fatal(err)
+	}
+}
+
+func TestSettlementsSent(t *testing.T) {
+
+}
+
+func TestSettlementsReceived(t *testing.T) {
+
+}
+
+/*
+\\\|||///
+
+logger := logging.New(ioutil.Discard, 0)
+	store := mockstore.NewStateStore()
+
+	beneficiary := common.HexToAddress("0xcd")
+	peer := swarm.MustParseHexAddress("abcd")
+	networkID := uint64(1)
+
+	swapService := swap.New(
+		&swapProtocolMock{},
+		logger,
+		store,
+		mockchequebook.NewChequebook(),
+		mockchequestore.NewChequeStore(),
+		&addressbookMock{},
+		networkID,
+	)
+
+	err := swapService.Handshake(peer, beneficiary)
+	if !errors.Is(err, swap.ErrWrongBeneficiary) {
+		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrWrongBeneficiary, err)
+	}
+
+
+*/
