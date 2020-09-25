@@ -21,18 +21,26 @@ import (
 
 func TestChequebookBalance(t *testing.T) {
 	returnedBalance := big.NewInt(9000)
+	returnedAvailableBalance := big.NewInt(1000)
 
 	chequebookBalanceFunc := func(context.Context) (ret *big.Int, err error) {
-
 		return returnedBalance, nil
 	}
 
+	chequebookAvailableBalanceFunc := func(context.Context) (ret *big.Int, err error) {
+		return returnedAvailableBalance, nil
+	}
+
 	testServer := newTestServer(t, testServerOptions{
-		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
+		ChequebookOpts: []mock.Option{
+			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
+			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
+		},
 	})
 
 	expected := &debugapi.ChequebookBalanceResponse{
-		Balance: returnedBalance,
+		TotalBalance:     returnedBalance,
+		AvailableBalance: returnedAvailableBalance,
 	}
 	// We expect a list of items unordered by peer:
 	var got *debugapi.ChequebookBalanceResponse
@@ -54,6 +62,30 @@ func TestChequebookBalanceError(t *testing.T) {
 
 	testServer := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrChequebookBalance,
+			Code:    http.StatusInternalServerError,
+		}),
+	)
+}
+
+func TestChequebookAvailableBalanceError(t *testing.T) {
+	chequebookBalanceFunc := func(context.Context) (ret *big.Int, err error) {
+		return big.NewInt(0), nil
+	}
+
+	chequebookAvailableBalanceFunc := func(context.Context) (ret *big.Int, err error) {
+		return nil, errors.New("New errors")
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		ChequebookOpts: []mock.Option{
+			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
+			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
+		},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
