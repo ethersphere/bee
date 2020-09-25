@@ -62,6 +62,24 @@ func TestEncodeSecp256k1PrivateKey(t *testing.T) {
 	}
 }
 
+func TestSecp256k1PrivateKeyFromBytes(t *testing.T) {
+	data := []byte("data")
+
+	k1 := crypto.Secp256k1PrivateKeyFromBytes(data)
+	if k1 == nil {
+		t.Fatal("nil key")
+	}
+
+	k2 := crypto.Secp256k1PrivateKeyFromBytes(data)
+	if k2 == nil {
+		t.Fatal("nil key")
+	}
+
+	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+		t.Fatal("two generated keys are not equal")
+	}
+}
+
 func TestNewEthereumAddress(t *testing.T) {
 	privKeyHex := "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
 	privKeyBytes, err := hex.DecodeString(privKeyHex)

@@ -6,6 +6,7 @@ package recovery_test
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"io/ioutil"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/recovery"
@@ -26,14 +28,13 @@ import (
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 // TestRecoveryHook tests that a recovery hook can be created and called.
 func TestRecoveryHook(t *testing.T) {
 	// test variables needed to be correctly set for any recovery hook to reach the sender func
 	chunkAddr := chunktesting.GenerateTestRandomChunk().Address()
-	targets := trojan.Targets{[]byte{0xED}}
+	targets := pss.Targets{[]byte{0xED}}
 
 	//setup the sender
 	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
@@ -139,17 +140,8 @@ func TestNewRepairHandler(t *testing.T) {
 		// create the chunk repair handler
 		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
 
-		//create a trojan message to trigger the repair of the chunk
-		testTopic := trojan.NewTopic("foo")
-		maxPayload := make([]byte, swarm.SectionSize)
-		var msg trojan.Message
-		copy(maxPayload, c1.Address().Bytes())
-		if msg, err = trojan.NewMessage(testTopic, maxPayload); err != nil {
-			t.Fatal(err)
-		}
-
 		// invoke the chunk repair handler
-		repairHandler(context.Background(), &msg)
+		repairHandler(context.Background(), c1.Address().Bytes())
 
 		// check if receipt is received
 		if receipt == nil {
@@ -180,18 +172,8 @@ func TestNewRepairHandler(t *testing.T) {
 		// create the chunk repair handler
 		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
 
-		//create a trojan message to trigger the repair of the chunk
-		testTopic := trojan.NewTopic("foo")
-		maxPayload := make([]byte, swarm.SectionSize)
-		var msg trojan.Message
-		copy(maxPayload, c2.Address().Bytes())
-		msg, err := trojan.NewMessage(testTopic, maxPayload)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		// invoke the chunk repair handler
-		repairHandler(context.Background(), &msg)
+		repairHandler(context.Background(), c2.Address().Bytes())
 
 		if pushServiceCalled {
 			t.Fatal("push service called even if the chunk is not present")
@@ -220,18 +202,8 @@ func TestNewRepairHandler(t *testing.T) {
 		// create the chunk repair handler
 		repairHandler := recovery.NewRepairHandler(mockStorer, logger, pushSyncService)
 
-		//create a trojan message to trigger the repair of the chunk
-		testTopic := trojan.NewTopic("foo")
-		maxPayload := make([]byte, swarm.SectionSize)
-		var msg trojan.Message
-		copy(maxPayload, c3.Address().Bytes())
-		msg, err = trojan.NewMessage(testTopic, maxPayload)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		// invoke the chunk repair handler
-		repairHandler(context.Background(), &msg)
+		repairHandler(context.Background(), c3.Address().Bytes())
 
 		if receiptError == nil {
 			t.Fatal("pushsync did not generate a receipt error")
@@ -281,7 +253,7 @@ type mockPssSender struct {
 }
 
 // Send mocks the pss Send function
-func (mp *mockPssSender) Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error {
+func (mp *mockPssSender) Send(ctx context.Context, topic pss.Topic, payload []byte, recipient *ecdsa.PublicKey, targets pss.Targets) error {
 	mp.hookC <- true
 	return nil
 }

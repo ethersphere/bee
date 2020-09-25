@@ -17,11 +17,11 @@ import (
 	validatormock "github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 var chunkData = []byte("mockdata")
@@ -173,7 +173,7 @@ type mockRecovery struct {
 }
 
 // Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets) error {
+func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets pss.Targets) error {
 	mr.hookC <- true
 	return nil
 }

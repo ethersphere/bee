@@ -7,12 +7,12 @@ package recovery
 import (
 	"context"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 const (
@@ -22,31 +22,28 @@ const (
 
 var (
 	// RecoveryTopic is the topic used for repairing globally pinned chunks.
-	RecoveryTopic = trojan.NewTopic(RecoveryTopicText)
+	RecoveryTopic = pss.NewTopic(RecoveryTopicText)
 )
 
 // RecoveryHook defines code to be executed upon failing to retrieve chunks.
-type RecoveryHook func(chunkAddress swarm.Address, targets trojan.Targets) error
-
-// sender is the function call for sending trojan chunks.
-type PssSender interface {
-	Send(ctx context.Context, targets trojan.Targets, topic trojan.Topic, payload []byte) error
-}
+type RecoveryHook func(chunkAddress swarm.Address, targets pss.Targets) error
 
 // NewRecoveryHook returns a new RecoveryHook with the sender function defined.
-func NewRecoveryHook(pss PssSender) RecoveryHook {
-	return func(chunkAddress swarm.Address, targets trojan.Targets) error {
+func NewRecoveryHook(pssSender pss.Sender) RecoveryHook {
+	privk := crypto.Secp256k1PrivateKeyFromBytes([]byte(RecoveryTopicText))
+	recipient := privk.PublicKey
+	return func(chunkAddress swarm.Address, targets pss.Targets) error {
 		payload := chunkAddress
 		ctx := context.Background()
-		err := pss.Send(ctx, targets, RecoveryTopic, payload.Bytes())
+		err := pssSender.Send(ctx, RecoveryTopic, payload.Bytes(), &recipient, targets)
 		return err
 	}
 }
 
 // NewRepairHandler creates a repair function to re-upload globally pinned chunks to the network with the given store.
 func NewRepairHandler(s storage.Storer, logger logging.Logger, pushSyncer pushsync.PushSyncer) pss.Handler {
-	return func(ctx context.Context, m *trojan.Message) {
-		chAddr := m.Payload
+	return func(ctx context.Context, m []byte) {
+		chAddr := m
 
 		// check if the chunk exists in the local store and proceed.
 		// otherwise the Get will trigger a unnecessary network retrieve

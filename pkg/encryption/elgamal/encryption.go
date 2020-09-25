@@ -23,10 +23,10 @@ func New(key *ecdsa.PrivateKey, pub *ecdsa.PublicKey, salt []byte, padding int, 
 	return encryption.New(sk, padding, 0, hashfunc), nil
 }
 
-// NewEncrypter constructs an El-Gamal encryptor
+// NewEncryptor constructs an El-Gamal encryptor
 // this involves generating an ephemeral key pair the public part of which is returned
 // as it is needed for the counterparty to decrypt
-func NewEncrypter(pub *ecdsa.PublicKey, salt []byte, padding int, hashfunc func() hash.Hash) (encryption.Encrypter, *ecdsa.PublicKey, error) {
+func NewEncryptor(pub *ecdsa.PublicKey, salt []byte, padding int, hashfunc func() hash.Hash) (encryption.Encrypter, *ecdsa.PublicKey, error) {
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		return nil, nil, err
