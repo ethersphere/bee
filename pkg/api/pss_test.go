@@ -27,7 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/websocket"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -189,7 +188,7 @@ func TestPssSend(t *testing.T) {
 
 		targets   = fmt.Sprintf("[[%d]]", 0x12)
 		topic     = "testtopic"
-		hasher    = sha3.New256()
+		hasher    = swarm.NewHasher()
 		_, err    = hasher.Write([]byte(topic))
 		topicHash = hasher.Sum(nil)
 	)

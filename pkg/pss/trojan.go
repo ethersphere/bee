@@ -20,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption/elgamal"
 	"github.com/ethersphere/bee/pkg/swarm"
 	bmtlegacy "github.com/ethersphere/bmt/legacy"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -39,7 +38,10 @@ type Topic [32]byte
 
 // NewTopic creates a new Topic from an input string by taking its hash
 func NewTopic(text string) Topic {
-	return sha3.Sum256([]byte(text))
+	bytes, _ := crypto.LegacyKeccak256([]byte(text))
+	var topic Topic
+	copy(topic[:], bytes[:32])
+	return topic
 }
 
 // Target is an alias for a partial address (overlay prefix) serving as potential destination
