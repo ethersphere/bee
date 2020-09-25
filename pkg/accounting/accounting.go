@@ -55,13 +55,6 @@ type accountingPeer struct {
 
 // Options are options provided to Accounting.
 type Options struct {
-	PaymentThreshold uint64
-	PaymentTolerance uint64
-	EarlyPayment     uint64
-	Logger           logging.Logger
-	Store            storage.StateStorer
-	Settlement       settlement.Interface
-	Pricing          pricing.Interface
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -97,24 +90,33 @@ var (
 )
 
 // NewAccounting creates a new Accounting instance with the provided options.
-func NewAccounting(o Options) (*Accounting, error) {
-	if o.PaymentTolerance+o.PaymentThreshold > math.MaxInt64 {
+func NewAccounting(
+	PaymentThreshold uint64,
+	PaymentTolerance uint64,
+	EarlyPayment uint64,
+	Logger logging.Logger,
+	Store storage.StateStorer,
+	Settlement settlement.Interface,
+	Pricing pricing.Interface,
+	o Options,
+) (*Accounting, error) {
+	if PaymentTolerance+PaymentThreshold > math.MaxInt64 {
 		return nil, fmt.Errorf("tolerance plus threshold too big: %w", ErrOverflow)
 	}
 
-	if o.PaymentTolerance > o.PaymentThreshold/2 {
+	if PaymentTolerance > PaymentThreshold/2 {
 		return nil, ErrInvalidPaymentTolerance
 	}
 
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
-		paymentThreshold: o.PaymentThreshold,
-		paymentTolerance: o.PaymentTolerance,
-		earlyPayment:     o.EarlyPayment,
-		logger:           o.Logger,
-		store:            o.Store,
-		settlement:       o.Settlement,
-		pricing:          o.Pricing,
+		paymentThreshold: PaymentThreshold,
+		paymentTolerance: PaymentTolerance,
+		earlyPayment:     EarlyPayment,
+		logger:           Logger,
+		store:            Store,
+		settlement:       Settlement,
+		pricing:          Pricing,
 		metrics:          newMetrics(),
 	}, nil
 }
