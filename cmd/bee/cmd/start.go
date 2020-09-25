@@ -207,6 +207,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				GlobalPinningEnabled:   c.config.GetBool(optionNameGlobalPinningEnabled),
 				PaymentThreshold:       c.config.GetUint64(optionNamePaymentThreshold),
 				PaymentTolerance:       c.config.GetUint64(optionNamePaymentTolerance),
+				PaymentEarly:           c.config.GetUint64(optionNamePaymentEarly),
 				ResolverConnectionCfgs: resolverCfgs,
 				GatewayMode:            c.config.GetBool(optionNameGatewayMode),
 				SwapEndpoint:           c.config.GetString(optionNameSwapEndpoint),
