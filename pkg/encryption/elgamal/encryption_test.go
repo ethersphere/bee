@@ -27,7 +27,7 @@ func TestElgamalCorrect(t *testing.T) {
 		t.Fatal(err)
 	}
 	padding := 4032
-	enc, ephpub, err := elgamal.NewEncrypter(pub, salt, padding, swarm.NewHasher)
+	enc, ephpub, err := elgamal.NewEncryptor(pub, salt, padding, swarm.NewHasher)
 	if err != nil {
 		t.Fatal(err)
 	}
