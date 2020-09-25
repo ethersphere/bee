@@ -61,7 +61,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.Logger.Debugf("pss recipient: %v", err)
 			s.Logger.Error("pss recipient")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.BadRequest(w, nil)
 			return
 		}
 	}
