@@ -182,10 +182,12 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 			if !found {
 				return nil, errors.New("no known factory address")
 			}
+			logger.Infof("using default factory address for chain id %d: %x", chainID, factoryAddress)
 		} else if !common.IsHexAddress(o.SwapFactoryAddress) {
 			return nil, errors.New("invalid factory address")
 		} else {
 			factoryAddress = common.HexToAddress(o.SwapFactoryAddress)
+			logger.Infof("using custom factory address: %x", factoryAddress)
 		}
 
 		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, factoryAddress, chequebook.NewSimpleSwapFactoryBindingFunc)
