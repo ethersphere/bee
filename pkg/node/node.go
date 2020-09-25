@@ -175,9 +175,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 			return nil, err
 		}
 
-		// TODO: factory address discovery for well-known networks (goerli for beta)
 		var factoryAddress common.Address
-
 		if o.SwapFactoryAddress == "" {
 			var found bool
 			factoryAddress, found = chequebook.DiscoverFactoryAddress(chainID.Int64())
