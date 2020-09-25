@@ -9,9 +9,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 type SimpleJoiner struct {
@@ -63,48 +65,115 @@ func (j *SimpleJoiner) Read(b []byte) (n int, err error) {
 
 func (j *SimpleJoiner) ReadAt(b []byte, off int64) (read int, err error) {
 	// since offset is int64 and swarm spans are uint64 it means we cannot seek beyond int64 max value
-	return j.readAtOffset(b, j.rootData, 0, j.span, off)
-}
-
-func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off int64) (read int, err error) {
 	if off >= j.span {
 		return 0, io.EOF
 	}
 
-	if subTrieSize <= int64(len(data)) {
-		capacity := int64(cap(b))
-		dataOffsetStart := off - cur
-		dataOffsetEnd := dataOffsetStart + capacity
+	readLen := int64(cap(b))
+	if readLen > j.span-off {
+		readLen = j.span - off
+	}
+	var bytesRead int64
+	var eg errgroup.Group
+	j.readAtOffset(b, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, &eg)
 
-		if lenDataToCopy := int64(len(data)) - dataOffsetStart; capacity > lenDataToCopy {
+	err = eg.Wait()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(atomic.LoadInt64(&bytesRead)), nil
+}
+
+func (j *SimpleJoiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, bytesRead *int64, eg *errgroup.Group) {
+	// we are at a leaf data chunk
+	if subTrieSize <= int64(len(data)) {
+		dataOffsetStart := off - cur
+		dataOffsetEnd := dataOffsetStart + bytesToRead
+
+		if lenDataToCopy := int64(len(data)) - dataOffsetStart; bytesToRead > lenDataToCopy {
 			dataOffsetEnd = dataOffsetStart + lenDataToCopy
 		}
 
 		bs := data[dataOffsetStart:dataOffsetEnd]
-		n := copy(b, bs)
-		return n, nil
+		n := copy(b[bufferOffset:bufferOffset+int64(len(bs))], bs)
+		atomic.AddInt64(bytesRead, int64(n))
+		return
 	}
 
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
+		if bytesToRead == 0 {
+			break
+		}
+
+		// fast forward the cursor
+		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
+		if cur+sec < off {
+			cur += sec
+			continue
+		}
+
+		// if we are here it means that we are within the bounds of the data we need to read
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
-		ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
-		if err != nil {
-			return 0, err
+		subtrieSpan := sec
+		currentReadSize := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
+
+		// upper bound alignments
+		if currentReadSize > bytesToRead {
+			currentReadSize = bytesToRead
+		}
+		if currentReadSize > subtrieSpan {
+			currentReadSize = subtrieSpan
 		}
 
-		chunkData := ch.Data()[8:]
-		subtrieSpan := int64(chunkToSpan(ch.Data()))
+		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
+			eg.Go(func() error {
+				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
+				if err != nil {
+					return err
+				}
 
-		// we have the size of the subtrie now, if the read offset is within this chunk,
-		// then we drilldown more
-		if off < cur+subtrieSpan {
-			return j.readAtOffset(b, chunkData, cur, subtrieSpan, off)
+				chunkData := ch.Data()[8:]
+				subtrieSpan := int64(chunkToSpan(ch.Data()))
+				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, eg)
+				return nil
+			})
+		}(address, b, cur, subtrieSpan, off, bufferOffset, currentReadSize)
 
-		}
+		bufferOffset += currentReadSize
+		bytesToRead -= currentReadSize
 		cur += subtrieSpan
+		off = cur
+	}
+}
+
+// brute-forces the subtrie size for each of the sections in this intermediate chunk
+func subtrieSection(data []byte, startIdx, refLen int, subtrieSize int64) int64 {
+	// assume we have a trie of size `y` then we can assume that all of
+	// the forks except for the last one on the right are of equal size
+	// this is due to how the splitter wraps levels.
+	// so for the branches on the left, we can assume that
+	// y = (refs - 1) * x + l
+	// where y is the size of the subtrie, refs are the number of references
+	// x is constant (the brute forced value) and l is the size of the last subtrie
+	var (
+		refs       = int64(len(data) / refLen) // how many references in the intermediate chunk
+		branching  = int64(4096 / refLen)      // branching factor is chunkSize divided by reference length
+		branchSize = int64(4096)
+	)
+	for {
+		whatsLeft := subtrieSize - (branchSize * (refs - 1))
+		if whatsLeft <= branchSize {
+			break
+		}
+		branchSize *= branching
 	}
 
-	return 0, errOffset
+	// handle last branch edge case
+	if startIdx == int(refs-1)*refLen {
+		return subtrieSize - (refs-1)*branchSize
+	}
+	return branchSize
 }
 
 var errWhence = errors.New("seek: invalid whence")

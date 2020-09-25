@@ -14,9 +14,14 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type Reader interface {
+	io.ReadSeeker
+	io.ReaderAt
+}
+
 // JoinSeeker provides a Joiner that can seek.
 type JoinSeeker interface {
-	Join(ctx context.Context, address swarm.Address) (dataOut io.ReadSeeker, dataLength int64, err error)
+	Join(ctx context.Context, address swarm.Address) (dataOut Reader, dataLength int64, err error)
 	Size(ctx context.Context, address swarm.Address) (dataLength int64, err error)
 }
 
