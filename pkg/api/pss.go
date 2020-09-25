@@ -6,12 +6,14 @@ package api
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -29,20 +31,12 @@ var (
 )
 
 func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
-	t := mux.Vars(r)["topic"]
-	topic := pss.NewTopic(t)
+	topicVar := mux.Vars(r)["topic"]
+	topic := pss.NewTopic(topicVar)
 
-	recipientVar := mux.Vars(r)["recipient"]
-	recipient, err := pss.ParseRecipient(recipientVar)
-	if err != nil {
-		s.Logger.Debugf("pss recipient: %v", err)
-		s.Logger.Error("pss recipient")
-		jsonhttp.InternalServerError(w, nil)
-		return
-	}
-	tg := mux.Vars(r)["targets"]
+	targetsVar := mux.Vars(r)["targets"]
 	var targets pss.Targets
-	tgts := strings.Split(tg, ",")
+	tgts := strings.Split(targetsVar, ",")
 
 	for _, v := range tgts {
 		target, err := hex.DecodeString(v)
@@ -55,6 +49,23 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		targets = append(targets, target)
 	}
 
+	recipientVar := mux.Vars(r)["recipient"]
+	var recipient *ecdsa.PublicKey
+	if recipientVar == "" {
+		// use topic-based encryption
+		privkey := crypto.Secp256k1PrivateKeyFromBytes(topic[:])
+		recipient = &privkey.PublicKey
+	} else {
+		var err error
+		recipient, err = pss.ParseRecipient(recipientVar)
+		if err != nil {
+			s.Logger.Debugf("pss recipient: %v", err)
+			s.Logger.Error("pss recipient")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+	}
+
 	payload, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		s.Logger.Debugf("pss read payload: %v", err)
@@ -65,7 +76,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.Pss.Send(r.Context(), topic, payload, recipient, targets)
 	if err != nil {
-		s.Logger.Debugf("pss send payload: %v. topic: %s", err, t)
+		s.Logger.Debugf("pss send payload: %v. topic: %s", err, topicVar)
 		s.Logger.Error("pss send payload")
 		jsonhttp.InternalServerError(w, nil)
 		return
