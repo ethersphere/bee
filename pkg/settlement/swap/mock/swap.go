@@ -34,6 +34,9 @@ type Service struct {
 	handshakeFunc          func(swarm.Address, common.Address) error
 	lastChequePeerFunc     func(swarm.Address) (*chequebook.SignedCheque, error)
 	lastChequesFunc        func() (map[string]*chequebook.SignedCheque, error)
+
+	lastStoredChequePeerFunc func(swarm.Address) (*chequebook.SignedCheque, error)
+	lastStoredChequesFunc    func() (map[string]*chequebook.SignedCheque, error)
 }
 
 // WithsettlementFunc sets the mock settlement function
@@ -94,6 +97,18 @@ func WithLastChequePeerFunc(f func(swarm.Address) (*chequebook.SignedCheque, err
 }
 
 func WithLastChequesFunc(f func() (map[string]*chequebook.SignedCheque, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.lastChequesFunc = f
+	})
+}
+
+func WithLastStoredChequePeerFunc(f func(swarm.Address) (*chequebook.SignedCheque, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.lastChequePeerFunc = f
+	})
+}
+
+func WithLastStoredChequesFunc(f func() (map[string]*chequebook.SignedCheque, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.lastChequesFunc = f
 	})
@@ -193,6 +208,20 @@ func (s *Service) LastChequePeer(address swarm.Address) (*chequebook.SignedChequ
 func (s *Service) LastCheques() (map[string]*chequebook.SignedCheque, error) {
 	if s.lastChequesFunc != nil {
 		return s.lastChequesFunc()
+	}
+	return nil, nil
+}
+
+func (s *Service) LastStoredChequePeer(address swarm.Address) (*chequebook.SignedCheque, error) {
+	if s.lastStoredChequePeerFunc != nil {
+		return s.lastStoredChequePeerFunc(address)
+	}
+	return nil, nil
+}
+
+func (s *Service) LastStoredCheques() (map[string]*chequebook.SignedCheque, error) {
+	if s.lastStoredChequesFunc != nil {
+		return s.lastStoredChequesFunc()
 	}
 	return nil, nil
 }
