@@ -176,14 +176,21 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 		}
 
 		// TODO: factory address discovery for well-known networks (goerli for beta)
+		var factoryAddress common.Address
 
 		if o.SwapFactoryAddress == "" {
-			return nil, errors.New("no known factory address")
+			var found bool
+			factoryAddress, found = chequebook.DiscoverFactoryAddress(chainID.Int64())
+			if !found {
+				return nil, errors.New("no known factory address")
+			}
 		} else if !common.IsHexAddress(o.SwapFactoryAddress) {
 			return nil, errors.New("invalid factory address")
+		} else {
+			factoryAddress = common.HexToAddress(o.SwapFactoryAddress)
 		}
 
-		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress), chequebook.NewSimpleSwapFactoryBindingFunc)
+		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, factoryAddress, chequebook.NewSimpleSwapFactoryBindingFunc)
 		if err != nil {
 			return nil, err
 		}
