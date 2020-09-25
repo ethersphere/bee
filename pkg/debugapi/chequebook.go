@@ -16,7 +16,8 @@ var (
 )
 
 type chequebookBalanceResponse struct {
-	Balance *big.Int `json:"balance"`
+	TotalBalance     *big.Int `json:"totalBalance"`
+	AvailableBalance *big.Int `json:"availableBalance"`
 }
 
 type chequebookAddressResponse struct {
@@ -32,7 +33,15 @@ func (s *server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	jsonhttp.OK(w, chequebookBalanceResponse{Balance: balance})
+	availableBalance, err := s.Chequebook.AvailableBalance(r.Context())
+	if err != nil {
+		jsonhttp.InternalServerError(w, errChequebookBalance)
+		s.Logger.Debugf("debug api: chequebook availableBalance: %v", err)
+		s.Logger.Error("debug api: cannot get chequebook availableBalance")
+		return
+	}
+
+	jsonhttp.OK(w, chequebookBalanceResponse{TotalBalance: balance, AvailableBalance: availableBalance})
 }
 
 func (s *server) chequebookAddressHandler(w http.ResponseWriter, r *http.Request) {
