@@ -29,8 +29,8 @@ func TestInit(t *testing.T) {
 
 	commonAddr := common.HexToAddress("0xab")
 
-	swapHsReceiver := swapmock.New()
-	swapHsInitiator := swapmock.New()
+	swapHsReceiver := swapmock.NewProtocolService()
+	swapHsInitiator := swapmock.NewProtocolService()
 
 	swappHsReceiver := swapprotocol.New(nil, logger, commonAddr)
 	swappHsReceiver.SetSwap(swapHsReceiver)
@@ -83,8 +83,8 @@ func TestEmitCheque(t *testing.T) {
 
 	commonAddr := common.HexToAddress("0xab")
 
-	swapHsReceiver := swapmock.New()
-	swapHsInitiator := swapmock.New()
+	swapHsReceiver := swapmock.NewProtocolService()
+	swapHsInitiator := swapmock.NewProtocolService()
 
 	swappHsReceiver := swapprotocol.New(nil, logger, commonAddr)
 	swappHsReceiver.SetSwap(swapHsReceiver)

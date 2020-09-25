@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethersphere/bee/pkg/settlement"
+	//	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -32,6 +33,8 @@ type Service struct {
 	payFunc                func(context.Context, swarm.Address, uint64) error
 	setPaymentObserverFunc func(observer settlement.PaymentObserver)
 	handshakeFunc          func(swarm.Address, common.Address) error
+	lastChequePeerFunc     func(swarm.Address) (*chequebook.SignedCheque, error)
+	lastChequesFunc        func() (map[string]*chequebook.SignedCheque, error)
 }
 
 // WithsettlementFunc sets the mock settlement function
@@ -85,17 +88,46 @@ func WithHandshakeFunc(f func(swarm.Address, common.Address) error) Option {
 	})
 }
 
+func WithLastChequePeerFunc(f func(swarm.Address) (*chequebook.SignedCheque, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.lastChequePeerFunc = f
+	})
+}
+
+func WithLastChequesFunc(f func() (map[string]*chequebook.SignedCheque, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.lastChequesFunc = f
+	})
+}
+
 // New creates the mock swap implementation
-func New(opts ...Option) swapprotocol.Swap {
+func New(opts ...Option) settlement.Interface {
 	mock := new(Service)
-	mock.settlementsSent = make(map[string]uint64)
-	mock.settlementsRecv = make(map[string]uint64)
 	for _, o := range opts {
 		o.apply(mock)
 	}
 	return mock
 }
 
+func NewProtocolService(opts ...Option) swapprotocol.Swap {
+	mock := new(Service)
+	for _, o := range opts {
+		o.apply(mock)
+	}
+	return mock
+}
+
+//
+//func NewApiInterface(opts ...Option) swap.ApiInterface {
+//	mock := new(Service)
+//	mock.settlementsSent = make(map[string]uint64)
+//	mock.settlementsRecv = make(map[string]uint64)
+//	for _, o := range opts {
+//		o.apply(mock)
+//	}
+//	return mock
+//}
+//
 // ReceiveCheque is the mock ReceiveCheque function of swap.
 func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) (err error) {
 	if s.receiveChequeFunc != nil {
@@ -159,6 +191,20 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		return s.handshakeFunc(peer, beneficiary)
 	}
 	return nil
+}
+
+func (s *Service) LastChequePeer(address swarm.Address) (*chequebook.SignedCheque, error) {
+	if s.lastChequePeerFunc != nil {
+		return s.lastChequePeerFunc(address)
+	}
+	return nil, nil
+}
+
+func (s *Service) LastCheques() (map[string]*chequebook.SignedCheque, error) {
+	if s.lastChequesFunc != nil {
+		return s.lastChequesFunc()
+	}
+	return nil, nil
 }
 
 // Option is the option passed to the mock settlement service
