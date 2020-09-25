@@ -47,10 +47,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				if s.recoveryCallback == nil {
 					return nil, err
 				}
-				targets, err := sctx.GetTargets(ctx)
-				if err != nil {
-					return nil, err
-				}
+				targets := sctx.GetTargets(ctx)
 				if targets != nil {
 					go func() {
 						err := s.recoveryCallback(addr, targets)
