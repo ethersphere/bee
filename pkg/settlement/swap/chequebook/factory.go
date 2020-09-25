@@ -156,3 +156,12 @@ func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
 	}
 	return erc20Address, nil
 }
+
+// DiscoverFactoryAddress returns the canonical factory for this chainID
+func DiscoverFactoryAddress(chainID int64) (common.Address, bool) {
+	if chainID == 5 {
+		// goerli
+		return common.HexToAddress("0x334394E8c891E77b1449084aaDD659920BB25247"), true
+	}
+	return common.Address{}, false
+}
