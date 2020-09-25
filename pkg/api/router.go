@@ -90,13 +90,7 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/pss/send/{topic}/{targets}/{recipient}", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
-			web.FinalHandlerFunc(s.pssPostHandler),
-		),
-	})
-	handle(router, "/pss/send/{topic}/{targets}", jsonhttp.MethodHandler{
+	handle(router, "/pss/send/{topic}", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
 			web.FinalHandlerFunc(s.pssPostHandler),

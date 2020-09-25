@@ -202,7 +202,7 @@ func TestPssSend(t *testing.T) {
 	recipient := hex.EncodeToString(publicKeyBytes)
 
 	t.Run("err - bad targets", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget/"+recipient, http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to?targets=badtarget&recipient="+recipient, http.StatusBadRequest,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Bad Request",
@@ -212,7 +212,27 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12/"+recipient, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic?targets=12&recipient="+recipient, http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "OK",
+				Code:    http.StatusOK,
+			}),
+		)
+		waitDone(t, &mtx, &done)
+		if !bytes.Equal(receivedBytes, payload) {
+			t.Fatalf("payload mismatch. want %v got %v", payload, receivedBytes)
+		}
+		if targets != fmt.Sprint(receivedTargets) {
+			t.Fatalf("targets mismatch. want %v got %v", targets, receivedTargets)
+		}
+		if string(topicHash) != string(receivedTopic[:]) {
+			t.Fatalf("topic mismatch. want %v got %v", topic, string(receivedTopic[:]))
+		}
+	})
+
+	t.Run("without recipient", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic?targets=12", http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "OK",

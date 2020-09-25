@@ -34,9 +34,9 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	topicVar := mux.Vars(r)["topic"]
 	topic := pss.NewTopic(topicVar)
 
-	targetsVar := mux.Vars(r)["targets"]
+	targetsQueryString := r.URL.Query().Get("targets")
 	var targets pss.Targets
-	tgts := strings.Split(targetsVar, ",")
+	tgts := strings.Split(targetsQueryString, ",")
 
 	for _, v := range tgts {
 		target, err := hex.DecodeString(v)
@@ -49,15 +49,15 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		targets = append(targets, target)
 	}
 
-	recipientVar := mux.Vars(r)["recipient"]
+	recipientQueryString := r.URL.Query().Get("recipient")
 	var recipient *ecdsa.PublicKey
-	if recipientVar == "" {
+	if recipientQueryString == "" {
 		// use topic-based encryption
 		privkey := crypto.Secp256k1PrivateKeyFromBytes(topic[:])
 		recipient = &privkey.PublicKey
 	} else {
 		var err error
-		recipient, err = pss.ParseRecipient(recipientVar)
+		recipient, err = pss.ParseRecipient(recipientQueryString)
 		if err != nil {
 			s.Logger.Debugf("pss recipient: %v", err)
 			s.Logger.Error("pss recipient")
