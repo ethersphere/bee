@@ -96,7 +96,9 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	targets := r.URL.Query().Get("targets")
-	r = r.WithContext(sctx.SetTargets(r.Context(), targets))
+	if targets != "" {
+		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
+	}
 
 	nameOrHex := mux.Vars(r)["addr"]
 	ctx := r.Context()
