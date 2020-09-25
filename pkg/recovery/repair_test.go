@@ -69,15 +69,9 @@ func TestRecoveryHookCalls(t *testing.T) {
 	target := "BE"
 
 	// test cases variables
-	dummyContext := context.Background() // has no publisher
 	targetContext := sctx.SetTargets(context.Background(), target)
 
 	for _, tc := range []recoveryHookTestCase{
-		{
-			name:           "no targets in context",
-			ctx:            dummyContext,
-			expectsFailure: true,
-		},
 		{
 			name:           "targets set in context",
 			ctx:            targetContext,
