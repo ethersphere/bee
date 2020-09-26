@@ -103,11 +103,11 @@ func (s *server) setupRouting() {
 			"GET": http.HandlerFunc(s.chequebookAddressHandler),
 		})
 
-		router.Handle("/chequebook/lastcheque/{peer}", jsonhttp.MethodHandler{
+		router.Handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
 		})
 
-		router.Handle("/chequebook/lastcheque", jsonhttp.MethodHandler{
+		router.Handle("/chequebook/cheque", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
 		})
 	}
