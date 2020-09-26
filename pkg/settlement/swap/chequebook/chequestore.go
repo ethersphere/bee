@@ -167,7 +167,14 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 		return nil, err
 	}
 
-	if balance.Cmp(cheque.CumulativePayout) < 0 {
+	alreadyPaidOut, err := binding.PaidOut(&bind.CallOpts{
+		Context: ctx,
+	}, s.beneficiary)
+	if err != nil {
+		return nil, err
+	}
+
+	if balance.Cmp(big.NewInt(0).Sub(cheque.CumulativePayout, alreadyPaidOut)) < 0 {
 		return nil, ErrBouncingCheque
 	}
 
