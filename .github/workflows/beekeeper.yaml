@@ -22,6 +22,16 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 1
+      - name: Temp debug
+        run: |
+          export FAILED='temp-debug'
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"Failed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          echo "Failed test: ${FAILED}"
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com &
+
       - name: Install bee-local
         run: |
           sudo mv $(command -v brew){,_disable}
