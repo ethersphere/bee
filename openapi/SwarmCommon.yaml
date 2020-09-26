@@ -220,6 +220,28 @@ components:
         status:
           type: string
 
+    Settlement:
+      type: object
+      properties:
+        peer:
+          $ref: "#/components/schemas/SwarmAddress"
+        received:
+          type: integer
+        sent:
+          type: integer
+
+    Settlements:
+      type: object
+      properties:
+        totalreceived:
+          type: integer
+        totalsent:
+          type: integer
+        settlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Settlement'
+
     SwarmAddress:
       type: string
       pattern: '^[A-Fa-f0-9]{64}$'
