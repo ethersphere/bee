@@ -297,7 +297,15 @@ func TestChequebookLastCheques(t *testing.T) {
 
 func TestChequebookLastChequesPeer(t *testing.T) {
 
-	lastSentChequeFunc := func() (*chequebook.SignedCheque, error) {
+	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
+	beneficiary0 := common.HexToAddress("0xfff5")
+	beneficiary1 := common.HexToAddress("0xfff0")
+	cumulativePayout1 := big.NewInt(700)
+	cumulativePayout2 := big.NewInt(900)
+	chequebookAddress := common.HexToAddress("0xeee1")
+	sig := make([]byte, 65)
+
+	lastSentChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
 
 		sig := make([]byte, 65)
 
@@ -305,7 +313,7 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 			Cheque: chequebook.Cheque{
 				Beneficiary:      beneficiary1,
 				CumulativePayout: cumulativePayout1,
-				Chequebook:       chequebookAddress1,
+				Chequebook:       chequebookAddress,
 			},
 			Signature: sig,
 		}
@@ -313,18 +321,47 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 		return lastSentCheque, nil
 	}
 
-	lastReceivedChequeFunc := func() (*chequebook.SignedCheque, error) {
+	lastReceivedChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
 
-		lastReceivedCheque = &chequebook.SignedCheque{
+		lastReceivedCheque := &chequebook.SignedCheque{
 			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary,
-				CumulativePayout: cumulativePayout4,
-				Chequebook:       chequebookAddress1,
+				Beneficiary:      beneficiary0,
+				CumulativePayout: cumulativePayout2,
+				Chequebook:       chequebookAddress,
 			},
 			Signature: sig,
 		}
 
 		return lastReceivedCheque, nil
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequeFunc(lastReceivedChequeFunc), swapmock.WithLastSentChequeFunc(lastSentChequeFunc)},
+	})
+
+	expected := &debugapi.ChequebookLastChequesPeerResponse{
+		Peer: addr.String(),
+		LastReceived: &debugapi.ChequebookLastChequePeerResponse{
+			Beneficiary: beneficiary0.String(),
+			Chequebook:  chequebookAddress.String(),
+			Payout:      cumulativePayout2,
+		},
+		LastSent: &debugapi.ChequebookLastChequePeerResponse{
+			Beneficiary: beneficiary1.String(),
+			Chequebook:  chequebookAddress.String(),
+			Payout:      cumulativePayout1,
+		},
+	}
+
+	var got *debugapi.ChequebookLastChequesPeerResponse
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/cheque/"+addr.String(), http.StatusOK,
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
+	)
+
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
+	}
+
 }
 
 func LastChequesEqual(a, b *debugapi.ChequebookLastChequesResponse) bool {

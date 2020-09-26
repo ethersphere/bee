@@ -229,7 +229,7 @@ func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, 
 	}
 
 	if !known {
-		return nil, ErrUnknownBeneficary
+		return nil, chequebook.ErrNoCheque
 	}
 
 	return s.chequebook.LastCheque(common)
@@ -244,7 +244,7 @@ func (s *Service) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheq
 	}
 
 	if !known {
-		return nil, ErrUnknownBeneficary
+		return nil, chequebook.ErrNoCheque
 	}
 
 	return s.chequeStore.LastCheque(common)

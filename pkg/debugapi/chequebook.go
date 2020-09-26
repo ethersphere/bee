@@ -5,12 +5,10 @@
 package debugapi
 
 import (
-	"errors"
 	"math/big"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -85,22 +83,16 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	lastSent, err := s.Swap.LastSentCheque(peer)
-	lastReceived, err2 := s.Swap.LastReceivedCheque(peer)
-
-	if errors.Is(err, swap.ErrUnknownBeneficary) && errors.Is(err2, swap.ErrUnknownBeneficary) {
-		jsonhttp.NotFound(w, errUnknownBeneficary)
-		return
-	}
-
 	if err != nil && err != chequebook.ErrNoCheque {
-		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v, %v", peer.String(), err, err2)
+		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v", peer.String(), err)
 		s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
 		return
 	}
 
+	lastReceived, err2 := s.Swap.LastReceivedCheque(peer)
 	if err2 != nil && err2 != chequebook.ErrNoCheque {
-		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v, %v", peer.String(), err, err2)
+		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v", peer.String(), err2)
 		s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
 		return
