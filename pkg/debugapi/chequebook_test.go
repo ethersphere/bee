@@ -297,6 +297,34 @@ func TestChequebookLastCheques(t *testing.T) {
 
 func TestChequebookLastChequesPeer(t *testing.T) {
 
+	lastSentChequeFunc := func() (*chequebook.SignedCheque, error) {
+
+		sig := make([]byte, 65)
+
+		lastSentCheque := &chequebook.SignedCheque{
+			Cheque: chequebook.Cheque{
+				Beneficiary:      beneficiary1,
+				CumulativePayout: cumulativePayout1,
+				Chequebook:       chequebookAddress1,
+			},
+			Signature: sig,
+		}
+
+		return lastSentCheque, nil
+	}
+
+	lastReceivedChequeFunc := func() (*chequebook.SignedCheque, error) {
+
+		lastReceivedCheque = &chequebook.SignedCheque{
+			Cheque: chequebook.Cheque{
+				Beneficiary:      beneficiary,
+				CumulativePayout: cumulativePayout4,
+				Chequebook:       chequebookAddress1,
+			},
+			Signature: sig,
+		}
+
+		return lastReceivedCheque, nil
 }
 
 func LastChequesEqual(a, b *debugapi.ChequebookLastChequesResponse) bool {

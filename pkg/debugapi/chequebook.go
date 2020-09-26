@@ -106,21 +106,21 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var lastreceived *chequebookLastChequePeerResponse
-	if err == nil {
-		lastreceived = &chequebookLastChequePeerResponse{
-			Beneficiary: lastReceived.Cheque.Beneficiary.String(),
-			Chequebook:  lastReceived.Cheque.Chequebook.String(),
-			Payout:      lastReceived.Cheque.CumulativePayout,
-		}
-	}
-
 	var lastsent *chequebookLastChequePeerResponse
-	if err2 == nil {
+	if err == nil {
 		lastsent = &chequebookLastChequePeerResponse{
 			Beneficiary: lastSent.Cheque.Beneficiary.String(),
 			Chequebook:  lastSent.Cheque.Chequebook.String(),
 			Payout:      lastSent.Cheque.CumulativePayout,
+		}
+	}
+
+	var lastreceived *chequebookLastChequePeerResponse
+	if err2 == nil {
+		lastreceived = &chequebookLastChequePeerResponse{
+			Beneficiary: lastReceived.Cheque.Beneficiary.String(),
+			Chequebook:  lastReceived.Cheque.Chequebook.String(),
+			Payout:      lastReceived.Cheque.CumulativePayout,
 		}
 	}
 
