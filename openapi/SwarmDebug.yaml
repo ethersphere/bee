@@ -84,6 +84,36 @@ paths:
         default:
           description: Default response
 
+  '/chequebook/address':
+    get:
+      summary: Get the address of the chequebook contract used
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Ethereum address of chequebook contract
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookAddress'
+
+  '/chequebook/balance':
+    get:
+      summary: Get the balance of the chequebook
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Balance of the chequebook
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookAddress'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
   '/chunks/{address}':
     get:
       summary: Check if chunk at address exists locally
