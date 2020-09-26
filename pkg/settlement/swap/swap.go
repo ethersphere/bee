@@ -29,10 +29,10 @@ var (
 )
 
 type ApiInterface interface {
-	LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, error)
-	LastCheques() (map[string]*chequebook.SignedCheque, error)
-	LastStoredChequePeer(peer swarm.Address) (*chequebook.SignedCheque, error)
-	LastStoredCheques() (map[string]*chequebook.SignedCheque, error)
+	LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error)
+	LastSentCheques() (map[string]*chequebook.SignedCheque, error)
+	LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error)
+	LastReceivedCheques() (map[string]*chequebook.SignedCheque, error)
 }
 
 // Service is the implementation of the swap settlement layer.
@@ -220,7 +220,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 	return nil
 }
 
-func (s *Service) LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, error) {
+func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
 
 	common, known, err := s.addressbook.Beneficiary(peer)
 
@@ -235,7 +235,7 @@ func (s *Service) LastChequePeer(peer swarm.Address) (*chequebook.SignedCheque, 
 	return s.chequebook.LastCheque(common)
 }
 
-func (s *Service) LastStoredChequePeer(peer swarm.Address) (*chequebook.SignedCheque, error) {
+func (s *Service) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
 
 	common, known, err := s.addressbook.Beneficiary(peer)
 
@@ -250,7 +250,7 @@ func (s *Service) LastStoredChequePeer(peer swarm.Address) (*chequebook.SignedCh
 	return s.chequeStore.LastCheque(common)
 }
 
-func (s *Service) LastCheques() (map[string]*chequebook.SignedCheque, error) {
+func (s *Service) LastSentCheques() (map[string]*chequebook.SignedCheque, error) {
 	lastcheques, err := s.chequebook.LastCheques()
 	if err != nil {
 		return nil, err
@@ -269,7 +269,7 @@ func (s *Service) LastCheques() (map[string]*chequebook.SignedCheque, error) {
 
 }
 
-func (s *Service) LastStoredCheques() (map[string]*chequebook.SignedCheque, error) {
+func (s *Service) LastReceivedCheques() (map[string]*chequebook.SignedCheque, error) {
 	lastcheques, err := s.chequeStore.LastCheques()
 	if err != nil {
 		return nil, err

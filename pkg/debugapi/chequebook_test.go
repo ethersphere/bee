@@ -121,3 +121,30 @@ func TestChequebookAddress(t *testing.T) {
 	}
 
 }
+
+func TestChequebookLastPeer(t *testing.T) {
+	returnedBalance := big.NewInt(9000)
+
+	chequebookBalanceFunc := func(context.Context) (ret *big.Int, err error) {
+
+		return returnedBalance, nil
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
+	})
+
+	expected := &debugapi.ChequebookBalanceResponse{
+		Balance: returnedBalance,
+	}
+	// We expect a list of items unordered by peer:
+	var got *debugapi.ChequebookBalanceResponse
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/balance", http.StatusOK,
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
+	)
+
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("got balance: %+v, expected: %+v", got, expected)
+	}
+
+}

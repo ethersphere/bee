@@ -11,6 +11,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -32,15 +34,15 @@ type chequebookAddressResponse struct {
 }
 
 type chequebookLastChequePeerResponse struct {
-	Address     string   `json:"address"`
 	Beneficiary string   `json:"beneficiary"`
 	Chequebook  string   `json:"chequebook"`
 	Payout      *big.Int `json:"payout"`
 }
 
 type chequebookLastChequesPeerResponse struct {
-	LastChequeIn  chequebookLastChequePeerResponse `json:"lastchequein"`
-	LastChequeOut chequebookLastChequePeerResponse `json:"lastchequeout"`
+	Peer         string                            `json:"peer"`
+	LastReceived *chequebookLastChequePeerResponse `json:"lastreceived"`
+	LastSent     *chequebookLastChequePeerResponse `json:"lastsent"`
 }
 
 type chequebookLastChequesResponse struct {
@@ -82,57 +84,63 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	lastchequeIn, err := s.Swap.LastChequePeer(peer)
-	lastchequeOut, err2 := s.Swap.LastStoredChequePeer(peer)
+	lastReceived, err := s.Swap.LastSentCheque(peer)
+	lastSent, err2 := s.Swap.LastReceivedCheque(peer)
 
-	if err != nil || err2 != nil {
-		if !errors.Is(err, swap.ErrUnknownBeneficary) && !errors.Is(err2, swap.ErrUnknownBeneficary) {
-			s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v, %v", peer.String(), err, err2)
-			s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
-			jsonhttp.InternalServerError(w, errCantLastChequePeer)
-			return
-		}
-
+	if errors.Is(err, swap.ErrUnknownBeneficary) && errors.Is(err2, swap.ErrUnknownBeneficary) {
 		jsonhttp.NotFound(w, errUnknownBeneficary)
 		return
 	}
 
-	lastin := chequebookLastChequePeerResponse{}
+	if err != nil && err != chequebook.ErrNoCheque {
+		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v, %v", peer.String(), err, err2)
+		s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
+		jsonhttp.InternalServerError(w, errCantLastChequePeer)
+		return
+	}
+
+	if err2 != nil && err2 != chequebook.ErrNoCheque {
+		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v, %v", peer.String(), err, err2)
+		s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
+		jsonhttp.InternalServerError(w, errCantLastChequePeer)
+		return
+	}
+
+	var lastreceived *chequebookLastChequePeerResponse
 	if err == nil {
-		lastin = chequebookLastChequePeerResponse{
-			Address:     addr,
-			Beneficiary: lastchequeIn.Cheque.Beneficiary.String(),
-			Chequebook:  lastchequeIn.Cheque.Chequebook.String(),
-			Payout:      lastchequeIn.Cheque.CumulativePayout,
+		lastreceived = &chequebookLastChequePeerResponse{
+			Beneficiary: lastReceived.Cheque.Beneficiary.String(),
+			Chequebook:  lastReceived.Cheque.Chequebook.String(),
+			Payout:      lastReceived.Cheque.CumulativePayout,
 		}
 	}
 
-	lastout := chequebookLastChequePeerResponse{}
+	var lastsent *chequebookLastChequePeerResponse
 	if err2 == nil {
-		lastout = chequebookLastChequePeerResponse{
-			Address:     addr,
-			Beneficiary: lastchequeOut.Cheque.Beneficiary.String(),
-			Chequebook:  lastchequeOut.Cheque.Chequebook.String(),
-			Payout:      lastchequeOut.Cheque.CumulativePayout,
+		lastsent = &chequebookLastChequePeerResponse{
+			Beneficiary: lastSent.Cheque.Beneficiary.String(),
+			Chequebook:  lastSent.Cheque.Chequebook.String(),
+			Payout:      lastSent.Cheque.CumulativePayout,
 		}
 	}
 
 	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
-		LastChequeIn:  lastin,
-		LastChequeOut: lastout,
+		Peer:         addr,
+		LastReceived: lastreceived,
+		LastSent:     lastsent,
 	})
 }
 
 func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
 
-	lastcheques, err := s.Swap.LastCheques()
+	lastchequessent, err := s.Swap.LastSentCheques()
 
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantLastCheque)
 		return
 	}
 
-	laststoredcheques, err := s.Swap.LastStoredCheques()
+	lastchequesreceived, err := s.Swap.LastReceivedCheques()
 
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantLastCheque)
@@ -141,23 +149,22 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 
 	lcr := make(map[string]chequebookLastChequesPeerResponse)
 
-	for i, j := range lastcheques {
+	for i, j := range lastchequessent {
 		lcr[i] = chequebookLastChequesPeerResponse{
-			LastChequeIn: chequebookLastChequePeerResponse{
-				Address:     i,
+			Peer: i,
+			LastReceived: &chequebookLastChequePeerResponse{
 				Beneficiary: j.Cheque.Beneficiary.String(),
 				Chequebook:  j.Cheque.Chequebook.String(),
 				Payout:      j.Cheque.CumulativePayout,
 			},
-			LastChequeOut: chequebookLastChequePeerResponse{},
+			LastSent: nil,
 		}
 	}
 
-	for i, j := range laststoredcheques {
+	for i, j := range lastchequesreceived {
 		if _, ok := lcr[i]; ok {
 			t := lcr[i]
-			t.LastChequeOut = chequebookLastChequePeerResponse{
-				Address:     i,
+			t.LastSent = &chequebookLastChequePeerResponse{
 				Beneficiary: j.Cheque.Beneficiary.String(),
 				Chequebook:  j.Cheque.Chequebook.String(),
 				Payout:      j.Cheque.CumulativePayout,
@@ -165,9 +172,9 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 			lcr[i] = t
 		} else {
 			lcr[i] = chequebookLastChequesPeerResponse{
-				LastChequeIn: chequebookLastChequePeerResponse{},
-				LastChequeOut: chequebookLastChequePeerResponse{
-					Address:     i,
+				Peer:         i,
+				LastReceived: nil,
+				LastSent: &chequebookLastChequePeerResponse{
 					Beneficiary: j.Cheque.Beneficiary.String(),
 					Chequebook:  j.Cheque.Chequebook.String(),
 					Payout:      j.Cheque.CumulativePayout,
