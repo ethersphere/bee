@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
 	"github.com/ethersphere/bee/pkg/pullsync"
@@ -290,19 +291,18 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		settlement = pseudosettleService
 	}
 
-	acc, err := accounting.NewAccounting(accounting.Options{
-		Logger:           logger,
-		Store:            stateStore,
-		PaymentThreshold: o.PaymentThreshold,
-		PaymentTolerance: o.PaymentTolerance,
-		EarlyPayment:     o.PaymentEarly,
-		Settlement:       settlement,
-	})
+	pricing := pricing.New(p2ps, logger, o.PaymentThreshold)
+	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
+		return nil, fmt.Errorf("pricing service: %w", err)
+	}
+
+	acc, err := accounting.NewAccounting(o.PaymentThreshold, o.PaymentTolerance, o.PaymentEarly, logger, stateStore, settlement, pricing)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
 
 	settlement.SetPaymentObserver(acc)
+	pricing.SetPaymentThresholdObserver(acc)
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
 	b.topologyCloser = kad
