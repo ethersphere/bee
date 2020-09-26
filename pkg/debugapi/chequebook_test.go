@@ -289,8 +289,8 @@ func TestChequebookLastPeer(t *testing.T) {
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
-	if !reflect.DeepEqual(got, expected) {
-		t.Errorf("got balance: %+v, expected: %+v", got, expected)
+	if !LastChequesEqual(got, expected) {
+		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n")
 	}
 
 }
