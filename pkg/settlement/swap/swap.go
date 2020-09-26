@@ -237,7 +237,7 @@ func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, 
 
 func (s *Service) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
 
-	common, known, err := s.addressbook.Beneficiary(peer)
+	common, known, err := s.addressbook.Chequebook(peer)
 
 	if err != nil {
 		return nil, errors.New("error translating swarm address to chequebook address")
