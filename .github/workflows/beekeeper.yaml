@@ -104,10 +104,17 @@ jobs:
       - name: Test manifest
         id: manifest
         run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Clean the cluster
+      - name: Destroy the cluster
         run: |
-          helm uninstall bee -n bee
+          ./beeinfra.sh destroy
           grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
+      - name: Prepare testing cluster (Node connection)
+        run: |
+          ./beeinfra.sh prepare --geth
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
       - name: Increase REPLICA to 5
         run: |
           echo "::set-env name=REPLICA::5"
