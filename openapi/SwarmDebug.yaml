@@ -290,6 +290,42 @@ paths:
         default:
           description: Default response
 
+  '/settlements/':
+    get:
+      summary: Get settlements with all known peers and total amount sent/received
+      tags:
+        - Settlements
+      responses:
+        '200':
+          description: 'Settlements with all known peers and total amount sent/received'
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Settlements'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/settlements/{peer}'
+    get:
+      summary: Get amount of sent/received from settlements with a peer
+      tags:
+        - Settlements
+      responses:
+      '200':
+        description: Amount of sent/received from settlements with a peer
+        content:
+          application/json:
+            schema:
+              $ref: 'SwarmCommon.yaml#/components/schemas/Settlement'
+          '404':
+            $ref: 'SwarmCommon.yaml#/components/responses/404'
+          '500':
+            $ref: 'SwarmCommon.yaml#/components/responses/500'
+      default:
+        description: Default response
+
   '/topology':
     get:
       description: Get topology of known network
