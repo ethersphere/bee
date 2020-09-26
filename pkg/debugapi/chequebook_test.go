@@ -126,7 +126,7 @@ func TestChequebookAddress(t *testing.T) {
 
 }
 
-func TestChequebookLastPeer(t *testing.T) {
+func TestChequebookLastCheques(t *testing.T) {
 
 	addr1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	addr2 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
@@ -292,6 +292,10 @@ func TestChequebookLastPeer(t *testing.T) {
 	if !LastChequesEqual(got, expected) {
 		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
 	}
+
+}
+
+func TestChequebookLastChequesPeer(t *testing.T) {
 
 }
 

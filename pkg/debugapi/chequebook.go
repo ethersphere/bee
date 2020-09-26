@@ -84,8 +84,8 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	lastReceived, err := s.Swap.LastSentCheque(peer)
-	lastSent, err2 := s.Swap.LastReceivedCheque(peer)
+	lastSent, err := s.Swap.LastSentCheque(peer)
+	lastReceived, err2 := s.Swap.LastReceivedCheque(peer)
 
 	if errors.Is(err, swap.ErrUnknownBeneficary) && errors.Is(err2, swap.ErrUnknownBeneficary) {
 		jsonhttp.NotFound(w, errUnknownBeneficary)
