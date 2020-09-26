@@ -20,7 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/opentracing/opentracing-go"
+	opentracing "github.com/opentracing/opentracing-go"
 )
 
 const (
@@ -42,7 +42,7 @@ type PushSync struct {
 	storer           storage.Putter
 	peerSuggester    topology.ClosestPeerer
 	tagg             *tags.Tags
-	deliveryCallback func(context.Context, swarm.Chunk) error // callback func to be invoked to deliver chunks to PSS
+	deliveryCallback func(context.Context, swarm.Chunk) // callback func to be invoked to deliver chunks to PSS
 	logger           logging.Logger
 	accounting       accounting.Interface
 	pricer           accounting.Pricer
@@ -52,7 +52,7 @@ type PushSync struct {
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk) error, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		streamer:         streamer,
 		storer:           storer,
@@ -310,10 +310,7 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 	}
 
 	if ps.deliveryCallback != nil {
-		err = ps.deliveryCallback(ctx, chunk)
-		if err != nil {
-			ps.logger.Debugf("pushsync delivery callback: %v", err)
-		}
+		ps.deliveryCallback(ctx, chunk)
 	}
 
 	return nil
