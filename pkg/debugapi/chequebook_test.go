@@ -7,7 +7,6 @@ package debugapi_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 	"net/http"
 	"reflect"
