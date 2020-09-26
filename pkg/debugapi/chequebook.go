@@ -19,7 +19,6 @@ var (
 	errChequebookBalance  = "cannot get chequebook balance"
 	errCantLastChequePeer = "cannot get last cheque for peer"
 	errCantLastCheque     = "cannot get last cheque for all peers"
-	errUnknownBeneficary  = "unknown beneficiary for peer"
 )
 
 type chequebookBalanceResponse struct {
