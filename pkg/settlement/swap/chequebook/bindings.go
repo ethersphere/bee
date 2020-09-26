@@ -18,6 +18,7 @@ type SimpleSwapBinding interface {
 	Balance(*bind.CallOpts) (*big.Int, error)
 	Issuer(*bind.CallOpts) (common.Address, error)
 	TotalPaidOut(*bind.CallOpts) (*big.Int, error)
+	PaidOut(*bind.CallOpts, common.Address) (*big.Int, error)
 }
 
 type SimpleSwapBindingFunc = func(common.Address, bind.ContractBackend) (SimpleSwapBinding, error)
