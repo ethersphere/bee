@@ -89,33 +89,19 @@ components:
               connectedPeers:
                 type: object
 
-    Cheque:
+    ChequebookBalance:
       type: object
       properties:
-        beneficiary:
-          $ref: '#/components/schemas/EthereumAddress'
-        chequebook:
-          $ref: '#/components/schemas/EthereumAddress'
-        payout:
+        totalBalance:
+          type: integer
+        availableBalance:
           type: integer
 
-    ChequeAllPeersResponse:
+    ChequebookAddress:
       type: object
       properties:
-        lastcheques:
-          type: array
-          items:
-            $ref: '#/components/schemas/ChequePeerResponse'
-
-    ChequePeerResponse:
-      type: object
-      properties:
-        peer:
-          $ref: '#/components/schemas/SwarmAddress'
-        lastreceived:
-          $ref: '#/components/schemas/Cheque'
-        lastsent:
-          $ref: '#/components/schemas/Cheque'
+        address:
+          type: string
 
     DateTime:
       type: string
