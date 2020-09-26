@@ -658,7 +658,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	pricing := &pricingMock{}
 	settlement := &settlementMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, settlement, pricing)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 0, logger, store, settlement, pricing)
 	if err != nil {
 		t.Fatal(err)
 	}
