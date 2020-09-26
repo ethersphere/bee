@@ -70,10 +70,6 @@ jobs:
       - name: Prepare testing cluster (Node connection)
         run: |
           ./beeinfra.sh prepare --geth
-      - name: Set kube config
-        run: |
-          mkdir -p ~/.kube
-          cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
       - name: Set testing cluster (Node connection)
         run: |
           ./beeinfra.sh install --local -r "${REPLICA}" --geth
