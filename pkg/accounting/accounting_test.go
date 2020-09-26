@@ -656,8 +656,9 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	defer store.Close()
 
 	pricing := &pricingMock{}
+	settlement := &settlementMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, nil, pricing)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, settlement, pricing)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,10 +668,24 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.NotifyPaymentThreshold(peer1Addr, testPaymentThreshold)
+	lowerThreshold := uint64(100)
+
+	err = acc.NotifyPaymentThreshold(peer1Addr, lowerThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// TODO: check the success somehow
+	err = acc.Reserve(peer1Addr, lowerThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Credit(peer1Addr, lowerThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if settlement.paidAmount != lowerThreshold {
+		t.Fatalf("settled wrong amount. wanted %d, got %d", lowerThreshold, settlement.paidAmount)
+	}
 }
