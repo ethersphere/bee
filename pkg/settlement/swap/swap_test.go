@@ -74,6 +74,16 @@ func (m *addressbookMock) PutChequebook(peer swarm.Address, chequebook common.Ad
 	return m.putChequebook(peer, chequebook)
 }
 
+type cashoutMock struct {
+}
+
+func (*cashoutMock) CashCheque(ctx context.Context, chequebook common.Address) (common.Hash, error) {
+	return common.Hash{}, nil
+}
+func (*cashoutMock) CashoutStatus(ctx context.Context, chequebookAddress common.Address) (*chequebook.CashoutStatus, error) {
+	return nil, nil
+}
+
 func TestReceiveCheque(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
@@ -126,6 +136,7 @@ func TestReceiveCheque(t *testing.T) {
 		chequeStore,
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	observer := &testObserver{}
@@ -187,6 +198,7 @@ func TestReceiveChequeReject(t *testing.T) {
 		chequeStore,
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	observer := &testObserver{}
@@ -237,6 +249,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		chequeStore,
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	observer := &testObserver{}
@@ -308,6 +321,7 @@ func TestPay(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swap.Pay(context.Background(), peer, amount)
@@ -357,6 +371,7 @@ func TestPayIssueError(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swap.Pay(context.Background(), peer, amount)
@@ -389,6 +404,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Pay(context.Background(), peer, amount)
@@ -422,6 +438,7 @@ func TestHandshake(t *testing.T) {
 			},
 		},
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -459,6 +476,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 			},
 		},
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -487,6 +505,7 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		&addressbookMock{},
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Handshake(peer, beneficiary)

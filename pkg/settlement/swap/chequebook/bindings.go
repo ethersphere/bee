@@ -19,6 +19,8 @@ type SimpleSwapBinding interface {
 	Issuer(*bind.CallOpts) (common.Address, error)
 	TotalPaidOut(*bind.CallOpts) (*big.Int, error)
 	PaidOut(*bind.CallOpts, common.Address) (*big.Int, error)
+	ParseChequeCashed(types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeCashed, error)
+	ParseChequeBounced(types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeBounced, error)
 }
 
 type SimpleSwapBindingFunc = func(common.Address, bind.ContractBackend) (SimpleSwapBinding, error)

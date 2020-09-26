@@ -31,6 +31,9 @@ type Service struct {
 
 	lastReceivedChequeFunc  func(swarm.Address) (*chequebook.SignedCheque, error)
 	lastReceivedChequesFunc func() (map[string]*chequebook.SignedCheque, error)
+
+	cashChequeFunc    func(ctx context.Context, peer swarm.Address) (common.Hash, error)
+	cashoutStatusFunc func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error)
 }
 
 // WithsettlementFunc sets the mock settlement function
@@ -214,6 +217,20 @@ func (s *Service) LastReceivedCheque(address swarm.Address) (*chequebook.SignedC
 func (s *Service) LastReceivedCheques() (map[string]*chequebook.SignedCheque, error) {
 	if s.lastReceivedChequesFunc != nil {
 		return s.lastReceivedChequesFunc()
+	}
+	return nil, nil
+}
+
+func (s *Service) CashCheque(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+	if s.cashChequeFunc != nil {
+		return s.cashChequeFunc(ctx, peer)
+	}
+	return common.Hash{}, nil
+}
+
+func (s *Service) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+	if s.cashoutStatusFunc != nil {
+		return s.cashoutStatusFunc(ctx, peer)
 	}
 	return nil, nil
 }

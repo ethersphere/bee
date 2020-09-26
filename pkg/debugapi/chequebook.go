@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 
@@ -19,6 +20,8 @@ var (
 	errChequebookBalance  = "cannot get chequebook balance"
 	errCantLastChequePeer = "cannot get last cheque for peer"
 	errCantLastCheque     = "cannot get last cheque for all peers"
+	errCannotCash         = "cannot cash cheque"
+	errCannotCashStatus   = "cannot get cashout status"
 )
 
 type chequebookBalanceResponse struct {
@@ -178,4 +181,70 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcresponses})
+}
+
+type swapCashoutResponse struct {
+	TransactionHash string `json:"transactionHash"`
+}
+
+func (s *server) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
+	addr := mux.Vars(r)["peer"]
+	peer, err := swarm.ParseHexAddress(addr)
+	if err != nil {
+		s.Logger.Debugf("debug api: cashout peer: invalid peer address %s: %v", addr, err)
+		s.Logger.Error("debug api: cashout peer: invalid peer address %s", addr)
+		jsonhttp.NotFound(w, errInvaliAddress)
+		return
+	}
+
+	txHash, err := s.Swap.CashCheque(r.Context(), peer)
+	if err != nil {
+		s.Logger.Debugf("debug api: cashout peer: cannot cash %s: %v", addr, err)
+		s.Logger.Error("debug api: cashout peer: cannot cash %s", addr)
+		jsonhttp.NotFound(w, errCannotCash)
+		return
+	}
+
+	jsonhttp.OK(w, swapCashoutResponse{TransactionHash: txHash.String()})
+}
+
+type swapCashoutStatusResponse struct {
+	Peer             swarm.Address  `json:"peer"`
+	Chequebook       common.Address `json:"chequebook"`
+	CumulativePayout *big.Int       `json:"cumulativePayout"`
+	Beneficiary      common.Address `json:"beneficiary"`
+	TransactionHash  common.Hash    `json:"transactionHash"`
+	Recipient        common.Address `json:"recipient"`
+	LastPayout       *big.Int       `json:"lastPayout"`
+	Bounced          bool           `json:"bounced"`
+}
+
+func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request) {
+	addr := mux.Vars(r)["peer"]
+	peer, err := swarm.ParseHexAddress(addr)
+	if err != nil {
+		s.Logger.Debugf("debug api: cashout status peer: invalid peer address %s: %v", addr, err)
+		s.Logger.Error("debug api: cashout status peer: invalid peer address %s", addr)
+		jsonhttp.NotFound(w, errInvaliAddress)
+		return
+	}
+
+	status, err := s.Swap.CashoutStatus(r.Context(), peer)
+	if err != nil {
+		s.Logger.Debugf("debug api: cashout status peer: cannot get status %s: %v", addr, err)
+		s.Logger.Error("debug api: cashout status peer: cannot get status %s", addr)
+		jsonhttp.NotFound(w, errCannotCashStatus)
+		return
+	}
+
+	jsonhttp.OK(w, swapCashoutStatusResponse{
+		Peer:             peer,
+		TransactionHash:  status.TxHash,
+		Chequebook:       status.Cheque.Chequebook,
+		CumulativePayout: status.Cheque.CumulativePayout,
+		Beneficiary:      status.Cheque.Beneficiary,
+		Recipient:        status.Result.Recipient,
+		LastPayout:       status.Result.TotalPayout,
+		Bounced:          status.Result.Bounced,
+	})
 }
