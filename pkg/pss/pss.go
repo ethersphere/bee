@@ -129,6 +129,9 @@ func (p *pss) topics() []Topic {
 
 // TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
 func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) {
+	if len(c.Data()) < 4104 {
+		return // chunk not full
+	}
 	topic, msg, err := Unwrap(ctx, p.key, c, p.topics())
 	if err != nil {
 		return // cannor unwrap
