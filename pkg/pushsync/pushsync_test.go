@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
 	"github.com/ethersphere/bee/pkg/accounting"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/localstore"
@@ -21,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -190,9 +189,8 @@ func TestHandler(t *testing.T) {
 
 	// mock call back function to see if pss message is delivered when it is received in the destination (closestPeer in this testcase)
 	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
-	pssDeliver := func(ctx context.Context, ch swarm.Chunk) error {
+	pssDeliver := func(ctx context.Context, ch swarm.Chunk) {
 		hookWasCalled <- true
-		return nil
 	}
 
 	// Create the closest peer
@@ -279,7 +277,7 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, pssDeliver func(context.Context, swarm.Chunk) error, mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
+func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, pssDeliver func(context.Context, swarm.Chunk), mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)

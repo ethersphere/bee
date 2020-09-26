@@ -108,13 +108,9 @@ func TestDeliver(t *testing.T) {
 	p.Register(topic, handler)
 
 	// call pss TryUnwrap on chunk and verify test topic variable value changes
-	err = p.TryUnwrap(ctx, chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p.TryUnwrap(ctx, chunk)
 
 	var message topicMessage
-
 	select {
 	case message = <-msgChan:
 		break
@@ -176,10 +172,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.TryUnwrap(context.Background(), chunk1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p.TryUnwrap(context.Background(), chunk1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -188,10 +181,7 @@ func TestRegister(t *testing.T) {
 
 	// register another topic handler on the same topic
 	cleanup := p.Register(topic1, h3)
-	err = p.TryUnwrap(context.Background(), chunk1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p.TryUnwrap(context.Background(), chunk1)
 
 	waitHandlerCallback(t, &msgChan, 2)
 
@@ -201,10 +191,7 @@ func TestRegister(t *testing.T) {
 
 	cleanup() // remove the last handler
 
-	err = p.TryUnwrap(context.Background(), chunk1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p.TryUnwrap(context.Background(), chunk1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -216,10 +203,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.TryUnwrap(context.Background(), chunk2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p.TryUnwrap(context.Background(), chunk2)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
