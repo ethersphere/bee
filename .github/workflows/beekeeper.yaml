@@ -64,11 +64,19 @@ jobs:
       - name: Test settlements
         id: settlements
         run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count 10 -t 10000
-      - name: Clean the cluster
+      - name: Destroy the cluster
         run: |
-          helm uninstall bee -n bee
+          ./beeinfra.sh destroy
+      - name: Prepare testing cluster (Node connection)
+        run: |
+          ./beeinfra.sh prepare --geth
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
       - name: Set testing cluster (Node connection)
-        run: ./beeinfra.sh install --local -r "${REPLICA}" --geth
+        run: |
+          ./beeinfra.sh install --local -r "${REPLICA}" --geth
       - name: Test fullconnectivity
         id: fullconnectivity-2
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
