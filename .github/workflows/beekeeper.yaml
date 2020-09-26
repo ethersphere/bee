@@ -66,7 +66,7 @@ jobs:
         run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count 10 -t 10000
       - name: Destroy the cluster
         run: |
-          ./beeinfra.sh destroy
+          ./beeinfra.sh destroy && sleep 5
       - name: Prepare testing cluster (Node connection)
         run: |
           ./beeinfra.sh prepare --geth
