@@ -278,7 +278,7 @@ func (s *Service) LastReceivedCheques() (map[string]*chequebook.SignedCheque, er
 	resultmap := make(map[string]*chequebook.SignedCheque, len(lastcheques))
 
 	for i, j := range lastcheques {
-		addr, known, err := s.addressbook.BeneficiaryPeer(i)
+		addr, known, err := s.addressbook.ChequebookPeer(i)
 		if err == nil && known {
 			resultmap[addr.String()] = j
 		}
