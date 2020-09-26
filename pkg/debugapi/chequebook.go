@@ -152,19 +152,19 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 	for i, j := range lastchequessent {
 		lcr[i] = chequebookLastChequesPeerResponse{
 			Peer: i,
-			LastReceived: &chequebookLastChequePeerResponse{
+			LastSent: &chequebookLastChequePeerResponse{
 				Beneficiary: j.Cheque.Beneficiary.String(),
 				Chequebook:  j.Cheque.Chequebook.String(),
 				Payout:      j.Cheque.CumulativePayout,
 			},
-			LastSent: nil,
+			LastReceived: nil,
 		}
 	}
 
 	for i, j := range lastchequesreceived {
 		if _, ok := lcr[i]; ok {
 			t := lcr[i]
-			t.LastSent = &chequebookLastChequePeerResponse{
+			t.LastReceived = &chequebookLastChequePeerResponse{
 				Beneficiary: j.Cheque.Beneficiary.String(),
 				Chequebook:  j.Cheque.Chequebook.String(),
 				Payout:      j.Cheque.CumulativePayout,
@@ -172,9 +172,9 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 			lcr[i] = t
 		} else {
 			lcr[i] = chequebookLastChequesPeerResponse{
-				Peer:         i,
-				LastReceived: nil,
-				LastSent: &chequebookLastChequePeerResponse{
+				Peer:     i,
+				LastSent: nil,
+				LastReceived: &chequebookLastChequePeerResponse{
 					Beneficiary: j.Cheque.Beneficiary.String(),
 					Chequebook:  j.Cheque.Chequebook.String(),
 					Payout:      j.Cheque.CumulativePayout,

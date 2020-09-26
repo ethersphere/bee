@@ -7,6 +7,7 @@ package debugapi_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"reflect"
@@ -243,7 +244,7 @@ func TestChequebookLastPeer(t *testing.T) {
 		},
 		debugapi.ChequebookLastChequesPeerResponse{
 			Peer:         addr2.String(),
-			LastReceived: &debugapi.ChequebookLastChequePeerResponse{},
+			LastReceived: nil,
 			LastSent: &debugapi.ChequebookLastChequePeerResponse{
 				Beneficiary: beneficiary2.String(),
 				Chequebook:  chequebookAddress2.String(),
@@ -252,7 +253,7 @@ func TestChequebookLastPeer(t *testing.T) {
 		},
 		debugapi.ChequebookLastChequesPeerResponse{
 			Peer:         addr3.String(),
-			LastReceived: &debugapi.ChequebookLastChequePeerResponse{},
+			LastReceived: nil,
 			LastSent: &debugapi.ChequebookLastChequePeerResponse{
 				Beneficiary: beneficiary3.String(),
 				Chequebook:  chequebookAddress3.String(),
@@ -266,7 +267,7 @@ func TestChequebookLastPeer(t *testing.T) {
 				Chequebook:  chequebookAddress4.String(),
 				Payout:      cumulativePayout5,
 			},
-			LastSent: &debugapi.ChequebookLastChequePeerResponse{},
+			LastSent: nil,
 		},
 		debugapi.ChequebookLastChequesPeerResponse{
 			Peer: addr5.String(),
@@ -275,7 +276,7 @@ func TestChequebookLastPeer(t *testing.T) {
 				Chequebook:  chequebookAddress5.String(),
 				Payout:      cumulativePayout6,
 			},
-			LastSent: &debugapi.ChequebookLastChequePeerResponse{},
+			LastSent: nil,
 		},
 	}
 
@@ -290,7 +291,40 @@ func TestChequebookLastPeer(t *testing.T) {
 	)
 
 	if !LastChequesEqual(got, expected) {
-		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n")
+		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
 	}
 
+}
+
+func LastChequesEqual(a, b *debugapi.ChequebookLastChequesResponse) bool {
+
+	var state bool
+
+	for akeys := range a.LastCheques {
+		state = false
+		for bkeys := range b.LastCheques {
+			if reflect.DeepEqual(a.LastCheques[akeys], b.LastCheques[bkeys]) {
+				state = true
+				break
+			}
+		}
+		if !state {
+			return false
+		}
+	}
+
+	for bkeys := range b.LastCheques {
+		state = false
+		for akeys := range a.LastCheques {
+			if reflect.DeepEqual(a.LastCheques[akeys], b.LastCheques[bkeys]) {
+				state = true
+				break
+			}
+		}
+		if !state {
+			return false
+		}
+	}
+
+	return true
 }
