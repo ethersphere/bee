@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 
@@ -32,7 +31,7 @@ type Interface interface {
 	// Register a Handler for a given Topic.
 	Register(Topic, Handler) func()
 	// TryUnwrap tries to unwrap a wrapped trojan message.
-	TryUnwrap(context.Context, swarm.Chunk) error
+	TryUnwrap(context.Context, swarm.Chunk)
 
 	SetPushSyncer(pushSyncer pushsync.PushSyncer)
 	io.Closer
@@ -129,14 +128,14 @@ func (p *pss) topics() []Topic {
 }
 
 // TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
-func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
+func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) {
 	topic, msg, err := Unwrap(ctx, p.key, c, p.topics())
 	if err != nil {
-		return err
+		return // cannor unwrap
 	}
 	h := p.getHandlers(topic)
 	if h == nil {
-		return fmt.Errorf("topic %v, %w", topic, ErrNoHandler)
+		return // no handler
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -160,8 +159,6 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) error {
 		wg.Wait()
 		close(done)
 	}()
-
-	return nil
 }
 
 func (p *pss) getHandlers(topic Topic) []*Handler {
