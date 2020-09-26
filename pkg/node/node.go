@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
@@ -109,7 +110,7 @@ type Options struct {
 	SwapEnable             bool
 }
 
-func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
+func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -176,15 +177,22 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 			return nil, err
 		}
 
-		// TODO: factory address discovery for well-known networks (goerli for beta)
-
+		var factoryAddress common.Address
 		if o.SwapFactoryAddress == "" {
-			return nil, errors.New("no known factory address")
+			var found bool
+			factoryAddress, found = chequebook.DiscoverFactoryAddress(chainID.Int64())
+			if !found {
+				return nil, errors.New("no known factory address")
+			}
+			logger.Infof("using default factory address for chain id %d: %x", chainID, factoryAddress)
 		} else if !common.IsHexAddress(o.SwapFactoryAddress) {
 			return nil, errors.New("invalid factory address")
+		} else {
+			factoryAddress = common.HexToAddress(o.SwapFactoryAddress)
+			logger.Infof("using custom factory address: %x", factoryAddress)
 		}
 
-		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, common.HexToAddress(o.SwapFactoryAddress), chequebook.NewSimpleSwapFactoryBindingFunc)
+		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, factoryAddress, chequebook.NewSimpleSwapFactoryBindingFunc)
 		if err != nil {
 			return nil, err
 		}
@@ -334,7 +342,12 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 
 	// instantiate the pss object
-	psss := pss.New(logger)
+	swarmPrivateKey, _, err := keystore.Key("swarm", o.Password)
+	if err != nil {
+		return nil, fmt.Errorf("swarm key: %w", err)
+	}
+
+	psss := pss.New(swarmPrivateKey, logger)
 	b.pssCloser = psss
 
 	var ns storage.Storer
@@ -347,15 +360,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 	}
 	retrieve.SetStorer(ns)
 
-	silenceNoHandlerFunc := func(ctx context.Context, ch swarm.Chunk) error {
-		err := psss.TryUnwrap(ctx, ch)
-		if errors.Is(err, pss.ErrNoHandler) {
-			return nil
-		}
-		return err
-	}
-
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, silenceNoHandlerFunc, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
 
 	// set the pushSyncer in the PSS
 	psss.SetPushSyncer(pushSyncProtocol)
@@ -425,7 +430,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
-		debugAPIService := debugapi.New(swarmAddress, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, chequebookService)
+		debugAPIService := debugapi.New(swarmAddress, publicKey, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, chequebookService)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)

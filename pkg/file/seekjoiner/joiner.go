@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io"
 
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
@@ -50,6 +49,6 @@ func (s *simpleJoiner) Size(ctx context.Context, address swarm.Address) (int64, 
 //
 // It uses a non-optimized internal component that only retrieves a data chunk
 // after the previous has been read.
-func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut io.ReadSeeker, dataSize int64, err error) {
+func (s *simpleJoiner) Join(ctx context.Context, address swarm.Address) (dataOut file.Reader, dataSize int64, err error) {
 	return internal.NewSimpleJoiner(ctx, s.getter, address)
 }

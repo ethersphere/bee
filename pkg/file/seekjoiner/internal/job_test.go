@@ -99,7 +99,7 @@ func TestSeek(t *testing.T) {
 				got = got[:count]
 				want := data[i : i+count]
 				if !bytes.Equal(got, want) {
-					t.Errorf("read on seek to %v from %v: got data %x, want %s", name, i, got, want)
+					t.Fatal("data mismatch")
 				}
 			}
 
@@ -171,6 +171,208 @@ func TestSeek(t *testing.T) {
 				if n != 0 {
 					t.Errorf("seek overflow to %v: got %v, want 0", i, n)
 				}
+			}
+		})
+	}
+}
+
+// TestPrefetch tests that prefetching chunks is made to fill up the read buffer
+func TestPrefetch(t *testing.T) {
+	seed := time.Now().UnixNano()
+
+	r := mrand.New(mrand.NewSource(seed))
+
+	for _, tc := range []struct {
+		name       string
+		size       int64
+		bufferSize int
+		readOffset int64
+		expRead    int
+	}{
+		{
+			name:       "one byte",
+			size:       1,
+			bufferSize: 1,
+			readOffset: 0,
+			expRead:    1,
+		},
+		{
+			name:       "one byte",
+			size:       1,
+			bufferSize: 10,
+			readOffset: 0,
+			expRead:    1,
+		},
+		{
+			name:       "ten bytes",
+			size:       10,
+			bufferSize: 5,
+			readOffset: 0,
+			expRead:    5,
+		},
+		{
+			name:       "thousand bytes",
+			size:       1000,
+			bufferSize: 100,
+			readOffset: 0,
+			expRead:    100,
+		},
+		{
+			name:       "thousand bytes",
+			size:       1000,
+			bufferSize: 100,
+			readOffset: 900,
+			expRead:    100,
+		},
+		{
+			name:       "thousand bytes",
+			size:       1000,
+			bufferSize: 100,
+			readOffset: 800,
+			expRead:    100,
+		},
+		{
+			name:       "one chunk",
+			size:       4096,
+			bufferSize: 4096,
+			readOffset: 0,
+			expRead:    4096,
+		},
+		{
+			name:       "one chunk minus a few",
+			size:       4096,
+			bufferSize: 4093,
+			readOffset: 0,
+			expRead:    4093,
+		},
+		{
+			name:       "one chunk minus a few",
+			size:       4096,
+			bufferSize: 4093,
+			readOffset: 3,
+			expRead:    4093,
+		},
+		{
+			name:       "one byte at the end",
+			size:       4096,
+			bufferSize: 1,
+			readOffset: 4095,
+			expRead:    1,
+		},
+		{
+			name:       "one byte at the end",
+			size:       8192,
+			bufferSize: 1,
+			readOffset: 8191,
+			expRead:    1,
+		},
+		{
+			name:       "one byte at the end",
+			size:       8192,
+			bufferSize: 1,
+			readOffset: 8190,
+			expRead:    1,
+		},
+		{
+			name:       "one byte at the end",
+			size:       100000,
+			bufferSize: 1,
+			readOffset: 99999,
+			expRead:    1,
+		},
+		{
+			name:       "10kb",
+			size:       10000,
+			bufferSize: 5,
+			readOffset: 5,
+			expRead:    5,
+		},
+
+		{
+			name:       "10kb",
+			size:       10000,
+			bufferSize: 1500,
+			readOffset: 5,
+			expRead:    1500,
+		},
+
+		{
+			name:       "100kb",
+			size:       100000,
+			bufferSize: 8000,
+			readOffset: 100,
+			expRead:    8000,
+		},
+
+		{
+			name:       "100kb",
+			size:       100000,
+			bufferSize: 80000,
+			readOffset: 100,
+			expRead:    80000,
+		},
+
+		{
+			name:       "10megs",
+			size:       10000000,
+			bufferSize: 8000,
+			readOffset: 990000,
+			expRead:    8000,
+		},
+		{
+			name:       "10megs",
+			size:       10000000,
+			bufferSize: 80000,
+			readOffset: 900000,
+			expRead:    80000,
+		},
+		{
+			name:       "10megs",
+			size:       10000000,
+			bufferSize: 8000000,
+			readOffset: 900000,
+			expRead:    8000000,
+		},
+		{
+			name:       "10megs",
+			size:       1000000,
+			bufferSize: 2000000,
+			readOffset: 900000,
+			expRead:    100000,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			store := mock.NewStorer()
+			defer store.Close()
+
+			data, err := ioutil.ReadAll(io.LimitReader(r, tc.size))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
+			addr, err := s.Split(ctx, ioutil.NopCloser(bytes.NewReader(data)), tc.size, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			j, _, err := internal.NewSimpleJoiner(ctx, store, addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := make([]byte, tc.bufferSize)
+			n, err := j.ReadAt(b, tc.readOffset)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != tc.expRead {
+				t.Errorf("read %d bytes out of %d", n, tc.expRead)
+			}
+			ro := int(tc.readOffset)
+			if !bytes.Equal(b[:n], data[ro:ro+n]) {
+				t.Error("buffer does not match generated data")
 			}
 		})
 	}

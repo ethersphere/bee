@@ -17,11 +17,11 @@ import (
 	validatormock "github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/trojan"
 )
 
 var chunkData = []byte("mockdata")
@@ -135,24 +135,6 @@ func TestInvalidRecoveryFunction(t *testing.T) {
 	}
 }
 
-func TestInvalidTargets(t *testing.T) {
-	hookWasCalled := make(chan bool, 1)
-	rec := &mockRecovery{
-		hookC: hookWasCalled,
-	}
-
-	retrieve, _, nstore := newRetrievingNetstore(rec)
-	addr := swarm.MustParseHexAddress("deadbeef")
-	retrieve.failure = true
-	ctx := context.Background()
-	ctx = sctx.SetTargets(ctx, "gh")
-
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && !errors.Is(err, sctx.ErrTargetPrefix) {
-		t.Fatal(err)
-	}
-}
-
 // returns a mock retrieval protocol, a mock local storage and a netstore
 func newRetrievingNetstore(rec *mockRecovery) (ret *retrievalMock, mockStore, ns storage.Storer) {
 	retrieve := &retrievalMock{}
@@ -191,7 +173,7 @@ type mockRecovery struct {
 }
 
 // Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets trojan.Targets) error {
+func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets pss.Targets) error {
 	mr.hookC <- true
 	return nil
 }
