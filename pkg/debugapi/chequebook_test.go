@@ -228,7 +228,7 @@ func TestChequebookLastCheques(t *testing.T) {
 	})
 
 	lastchequesexpected := []debugapi.ChequebookLastChequesPeerResponse{
-		debugapi.ChequebookLastChequesPeerResponse{
+		{
 			Peer: addr1.String(),
 			LastReceived: &debugapi.ChequebookLastChequePeerResponse{
 				Beneficiary: beneficiary.String(),
@@ -241,7 +241,7 @@ func TestChequebookLastCheques(t *testing.T) {
 				Payout:      cumulativePayout1,
 			},
 		},
-		debugapi.ChequebookLastChequesPeerResponse{
+		{
 			Peer:         addr2.String(),
 			LastReceived: nil,
 			LastSent: &debugapi.ChequebookLastChequePeerResponse{
@@ -250,7 +250,7 @@ func TestChequebookLastCheques(t *testing.T) {
 				Payout:      cumulativePayout2,
 			},
 		},
-		debugapi.ChequebookLastChequesPeerResponse{
+		{
 			Peer:         addr3.String(),
 			LastReceived: nil,
 			LastSent: &debugapi.ChequebookLastChequePeerResponse{
@@ -259,7 +259,7 @@ func TestChequebookLastCheques(t *testing.T) {
 				Payout:      cumulativePayout3,
 			},
 		},
-		debugapi.ChequebookLastChequesPeerResponse{
+		{
 			Peer: addr4.String(),
 			LastReceived: &debugapi.ChequebookLastChequePeerResponse{
 				Beneficiary: beneficiary.String(),
@@ -268,7 +268,7 @@ func TestChequebookLastCheques(t *testing.T) {
 			},
 			LastSent: nil,
 		},
-		debugapi.ChequebookLastChequesPeerResponse{
+		{
 			Peer: addr5.String(),
 			LastReceived: &debugapi.ChequebookLastChequePeerResponse{
 				Beneficiary: beneficiary.String(),
