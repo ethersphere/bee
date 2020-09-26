@@ -5,6 +5,7 @@
 package debugapi_test
 
 import (
+	"crypto/ecdsa"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,7 @@ import (
 
 type testServerOptions struct {
 	Overlay        swarm.Address
+	PublicKey      ecdsa.PublicKey
 	P2P            *p2pmock.Service
 	Pingpong       pingpong.Interface
 	Storer         storage.Storer
@@ -50,7 +52,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := settlementmock.NewSettlement(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
-	s := debugapi.New(o.Overlay, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, chequebook)
+	s := debugapi.New(o.Overlay, o.PublicKey, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, chequebook)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

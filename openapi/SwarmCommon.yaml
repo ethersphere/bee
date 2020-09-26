@@ -28,6 +28,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/P2PUnderlay'
+        public_key:
+          $ref: '#/components/schemas/PublicKey'
 
     Balance:
       type: object
@@ -189,6 +191,11 @@ components:
       type: string
       pattern: '^[A-Fa-f0-9]{64}$'
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+
+    PublicKey:
+      type: string
+      pattern: '^[A-Fa-f0-9]{66}$'
+      example: "02ab7473879005929d10ce7d4f626412dad9fe56b0a6622038931d26bd79abf0a4"
 
     SwarmEncryptedReference:
       type: string

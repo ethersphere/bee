@@ -52,6 +52,11 @@ func EncodeSecp256k1PrivateKey(k *ecdsa.PrivateKey) []byte {
 	return (*btcec.PrivateKey)(k).Serialize()
 }
 
+// EncodeSecp256k1PublicKey encodes raw ECDSA public key in a 33-byte compressed format.
+func EncodeSecp256k1PublicKey(k *ecdsa.PublicKey) []byte {
+	return (*btcec.PublicKey)(k).SerializeCompressed()
+}
+
 // DecodeSecp256k1PrivateKey decodes raw ECDSA private key.
 func DecodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 	if l := len(data); l != btcec.PrivKeyBytesLen {

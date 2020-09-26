@@ -7,6 +7,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"io/ioutil"
 
@@ -130,6 +131,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 
 			var signer crypto.Signer
 			var address swarm.Address
+			var publicKey *ecdsa.PublicKey
 
 			if c.config.GetBool(optionNameClefSignerEnable) {
 				endpoint := c.config.GetString(optionNameClefSignerEndpoint)
@@ -155,7 +157,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 					return err
 				}
 
-				publicKey, err := signer.PublicKey()
+				publicKey, err = signer.PublicKey()
 				if err != nil {
 					return err
 				}
@@ -172,9 +174,9 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 					return fmt.Errorf("swarm key: %w", err)
 				}
 				signer = crypto.NewDefaultSigner(swarmPrivateKey)
-				publicKey := swarmPrivateKey.PublicKey
+				publicKey = &swarmPrivateKey.PublicKey
 
-				address, err = crypto.NewOverlayAddress(publicKey, c.config.GetUint64(optionNameNetworkID))
+				address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
 				if err != nil {
 					return err
 				}
@@ -186,7 +188,9 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				}
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), address, keystore, signer, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
+			logger.Infof("swarm public key %x", crypto.EncodeSecp256k1PublicKey(publicKey))
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), address, *publicKey, keystore, signer, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
 				DataDir:                c.config.GetString(optionNameDataDir),
 				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
 				Password:               password,

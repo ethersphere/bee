@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
@@ -108,7 +109,7 @@ type Options struct {
 	SwapEnable             bool
 }
 
-func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
+func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, o Options) (*Bee, error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -437,7 +438,7 @@ func NewBee(addr string, swarmAddress swarm.Address, keystore keystore.Service, 
 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
-		debugAPIService := debugapi.New(swarmAddress, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, chequebookService)
+		debugAPIService := debugapi.New(swarmAddress, publicKey, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, chequebookService)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
