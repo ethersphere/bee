@@ -208,15 +208,19 @@ func (s *server) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, swapCashoutResponse{TransactionHash: txHash.String()})
 }
 
+type swapCashoutStatusResult struct {
+	Recipient  common.Address `json:"recipient"`
+	LastPayout *big.Int       `json:"lastPayout"`
+	Bounced    bool           `json:"bounced"`
+}
+
 type swapCashoutStatusResponse struct {
-	Peer             swarm.Address  `json:"peer"`
-	Chequebook       common.Address `json:"chequebook"`
-	CumulativePayout *big.Int       `json:"cumulativePayout"`
-	Beneficiary      common.Address `json:"beneficiary"`
-	TransactionHash  common.Hash    `json:"transactionHash"`
-	Recipient        common.Address `json:"recipient"`
-	LastPayout       *big.Int       `json:"lastPayout"`
-	Bounced          bool           `json:"bounced"`
+	Peer             swarm.Address            `json:"peer"`
+	Chequebook       common.Address           `json:"chequebook"`
+	CumulativePayout *big.Int                 `json:"cumulativePayout"`
+	Beneficiary      common.Address           `json:"beneficiary"`
+	TransactionHash  common.Hash              `json:"transactionHash"`
+	Result           *swapCashoutStatusResult `json:"result"`
 }
 
 func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -237,14 +241,21 @@ func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	var result *swapCashoutStatusResult
+	if status.Result != nil {
+		result = &swapCashoutStatusResult{
+			Recipient:  status.Result.Recipient,
+			LastPayout: status.Result.TotalPayout,
+			Bounced:    status.Result.Bounced,
+		}
+	}
+
 	jsonhttp.OK(w, swapCashoutStatusResponse{
 		Peer:             peer,
 		TransactionHash:  status.TxHash,
 		Chequebook:       status.Cheque.Chequebook,
 		CumulativePayout: status.Cheque.CumulativePayout,
 		Beneficiary:      status.Cheque.Beneficiary,
-		Recipient:        status.Result.Recipient,
-		LastPayout:       status.Result.TotalPayout,
-		Bounced:          status.Result.Bounced,
+		Result:           result,
 	})
 }
