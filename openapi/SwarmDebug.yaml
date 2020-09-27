@@ -311,3 +311,98 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+
+  '/chequebook/cashout/{peer-id}':
+    get:
+      summary: Get last cashout action for the peer
+      parameters:
+        - in: path
+          name: peer-id
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Cashout status
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/SwapCashoutStatus'
+        '404':
+           $ref: 'SwarmCommon.yaml#/components/responses/404'                
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    post:
+      summary: Cashout the last cheque for the peer
+      parameters:
+        - in: path
+          name: peer-id
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      tags:
+        - Chequebook      
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/TransactionResponse'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/chequebook/cheque/{peer-id}':
+    get:
+      summary: Get last cheques for the peer
+      parameters:
+        - in: path
+          name: peer-id
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Last cheques
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequePeerResponse'
+        '404':
+           $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/chequebook/cheque':
+    get:
+      summary: Get last cheques for all peers
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Last cheques
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequeAllPeersResponse'
+        '404':
+           $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response

@@ -74,6 +74,18 @@ func (m *addressbookMock) PutChequebook(peer swarm.Address, chequebook common.Ad
 	return m.putChequebook(peer, chequebook)
 }
 
+type cashoutMock struct {
+	cashCheque    func(ctx context.Context, chequebook common.Address, recipient common.Address) (common.Hash, error)
+	cashoutStatus func(ctx context.Context, chequebookAddress common.Address) (*chequebook.CashoutStatus, error)
+}
+
+func (m *cashoutMock) CashCheque(ctx context.Context, chequebook common.Address, recipient common.Address) (common.Hash, error) {
+	return m.cashCheque(ctx, chequebook, recipient)
+}
+func (m *cashoutMock) CashoutStatus(ctx context.Context, chequebookAddress common.Address) (*chequebook.CashoutStatus, error) {
+	return m.cashoutStatus(ctx, chequebookAddress)
+}
+
 func TestReceiveCheque(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
@@ -126,6 +138,7 @@ func TestReceiveCheque(t *testing.T) {
 		chequeStore,
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	observer := &testObserver{}
@@ -187,6 +200,7 @@ func TestReceiveChequeReject(t *testing.T) {
 		chequeStore,
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	observer := &testObserver{}
@@ -237,6 +251,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		chequeStore,
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	observer := &testObserver{}
@@ -308,6 +323,7 @@ func TestPay(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swap.Pay(context.Background(), peer, amount)
@@ -357,6 +373,7 @@ func TestPayIssueError(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swap.Pay(context.Background(), peer, amount)
@@ -389,6 +406,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		addressbook,
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Pay(context.Background(), peer, amount)
@@ -422,6 +440,7 @@ func TestHandshake(t *testing.T) {
 			},
 		},
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -459,6 +478,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 			},
 		},
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -487,10 +507,108 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 		mockchequestore.NewChequeStore(),
 		&addressbookMock{},
 		networkID,
+		&cashoutMock{},
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
 	if !errors.Is(err, swap.ErrWrongBeneficiary) {
 		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrWrongBeneficiary, err)
+	}
+}
+
+func TestCashout(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	store := mockstore.NewStateStore()
+
+	theirChequebookAddress := common.HexToAddress("ffff")
+	ourChequebookAddress := common.HexToAddress("fffa")
+	peer := swarm.MustParseHexAddress("abcd")
+	txHash := common.HexToHash("eeee")
+	addressbook := &addressbookMock{
+		chequebook: func(p swarm.Address) (common.Address, bool, error) {
+			if !peer.Equal(p) {
+				t.Fatal("querying chequebook for wrong peer")
+			}
+			return theirChequebookAddress, true, nil
+		},
+	}
+
+	swapService := swap.New(
+		&swapProtocolMock{},
+		logger,
+		store,
+		mockchequebook.NewChequebook(
+			mockchequebook.WithChequebookAddressFunc(func() common.Address {
+				return ourChequebookAddress
+			}),
+		),
+		mockchequestore.NewChequeStore(),
+		addressbook,
+		uint64(1),
+		&cashoutMock{
+			cashCheque: func(ctx context.Context, c common.Address, r common.Address) (common.Hash, error) {
+				if c != theirChequebookAddress {
+					t.Fatalf("not cashing with the right chequebook. wanted %v, got %v", theirChequebookAddress, c)
+				}
+				if r != ourChequebookAddress {
+					t.Fatalf("not cashing with the right recipient. wanted %v, got %v", ourChequebookAddress, r)
+				}
+				return txHash, nil
+			},
+		},
+	)
+
+	returnedHash, err := swapService.CashCheque(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if returnedHash != txHash {
+		t.Fatalf("go wrong tx hash. wanted %v, got %v", txHash, returnedHash)
+	}
+}
+
+func TestCashoutStatus(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	store := mockstore.NewStateStore()
+
+	theirChequebookAddress := common.HexToAddress("ffff")
+	peer := swarm.MustParseHexAddress("abcd")
+	addressbook := &addressbookMock{
+		chequebook: func(p swarm.Address) (common.Address, bool, error) {
+			if !peer.Equal(p) {
+				t.Fatal("querying chequebook for wrong peer")
+			}
+			return theirChequebookAddress, true, nil
+		},
+	}
+
+	expectedStatus := &chequebook.CashoutStatus{}
+
+	swapService := swap.New(
+		&swapProtocolMock{},
+		logger,
+		store,
+		mockchequebook.NewChequebook(),
+		mockchequestore.NewChequeStore(),
+		addressbook,
+		uint64(1),
+		&cashoutMock{
+			cashoutStatus: func(ctx context.Context, c common.Address) (*chequebook.CashoutStatus, error) {
+				if c != theirChequebookAddress {
+					t.Fatalf("getting status for wrong chequebook. wanted %v, got %v", theirChequebookAddress, c)
+				}
+				return expectedStatus, nil
+			},
+		},
+	)
+
+	returnedStatus, err := swapService.CashoutStatus(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if expectedStatus != returnedStatus {
+		t.Fatalf("go wrong status. wanted %v, got %v", expectedStatus, returnedStatus)
 	}
 }

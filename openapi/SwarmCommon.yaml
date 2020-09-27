@@ -89,6 +89,34 @@ components:
               connectedPeers:
                 type: object
 
+    Cheque:
+      type: object
+      properties:
+        beneficiary:
+          $ref: '#/components/schemas/EthereumAddress'
+        chequebook:
+          $ref: '#/components/schemas/EthereumAddress'
+        payout:
+          type: integer
+
+    ChequeAllPeersResponse:
+      type: object
+      properties:
+        lastcheques:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChequePeerResponse'
+
+    ChequePeerResponse:
+      type: object
+      properties:
+        peer:
+          $ref: '#/components/schemas/SwarmAddress'
+        lastreceived:
+          $ref: '#/components/schemas/Cheque'
+        lastsent:
+          $ref: '#/components/schemas/Cheque'
+
     DateTime:
       type: string
       format: date-time
@@ -99,6 +127,11 @@ components:
       description: Go time.Duration format
       type: string
       example: "5.0018ms"
+
+    EthereumAddress:
+      type: string
+      pattern: '^[A-Fa-f0-9]{40}$'
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
 
     FileName:
       type: string
@@ -213,8 +246,45 @@ components:
         - $ref: '#/components/schemas/SwarmEncryptedReference'
         - $ref: '#/components/schemas/DomainName'
 
+    SwapCashoutResult:
+      type: object
+      properties:
+        recipient:
+          $ref: '#/components/schemas/EthereumAddress'
+        lastPayout:
+          type: integer
+        bounced:
+          type: boolean
+
+    SwapCashoutStatus:
+      type: object
+      properties:
+        peer:
+          $ref: '#/components/schemas/SwarmAddress'
+        chequebook:
+          $ref: '#/components/schemas/EthereumAddress'
+        cumulativePayout:
+          type: integer
+        beneficiary:
+          $ref: '#/components/schemas/EthereumAddress'
+        transactionHash:
+          $ref: '#/components/schemas/TransactionHash'
+        result:
+          $ref: '#/components/schemas/SwapCashoutResult'
+
     TagName:
       type: string
+
+    TransactionHash:
+      type: string
+      pattern: '^[A-Fa-f0-9]{64}$'
+      example: "e28a34ffe7b1710c1baf97ca6d71d81b7f159a9920910876856c8d94dd7be4ae"
+
+    TransactionResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: '#/components/schemas/TransactionHash'
 
     Uid:
       type: integer
