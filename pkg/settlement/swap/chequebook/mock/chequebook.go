@@ -20,6 +20,7 @@ type Service struct {
 	chequebookAddressFunc          func() common.Address
 	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error
 	chequebookWithdrawFunc         func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
+	chequebookDepositFunc          func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 }
 
 // WithChequebook*Functions set the mock chequebook functions
@@ -41,9 +42,21 @@ func WithChequebookAddressFunc(f func() common.Address) Option {
 	})
 }
 
+func WithChequebookDepositFunc(f func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)) Option {
+	return optionFunc(func(s *Service) {
+		s.chequebookDepositFunc = f
+	})
+}
+
 func WithChequebookIssueFunc(f func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookIssueFunc = f
+	})
+}
+
+func WithChequebookWithdrawFunc(f func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)) Option {
+	return optionFunc(func(s *Service) {
+		s.chequebookWithdrawFunc = f
 	})
 }
 
@@ -73,6 +86,9 @@ func (s *Service) AvailableBalance(ctx context.Context) (bal *big.Int, err error
 
 // Deposit mocks the chequebook .Deposit function
 func (s *Service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	if s.chequebookDepositFunc != nil {
+		return s.chequebookDepositFunc(ctx, amount)
+	}
 	return common.Hash{}, errors.New("Error")
 }
 

@@ -46,7 +46,7 @@ func TestChequebookBalance(t *testing.T) {
 		TotalBalance:     returnedBalance,
 		AvailableBalance: returnedAvailableBalance,
 	}
-	// We expect a list of items unordered by peer:
+
 	var got *debugapi.ChequebookBalanceResponse
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/balance", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
@@ -123,7 +123,60 @@ func TestChequebookAddress(t *testing.T) {
 	if !reflect.DeepEqual(got, expected) {
 		t.Errorf("got address: %+v, expected: %+v", got, expected)
 	}
+}
 
+func TestChequebookWithdraw(t *testing.T) {
+
+	txHash := common.HexToHash("0xfffff")
+
+	chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+		if amount.Cmp(big.NewInt(500)) == 0 {
+			return txHash, nil
+		}
+		return common.Hash{}, nil
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
+	})
+
+	expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+
+	var got *debugapi.ChequebookTxResponse
+	jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
+	)
+
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("got address: %+v, expected: %+v", got, expected)
+	}
+}
+
+func TestChequebookDeposit(t *testing.T) {
+
+	txHash := common.HexToHash("0xfffff")
+
+	chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+		if amount.Cmp(big.NewInt(700)) == 0 {
+			return txHash, nil
+		}
+		return common.Hash{}, nil
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
+	})
+
+	expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+
+	var got *debugapi.ChequebookTxResponse
+	jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
+	)
+
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("got address: %+v, expected: %+v", got, expected)
+	}
 }
 
 func TestChequebookLastCheques(t *testing.T) {
