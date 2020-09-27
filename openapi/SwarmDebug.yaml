@@ -273,7 +273,7 @@ paths:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
 
-   '/welcome-message':
+  '/welcome-message':
     get:
       summary: Get configured P2P welcome message
       tags:
