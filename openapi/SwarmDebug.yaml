@@ -387,3 +387,22 @@ paths:
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+
+  '/chequebook/cheque':
+    get:
+      summary: Get last cheques for all peers
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Last cheques
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequeAllPeersResponse'
+        '404':
+           $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response

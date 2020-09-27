@@ -99,6 +99,14 @@ components:
         payout:
           type: integer
 
+    ChequeAllPeersResponse:
+      type: object
+      properties:
+        lastcheques:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChequePeerResponse'
+
     ChequePeerResponse:
       type: object
       properties:
