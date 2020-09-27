@@ -204,7 +204,7 @@ func (s *server) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Debugf("debug api: cashout peer: cannot cash %s: %v", addr, err)
 		s.Logger.Error("debug api: cashout peer: cannot cash %s", addr)
-		jsonhttp.NotFound(w, errCannotCash)
+		jsonhttp.InternalServerError(w, errCannotCash)
 		return
 	}
 
@@ -252,7 +252,7 @@ func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request
 		}
 		s.Logger.Debugf("debug api: cashout status peer: cannot get status %s: %v", addr, err)
 		s.Logger.Error("debug api: cashout status peer: cannot get status %s", addr)
-		jsonhttp.NotFound(w, errCannotCashStatus)
+		jsonhttp.InternalServerError(w, errCannotCashStatus)
 		return
 	}
 

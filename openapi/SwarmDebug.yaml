@@ -273,7 +273,7 @@ paths:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
 
-  '/welcome-message':
+   '/welcome-message':
     get:
       summary: Get configured P2P welcome message
       tags:
@@ -307,6 +307,56 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/chequebook/cashout/{peer-id}':
+    get:
+      summary: Get last cashout action for the peer
+      parameters:
+        - in: path
+          name: peer-id
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Cashout status
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/SwapCashoutStatus'
+        '404':
+           $ref: 'SwarmCommon.yaml#/components/responses/404'                
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    post:
+      summary: Cashout the last cheque for the peer
+      parameters:
+        - in: path
+          name: peer-id
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      tags:
+        - Chequebook      
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/TransactionResponse'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:

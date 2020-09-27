@@ -100,6 +100,11 @@ components:
       type: string
       example: "5.0018ms"
 
+    EthereumAddress:
+      type: string
+      pattern: '^[A-Fa-f0-9]{40}$'
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
+
     FileName:
       type: string
 
@@ -213,8 +218,45 @@ components:
         - $ref: '#/components/schemas/SwarmEncryptedReference'
         - $ref: '#/components/schemas/DomainName'
 
+    SwapCashoutResult:
+      type: object
+      properties:
+        recipient:
+          type: '#/components/schemas/EthereumAddress'
+        lastPayout:
+          type: integer
+        bounced:
+          type: boolean
+
+    SwapCashoutStatus:
+      type: object
+      properties:
+        peer:
+          type: '#/components/schemas/SwarmAddress'
+        chequebook:
+          type: '#/components/schemas/EthereumAddress'
+        cumulativePayout:
+          type: integer
+        beneficiary:
+          type: '#/components/schemas/EthereumAddress'
+        transactionHash:
+          type: '#/components/schemas/TransactionHash'
+        result:
+          type: '#/components/schemas/SwapCashoutResult'
+
     TagName:
       type: string
+
+    TransactionHash:
+      type: string
+      pattern: '^[A-Fa-f0-9]{64}$'
+      example: "e28a34ffe7b1710c1baf97ca6d71d81b7f159a9920910876856c8d94dd7be4ae"
+
+    TransactionResponse:
+      type: object
+      properties:
+        transactionHash:
+          type: '#/components/schemas/TransactionHash'
 
     Uid:
       type: integer
