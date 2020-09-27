@@ -89,6 +89,26 @@ components:
               connectedPeers:
                 type: object
 
+    Cheque:
+      type: object
+      properties:
+        beneficiary:
+          type: '#/components/schemas/EthereumAddress'
+        chequebook:
+          type: '#/components/schemas/EthereumAddress'
+        payout:
+          type: integer
+
+    ChequePeerResponse:
+      type: object
+      properties:
+        peer:
+          type: '#/components/schemas/SwarmAddress'
+        lastreceived:
+          type: '#/components/schemas/Cheque'
+        lastsent:
+          type: '#/components/schemas/Cheque'
+
     DateTime:
       type: string
       format: date-time
