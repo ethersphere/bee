@@ -111,6 +111,18 @@ func WithLastReceivedChequesFunc(f func() (map[string]*chequebook.SignedCheque, 
 	})
 }
 
+func WithCashChequeFunc(f func(ctx context.Context, peer swarm.Address) (common.Hash, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.cashChequeFunc = f
+	})
+}
+
+func WithCashoutStatusFunc(f func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.cashoutStatusFunc = f
+	})
+}
+
 // New creates the mock swap implementation
 func New(opts ...Option) settlement.Interface {
 	mock := new(Service)
