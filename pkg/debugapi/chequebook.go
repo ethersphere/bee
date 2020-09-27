@@ -81,7 +81,7 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var lastsentresponse *chequebookLastChequePeerResponse
+	var lastSentResponse *chequebookLastChequePeerResponse
 	lastSent, err := s.Swap.LastSentCheque(peer)
 	if err != nil && err != chequebook.ErrNoCheque {
 		s.Logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
@@ -90,14 +90,14 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err == nil {
-		lastsentresponse = &chequebookLastChequePeerResponse{
+		lastSentResponse = &chequebookLastChequePeerResponse{
 			Beneficiary: lastSent.Cheque.Beneficiary.String(),
 			Chequebook:  lastSent.Cheque.Chequebook.String(),
 			Payout:      lastSent.Cheque.CumulativePayout,
 		}
 	}
 
-	var lastreceivedresponse *chequebookLastChequePeerResponse
+	var lastReceivedResponse *chequebookLastChequePeerResponse
 	lastReceived, err := s.Swap.LastReceivedCheque(peer)
 	if err != nil && err != chequebook.ErrNoCheque {
 		s.Logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
@@ -106,14 +106,14 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err == nil {
-		lastreceivedresponse = &chequebookLastChequePeerResponse{
+		lastReceivedResponse = &chequebookLastChequePeerResponse{
 			Beneficiary: lastReceived.Cheque.Beneficiary.String(),
 			Chequebook:  lastReceived.Cheque.Chequebook.String(),
 			Payout:      lastReceived.Cheque.CumulativePayout,
 		}
 	}
 
-	if lastreceivedresponse == nil && lastsentresponse == nil {
+	if lastReceivedResponse == nil && lastSentResponse == nil {
 		s.Logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
 		s.Logger.Errorf("debug api: chequebook cheque peer: can't get peer %s last cheque", peer.String())
 		jsonhttp.NotFound(w, errCantLastChequePeer)
@@ -122,8 +122,8 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 
 	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
 		Peer:         addr,
-		LastReceived: lastreceivedresponse,
-		LastSent:     lastsentresponse,
+		LastReceived: lastReceivedResponse,
+		LastSent:     lastSentResponse,
 	})
 }
 
