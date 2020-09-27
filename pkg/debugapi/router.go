@@ -102,8 +102,15 @@ func (s *server) setupRouting() {
 		router.Handle("/chequebook/address", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookAddressHandler),
 		})
-	}
 
+		router.Handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
+		})
+
+		router.Handle("/chequebook/cheque", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
+		})
+	}
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
 		handlers.CompressHandler,

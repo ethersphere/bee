@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver"
 	settlementmock "github.com/ethersphere/bee/pkg/settlement/pseudosettle/mock"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -40,6 +41,7 @@ type testServerOptions struct {
 	AccountingOpts []accountingmock.Option
 	SettlementOpts []settlementmock.Option
 	ChequebookOpts []chequebookmock.Option
+	SwapOpts       []swapmock.Option
 }
 
 type testServer struct {
@@ -52,7 +54,8 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := settlementmock.NewSettlement(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
-	s := debugapi.New(o.Overlay, o.PublicKey, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, chequebook)
+	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
+	s := debugapi.New(o.Overlay, o.PublicKey, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, swapserv, chequebook)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

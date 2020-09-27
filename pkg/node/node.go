@@ -43,7 +43,7 @@ import (
 	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
-	"github.com/ethersphere/bee/pkg/settlement"
+	settlement "github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -274,10 +274,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 
 	var settlement settlement.Interface
+	var swapService *swap.Service
+
 	if o.SwapEnable {
 		swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
 		swapAddressBook := swap.NewAddressbook(stateStore)
-		swapService := swap.New(swapProtocol, logger, stateStore, chequebookService, chequeStore, swapAddressBook, networkID)
+		swapService = swap.New(swapProtocol, logger, stateStore, chequebookService, chequeStore, swapAddressBook, networkID)
 		swapProtocol.SetSwap(swapService)
 		if err = p2ps.AddProtocol(swapProtocol.Protocol()); err != nil {
 			return nil, fmt.Errorf("swap protocol: %w", err)
@@ -430,7 +432,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
-		debugAPIService := debugapi.New(swarmAddress, publicKey, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, chequebookService)
+
+		debugAPIService := debugapi.New(swarmAddress, publicKey, p2ps, pingPong, kad, storer, logger, tracer, tagg, acc, settlement, o.SwapEnable, swapService, chequebookService)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)

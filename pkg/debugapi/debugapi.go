@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/settlement"
+	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -41,11 +42,12 @@ type server struct {
 	Settlement        settlement.Interface
 	ChequebookEnabled bool
 	Chequebook        chequebook.Service
+	Swap              swap.ApiInterface
+	metricsRegistry   *prometheus.Registry
 	http.Handler
-	metricsRegistry *prometheus.Registry
 }
 
-func New(overlay swarm.Address, publicKey ecdsa.PublicKey, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, chequebook chequebook.Service) Service {
+func New(overlay swarm.Address, publicKey ecdsa.PublicKey, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service) Service {
 	s := &server{
 		Overlay:           overlay,
 		PublicKey:         publicKey,
@@ -61,6 +63,7 @@ func New(overlay swarm.Address, publicKey ecdsa.PublicKey, p2p p2p.DebugService,
 		metricsRegistry:   newMetricsRegistry(),
 		ChequebookEnabled: chequebookEnabled,
 		Chequebook:        chequebook,
+		Swap:              swap,
 	}
 
 	s.setupRouting()

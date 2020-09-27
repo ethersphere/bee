@@ -28,6 +28,17 @@ var (
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 )
 
+type ApiInterface interface {
+	// LastSentCheque returns the last sent cheque for the peer
+	LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error)
+	// LastSentCheques returns the list of last sent cheques for all peers
+	LastSentCheques() (map[string]*chequebook.SignedCheque, error)
+	// LastReceivedCheque returns the last received cheque for the peer
+	LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error)
+	// LastReceivedCheques returns the list of last received cheques for all peers
+	LastReceivedCheques() (map[string]*chequebook.SignedCheque, error)
+}
+
 // Service is the implementation of the swap settlement layer.
 type Service struct {
 	proto       swapprotocol.Interface
@@ -211,4 +222,74 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		return ErrWrongBeneficiary
 	}
 	return nil
+}
+
+// LastSentCheque returns the last sent cheque for the peer
+func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
+
+	common, known, err := s.addressbook.Beneficiary(peer)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !known {
+		return nil, chequebook.ErrNoCheque
+	}
+
+	return s.chequebook.LastCheque(common)
+}
+
+// LastReceivedCheque returns the last received cheque for the peer
+func (s *Service) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
+
+	common, known, err := s.addressbook.Chequebook(peer)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !known {
+		return nil, chequebook.ErrNoCheque
+	}
+
+	return s.chequeStore.LastCheque(common)
+}
+
+// LastSentCheques returns the list of last sent cheques for all peers
+func (s *Service) LastSentCheques() (map[string]*chequebook.SignedCheque, error) {
+	lastcheques, err := s.chequebook.LastCheques()
+	if err != nil {
+		return nil, err
+	}
+
+	resultmap := make(map[string]*chequebook.SignedCheque, len(lastcheques))
+
+	for i, j := range lastcheques {
+		addr, known, err := s.addressbook.BeneficiaryPeer(i)
+		if err == nil && known {
+			resultmap[addr.String()] = j
+		}
+	}
+
+	return resultmap, nil
+}
+
+// LastReceivedCheques returns the list of last received cheques for all peers
+func (s *Service) LastReceivedCheques() (map[string]*chequebook.SignedCheque, error) {
+	lastcheques, err := s.chequeStore.LastCheques()
+	if err != nil {
+		return nil, err
+	}
+
+	resultmap := make(map[string]*chequebook.SignedCheque, len(lastcheques))
+
+	for i, j := range lastcheques {
+		addr, known, err := s.addressbook.ChequebookPeer(i)
+		if err == nil && known {
+			resultmap[addr.String()] = j
+		}
+	}
+
+	return resultmap, nil
 }
