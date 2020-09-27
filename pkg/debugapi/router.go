@@ -103,19 +103,28 @@ func (s *server) setupRouting() {
 			"GET": http.HandlerFunc(s.chequebookAddressHandler),
 		})
 
-		router.Handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
+		router.Handle("/chequebook/deposit", jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.chequebookDepositHandler),
 		})
 
-		router.Handle("/chequebook/cheque", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
-		})
-
-		router.Handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
-			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
-			"POST": http.HandlerFunc(s.swapCashoutHandler),
+		router.Handle("/chequebook/withdraw", jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
 		})
 	}
+
+	router.Handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
+	})
+
+	router.Handle("/chequebook/cheque", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chequebookAllLastHandler),
+	})
+
+	router.Handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
+		"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
+		"POST": http.HandlerFunc(s.swapCashoutHandler),
+	})
+
 	baseRouter.Handle("/", web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
 		handlers.CompressHandler,

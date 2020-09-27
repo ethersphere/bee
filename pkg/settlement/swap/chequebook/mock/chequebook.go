@@ -19,6 +19,7 @@ type Service struct {
 	chequebookAvailableBalanceFunc func(context.Context) (*big.Int, error)
 	chequebookAddressFunc          func() common.Address
 	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error
+	chequebookWithdrawFunc         func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 }
 
 // WithChequebook*Functions set the mock chequebook functions
@@ -101,6 +102,10 @@ func (s *Service) LastCheque(beneficiary common.Address) (*chequebook.SignedCheq
 
 func (s *Service) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, errors.New("Error")
+}
+
+func (s *Service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	return s.chequebookWithdrawFunc(ctx, amount)
 }
 
 // Option is the option passed to the mock Chequebook service
