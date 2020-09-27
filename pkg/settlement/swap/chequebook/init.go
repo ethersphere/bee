@@ -69,7 +69,12 @@ func Init(
 		// if we don't yet have a chequebook, deploy a new one
 		logger.Info("deploying new chequebook")
 
-		chequebookAddress, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
+		txHash, err := chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
+		if err != nil {
+			return nil, err
+		}
+
+		chequebookAddress, err = chequebookFactory.WaitDeployed(ctx, txHash)
 		if err != nil {
 			return nil, err
 		}
