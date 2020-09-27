@@ -25,15 +25,18 @@ jobs:
           export TAG=$(curl -s https://api.github.com/repos/ethersphere/beekeeper/releases/latest | jq -r .tag_name)
           curl -Ls https://github.com/ethersphere/beekeeper/releases/download/${TAG}/beekeeper-linux-amd64 -o beekeeper
           chmod +x beekeeper
-      - name: Set testing cluster (DNS discovery)
+      - name: Prepare testing cluster (DNS discovery)
         run: |
-          echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
-          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          ./beeinfra.sh install --dns-disco --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --pay-threshold 10000
+          ./beeinfra.sh prepare --dns-disco --geth
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
+      - name: Set testing cluster (DNS discovery)
+        run: |
+          echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
+          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
+          ./beeinfra.sh install --dns-disco --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --pay-threshold 10000 --geth
       - name: Test fullconnectivity
         id: fullconnectivity-1
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
@@ -43,11 +46,19 @@ jobs:
       - name: Test settlements
         id: settlements
         run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count 10 -t 10000
-      - name: Clean the cluster
+      - name: Destroy the cluster
         run: |
-          helm uninstall bee -n bee
+          ./beeinfra.sh destroy
+      - name: Prepare testing cluster (Node connection)
+        run: |
+          ./beeinfra.sh prepare --geth
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
       - name: Set testing cluster (Node connection)
-        run: ./beeinfra.sh install --local -r "${REPLICA}"
+        run: |
+          ./beeinfra.sh install --local -r "${REPLICA}" --geth
       - name: Test fullconnectivity
         id: fullconnectivity-2
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
@@ -75,10 +86,17 @@ jobs:
       - name: Test manifest
         id: manifest
         run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Clean the cluster
+      - name: Destroy the cluster
         run: |
-          helm uninstall bee -n bee
+          ./beeinfra.sh destroy
           grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
+      - name: Prepare testing cluster (Node connection) 5 bee nodes
+        run: |
+          ./beeinfra.sh prepare --geth
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
       - name: Increase REPLICA to 5
         run: |
           echo "::set-env name=REPLICA::5"
@@ -86,7 +104,7 @@ jobs:
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          ./beeinfra.sh install --local -r "${REPLICA}"
+          ./beeinfra.sh install --local -r "${REPLICA}" --geth
       - name: Test localpinning 1
         id: localpinning-1
         run: ./beekeeper check localpinning --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
