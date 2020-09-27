@@ -127,25 +127,21 @@ func TestChequebookAddress(t *testing.T) {
 }
 
 func TestChequebookLastCheques(t *testing.T) {
-
 	addr1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	addr2 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
 	addr3 := swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000")
 	addr4 := swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000")
 	addr5 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
-
 	beneficiary := common.HexToAddress("0xfff5")
 	beneficiary1 := common.HexToAddress("0xfff0")
 	beneficiary2 := common.HexToAddress("0xfff1")
 	beneficiary3 := common.HexToAddress("0xfff2")
-
 	cumulativePayout1 := big.NewInt(700)
 	cumulativePayout2 := big.NewInt(900)
 	cumulativePayout3 := big.NewInt(600)
 	cumulativePayout4 := big.NewInt(550)
 	cumulativePayout5 := big.NewInt(400)
 	cumulativePayout6 := big.NewInt(720)
-
 	chequebookAddress1 := common.HexToAddress("0xeee1")
 	chequebookAddress2 := common.HexToAddress("0xeee2")
 	chequebookAddress3 := common.HexToAddress("0xeee3")
@@ -153,10 +149,8 @@ func TestChequebookLastCheques(t *testing.T) {
 	chequebookAddress5 := common.HexToAddress("0xeee5")
 
 	lastSentChequesFunc := func() (map[string]*chequebook.SignedCheque, error) {
-
 		lastSentCheques := make(map[string]*chequebook.SignedCheque, 3)
 		sig := make([]byte, 65)
-
 		lastSentCheques[addr1.String()] = &chequebook.SignedCheque{
 			Cheque: chequebook.Cheque{
 				Beneficiary:      beneficiary1,
@@ -183,14 +177,11 @@ func TestChequebookLastCheques(t *testing.T) {
 			},
 			Signature: sig,
 		}
-
 		return lastSentCheques, nil
 	}
 
 	lastReceivedChequesFunc := func() (map[string]*chequebook.SignedCheque, error) {
-
 		lastReceivedCheques := make(map[string]*chequebook.SignedCheque, 3)
-
 		sig := make([]byte, 65)
 
 		lastReceivedCheques[addr1.String()] = &chequebook.SignedCheque{

@@ -75,71 +75,75 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: chequebook lastcheque peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Error("debug api: chequebook lastcheque peer: invalid peer address %s", addr)
+		s.Logger.Debugf("debug api: chequebook cheque peer: invalid peer address %s: %v", addr, err)
+		s.Logger.Error("debug api: chequebook cheque peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
 
+	var lastsentresponse *chequebookLastChequePeerResponse
 	lastSent, err := s.Swap.LastSentCheque(peer)
 	if err != nil && err != chequebook.ErrNoCheque {
-		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v", peer.String(), err)
-		s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
+		s.Logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
+		s.Logger.Errorf("debug api: chequebook cheque peer: can't get peer %s last cheque", peer.String())
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
 		return
 	}
-
-	lastReceived, err2 := s.Swap.LastReceivedCheque(peer)
-	if err2 != nil && err2 != chequebook.ErrNoCheque {
-		s.Logger.Debugf("debug api: chequebook lastcheque peer: get peer %s last cheque: %v", peer.String(), err2)
-		s.Logger.Errorf("debug api: chequebook lastcheque peer: can't get peer %s last cheque", peer.String())
-		jsonhttp.InternalServerError(w, errCantLastChequePeer)
-		return
-	}
-
-	var lastsent *chequebookLastChequePeerResponse
 	if err == nil {
-		lastsent = &chequebookLastChequePeerResponse{
+		lastsentresponse = &chequebookLastChequePeerResponse{
 			Beneficiary: lastSent.Cheque.Beneficiary.String(),
 			Chequebook:  lastSent.Cheque.Chequebook.String(),
 			Payout:      lastSent.Cheque.CumulativePayout,
 		}
 	}
 
-	var lastreceived *chequebookLastChequePeerResponse
-	if err2 == nil {
-		lastreceived = &chequebookLastChequePeerResponse{
+	var lastreceivedresponse *chequebookLastChequePeerResponse
+	lastReceived, err := s.Swap.LastReceivedCheque(peer)
+	if err != nil && err != chequebook.ErrNoCheque {
+		s.Logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
+		s.Logger.Errorf("debug api: chequebook cheque peer: can't get peer %s last cheque", peer.String())
+		jsonhttp.InternalServerError(w, errCantLastChequePeer)
+		return
+	}
+	if err == nil {
+		lastreceivedresponse = &chequebookLastChequePeerResponse{
 			Beneficiary: lastReceived.Cheque.Beneficiary.String(),
 			Chequebook:  lastReceived.Cheque.Chequebook.String(),
 			Payout:      lastReceived.Cheque.CumulativePayout,
 		}
 	}
 
+	if lastreceivedresponse == nil && lastsentresponse == nil {
+		s.Logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
+		s.Logger.Errorf("debug api: chequebook cheque peer: can't get peer %s last cheque", peer.String())
+		jsonhttp.NotFound(w, errCantLastChequePeer)
+		return
+	}
+
 	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
 		Peer:         addr,
-		LastReceived: lastreceived,
-		LastSent:     lastsent,
+		LastReceived: lastreceivedresponse,
+		LastSent:     lastsentresponse,
 	})
 }
 
 func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
-
 	lastchequessent, err := s.Swap.LastSentCheques()
-
 	if err != nil {
+		s.Logger.Debugf("debug api: chequebook cheque all: get all last cheques: %v", err)
+		s.Logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
 		jsonhttp.InternalServerError(w, errCantLastCheque)
 		return
 	}
-
 	lastchequesreceived, err := s.Swap.LastReceivedCheques()
-
 	if err != nil {
+		s.Logger.Debugf("debug api: chequebook cheque all: get all last cheques: %v", err)
+		s.Logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
 		jsonhttp.InternalServerError(w, errCantLastCheque)
 		return
 	}
 
 	lcr := make(map[string]chequebookLastChequesPeerResponse)
-
 	for i, j := range lastchequessent {
 		lcr[i] = chequebookLastChequesPeerResponse{
 			Peer: i,
@@ -151,7 +155,6 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 			LastReceived: nil,
 		}
 	}
-
 	for i, j := range lastchequesreceived {
 		if _, ok := lcr[i]; ok {
 			t := lcr[i]
@@ -182,5 +185,4 @@ func (s *server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonhttp.OK(w, chequebookLastChequesResponse{LastCheques: lcresponses})
-
 }
