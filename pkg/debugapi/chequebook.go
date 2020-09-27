@@ -5,6 +5,7 @@
 package debugapi
 
 import (
+	"errors"
 	"math/big"
 	"net/http"
 
@@ -22,6 +23,8 @@ var (
 	errCantLastCheque     = "cannot get last cheque for all peers"
 	errCannotCash         = "cannot cash cheque"
 	errCannotCashStatus   = "cannot get cashout status"
+	errNoCashout          = "no prior cashout"
+	errNoCheque           = "no prior cheque"
 )
 
 type chequebookBalanceResponse struct {
@@ -235,6 +238,14 @@ func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request
 
 	status, err := s.Swap.CashoutStatus(r.Context(), peer)
 	if err != nil {
+		if errors.Is(err, chequebook.ErrNoCheque) {
+			jsonhttp.NotFound(w, errNoCheque)
+			return
+		}
+		if errors.Is(err, chequebook.ErrNoCashout) {
+			jsonhttp.NotFound(w, errNoCashout)
+			return
+		}
 		s.Logger.Debugf("debug api: cashout status peer: cannot get status %s: %v", addr, err)
 		s.Logger.Error("debug api: cashout status peer: cannot get status %s", addr)
 		jsonhttp.NotFound(w, errCannotCashStatus)

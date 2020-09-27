@@ -2,6 +2,7 @@ package chequebook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -11,6 +12,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
+)
+
+var (
+	// ErrNoCashout is the error if there has not been any cashout action for the chequebook
+	ErrNoCashout = errors.New("no prior cashout")
 )
 
 // CashoutService is the service responsible for managing cashout actions
@@ -124,6 +130,9 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 	var action *cashoutAction
 	err := s.store.Get(cashoutActionKey(chequebookAddress), &action)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, ErrNoCashout
+		}
 		return nil, err
 	}
 
