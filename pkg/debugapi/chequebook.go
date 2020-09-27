@@ -113,13 +113,6 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	if lastReceivedResponse == nil && lastSentResponse == nil {
-		s.Logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
-		s.Logger.Errorf("debug api: chequebook cheque peer: can't get peer %s last cheque", peer.String())
-		jsonhttp.NotFound(w, errCantLastChequePeer)
-		return
-	}
-
 	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
 		Peer:         addr,
 		LastReceived: lastReceivedResponse,
