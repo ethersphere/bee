@@ -225,7 +225,16 @@ func TestFactoryDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	chequebookAddress, err := factory.Deploy(context.Background(), issuerAddress, defaultTimeout)
+	txHash, err := factory.Deploy(context.Background(), issuerAddress, defaultTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if txHash != deployTransactionHash {
+		t.Fatalf("returning wrong transaction hash. wanted %x, got %x", deployTransactionHash, txHash)
+	}
+
+	chequebookAddress, err := factory.WaitDeployed(context.Background(), txHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,23 +246,12 @@ func TestFactoryDeploy(t *testing.T) {
 
 func TestFactoryDeployReverted(t *testing.T) {
 	factoryAddress := common.HexToAddress("0xabcd")
-	issuerAddress := common.HexToAddress("0xefff")
-	defaultTimeout := big.NewInt(1)
 	deployTransactionHash := common.HexToHash("0xffff")
 	factory, err := newTestFactory(
 		t,
 		factoryAddress,
 		&backendMock{},
 		&transactionServiceMock{
-			send: func(ctx context.Context, request *chequebook.TxRequest) (txHash common.Hash, err error) {
-				if request.To != factoryAddress {
-					t.Fatalf("sending to wrong address. wanted %x, got %x", factoryAddress, request.To)
-				}
-				if request.Value.Cmp(big.NewInt(0)) != 0 {
-					t.Fatal("trying to send ether")
-				}
-				return deployTransactionHash, nil
-			},
 			waitForReceipt: func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 				if txHash != deployTransactionHash {
 					t.Fatalf("waiting for wrong transaction. wanted %x, got %x", deployTransactionHash, txHash)
@@ -268,7 +266,7 @@ func TestFactoryDeployReverted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = factory.Deploy(context.Background(), issuerAddress, defaultTimeout)
+	_, err = factory.WaitDeployed(context.Background(), deployTransactionHash)
 	if err == nil {
 		t.Fatal("returned failed chequebook deployment")
 	}
