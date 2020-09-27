@@ -21,6 +21,9 @@ type (
 	ChequebookLastChequePeerResponse  = chequebookLastChequePeerResponse
 	ChequebookLastChequesResponse     = chequebookLastChequesResponse
 	ChequebookLastChequesPeerResponse = chequebookLastChequesPeerResponse
+	SwapCashoutResponse               = swapCashoutResponse
+	SwapCashoutStatusResponse         = swapCashoutStatusResponse
+	SwapCashoutStatusResult           = swapCashoutStatusResult
 )
 
 var (

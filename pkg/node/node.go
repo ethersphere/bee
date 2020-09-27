@@ -154,6 +154,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	var chequebookService chequebook.Service
 	var chequeStore chequebook.ChequeStore
+	var cashoutService chequebook.CashoutService
 	var overlayEthAddress common.Address
 	if o.SwapEnable {
 		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
@@ -216,6 +217,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		chequeStore = chequebook.NewChequeStore(stateStore, swapBackend, chequebookFactory, chainID.Int64(), overlayEthAddress, chequebook.NewSimpleSwapBindings, chequebook.RecoverCheque)
+
+		cashoutService, err = chequebook.NewCashoutService(stateStore, chequebook.NewSimpleSwapBindings, swapBackend, transactionService, chequeStore)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
@@ -279,7 +285,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.SwapEnable {
 		swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
 		swapAddressBook := swap.NewAddressbook(stateStore)
-		swapService = swap.New(swapProtocol, logger, stateStore, chequebookService, chequeStore, swapAddressBook, networkID)
+		swapService = swap.New(swapProtocol, logger, stateStore, chequebookService, chequeStore, swapAddressBook, networkID, cashoutService)
 		swapProtocol.SetSwap(swapService)
 		if err = p2ps.AddProtocol(swapProtocol.Protocol()); err != nil {
 			return nil, fmt.Errorf("swap protocol: %w", err)

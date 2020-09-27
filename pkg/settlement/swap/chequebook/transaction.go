@@ -26,6 +26,7 @@ var (
 type Backend interface {
 	bind.ContractBackend
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
 }
 
 // TxRequest describes a request for a transaction that can be executed.
