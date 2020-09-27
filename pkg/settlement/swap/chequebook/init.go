@@ -6,7 +6,7 @@ package chequebook
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -41,6 +41,8 @@ func Init(
 		return nil, err
 	}
 
+	logger.Info("no chequebook found, deploying new one.")
+
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)
 	if err != nil {
@@ -62,14 +64,19 @@ func Init(
 			}
 
 			if balance.Cmp(big.NewInt(int64(swapInitialDeposit))) < 0 {
-				return nil, errors.New("insufficient token for initial deposit")
+				return nil, fmt.Errorf("insufficient token for initial deposit. Please make sure there is sufficient eth and bzz available on %x", overlayEthAddress)
 			}
 		}
 
 		// if we don't yet have a chequebook, deploy a new one
-		logger.Info("deploying new chequebook")
+		txHash, err := chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
+		if err != nil {
+			return nil, err
+		}
 
-		chequebookAddress, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
+		logger.Infof("deploying new chequebook in transaction %x", txHash)
+
+		chequebookAddress, err = chequebookFactory.WaitDeployed(ctx, txHash)
 		if err != nil {
 			return nil, err
 		}
@@ -88,19 +95,19 @@ func Init(
 		}
 
 		if swapInitialDeposit != 0 {
-			logger.Info("depositing into new chequebook")
-
+			logger.Infof("depositing %d token into new chequebook", swapInitialDeposit)
 			depositHash, err := chequebookService.Deposit(ctx, big.NewInt(int64(swapInitialDeposit)))
 			if err != nil {
 				return nil, err
 			}
 
+			logger.Infof("sent deposit transaction %x", depositHash)
 			err = chequebookService.WaitForDeposit(ctx, depositHash)
 			if err != nil {
 				return nil, err
 			}
 
-			logger.Infof("deposited to chequebook %x in transaction %x", chequebookAddress, depositHash)
+			logger.Info("successfully deposited to chequebook")
 		}
 	} else {
 		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, stateStore, chequeSigner, simpleSwapBindingFunc, erc20BindingFunc)

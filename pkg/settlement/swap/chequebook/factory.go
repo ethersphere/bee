@@ -27,8 +27,10 @@ var (
 type Factory interface {
 	// ERC20Address returns the token for which this factory deploys chequebooks.
 	ERC20Address(ctx context.Context) (common.Address, error)
-	// Deploy deploys a new chequebook and returns once confirmed.
-	Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Address, error)
+	// Deploy deploys a new chequebook and returns once the transaction has been submitted.
+	Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Hash, error)
+	// WaitDeployed waits for the deployment transaction to confirm and returns the chequebook address
+	WaitDeployed(ctx context.Context, txHash common.Hash) (common.Address, error)
 	// VerifyBytecode checks that the factory is valid.
 	VerifyBytecode(ctx context.Context) error
 	// VerifyChequebook checks that the supplied chequebook has been deployed by this factory.
@@ -65,11 +67,11 @@ func NewFactory(backend Backend, transactionService TransactionService, address 
 	}, nil
 }
 
-// Deploy deploys a new chequebook and returns once confirmed.
-func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Address, error) {
+// Deploy deploys a new chequebook and returns once the transaction has been submitted.
+func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Hash, error) {
 	callData, err := c.ABI.Pack("deploySimpleSwap", issuer, big.NewInt(0).Set(defaultHardDepositTimeoutDuration))
 	if err != nil {
-		return common.Address{}, err
+		return common.Hash{}, err
 	}
 
 	request := &TxRequest{
@@ -82,9 +84,14 @@ func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHard
 
 	txHash, err := c.transactionService.Send(ctx, request)
 	if err != nil {
-		return common.Address{}, err
+		return common.Hash{}, err
 	}
 
+	return txHash, nil
+}
+
+// WaitDeployed waits for the deployment transaction to confirm and returns the chequebook address
+func (c *factory) WaitDeployed(ctx context.Context, txHash common.Hash) (common.Address, error) {
 	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return common.Address{}, err

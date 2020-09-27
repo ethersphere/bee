@@ -182,11 +182,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			var found bool
 			factoryAddress, found = chequebook.DiscoverFactoryAddress(chainID.Int64())
 			if !found {
-				return nil, errors.New("no known factory address")
+				return nil, errors.New("no known factory address for this network")
 			}
 			logger.Infof("using default factory address for chain id %d: %x", chainID, factoryAddress)
 		} else if !common.IsHexAddress(o.SwapFactoryAddress) {
-			return nil, errors.New("invalid factory address")
+			return nil, errors.New("malformed factory address")
 		} else {
 			factoryAddress = common.HexToAddress(o.SwapFactoryAddress)
 			logger.Infof("using custom factory address: %x", factoryAddress)
