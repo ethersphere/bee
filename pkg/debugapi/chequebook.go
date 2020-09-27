@@ -239,10 +239,14 @@ func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request
 	status, err := s.Swap.CashoutStatus(r.Context(), peer)
 	if err != nil {
 		if errors.Is(err, chequebook.ErrNoCheque) {
+			s.Logger.Debugf("debug api: cashout status peer: %v", addr, err)
+			s.Logger.Error("debug api: cashout status peer: %s", addr)
 			jsonhttp.NotFound(w, errNoCheque)
 			return
 		}
 		if errors.Is(err, chequebook.ErrNoCashout) {
+			s.Logger.Debugf("debug api: cashout status peer: %v", addr, err)
+			s.Logger.Error("debug api: cashout status peer: %s", addr)
 			jsonhttp.NotFound(w, errNoCashout)
 			return
 		}
