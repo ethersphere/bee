@@ -108,7 +108,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookAddress'
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookBalance'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
