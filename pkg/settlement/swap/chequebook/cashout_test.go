@@ -66,7 +66,7 @@ func TestCashout(t *testing.T) {
 				return &types.Receipt{
 					Status: types.ReceiptStatusSuccessful,
 					Logs: []*types.Log{
-						&types.Log{
+						{
 							Address: chequebookAddress,
 							Topics:  []common.Hash{log1Topic},
 						},
@@ -201,11 +201,11 @@ func TestCashoutBounced(t *testing.T) {
 				return &types.Receipt{
 					Status: types.ReceiptStatusSuccessful,
 					Logs: []*types.Log{
-						&types.Log{
+						{
 							Address: chequebookAddress,
 							Topics:  []common.Hash{log1Topic},
 						},
-						&types.Log{
+						{
 							Address: chequebookAddress,
 							Topics:  []common.Hash{logBouncedTopic},
 						},
