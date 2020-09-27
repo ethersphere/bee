@@ -93,9 +93,9 @@ components:
       type: object
       properties:
         beneficiary:
-          type: '#/components/schemas/EthereumAddress'
+          $ref: '#/components/schemas/EthereumAddress'
         chequebook:
-          type: '#/components/schemas/EthereumAddress'
+          $ref: '#/components/schemas/EthereumAddress'
         payout:
           type: integer
 
@@ -103,11 +103,11 @@ components:
       type: object
       properties:
         peer:
-          type: '#/components/schemas/SwarmAddress'
+          $ref: '#/components/schemas/SwarmAddress'
         lastreceived:
-          type: '#/components/schemas/Cheque'
+          $ref: '#/components/schemas/Cheque'
         lastsent:
-          type: '#/components/schemas/Cheque'
+          $ref: '#/components/schemas/Cheque'
 
     DateTime:
       type: string
@@ -242,7 +242,7 @@ components:
       type: object
       properties:
         recipient:
-          type: '#/components/schemas/EthereumAddress'
+          $ref: '#/components/schemas/EthereumAddress'
         lastPayout:
           type: integer
         bounced:
@@ -252,17 +252,17 @@ components:
       type: object
       properties:
         peer:
-          type: '#/components/schemas/SwarmAddress'
+          $ref: '#/components/schemas/SwarmAddress'
         chequebook:
-          type: '#/components/schemas/EthereumAddress'
+          $ref: '#/components/schemas/EthereumAddress'
         cumulativePayout:
           type: integer
         beneficiary:
-          type: '#/components/schemas/EthereumAddress'
+          $ref: '#/components/schemas/EthereumAddress'
         transactionHash:
-          type: '#/components/schemas/TransactionHash'
+          $ref: '#/components/schemas/TransactionHash'
         result:
-          type: '#/components/schemas/SwapCashoutResult'
+          $ref: '#/components/schemas/SwapCashoutResult'
 
     TagName:
       type: string
@@ -276,7 +276,7 @@ components:
       type: object
       properties:
         transactionHash:
-          type: '#/components/schemas/TransactionHash'
+          $ref: '#/components/schemas/TransactionHash'
 
     Uid:
       type: integer
