@@ -26,6 +26,7 @@ func Init(
 	swapInitialDeposit uint64,
 	transactionService TransactionService,
 	swapBackend Backend,
+	chainId int64,
 	overlayEthAddress common.Address,
 	chequeSigner ChequeSigner,
 	simpleSwapBindingFunc SimpleSwapBindingFunc,
@@ -63,7 +64,11 @@ func Init(
 			}
 
 			if balance.Cmp(big.NewInt(int64(swapInitialDeposit))) < 0 {
-				return nil, fmt.Errorf("insufficient token for initial deposit. Please make sure there is sufficient eth and bzz available on %x", overlayEthAddress)
+				logger.Warningf("Please make sure there is sufficient eth and bzz available on %x.", overlayEthAddress)
+				if chainId == 5 {
+					logger.Warning("On goerli you can get both goerli eth and goerli bzz from https://faucet.ethswarm.org.")
+				}
+				return nil, fmt.Errorf("insufficient token for initial deposit")
 			}
 		}
 
