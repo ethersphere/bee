@@ -406,3 +406,55 @@ paths:
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+
+  '/chequebook/deposit':
+    post:
+      summary: Deposit tokens from overlay address into chequebook
+      parameters:
+        - in: query
+          name: amount
+          schema:
+            type: integer
+          required: true
+          description: amount of tokens to deposit
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Transaction hash of the deposit transaction
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/TransactionResponse'
+        '400':
+           $ref: 'SwarmCommon.yaml#/components/responses/404'                
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/chequebook/withdraw':
+    post:
+      summary: Withdraw tokens from the chequebook to the overlay address
+      parameters:
+        - in: query
+          name: amount
+          schema:
+            type: integer
+          required: true
+          description: amount of tokens to withdraw
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Transaction hash of the withdraw transaction
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/TransactionResponse'
+        '400':
+           $ref: 'SwarmCommon.yaml#/components/responses/404'                
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response 

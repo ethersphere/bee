@@ -21,6 +21,7 @@ type (
 	ChequebookLastChequePeerResponse  = chequebookLastChequePeerResponse
 	ChequebookLastChequesResponse     = chequebookLastChequesResponse
 	ChequebookLastChequesPeerResponse = chequebookLastChequesPeerResponse
+	ChequebookTxResponse              = chequebookTxResponse
 	SwapCashoutResponse               = swapCashoutResponse
 	SwapCashoutStatusResponse         = swapCashoutStatusResponse
 	SwapCashoutStatusResult           = swapCashoutStatusResult
