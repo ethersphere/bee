@@ -574,7 +574,7 @@ paths:
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/PssTargets'
           required: true
-          description: Target message address prefix
+          description: Target message address prefix. If multiple targets are specified, only one would be matched.
         - in: query
           name: recipient
           schema:
@@ -586,6 +586,19 @@ paths:
           description: Subscribed to topic
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/pss/subscribe/{topic}':
+    get:
+      summary: Subscribe for messages on the given topic.
+      tags:
+        - Pss subscribe
+      responses:
+        '200':
+          description: Returns a WebSocket with a subscription for incoming message data on the requested topic.
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
