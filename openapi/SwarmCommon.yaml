@@ -117,6 +117,20 @@ components:
         lastsent:
           $ref: '#/components/schemas/Cheque'
 
+    ChequebookBalance:
+      type: object
+      properties:
+        totalBalance:
+          type: integer
+        availableBalance:
+          type: integer
+
+    ChequebookAddress:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/EthereumAddress'
+
     DateTime:
       type: string
       format: date-time
@@ -219,6 +233,28 @@ components:
       properties:
         status:
           type: string
+
+    Settlement:
+      type: object
+      properties:
+        peer:
+          $ref: "#/components/schemas/SwarmAddress"
+        received:
+          type: integer
+        sent:
+          type: integer
+
+    Settlements:
+      type: object
+      properties:
+        totalreceived:
+          type: integer
+        totalsent:
+          type: integer
+        settlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Settlement'
 
     SwarmAddress:
       type: string
