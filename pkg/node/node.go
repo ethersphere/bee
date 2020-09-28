@@ -175,7 +175,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 		chainID, err := swapBackend.ChainID(p2pCtx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
 		}
 
 		var factoryAddress common.Address
