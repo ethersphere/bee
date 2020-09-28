@@ -18,13 +18,16 @@ import (
 )
 
 var (
-	errChequebookBalance  = "cannot get chequebook balance"
-	errCantLastChequePeer = "cannot get last cheque for peer"
-	errCantLastCheque     = "cannot get last cheque for all peers"
-	errCannotCash         = "cannot cash cheque"
-	errCannotCashStatus   = "cannot get cashout status"
-	errNoCashout          = "no prior cashout"
-	errNoCheque           = "no prior cheque"
+	errChequebookBalance    = "cannot get chequebook balance"
+	errChequebookNoAmount   = "did not specify amount"
+	errChequebookNoWithdraw = "cannot withdraw"
+	errChequebookNoDeposit  = "cannot deposit"
+	errCantLastChequePeer   = "cannot get last cheque for peer"
+	errCantLastCheque       = "cannot get last cheque for all peers"
+	errCannotCash           = "cannot cash cheque"
+	errCannotCashStatus     = "cannot get cashout status"
+	errNoCashout            = "no prior cashout"
+	errNoCheque             = "no prior cheque"
 )
 
 type chequebookBalanceResponse struct {
@@ -273,4 +276,60 @@ func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request
 		Beneficiary:      status.Cheque.Beneficiary,
 		Result:           result,
 	})
+}
+
+type chequebookTxResponse struct {
+	TransactionHash common.Hash `json:"transactionHash"`
+}
+
+func (s *server) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Request) {
+	amountStr := r.URL.Query().Get("amount")
+	if amountStr == "" {
+		jsonhttp.BadRequest(w, errChequebookNoAmount)
+		s.Logger.Error("debug api: no withdraw amount")
+		return
+	}
+
+	amount, ok := big.NewInt(0).SetString(amountStr, 10)
+	if !ok {
+		jsonhttp.BadRequest(w, errChequebookNoAmount)
+		s.Logger.Error("debug api: invalid withdraw amount")
+		return
+	}
+
+	txHash, err := s.Chequebook.Withdraw(r.Context(), amount)
+	if err != nil {
+		jsonhttp.InternalServerError(w, errChequebookNoWithdraw)
+		s.Logger.Debugf("debug api: chequebook withdraw: %v", err)
+		s.Logger.Error("debug api: cannot withdraw from chequebook")
+		return
+	}
+
+	jsonhttp.OK(w, chequebookTxResponse{TransactionHash: txHash})
+}
+
+func (s *server) chequebookDepositHandler(w http.ResponseWriter, r *http.Request) {
+	amountStr := r.URL.Query().Get("amount")
+	if amountStr == "" {
+		jsonhttp.BadRequest(w, errChequebookNoAmount)
+		s.Logger.Error("debug api: no deposit amount")
+		return
+	}
+
+	amount, ok := big.NewInt(0).SetString(amountStr, 10)
+	if !ok {
+		jsonhttp.BadRequest(w, errChequebookNoAmount)
+		s.Logger.Error("debug api: invalid deposit amount")
+		return
+	}
+
+	txHash, err := s.Chequebook.Deposit(r.Context(), amount)
+	if err != nil {
+		jsonhttp.InternalServerError(w, errChequebookNoDeposit)
+		s.Logger.Debugf("debug api: chequebook deposit: %v", err)
+		s.Logger.Error("debug api: cannot deposit from chequebook")
+		return
+	}
+
+	jsonhttp.OK(w, chequebookTxResponse{TransactionHash: txHash})
 }

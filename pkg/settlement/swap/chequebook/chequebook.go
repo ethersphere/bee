@@ -30,12 +30,16 @@ const (
 var (
 	// ErrOutOfFunds is the error when the chequebook has not enough free funds for a cheque
 	ErrOutOfFunds = errors.New("chequebook out of funds")
+	// ErrInsufficientFunds is the error when the chequebook has not enough free funds for a user action
+	ErrInsufficientFunds = errors.New("insufficient token balance")
 )
 
 // Service is the main interface for interacting with the nodes chequebook.
 type Service interface {
 	// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
 	Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
+	// Withdraw starts withdrawing erc20 token from the chequebook. This returns once the transactions has been broadcast.
+	Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 	// WaitForDeposit waits for the deposit transaction to confirm and verifies the result.
 	WaitForDeposit(ctx context.Context, txHash common.Hash) error
 	// Balance returns the token balance of the chequebook.
@@ -123,7 +127,7 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 
 	// check we can afford this so we don't waste gas
 	if balance.Cmp(amount) < 0 {
-		return common.Hash{}, errors.New("insufficient token balance")
+		return common.Hash{}, ErrInsufficientFunds
 	}
 
 	callData, err := s.erc20ABI.Pack("transfer", s.address, amount)
@@ -324,4 +328,36 @@ func (s *service) LastCheques() (map[common.Address]*SignedCheque, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	availableBalance, err := s.AvailableBalance(ctx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	// check we can afford this so we don't waste gas and don't risk bouncing cheques
+	if availableBalance.Cmp(amount) < 0 {
+		return common.Hash{}, ErrInsufficientFunds
+	}
+
+	callData, err := s.chequebookABI.Pack("withdraw", amount)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	request := &TxRequest{
+		To:       s.address,
+		Data:     callData,
+		GasPrice: nil,
+		GasLimit: 0,
+		Value:    big.NewInt(0),
+	}
+
+	txHash, err := s.transactionService.Send(ctx, request)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return txHash, nil
 }

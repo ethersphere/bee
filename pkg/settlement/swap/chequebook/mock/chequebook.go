@@ -19,6 +19,8 @@ type Service struct {
 	chequebookAvailableBalanceFunc func(context.Context) (*big.Int, error)
 	chequebookAddressFunc          func() common.Address
 	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error
+	chequebookWithdrawFunc         func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
+	chequebookDepositFunc          func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 }
 
 // WithChequebook*Functions set the mock chequebook functions
@@ -40,9 +42,21 @@ func WithChequebookAddressFunc(f func() common.Address) Option {
 	})
 }
 
+func WithChequebookDepositFunc(f func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)) Option {
+	return optionFunc(func(s *Service) {
+		s.chequebookDepositFunc = f
+	})
+}
+
 func WithChequebookIssueFunc(f func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookIssueFunc = f
+	})
+}
+
+func WithChequebookWithdrawFunc(f func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)) Option {
+	return optionFunc(func(s *Service) {
+		s.chequebookWithdrawFunc = f
 	})
 }
 
@@ -72,6 +86,9 @@ func (s *Service) AvailableBalance(ctx context.Context) (bal *big.Int, err error
 
 // Deposit mocks the chequebook .Deposit function
 func (s *Service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	if s.chequebookDepositFunc != nil {
+		return s.chequebookDepositFunc(ctx, amount)
+	}
 	return common.Hash{}, errors.New("Error")
 }
 
@@ -101,6 +118,10 @@ func (s *Service) LastCheque(beneficiary common.Address) (*chequebook.SignedCheq
 
 func (s *Service) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, errors.New("Error")
+}
+
+func (s *Service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	return s.chequebookWithdrawFunc(ctx, amount)
 }
 
 // Option is the option passed to the mock Chequebook service
