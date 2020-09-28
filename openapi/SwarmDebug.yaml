@@ -2,9 +2,7 @@ openapi: 3.0.0
 info:
   version: 0.1.0
   title: Bee Debug API
-  description: >-
-    A list of the currently provided debug interfaces to interact with the bee
-    node
+  description: 'A list of the currently provided debug interfaces to interact with the bee node'
 
 security:
   - {}
@@ -14,6 +12,7 @@ externalDocs:
   url: 'https://docs.swarm.eth'
 
 servers:
+
   - url: 'http://{apiRoot}:{port}'
     variables:
       apiRoot:
@@ -81,6 +80,36 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/chequebook/address':
+    get:
+      summary: Get the address of the chequebook contract used
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Ethereum address of chequebook contract
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookAddress'
+
+  '/chequebook/balance':
+    get:
+      summary: Get the balance of the chequebook
+      tags:
+        - Chequebook
+      responses:
+        '200':
+          description: Balance of the chequebook
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookBalance'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
 
@@ -257,6 +286,49 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
+        default:
+          description: Default response
+
+  '/settlements/{address}':
+    get:
+      summary: Get amount of sent and received from settlements with a peer
+      tags:
+        - Settlements
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      responses:
+        '200':
+          description: Amount of sent or received from settlements with a peer
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Settlement'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/settlements':
+    get:
+      summary: Get settlements with all known peers and total amount sent or received
+      tags:
+        - Settlements
+      responses:
+        '200':
+          description: Settlements with all known peers and total amount sent or received
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Settlements'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
 
