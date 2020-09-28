@@ -9,7 +9,6 @@ import (
 	"context"
 	"io/ioutil"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
@@ -44,14 +43,14 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
-	psPivot, storerPivot, _, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, nil, mock.WithClosestPeer(closestPeer))
+	psPivot, storerPivot, _, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, mock.WithClosestPeer(closestPeer))
 	defer storerPivot.Close()
 
 	// Trigger the sending of chunk to the closest node
@@ -102,14 +101,14 @@ func TestPushChunkToClosest(t *testing.T) {
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
-	psPivot, storerPivot, pivotTags, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, nil, mock.WithClosestPeer(closestPeer))
+	psPivot, storerPivot, pivotTags, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, mock.WithClosestPeer(closestPeer))
 	defer storerPivot.Close()
 
 	ta, err := pivotTags.Create("test", 1)
@@ -187,26 +186,20 @@ func TestHandler(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	// mock call back function to see if pss message is delivered when it is received in the destination (closestPeer in this testcase)
-	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
-	pssDeliver := func(ctx context.Context, ch swarm.Chunk) {
-		hookWasCalled <- true
-	}
-
 	// Create the closest peer
-	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, nil, pssDeliver, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
 	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()))
 
 	// creating the pivot peer
-	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, closestRecorder, nil, mock.WithClosestPeer(closestPeer))
+	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, closestRecorder, mock.WithClosestPeer(closestPeer))
 	defer storerPivotDB.Close()
 
 	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()))
 
 	// Creating the trigger peer
-	psTriggerPeer, triggerStorerDB, _, triggerAccounting := createPushSyncNode(t, triggerPeer, pivotRecorder, nil, mock.WithClosestPeer(pivotPeer))
+	psTriggerPeer, triggerStorerDB, _, triggerAccounting := createPushSyncNode(t, triggerPeer, pivotRecorder, mock.WithClosestPeer(pivotPeer))
 	defer triggerStorerDB.Close()
 
 	receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
@@ -230,14 +223,6 @@ func TestHandler(t *testing.T) {
 
 	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
 	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunkAddress, nil)
-
-	// check if the pss delivery hook is called
-	select {
-	case <-hookWasCalled:
-		break
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("recovery hook was not called")
-	}
 
 	balance, err := triggerAccounting.Balance(pivotPeer)
 	if err != nil {
@@ -277,7 +262,7 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, pssDeliver func(context.Context, swarm.Chunk), mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
+func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)
@@ -292,7 +277,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	mockAccounting := accountingmock.NewAccounting()
 	mockPricer := accountingmock.NewPricer(fixedPrice, fixedPrice)
 
-	return pushsync.New(recorder, storer, mockTopology, mtag, pssDeliver, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
+	return pushsync.New(recorder, storer, mockTopology, mtag, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

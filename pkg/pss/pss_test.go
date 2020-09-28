@@ -26,12 +26,11 @@ func TestSend(t *testing.T) {
 
 	// create a mock pushsync service to push the chunk to its destination
 	var storedChunk swarm.Chunk
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+	mockPushSyncer := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		storedChunk = chunk
 		return nil, nil
 	})
-	p := pss.New(nil, logging.New(ioutil.Discard, 0))
-	p.SetPushSyncer(pushSyncService)
+	p := pss.New(nil, mockPushSyncer, logging.New(ioutil.Discard, 0))
 
 	target := pss.Target([]byte{1}) // arbitrary test target
 	targets := pss.Targets([]pss.Target{target})
@@ -81,7 +80,7 @@ func TestDeliver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := pss.New(privkey, logging.New(ioutil.Discard, 0))
+	p := pss.New(privkey, nil, logging.New(ioutil.Discard, 0))
 
 	target := pss.Target([]byte{1}) // arbitrary test target
 	targets := pss.Targets([]pss.Target{target})
@@ -107,8 +106,8 @@ func TestDeliver(t *testing.T) {
 	}
 	p.Register(topic, handler)
 
-	// call pss TryUnwrap on chunk and verify test topic variable value changes
-	p.TryUnwrap(ctx, chunk)
+	// call pss Handle on chunk and verify test topic variable value changes
+	p.Handle(ctx, chunk)
 
 	var message topicMessage
 	select {
@@ -136,7 +135,7 @@ func TestRegister(t *testing.T) {
 	}
 	recipient := &privkey.PublicKey
 	var (
-		p       = pss.New(privkey, logging.New(ioutil.Discard, 0))
+		p       = pss.New(privkey, nil, logging.New(ioutil.Discard, 0))
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0
@@ -172,7 +171,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.TryUnwrap(context.Background(), chunk1)
+	p.Handle(context.Background(), chunk1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -181,7 +180,7 @@ func TestRegister(t *testing.T) {
 
 	// register another topic handler on the same topic
 	cleanup := p.Register(topic1, h3)
-	p.TryUnwrap(context.Background(), chunk1)
+	p.Handle(context.Background(), chunk1)
 
 	waitHandlerCallback(t, &msgChan, 2)
 
@@ -191,7 +190,7 @@ func TestRegister(t *testing.T) {
 
 	cleanup() // remove the last handler
 
-	p.TryUnwrap(context.Background(), chunk1)
+	p.Handle(context.Background(), chunk1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -203,7 +202,7 @@ func TestRegister(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.TryUnwrap(context.Background(), chunk2)
+	p.Handle(context.Background(), chunk2)
 
 	waitHandlerCallback(t, &msgChan, 1)
 

@@ -7,7 +7,6 @@ package pss
 import (
 	"context"
 	"crypto/ecdsa"
-	"errors"
 	"io"
 	"sync"
 
@@ -17,8 +16,7 @@ import (
 )
 
 var (
-	_            Interface = (*pss)(nil)
-	ErrNoHandler           = errors.New("no handler found")
+	_ Interface = (*pss)(nil)
 )
 
 type Sender interface {
@@ -30,16 +28,14 @@ type Interface interface {
 	Sender
 	// Register a Handler for a given Topic.
 	Register(Topic, Handler) func()
-	// TryUnwrap tries to unwrap a wrapped trojan message.
-	TryUnwrap(context.Context, swarm.Chunk)
-
-	SetPushSyncer(pushSyncer pushsync.PushSyncer)
+	// Handle tries to unwrap a wrapped trojan message.
+	Handle(context.Context, swarm.Chunk)
 	io.Closer
 }
 
 type pss struct {
 	key        *ecdsa.PrivateKey
-	pusher     pushsync.PushSyncer
+	pushSyncer pushsync.PushSyncer
 	handlers   map[Topic][]*Handler
 	handlersMu sync.Mutex
 	metrics    metrics
@@ -48,28 +44,25 @@ type pss struct {
 }
 
 // New returns a new pss service.
-func New(key *ecdsa.PrivateKey, logger logging.Logger) Interface {
+func New(key *ecdsa.PrivateKey, pushSyncer pushsync.PushSyncer, logger logging.Logger) Interface {
 	return &pss{
-		key:      key,
-		logger:   logger,
-		handlers: make(map[Topic][]*Handler),
-		metrics:  newMetrics(),
-		quit:     make(chan struct{}),
+		key:        key,
+		pushSyncer: pushSyncer,
+		logger:     logger,
+		handlers:   make(map[Topic][]*Handler),
+		metrics:    newMetrics(),
+		quit:       make(chan struct{}),
 	}
 }
 
-func (ps *pss) Close() error {
-	close(ps.quit)
-	ps.handlersMu.Lock()
-	defer ps.handlersMu.Unlock()
+func (p *pss) Close() error {
+	close(p.quit)
+	p.handlersMu.Lock()
+	defer p.handlersMu.Unlock()
 
-	ps.handlers = make(map[Topic][]*Handler) //unset handlers on shutdown
+	p.handlers = make(map[Topic][]*Handler) //unset handlers on shutdown
 
 	return nil
-}
-
-func (ps *pss) SetPushSyncer(pushSyncer pushsync.PushSyncer) {
-	ps.pusher = pushSyncer
 }
 
 // Handler defines code to be executed upon reception of a trojan message.
@@ -87,7 +80,7 @@ func (p *pss) Send(ctx context.Context, topic Topic, payload []byte, recipient *
 	}
 
 	// push the chunk using push sync so that it reaches it destination in network
-	if _, err = p.pusher.PushChunkToClosest(ctx, tc); err != nil {
+	if _, err = p.pushSyncer.PushChunkToClosest(ctx, tc); err != nil {
 		return err
 	}
 
@@ -127,8 +120,8 @@ func (p *pss) topics() []Topic {
 	return ts
 }
 
-// TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
-func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) {
+// Handle tries to unwrap a chunk as a trojan message and calls its handlers based on the topic.
+func (p *pss) Handle(ctx context.Context, c swarm.Chunk) {
 	if len(c.Data()) < swarm.ChunkWithSpanSize {
 		return // chunk not full
 	}

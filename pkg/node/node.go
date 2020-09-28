@@ -61,23 +61,22 @@ import (
 )
 
 type Bee struct {
-	p2pService            io.Closer
-	p2pCancel             context.CancelFunc
-	apiCloser             io.Closer
-	apiServer             *http.Server
-	debugAPIServer        *http.Server
-	resolverCloser        io.Closer
-	errorLogWriter        *io.PipeWriter
-	tracerCloser          io.Closer
-	tagsCloser            io.Closer
-	stateStoreCloser      io.Closer
-	localstoreCloser      io.Closer
-	topologyCloser        io.Closer
-	pusherCloser          io.Closer
-	pullerCloser          io.Closer
-	pullSyncCloser        io.Closer
-	pssCloser             io.Closer
-	recoveryHandleCleanup func()
+	p2pService       io.Closer
+	p2pCancel        context.CancelFunc
+	apiCloser        io.Closer
+	apiServer        *http.Server
+	debugAPIServer   *http.Server
+	resolverCloser   io.Closer
+	errorLogWriter   *io.PipeWriter
+	tracerCloser     io.Closer
+	tagsCloser       io.Closer
+	stateStoreCloser io.Closer
+	localstoreCloser io.Closer
+	topologyCloser   io.Closer
+	pusherCloser     io.Closer
+	pullerCloser     io.Closer
+	pullSyncCloser   io.Closer
+	pssCloser        io.Closer
 }
 
 type Options struct {
@@ -344,52 +343,22 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
 	retrieve := retrieval.New(swarmAddress, p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator, tracer)
-	tagg := tags.NewTags(stateStore, logger)
-	b.tagsCloser = tagg
-
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	// instantiate the pss object
-	swarmPrivateKey, _, err := keystore.Key("swarm", o.Password)
-	if err != nil {
-		return nil, fmt.Errorf("swarm key: %w", err)
-	}
+	tagg := tags.NewTags(stateStore, logger)
+	b.tagsCloser = tagg
 
-	psss := pss.New(swarmPrivateKey, logger)
-	b.pssCloser = psss
-
-	var ns storage.Storer
-	if o.GlobalPinningEnabled {
-		// create recovery callback for content repair
-		recoverFunc := recovery.NewRecoveryHook(psss)
-		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
-	} else {
-		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)
-	}
-	retrieve.SetStorer(ns)
-
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, psss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
-
-	// set the pushSyncer in the PSS
-	psss.SetPushSyncer(pushSyncProtocol)
-
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagg, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
 	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
 		return nil, fmt.Errorf("pushsync service: %w", err)
-	}
-
-	if o.GlobalPinningEnabled {
-		// register function for chunk repair upon receiving a trojan message
-		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
-		b.recoveryHandleCleanup = psss.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
 	pushSyncPusher := pusher.New(storer, kad, pushSyncProtocol, tagg, logger, tracer)
 	b.pusherCloser = pushSyncPusher
 
 	pullStorage := pullstorage.New(storer)
-
 	pullSync := pullsync.New(p2ps, pullStorage, logger)
 	b.pullSyncCloser = pullSync
 
@@ -398,19 +367,36 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 
 	puller := puller.New(stateStore, kad, pullSync, logger, puller.Options{})
-
 	b.pullerCloser = puller
 
-	multiResolver := multiresolver.NewMultiResolver(
+	// instantiate the pss object
+	swarmPrivateKey, _, err := keystore.Key("swarm", o.Password)
+	if err != nil {
+		return nil, fmt.Errorf("swarm key: %w", err)
+	}
+
+	ps := pss.New(swarmPrivateKey, pushSyncProtocol, logger)
+	b.pssCloser = ps
+
+	ns := netstore.New(storer, recovery.NewRecoveryHook(ps), retrieve, logger, chunkvalidator)
+	retrieve.SetStorer(ns)
+
+	if o.GlobalPinningEnabled {
+		// register function for chunk repair upon receiving a trojan message
+		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
+		_ = ps.Register(recovery.RecoveryTopic, chunkRepairHandler)
+	}
+
+	resolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
 		multiresolver.WithLogger(o.Logger),
 	)
-	b.resolverCloser = multiResolver
+	b.resolverCloser = resolver
 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagg, ns, multiResolver, psss, logger, tracer, api.Options{
+		apiService = api.New(tagg, ns, resolver, ps, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
@@ -516,10 +502,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := eg.Wait(); err != nil {
 		errs.add(err)
-	}
-
-	if b.recoveryHandleCleanup != nil {
-		b.recoveryHandleCleanup()
 	}
 
 	if err := b.pusherCloser.Close(); err != nil {

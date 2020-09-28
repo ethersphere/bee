@@ -23,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/websocket"
@@ -62,14 +61,14 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p.TryUnwrap(context.Background(), tc)
+	p.Handle(context.Background(), tc)
 
 	waitMessage(t, msgContent, payload, &mtx)
 }
 
 func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 	// create a new pss instance, register a handle through ws, call
-	// pss.TryUnwrap with a chunk designated for this handler and expect
+	// pss.Handle with a chunk designated for this handler and expect
 	// the handler to be notified
 	var (
 		p, publicKey, cl, _ = newPssTest(t, opts{})
@@ -100,7 +99,7 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p.TryUnwrap(context.Background(), tc)
+	p.Handle(context.Background(), tc)
 
 	waitMessage(t, msgContent, nil, &mtx)
 }
@@ -143,7 +142,7 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p.TryUnwrap(context.Background(), tc)
+	p.Handle(context.Background(), tc)
 
 	waitMessage(t, msgContent, nil, &mtx)
 	waitMessage(t, msgContent2, nil, &mtx)
@@ -272,7 +271,7 @@ func TestPssPingPong(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond) // wait to see that the websocket is kept alive
 
-	p.TryUnwrap(context.Background(), tc)
+	p.Handle(context.Background(), tc)
 
 	waitMessage(t, msgContent, nil, &mtx)
 }
@@ -357,7 +356,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	}
 	var (
 		logger = logging.New(ioutil.Discard, 0)
-		pss    = pss.New(privkey, logger)
+		pss    = pss.New(privkey, nil, logger)
 	)
 	if o.pingPeriod == 0 {
 		o.pingPeriod = 10 * time.Second
@@ -395,12 +394,8 @@ func (m *mpss) Register(_ pss.Topic, _ pss.Handler) func() {
 	panic("not implemented") // TODO: Implement
 }
 
-// TryUnwrap tries to unwrap a wrapped trojan message.
-func (m *mpss) TryUnwrap(_ context.Context, _ swarm.Chunk) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (m *mpss) SetPushSyncer(pushSyncer pushsync.PushSyncer) {
+// Handle tries to unwrap a wrapped trojan message.
+func (m *mpss) Handle(_ context.Context, _ swarm.Chunk) {
 	panic("not implemented") // TODO: Implement
 }
 

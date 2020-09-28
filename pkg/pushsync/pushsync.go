@@ -38,32 +38,30 @@ type Receipt struct {
 }
 
 type PushSync struct {
-	streamer         p2p.Streamer
-	storer           storage.Putter
-	peerSuggester    topology.ClosestPeerer
-	tagg             *tags.Tags
-	deliveryCallback func(context.Context, swarm.Chunk) // callback func to be invoked to deliver chunks to PSS
-	logger           logging.Logger
-	accounting       accounting.Interface
-	pricer           accounting.Pricer
-	metrics          metrics
-	tracer           *tracing.Tracer
+	streamer      p2p.Streamer
+	storer        storage.Putter
+	peerSuggester topology.ClosestPeerer
+	tagg          *tags.Tags
+	logger        logging.Logger
+	accounting    accounting.Interface
+	pricer        accounting.Pricer
+	metrics       metrics
+	tracer        *tracing.Tracer
 }
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, deliveryCallback func(context.Context, swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
-		streamer:         streamer,
-		storer:           storer,
-		peerSuggester:    closestPeerer,
-		tagg:             tagger,
-		deliveryCallback: deliveryCallback,
-		logger:           logger,
-		accounting:       accounting,
-		pricer:           pricer,
-		metrics:          newMetrics(),
-		tracer:           tracer,
+		streamer:      streamer,
+		storer:        storer,
+		peerSuggester: closestPeerer,
+		tagg:          tagger,
+		logger:        logger,
+		accounting:    accounting,
+		pricer:        pricer,
+		metrics:       newMetrics(),
+		tracer:        tracer,
 	}
 	return ps
 }
@@ -304,14 +302,5 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
-	err = ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
-	if err != nil {
-		return err
-	}
-
-	if ps.deliveryCallback != nil {
-		ps.deliveryCallback(ctx, chunk)
-	}
-
-	return nil
+	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
 }
