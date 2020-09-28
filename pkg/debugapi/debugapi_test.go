@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -30,18 +31,19 @@ import (
 )
 
 type testServerOptions struct {
-	Overlay        swarm.Address
-	PublicKey      ecdsa.PublicKey
-	P2P            *p2pmock.Service
-	Pingpong       pingpong.Interface
-	Storer         storage.Storer
-	Resolver       resolver.Interface
-	TopologyOpts   []topologymock.Option
-	Tags           *tags.Tags
-	AccountingOpts []accountingmock.Option
-	SettlementOpts []settlementmock.Option
-	ChequebookOpts []chequebookmock.Option
-	SwapOpts       []swapmock.Option
+	Overlay         swarm.Address
+	PublicKey       ecdsa.PublicKey
+	EthereumAddress common.Address
+	P2P             *p2pmock.Service
+	Pingpong        pingpong.Interface
+	Storer          storage.Storer
+	Resolver        resolver.Interface
+	TopologyOpts    []topologymock.Option
+	Tags            *tags.Tags
+	AccountingOpts  []accountingmock.Option
+	SettlementOpts  []settlementmock.Option
+	ChequebookOpts  []chequebookmock.Option
+	SwapOpts        []swapmock.Option
 }
 
 type testServer struct {
@@ -55,7 +57,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	settlement := settlementmock.NewSettlement(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
-	s := debugapi.New(o.Overlay, o.PublicKey, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, swapserv, chequebook)
+	s := debugapi.New(o.Overlay, o.PublicKey, o.EthereumAddress, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, swapserv, chequebook)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

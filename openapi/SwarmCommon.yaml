@@ -28,6 +28,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/P2PUnderlay'
+        ethereum:
+          $ref: '#/components/schemas/EthereumAddress'
         public_key:
           $ref: '#/components/schemas/PublicKey'
 
