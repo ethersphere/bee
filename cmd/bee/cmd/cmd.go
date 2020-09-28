@@ -192,7 +192,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNamePaymentThreshold, 100000, "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Uint64(optionNamePaymentTolerance, 10000, "excess debt above payment threshold in BZZ where you disconnect from your peer")
 	cmd.Flags().Uint64(optionNamePaymentEarly, 10000, "amount in BZZ below the peers payment threshold when we initiate settlement")
-	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "resolver connection string, see help for format")
+	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
 	cmd.Flags().Bool(optionNameGatewayMode, false, "disable a set of sensitive features in the api")
 	cmd.Flags().Bool(optionNameClefSignerEnable, false, "enable clef signer")
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
