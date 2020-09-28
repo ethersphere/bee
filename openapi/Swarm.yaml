@@ -596,6 +596,13 @@ paths:
       summary: Subscribe for messages on the given topic.
       tags:
         - Pss subscribe
+      parameters:
+        - in: path
+          name: topic
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/PssTopic'
+          required: true
+          description: Topic name
       responses:
         '200':
           description: Returns a WebSocket with a subscription for incoming message data on the requested topic.
