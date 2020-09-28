@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
@@ -107,7 +108,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		return err
 	}
 	if !known {
-		return ErrUnknownBeneficary
+		return p2p.NewDisconnectError(ErrUnknownBeneficary)
 	}
 	err = s.chequebook.Issue(ctx, beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
