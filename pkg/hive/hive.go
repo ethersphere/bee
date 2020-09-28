@@ -131,13 +131,13 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	for _, newPeer := range peersReq.Peers {
 		bzzAddress, err := bzz.ParseAddress(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
 		if err != nil {
-			s.logger.Warningf("skipping peer in response %s: %w", newPeer, err)
+			s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
 			continue
 		}
 
 		err = s.addressBook.Put(bzzAddress.Overlay, *bzzAddress)
 		if err != nil {
-			s.logger.Warningf("skipping peer in response %s: %w", newPeer, err)
+			s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
 			continue
 		}
 
