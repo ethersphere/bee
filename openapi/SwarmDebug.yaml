@@ -2,9 +2,7 @@ openapi: 3.0.0
 info:
   version: 0.1.0
   title: Bee Debug API
-  description: >-
-    A list of the currently provided debug interfaces to interact with the bee
-    node
+  description: 'A list of the currently provided debug interfaces to interact with the bee node'
 
 security:
   - {}
@@ -14,6 +12,7 @@ externalDocs:
   url: 'https://docs.swarm.eth'
 
 servers:
+
   - url: 'http://{apiRoot}:{port}'
     variables:
       apiRoot:
@@ -290,14 +289,40 @@ paths:
         default:
           description: Default response
 
-  '/settlements/':
+  '/settlements/{address}':
     get:
-      summary: Get settlements with all known peers and total amount sent/received
+      summary: Get amount of sent and received from settlements with a peer
+      tags:
+        - Settlements
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      responses:
+        '200':
+          description: Amount of sent or received from settlements with a peer
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Settlement'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/settlements':
+    get:
+      summary: Get settlements with all known peers and total amount sent or received
       tags:
         - Settlements
       responses:
         '200':
-          description: 'Settlements with all known peers and total amount sent/received'
+          description: Settlements with all known peers and total amount sent or received
           content:
             application/json:
               schema:
@@ -306,25 +331,6 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
-
-  '/settlements/{peer}'
-    get:
-      summary: Get amount of sent/received from settlements with a peer
-      tags:
-        - Settlements
-      responses:
-      '200':
-        description: Amount of sent/received from settlements with a peer
-        content:
-          application/json:
-            schema:
-              $ref: 'SwarmCommon.yaml#/components/schemas/Settlement'
-          '404':
-            $ref: 'SwarmCommon.yaml#/components/responses/404'
-          '500':
-            $ref: 'SwarmCommon.yaml#/components/responses/500'
-      default:
-        description: Default response
 
   '/topology':
     get:
