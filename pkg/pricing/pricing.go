@@ -85,7 +85,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
-	s.logger.Tracef("sending payment threshold announcement to peer %v", p.Address)
 	err := s.AnnouncePaymentThreshold(ctx, p.Address, s.paymentThreshold)
 	if err != nil {
 		s.logger.Warningf("error sending payment threshold announcement to peer %v", p.Address)

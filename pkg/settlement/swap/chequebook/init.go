@@ -41,8 +41,6 @@ func Init(
 		return nil, err
 	}
 
-	logger.Info("no chequebook found, deploying new one.")
-
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)
 	if err != nil {
@@ -50,6 +48,7 @@ func Init(
 			return nil, err
 		}
 
+		logger.Info("no chequebook found, deploying new one.")
 		if swapInitialDeposit != 0 {
 			erc20Token, err := erc20BindingFunc(erc20Address, swapBackend)
 			if err != nil {
