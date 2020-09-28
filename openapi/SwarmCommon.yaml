@@ -101,7 +101,7 @@ components:
       type: object
       properties:
         address:
-          type: string
+          $ref: '#/components/schemas/EthereumAddress'
 
     DateTime:
       type: string
