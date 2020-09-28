@@ -556,3 +556,38 @@ paths:
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+
+  '/pss/send/{topic}/{targets}':
+    post:
+      summary: Send to recipient or target with Postal Service for Swarm
+      tags:
+        - Postal Service for Swarm
+      parameters:
+        - in: path
+          name: topic
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/PssTopic'
+          required: true
+          description: Topic name
+        - in: path
+          name: targets
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/PssTargets'
+          required: true
+          description: Target message address prefix
+        - in: query
+          name: recipient
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/PssRecipient'
+          required: false
+          description: Recipient publickey
+      responses:
+        '200':
+          description: Subscribed to topic
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
