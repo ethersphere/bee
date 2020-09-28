@@ -207,6 +207,15 @@ components:
         pinCounter:
           type: integer
 
+    PssRecipient:
+      type: string
+
+    PssTargets:
+      type: string
+
+    PssTopic:
+      type: string
+
     ProblemDetails:
       type: string
 
