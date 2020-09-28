@@ -172,29 +172,6 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
 	})
-
-	// requesting a chunk from the upstream peer should not be possible to avoid request forwarding loops
-	t.Run("upstream", func(t *testing.T) {
-		serverAddress := swarm.MustParseHexAddress("01")
-		chunkAddress := swarm.MustParseHexAddress("02")
-		clientAddress := swarm.MustParseHexAddress("03")
-
-		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
-
-		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
-
-		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-			_, _, _ = f(serverAddress, 0)
-			return nil
-		}}
-		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
-
-		// do not request from the upstream peer
-		_, err := client.RetrieveChunk(context.Background(), chunkAddress)
-		if !errors.Is(err, topology.ErrNotFound) {
-			t.Fatalf("got error %v, want %v", err, topology.ErrNotFound)
-		}
-	})
 }
 
 type mockPeerSuggester struct {
