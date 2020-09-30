@@ -6,7 +6,9 @@
 package soc_test
 
 import (
+	"crypto/rand"
 	"encoding/binary"
+	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -19,6 +21,10 @@ import (
 // address.
 func TestValidator(t *testing.T) {
 	id := make([]byte, soc.IdSize)
+	_, err := io.ReadFull(rand.Reader, id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -34,30 +40,41 @@ func TestValidator(t *testing.T) {
 	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
 
-	sch, err := soc.NewChunk(id, ch, signer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Run("valid chunk", func(t *testing.T) {
+		sch, err := soc.NewChunk(id, ch, signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !soc.Valid(sch) {
+			t.Fatal("valid chunk evaluates to invalid")
+		}
+	})
 
-	// check valid chunk
-	v := soc.NewValidator()
-	if !v.Validate(sch) {
-		t.Fatal("valid chunk evaluates to invalid")
-	}
-
-	// check invalid data
-	sch.Data()[0] = 0x01
-	if v.Validate(sch) {
-		t.Fatal("chunk with invalid data evaluates to valid")
-	}
-
-	// check invalid address
-	sch.Data()[0] = 0x00
-	wrongAddressBytes := sch.Address().Bytes()
-	wrongAddressBytes[0] = 255 - wrongAddressBytes[0]
-	wrongAddress := swarm.NewAddress(wrongAddressBytes)
-	sch = swarm.NewChunk(wrongAddress, sch.Data())
-	if v.Validate(sch) {
-		t.Fatal("chunk with invalid address evaluates to valid")
-	}
+	t.Run("invalid chunk (content addressed)", func(t *testing.T) {
+		if soc.Valid(ch) {
+			t.Fatal("invalid chunk evaluates to valid")
+		}
+	})
+	t.Run("invalid chunk", func(t *testing.T) {
+		sch, err := soc.NewChunk(id, ch, signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sch.Data()[0] = 0x00
+		if soc.Valid(sch) {
+			t.Fatal("invalid chunk evaluates to valid")
+		}
+	})
+	t.Run("invalid chunk", func(t *testing.T) {
+		sch, err := soc.NewChunk(id, ch, signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := sch.Address().Bytes()
+		addr[0] = 0x00
+		sch = swarm.NewChunk(swarm.NewAddress(addr), sch.Data())
+		if soc.Valid(sch) {
+			t.Fatal("invalid chunk evaluates to valid")
+		}
+	})
 }

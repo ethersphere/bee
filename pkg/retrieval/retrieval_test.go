@@ -14,7 +14,6 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -22,6 +21,7 @@ import (
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
+	validatormock "github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -31,7 +31,7 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
+	mockValidator := func(_ context.Context, ch swarm.Chunk) bool { return true }
 	mockStorer := storemock.NewStorer()
 	reqAddr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -137,7 +137,7 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
-	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
+	mockValidator := validatormock.Valid
 	pricer := accountingmock.NewPricer(1, 1)
 
 	// requesting a chunk from downstream peer is expected

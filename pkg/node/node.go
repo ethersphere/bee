@@ -340,8 +340,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.localstoreCloser = storer
 
-	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
-
+	chunkvalidator := swarm.NewValidator(
+		swarm.Validator{Valid: content.Valid},
+		swarm.Validator{Valid: soc.Valid},
+	)
 	retrieve := retrieval.New(swarmAddress, p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator, tracer)
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
@@ -377,6 +379,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	ps := pss.New(swarmPrivateKey, pushSyncProtocol, logger)
 	b.pssCloser = ps
+
+	chunkvalidator = swarm.NewValidator(
+		swarm.Validator{Valid: content.Valid, Callback: ps.Handle},
+		swarm.Validator{Valid: soc.Valid},
+	)
 
 	ns := netstore.New(storer, recovery.NewRecoveryHook(ps), retrieve, logger, chunkvalidator)
 	retrieve.SetStorer(ns)

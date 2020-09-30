@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock/validator"
+	validatormock "github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -63,7 +63,7 @@ func TestMockValidatingStorer(t *testing.T) {
 	validContent := []byte("bbaatt")
 	invalidContent := []byte("bbaattss")
 
-	s := mock.NewStorer(mock.WithValidator(validator.NewMockValidator(validAddress, validContent)))
+	s := mock.NewStorer(mock.WithValidator(validatormock.NewValidator(validAddress, validContent).Validate))
 
 	ctx := context.Background()
 

@@ -6,6 +6,7 @@ package validator
 
 import (
 	"bytes"
+	"context"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -16,8 +17,8 @@ type MockValidator struct {
 	addressDataPair map[string][]byte // Make validator accept more than one address/data pair
 }
 
-// NewMockValidator constructs a new MockValidator
-func NewMockValidator(address swarm.Address, data []byte) *MockValidator {
+// NewValidator constructs a new MockValidator
+func NewValidator(address swarm.Address, data []byte) *MockValidator {
 	mp := &MockValidator{
 		addressDataPair: make(map[string][]byte),
 	}
@@ -31,7 +32,7 @@ func (v *MockValidator) AddPair(address swarm.Address, data []byte) {
 }
 
 // Validate checks the passed chunk for validity
-func (v *MockValidator) Validate(ch swarm.Chunk) (valid bool) {
+func (v *MockValidator) Validate(_ context.Context, ch swarm.Chunk) (valid bool) {
 	if data, ok := v.addressDataPair[ch.Address().String()]; ok {
 		if bytes.Equal(data, ch.Data()) {
 			return true
@@ -41,3 +42,5 @@ func (v *MockValidator) Validate(ch swarm.Chunk) (valid bool) {
 	}
 	return false
 }
+
+func Valid(_ context.Context, ch swarm.Chunk) bool { return true }

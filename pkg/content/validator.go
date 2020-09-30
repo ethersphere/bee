@@ -8,26 +8,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ swarm.Validator = (*Validator)(nil)
-
-// Validator validates that the address of a given chunk
-// is the content address of its contents.
-type Validator struct {
-}
-
-// NewValidator constructs a new Validator
-func NewValidator() swarm.Validator {
-	return &Validator{}
-}
-
-// Validate performs the validation check.
-func (v *Validator) Validate(ch swarm.Chunk) (valid bool) {
-	chunkData := ch.Data()
-	rch, err := contentChunkFromBytes(chunkData)
+// Valid checks the validity.
+func Valid(ch swarm.Chunk) (valid bool) {
+	rch, err := contentChunkFromBytes(ch.Data())
 	if err != nil {
 		return false
 	}
-
-	address := ch.Address()
-	return address.Equal(rch.Address())
+	return ch.Address().Equal(rch.Address())
 }

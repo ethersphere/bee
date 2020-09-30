@@ -4,6 +4,7 @@
 package validator_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage/mock/validator"
@@ -17,25 +18,25 @@ func TestMockValidator(t *testing.T) {
 	validContent := []byte("xyzzy")
 	invalidContent := []byte("yzzyx")
 
-	validator := validator.NewMockValidator(validAddr, validContent)
+	validator := validator.NewValidator(validAddr, validContent)
 
 	ch := swarm.NewChunk(validAddr, validContent)
-	if !validator.Validate(ch) {
+	if !validator.Validate(context.Background(), ch) {
 		t.Fatalf("chunk '%v' should be valid", ch)
 	}
 
 	ch = swarm.NewChunk(invalidAddr, validContent)
-	if validator.Validate(ch) {
+	if validator.Validate(context.Background(), ch) {
 		t.Fatalf("chunk '%v' should be invalid", ch)
 	}
 
 	ch = swarm.NewChunk(validAddr, invalidContent)
-	if validator.Validate(ch) {
+	if validator.Validate(context.Background(), ch) {
 		t.Fatalf("chunk '%v' should be invalid", ch)
 	}
 
 	ch = swarm.NewChunk(invalidAddr, invalidContent)
-	if validator.Validate(ch) {
+	if validator.Validate(context.Background(), ch) {
 		t.Fatalf("chunk '%v' should be invalid", ch)
 	}
 }

@@ -20,7 +20,7 @@ import (
 type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
-	validator        swarm.Validator
+	validator        swarm.ValidatorFunc
 	logger           logging.Logger
 	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
 }
@@ -31,7 +31,7 @@ var (
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
-	validator swarm.Validator) storage.Storer {
+	validator swarm.ValidatorFunc) storage.Storer {
 	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validator: validator}
 }
 
@@ -76,7 +76,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 // encountering an invalid chunk.
 func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
-		if !s.validator.Validate(ch) {
+		if !s.validator(ctx, ch) {
 			return nil, storage.ErrInvalidChunk
 		}
 	}

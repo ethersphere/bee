@@ -10,12 +10,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -31,8 +30,8 @@ func TestPinChunkHandler(t *testing.T) {
 		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		hash                 = swarm.MustParseHexAddress("aabbcc")
 		data                 = []byte("bbaatt")
-		mockValidator        = validator.NewMockValidator(hash, data)
-		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
+		mockValidator        = validator.NewValidator(hash, data)
+		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator.Validate))
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
 		tag                  = tags.NewTags(mockStatestore, logger)

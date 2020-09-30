@@ -11,18 +11,16 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
-	"github.com/ethersphere/bee/pkg/tags"
-
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock/validator"
+	validatormock "github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
@@ -37,7 +35,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		invalidHash          = swarm.MustParseHexAddress("bbccdd")
 		validContent         = []byte("bbaatt")
 		invalidContent       = []byte("bbaattss")
-		mockValidator        = validator.NewMockValidator(validHash, validContent)
+		mockValidator        = validatormock.NewValidator(validHash, validContent).Validate
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
 		tag                  = tags.NewTags(mockStatestore, logger)
