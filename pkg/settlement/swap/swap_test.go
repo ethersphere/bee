@@ -404,6 +404,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		},
 	}
 
+	var disconnectCalled bool
 	swapService := swap.New(
 		&swapProtocolMock{},
 		logger,
@@ -413,12 +414,24 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
+		mockp2p.New(
+			mockp2p.WithDisconnectFunc(func(disconnectPeer swarm.Address) error {
+				if !peer.Equal(disconnectPeer) {
+					t.Fatalf("disconnecting wrong peer. wanted %v, got %v", peer, disconnectPeer)
+				}
+				disconnectCalled = true
+				return nil
+			}),
+		),
 	)
 
 	err := swapService.Pay(context.Background(), peer, amount)
 	if !errors.Is(err, swap.ErrUnknownBeneficary) {
 		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrUnknownBeneficary, err)
+	}
+
+	if !disconnectCalled {
+		t.Fatal("disconnect was not called")
 	}
 }
 
