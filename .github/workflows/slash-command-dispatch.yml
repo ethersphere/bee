@@ -13,7 +13,7 @@ jobs:
           token: ${{ secrets.REPO_GHA_PAT }}
           commands: beekeeper
           repository: ${{ github.repository }}
-          dispatch-type: workflow
+          dispatch-type: repository
           issue-type: pull-request
       - name: Edit comment with error message
         if: steps.scd.outputs.error-message

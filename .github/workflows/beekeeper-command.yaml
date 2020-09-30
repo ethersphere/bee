@@ -1,7 +1,7 @@
 name: Beekeeper
 
 on:
-  workflow_dispatch:
+  repository_dispatch:
     types: [beekeeper-command]
 
 jobs:
