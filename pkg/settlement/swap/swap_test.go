@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
+	mockp2p "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
@@ -139,6 +140,7 @@ func TestReceiveCheque(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	observer := &testObserver{}
@@ -201,6 +203,7 @@ func TestReceiveChequeReject(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	observer := &testObserver{}
@@ -252,6 +255,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	observer := &testObserver{}
@@ -324,6 +328,7 @@ func TestPay(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	err := swap.Pay(context.Background(), peer, amount)
@@ -374,6 +379,7 @@ func TestPayIssueError(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	err := swap.Pay(context.Background(), peer, amount)
@@ -407,6 +413,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	err := swapService.Pay(context.Background(), peer, amount)
@@ -441,6 +448,7 @@ func TestHandshake(t *testing.T) {
 		},
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -479,6 +487,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 		},
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -508,6 +517,7 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 		&addressbookMock{},
 		networkID,
 		&cashoutMock{},
+		mockp2p.New(),
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -556,6 +566,7 @@ func TestCashout(t *testing.T) {
 				return txHash, nil
 			},
 		},
+		mockp2p.New(),
 	)
 
 	returnedHash, err := swapService.CashCheque(context.Background(), peer)
@@ -601,6 +612,7 @@ func TestCashoutStatus(t *testing.T) {
 				return expectedStatus, nil
 			},
 		},
+		mockp2p.New(),
 	)
 
 	returnedStatus, err := swapService.CashoutStatus(context.Background(), peer)
