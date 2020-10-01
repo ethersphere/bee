@@ -54,12 +54,13 @@ type Service struct {
 	chequebook  chequebook.Service
 	chequeStore chequebook.ChequeStore
 	cashout     chequebook.CashoutService
+	p2pService  p2p.Service
 	addressbook Addressbook
 	networkID   uint64
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService) *Service {
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, p2pService p2p.Service) *Service {
 	return &Service{
 		proto:       proto,
 		logger:      logger,
@@ -70,6 +71,7 @@ func New(proto swapprotocol.Interface, logger logging.Logger, store storage.Stat
 		addressbook: addressbook,
 		networkID:   networkID,
 		cashout:     cashout,
+		p2pService:  p2pService,
 	}
 }
 
@@ -108,7 +110,12 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		return err
 	}
 	if !known {
-		return p2p.NewDisconnectError(ErrUnknownBeneficary)
+		s.logger.Warning("disconnecting non-swap peer %v", peer)
+		err = s.p2pService.Disconnect(peer)
+		if err != nil {
+			return err
+		}
+		return ErrUnknownBeneficary
 	}
 	err = s.chequebook.Issue(ctx, beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
