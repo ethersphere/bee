@@ -133,8 +133,15 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		}
 	}
 
+	// Check for safety of increase of reservedBalance by price
+	if accountingPeer.reservedBalance+price < accountingPeer.reservedBalance {
+		return ErrOverflow
+	}
+
+	nextReserved := accountingPeer.reservedBalance + price
+
 	// Subtract already reserved amount from actual balance, to get expected balance
-	expectedBalance, err := subtractI64mU64(currentBalance, accountingPeer.reservedBalance)
+	expectedBalance, err := subtractI64mU64(currentBalance, nextReserved)
 	if err != nil {
 		return err
 	}
@@ -146,19 +153,30 @@ func (a *Accounting) Reserve(peer swarm.Address, price uint64) error {
 		expectedDebt = 0
 	}
 
-	// Check if the expected debt is already over the payment threshold.
-	if uint64(expectedDebt) > a.paymentThreshold {
+	// If our expected debt is less than earlyPayment away from our payment threshold (which we assume is
+	// also the peers payment threshold), trigger settlement.
+	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold
+	threshold := accountingPeer.paymentThreshold
+	if threshold > a.earlyPayment {
+		threshold -= a.earlyPayment
+	} else {
+		threshold = 0
+	}
+
+	if expectedDebt >= int64(threshold) {
+		err = a.settle(peer, accountingPeer)
+		if err != nil {
+			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
+		}
+		expectedDebt = int64(nextReserved)
+	}
+
+	if expectedDebt > int64(a.paymentThreshold) {
 		a.metrics.AccountingBlocksCount.Inc()
 		return ErrOverdraft
 	}
 
-	// Check for safety of increase of reservedBalance by price
-	if accountingPeer.reservedBalance+price < accountingPeer.reservedBalance {
-		return ErrOverflow
-	}
-
-	accountingPeer.reservedBalance += price
-
+	accountingPeer.reservedBalance = nextReserved
 	return nil
 }
 
@@ -208,20 +226,6 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
-	// Get expectedbalance by safely decreasing current balance with reserved amounts
-	expectedBalance, err := subtractI64mU64(currentBalance, accountingPeer.reservedBalance)
-	if err != nil {
-		return err
-	}
-
-	// Compute expected debt before update because reserve still includes the
-	// amount that is deducted from the balance.
-	// This conversion is made safe by previous subtractI64mU64 not allowing MinInt64
-	expectedDebt := -expectedBalance
-	if expectedDebt < 0 {
-		expectedDebt = 0
-	}
-
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
@@ -229,24 +233,6 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 
 	a.metrics.TotalCreditedAmount.Add(float64(price))
 	a.metrics.CreditEventsCount.Inc()
-
-	// If our expected debt is less than earlyPayment away from our payment threshold (which we assume is
-	// also the peers payment threshold), trigger settlement.
-	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold
-	threshold := accountingPeer.paymentThreshold
-	if threshold > a.earlyPayment {
-		threshold -= a.earlyPayment
-	} else {
-		threshold = 0
-	}
-
-	if uint64(expectedDebt) >= threshold {
-		err = a.settle(peer, accountingPeer)
-		if err != nil {
-			a.logger.Errorf("failed to settle with peer %v: %v", peer, err)
-		}
-	}
-
 	return nil
 }
 
