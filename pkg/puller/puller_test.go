@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"math"
-	"runtime"
 	"testing"
 	"time"
 
@@ -58,8 +57,7 @@ func TestOneSync(t *testing.T) {
 	})
 	defer puller.Close()
 	defer pullsync.Close()
-	runtime.Gosched()
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	kad.Trigger()
 
@@ -108,15 +106,14 @@ func TestSyncFlow_PeerOutsideDepth_Live(t *testing.T) {
 				pullsync.Close()
 				puller.Close()
 			})
-			runtime.Gosched()
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 
 			kad.Trigger()
 			waitCursorsCalled(t, pullsync, addr, false)
 			waitLiveSyncCalled(t, pullsync, addr, false)
 
-			checkCalls(t, tc.expCalls, pullsync.SyncCalls(addr)) // hist always empty
-			checkCalls(t, tc.expLiveCalls, pullsync.LiveSyncCalls(addr))
+			waitCheckCalls(t, tc.expCalls, pullsync.SyncCalls, addr) // hist always empty
+			waitCheckCalls(t, tc.expLiveCalls, pullsync.LiveSyncCalls, addr)
 
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 1)
@@ -183,8 +180,7 @@ func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 			})
 			defer puller.Close()
 			defer pullsync.Close()
-			runtime.Gosched()
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 
 			kad.Trigger()
 
@@ -192,8 +188,8 @@ func TestSyncFlow_PeerOutsideDepth_Historical(t *testing.T) {
 			waitSyncCalledTimes(t, pullsync, addr, len(tc.expCalls))
 
 			// check historical sync calls
-			checkCalls(t, tc.expCalls, pullsync.SyncCalls(addr))
-			checkCalls(t, tc.expLiveCalls, pullsync.LiveSyncCalls(addr))
+			waitCheckCalls(t, tc.expCalls, pullsync.SyncCalls, addr)
+			waitCheckCalls(t, tc.expLiveCalls, pullsync.LiveSyncCalls, addr)
 
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 1)
@@ -231,7 +227,6 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			})
 			defer puller.Close()
 			defer pullsync.Close()
-			runtime.Gosched()
 			time.Sleep(100 * time.Millisecond)
 
 			kad.Trigger()
@@ -240,7 +235,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			waitLiveSyncCalledTimes(t, pullsync, addr, len(tc.expLiveCalls))
 			time.Sleep(100 * time.Millisecond)
 
-			checkCalls(t, tc.expCalls, pullsync.SyncCalls(addr)) // hist always empty
+			waitCheckCalls(t, tc.expCalls, pullsync.SyncCalls, addr) // hist always empty
 			checkCallsUnordered(t, tc.expLiveCalls, pullsync.LiveSyncCalls(addr))
 
 			// check the intervals
@@ -267,7 +262,6 @@ func TestPeerDisconnected(t *testing.T) {
 		p.Close()
 	})
 
-	runtime.Gosched()
 	time.Sleep(50 * time.Millisecond)
 
 	kad.Trigger()
@@ -359,7 +353,6 @@ func TestDepthChange(t *testing.T) {
 			defer puller.Close()
 			defer pullsync.Close()
 
-			runtime.Gosched()
 			time.Sleep(100 * time.Millisecond)
 
 			for i := 0; i < len(tc.depths)-1; i++ {
@@ -411,24 +404,31 @@ func checkNotFound(t *testing.T, s storage.StateStorer, addr swarm.Address, bin 
 	t.Fatalf("wanted error but got none. bin %d", bin)
 }
 
-func checkCalls(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
+func waitCheckCalls(t *testing.T, expCalls []c, callsFn func(swarm.Address) []mockps.SyncCall, addr swarm.Address) {
 	t.Helper()
-	exp := len(expCalls)
-	if l := len(calls); l != exp {
-		t.Fatalf("expected %d calls but got %d. calls: %v", exp, l, calls)
+	for i := 0; i < 10; i++ {
+		time.Sleep(50 * time.Millisecond)
+		calls := callsFn(addr)
+		if l := len(calls); l != len(expCalls) {
+			t.Log(l, len(expCalls), "continue")
+			continue
+		}
+		// check the calls
+		for i, v := range expCalls {
+			if b := calls[i].Bin; b != v.b {
+				t.Errorf("bin mismatch. got %d want %d index %d", b, v.b, i)
+			}
+			if f := calls[i].From; f != v.f {
+				t.Errorf("from mismatch. got %d want %d index %d", f, v.f, i)
+			}
+			if tt := calls[i].To; tt != v.t {
+				t.Errorf("to mismatch. got %d want %d index %d", tt, v.t, i)
+			}
+		}
+		return
 	}
-	// check the calls
-	for i, v := range expCalls {
-		if b := calls[i].Bin; b != v.b {
-			t.Errorf("bin mismatch. got %d want %d index %d", b, v.b, i)
-		}
-		if f := calls[i].From; f != v.f {
-			t.Errorf("from mismatch. got %d want %d index %d", f, v.f, i)
-		}
-		if tt := calls[i].To; tt != v.t {
-			t.Errorf("to mismatch. got %d want %d index %d", tt, v.t, i)
-		}
-	}
+	calls := callsFn(addr)
+	t.Fatalf("expected %d calls but got %d. calls: %v", len(expCalls), len(calls), calls)
 }
 
 // this is needed since there are several goroutines checking the calls,
