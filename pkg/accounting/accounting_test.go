@@ -66,7 +66,7 @@ func TestAccountingAddBalance(t *testing.T) {
 
 	for i, booking := range bookings {
 		if booking.price < 0 {
-			err = acc.Reserve(booking.peer, uint64(-booking.price))
+			err = acc.Reserve(context.Background(), booking.peer, uint64(-booking.price))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -177,7 +177,7 @@ func TestAccountingReserve(t *testing.T) {
 	}
 
 	// it should allow to cross the threshold one time
-	err = acc.Reserve(peer1Addr, testPaymentThreshold+1)
+	err = acc.Reserve(context.Background(), peer1Addr, testPaymentThreshold+1)
 	if err == nil {
 		t.Fatal("expected error from reserve")
 	}
@@ -206,12 +206,12 @@ func TestAccountingOverflowReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, testPaymentThresholdLarge)
+	err = acc.Reserve(context.Background(), peer1Addr, testPaymentThresholdLarge)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, math.MaxInt64)
+	err = acc.Reserve(context.Background(), peer1Addr, math.MaxInt64)
 	if !errors.Is(err, accounting.ErrOverflow) {
 		t.Fatalf("expected overflow error from Reserve, got %v", err)
 	}
@@ -225,7 +225,7 @@ func TestAccountingOverflowReserve(t *testing.T) {
 	}
 
 	// Try reserving further value, should overflow
-	err = acc.Reserve(peer1Addr, 1)
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
 	// If we had other error, assert fail
 	if !errors.Is(err, accounting.ErrOverflow) {
 		t.Fatalf("expected overflow error from Reserve, got %v", err)
@@ -435,7 +435,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, testPaymentThreshold)
+	err = acc.Reserve(context.Background(), peer1Addr, testPaymentThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +449,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 	acc.Release(peer1Addr, testPaymentThreshold)
 
 	// try another request
-	err = acc.Reserve(peer1Addr, 1)
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,14 +473,14 @@ func TestAccountingCallSettlement(t *testing.T) {
 	}
 
 	// Assume 100 is reserved by some other request
-	err = acc.Reserve(peer1Addr, 100)
+	err = acc.Reserve(context.Background(), peer1Addr, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Credit until the expected debt exceeeds payment threshold
 	expectedAmount := uint64(testPaymentThreshold - 100)
-	err = acc.Reserve(peer1Addr, expectedAmount)
+	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,7 +493,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 	acc.Release(peer1Addr, expectedAmount)
 
 	// try another request
-	err = acc.Reserve(peer1Addr, 1)
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +538,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	}
 
 	payment := testPaymentThreshold - earlyPayment
-	err = acc.Reserve(peer1Addr, payment)
+	err = acc.Reserve(context.Background(), peer1Addr, payment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,7 +698,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, lowerThreshold)
+	err = acc.Reserve(context.Background(), peer1Addr, lowerThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}

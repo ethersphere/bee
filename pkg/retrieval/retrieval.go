@@ -138,7 +138,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 
 	// compute the price we pay for this chunk and reserve it for the rest of this function
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
-	err = s.accounting.Reserve(peer, chunkPrice)
+	err = s.accounting.Reserve(ctx, peer, chunkPrice)
 	if err != nil {
 		return nil, peer, err
 	}
