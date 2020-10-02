@@ -77,9 +77,9 @@ func NewAccounting(opts ...Option) accounting.Interface {
 }
 
 // Reserve is the mock function wrapper that calls the set implementation
-func (s *Service) Reserve(peer swarm.Address, price uint64) error {
+func (s *Service) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
 	if s.reserveFunc != nil {
-		return s.reserveFunc(peer, price)
+		return s.reserveFunc(ctx, peer, price)
 	}
 	return nil
 }
