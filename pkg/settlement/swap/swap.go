@@ -89,6 +89,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 
 	amount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
 	if err != nil {
+		s.metrics.ChequesRejected.Inc()
 		return fmt.Errorf("rejecting cheque: %w", err)
 	}
 
