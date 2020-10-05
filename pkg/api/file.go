@@ -237,7 +237,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("file download: parse file address %s: %v", nameOrHex, err)
 		logger.Errorf("file download: parse file address %s", nameOrHex)
-		jsonhttp.BadRequest(w, "invalid file address")
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
@@ -261,7 +261,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("file download: unmarshal entry %s: %v", address, err)
 		logger.Errorf("file download: unmarshal entry %s", address)
-		jsonhttp.InternalServerError(w, "error unmarshaling entry")
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
@@ -289,7 +289,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("file download: unmarshal metadata %s: %v", nameOrHex, err)
 		logger.Errorf("file download: unmarshal metadata %s", nameOrHex)
-		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
@@ -315,7 +315,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debugf("api download: not found %s: %v", reference, err)
 			logger.Error("api download: not found")
-			jsonhttp.NotFound(w, "not found")
+			jsonhttp.NotFound(w, nil)
 			return
 		}
 		logger.Debugf("api download: invalid root chunk %s: %v", reference, err)

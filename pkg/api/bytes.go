@@ -68,7 +68,7 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
 		logger.Error("bytes: parse address error")
-		jsonhttp.BadRequest(w, "invalid address")
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
