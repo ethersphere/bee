@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/settlement"
+	mockSettlement "github.com/ethersphere/bee/pkg/settlement/pseudosettle/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -65,7 +65,7 @@ func TestAccountingAddBalance(t *testing.T) {
 
 	for i, booking := range bookings {
 		if booking.price < 0 {
-			err = acc.Reserve(booking.peer, uint64(-booking.price))
+			err = acc.Reserve(context.Background(), booking.peer, uint64(-booking.price))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -152,7 +152,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	}
 }
 
-// TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded for a second time
+// TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded
 func TestAccountingReserve(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -170,12 +170,7 @@ func TestAccountingReserve(t *testing.T) {
 	}
 
 	// it should allow to cross the threshold one time
-	err = acc.Reserve(peer1Addr, testPaymentThreshold+1)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = acc.Reserve(peer1Addr, 1)
+	err = acc.Reserve(context.Background(), peer1Addr, testPaymentThreshold+1)
 	if err == nil {
 		t.Fatal("expected error from reserve")
 	}
@@ -186,15 +181,15 @@ func TestAccountingReserve(t *testing.T) {
 }
 
 func TestAccountingOverflowReserve(t *testing.T) {
+
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	settlement := &settlementMock{}
+	settlement := mockSettlement.NewSettlement()
 
 	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, settlement, nil)
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,35 +199,30 @@ func TestAccountingOverflowReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Try crediting near maximal value for peer
-	err = acc.Credit(peer1Addr, math.MaxInt64-2)
+	err = acc.Reserve(context.Background(), peer1Addr, testPaymentThresholdLarge)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Try reserving further maximal value
-	err = acc.Reserve(peer1Addr, math.MaxInt64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Try reserving further value, should overflow
-	err = acc.Reserve(peer1Addr, 1)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	// If we had other error, assert fail
-	if !errors.Is(err, accounting.ErrOverflow) {
-		t.Fatalf("expected overflow error from Debit, got %v", err)
-	}
-	// Try reserving further near maximal value
-	err = acc.Reserve(peer1Addr, math.MaxInt64-2)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	// If we had other error, assert fail
-	if !errors.Is(err, accounting.ErrOverflow) {
-		t.Fatalf("expected overflow error from Debit, got %v", err)
 	}
 
+	err = acc.Reserve(context.Background(), peer1Addr, math.MaxInt64)
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Reserve, got %v", err)
+	}
+
+	acc.Release(peer1Addr, testPaymentThresholdLarge)
+
+	// Try crediting near maximal value for peer
+	err = acc.Credit(peer1Addr, math.MaxInt64)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try reserving further value, should overflow
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
+	// If we had other error, assert fail
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatalf("expected overflow error from Reserve, got %v", err)
+	}
 }
 
 func TestAccountingOverflowNotifyPayment(t *testing.T) {
@@ -241,7 +231,7 @@ func TestAccountingOverflowNotifyPayment(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	settlement := &settlementMock{}
+	settlement := mockSettlement.NewSettlement()
 
 	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, settlement, nil)
 	if err != nil {
@@ -389,36 +379,6 @@ func TestAccountingDisconnect(t *testing.T) {
 	}
 }
 
-type settlementMock struct {
-	paidAmount uint64
-	paidPeer   swarm.Address
-}
-
-func (s *settlementMock) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
-	s.paidPeer = peer
-	s.paidAmount = amount
-	return nil
-}
-
-func (s *settlementMock) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
-	return 0, nil
-}
-
-func (s *settlementMock) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
-	return 0, nil
-}
-
-func (s *settlementMock) SettlementsSent() (SettlementSent map[string]uint64, err error) {
-	return nil, nil
-}
-
-func (s *settlementMock) SettlementsReceived() (SettlementReceived map[string]uint64, err error) {
-	return nil, nil
-}
-
-func (s *settlementMock) SetPaymentObserver(settlement.PaymentObserver) {
-}
-
 // TestAccountingCallSettlement tests that settlement is called correctly if the payment threshold is hit
 func TestAccountingCallSettlement(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
@@ -426,7 +386,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	settlement := &settlementMock{}
+	settlement := mockSettlement.NewSettlement()
 
 	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 1000, logger, store, settlement, nil)
 	if err != nil {
@@ -438,7 +398,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, testPaymentThreshold)
+	err = acc.Reserve(context.Background(), peer1Addr, testPaymentThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,12 +411,21 @@ func TestAccountingCallSettlement(t *testing.T) {
 
 	acc.Release(peer1Addr, testPaymentThreshold)
 
-	if !settlement.paidPeer.Equal(peer1Addr) {
-		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	// try another request
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if settlement.paidAmount != testPaymentThreshold {
-		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, testPaymentThreshold)
+	acc.Release(peer1Addr, 1)
+
+	totalSent, err := settlement.TotalSent(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if totalSent != testPaymentThreshold {
+		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, testPaymentThreshold)
 	}
 
 	balance, err := acc.Balance(peer1Addr)
@@ -468,14 +437,14 @@ func TestAccountingCallSettlement(t *testing.T) {
 	}
 
 	// Assume 100 is reserved by some other request
-	err = acc.Reserve(peer1Addr, 100)
+	err = acc.Reserve(context.Background(), peer1Addr, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Credit until the expected debt exceeeds payment threshold
 	expectedAmount := uint64(testPaymentThreshold - 100)
-	err = acc.Reserve(peer1Addr, expectedAmount)
+	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,13 +454,26 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !settlement.paidPeer.Equal(peer1Addr) {
-		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	acc.Release(peer1Addr, expectedAmount)
+
+	// try another request
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if settlement.paidAmount != expectedAmount {
-		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, expectedAmount)
+	acc.Release(peer1Addr, 1)
+
+	totalSent, err = settlement.TotalSent(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	if totalSent != expectedAmount+testPaymentThreshold {
+		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, expectedAmount+testPaymentThreshold)
+	}
+
+	acc.Release(peer1Addr, 100)
 }
 
 // TestAccountingCallSettlementEarly tests that settlement is called correctly if the payment threshold minus early payment is hit
@@ -501,7 +483,8 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	settlement := &settlementMock{}
+	settlement := mockSettlement.NewSettlement()
+	debt := uint64(500)
 	earlyPayment := uint64(1000)
 
 	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, earlyPayment, logger, store, settlement, nil)
@@ -514,26 +497,26 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	payment := testPaymentThreshold - earlyPayment
-	err = acc.Reserve(peer1Addr, payment)
+	err = acc.Credit(peer1Addr, debt)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Credit until payment treshold
-	err = acc.Credit(peer1Addr, payment)
+	payment := testPaymentThreshold - earlyPayment
+	err = acc.Reserve(context.Background(), peer1Addr, payment)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	acc.Release(peer1Addr, payment)
 
-	if !settlement.paidPeer.Equal(peer1Addr) {
-		t.Fatalf("paid to wrong peer. got %v wanted %v", settlement.paidPeer, peer1Addr)
+	totalSent, err := settlement.TotalSent(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if settlement.paidAmount != payment {
-		t.Fatalf("paid wrong amount. got %d wanted %d", settlement.paidAmount, payment)
+	if totalSent != debt {
+		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, testPaymentThreshold)
 	}
 
 	balance, err := acc.Balance(peer1Addr)
@@ -656,7 +639,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	defer store.Close()
 
 	pricing := &pricingMock{}
-	settlement := &settlementMock{}
+	settlement := mockSettlement.NewSettlement()
 
 	acc, err := accounting.NewAccounting(testPaymentThreshold, 1000, 0, logger, store, settlement, pricing)
 	if err != nil {
@@ -668,6 +651,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	debt := uint64(50)
 	lowerThreshold := uint64(100)
 
 	err = acc.NotifyPaymentThreshold(peer1Addr, lowerThreshold)
@@ -675,17 +659,22 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(peer1Addr, lowerThreshold)
+	err = acc.Credit(peer1Addr, debt)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Credit(peer1Addr, lowerThreshold)
+	err = acc.Reserve(context.Background(), peer1Addr, lowerThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if settlement.paidAmount != lowerThreshold {
-		t.Fatalf("settled wrong amount. wanted %d, got %d", lowerThreshold, settlement.paidAmount)
+	totalSent, err := settlement.TotalSent(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if totalSent != debt {
+		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, debt)
 	}
 }
