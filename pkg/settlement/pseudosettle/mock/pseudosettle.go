@@ -24,7 +24,7 @@ type Service struct {
 	settlementsSentFunc func() (map[string]uint64, error)
 	settlementsRecvFunc func() (map[string]uint64, error)
 
-	pay func(context.Context, swarm.Address, uint64) error
+	payFunc func(context.Context, swarm.Address, uint64) error
 }
 
 // WithsettlementFunc sets the mock settlement function
@@ -55,7 +55,7 @@ func WithSettlementsRecvFunc(f func() (map[string]uint64, error)) Option {
 
 func WithPayFunc(f func(context.Context, swarm.Address, uint64) error) Option {
 	return optionFunc(func(s *Service) {
-		s.pay = f
+		s.payFunc = f
 	})
 }
 
@@ -71,8 +71,8 @@ func NewSettlement(opts ...Option) settlement.Interface {
 }
 
 func (s *Service) Pay(c context.Context, peer swarm.Address, amount uint64) error {
-	if s.pay != nil {
-		return s.Pay(c, peer, amount)
+	if s.payFunc != nil {
+		return s.payFunc(c, peer, amount)
 	}
 	s.settlementsSent[peer.String()] += amount
 	return nil
