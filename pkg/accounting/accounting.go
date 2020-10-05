@@ -29,7 +29,7 @@ var (
 // Interface is the Accounting interface.
 type Interface interface {
 	// Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
-	// Returns an error if the operation risks exceeding the disconnect threshold.
+	// Returns an error if the operation risks exceeding the disconnect threshold or an attempted settlement failed.
 	//
 	// This has to be called (always in combination with Release) before a
 	// Credit action to prevent overspending in case of concurrent requests.
