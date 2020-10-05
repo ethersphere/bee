@@ -5,6 +5,7 @@
 package mock
 
 import (
+	"context"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -15,7 +16,7 @@ import (
 type Service struct {
 	lock         sync.Mutex
 	balances     map[string]int64
-	reserveFunc  func(peer swarm.Address, price uint64) error
+	reserveFunc  func(ctx context.Context, peer swarm.Address, price uint64) error
 	releaseFunc  func(peer swarm.Address, price uint64)
 	creditFunc   func(peer swarm.Address, price uint64) error
 	debitFunc    func(peer swarm.Address, price uint64) error
@@ -24,7 +25,7 @@ type Service struct {
 }
 
 // WithReserveFunc sets the mock Reserve function
-func WithReserveFunc(f func(peer swarm.Address, price uint64) error) Option {
+func WithReserveFunc(f func(ctx context.Context, peer swarm.Address, price uint64) error) Option {
 	return optionFunc(func(s *Service) {
 		s.reserveFunc = f
 	})
@@ -76,9 +77,9 @@ func NewAccounting(opts ...Option) accounting.Interface {
 }
 
 // Reserve is the mock function wrapper that calls the set implementation
-func (s *Service) Reserve(peer swarm.Address, price uint64) error {
+func (s *Service) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
 	if s.reserveFunc != nil {
-		return s.reserveFunc(peer, price)
+		return s.reserveFunc(ctx, peer, price)
 	}
 	return nil
 }
