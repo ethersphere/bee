@@ -1,14 +1,12 @@
 FROM golang:1.15 AS build
 
-ARG COMMIT=""
-
 WORKDIR /src
 # enable modules caching in separate layer
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
 
-RUN make binary COMMIT=$COMMIT
+RUN make binary
 
 FROM debian:10.2-slim
 
