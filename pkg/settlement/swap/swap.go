@@ -7,6 +7,7 @@ package swap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -88,7 +89,8 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 
 	amount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
 	if err != nil {
-		return err
+		s.metrics.ChequesRejected.Inc()
+		return fmt.Errorf("rejecting cheque: %w", err)
 	}
 
 	if !known {
