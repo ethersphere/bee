@@ -237,7 +237,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("file download: parse file address %s: %v", nameOrHex, err)
 		logger.Errorf("file download: parse file address %s", nameOrHex)
-		jsonhttp.BadRequest(w, "invalid file address")
+		jsonhttp.NotFound(w, "invalid file address")
 		return
 	}
 
@@ -261,7 +261,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("file download: unmarshal entry %s: %v", address, err)
 		logger.Errorf("file download: unmarshal entry %s", address)
-		jsonhttp.InternalServerError(w, "error unmarshaling entry")
+		jsonhttp.NotFound(w, "error unmarshaling entry")
 		return
 	}
 
@@ -289,7 +289,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("file download: unmarshal metadata %s: %v", nameOrHex, err)
 		logger.Errorf("file download: unmarshal metadata %s", nameOrHex)
-		jsonhttp.InternalServerError(w, "error unmarshaling metadata")
+		jsonhttp.NotFound(w, "error unmarshaling metadata")
 		return
 	}
 
