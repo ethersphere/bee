@@ -112,7 +112,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		return err
 	}
 	if !known {
-		s.logger.Warning("disconnecting non-swap peer %v", peer)
+		s.logger.Warningf("disconnecting non-swap peer %v", peer)
 		err = s.p2pService.Disconnect(peer)
 		if err != nil {
 			return err
