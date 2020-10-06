@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/crypto/eip712"
+	signermock "github.com/ethersphere/bee/pkg/crypto/mock"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
 
@@ -29,8 +30,8 @@ func TestSignCheque(t *testing.T) {
 		CumulativePayout: cumulativePayout,
 	}
 
-	signer := &signerMock{
-		signTypedData: func(data *eip712.TypedData) ([]byte, error) {
+	signer := signermock.New(
+		signermock.WithSignTypedDataFunc(func(data *eip712.TypedData) ([]byte, error) {
 
 			if data.Message["beneficiary"].(string) != beneficiaryAddress.Hex() {
 				t.Fatal("signing cheque with wrong beneficiary")
@@ -45,8 +46,8 @@ func TestSignCheque(t *testing.T) {
 			}
 
 			return signature, nil
-		},
-	}
+		}),
+	)
 
 	chequeSigner := chequebook.NewChequeSigner(signer, chainId)
 
