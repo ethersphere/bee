@@ -15,11 +15,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
-func newTestFactory(t *testing.T, factoryAddress common.Address, backend chequebook.Backend, transactionService chequebook.TransactionService, simpleSwapFactoryBinding chequebook.SimpleSwapFactoryBinding) (chequebook.Factory, error) {
+func newTestFactory(t *testing.T, factoryAddress common.Address, backend transaction.Backend, transactionService transaction.Service, simpleSwapFactoryBinding chequebook.SimpleSwapFactoryBinding) (chequebook.Factory, error) {
 	return chequebook.NewFactory(backend, transactionService, factoryAddress,
 		func(addr common.Address, b bind.ContractBackend) (chequebook.SimpleSwapFactoryBinding, error) {
 			if addr != factoryAddress {
@@ -185,7 +186,7 @@ func TestFactoryDeploy(t *testing.T) {
 		factoryAddress,
 		backendmock.New(),
 		&transactionServiceMock{
-			send: func(ctx context.Context, request *chequebook.TxRequest) (txHash common.Hash, err error) {
+			send: func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
 				if request.To != factoryAddress {
 					t.Fatalf("sending to wrong address. wanted %x, got %x", factoryAddress, request.To)
 				}
@@ -271,7 +272,7 @@ func TestFactoryDeployReverted(t *testing.T) {
 	if err == nil {
 		t.Fatal("returned failed chequebook deployment")
 	}
-	if !errors.Is(err, chequebook.ErrTransactionReverted) {
-		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrTransactionReverted, err)
+	if !errors.Is(err, transaction.ErrTransactionReverted) {
+		t.Fatalf("wrong error. wanted %v, got %v", transaction.ErrTransactionReverted, err)
 	}
 }

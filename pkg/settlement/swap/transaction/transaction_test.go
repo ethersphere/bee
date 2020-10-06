@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package chequebook_test
+package transaction_test
 
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"io/ioutil"
 	"math/big"
 	"testing"
@@ -14,10 +15,36 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/crypto/eip712"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 )
+
+type signerMock struct {
+	signTx        func(transaction *types.Transaction) (*types.Transaction, error)
+	signTypedData func(*eip712.TypedData) ([]byte, error)
+}
+
+func (*signerMock) EthereumAddress() (common.Address, error) {
+	return common.Address{}, nil
+}
+
+func (*signerMock) Sign(data []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *signerMock) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
+	return m.signTx(transaction)
+}
+
+func (*signerMock) PublicKey() (*ecdsa.PublicKey, error) {
+	return nil, nil
+}
+
+func (m *signerMock) SignTypedData(d *eip712.TypedData) ([]byte, error) {
+	return m.signTypedData(d)
+}
 
 func TestTransactionSend(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
@@ -29,13 +56,13 @@ func TestTransactionSend(t *testing.T) {
 	estimatedGasLimit := uint64(3)
 	nonce := uint64(2)
 
-	request := &chequebook.TxRequest{
+	request := &transaction.TxRequest{
 		To:    recipient,
 		Data:  txData,
 		Value: value,
 	}
 
-	transactionService, err := chequebook.NewTransactionService(logger,
+	transactionService, err := transaction.NewTransactionService(logger,
 		backendmock.New(
 			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
 				if tx != signedTx {
@@ -102,7 +129,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	txHash := common.HexToHash("0xabcdee")
 
-	transactionService, err := chequebook.NewTransactionService(logger,
+	transactionService, err := transaction.NewTransactionService(logger,
 		backendmock.New(
 			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 				return &types.Receipt{

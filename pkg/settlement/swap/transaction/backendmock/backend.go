@@ -12,7 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 )
 
 type backendMock struct {
@@ -90,7 +90,7 @@ func (m *backendMock) TransactionByHash(ctx context.Context, hash common.Hash) (
 	return nil, false, errors.New("Error")
 }
 
-func New(opts ...Option) chequebook.Backend {
+func New(opts ...Option) transaction.Backend {
 	mock := new(backendMock)
 	for _, o := range opts {
 		o.apply(mock)

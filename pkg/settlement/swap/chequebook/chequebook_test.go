@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -21,8 +22,8 @@ import (
 
 func newTestChequebook(
 	t *testing.T,
-	backend chequebook.Backend,
-	transactionService chequebook.TransactionService,
+	backend transaction.Backend,
+	transactionService transaction.Service,
 	address,
 	erc20address,
 	ownerAdress common.Address,
@@ -128,7 +129,7 @@ func TestChequebookDeposit(t *testing.T) {
 		t,
 		backendmock.New(),
 		&transactionServiceMock{
-			send: func(c context.Context, request *chequebook.TxRequest) (common.Hash, error) {
+			send: func(c context.Context, request *transaction.TxRequest) (common.Hash, error) {
 				if request.To != erc20address {
 					t.Fatalf("sending to wrong contract. wanted %x, got %x", erc20address, request.To)
 				}
@@ -234,8 +235,8 @@ func TestChequebookWaitForDepositReverted(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected reverted error")
 	}
-	if !errors.Is(err, chequebook.ErrTransactionReverted) {
-		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrTransactionReverted, err)
+	if !errors.Is(err, transaction.ErrTransactionReverted) {
+		t.Fatalf("wrong error. wanted %v, got %v", transaction.ErrTransactionReverted, err)
 	}
 }
 
@@ -499,7 +500,7 @@ func TestChequebookWithdraw(t *testing.T) {
 		t,
 		backendmock.New(),
 		&transactionServiceMock{
-			send: func(c context.Context, request *chequebook.TxRequest) (common.Hash, error) {
+			send: func(c context.Context, request *transaction.TxRequest) (common.Hash, error) {
 				if request.To != address {
 					t.Fatalf("sending to wrong contract. wanted %x, got %x", address, request.To)
 				}
@@ -556,7 +557,7 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 		t,
 		backendmock.New(),
 		&transactionServiceMock{
-			send: func(c context.Context, request *chequebook.TxRequest) (common.Hash, error) {
+			send: func(c context.Context, request *transaction.TxRequest) (common.Hash, error) {
 				if request.To != address {
 					t.Fatalf("sending to wrong contract. wanted %x, got %x", address, request.To)
 				}

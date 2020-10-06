@@ -14,15 +14,16 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto/eip712"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
 
 type transactionServiceMock struct {
-	send           func(ctx context.Context, request *chequebook.TxRequest) (txHash common.Hash, err error)
+	send           func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error)
 	waitForReceipt func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 }
 
-func (m *transactionServiceMock) Send(ctx context.Context, request *chequebook.TxRequest) (txHash common.Hash, err error) {
+func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
 	return m.send(ctx, request)
 }
 

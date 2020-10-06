@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
@@ -48,7 +49,7 @@ type chequeStore struct {
 	factory               Factory
 	chaindID              int64
 	simpleSwapBindingFunc SimpleSwapBindingFunc
-	backend               Backend
+	backend               transaction.Backend
 	beneficiary           common.Address // the beneficiary we expect in cheques sent to us
 	recoverChequeFunc     RecoverChequeFunc
 }
@@ -58,7 +59,7 @@ type RecoverChequeFunc func(cheque *SignedCheque, chainID int64) (common.Address
 // NewChequeStore creates new ChequeStore
 func NewChequeStore(
 	store storage.StateStorer,
-	backend Backend,
+	backend transaction.Backend,
 	factory Factory,
 	chainID int64,
 	beneficiary common.Address,

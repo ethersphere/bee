@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	chequestoremock "github.com/ethersphere/bee/pkg/settlement/swap/chequestore/mock"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
@@ -80,7 +81,7 @@ func TestCashout(t *testing.T) {
 			}),
 		),
 		&transactionServiceMock{
-			send: func(c context.Context, request *chequebook.TxRequest) (common.Hash, error) {
+			send: func(c context.Context, request *transaction.TxRequest) (common.Hash, error) {
 				if request.To != chequebookAddress {
 					t.Fatalf("sending to wrong contract. wanted %x, got %x", chequebookAddress, request.To)
 				}
@@ -219,7 +220,7 @@ func TestCashoutBounced(t *testing.T) {
 			}),
 		),
 		&transactionServiceMock{
-			send: func(c context.Context, request *chequebook.TxRequest) (common.Hash, error) {
+			send: func(c context.Context, request *transaction.TxRequest) (common.Hash, error) {
 				if request.To != chequebookAddress {
 					t.Fatalf("sending to wrong contract. wanted %x, got %x", chequebookAddress, request.To)
 				}
@@ -325,7 +326,7 @@ func TestCashoutStatusReverted(t *testing.T) {
 			}),
 		),
 		&transactionServiceMock{
-			send: func(c context.Context, request *chequebook.TxRequest) (common.Hash, error) {
+			send: func(c context.Context, request *transaction.TxRequest) (common.Hash, error) {
 				return txHash, nil
 			},
 		},
@@ -399,7 +400,7 @@ func TestCashoutStatusPending(t *testing.T) {
 			}),
 		),
 		&transactionServiceMock{
-			send: func(c context.Context, request *chequebook.TxRequest) (common.Hash, error) {
+			send: func(c context.Context, request *transaction.TxRequest) (common.Hash, error) {
 				return txHash, nil
 			},
 		},
