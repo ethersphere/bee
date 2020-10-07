@@ -51,8 +51,7 @@ func TestDelivery(t *testing.T) {
 	pricerMock := accountingmock.NewPricer(price, price)
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(swarm.MustParseHexAddress("00112234"), nil, nil, logger, serverMockAccounting, pricerMock, mockValidator, nil)
-	server.SetStorer(mockStorer)
+	server := retrieval.New(swarm.MustParseHexAddress("00112234"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, mockValidator, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
@@ -70,8 +69,7 @@ func TestDelivery(t *testing.T) {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator, nil)
-	client.SetStorer(clientMockStorer)
+	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), clientMockStorer, recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, reqAddr)
@@ -153,8 +151,7 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		server := retrieval.New(serverAddress, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
-		server.SetStorer(serverStorer)
+		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
 
 		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
 
@@ -162,7 +159,71 @@ func TestRetrieveChunk(t *testing.T) {
 			_, _, _ = f(serverAddress, 0)
 			return nil
 		}}
-		client := retrieval.New(clientAddress, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+		client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+	})
+
+	t.Run("forward", func(t *testing.T) {
+		chunkAddress := swarm.MustParseHexAddress("00")
+		serverAddress := swarm.MustParseHexAddress("01")
+		forwarderAddress := swarm.MustParseHexAddress("02")
+		clientAddress := swarm.MustParseHexAddress("03")
+
+		serverStorer := storemock.NewStorer()
+		chunk := swarm.NewChunk(chunkAddress, []byte("some data"))
+		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		server := retrieval.New(
+			serverAddress,
+			serverStorer, // chunk is in sever's store
+			nil,
+			nil,
+			logger,
+			accountingmock.NewAccounting(),
+			pricer,
+			mockValidator,
+			nil,
+		)
+
+		forwarder := retrieval.New(
+			forwarderAddress,
+			storemock.NewStorer(), // no chunk in forwarder's store
+			streamtest.New(streamtest.WithProtocols(server.Protocol())), // connect to server
+			mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+				_, _, _ = f(serverAddress, 0) // suggest server's address
+				return nil
+			}},
+			logger,
+			accountingmock.NewAccounting(),
+			pricer,
+			mockValidator,
+			nil,
+		)
+
+		client := retrieval.New(
+			clientAddress,
+			storemock.NewStorer(), // no chunk in clients's store
+			streamtest.New(streamtest.WithProtocols(forwarder.Protocol())), // connect to forwarder
+			mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+				_, _, _ = f(forwarderAddress, 0) // suggest forwarder's address
+				return nil
+			}},
+			logger,
+			accountingmock.NewAccounting(),
+			pricer,
+			mockValidator,
+			nil,
+		)
 
 		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
 		if err != nil {
