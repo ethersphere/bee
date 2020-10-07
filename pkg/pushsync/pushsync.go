@@ -147,7 +147,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 	receiptRTTTimer := time.Now()
 
-	receipt, err := ps.receiveReceipt(rc)
+	receipt, err := ps.receiveReceipt(ctx, rc)
 	if err != nil {
 		return fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 	}
@@ -165,7 +165,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	// pass back the received receipt in the previously received stream
-	err = ps.sendReceipt(w, &receipt)
+	err = ps.sendReceipt(ctx, w, &receipt)
 	if err != nil {
 		return fmt.Errorf("send receipt to peer %s: %w", peer.String(), err)
 	}
@@ -188,8 +188,10 @@ func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err
 	return nil
 }
 
-func (ps *PushSync) sendReceipt(w protobuf.Writer, receipt *pb.Receipt) (err error) {
-	if err := w.WriteMsg(receipt); err != nil {
+func (ps *PushSync) sendReceipt(ctx context.Context, w protobuf.Writer, receipt *pb.Receipt) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeToWaitForReceipt)
+	defer cancel()
+	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
 		ps.metrics.SendReceiptErrorCounter.Inc()
 		return err
 	}
@@ -197,8 +199,10 @@ func (ps *PushSync) sendReceipt(w protobuf.Writer, receipt *pb.Receipt) (err err
 	return nil
 }
 
-func (ps *PushSync) receiveReceipt(r protobuf.Reader) (receipt pb.Receipt, err error) {
-	if err := r.ReadMsg(&receipt); err != nil {
+func (ps *PushSync) receiveReceipt(ctx context.Context, r protobuf.Reader) (receipt pb.Receipt, err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeToWaitForReceipt)
+	defer cancel()
+	if err := r.ReadMsgWithContext(ctx, &receipt); err != nil {
 		ps.metrics.ReceiveReceiptErrorCounter.Inc()
 		return receipt, err
 	}
@@ -263,7 +267,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}
 
 	receiptRTTTimer := time.Now()
-	receipt, err := ps.receiveReceipt(r)
+	receipt, err := ps.receiveReceipt(ctx, r)
 	if err != nil {
 		_ = streamer.Reset()
 		return nil, fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
@@ -299,7 +303,7 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 
 	// Send a receipt immediately once the storage of the chunk is successfully
 	receipt := &pb.Receipt{Address: chunk.Address().Bytes()}
-	err = ps.sendReceipt(w, receipt)
+	err = ps.sendReceipt(ctx, w, receipt)
 	if err != nil {
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
