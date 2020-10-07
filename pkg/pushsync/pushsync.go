@@ -142,7 +142,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}()
 
 	wc, rc := protobuf.NewWriterAndReader(streamer)
-	if err := ps.sendChunkDelivery(wc, chunk); err != nil {
+	if err := ps.sendChunkDelivery(ctx, wc, chunk); err != nil {
 		return fmt.Errorf("forward chunk to peer %s: %w", peer.String(), err)
 	}
 	receiptRTTTimer := time.Now()
@@ -174,9 +174,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
 }
 
-func (ps *PushSync) sendChunkDelivery(w protobuf.Writer, chunk swarm.Chunk) (err error) {
+func (ps *PushSync) sendChunkDelivery(ctx context.Context, w protobuf.Writer, chunk swarm.Chunk) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeToWaitForReceipt)
+	defer cancel()
 	startTimer := time.Now()
-	if err = w.WriteMsgWithTimeout(timeToWaitForReceipt, &pb.Delivery{
+	if err = w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Address: chunk.Address().Bytes(),
 		Data:    chunk.Data(),
 	}); err != nil {
@@ -252,7 +254,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	defer func() { go streamer.FullClose() }()
 
 	w, r := protobuf.NewWriterAndReader(streamer)
-	if err := ps.sendChunkDelivery(w, ch); err != nil {
+	if err := ps.sendChunkDelivery(ctx, w, ch); err != nil {
 		_ = streamer.Reset()
 		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 	}
