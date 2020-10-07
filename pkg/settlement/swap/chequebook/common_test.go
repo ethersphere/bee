@@ -9,7 +9,6 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -17,60 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 )
-
-type backendMock struct {
-	codeAt             func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
-	sendTransaction    func(ctx context.Context, tx *types.Transaction) error
-	suggestGasPrice    func(ctx context.Context) (*big.Int, error)
-	estimateGas        func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)
-	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
-	pendingNonceAt     func(ctx context.Context, account common.Address) (uint64, error)
-	transactionByHash  func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
-}
-
-func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	return m.codeAt(ctx, contract, blockNumber)
-}
-
-func (*backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	panic("not implemented")
-}
-
-func (*backendMock) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
-	panic("not implemented")
-}
-
-func (m *backendMock) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
-	return m.pendingNonceAt(ctx, account)
-}
-
-func (m *backendMock) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	return m.suggestGasPrice(ctx)
-}
-
-func (m *backendMock) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-	return m.estimateGas(ctx, call)
-}
-
-func (m *backendMock) SendTransaction(ctx context.Context, tx *types.Transaction) error {
-	return m.sendTransaction(ctx, tx)
-}
-
-func (*backendMock) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	panic("not implemented")
-}
-
-func (*backendMock) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
-	panic("not implemented")
-}
-
-func (m *backendMock) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
-	return m.transactionReceipt(ctx, txHash)
-}
-
-func (m *backendMock) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	return m.transactionByHash(ctx, hash)
-}
 
 type transactionServiceMock struct {
 	send           func(ctx context.Context, request *chequebook.TxRequest) (txHash common.Hash, err error)

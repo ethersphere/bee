@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
 )
 
@@ -48,7 +49,7 @@ func TestReceiveCheque(t *testing.T) {
 
 	chequestore := chequebook.NewChequeStore(
 		store,
-		&backendMock{},
+		backendmock.New(),
 		factory,
 		chainID,
 		beneficiary,
@@ -148,7 +149,7 @@ func TestReceiveChequeInvalidBeneficiary(t *testing.T) {
 
 	chequestore := chequebook.NewChequeStore(
 		store,
-		&backendMock{},
+		backendmock.New(),
 		&factoryMock{},
 		chainID,
 		beneficiary,
@@ -176,7 +177,7 @@ func TestReceiveChequeInvalidAmount(t *testing.T) {
 
 	chequestore := chequebook.NewChequeStore(
 		store,
-		&backendMock{},
+		backendmock.New(),
 		&factoryMock{
 			verifyChequebook: func(ctx context.Context, address common.Address) error {
 				return nil
@@ -240,7 +241,7 @@ func TestReceiveChequeInvalidChequebook(t *testing.T) {
 
 	chequestore := chequebook.NewChequeStore(
 		store,
-		&backendMock{},
+		backendmock.New(),
 		&factoryMock{
 			verifyChequebook: func(ctx context.Context, address common.Address) error {
 				return chequebook.ErrNotDeployedByFactory
@@ -289,7 +290,7 @@ func TestReceiveChequeInvalidSignature(t *testing.T) {
 
 	chequestore := chequebook.NewChequeStore(
 		store,
-		&backendMock{},
+		backendmock.New(),
 		&factoryMock{
 			verifyChequebook: func(ctx context.Context, address common.Address) error {
 				return nil
@@ -335,7 +336,7 @@ func TestReceiveChequeInsufficientBalance(t *testing.T) {
 
 	chequestore := chequebook.NewChequeStore(
 		store,
-		&backendMock{},
+		backendmock.New(),
 		&factoryMock{
 			verifyChequebook: func(ctx context.Context, address common.Address) error {
 				return nil
@@ -384,7 +385,7 @@ func TestReceiveChequeSufficientBalancePaidOut(t *testing.T) {
 
 	chequestore := chequebook.NewChequeStore(
 		store,
-		&backendMock{},
+		backendmock.New(),
 		&factoryMock{
 			verifyChequebook: func(ctx context.Context, address common.Address) error {
 				return nil
