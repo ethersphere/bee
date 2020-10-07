@@ -6,6 +6,7 @@ package retrieval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -49,11 +50,12 @@ type Service struct {
 	tracer        *tracing.Tracer
 }
 
-func New(addr swarm.Address, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator, tracer *tracing.Tracer) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
+		storer:        storer,
 		logger:        logger,
 		accounting:    accounting,
 		pricer:        pricer,
@@ -258,9 +260,18 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer span.Finish()
 
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
-	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(req.Addr))
+	addr := swarm.NewAddress(req.Addr)
+	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
 	if err != nil {
-		return fmt.Errorf("get from store: %w peer %s", err, p.Address.String())
+		if errors.Is(err, storage.ErrNotFound) {
+			// forward the request
+			chunk, err = s.RetrieveChunk(ctx, addr)
+			if err != nil {
+				return fmt.Errorf("retrieve chunk: %w", err)
+			}
+		} else {
+			return fmt.Errorf("get from store: %w", err)
+		}
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
@@ -277,9 +288,4 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	return nil
-}
-
-// SetStorer sets the storer. This call is not goroutine safe.
-func (s *Service) SetStorer(storer storage.Storer) {
-	s.storer = storer
 }
