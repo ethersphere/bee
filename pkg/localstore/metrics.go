@@ -216,7 +216,7 @@ func newMetrics() metrics {
 		ModeGetMultiFailure: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "mode_get_failure_count",
+			Name:      "mode_get_multi_failure_count",
 			Help:      "Number of times MODE_GET invocation failed.",
 		}),
 		ModePut: prometheus.NewCounter(prometheus.CounterOpts{
@@ -252,7 +252,7 @@ func newMetrics() metrics {
 		ModeHasFailure: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "mode_has_count",
+			Name:      "mode_has_failure_count",
 			Help:      "Number of times MODE_HAS invocation failed.",
 		}),
 		ModeHasMulti: prometheus.NewCounter(prometheus.CounterOpts{
@@ -264,7 +264,7 @@ func newMetrics() metrics {
 		ModeHasMultiFailure: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "mode_has_multi_fail_count",
+			Name:      "mode_has_multi_failure_count",
 			Help:      "Number of times MODE_HAS_MULTI invocation failed.",
 		}),
 		SubscribePull: prometheus.NewCounter(prometheus.CounterOpts{
