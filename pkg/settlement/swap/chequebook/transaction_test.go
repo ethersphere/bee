@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 )
 
 func TestTransactionSend(t *testing.T) {
@@ -35,14 +36,14 @@ func TestTransactionSend(t *testing.T) {
 	}
 
 	transactionService, err := chequebook.NewTransactionService(logger,
-		&backendMock{
-			sendTransaction: func(ctx context.Context, tx *types.Transaction) error {
+		backendmock.New(
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
 				if tx != signedTx {
 					t.Fatal("not sending signed transaction")
 				}
 				return nil
-			},
-			estimateGas: func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+			}),
+			backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
 				if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
 					t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
 				}
@@ -50,14 +51,14 @@ func TestTransactionSend(t *testing.T) {
 					t.Fatal("estimating with wrong data")
 				}
 				return estimatedGasLimit, nil
-			},
-			suggestGasPrice: func(ctx context.Context) (*big.Int, error) {
+			}),
+			backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
 				return suggestedGasPrice, nil
-			},
-			pendingNonceAt: func(ctx context.Context, account common.Address) (uint64, error) {
+			}),
+			backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
 				return nonce, nil
-			},
-		},
+			}),
+		),
 		&signerMock{
 			signTx: func(transaction *types.Transaction) (*types.Transaction, error) {
 				if !bytes.Equal(transaction.To().Bytes(), recipient.Bytes()) {
@@ -102,13 +103,13 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	txHash := common.HexToHash("0xabcdee")
 
 	transactionService, err := chequebook.NewTransactionService(logger,
-		&backendMock{
-			transactionReceipt: func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+		backendmock.New(
+			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 				return &types.Receipt{
 					TxHash: txHash,
 				}, nil
-			},
-		},
+			}),
+		),
 		&signerMock{})
 	if err != nil {
 		t.Fatal(err)
