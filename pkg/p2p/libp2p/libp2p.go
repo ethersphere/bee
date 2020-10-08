@@ -50,6 +50,7 @@ type Service struct {
 	ctx               context.Context
 	host              host.Host
 	natManager        basichost.NATManager
+	natAddrResolver   *staticAddressResolver
 	libp2pPeerstore   peerstore.Peerstore
 	metrics           metrics
 	networkID         uint64
@@ -179,15 +180,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	var advertisableAddresser handshake.AdvertisableAddressResolver
+	var natAddrResolver *staticAddressResolver
 	if o.NATAddr == "" {
 		advertisableAddresser = &UpnpAddressResolver{
 			host: h,
 		}
 	} else {
-		advertisableAddresser, err = newStaticAddressResolver(o.NATAddr)
+		natAddrResolver, err = newStaticAddressResolver(o.NATAddr)
 		if err != nil {
 			return nil, fmt.Errorf("static nat: %w", err)
 		}
+		advertisableAddresser = natAddrResolver
 	}
 
 	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.LightNode, o.WelcomeMessage, logger)
@@ -200,6 +203,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		ctx:               ctx,
 		host:              h,
 		natManager:        natManager,
+		natAddrResolver:   natAddrResolver,
 		handshakeService:  handshakeService,
 		libp2pPeerstore:   libp2pPeerstore,
 		metrics:           newMetrics(),
@@ -388,6 +392,13 @@ func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
 			return nil, err
 		}
 
+		addreses = append(addreses, a)
+	}
+	if s.natAddrResolver != nil && len(addreses) > 0 {
+		a, err := s.natAddrResolver.Resolve(addreses[0])
+		if err != nil {
+			return nil, err
+		}
 		addreses = append(addreses, a)
 	}
 
