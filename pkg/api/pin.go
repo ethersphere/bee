@@ -7,6 +7,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -21,14 +22,14 @@ import (
 func (s *server) pinChunk(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: parse chunk address: %v", err)
+		s.Logger.Debugf("pin chunk: parse chunk address: %v", err)
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
 	has, err := s.Storer.Has(r.Context(), addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: localstore has: %v", err)
+		s.Logger.Debugf("pin chunk: localstore has: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
@@ -40,7 +41,7 @@ func (s *server) pinChunk(w http.ResponseWriter, r *http.Request) {
 
 	err = s.Storer.Set(r.Context(), storage.ModeSetPin, addr)
 	if err != nil {
-		s.Logger.Debugf("debug-api: pin chunk: pinning error: %v, addr %s", err, addr)
+		s.Logger.Debugf("pin chunk: pinning error: %v, addr %s", err, addr)
 		jsonhttp.InternalServerError(w, "cannot pin chunk")
 		return
 	}
@@ -52,14 +53,14 @@ func (s *server) pinChunk(w http.ResponseWriter, r *http.Request) {
 func (s *server) unpinChunk(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: parse chunk address: %v", err)
+		s.Logger.Debugf("pin chunk: parse chunk address: %v", err)
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
 	has, err := s.Storer.Has(r.Context(), addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: localstore has: %v", err)
+		s.Logger.Debugf("pin chunk: localstore has: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
@@ -69,16 +70,16 @@ func (s *server) unpinChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.Storer.PinInfo(addr)
+	_, err = s.Storer.PinCounter(addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: not pinned: %v", err)
+		s.Logger.Debugf("pin chunk: not pinned: %v", err)
 		jsonhttp.BadRequest(w, "chunk is not yet pinned")
 		return
 	}
 
 	err = s.Storer.Set(r.Context(), storage.ModeSetUnpin, addr)
 	if err != nil {
-		s.Logger.Debugf("debug-api: pin chunk: unpinning error: %v, addr %s", err, addr)
+		s.Logger.Debugf("pin chunk: unpinning error: %v, addr %s", err, addr)
 		jsonhttp.InternalServerError(w, "cannot unpin chunk")
 		return
 	}
@@ -96,16 +97,38 @@ type listPinnedChunksResponse struct {
 
 // listPinnedChunks lists all the chunk address and pin counters that are currently pinned.
 func (s *server) listPinnedChunks(w http.ResponseWriter, r *http.Request) {
-	pinnedChunks, err := s.Storer.PinnedChunks(r.Context(), swarm.NewAddress(nil))
+	var (
+		err           error
+		limit, offset int
+	)
+
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offset, err = strconv.Atoi(v)
+		if err != nil {
+			s.Logger.Debugf("list pins: parse offset: %v", err)
+			jsonhttp.BadRequest(w, nil)
+		}
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limit, err = strconv.Atoi(v)
+		if err != nil {
+			s.Logger.Debugf("list pins: parse offset: %v", err)
+			jsonhttp.BadRequest(w, nil)
+		}
+	}
+
+	pinnedChunks, err := s.Storer.PinnedChunks(r.Context(), offset, limit)
 	if err != nil {
-		s.Logger.Debugf("debug-api: pin chunk: listing pinned chunks: %v", err)
+		s.Logger.Debugf("pin chunk: listing pinned chunks: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
+
 	chunks := make([]pinnedChunk, len(pinnedChunks))
 	for i, c := range pinnedChunks {
 		chunks[i] = pinnedChunk(*c)
 	}
+
 	jsonhttp.OK(w, listPinnedChunksResponse{
 		Chunks: chunks,
 	})
@@ -114,15 +137,15 @@ func (s *server) listPinnedChunks(w http.ResponseWriter, r *http.Request) {
 func (s *server) getPinnedChunk(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: parse chunk ddress: %v", err)
-		jsonhttp.BadRequest(w, "bad address")
+		s.Logger.Debugf("pin counter: parse chunk ddress: %v", err)
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
 	has, err := s.Storer.Has(r.Context(), addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: pin chunk: localstore has: %v", err)
-		jsonhttp.BadRequest(w, err)
+		s.Logger.Debugf("pin counter: localstore has: %v", err)
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
@@ -131,13 +154,13 @@ func (s *server) getPinnedChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pinCounter, err := s.Storer.PinInfo(addr)
+	pinCounter, err := s.Storer.PinCounter(addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			jsonhttp.NotFound(w, nil)
 			return
 		}
-		s.Logger.Debugf("debug-api: pin chunk: listing pinned chunks: %v", err)
+		s.Logger.Debugf("pin chunk: get pin counter: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
