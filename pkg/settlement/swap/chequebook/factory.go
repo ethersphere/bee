@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
 	"golang.org/x/net/context"
 )
@@ -38,8 +39,8 @@ type Factory interface {
 }
 
 type factory struct {
-	backend            Backend
-	transactionService TransactionService
+	backend            transaction.Backend
+	transactionService transaction.Service
 	address            common.Address
 
 	ABI      abi.ABI
@@ -47,7 +48,7 @@ type factory struct {
 }
 
 // NewFactory creates a new factory service for the provided factory contract.
-func NewFactory(backend Backend, transactionService TransactionService, address common.Address, simpleSwapFactoryBindingFunc SimpleSwapFactoryBindingFunc) (Factory, error) {
+func NewFactory(backend transaction.Backend, transactionService transaction.Service, address common.Address, simpleSwapFactoryBindingFunc SimpleSwapFactoryBindingFunc) (Factory, error) {
 	ABI, err := abi.JSON(strings.NewReader(simpleswapfactory.SimpleSwapFactoryABI))
 	if err != nil {
 		return nil, err
@@ -74,7 +75,7 @@ func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHard
 		return common.Hash{}, err
 	}
 
-	request := &TxRequest{
+	request := &transaction.TxRequest{
 		To:       c.address,
 		Data:     callData,
 		GasPrice: nil,
@@ -108,7 +109,7 @@ func (c *factory) WaitDeployed(ctx context.Context, txHash common.Hash) (common.
 // parseDeployReceipt parses the address of the deployed chequebook from the receipt.
 func (c *factory) parseDeployReceipt(receipt *types.Receipt) (address common.Address, err error) {
 	if receipt.Status != 1 {
-		return common.Address{}, ErrTransactionReverted
+		return common.Address{}, transaction.ErrTransactionReverted
 	}
 	for _, log := range receipt.Logs {
 		if log.Address != c.address {

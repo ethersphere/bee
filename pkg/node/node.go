@@ -48,6 +48,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -161,7 +162,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
-		transactionService, err := chequebook.NewTransactionService(logger, swapBackend, signer)
+		transactionService, err := transaction.NewService(logger, swapBackend, signer)
 		if err != nil {
 			return nil, err
 		}
