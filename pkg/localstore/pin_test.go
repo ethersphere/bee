@@ -62,7 +62,7 @@ func TestPinCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 	if pinCounter != 1 {
-		t.Fatalf("want pin counter 1 but got %d", pinCounter)
+		t.Fatalf("want pin counter %d but got %d", 1, pinCounter)
 	}
 
 	// pin twice
@@ -75,7 +75,7 @@ func TestPinCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 	if pinCounter != 2 {
-		t.Fatalf("want pin counter 1 but got %d", pinCounter)
+		t.Fatalf("want pin counter %d but got %d", 2, pinCounter)
 	}
 
 	err = db.Set(context.Background(), storage.ModeSetUnpin, swarm.NewAddress(chunk.Address().Bytes()))
