@@ -21,7 +21,7 @@ jobs:
           reaction: "true"
           reaction-type: "+1"
           allow-edits: "false"
-          permission-level: admin
+          permission-level: write
       - name: Echo command (debug)
         run: echo "The command was '${{ steps.command.outputs.command-name }}' with arguments '${{ steps.command.outputs.command-arguments }}'"
       - name: Checkout
