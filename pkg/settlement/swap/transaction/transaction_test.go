@@ -36,7 +36,7 @@ func TestTransactionSend(t *testing.T) {
 		Value: value,
 	}
 
-	transactionService, err := transaction.NewTransactionService(logger,
+	transactionService, err := transaction.NewService(logger,
 		backendmock.New(
 			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
 				if tx != signedTx {
@@ -104,7 +104,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	txHash := common.HexToHash("0xabcdee")
 
-	transactionService, err := transaction.NewTransactionService(logger,
+	transactionService, err := transaction.NewService(logger,
 		backendmock.New(
 			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 				return &types.Receipt{

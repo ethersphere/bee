@@ -162,7 +162,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
-		transactionService, err := transaction.NewTransactionService(logger, swapBackend, signer)
+		transactionService, err := transaction.NewService(logger, swapBackend, signer)
 		if err != nil {
 			return nil, err
 		}
