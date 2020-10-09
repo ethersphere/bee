@@ -1,6 +1,8 @@
 name: Beekeeper
 
-on: issue_comment
+on:
+  issue_comment:
+    types: [created]
 
 jobs:
   beekeeper:
@@ -15,7 +17,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           command: beekeeper
           reaction: "true"
-          reaction-type: "eyes"
+          reaction-type: "+1"
           allow-edits: "false"
           permission-level: write
       - name: Checkout
