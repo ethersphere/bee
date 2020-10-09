@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Check for Command
         id: command
-        uses: xt0rted/slash-command-action@v1
+        uses: xt0rted/slash-command-action@v1.1.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           command: beekeeper
