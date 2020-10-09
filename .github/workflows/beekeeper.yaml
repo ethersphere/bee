@@ -15,7 +15,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           command: beekeeper
           reaction: "true"
-          reaction-type: "+1"
+          reaction-type: "eyes"
           allow-edits: "false"
           permission-level: write
       - name: Checkout
