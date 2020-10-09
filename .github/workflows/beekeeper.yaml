@@ -6,6 +6,8 @@ on:
 
 jobs:
   beekeeper:
+    name: Execute "/beekeeper" slash command
+    if: github.event.issue.pull_request != '' && contains(github.event.comment.body, '/beekeeper')
     env:
       REPLICA: 3
     runs-on: ubuntu-latest
@@ -20,6 +22,8 @@ jobs:
           reaction-type: "+1"
           allow-edits: "false"
           permission-level: write
+      - name: Echo command (debug)
+        run: echo "The command was '${{ steps.command.outputs.command-name }}' with arguments '${{ steps.command.outputs.command-arguments }}'"
       - name: Checkout
         uses: actions/checkout@v2
         with:
