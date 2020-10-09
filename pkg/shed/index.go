@@ -284,6 +284,8 @@ type IterateOptions struct {
 	SkipStartFromItem bool
 	// Iterate over items which keys have a common prefix.
 	Prefix []byte
+	// Iterate over items in reverse order.
+	Reverse bool
 }
 
 // Iterate function iterates over keys of the Index.
@@ -303,21 +305,68 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 			return fmt.Errorf("encode key: %w", err)
 		}
 	}
+
 	it := f.db.NewIterator()
 	defer it.Release()
 
+	var ok bool
+
 	// move the cursor to the start key
-	ok := it.Seek(startKey)
-	if !ok {
-		// stop iterator if seek has failed
-		return it.Error()
+	ok = it.Seek(startKey)
+
+	if !options.Reverse {
+		if !ok {
+			// stop iterator if seek has failed
+			return it.Error()
+		}
+	} else {
+		// reverse seeker
+		if options.StartFrom != nil {
+			if !ok {
+				return it.Error()
+			}
+		} else {
+			// find last key for this index (and prefix)
+
+			// move cursor to last key
+			ok = it.Last()
+			if !ok {
+				return it.Error()
+			}
+
+			if lastKeyHasPrefix := bytes.HasPrefix(it.Key(), prefix); !lastKeyHasPrefix {
+				// increment last prefix byte (that is not 0xFF) to try to find last key
+				incrementedPrefix := bytesIncrement(prefix)
+				if incrementedPrefix == nil {
+					return fmt.Errorf("index iterator invalid prefix: %v -> %v", prefix, string(prefix))
+				}
+
+				// should find first key after prefix (same or different index)
+				ok = it.Seek(incrementedPrefix)
+				if !ok {
+					return it.Error()
+				}
+
+				// previous key should have proper prefix
+				ok = it.Prev()
+				if !ok {
+					return it.Error()
+				}
+			}
+
+		}
+	}
+
+	itSeekerFn := it.Next
+	if options.Reverse {
+		itSeekerFn = it.Prev
 	}
 	if options.SkipStartFromItem && bytes.Equal(startKey, it.Key()) {
 		// skip the start from Item if it is the first key
 		// and it is explicitly configured to skip it
-		ok = it.Next()
+		ok = itSeekerFn()
 	}
-	for ; ok; ok = it.Next() {
+	for ; ok; ok = itSeekerFn() {
 		item, err := f.itemFromIterator(it, prefix)
 		if err != nil {
 			if errors.Is(err, leveldb.ErrNotFound) {
@@ -334,6 +383,26 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 		}
 	}
 	return it.Error()
+}
+
+// Increment the last byte that is not 0xFF, and returned a new byte array
+// truncated after the position that was incremented.
+func bytesIncrement(bytes []byte) []byte {
+	b := append(bytes[:0:0], bytes...)
+
+	for i := len(bytes) - 1; i >= 0; {
+		if b[i] == 0xFF {
+			i--
+			continue
+		}
+
+		// Found byte smaller than 0xFF: increment and truncate
+		b[i]++
+		return b[:i+1]
+	}
+
+	// input contained only 0xFF bytes
+	return nil
 }
 
 // First returns the first item in the Index which encoded key starts with a prefix.
