@@ -3,6 +3,9 @@ name: Beekeeper
 on:
   issue_comment:
     types: [created]
+  pull_request:
+    branches:
+      - '**'
 
 jobs:
   beekeeper:
