@@ -17,7 +17,7 @@ jobs:
           reaction: "true"
           reaction-type: "+1"
           allow-edits: "false"
-          permission-level: owner
+          permission-level: write
       - name: Checkout
         uses: actions/checkout@v2
         with:
