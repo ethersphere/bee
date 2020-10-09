@@ -7,14 +7,14 @@ on:
 jobs:
   beekeeper:
     name: Execute "/beekeeper" slash command
-    # if: github.event.issue.pull_request != '' && contains(github.event.comment.body, '/beekeeper')
+    if: github.event.issue.pull_request != '' && contains(github.event.comment.body, '/beekeeper')
     env:
       REPLICA: 3
     runs-on: ubuntu-latest
     steps:
       - name: Check for Command
         id: command
-        uses: xt0rted/slash-command-action@v1.1.0
+        uses: xt0rted/slash-command-action@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           command: beekeeper
