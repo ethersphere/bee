@@ -22,14 +22,14 @@ func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.
 	if m.send != nil {
 		return m.send(ctx, request)
 	}
-	return common.Hash{}, errors.New("error")
+	return common.Hash{}, errors.New("not implemented")
 }
 
 func (m *transactionServiceMock) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	if m.waitForReceipt != nil {
 		return m.waitForReceipt(ctx, txHash)
 	}
-	return nil, errors.New("error")
+	return nil, errors.New("not implemented")
 }
 
 // Option is the option passed to the mock Chequebook service

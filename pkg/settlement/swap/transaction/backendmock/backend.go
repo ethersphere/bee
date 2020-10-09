@@ -29,65 +29,65 @@ func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, block
 	if m.codeAt != nil {
 		return m.codeAt(ctx, contract, blockNumber)
 	}
-	return nil, errors.New("Error")
+	return nil, errors.New("not implemented")
 }
 
 func (*backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	return nil, errors.New("Error")
+	return nil, errors.New("not implemented")
 }
 
 func (*backendMock) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
-	return nil, errors.New("Error")
+	return nil, errors.New("not implemented")
 }
 
 func (m *backendMock) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
 	if m.pendingNonceAt != nil {
 		return m.pendingNonceAt(ctx, account)
 	}
-	return 0, errors.New("Error")
+	return 0, errors.New("not implemented")
 }
 
 func (m *backendMock) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 	if m.suggestGasPrice != nil {
 		return m.suggestGasPrice(ctx)
 	}
-	return nil, errors.New("Error")
+	return nil, errors.New("not implemented")
 }
 
 func (m *backendMock) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
 	if m.estimateGas != nil {
 		return m.estimateGas(ctx, call)
 	}
-	return 0, errors.New("Error")
+	return 0, errors.New("not implemented")
 }
 
 func (m *backendMock) SendTransaction(ctx context.Context, tx *types.Transaction) error {
 	if m.sendTransaction != nil {
 		return m.sendTransaction(ctx, tx)
 	}
-	return errors.New("Error")
+	return errors.New("not implemented")
 }
 
 func (*backendMock) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	return nil, errors.New("Error")
+	return nil, errors.New("not implemented")
 }
 
 func (*backendMock) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
-	return nil, errors.New("Error")
+	return nil, errors.New("not implemented")
 }
 
 func (m *backendMock) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	if m.transactionReceipt != nil {
 		return m.transactionReceipt(ctx, txHash)
 	}
-	return nil, errors.New("Error")
+	return nil, errors.New("not implemented")
 }
 
 func (m *backendMock) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
 	if m.transactionByHash != nil {
 		return m.transactionByHash(ctx, hash)
 	}
-	return nil, false, errors.New("Error")
+	return nil, false, errors.New("not implemented")
 }
 
 func New(opts ...Option) transaction.Backend {
