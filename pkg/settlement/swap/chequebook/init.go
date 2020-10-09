@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
@@ -24,8 +25,8 @@ func Init(
 	stateStore storage.StateStorer,
 	logger logging.Logger,
 	swapInitialDeposit uint64,
-	transactionService TransactionService,
-	swapBackend Backend,
+	transactionService transaction.Service,
+	swapBackend transaction.Backend,
 	chainId int64,
 	overlayEthAddress common.Address,
 	chequeSigner ChequeSigner,
