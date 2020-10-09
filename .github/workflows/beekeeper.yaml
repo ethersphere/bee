@@ -3,7 +3,7 @@ name: Beekeeper
 on: issue_comment
 
 jobs:
-  beekeepe:
+  beekeeper:
     env:
       REPLICA: 3
     runs-on: ubuntu-latest
@@ -17,7 +17,7 @@ jobs:
           reaction: "true"
           reaction-type: "+1"
           allow-edits: "false"
-          permission-level: write
+          permission-level: admin
       - name: Checkout
         uses: actions/checkout@v2
         with:
