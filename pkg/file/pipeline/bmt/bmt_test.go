@@ -47,7 +47,7 @@ func TestBmtWriter(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mockChainWriter := mock.NewChainWriter()
-			writer := bmt.NewBmtWriter(128, mockChainWriter)
+			writer := bmt.NewBmtWriter(mockChainWriter)
 
 			var data []byte
 
@@ -81,7 +81,7 @@ func TestBmtWriter(t *testing.T) {
 // TestSum tests that calling Sum on the writer calls the next writer's Sum.
 func TestSum(t *testing.T) {
 	mockChainWriter := mock.NewChainWriter()
-	writer := bmt.NewBmtWriter(128, mockChainWriter)
+	writer := bmt.NewBmtWriter(mockChainWriter)
 	_, err := writer.Sum()
 	if err != nil {
 		t.Fatal(err)

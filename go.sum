@@ -163,8 +163,8 @@ github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7
 github.com/ethereum/go-ethereum v1.9.14/go.mod h1:oP8FC5+TbICUyftkTWs+8JryntjIJLJvWvApK3z2AYw=
 github.com/ethereum/go-ethereum v1.9.20 h1:kk/J5OIoaoz3DRrCXznz3RGi212mHHXwzXlY/ZQxcj0=
 github.com/ethereum/go-ethereum v1.9.20/go.mod h1:JSSTypSMTkGZtAdAChH2wP5dZEvPGh3nUTuDpH+hNrg=
-github.com/ethersphere/bmt v0.1.2 h1:FEuvQY9xuK+rDp3VwDVyde8T396Matv/u9PdtKa2r9Q=
-github.com/ethersphere/bmt v0.1.2/go.mod h1:fqRBDmYwn3lX2MH4lkImXQgFWeNP8ikLkS/hgi/HRws=
+github.com/ethersphere/bmt v0.1.3 h1:k/Sq34oKzdETyVEOB73+yam7yDZNff30jYOuI7yfuoA=
+github.com/ethersphere/bmt v0.1.3/go.mod h1:Yd8ft1U69WDuHevZc/rwPxUv1rzPSMpMnS6xbU53aY8=
 github.com/ethersphere/langos v1.0.0 h1:NBtNKzXTTRSue95uOlzPN4py7Aofs0xWPzyj4AI1Vcc=
 github.com/ethersphere/langos v1.0.0/go.mod h1:dlcN2j4O8sQ+BlCaxeBu43bgr4RQ+inJ+pHwLeZg5Tw=
 github.com/ethersphere/manifest v0.3.2 h1:IusNNfpqde2F7uWZ2DE9eyo9PMwUAMop3Ws1NBcdMyM=

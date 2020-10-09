@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/swarm"
-	bmtlegacy "github.com/ethersphere/bmt/legacy"
 )
 
 // NewChunk creates a new content-addressed single-span chunk.
@@ -29,8 +29,8 @@ func NewChunkWithSpan(data []byte, span int64) (swarm.Chunk, error) {
 		return nil, fmt.Errorf("single-span chunk size mismatch; span is %d, chunk data length %d", span, len(data))
 	}
 
-	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
-	hasher := bmtlegacy.New(bmtPool)
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
 
 	// execute hash, compare and return result
 	spanBytes := make([]byte, 8)
@@ -53,8 +53,8 @@ func NewChunkWithSpan(data []byte, span int64) (swarm.Chunk, error) {
 // NewChunkWithSpanBytes deserializes a content-addressed chunk from separate
 // data and span byte slices.
 func NewChunkWithSpanBytes(data, spanBytes []byte) (swarm.Chunk, error) {
-	bmtPool := bmtlegacy.NewTreePool(swarm.NewHasher, swarm.Branches, bmtlegacy.PoolSize)
-	hasher := bmtlegacy.New(bmtPool)
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
 
 	// execute hash, compare and return result
 	err := hasher.SetSpanBytes(spanBytes)
