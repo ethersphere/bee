@@ -128,7 +128,7 @@ func (s *server) listPinnedChunks(w http.ResponseWriter, r *http.Request) {
 
 	pinnedChunks, err := s.Storer.PinnedChunks(r.Context(), offset, limit)
 	if err != nil {
-		s.Logger.Debugf("pin chunk: list pinned: %v", err)
+		s.Logger.Debugf("list pins: list pinned: %v", err)
 		s.Logger.Errorf("list pins: list pinned")
 		jsonhttp.InternalServerError(w, err)
 		return
@@ -172,7 +172,7 @@ func (s *server) getPinnedChunk(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, nil)
 			return
 		}
-		s.Logger.Debugf("pin chunk: get pin counter: %v", err)
+		s.Logger.Debugf("pin counter: get pin counter: %v", err)
 		s.Logger.Errorf("pin counter: get pin counter")
 		jsonhttp.InternalServerError(w, err)
 		return
