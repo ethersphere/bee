@@ -68,11 +68,3 @@ jobs:
         ./bin/deepsource report --analyzer test-coverage --key go --value-file ./cover.out
       env:
         DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
-    - name: Trigger Beekeeper
-      if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
-      uses: peter-evans/repository-dispatch@v1
-      with:
-        token: ${{ secrets.REPO_GHA_PAT }}
-        repository: ${{ github.repository }}
-        event-type: trigger-beekeeper
-        client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
