@@ -134,6 +134,11 @@ func (db *DB) NewIndex(name string, funcs IndexFuncs) (f Index, err error) {
 	}, nil
 }
 
+// ItemKey accepts an Item and returns generated key for it.
+func (f Index) ItemKey(item Item) (key []byte, err error) {
+	return f.encodeKeyFunc(item)
+}
+
 // Get accepts key fields represented as Item to retrieve a
 // value from the index and return maximum available information
 // from the index represented as another Item.
