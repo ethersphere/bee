@@ -146,8 +146,8 @@ type Storer interface {
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	PullSubscriber
 	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
-	PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*Pinner, err error)
-	PinInfo(address swarm.Address) (uint64, error)
+	PinnedChunks(ctx context.Context, offset, limit int) (pinnedChunks []*Pinner, err error)
+	PinCounter(address swarm.Address) (uint64, error)
 	io.Closer
 }
 

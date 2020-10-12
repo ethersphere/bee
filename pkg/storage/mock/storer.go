@@ -267,7 +267,7 @@ func (m *MockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, s
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *MockStorer) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*storage.Pinner, err error) {
+func (m *MockStorer) PinnedChunks(ctx context.Context, offset, cursor int) (pinnedChunks []*storage.Pinner, err error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	if len(m.pinnedAddress) == 0 {
@@ -286,7 +286,7 @@ func (m *MockStorer) PinnedChunks(ctx context.Context, cursor swarm.Address) (pi
 	return pinnedChunks, nil
 }
 
-func (m *MockStorer) PinInfo(address swarm.Address) (uint64, error) {
+func (m *MockStorer) PinCounter(address swarm.Address) (uint64, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for i, addr := range m.pinnedAddress {
