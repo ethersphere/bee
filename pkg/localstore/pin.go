@@ -51,9 +51,7 @@ func (db *DB) PinnedChunks(ctx context.Context, offset, limit int) (chunks []*st
 			return true, nil
 		}
 		return false, nil
-	}, &shed.IterateOptions{
-		SkipStartFromItem: false,
-	})
+	}, nil)
 	return chunks, err
 }
 
