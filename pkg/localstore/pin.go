@@ -5,7 +5,6 @@
 package localstore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -17,17 +16,13 @@ import (
 )
 
 const (
-	maxChunksToDisplay = 20 // no of items to display per request
+	maxPage = 1000 // hard limit of page size
 )
 
-// PinnedChunks for now returns the first few pinned chunks to display along with their pin counter.
-// TODO: have pagination and prefix filter
-func (db *DB) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChunks []*storage.Pinner, err error) {
-	count := 0
-
-	var prefix []byte
-	if bytes.Equal(cursor.Bytes(), []byte{0}) {
-		prefix = nil
+// PinnedChunks
+func (db *DB) PinnedChunks(ctx context.Context, offset, limit int) (chunks []*storage.Pinner, err error) {
+	if limit > maxPage {
+		limit = maxPage
 	}
 
 	c, err := db.pinIndex.Count()
@@ -37,36 +32,32 @@ func (db *DB) PinnedChunks(ctx context.Context, cursor swarm.Address) (pinnedChu
 
 	// send empty response if there is nothing pinned
 	if c == 0 {
-		return pinnedChunks, nil
+		return nil, nil
 	}
 
-	it, err := db.pinIndex.First(prefix)
-	if err != nil {
-		return nil, fmt.Errorf("get first pin: %w", err)
-	}
 	err = db.pinIndex.Iterate(func(item shed.Item) (stop bool, err error) {
-		pinnedChunks = append(pinnedChunks,
+		if offset > 0 {
+			offset--
+			return false, nil
+		}
+		chunks = append(chunks,
 			&storage.Pinner{
 				Address:    swarm.NewAddress(item.Address),
 				PinCounter: item.PinCounter,
 			})
-		count++
-		if count >= maxChunksToDisplay {
-			return true, nil
-		} else {
-			return false, nil
-		}
+		limit--
 
-	}, &shed.IterateOptions{
-		StartFrom:         &it,
-		SkipStartFromItem: false,
-	})
-	return pinnedChunks, err
+		if limit == 0 {
+			return true, nil
+		}
+		return false, nil
+	}, nil)
+	return chunks, err
 }
 
-// PinInfo returns the pin counter for a given swarm address, provided that the
+// PinCounter returns the pin counter for a given swarm address, provided that the
 // address has been pinned.
-func (db *DB) PinInfo(address swarm.Address) (uint64, error) {
+func (db *DB) PinCounter(address swarm.Address) (uint64, error) {
 	out, err := db.pinIndex.Get(shed.Item{
 		Address: address.Bytes(),
 	})
