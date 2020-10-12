@@ -20,7 +20,7 @@ jobs:
           command: beekeeper
           reaction-type: "rocket"
       - name: Get PR Branch
-        if: steps.command.outputs.command-arguments == 'beekeeper'
+        if: steps.command.outputs.command-name == 'beekeeper'
         id: comment-branch
         uses: xt0rted/pull-request-comment-branch@v1
         with:
