@@ -227,9 +227,9 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.S
 		return nil
 	}}
 	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, nil, nil, nil)
-	recorder := streamtest.New(
+	recorder := streamtest.NewRecorderDisconnecter(streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
-	)
+	))
 	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil, nil)
 	ns := netstore.New(storer, recoveryFunc, retrieve, logger, nil)
 	return ns
