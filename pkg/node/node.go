@@ -344,8 +344,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
 
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator, tracer)
-	tags := tags.NewTags(stateStore, logger)
-	b.tagsCloser = tags
+	tagService := tags.NewTags(stateStore, logger)
+	b.tagsCloser = tagService
 
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
@@ -357,22 +357,22 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("swarm key: %w", err)
 	}
 
-	pss := pss.New(swarmPrivateKey, logger)
-	b.pssCloser = pss
+	pssService := pss.New(swarmPrivateKey, logger)
+	b.pssCloser = pssService
 
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
-		recoverFunc := recovery.NewRecoveryHook(pss)
+		recoverFunc := recovery.NewRecoveryHook(pssService)
 		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
 	} else {
 		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)
 	}
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tags, pss.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
 
 	// set the pushSyncer in the PSS
-	pss.SetPushSyncer(pushSyncProtocol)
+	pssService.SetPushSyncer(pushSyncProtocol)
 
 	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
 		return nil, fmt.Errorf("pushsync service: %w", err)
@@ -381,10 +381,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
 		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
-		b.recoveryHandleCleanup = pss.Register(recovery.RecoveryTopic, chunkRepairHandler)
+		b.recoveryHandleCleanup = pssService.Register(recovery.RecoveryTopic, chunkRepairHandler)
 	}
 
-	pushSyncPusher := pusher.New(storer, kad, pushSyncProtocol, tags, logger, tracer)
+	pushSyncPusher := pusher.New(storer, kad, pushSyncProtocol, tagService, logger, tracer)
 	b.pusherCloser = pushSyncPusher
 
 	pullStorage := pullstorage.New(storer)
@@ -409,7 +409,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tags, ns, multiResolver, pss, logger, tracer, api.Options{
+		apiService = api.New(tagService, ns, multiResolver, pssService, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
@@ -440,7 +440,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
 
-		debugAPIService := debugapi.New(swarmAddress, publicKey, overlayEthAddress, p2ps, pingPong, kad, storer, logger, tracer, tags, acc, settlement, o.SwapEnable, swapService, chequebookService)
+		debugAPIService := debugapi.New(swarmAddress, publicKey, overlayEthAddress, p2ps, pingPong, kad, storer, logger, tracer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
@@ -451,8 +451,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pushSyncPusher.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pullSync.Metrics()...)
 
-		if pssService, ok := pss.(metrics.Collector); ok {
-			debugAPIService.MustRegisterMetrics(pssService.Metrics()...)
+		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
+			debugAPIService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
 		}
 
 		if apiService != nil {
