@@ -80,6 +80,11 @@ LOOP:
 		case ch, more := <-chunks:
 			// if no more, wait and re-subscribe
 			if !more {
+				if span != nil {
+					span.Finish()
+					span = nil
+				}
+
 				select {
 				case <-time.After(retryInterval):
 				case <-s.quit:
