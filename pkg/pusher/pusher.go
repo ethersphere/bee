@@ -55,15 +55,14 @@ func New(storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer
 // and pushes them to the closest peer and get a receipt.
 func (s *Service) chunksWorker() {
 	var (
-		chunks        <-chan swarm.Chunk
-		unsubscribe   func()
-		chunksInBatch = -1
-		cctx, cancel  = context.WithCancel(context.Background())
-		ctx           = cctx
-		sem           = make(chan struct{}, concurrentJobs)
-		inflight      = make(map[string]struct{})
-		mtx           sync.Mutex
-		span          opentracing.Span
+		chunks       <-chan swarm.Chunk
+		unsubscribe  func()
+		cctx, cancel = context.WithCancel(context.Background())
+		ctx          = cctx
+		sem          = make(chan struct{}, concurrentJobs)
+		inflight     = make(map[string]struct{})
+		mtx          sync.Mutex
+		span         opentracing.Span
 	)
 	defer close(s.chunksWorkerQuitC)
 	go func() {
@@ -107,7 +106,6 @@ LOOP:
 				span, _, ctx = s.tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
 			}
 
-			chunksInBatch++
 			s.metrics.TotalChunksToBeSentCounter.Inc()
 			select {
 			case sem <- struct{}{}:
