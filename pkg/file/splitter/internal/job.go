@@ -161,10 +161,12 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 
 	err = hasher.SetSpanBytes(c[:8])
 	if err != nil {
+		bmtpool.Put(hasher)
 		return nil, err
 	}
 	_, err = hasher.Write(c[8:])
 	if err != nil {
+		bmtpool.Put(hasher)
 		return nil, err
 	}
 	ref := hasher.Sum(nil)
