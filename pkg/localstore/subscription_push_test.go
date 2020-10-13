@@ -37,6 +37,8 @@ func TestDB_SubscribePush(t *testing.T) {
 	chunks := make([]swarm.Chunk, 0)
 	var chunksMu sync.Mutex
 
+	chunkProcessedTimes := make([]int, 0)
+
 	uploadRandomChunks := func(count int) {
 		chunksMu.Lock()
 		defer chunksMu.Unlock()
@@ -50,7 +52,20 @@ func TestDB_SubscribePush(t *testing.T) {
 			}
 
 			chunks = append(chunks, ch)
+
+			chunkProcessedTimes = append(chunkProcessedTimes, 0)
 		}
+	}
+
+	// caller expected to hold lock on chunksMu
+	findChunkIndex := func(chunk swarm.Chunk) int {
+		for i, c := range chunks {
+			if chunk.Address().Equal(c.Address()) {
+				return i
+			}
+		}
+
+		return -1
 	}
 
 	// prepopulate database with some chunks
@@ -68,8 +83,11 @@ func TestDB_SubscribePush(t *testing.T) {
 	ch, stop := db.SubscribePush(ctx)
 	defer stop()
 
+	var lastStartIndex int = -1
+
 	// receive and validate addresses from the subscription
 	go func() {
+		var err error
 		var i int // address index
 		for {
 			select {
@@ -78,9 +96,19 @@ func TestDB_SubscribePush(t *testing.T) {
 					return
 				}
 				chunksMu.Lock()
-				want := chunks[i]
+				if i > lastStartIndex {
+					// no way to know which chunk will come first here
+					gotIndex := findChunkIndex(got)
+					if gotIndex <= lastStartIndex {
+						err = fmt.Errorf("got index %v, expected index above %v", gotIndex, lastStartIndex)
+					}
+					lastStartIndex = gotIndex
+					i = 0
+				}
+				cIndex := lastStartIndex - i
+				want := chunks[cIndex]
+				chunkProcessedTimes[cIndex]++
 				chunksMu.Unlock()
-				var err error
 				if !bytes.Equal(got.Data(), want.Data()) {
 					err = fmt.Errorf("got chunk %v data %x, want %x", i, got.Data(), want.Data())
 				}
@@ -111,6 +139,18 @@ func TestDB_SubscribePush(t *testing.T) {
 	uploadRandomChunks(3)
 
 	checkErrChan(ctx, t, errChan, len(chunks))
+
+	chunksMu.Lock()
+	if lastStartIndex != len(chunks)-1 {
+		t.Fatalf("got %d chunks, expected %d", lastStartIndex, len(chunks))
+	}
+
+	for i, pc := range chunkProcessedTimes {
+		if pc != 1 {
+			t.Fatalf("chunk on address %s processed %d times, should be only once", chunks[i].Address(), pc)
+		}
+	}
+	chunksMu.Unlock()
 }
 
 // TestDB_SubscribePush_multiple uploads chunks before and after
@@ -138,6 +178,17 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 		}
 	}
 
+	// caller expected to hold lock on addrsMu
+	findAddressIndex := func(address swarm.Address) int {
+		for i, a := range addrs {
+			if a.Equal(address) {
+				return i
+			}
+		}
+
+		return -1
+	}
+
 	// prepopulate database with some chunks
 	// before the subscription
 	uploadRandomChunks(10)
@@ -152,6 +203,8 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 
 	subsCount := 10
 
+	lastStartIndexSlice := make([]int, subsCount)
+
 	// start a number of subscriptions
 	// that all of them will write every addresses error to errChan
 	for j := 0; j < subsCount; j++ {
@@ -160,7 +213,9 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 
 		// receive and validate addresses from the subscription
 		go func(j int) {
+			var err error
 			var i int // address index
+			lastStartIndexSlice[j] = -1
 			for {
 				select {
 				case got, ok := <-ch:
@@ -168,9 +223,18 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 						return
 					}
 					addrsMu.Lock()
-					want := addrs[i]
+					if i > lastStartIndexSlice[j] {
+						// no way to know which chunk will come first here
+						gotIndex := findAddressIndex(got.Address())
+						if gotIndex <= lastStartIndexSlice[j] {
+							err = fmt.Errorf("got index %v, expected index above %v", gotIndex, lastStartIndexSlice[j])
+						}
+						lastStartIndexSlice[j] = gotIndex
+						i = 0
+					}
+					aIndex := lastStartIndexSlice[j] - i
+					want := addrs[aIndex]
 					addrsMu.Unlock()
-					var err error
 					if !got.Address().Equal(want) {
 						err = fmt.Errorf("got chunk %v address on subscription %v %s, want %s", i, j, got, want)
 					}
@@ -202,4 +266,12 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 	wantedChunksCount := len(addrs) * subsCount
 
 	checkErrChan(ctx, t, errChan, wantedChunksCount)
+
+	for j := 0; j < subsCount; j++ {
+		addrsMu.Lock()
+		if lastStartIndexSlice[j] != len(addrs)-1 {
+			t.Fatalf("got %d chunks, expected %d", lastStartIndexSlice[j], len(addrs))
+		}
+		addrsMu.Unlock()
+	}
 }

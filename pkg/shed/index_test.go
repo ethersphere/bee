@@ -544,6 +544,228 @@ func TestIndex_Iterate(t *testing.T) {
 	})
 }
 
+// TestIndex_IterateReverse validates index Iterate
+// functions for correctness in reversed order.
+func TestIndex_IterateReverse(t *testing.T) {
+	db := newTestDB(t)
+
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items := []Item{
+		{
+			Address: []byte("iterate-hash-01"),
+			Data:    []byte("data80"),
+		},
+		{
+			Address: []byte("iterate-hash-03"),
+			Data:    []byte("data22"),
+		},
+		{
+			Address: []byte("iterate-hash-05"),
+			Data:    []byte("data41"),
+		},
+		{
+			Address: []byte("iterate-hash-02"),
+			Data:    []byte("data84"),
+		},
+		{
+			Address: []byte("iterate-hash-06"),
+			Data:    []byte("data1"),
+		},
+	}
+	batch := new(leveldb.Batch)
+	for _, i := range items {
+		err = index.PutInBatch(batch, i)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = db.WriteBatch(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item04 := Item{
+		Address: []byte("iterate-hash-04"),
+		Data:    []byte("data0"),
+	}
+	err = index.Put(item04)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items = append(items, item04)
+
+	sort.SliceStable(items, func(i, j int) bool {
+		return bytes.Compare(items[i].Address, items[j].Address) < 0
+	})
+
+	t.Run("all", func(t *testing.T) {
+		i := len(items) - 1
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			Reverse: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := len(items)
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("start from", func(t *testing.T) {
+		startIndex := 3
+		i := startIndex
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			StartFrom: &items[startIndex],
+			Reverse:   true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := len(items) - startIndex + 1
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("skip start from", func(t *testing.T) {
+		startIndex := 3
+		i := startIndex - 1
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			StartFrom:         &items[startIndex],
+			SkipStartFromItem: true,
+			Reverse:           true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := len(items) - startIndex
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("stop", func(t *testing.T) {
+		i := len(items) - 1
+		stopIndex := 3
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			count++
+			if i == stopIndex {
+				return true, nil
+			}
+			i--
+			return false, nil
+		}, &IterateOptions{
+			Reverse: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := stopIndex
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("no overflow", func(t *testing.T) {
+		secondIndex, err := db.NewIndex("second-index", retrievalIndexFuncs)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		secondItem := Item{
+			Address: []byte("iterate-hash-10"),
+			Data:    []byte("data-second"),
+		}
+		err = secondIndex.Put(secondItem)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		i := len(items) - 1
+		count := 0
+		err = index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			Reverse: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := len(items)
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+
+		i = 1
+		count = 0
+		err = secondIndex.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			checkItem(t, item, secondItem)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			Reverse: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount = 1
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+}
+
 // TestIndex_Iterate_withPrefix validates index Iterate
 // function for correctness.
 func TestIndex_Iterate_withPrefix(t *testing.T) {
@@ -726,6 +948,202 @@ func TestIndex_Iterate_withPrefix(t *testing.T) {
 		}
 		if i != len(items) {
 			t.Errorf("got %v items, want %v", i, len(items))
+		}
+	})
+}
+
+// TestIndex_IterateReverse_withPrefix validates index Iterate
+// functions for correctness in reversed order.
+func TestIndex_IterateReverse_withPrefix(t *testing.T) {
+	db := newTestDB(t)
+
+	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allItems := []Item{
+		{Address: []byte("want-hash-00"), Data: []byte("data80")},
+		{Address: []byte("skip-hash-01"), Data: []byte("data81")},
+		{Address: []byte("skip-hash-02"), Data: []byte("data82")},
+		{Address: []byte("skip-hash-03"), Data: []byte("data83")},
+		{Address: []byte("want-hash-04"), Data: []byte("data84")},
+		{Address: []byte("want-hash-05"), Data: []byte("data85")},
+		{Address: []byte("want-hash-06"), Data: []byte("data86")},
+		{Address: []byte("want-hash-07"), Data: []byte("data87")},
+		{Address: []byte("want-hash-08"), Data: []byte("data88")},
+		{Address: []byte("want-hash-09"), Data: []byte("data89")},
+		{Address: []byte("z-skip-hash-10"), Data: []byte("data90")},
+	}
+	batch := new(leveldb.Batch)
+	for _, i := range allItems {
+		err = index.PutInBatch(batch, i)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = db.WriteBatch(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefix := []byte("want")
+
+	items := make([]Item, 0)
+	for _, item := range allItems {
+		if bytes.HasPrefix(item.Address, prefix) {
+			items = append(items, item)
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return bytes.Compare(items[i].Address, items[j].Address) < 0
+	})
+
+	t.Run("with prefix", func(t *testing.T) {
+		i := len(items) - 1
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			Prefix:  prefix,
+			Reverse: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := len(items)
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("with prefix and start from", func(t *testing.T) {
+		startIndex := 2
+		i := startIndex
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			StartFrom: &items[startIndex],
+			Prefix:    prefix,
+			Reverse:   true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := startIndex + 1
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("with prefix and skip start from", func(t *testing.T) {
+		startIndex := 3
+		i := startIndex - 1
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			StartFrom:         &items[startIndex],
+			SkipStartFromItem: true,
+			Prefix:            prefix,
+			Reverse:           true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := len(items) - startIndex - 1
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("stop", func(t *testing.T) {
+		i := len(items) - 1
+		stopIndex := 3
+		var count int
+		err := index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			count++
+			if i == stopIndex {
+				return true, nil
+			}
+			i--
+			return false, nil
+		}, &IterateOptions{
+			Prefix:  prefix,
+			Reverse: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := stopIndex + 1
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
+		}
+	})
+
+	t.Run("no overflow", func(t *testing.T) {
+		secondIndex, err := db.NewIndex("second-index", retrievalIndexFuncs)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		secondItem := Item{
+			Address: []byte("iterate-hash-10"),
+			Data:    []byte("data-second"),
+		}
+		err = secondIndex.Put(secondItem)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		i := len(items) - 1
+		var count int
+		err = index.Iterate(func(item Item) (stop bool, err error) {
+			if i < 0 {
+				return true, fmt.Errorf("got unexpected index item: %#v", item)
+			}
+			want := items[i]
+			checkItem(t, item, want)
+			i--
+			count++
+			return false, nil
+		}, &IterateOptions{
+			Prefix:  prefix,
+			Reverse: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantItemsCount := len(items)
+		if count != wantItemsCount {
+			t.Errorf("got %v items, expected %v", count, wantItemsCount)
 		}
 	})
 }
