@@ -358,7 +358,6 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 					return it.Error()
 				}
 			}
-
 		}
 	}
 
@@ -390,8 +389,8 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 	return it.Error()
 }
 
-// Increment the last byte that is not 0xFF, and returned a new byte array
-// truncated after the position that was incremented.
+// bytesIncrement increments the last byte that is not 0xFF, and returns
+// a new byte array truncated after the position that was incremented.
 func bytesIncrement(bytes []byte) []byte {
 	b := append(bytes[:0:0], bytes...)
 
@@ -401,7 +400,7 @@ func bytesIncrement(bytes []byte) []byte {
 			continue
 		}
 
-		// Found byte smaller than 0xFF: increment and truncate
+		// found byte smaller than 0xFF: increment and truncate
 		b[i]++
 		return b[:i+1]
 	}

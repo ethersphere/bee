@@ -57,7 +57,7 @@ func TestDB_SubscribePush(t *testing.T) {
 		}
 	}
 
-	// REQUIRED_LOCK - chunksMu
+	// caller expected to hold lock on chunksMu
 	findChunkIndex := func(chunk swarm.Chunk) int {
 		for i, c := range chunks {
 			if chunk.Address().Equal(c.Address()) {
@@ -178,7 +178,7 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 		}
 	}
 
-	// REQUIRED_LOCK - addrsMu
+	// caller expected to hold lock on addrsMu
 	findAddressIndex := func(address swarm.Address) int {
 		for i, a := range addrs {
 			if a.Equal(address) {

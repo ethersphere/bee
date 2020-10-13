@@ -92,7 +92,6 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 					select {
 					case chunks <- swarm.NewChunk(swarm.NewAddress(dataItem.Address), dataItem.Data).WithTagID(item.Tag):
 						count++
-						// when the chunk is successfully sent to channel
 						// we set first one sent, which is "oldest" at that point
 						if lastItem == nil {
 							lastItem = &item
@@ -121,17 +120,14 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 					return
 				}
 
-				// save last Item from this iteration in order to know were
+				// save last Item from this iteration in order to know where
 				// to stop on next iteration
 				if lastItem != nil && toItemKey == nil {
-					var lastItemKey []byte
 					// move 'toItemKey' to point to last item in previous iteration
-					lastItemKey, err = db.pushIndex.ItemKey(*lastItem)
+					toItemKey, err = db.pushIndex.ItemKey(*lastItem)
 					if err != nil {
 						return
 					}
-
-					toItemKey = append(lastItemKey[:0:0], lastItemKey...)
 				}
 
 				// 'lastItem' should be populated on next iteration again
