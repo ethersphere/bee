@@ -342,7 +342,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.localstoreCloser = storer
 
-	chunkvalidator := swarm.NewChunkValidator(soc.NewValidator(), content.NewValidator())
+	chunkvalidator := swarm.NewChunkValidator(content.NewValidator(), soc.NewValidator())
 
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator, tracer)
 	tagg := tags.NewTags(stateStore, logger)
