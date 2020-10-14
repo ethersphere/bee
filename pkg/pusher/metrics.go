@@ -17,7 +17,6 @@ type metrics struct {
 	TotalChunksToBeSentCounter prometheus.Counter
 	TotalChunksSynced          prometheus.Counter
 	ErrorSettingChunkToSynced  prometheus.Counter
-	MarkAndSweepTimer          prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -40,14 +39,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cannot_set_chunk_sync_in_db",
-			Help:      "Total no of times the chunk cannot be synced in DB.",
-		}),
-		MarkAndSweepTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "mark_and_sweep_time_histogram",
-			Help:      "Histogram of time spent in mark and sweep.",
-			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
+			Help:      "Total number of times the chunk cannot be synced in DB.",
 		}),
 	}
 }
