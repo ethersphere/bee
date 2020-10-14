@@ -7,6 +7,8 @@ package splitter_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"strconv"
 	"testing"
 	"time"
 
@@ -180,4 +182,61 @@ func TestUnalignedSplit(t *testing.T) {
 	case <-timer.C:
 		t.Fatal("timeout")
 	}
+}
+
+/*
+go test -v -bench=. -run Bench -benchmem
+goos: linux
+goarch: amd64
+pkg: github.com/ethersphere/bee/pkg/file/splitter
+BenchmarkSplitter
+BenchmarkSplitter/1000-bytes
+BenchmarkSplitter/1000-bytes-4         	   12667	     95965 ns/op	  154870 B/op	     367 allocs/op
+BenchmarkSplitter/10000-bytes
+BenchmarkSplitter/10000-bytes-4        	    2808	    418753 ns/op	  369764 B/op	    1624 allocs/op
+BenchmarkSplitter/100000-bytes
+BenchmarkSplitter/100000-bytes-4       	     349	   3342003 ns/op	 2042891 B/op	   11810 allocs/op
+BenchmarkSplitter/1000000-bytes
+BenchmarkSplitter/1000000-bytes-4      	      33	  30905753 ns/op	18825910 B/op	  113721 allocs/op
+BenchmarkSplitter/10000000-bytes
+BenchmarkSplitter/10000000-bytes-4     	       4	 295615658 ns/op	186417904 B/op	 1132527 allocs/op
+BenchmarkSplitter/100000000-bytes
+BenchmarkSplitter/100000000-bytes-4    	       1	2972826021 ns/op	1861374352 B/op	11321235 allocs/op
+PASS
+ok  	github.com/ethersphere/bee/pkg/file/splitter	22.476s
+*/
+
+func BenchmarkSplitter(b *testing.B) {
+	for _, count := range []int{
+		1000,      // 1k
+		10000,     // 10 k
+		100000,    // 100 k
+		1000000,   // 1 meg
+		10000000,  // 10 megs
+		100000000, // 100 megs
+	} {
+		b.Run(strconv.Itoa(count)+"-bytes", func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				benchmarkSplitter(b, count)
+			}
+		})
+	}
+}
+
+func benchmarkSplitter(b *testing.B, count int) {
+	b.StopTimer()
+
+	m := mock.NewStorer()
+	s := splitter.NewSimpleSplitter(m, storage.ModePutUpload)
+	data := make([]byte, count)
+	rand.Read(data)
+
+	testDataReader := file.NewSimpleReadCloser(data)
+	b.StartTimer()
+
+	_, err := s.Split(context.Background(), testDataReader, int64(len(data)), false)
+	if err != nil {
+		b.Fatal(err)
+	}
+
 }
