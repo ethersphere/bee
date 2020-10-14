@@ -106,9 +106,9 @@ func BenchmarkPipeline(b *testing.B) {
 		1000,      // 1k
 		10000,     // 10 k
 		100000,    // 100 k
-		1000000,   // 1 meg
-		10000000,  // 10 megs
-		100000000, // 100 megs
+		1000000,   // 1 mb
+		10000000,  // 10 mb
+		100000000, // 100 mb
 	} {
 		b.Run(strconv.Itoa(count)+"-bytes", func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
