@@ -240,17 +240,19 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.p2pService = p2ps
 
-	if natManager := p2ps.NATManager(); natManager != nil {
-		// wait for nat manager to init
-		logger.Debug("initializing NAT manager")
-		select {
-		case <-natManager.Ready():
-			// this is magic sleep to give NAT time to sync the mappings
-			// this is a hack, kind of alchemy and should be improved
-			time.Sleep(3 * time.Second)
-			logger.Debug("NAT manager initialized")
-		case <-time.After(10 * time.Second):
-			logger.Warning("NAT manager init timeout")
+	if !o.Standalone {
+		if natManager := p2ps.NATManager(); natManager != nil {
+			// wait for nat manager to init
+			logger.Debug("initializing NAT manager")
+			select {
+			case <-natManager.Ready():
+				// this is magic sleep to give NAT time to sync the mappings
+				// this is a hack, kind of alchemy and should be improved
+				time.Sleep(3 * time.Second)
+				logger.Debug("NAT manager initialized")
+			case <-time.After(10 * time.Second):
+				logger.Warning("NAT manager init timeout")
+			}
 		}
 	}
 
