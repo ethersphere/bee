@@ -7,6 +7,7 @@ package builder_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"strconv"
@@ -17,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"gitlab.com/nolash/go-mockbytes"
 )
 
 func TestPartialWrites(t *testing.T) {
@@ -123,12 +123,9 @@ func benchmarkPipeline(b *testing.B, count int) {
 
 	m := mock.NewStorer()
 	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	data := make([]byte, count)
+	rand.Read(data, count)
 
-	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
-	data, err := g.SequentialBytes(count)
-	if err != nil {
-		b.Fatal(err)
-	}
 	b.StartTimer()
 
 	_, err = p.Write(data)
