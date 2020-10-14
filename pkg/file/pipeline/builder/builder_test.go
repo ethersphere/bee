@@ -124,7 +124,7 @@ func benchmarkPipeline(b *testing.B, count int) {
 	m := mock.NewStorer()
 	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 	data := make([]byte, count)
-	rand.Read(data)
+	_ = rand.Read(data)
 
 	b.StartTimer()
 

@@ -229,7 +229,7 @@ func benchmarkSplitter(b *testing.B, count int) {
 	m := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(m, storage.ModePutUpload)
 	data := make([]byte, count)
-	rand.Read(data)
+	_ = rand.Read(data)
 
 	testDataReader := file.NewSimpleReadCloser(data)
 	b.StartTimer()
