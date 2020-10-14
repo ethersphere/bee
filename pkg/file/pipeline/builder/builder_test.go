@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
@@ -16,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"gitlab.com/nolash/go-mockbytes"
 )
 
 func TestPartialWrites(t *testing.T) {
@@ -75,4 +77,45 @@ func TestAllVectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func BenchmarkPipeline(b *testing.B) {
+	for _, count := range []int{
+		1000,      // 1k
+		10000,     // 10 k
+		100000,    // 100 k
+		1000000,   // 1 meg
+		10000000,  // 10 megs
+		100000000, // 100 megs
+	} {
+		b.Run(strconv.Itoa(count)+"-bytes", func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				benchmarkPipeline(b, count)
+			}
+		})
+	}
+}
+
+func benchmarkPipeline(b *testing.B, count int) {
+	b.StopTimer()
+
+	m := mock.NewStorer()
+	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+
+	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	data, err := g.SequentialBytes(count)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.StartTimer()
+
+	_, err = p.Write(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	_, err = p.Sum()
+	if err != nil {
+		b.Fatal(err)
+	}
+
 }
