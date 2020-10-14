@@ -24,5 +24,5 @@ func Get() *bmtlegacy.Hasher {
 
 // Put a bmt Hasher back into the pool
 func Put(h *bmtlegacy.Hasher) {
-	go instance.Put(h)
+	instance.Put(h)
 }
