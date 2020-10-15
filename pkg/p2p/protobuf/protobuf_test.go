@@ -121,34 +121,6 @@ func TestReader_timeout(t *testing.T) {
 					}
 				}
 			})
-			t.Run("WithTimeout", func(t *testing.T) {
-				r := tc.readerFunc()
-				var msg pb.Message
-				for i := 0; i < len(messages); i++ {
-					var timeout time.Duration
-					if i == 0 {
-						timeout = 600 * time.Millisecond
-					} else {
-						timeout = 10 * time.Millisecond
-					}
-					err := r.ReadMsgWithTimeout(timeout, &msg)
-					if i == 0 {
-						if err != nil {
-							t.Fatal(err)
-						}
-					} else {
-						if err != protobuf.ErrTimeout {
-							t.Fatalf("got error %v, want %v", err, protobuf.ErrTimeout)
-						}
-						break
-					}
-					want := messages[i]
-					got := msg.Text
-					if got != want {
-						t.Errorf("got message %q, want %q", got, want)
-					}
-				}
-			})
 		})
 	}
 }
@@ -240,34 +212,6 @@ func TestWriter_timeout(t *testing.T) {
 					} else {
 						if err != context.DeadlineExceeded {
 							t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
-						}
-						break
-					}
-					if got := <-msgs; got != m {
-						t.Fatalf("got message %q, want %q", got, m)
-					}
-				}
-			})
-			t.Run("WithTimeout", func(t *testing.T) {
-				w, msgs := tc.writerFunc()
-
-				for i, m := range messages {
-					var timeout time.Duration
-					if i == 0 {
-						timeout = 600 * time.Millisecond
-					} else {
-						timeout = 10 * time.Millisecond
-					}
-					err := w.WriteMsgWithTimeout(timeout, &pb.Message{
-						Text: m,
-					})
-					if i == 0 {
-						if err != nil {
-							t.Fatal(err)
-						}
-					} else {
-						if err != protobuf.ErrTimeout {
-							t.Fatalf("got error %v, want %v", err, protobuf.ErrTimeout)
 						}
 						break
 					}
