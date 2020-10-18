@@ -32,7 +32,6 @@ type tagResponse struct {
 	Sent      int64         `json:"sent"`
 	Synced    int64         `json:"synced"`
 	Uid       uint32        `json:"uid"`
-	Anonymous bool          `json:"anonymous"`
 	Name      string        `json:"name"`
 	Address   swarm.Address `json:"address"`
 	StartedAt time.Time     `json:"startedAt"`
