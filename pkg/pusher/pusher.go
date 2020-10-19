@@ -193,7 +193,7 @@ LOOP:
 
 	select {
 	case <-closeC:
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		s.logger.Warning("pusher shutting down with pending operations")
 	}
 }
@@ -219,7 +219,7 @@ func (s *Service) Close() error {
 	// Wait for chunks worker to finish
 	select {
 	case <-s.chunksWorkerQuitC:
-	case <-time.After(3 * time.Second):
+	case <-time.After(6 * time.Second):
 	}
 	return nil
 }
