@@ -214,6 +214,7 @@ func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
 }
 
 func (s *Service) Close() error {
+	s.logger.Info("pusher shutting down")
 	close(s.quit)
 
 	// Wait for chunks worker to finish
