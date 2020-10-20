@@ -10,7 +10,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -20,7 +19,7 @@ type staticAddressResolver struct {
 	port    string
 }
 
-func newStaticAddressResolver(addr string) (handshake.AdvertisableAddressResolver, error) {
+func newStaticAddressResolver(addr string) (*staticAddressResolver, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
