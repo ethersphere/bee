@@ -9,6 +9,7 @@ import (
 	"context"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -20,13 +21,19 @@ import (
 )
 
 type testObserver struct {
-	called bool
+	called chan struct{}
 	peer   swarm.Address
 	amount uint64
 }
 
+func newTestObserver() *testObserver {
+	return &testObserver{
+		called: make(chan struct{}),
+	}
+}
+
 func (t *testObserver) NotifyPayment(peer swarm.Address, amount uint64) error {
-	t.called = true
+	close(t.called)
 	t.peer = peer
 	t.amount = amount
 	return nil
@@ -38,7 +45,7 @@ func TestPayment(t *testing.T) {
 	storeRecipient := mock.NewStateStore()
 	defer storeRecipient.Close()
 
-	observer := &testObserver{}
+	observer := newTestObserver()
 	recipient := pseudosettle.New(nil, logger, storeRecipient)
 	recipient.SetPaymentObserver(observer)
 
@@ -70,6 +77,10 @@ func TestPayment(t *testing.T) {
 
 	record := records[0]
 
+	if err := record.Err(); err != nil {
+		t.Fatalf("record error: %v", err)
+	}
+
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(record.In()),
 		func() protobuf.Message { return new(pb.Payment) },
@@ -87,7 +98,9 @@ func TestPayment(t *testing.T) {
 		t.Fatalf("got message with amount %v, want %v", sentAmount, amount)
 	}
 
-	if !observer.called {
+	select {
+	case <-observer.called:
+	case <-time.After(time.Second):
 		t.Fatal("expected observer to be called")
 	}
 

@@ -85,7 +85,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}()
 	var req pb.Payment
-	if err := r.ReadMsg(&req); err != nil {
+	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
 

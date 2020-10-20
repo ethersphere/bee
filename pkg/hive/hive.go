@@ -107,7 +107,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		})
 	}
 
-	if err := w.WriteMsg(&peersRequest); err != nil {
+	if err := w.WriteMsgWithContext(ctx, &peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
 	}
 
@@ -116,8 +116,10 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 
 func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
 	_, r := protobuf.NewWriterAndReader(stream)
+	ctx, cancel := context.WithTimeout(ctx, messageTimeout)
+	defer cancel()
 	var peersReq pb.Peers
-	if err := r.ReadMsgWithTimeout(messageTimeout, &peersReq); err != nil {
+	if err := r.ReadMsgWithContext(ctx, &peersReq); err != nil {
 		_ = stream.Reset()
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}

@@ -74,14 +74,14 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 
 	var pong pb.Pong
 	for _, msg := range msgs {
-		if err := w.WriteMsg(&pb.Ping{
+		if err := w.WriteMsgWithContext(ctx, &pb.Ping{
 			Greeting: msg,
 		}); err != nil {
 			return 0, fmt.Errorf("write message: %w", err)
 		}
 		s.metrics.PingSentCount.Inc()
 
-		if err := r.ReadMsg(&pong); err != nil {
+		if err := r.ReadMsgWithContext(ctx, &pong); err != nil {
 			if err == io.EOF {
 				break
 			}
@@ -103,7 +103,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 
 	var ping pb.Ping
 	for {
-		if err := r.ReadMsg(&ping); err != nil {
+		if err := r.ReadMsgWithContext(ctx, &ping); err != nil {
 			if err == io.EOF {
 				break
 			}
