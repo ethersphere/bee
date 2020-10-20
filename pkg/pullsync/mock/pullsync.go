@@ -209,7 +209,7 @@ func (p *PullSyncMock) SyncCalls(peer swarm.Address) (res []SyncCall) {
 	return res
 }
 
-func (p *PullSyncMock) CancelRuid(peer swarm.Address, ruid uint32) error {
+func (p *PullSyncMock) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32) error {
 	return nil
 }
 

@@ -5,6 +5,7 @@
 package handshake
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -33,7 +34,7 @@ const (
 	StreamName = "handshake"
 	// MaxWelcomeMessageLength is maximum number of characters allowed in the welcome message.
 	MaxWelcomeMessageLength = 140
-	messageTimeout          = 5 * time.Second
+	handshakeTimeout        = 15 * time.Second
 )
 
 var (
@@ -101,7 +102,10 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
+	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
+	defer cancel()
+
 	w, r := protobuf.NewWriterAndReader(stream)
 	fullRemoteMA, err := buildFullMA(peerMultiaddr, peerID)
 	if err != nil {
@@ -113,14 +117,14 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 		return nil, err
 	}
 
-	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Syn{
+	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
 		ObservedUnderlay: fullRemoteMABytes,
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
 
 	var resp pb.SynAck
-	if err := r.ReadMsgWithTimeout(messageTimeout, &resp); err != nil {
+	if err := r.ReadMsgWithContext(ctx, &resp); err != nil {
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
@@ -151,7 +155,7 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 
 	// Synced read:
 	welcomeMessage := s.GetWelcomeMessage()
-	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.Ack{
+	if err := w.WriteMsgWithContext(ctx, &pb.Ack{
 		Address: &pb.BzzAddress{
 			Underlay:  advertisableUnderlayBytes,
 			Overlay:   bzzAddress.Overlay.Bytes(),
@@ -176,7 +180,10 @@ func (s *Service) Handshake(stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerI
 }
 
 // Handle handles an incoming handshake from a peer.
-func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remotePeerID libp2ppeer.ID) (i *Info, err error) {
+func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remotePeerID libp2ppeer.ID) (i *Info, err error) {
+	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
+	defer cancel()
+
 	s.receivedHandshakesMu.Lock()
 	if _, exists := s.receivedHandshakes[remotePeerID]; exists {
 		s.receivedHandshakesMu.Unlock()
@@ -197,7 +204,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 	}
 
 	var syn pb.Syn
-	if err := r.ReadMsgWithTimeout(messageTimeout, &syn); err != nil {
+	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
 		return nil, fmt.Errorf("read syn message: %w", err)
 	}
 
@@ -223,7 +230,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 
 	welcomeMessage := s.GetWelcomeMessage()
 
-	if err := w.WriteMsgWithTimeout(messageTimeout, &pb.SynAck{
+	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
 			ObservedUnderlay: fullRemoteMABytes,
 		},
@@ -242,7 +249,7 @@ func (s *Service) Handle(stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remote
 	}
 
 	var ack pb.Ack
-	if err := r.ReadMsgWithTimeout(messageTimeout, &ack); err != nil {
+	if err := r.ReadMsgWithContext(ctx, &ack); err != nil {
 		return nil, fmt.Errorf("read ack message: %w", err)
 	}
 

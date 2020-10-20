@@ -45,7 +45,7 @@ var maxPage = 50
 type Interface interface {
 	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error)
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
-	CancelRuid(peer swarm.Address, ruid uint32) error
+	CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32) error
 }
 
 type Syncer struct {
@@ -404,8 +404,8 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	return nil
 }
 
-func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) (err error) {
-	stream, err := s.streamer.NewStream(context.Background(), peer, nil, protocolName, protocolVersion, cancelStreamName)
+func (s *Syncer) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32) (err error) {
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cancelStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
@@ -419,9 +419,12 @@ func (s *Syncer) CancelRuid(peer swarm.Address, ruid uint32) (err error) {
 		}
 	}()
 
+	ctx, cancel := context.WithTimeout(ctx, cancellationTimeout)
+	defer cancel()
+
 	var c pb.Cancel
 	c.Ruid = ruid
-	if err := w.WriteMsgWithTimeout(cancellationTimeout, &c); err != nil {
+	if err := w.WriteMsgWithContext(ctx, &c); err != nil {
 		return fmt.Errorf("send cancellation: %w", err)
 	}
 	return nil

@@ -229,7 +229,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
 		peerID := stream.Conn().RemotePeer()
 		handshakeStream := NewStream(stream)
-		i, err := s.handshakeService.Handle(handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
+		i, err := s.handshakeService.Handle(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 		if err != nil {
 			s.logger.Debugf("handshake: handle %s: %v", peerID, err)
 			s.logger.Errorf("unable to handshake with peer %v", peerID)
@@ -455,7 +455,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	handshakeStream := NewStream(stream)
-	i, err := s.handshakeService.Handshake(handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
+	i, err := s.handshakeService.Handshake(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
