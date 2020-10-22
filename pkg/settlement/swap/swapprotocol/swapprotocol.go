@@ -186,9 +186,8 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, cheque *ch
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			// wait for full close
-			// this ensure the accounting lock for this peer will be held long for the other peer to process the cheque
-			_ = stream.FullClose()
+			// don't wait for full close to avoid deadlocks if cheques are sent simultaniously in both directions
+			go stream.FullClose()
 		}
 	}()
 
