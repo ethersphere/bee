@@ -186,7 +186,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, cheque *ch
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			// don't wait for full close to avoid deadlocks if cheques are sent simultaniously in both directions
+			// don't wait for full close to avoid deadlocks if cheques are sent simultaneously in both directions
 			go stream.FullClose()
 		}
 	}()
