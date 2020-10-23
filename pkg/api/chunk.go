@@ -114,13 +114,13 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	chunk, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.Logger.Trace("chunk: chunk not found. addr %s", address)
+			s.Logger.Tracef("chunk: chunk not found. addr %s", address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
 		if errors.Is(err, netstore.ErrRecoveryAttempt) {
-			s.Logger.Trace("chunk: chunk recovery initiated. addr %s", address)
+			s.Logger.Tracef("chunk: chunk recovery initiated. addr %s", address)
 			jsonhttp.Accepted(w, "chunk recovery initiated. retry after sometime.")
 			return
 		}
