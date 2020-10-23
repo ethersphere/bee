@@ -75,7 +75,7 @@ func TestReader_timeout(t *testing.T) {
 		{
 			name: "NewReader",
 			readerFunc: func() protobuf.Reader {
-				return protobuf.NewReader(newMessageReader(messages, 100*time.Millisecond))
+				return protobuf.NewReader(newMessageReader(messages, 500*time.Millisecond))
 			},
 		},
 		{
@@ -83,7 +83,7 @@ func TestReader_timeout(t *testing.T) {
 			readerFunc: func() protobuf.Reader {
 				_, r := protobuf.NewWriterAndReader(
 					newNoopWriteCloser(
-						newMessageReader(messages, 100*time.Millisecond),
+						newMessageReader(messages, 500*time.Millisecond),
 					),
 				)
 				return r
@@ -97,7 +97,7 @@ func TestReader_timeout(t *testing.T) {
 				for i := 0; i < len(messages); i++ {
 					var timeout time.Duration
 					if i == 0 {
-						timeout = 600 * time.Millisecond
+						timeout = 1000 * time.Millisecond
 					} else {
 						timeout = 10 * time.Millisecond
 					}
@@ -176,14 +176,14 @@ func TestWriter_timeout(t *testing.T) {
 		{
 			name: "NewWriter",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(100 * time.Millisecond)
+				w, msgs := newMessageWriter(500 * time.Millisecond)
 				return protobuf.NewWriter(w), msgs
 			},
 		},
 		{
 			name: "NewWriterAndReader",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(100 * time.Millisecond)
+				w, msgs := newMessageWriter(500 * time.Millisecond)
 				writer, _ := protobuf.NewWriterAndReader(newNoopReadCloser(w))
 				return writer, msgs
 			},
@@ -196,7 +196,7 @@ func TestWriter_timeout(t *testing.T) {
 				for i, m := range messages {
 					var timeout time.Duration
 					if i == 0 {
-						timeout = 600 * time.Millisecond
+						timeout = 1000 * time.Millisecond
 					} else {
 						timeout = 10 * time.Millisecond
 					}
