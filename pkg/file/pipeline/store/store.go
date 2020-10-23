@@ -25,7 +25,7 @@ type storeWriter struct {
 }
 
 // NewStoreWriter returns a storeWriter. It just writes the given data
-// to a given storage.Storer.
+// to a given storage.Putter.
 func NewStoreWriter(ctx context.Context, l storage.Putter, mode storage.ModePut, next pipeline.ChainWriter) pipeline.ChainWriter {
 	return &storeWriter{ctx: ctx, l: l, mode: mode, next: next}
 }
