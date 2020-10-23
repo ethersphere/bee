@@ -57,7 +57,7 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("debug api: balances peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Error("debug api: balances peer: invalid peer address %s", addr)
+		s.Logger.Errorf("debug api: balances peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}

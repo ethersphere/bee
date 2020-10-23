@@ -369,7 +369,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 						_ = s.Disconnect(overlay)
 					}
 
-					s.logger.Trace("blocklisted a peer %s", peerID)
+					s.logger.Tracef("blocklisted a peer %s", peerID)
 					_ = s.Disconnect(overlay)
 				}
 
