@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/seekjoiner"
+	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -261,10 +261,13 @@ func TestDirs(t *testing.T) {
 			}
 
 			// read manifest metadata
-			j := seekjoiner.NewSimpleJoiner(storer)
+			j, _, err := joiner.New(context.Background(), storer, resp.Reference)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			buf := bytes.NewBuffer(nil)
-			_, err = file.JoinReadAll(context.Background(), j, resp.Reference, buf)
+			_, err = file.JoinReadAll(context.Background(), j, buf)
 			if err != nil {
 				t.Fatal(err)
 			}

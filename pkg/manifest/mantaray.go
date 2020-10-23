@@ -11,8 +11,8 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/manifest/mantaray"
@@ -161,10 +161,13 @@ func newMantaraySaver(
 func (ls *mantarayLoadSaver) Load(ref []byte) ([]byte, error) {
 	ctx := ls.ctx
 
-	j := seekjoiner.NewSimpleJoiner(ls.storer)
+	j, _, err := joiner.New(ctx, ls.storer, swarm.NewAddress(ref))
+	if err != nil {
+		return nil, err
+	}
 
 	buf := bytes.NewBuffer(nil)
-	_, err := file.JoinReadAll(ctx, j, swarm.NewAddress(ref), buf)
+	_, err = file.JoinReadAll(ctx, j, buf)
 	if err != nil {
 		return nil, err
 	}

@@ -21,8 +21,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -246,10 +246,17 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 	}
 
-	// read entry.
-	j := seekjoiner.NewSimpleJoiner(s.Storer)
+	// read entry
+	j, _, err := joiner.New(r.Context(), s.Storer, address)
+	if err != nil {
+		logger.Debugf("file download: joiner %s: %v", address, err)
+		logger.Errorf("file download: joiner %s", address)
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(r.Context(), j, address, buf)
+	_, err = file.JoinReadAll(r.Context(), j, buf)
 	if err != nil {
 		logger.Debugf("file download: read entry %s: %v", address, err)
 		logger.Errorf("file download: read entry %s", address)
@@ -275,9 +282,17 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Read metadata.
+	// read metadata
+	j, _, err = joiner.New(r.Context(), s.Storer, e.Metadata())
+	if err != nil {
+		logger.Debugf("file download: joiner %s: %v", address, err)
+		logger.Errorf("file download: joiner %s", address)
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+
 	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(r.Context(), j, e.Metadata(), buf)
+	_, err = file.JoinReadAll(r.Context(), j, buf)
 	if err != nil {
 		logger.Debugf("file download: read metadata %s: %v", nameOrHex, err)
 		logger.Errorf("file download: read metadata %s", nameOrHex)
@@ -309,8 +324,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 	}
 
-	rs := seekjoiner.NewSimpleJoiner(s.Storer)
-	reader, l, err := rs.Join(r.Context(), reference)
+	reader, l, err := joiner.New(r.Context(), s.Storer, reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debugf("api download: not found %s: %v", reference, err)
