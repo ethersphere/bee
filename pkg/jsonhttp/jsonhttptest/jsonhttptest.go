@@ -218,6 +218,15 @@ func WithUnmarshalJSONResponse(response interface{}) Option {
 
 // WithPutResponseBody replaces the data in the provided byte slice with the
 // data from the response body of the request in the Request function.
+//
+// Example:
+//
+//	var respBytes []byte
+//	options := []jsonhttptest.Option{
+//		jsonhttptest.WithPutResponseBody(&respBytes),
+//	}
+//	// ...
+//
 func WithPutResponseBody(b *[]byte) Option {
 	return optionFunc(func(o *options) error {
 		o.responseBody = b
