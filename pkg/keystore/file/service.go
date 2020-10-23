@@ -14,10 +14,15 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 )
 
+// Service is the file-based keystore.Service implementation.
+//
+// Keys are stored in directory where each private key is stored in a file,
+// which is encrypted with symmetric key using some password.
 type Service struct {
 	dir string
 }
 
+// New creates new file-based keystore.Service implementation.
 func New(dir string) *Service {
 	return &Service{dir: dir}
 }

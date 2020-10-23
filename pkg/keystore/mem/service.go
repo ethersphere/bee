@@ -15,11 +15,17 @@ import (
 
 var _ keystore.Service = (*Service)(nil)
 
+// Service is the memory-based keystore.Service implementation.
+//
+// Keys are stored in the in-memory map, where the key is the name of the
+// private key, and value is structure where actual private key and password are
+// stored.
 type Service struct {
 	m  map[string]key
 	mu sync.Mutex
 }
 
+// New creates new memory-based keystore.Service implementation.
 func New() *Service {
 	return &Service{
 		m: make(map[string]key),
