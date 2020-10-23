@@ -11,8 +11,8 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/file/seekjoiner"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/manifest/simple"
@@ -120,10 +120,13 @@ func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm
 }
 
 func (m *simpleManifest) load(ctx context.Context, reference swarm.Address) error {
-	j := seekjoiner.NewSimpleJoiner(m.storer)
+	j, _, err := joiner.New(ctx, m.storer, reference)
+	if err != nil {
+		return fmt.Errorf("new joiner: %w", err)
+	}
 
 	buf := bytes.NewBuffer(nil)
-	_, err := file.JoinReadAll(ctx, j, reference, buf)
+	_, err = file.JoinReadAll(ctx, j, buf)
 	if err != nil {
 		return fmt.Errorf("manifest load error: %w", err)
 	}
