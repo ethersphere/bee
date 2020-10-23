@@ -85,7 +85,7 @@ func (s *server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("debug api: chequebook cheque peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Error("debug api: chequebook cheque peer: invalid peer address %s", addr)
+		s.Logger.Errorf("debug api: chequebook cheque peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
@@ -198,7 +198,7 @@ func (s *server) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("debug api: cashout peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Error("debug api: cashout peer: invalid peer address %s", addr)
+		s.Logger.Errorf("debug api: cashout peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
@@ -206,7 +206,7 @@ func (s *server) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	txHash, err := s.Swap.CashCheque(r.Context(), peer)
 	if err != nil {
 		s.Logger.Debugf("debug api: cashout peer: cannot cash %s: %v", addr, err)
-		s.Logger.Error("debug api: cashout peer: cannot cash %s", addr)
+		s.Logger.Errorf("debug api: cashout peer: cannot cash %s", addr)
 		jsonhttp.InternalServerError(w, errCannotCash)
 		return
 	}
@@ -234,7 +234,7 @@ func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.Logger.Debugf("debug api: cashout status peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Error("debug api: cashout status peer: invalid peer address %s", addr)
+		s.Logger.Errorf("debug api: cashout status peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
@@ -243,18 +243,18 @@ func (s *server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if errors.Is(err, chequebook.ErrNoCheque) {
 			s.Logger.Debugf("debug api: cashout status peer: %v", addr, err)
-			s.Logger.Error("debug api: cashout status peer: %s", addr)
+			s.Logger.Errorf("debug api: cashout status peer: %s", addr)
 			jsonhttp.NotFound(w, errNoCheque)
 			return
 		}
 		if errors.Is(err, chequebook.ErrNoCashout) {
 			s.Logger.Debugf("debug api: cashout status peer: %v", addr, err)
-			s.Logger.Error("debug api: cashout status peer: %s", addr)
+			s.Logger.Errorf("debug api: cashout status peer: %s", addr)
 			jsonhttp.NotFound(w, errNoCashout)
 			return
 		}
 		s.Logger.Debugf("debug api: cashout status peer: cannot get status %s: %v", addr, err)
-		s.Logger.Error("debug api: cashout status peer: cannot get status %s", addr)
+		s.Logger.Errorf("debug api: cashout status peer: cannot get status %s", addr)
 		jsonhttp.InternalServerError(w, errCannotCashStatus)
 		return
 	}
