@@ -198,7 +198,7 @@ func (s *server) doneSplit(w http.ResponseWriter, r *http.Request) {
 	_, err = tag.DoneSplit(tagr.Address)
 	if err != nil {
 		s.Logger.Debugf("done split: failed for address %v", tagr.Address)
-		s.Logger.Error("done split: failed for address %v", tagr.Address)
+		s.Logger.Errorf("done split: failed for address %v", tagr.Address)
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
