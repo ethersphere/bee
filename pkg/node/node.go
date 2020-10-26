@@ -423,8 +423,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		apiServer := &http.Server{
-			Handler:  apiService,
-			ErrorLog: log.New(b.errorLogWriter, "", 0),
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           apiService,
+			ErrorLog:          log.New(b.errorLogWriter, "", 0),
 		}
 
 		go func() {
@@ -475,8 +477,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		debugAPIServer := &http.Server{
-			Handler:  debugAPIService,
-			ErrorLog: log.New(b.errorLogWriter, "", 0),
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           debugAPIService,
+			ErrorLog:          log.New(b.errorLogWriter, "", 0),
 		}
 
 		go func() {
