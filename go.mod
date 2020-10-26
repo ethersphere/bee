@@ -28,6 +28,7 @@ require (
 	github.com/libp2p/go-libp2p-discovery v0.5.0 // indirect
 	github.com/libp2p/go-libp2p-peerstore v0.2.6
 	github.com/libp2p/go-libp2p-quic-transport v0.8.0
+	github.com/libp2p/go-libp2p-transport-upgrader v0.3.0
 	github.com/libp2p/go-openssl v0.0.6 // indirect
 	github.com/libp2p/go-tcp-transport v0.2.0
 	github.com/libp2p/go-ws-transport v0.3.1

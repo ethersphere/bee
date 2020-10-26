@@ -34,6 +34,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
+	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-tcp-transport"
 	ws "github.com/libp2p/go-ws-transport"
@@ -146,7 +147,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	transports := []libp2p.Option{
-		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.Transport(func(u *tptu.Upgrader) *tcp.TcpTransport {
+			t := tcp.NewTCPTransport(u)
+			t.DisableReuseport = true
+			return t
+		}),
 	}
 
 	if o.EnableWS {
