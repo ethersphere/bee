@@ -3,15 +3,15 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package tracing helps with propagation of tracing span through context in the
-system. It does this for operations contained to single node, as well as across
-nodes, by injecting special headers.
+Package tracing helps with the propagation of the tracing span through context
+in the system. It does this for operations contained to single node, as well as
+across nodes, by injecting special headers.
 
-To use tracing package Tracer instance must be created, which contains functions
-for starting new span contexes, injecting them in other data, and extracting
-active span them from context.
+To use the tracing package, a Tracer instance must be created, which contains
+functions for starting new span contexts, injecting them in other data, and
+extracting the active span them from the context.
 
-To use tracing package Tracer instance must be created:
+To use the tracing package a Tracer instance must be created:
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     true,
@@ -24,8 +24,8 @@ To use tracing package Tracer instance must be created:
 	defer tracerCloser.Close()
 	// ...
 
-The tracer instance contains functions for starting new span contexes, injecting
-them in other data, and extracting active span them from context:
+The tracer instance contains functions for starting new span contexts, injecting
+them in other data, and extracting the active span them from the context:
 
 	span, _, ctx := tracer.StartSpanFromContext(ctx, "operation-name", nil)
 
@@ -33,11 +33,11 @@ Once the operation is finished, the open span should be finished:
 
 	span.Finish()
 
-The tracing package also provides function for creating logger which will inject
-"traceid" field entry to log line, which helps in finding out which log lines
-belong to specific trace.
+The tracing package also provides a function for creating a logger which will
+inject a "traceid" field entry to the log line, which helps in finding out which
+log lines belong to a specific trace.
 
-To create logger with trace just wrap existing logger:
+To create a logger with trace just wrap an existing logger:
 
 	logger := tracing.NewLoggerWithTraceID(ctx, s.logger)
 	// ...
