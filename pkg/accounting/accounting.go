@@ -320,21 +320,25 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 			return err
 		}
 
-		// if still positive, store new surplus balance and return from debit
-		if newSurplusBalance > 0 {
+		// if nothing left for debiting, store new surplus balance and return from debit
+		if newSurplusBalance >= 0 {
 			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
 			if err != nil {
 				return fmt.Errorf("failed to persist surplus balance: %w", err)
 			}
+			if newSurplusBalance == 0 {
+				// if we have run out of surplus balance, let's set surplus flag to false
+				accountingPeer.surplus = false
+			}
 			return nil
 		}
 
-		// if we have run out of surplus balance, let's set surplus flag to false
+		// if we still have something to debit, than have run out of surplus balance,
+		// let's set surplus flag to false and store 0 as surplus balance
 		accountingPeer.surplus = false
-
-		// if the price was equal previous surplus balance, return from debit
-		if newSurplusBalance == 0 {
-			return nil
+		err = a.store.Put(peerSurplusBalanceKey(peer), 0)
+		if err != nil {
+			return fmt.Errorf("failed to persist surplus balance: %w", err)
 		}
 
 		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
