@@ -562,8 +562,8 @@ func TestAccountingNotifyPayment(t *testing.T) {
 	}
 
 	err = acc.NotifyPayment(peer1Addr, debtAmount+testPaymentTolerance+1)
-	if err == nil {
-		t.Fatal("expected payment to be rejected")
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
