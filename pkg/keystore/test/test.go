@@ -12,6 +12,8 @@ import (
 	"github.com/ethersphere/bee/pkg/keystore"
 )
 
+// Service is a utility testing function that can be used to test
+// implementations of the keystore.Service interface.
 func Service(t *testing.T, s keystore.Service) {
 	exists, err := s.Exists("swarm")
 	if err != nil {
