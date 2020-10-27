@@ -42,9 +42,17 @@ var (
 // how many maximum chunks in a batch
 var maxPage = 50
 
+// Interface is the PullSync interface.
 type Interface interface {
+	// SyncInterval syncs a requested interval from the given peer.
+	// It returns the BinID of highest chunk that was synced from the given
+	// interval. If the requested interval is too large, the downstream peer
+	// has the liberty to provide less chunks than requested.
 	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error)
+	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
+	// CancelRuid cancels active pullsync operation identified by ruid on
+	// a downstream peer.
 	CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32) error
 }
 
