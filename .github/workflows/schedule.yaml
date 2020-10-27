@@ -23,7 +23,7 @@ jobs:
             echo ::set-env name=GHA_REPO_RUN::false
           fi
       - name: Trigger ArgoCD
-        if: env.GHA_REPO_ALIVE == 'true'
+        if: env.GHA_REPO_RUN == 'true'
         uses: peter-evans/repository-dispatch@v1
         with:
           token: ${{ secrets.REPO_GHA_PAT }}
