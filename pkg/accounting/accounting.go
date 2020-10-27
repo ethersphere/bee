@@ -22,8 +22,9 @@ import (
 )
 
 var (
-	_              Interface = (*Accounting)(nil)
-	balancesPrefix string    = "balance_"
+	_                     Interface = (*Accounting)(nil)
+	balancesPrefix        string    = "balance_"
+	balancesSurplusPrefix string    = "surplusbalance_"
 )
 
 // Interface is the Accounting interface.
@@ -42,6 +43,8 @@ type Interface interface {
 	Debit(peer swarm.Address, price uint64) error
 	// Balance returns the current balance for the given peer.
 	Balance(peer swarm.Address) (int64, error)
+	//
+	SurplusBalance(peer swarm.Address) (int64, error)
 	// Balances returns balances for all known peers.
 	Balances() (map[string]int64, error)
 }
@@ -51,6 +54,7 @@ type accountingPeer struct {
 	lock             sync.Mutex // lock to be held during any accounting action for this peer
 	reservedBalance  uint64     // amount currently reserved for active peer interaction
 	paymentThreshold uint64     // the threshold at which the peer expects us to pay
+	surplus          bool       // signals wether peer has surplus to be used for debiting
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -299,6 +303,49 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	cost := price
+
+	// see if peer has surplus balance to deduct this transaction of
+	if accountingPeer.surplus == true {
+		surplusBalance, err := a.SurplusBalance(peer)
+		if err != nil {
+			if !errors.Is(err, ErrPeerNoBalance) {
+				return fmt.Errorf("failed to get surplus balance: %w", err)
+			}
+		}
+
+		// get new surplus balance after deduct
+		newSurplusBalance, err := subtractI64mU64(surplusBalance, price)
+		if err != nil {
+			return err
+		}
+
+		// if still positive, store new surplus balance and return from debit
+		if newSurplusBalance > 0 {
+			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
+			if err != nil {
+				return fmt.Errorf("failed to persist surplus balance: %w", err)
+			}
+			return nil
+		}
+
+		// if we have run out of surplus balance, let's set surplus flag to false
+		accountingPeer.surplus = false
+
+		// if the price was equal previous surplus balance, return from debit
+		if newSurplusBalance == 0 {
+			return nil
+		}
+
+		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
+		debitIncrease, err := subtractU64mI64(price, surplusBalance)
+		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
+		if debitIncrease <= 0 {
+			return fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
+		}
+		cost = uint64(debitIncrease)
+	}
+
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
@@ -307,7 +354,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	}
 
 	// Get nextBalance by safely increasing current balance with price
-	nextBalance, err := addI64pU64(currentBalance, price)
+	nextBalance, err := addI64pU64(currentBalance, cost)
 	if err != nil {
 		return err
 	}
@@ -345,9 +392,28 @@ func (a *Accounting) Balance(peer swarm.Address) (balance int64, err error) {
 	return balance, nil
 }
 
+// SurplusBalance returns the current balance for the given peer.
+func (a *Accounting) SurplusBalance(peer swarm.Address) (balance int64, err error) {
+	err = a.store.Get(peerSurplusBalanceKey(peer), &balance)
+
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return 0, ErrPeerNoBalance
+		}
+		return 0, err
+	}
+
+	return balance, nil
+}
+
 // peerBalanceKey returns the balance storage key for the given peer.
 func peerBalanceKey(peer swarm.Address) string {
 	return fmt.Sprintf("%s%s", balancesPrefix, peer.String())
+}
+
+// peerSurplusBalanceKey returns the surplus balance storage key for the given peer
+func peerSurplusBalanceKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s%s", balancesSurplusPrefix, peer.String())
 }
 
 // getAccountingPeer returns the accountingPeer for a given swarm address.
@@ -434,16 +500,17 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		}
 	}
 
-	nextBalance, err := subtractI64mU64(currentBalance, amount)
+	newBalance, err := subtractI64mU64(currentBalance, amount)
 	if err != nil {
 		return err
 	}
 
-	// Don't allow a payment to put use more into debt than the tolerance.
+	// Don't allow a payment to put us into debt
 	// This is to prevent another node tricking us into settling by settling
 	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
-	if nextBalance < -int64(a.paymentTolerance) {
-		return fmt.Errorf("refusing to accept payment which would put us too much in debt, new balance would have been %d", nextBalance)
+	nextBalance := newBalance
+	if newBalance < 0 {
+		nextBalance = 0
 	}
 
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
@@ -451,6 +518,38 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	// If payment would have put us into debt, rather, let's add to surplusBalance,
+	// so as that an oversettlement attempt creates balance for future forwarding services
+	// charges to be deducted of
+	if newBalance < 0 {
+		surplusGrowth, err := subtractU64mI64(amount, currentBalance)
+		if err != nil {
+			return err
+		}
+
+		surplus, err := a.SurplusBalance(peer)
+		if err != nil {
+			if !errors.Is(err, ErrPeerNoBalance) {
+				return fmt.Errorf("failed to get surplus balance: %w", err)
+			}
+		}
+		increasedSurplus := surplus + surplusGrowth
+		if increasedSurplus < surplus {
+			return ErrOverflow
+		}
+
+		if increasedSurplus > math.MaxInt64 {
+			return ErrOverflow
+		}
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
+		if err != nil {
+			return fmt.Errorf("failed to persist surplus balance: %w", err)
+		}
+
+		accountingPeer.surplus = true
 	}
 
 	return nil
@@ -477,6 +576,22 @@ func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
 
 	if result == math.MinInt64 {
 		return 0, ErrOverflow
+	}
+
+	return result, nil
+}
+
+func subtractU64mI64(base uint64, subtracted int64) (result int64, err error) {
+	if base > math.MaxInt64 {
+		return 0, ErrOverflow
+	}
+
+	// base is positive, overflow can happen by subtracting negative number
+	result = int64(base) - subtracted
+	if subtracted < 0 {
+		if result < int64(base) {
+			return 0, ErrOverflow
+		}
 	}
 
 	return result, nil
