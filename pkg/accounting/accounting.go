@@ -306,7 +306,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	cost := price
 
 	// see if peer has surplus balance to deduct this transaction of
-	if accountingPeer.surplus == true {
+	if accountingPeer.surplus {
 		surplusBalance, err := a.SurplusBalance(peer)
 		if err != nil {
 			if !errors.Is(err, ErrPeerNoBalance) {
@@ -343,6 +343,9 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
 		debitIncrease, err := subtractU64mI64(price, surplusBalance)
+		if err != nil {
+			return err
+		}
 		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
 		if debitIncrease <= 0 {
 			return fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
