@@ -547,10 +547,6 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 			return ErrOverflow
 		}
 
-		if increasedSurplus > math.MaxInt64 {
-			return ErrOverflow
-		}
-
 		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
 		if err != nil {
 			return fmt.Errorf("failed to persist surplus balance: %w", err)
