@@ -17,9 +17,15 @@ type Reader interface {
 	io.ReaderAt
 }
 
+// AddressIterFunc is a callback on every chunk address that is found by the joiner.
+// By returning a true for stop variable, iteration will stop.
+type AddressIterFunc func(addr swarm.Address) (stop bool)
+
 // Joiner provides the inverse functionality of the Splitter.
 type Joiner interface {
 	Reader
+	// IterateChunkAddresses is used to iterate over chunks addresses of some root hash.
+	IterateChunkAddresses(AddressIterFunc) error
 	// Size returns the span of the hash trie represented by the joiner's root hash.
 	Size() int64
 }

@@ -210,6 +210,60 @@ func (j *joiner) Seek(offset int64, whence int) (int64, error) {
 
 }
 
+func (j *joiner) IterateChunkAddresses(fn file.AddressIterFunc) error {
+	// report root address
+	stop := fn(j.addr)
+	if stop {
+		return nil
+	}
+
+	var eg errgroup.Group
+	j.processChunkAddresses(fn, j.rootData, j.span, &eg)
+
+	err := eg.Wait()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (j *joiner) processChunkAddresses(fn file.AddressIterFunc, data []byte, subTrieSize int64, eg *errgroup.Group) {
+	// we are at a leaf data chunk
+	if subTrieSize <= int64(len(data)) {
+		return
+	}
+
+	for cursor := 0; cursor < len(data); cursor += j.refLength {
+		select {
+		case <-j.ctx.Done():
+			return
+		default:
+		}
+
+		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
+
+		stop := fn(address)
+		if stop {
+			break
+		}
+
+		func(address swarm.Address, eg *errgroup.Group) {
+			eg.Go(func() error {
+				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
+				if err != nil {
+					return err
+				}
+
+				chunkData := ch.Data()[8:]
+				subtrieSpan := int64(chunkToSpan(ch.Data()))
+				j.processChunkAddresses(fn, chunkData, subtrieSpan, eg)
+				return nil
+			})
+		}(address, eg)
+	}
+}
+
 func (j *joiner) Size() int64 {
 	return j.span
 }
