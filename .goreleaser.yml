@@ -16,15 +16,15 @@ builds:
       - CGO_ENABLED=0
 
     goos:
-      - darwin
+      # - darwin
       - linux
-      - windows
+      # - windows
 
     goarch:
       - amd64
-      - 386
+      # - 386
       - arm64
-      - arm
+      # - arm
 
     ignore:
       - goos: darwin
@@ -58,8 +58,19 @@ nfpms:
 
     license: GPL-3
 
+    dependencies:
+      - ca-certificates
+      - adduser
+
     formats:
       - deb
       - rpm
+
+    config_files:
+      "packaging/bee.yaml": "/etc/bee/bee.yaml"
+      "packaging/bee.service": "/lib/systemd/system/bee.service"
+
+    scripts:
+      postinstall: ./packaging/bee.postinst
 
     bindir: /usr/bin

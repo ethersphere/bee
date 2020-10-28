@@ -1,0 +1,21 @@
+[Unit]
+Description=Ethereum Swarm node
+Documentation=https://swarm-gateways.net/bzz:/docs.swarm.eth/
+After=network.target
+
+[Service]
+LimitNOFILE=1048576
+LimitNPROC=512
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+User=bee
+Group=bee
+StateDirectory=bee
+StateDirectoryMode=0750
+ConfigurationDirectory=bee
+ExecStart=/usr/bin/bee start --config=/etc/bee/bee.yaml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
