@@ -1,3 +1,5 @@
+## Bee configuration - https://swarm-gateways.net/bzz:/docs.swarm.eth/docs/installation/configuration
+
 # api-addr: :8080
 # bootnode:
 # - /dnsaddr/bootnode.ethswarm.org
