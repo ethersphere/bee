@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -e
+
+BEE_HOME=/var/lib/bee
+PWD_FILE=/var/lib/bee/password
+
+case "$1" in
+    configure)
+        if ! getent passwd bee > /dev/null; then
+            adduser --system --disabled-password --disabled-login --home "$BEE_HOME" \
+                    --quiet --force-badname --group bee
+        fi
+        if ! test -f "$PWD_FILE"; then
+            mkdir -p "$BEE_HOME"
+            < /dev/urandom tr -dc _A-Z-a-z-0-9 2> /dev/null | head -c32 > "$PWD_FILE"
+            chmod 0600 "$PWD_FILE"
+        fi
+        ;;
+esac
+
+exit 0
