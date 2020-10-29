@@ -16,15 +16,15 @@ builds:
       - CGO_ENABLED=0
 
     goos:
-      # - darwin
+      - darwin
       - linux
-      # - windows
+      - windows
 
     goarch:
       - amd64
-      # - 386
-      # - arm64
-      # - arm
+      - 386
+      - arm64
+      - arm
 
     ignore:
       - goos: darwin
@@ -69,15 +69,20 @@ nfpms:
     overrides:
       deb:
         dependencies:
-          - adduser
+          - passwd
           - ca-certificates
         scripts:
+          preinstall: ./packaging/deb/preinst
           postinstall: ./packaging/deb/postinst
+          preremove: ./packaging/deb/prerm
+          postremove: ./packaging/deb/postrm
       rpm:
         dependencies:
           - ca-certificates
           - shadow-utils
         scripts:
+          preinstall: ./packaging/rpm/pre
           postinstall: ./packaging/rpm/post
+          preremove: ./packaging/rpm/preun
 
     bindir: /usr/bin

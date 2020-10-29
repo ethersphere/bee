@@ -1,0 +1,23 @@
+#!/bin/sh
+
+set -e
+
+BEE_USER=bee
+BEE_HOME=/var/lib/bee
+PWD_FILE=/var/lib/bee/password
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd bee > /dev/null; then
+        useradd -r -d /var/lib/bee -s /sbin/nologin -U bee
+    fi
+    if ! test -d /var/lib/bee; then
+        mkdir -p /var/lib/bee
+        chmod 0750 /var/lib/bee
+        chown -R bee:bee /var/lib/bee
+    fi
+    if ! test -f /var/lib/bee/password; then
+        < /dev/urandom tr -dc _A-Z-a-z-0-9 2> /dev/null | head -c32 > /var/lib/bee/password
+        chmod 0600 /var/lib/bee/password
+        chown bee:bee /var/lib/bee/password
+    fi
+fi

@@ -7,9 +7,6 @@ After=network.target
 NoNewPrivileges=true
 User=bee
 Group=bee
-StateDirectory=bee
-StateDirectoryMode=0750
-ConfigurationDirectory=bee
 ExecStart=/usr/bin/bee start --config=/etc/bee/bee.yaml
 Restart=on-failure
 
