@@ -1,22 +1,13 @@
 #!/bin/sh
-
 set -e
+deb-systemd-helper unmask bee.service >/dev/null || true
 
-BEE_USER=bee
-BEE_HOME=/var/lib/bee
-PWD_FILE=/var/lib/bee/password
-
-case "$1" in
-    configure)
-        if ! getent passwd "$BEE_USER" > /dev/null; then
-            useradd -r -d "$BEE_HOME" -s /sbin/nologin -U "$BEE_USER"
-        fi
-        if ! test -f "$PWD_FILE"; then
-            mkdir -p "$BEE_HOME"
-            < /dev/urandom tr -dc _A-Z-a-z-0-9 2> /dev/null | head -c32 > "$PWD_FILE"
-            chmod 0600 "$PWD_FILE"
-        fi
-        ;;
-esac
-
-exit 0
+if deb-systemd-helper --quiet was-enabled bee.service; then
+    deb-systemd-helper enable bee.service >/dev/null || true
+else
+    deb-systemd-helper update-state bee.service >/dev/null || true
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+    deb-systemd-invoke start bee.service >/dev/null || true
+fi
