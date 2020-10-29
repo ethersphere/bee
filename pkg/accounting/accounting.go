@@ -435,6 +435,8 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 			reservedBalance: 0,
 			// initially assume the peer has the same threshold as us
 			paymentThreshold: a.paymentThreshold,
+			// set surplus to true, so first debit will try using surplus, and will set this to false if there's none
+			surplus: true,
 		}
 		a.accountingPeers[peer.String()] = peerData
 	}
@@ -505,8 +507,8 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		if !errors.Is(err, ErrPeerNoBalance) {
 			return err
 		}
-	}
 
+	}
 	newBalance, err := subtractI64mU64(currentBalance, amount)
 	if err != nil {
 		return err
