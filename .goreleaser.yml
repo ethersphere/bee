@@ -16,15 +16,21 @@ builds:
       - CGO_ENABLED=0
 
     goos:
-      # - darwin
+      - darwin
       - linux
-      # - windows
+      - windows
 
     goarch:
       - amd64
+<<<<<<< HEAD
       # - 386
       - arm64
       # - arm
+=======
+      - 386
+      - arm64
+      - arm
+>>>>>>> fix rpm package
 
     ignore:
       - goos: darwin
@@ -89,8 +95,11 @@ nfpms:
           preinstall: ./packaging/rpm/pre
           postinstall: ./packaging/rpm/post
           preremove: ./packaging/rpm/preun
+<<<<<<< HEAD
     deb:
       scripts:
         templates: ./packaging/deb/templates
+=======
+>>>>>>> fix rpm package
 
     bindir: /usr/bin

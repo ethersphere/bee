@@ -4,10 +4,7 @@ Documentation=https://swarm-gateways.net/bzz:/docs.swarm.eth/
 After=network.target
 
 [Service]
-<<<<<<< HEAD
 EnvironmentFile=/etc/default/bee
-=======
->>>>>>> remove cap_bind and ulimit
 NoNewPrivileges=true
 User=bee
 Group=bee

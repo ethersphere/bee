@@ -9,14 +9,22 @@ config: /etc/bee/bee.yaml
 # cors-allowed-origins: []
 data-dir: /var/lib/bee
 # db-capacity: "5000000"
+<<<<<<< HEAD
 debug-api-addr: :1635
+=======
+debug-api-addr: :1634
+>>>>>>> fix rpm package
 # debug-api-enable: false
 # gateway-mode: false
 # global-pinning-enable: false
 # help: false
 # nat-addr: ""
 # network-id: "1"
+<<<<<<< HEAD
 p2p-addr: :1634
+=======
+p2p-addr: :1635
+>>>>>>> fix rpm package
 # p2p-quic-enable: false
 # p2p-ws-enable: false
 # password: ""
