@@ -15,17 +15,63 @@ import (
 	enc "github.com/ethersphere/bee/pkg/file/pipeline/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline/feeder"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
+	"github.com/ethersphere/bee/pkg/file/pipeline/push"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// NewPipelineBuilder returns the appropriate pipeline according to the specified parameters
-func NewPipelineBuilder(ctx context.Context, s storage.Putter, mode storage.ModePut, encrypt bool) pipeline.Interface {
+func NewStampingPipelineFactory(ctx context.Context, s storage.Putter, p pushsync.PushSyncer, mode storage.ModePut, encrypt bool) func() pipeline.Interface {
+	return func() pipeline.Interface {
+		return NewPipelineBuilder(ctx, s, p, mode, encrypt)
+	}
+}
+
+func NewStampingPipelineBuilder(ctx context.Context, s storage.Putter, st postage.Stamper, p pushsync.PushSyncer, mode storage.ModePut, encrypt bool) pipeline.Interface {
+	if encrypt {
+		return newEncryptionPipeline(ctx, s, mode)
+	}
+	if p != nil {
+		return newPushingPipeline(ctx, s, st, p, mode)
+	}
+	return newPipeline(ctx, s, mode)
+}
+
+// NewPipelineFactory returns a pipeline factory that returns a new pipeline on every call.
+func NewPipelineFactory(ctx context.Context, s storage.Putter, p pushsync.PushSyncer, mode storage.ModePut, encrypt bool) func() pipeline.Interface {
+	return func() pipeline.Interface {
+		return NewPipelineBuilder(ctx, s, p, mode, encrypt)
+	}
+}
+
+// NewPipelineBuilder returns the appropriate pipeline according to the specified parameters.
+func NewPipelineBuilder(ctx context.Context, s storage.Putter, p pushsync.PushSyncer, mode storage.ModePut, encrypt bool) pipeline.Interface {
 	if encrypt {
 		return newEncryptionPipeline(ctx, s, mode)
 	}
 	return newPipeline(ctx, s, mode)
+}
+
+// newPushingPipeline creates a pipeline that only hashes content with BMT to create
+// a merkle-tree of hashes that represent the given arbitrary size byte stream. Partial
+// writes are supported. All chunks are directly synced to the network after hashing.
+// The pipeline flow is: Data -> Feeder -> BMT -> PushStore -> HashTrie.
+func newPushingPipeline(ctx context.Context, s storage.Putter, st postage.Stamper, p pushsync.PushSyncer, mode storage.ModePut) pipeline.Interface {
+	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, newShortPushingPipelineFunc(ctx, s, st, p, mode))
+	lsw := push.NewPushSyncWriter(ctx, p, st, tw)
+	b := bmt.NewBmtWriter(lsw)
+	return feeder.NewChunkFeederWriter(swarm.ChunkSize, b)
+}
+
+// newShortPushingPipelineFunc returns a constructor function for an ephemeral hashing pipeline
+// needed by the hashTrieWriter.
+func newShortPushingPipelineFunc(ctx context.Context, s storage.Putter, st postage.Stamper, p pushsync.PushSyncer, mode storage.ModePut) func() pipeline.ChainWriter {
+	return func() pipeline.ChainWriter {
+		lsw := push.NewPushSyncWriter(ctx, p, st, nil)
+		return bmt.NewBmtWriter(lsw)
+	}
 }
 
 // newPipeline creates a standard pipeline that only hashes content with BMT to create

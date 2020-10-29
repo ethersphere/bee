@@ -69,6 +69,8 @@ func (m ModePut) String() string {
 		return "RequestPin"
 	case ModePutRequestCache:
 		return "RequestCache"
+	case ModePutRealtimeUpload:
+		return "RealtimeUpload"
 	default:
 		return "Unknown"
 	}
@@ -88,6 +90,8 @@ const (
 	ModePutRequestPin
 	// ModePutRequestCache forces a retrieved chunk to be stored in the cache
 	ModePutRequestCache
+	// ModePutRealtimeUpload uploads chunks directly to the network
+	ModePutRealtimeUpload
 )
 
 // ModeSet enumerates different Setter modes.

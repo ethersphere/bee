@@ -2,10 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package store_test
+package push_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -15,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // TestStoreWriter tests that store writer stores the provided data and calls the next chain writer.
@@ -51,16 +49,6 @@ func TestStoreWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		d, err := mockStore.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(tc.ref))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(tc.data, d.Data()) {
-			t.Fatal("data mismatch")
-		}
-		if calls := mockChainWriter.ChainWriteCalls(); calls != 1 {
-			t.Errorf("wanted 1 ChainWrite call, got %d", calls)
-		}
 	}
 }
 

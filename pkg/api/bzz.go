@@ -120,7 +120,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	fileName = r.URL.Query().Get("name")
 	reader = r.Body
 
-	p := requestPipelineFn(storer, r)
+	p := requestPipelineFn(storer, s.pushSyncer, r)
 
 	// first store the file and get its reference
 	fr, err := p(ctx, reader)
@@ -142,7 +142,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	}
 
 	encrypt := requestEncrypt(r)
-	factory := requestPipelineFactory(ctx, storer, r)
+	factory := requestPipelineFactory(ctx, storer, s.pushSyncer, r)
 	l := loadsave.New(storer, factory)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)

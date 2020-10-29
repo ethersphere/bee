@@ -58,8 +58,9 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, nil)
 		return
 	}
+	putter, _ := newStamperPutter(s.storer, s.post, s.signer, batch)
 
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	stamper, err := requestStamper(s.post, s.signer, batch)
 	if err != nil {
 		logger.Debugf("bytes upload: get putter:%v", err)
 		logger.Error("bytes upload: putter")
@@ -67,7 +68,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := requestPipelineFn(putter, r)
+	p := requestStampingPipelineFn(putter, s.pushSyncer, r, stamper)
 	address, err := p(ctx, r.Body)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)

@@ -30,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -49,6 +50,7 @@ const (
 	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
+	SwarmRealtimeUploadHeader = "Swarm-Realtime-Upload"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -98,6 +100,7 @@ type server struct {
 	tracer          *tracing.Tracer
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
+	pushSyncer      pushsync.PushSyncer
 	post            postage.Service
 	postageContract postagecontract.Interface
 	Options
@@ -120,7 +123,7 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, push pushsync.PushSyncer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		tags:            tags,
 		storer:          storer,
@@ -131,6 +134,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		feedFactory:     feedFactory,
 		post:            post,
 		postageContract: postageContract,
+		pushSyncer:      push,
 		steward:         steward,
 		signer:          signer,
 		Options:         o,
@@ -330,6 +334,15 @@ func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Sign
 	return &stamperPutter{Storer: s, stamper: stamper}, nil
 }
 
+func requestStamper(post postage.Service, signer crypto.Signer, batch []byte) (postage.Stamper, error) {
+	i, err := post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	return postage.NewStamper(i, signer), nil
+}
+
 func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
 	var (
 		ctp []swarm.Chunk
@@ -367,18 +380,26 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
+func requestStampingPipelineFn(s storage.Putter, ps pushsync.PushSyncer, r *http.Request, st postage.Stamper) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		pipe := builder.NewStampingPipelineBuilder(ctx, s, st, ps, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
-func requestPipelineFactory(ctx context.Context, s storage.Putter, r *http.Request) func() pipeline.Interface {
+func requestPipelineFn(s storage.Putter, ps pushsync.PushSyncer, r *http.Request) pipelineFunc {
+	mode, encrypt := requestModePut(r), requestEncrypt(r)
+	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
+		pipe := builder.NewPipelineBuilder(ctx, s, ps, mode, encrypt)
+		return builder.FeedPipeline(ctx, pipe, r)
+	}
+}
+
+func requestPipelineFactory(ctx context.Context, s storage.Putter, ps pushsync.PushSyncer, r *http.Request) func() pipeline.Interface {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		return builder.NewPipelineBuilder(ctx, s, ps, mode, encrypt)
 	}
 }
 
