@@ -2,14 +2,14 @@
 
 set -e
 
+BEE_USER=bee
 BEE_HOME=/var/lib/bee
 PWD_FILE=/var/lib/bee/password
 
 case "$1" in
     configure)
-        if ! getent passwd bee > /dev/null; then
-            adduser --system --disabled-password --disabled-login --home "$BEE_HOME" \
-                    --quiet --force-badname --group bee
+        if ! getent passwd "$BEE_USER" > /dev/null; then
+            useradd -r -d "$BEE_HOME" -s /sbin/nologin -U "$BEE_USER"
         fi
         if ! test -f "$PWD_FILE"; then
             mkdir -p "$BEE_HOME"
