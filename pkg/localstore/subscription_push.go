@@ -17,7 +17,6 @@
 package localstore
 
 import (
-	"bytes"
 	"context"
 	"sync"
 	"time"
@@ -53,15 +52,14 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
-		// lastItem is the first Item received in the last iteration.
-		var lastItem *shed.Item
-		// toItemKey is the key for the Item that was oldest in the last iteration.
-		var toItemKey []byte
+		// sinceItem is the Item from which the next iteration
+		// should start. The first iteration starts from the first Item.
+		var sinceItem *shed.Item
 		for {
 			select {
 			case <-trigger:
 				// iterate until:
-				// - last non-processed Item is reached
+				// - last index Item is reached
 				// - subscription stop is called
 				// - context is done.met
 				db.metrics.SubscribePushIteration.Inc()
@@ -75,27 +73,12 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 						return true, err
 					}
 
-					// check if we reached item that was already processed
-					// and stop
-					if toItemKey != nil {
-						dataItemKey, err := db.pushIndex.ItemKey(dataItem)
-						if err != nil {
-							return true, err
-						}
-
-						if bytes.Equal(dataItemKey, toItemKey) {
-							toItemKey = nil
-							return true, nil
-						}
-					}
-
 					select {
 					case chunks <- swarm.NewChunk(swarm.NewAddress(dataItem.Address), dataItem.Data).WithTagID(item.Tag):
 						count++
-						// we set first one sent, which is "oldest" at that point
-						if lastItem == nil {
-							lastItem = &item
-						}
+						// set next iteration start item
+						// when its chunk is successfully sent to channel
+						sinceItem = &item
 						return false, nil
 					case <-stopChan:
 						// gracefully stop the iteration
@@ -109,7 +92,10 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 						return true, ctx.Err()
 					}
 				}, &shed.IterateOptions{
-					Reverse: true,
+					StartFrom: sinceItem,
+					// sinceItem was sent as the last Address in the previous
+					// iterator call, skip it in this one
+					SkipStartFromItem: true,
 				})
 
 				totalTimeMetric(db.metrics.TotalTimeSubscribePushIteration, iterStart)
@@ -119,19 +105,6 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 					db.logger.Debugf("localstore push subscription iteration: %v", err)
 					return
 				}
-
-				// save last Item from this iteration in order to know where
-				// to stop on next iteration
-				if lastItem != nil && toItemKey == nil {
-					// move 'toItemKey' to point to last item in previous iteration
-					toItemKey, err = db.pushIndex.ItemKey(*lastItem)
-					if err != nil {
-						return
-					}
-				}
-
-				// 'lastItem' should be populated on next iteration again
-				lastItem = nil
 
 			case <-stopChan:
 				// terminate the subscription
