@@ -1,0 +1,29 @@
+#!/bin/sh -e
+
+. /usr/share/debconf/confmodule
+
+db_input high bee/geth-endpoint || true
+db_go
+
+db_get bee/geth-endpoint
+grep -qv BEE_SWAP_ENDPOINT /etc/default/bee > /etc/default/bee.tmp
+echo "BEE_SWAP_ENDPOINT=$RET" >> /etc/default/bee.tmp && mv /etc/default/bee.tmp /etc/default/bee
+
+deb-systemd-helper unmask bee.service >/dev/null || true
+
+if deb-systemd-helper --quiet was-enabled bee.service; then
+    deb-systemd-helper enable bee.service >/dev/null || true
+else
+    deb-systemd-helper update-state bee.service >/dev/null || true
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+    deb-systemd-invoke start bee.service >/dev/null || true
+fi
+
+if [ "$1" = "configure" ]; then
+    if [ -f /var/lib/bee/keys/swarm.key ]; then
+        parse_json() { echo $1|sed -e 's/[{}]/''/g'|sed -e 's/", "/'\",\"'/g'|sed -e 's/" ,"/'\",\"'/g'|sed -e 's/" , "/'\",\"'/g'|sed -e 's/","/'\"---SEPERATOR---\"'/g'|awk -F=':' -v RS='---SEPERATOR---' "\$1~/\"$2\"/ {print}"|sed -e "s/\"$2\"://"|tr -d "\n\t"|sed -e 's/\\"/"/g'|sed -e 's/\\\\/\\/g'|sed -e 's/^[ \t]*//g'|sed -e 's/^"//' -e 's/"$//' ; }
+        echo "Prefund this address $(parse_json $(cat /var/lib/bee/keys/swarm.key) address)"
+    fi
+fi

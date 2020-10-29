@@ -16,15 +16,15 @@ builds:
       - CGO_ENABLED=0
 
     goos:
-      - darwin
+      # - darwin
       - linux
-      - windows
+      # - windows
 
     goarch:
       - amd64
-      - 386
+      # - 386
       - arm64
-      - arm
+      # - arm
 
     ignore:
       - goos: darwin
@@ -68,7 +68,6 @@ nfpms:
 
     config_files:
       "packaging/bee.yaml": "/etc/bee/bee.yaml"
-<<<<<<< HEAD
       "packaging/default": "/etc/default/bee"
       "packaging/bee.service": "/lib/systemd/system/bee.service"
 
@@ -93,11 +92,5 @@ nfpms:
     deb:
       scripts:
         templates: ./packaging/deb/templates
-=======
-      "packaging/bee.service": "/lib/systemd/system/bee.service"
-
-    scripts:
-      postinstall: ./packaging/bee.postinst
->>>>>>> initial deb and rpm support
 
     bindir: /usr/bin
