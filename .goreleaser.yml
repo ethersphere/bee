@@ -64,6 +64,7 @@ nfpms:
 
     config_files:
       "packaging/bee.yaml": "/etc/bee/bee.yaml"
+      "packaging/default": "/etc/default/bee"
       "packaging/bee.service": "/lib/systemd/system/bee.service"
 
     overrides:

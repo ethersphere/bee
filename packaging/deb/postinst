@@ -1,5 +1,5 @@
-#!/bin/sh
-set -e
+#!/bin/sh -e
+
 deb-systemd-helper unmask bee.service >/dev/null || true
 
 if deb-systemd-helper --quiet was-enabled bee.service; then
