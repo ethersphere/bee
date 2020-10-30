@@ -1,12 +1,6 @@
 #!/bin/sh
-
 set -e
-
-BEE_USER=bee
-BEE_HOME=/var/lib/bee
-PWD_FILE=/var/lib/bee/password
-
-if [ "$1" = "configure" ]; then
+if [ "$1" = "install" ]; then
     if ! getent passwd bee > /dev/null; then
         useradd -r -d /var/lib/bee -s /sbin/nologin -U bee
     fi
