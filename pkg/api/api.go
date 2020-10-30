@@ -5,6 +5,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -25,11 +26,12 @@ import (
 )
 
 const (
-	SwarmPinHeader           = "Swarm-Pin"
-	SwarmTagUidHeader        = "Swarm-Tag-Uid"
-	SwarmEncryptHeader       = "Swarm-Encrypt"
-	SwarmIndexDocumentHeader = "Swarm-Index-Document"
-	SwarmErrorDocumentHeader = "Swarm-Error-Document"
+	SwarmPinHeader            = "Swarm-Pin"
+	SwarmTagUidHeader         = "Swarm-Tag-Uid"
+	SwarmEncryptHeader        = "Swarm-Encrypt"
+	SwarmIndexDocumentHeader  = "Swarm-Index-Document"
+	SwarmErrorDocumentHeader  = "Swarm-Error-Document"
+	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -47,6 +49,7 @@ const (
 var (
 	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
 	errNoResolver           = errors.New("no resolver connected")
+	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 )
 
 // Service is the API service interface.
@@ -178,6 +181,22 @@ func requestModePut(r *http.Request) storage.ModePut {
 
 func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
+}
+
+func requestPostageBatchId(r *http.Request) ([]byte, error) {
+	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
+		if len(h) != 64 {
+			return nil, errInvalidPostageBatch
+		}
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			return nil, errInvalidPostageBatch
+		}
+		return b, nil
+	}
+
+	// fallback to a slice of 32 zeros
+	return make([]byte, 32), nil
 }
 
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {

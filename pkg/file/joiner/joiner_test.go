@@ -184,7 +184,7 @@ func TestEncryptDecrypt(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx := context.Background()
-			pipe := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true)
+			pipe := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true, nil)
 			testDataReader := bytes.NewReader(testData)
 			resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader, int64(len(testData)))
 			if err != nil {

@@ -51,8 +51,9 @@ type Entry interface {
 func NewDefaultManifest(
 	encrypted bool,
 	storer storage.Storer,
+	batch []byte,
 ) (Interface, error) {
-	return NewManifest(DefaultManifestType, encrypted, storer)
+	return NewManifest(DefaultManifestType, encrypted, storer, batch)
 }
 
 // NewManifest creates a new manifest.
@@ -60,12 +61,13 @@ func NewManifest(
 	manifestType string,
 	encrypted bool,
 	storer storage.Storer,
+	batch []byte,
 ) (Interface, error) {
 	switch manifestType {
 	case ManifestSimpleContentType:
-		return NewSimpleManifest(encrypted, storer)
+		return NewSimpleManifest(encrypted, storer, batch)
 	case ManifestMantarayContentType:
-		return NewMantarayManifest(encrypted, storer)
+		return NewMantarayManifest(encrypted, storer, batch)
 	default:
 		return nil, ErrInvalidManifestType
 	}

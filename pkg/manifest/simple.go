@@ -29,17 +29,21 @@ type simpleManifest struct {
 
 	encrypted bool
 	storer    storage.Storer
+
+	batch []byte
 }
 
 // NewSimpleManifest creates a new simple manifest.
 func NewSimpleManifest(
 	encrypted bool,
 	storer storage.Storer,
+	batch []byte,
 ) (Interface, error) {
 	return &simpleManifest{
 		manifest:  simple.NewManifest(),
 		encrypted: encrypted,
 		storer:    storer,
+		batch:     batch,
 	}, nil
 }
 
@@ -110,7 +114,7 @@ func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm
 		return swarm.ZeroAddress, fmt.Errorf("manifest marshal error: %w", err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, m.storer, mode, m.encrypted)
+	pipe := builder.NewPipelineBuilder(ctx, m.storer, mode, m.encrypted, m.batch)
 	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)

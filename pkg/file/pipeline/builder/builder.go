@@ -21,7 +21,7 @@ import (
 )
 
 // NewPipelineBuilder returns the appropriate pipeline according to the specified parameters
-func NewPipelineBuilder(ctx context.Context, s storage.Putter, mode storage.ModePut, encrypt bool) pipeline.Interface {
+func NewPipelineBuilder(ctx context.Context, s storage.Putter, mode storage.ModePut, encrypt bool, _ []byte) pipeline.Interface {
 	if encrypt {
 		return newEncryptionPipeline(ctx, s, mode)
 	}

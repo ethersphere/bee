@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"encoding/hex"
 	"errors"
 	"io/ioutil"
 	"net/http"
@@ -14,11 +15,14 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/websocket"
@@ -158,6 +162,69 @@ func TestParseName(t *testing.T) {
 				t.Errorf("got %s, want %s", got, tC.wantAdr)
 			}
 
+		})
+	}
+}
+
+// TestPostageHeaderError tests that incorrect postage batch ids
+// provided to the api correct the appropriate error code.
+func TestPostageHeaderError(t *testing.T) {
+	var (
+		mockStorer     = mock.NewStorer()
+		mockStatestore = statestore.NewStateStore()
+		logger         = logging.New(ioutil.Discard, 0)
+		client, _, _   = newTestServer(t, testServerOptions{
+			Storer: mockStorer,
+			Tags:   tags.NewTags(mockStatestore, logger),
+			Logger: logger,
+		})
+	)
+
+	for _, tc := range []struct {
+		name     string
+		endpoint string
+		batchId  []byte
+		expErr   bool
+	}{
+		{
+			name:     "bytes",
+			endpoint: "/bytes",
+			batchId:  []byte{0},
+			expErr:   true,
+		},
+		{
+			name:     "bytes",
+			endpoint: "/bytes",
+			batchId:  []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //32 bytes - ok
+		},
+		{
+			name:     "bytes",
+			endpoint: "/bytes",
+			batchId:  []byte{}, // empty batch id falls back to the default zero batch id, so expect 200 OK. This will change once we do not fall back to a default value
+		},
+		{
+			name:     "dirs",
+			endpoint: "/dirs",
+			batchId:  []byte{0},
+			expErr:   true,
+		},
+		{
+			name:     "files",
+			endpoint: "/files",
+			batchId:  []byte{0},
+			expErr:   true,
+		},
+	} {
+
+		t.Run(tc.name, func(t *testing.T) {
+			hexbatch := hex.EncodeToString(tc.batchId)
+			expCode := http.StatusOK
+			if tc.expErr {
+				expCode = http.StatusBadRequest
+			}
+			jsonhttptest.Request(t, client, http.MethodPost, tc.endpoint, expCode,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+			)
 		})
 	}
 }
