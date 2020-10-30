@@ -47,7 +47,7 @@ archives:
     format: binary
 
 nfpms:
-  - file_name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+  - file_name_template: "{{ tolower .ProjectName }}_{{ tolower .Version }}_{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
 
     vendor: Ethereum Swarm
     homepage: https://swarm.ethereum.org/
