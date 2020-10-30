@@ -4,6 +4,7 @@ Documentation=https://swarm-gateways.net/bzz:/docs.swarm.eth/
 After=network.target
 
 [Service]
+EnvironmentFile=/etc/default/bee
 NoNewPrivileges=true
 User=bee
 Group=bee

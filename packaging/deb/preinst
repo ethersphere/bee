@@ -1,5 +1,5 @@
-#!/bin/sh
-set -e
+#!/bin/sh -e
+
 if [ "$1" = "install" ]; then
     if ! getent passwd bee > /dev/null; then
         useradd -r -d /var/lib/bee -s /sbin/nologin -U bee
