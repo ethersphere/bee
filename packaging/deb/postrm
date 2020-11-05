@@ -14,3 +14,9 @@ if [ "$1" = "purge" ]; then
         deb-systemd-helper unmask bee.service >/dev/null
     fi
 fi
+
+
+if [ "$1" = "purge" -a -e /usr/share/debconf/confmodule ]; then
+    . /usr/share/debconf/confmodule
+    db_purge
+fi
