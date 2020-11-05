@@ -1,7 +1,4 @@
 # Configuration for bee daemon
 
-# Configure geth endpoint
 #BEE_SWAP_ENDPOINT=http://localhost:8545
-
-# Configure resolver endpoint
 #BEE_RESOLVER_OPTIONS=

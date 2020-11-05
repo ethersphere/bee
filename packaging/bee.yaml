@@ -9,14 +9,14 @@ config: /etc/bee/bee.yaml
 # cors-allowed-origins: []
 data-dir: /var/lib/bee
 # db-capacity: "5000000"
-debug-api-addr: :1634
+debug-api-addr: :1635
 # debug-api-enable: false
 # gateway-mode: false
 # global-pinning-enable: false
 # help: false
 # nat-addr: ""
 # network-id: "1"
-p2p-addr: :1635
+p2p-addr: :1634
 # p2p-quic-enable: false
 # p2p-ws-enable: false
 # password: ""
@@ -26,7 +26,7 @@ password-file: /var/lib/bee/password
 # payment-tolerance: "10000"
 # resolver-options: []
 # standalone: false
-swap-enable: false
+# swap-enable: true
 # swap-endpoint: http://localhost:8545
 # swap-factory-address: ""
 # swap-initial-deposit: "100000000"

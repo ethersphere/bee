@@ -85,5 +85,8 @@ nfpms:
           preinstall: ./packaging/rpm/pre
           postinstall: ./packaging/rpm/post
           preremove: ./packaging/rpm/preun
+    deb:
+      scripts:
+        templates: ./packaging/deb/templates
 
     bindir: /usr/bin
