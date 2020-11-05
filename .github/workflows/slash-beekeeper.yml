@@ -109,13 +109,13 @@ jobs:
           ./beeinfra.sh install --local -r "${REPLICA}" --geth
       - name: Test gc
         id: gc-chunk
-        run: ./beekeeper check gc --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+        run: ./beekeeper check gc --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pin chunk
         id: pin-chunk
-        run: ./beekeeper check pin-chunk --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+        run: ./beekeeper check pin-chunk --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pin bytes
         id: pin-bytes
-        run: ./beekeeper check pin-bytes --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+        run: ./beekeeper check pin-bytes --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Debug workflow if failed
         if: failure()
         run: |
