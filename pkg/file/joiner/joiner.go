@@ -210,7 +210,7 @@ func (j *joiner) Seek(offset int64, whence int) (int64, error) {
 
 }
 
-func (j *joiner) IterateChunkAddresses(fn file.AddressIterFunc) error {
+func (j *joiner) IterateChunkAddresses(fn swarm.AddressIterFunc) error {
 	// report root address
 	stop := fn(j.addr)
 	if stop {
@@ -228,7 +228,7 @@ func (j *joiner) IterateChunkAddresses(fn file.AddressIterFunc) error {
 	return nil
 }
 
-func (j *joiner) processChunkAddresses(fn file.AddressIterFunc, data []byte, subTrieSize int64, eg *errgroup.Group) {
+func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, subTrieSize int64, eg *errgroup.Group) {
 	// we are at a leaf data chunk
 	if subTrieSize <= int64(len(data)) {
 		return
