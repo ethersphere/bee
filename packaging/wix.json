@@ -1,0 +1,37 @@
+{
+    "product": "bee",
+    "company": "ethswarm",
+    "license": "LICENSE",
+    "upgrade-code": "",
+    "files": {
+      "guid": "",
+      "items": [
+        "bee.exe",
+        "bee.yaml"
+      ]
+    },
+    "env": {
+      "guid": "",
+      "vars": [
+        {
+          "name": "some",
+          "value": "value",
+          "permanent": "yes",
+          "system": "no",
+          "action": "set",
+          "part": "last"
+        }
+      ]
+    },
+    "hooks": [
+      {"when": "install", "command": "sc.exe create BeeSvc binPath=\"[INSTALLDIR]bee.exe\" type=share start=auto DisplayName=\"Bee!\""},
+      {"when": "install", "command": "sc.exe start BeeSvc"},
+      {"when": "uninstall", "command": "sc.exe delete BeeSvc"}
+    ],
+    "choco": {
+      "description": "Bee, Swarm client",
+      "project-url": "https://github.com/ethersphere/bee",
+      "tags": "bee",
+      "license-url": "https://github.com/ethersphere/bee/blob/master/LICENSE"
+    }
+  }

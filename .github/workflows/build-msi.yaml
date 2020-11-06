@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build-msi:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Download bee.exe
+        id: download_exe
+        shell: bash
+        run: |
+          hub release download "v0.3.1" -i '*-windows-amd64.exe'
+        # hub release download "${GITHUB_REF#refs/tags/}" -i '*-windows-amd64.exe'
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - name: Install go-msi
+        run: choco install -y "go-msi"
+      - name: Prepare PATH
+        shell: bash
+        run: |
+          echo "$WIX\\bin" >> $GITHUB_PATH
+          echo "C:\\Program Files\\go-msi" >> $GITHUB_PATH
+      - name: Build MSI
+        id: buildmsi
+        shell: bash
+        run: |
+          cp LICENSE packaging/.
+          mv bee.exe packaging/.
+          cd packaging
+          mkdir -p build
+          msi="bee.msi"
+          printf "::set-output name=msi::%s\n" "$msi"
+          go-msi make --msi "$PWD/$msi" --out "$PWD/build" --version "v0.3.1"
+        # go-msi make --msi "$PWD/$msi" --out "$PWD/build" --version "${GITHUB_REF#refs/tags/}"
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v2
+        with:
+          name: bee.msi
+          path: bee.msi 
