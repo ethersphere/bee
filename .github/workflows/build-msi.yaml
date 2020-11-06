@@ -1,4 +1,4 @@
-name: Release
+name: Build msi
 
 on:
   pull_request:
@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           cp LICENSE packaging/.
-          mv bee.exe packaging/.
+          mv bee-windows-amd64.exe packaging/bee.exe
           cd packaging
           mkdir -p build
           msi="bee.msi"
