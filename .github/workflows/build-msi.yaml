@@ -42,4 +42,4 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: bee.msi
-          path: build/bee.msi 
+          path: "D:\a\bee\bee\packaging\build\bee.msi"
