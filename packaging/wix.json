@@ -24,7 +24,7 @@
       ]
     },
     "hooks": [
-      {"when": "install", "command": "sc.exe create BeeSvc binPath=\"[INSTALLDIR]bee.exe\" type=share start=auto DisplayName=\"Bee!\""},
+      {"when": "install", "command": "sc.exe create BeeSvc binPath= \"[INSTALLDIR]bee.exe\" \"--config=[INSTALLDIR]bee.yaml\" type= share start= auto displayName= \"Bee!\""},
       {"when": "install", "command": "sc.exe start BeeSvc"},
       {"when": "uninstall", "command": "sc.exe delete BeeSvc"}
     ],
