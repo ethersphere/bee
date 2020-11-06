@@ -15,23 +15,19 @@ var (
 // Stamper connects a stampissuer with a signer
 // a Stamper is created for each upload session
 type Stamper struct {
-	batch  *Batch
 	issuer *StampIssuer
 	signer crypto.Signer
 }
 
 // NewStamper constructs a Stamper
-func NewStamper(b *Batch, st *StampIssuer, signer crypto.Signer) *Stamper {
-	return &Stamper{b, st, signer}
+func NewStamper(st *StampIssuer, signer crypto.Signer) *Stamper {
+	return &Stamper{st, signer}
 }
 
 // Stamp takes chunk, see if the chunk can included in the batch
 // signs it with the owner of the batch of this Stamp issuer
 func (st *Stamper) Stamp(addr swarm.Address) (*Stamp, error) {
-	if err := st.issuer.inc(addr); err != nil {
-		return nil, err
-	}
-	toSign, err := toSignDigest(addr, st.batch.ID)
+	toSign, err := toSignDigest(addr, st.issuer.batchID)
 	if err != nil {
 		return nil, err
 	}
@@ -39,5 +35,8 @@ func (st *Stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Stamp{st.batch, sig}, nil
+	if err := st.issuer.inc(addr); err != nil {
+		return nil, err
+	}
+	return &Stamp{st.issuer.batchID, sig}, nil
 }

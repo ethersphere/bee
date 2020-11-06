@@ -23,7 +23,7 @@ func TestStampMarshalling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &postage.Stamp{Batch: &postage.Batch{ID: id}, Sig: sig}
+	s := &postage.Stamp{BatchID: id, Sig: sig}
 	buf, _ := s.MarshalBinary()
 	if len(buf) != 97 {
 		t.Fatalf("invalid length for serialised stamp. expected 97, got  %d", len(buf))
@@ -32,8 +32,8 @@ func TestStampMarshalling(t *testing.T) {
 	if err := s.UnmarshalBinary(buf); err != nil {
 		t.Fatalf("unexpected error unmarshalling stamp: %v", err)
 	}
-	if !bytes.Equal(s.ID, id) {
-		t.Fatalf("id mismatch, expected %x, got %x", id, s.ID)
+	if !bytes.Equal(s.BatchID, id) {
+		t.Fatalf("id mismatch, expected %x, got %x", id, s.BatchID)
 	}
 	if !bytes.Equal(s.Sig, sig) {
 		t.Fatalf("sig mismatch, expected %x, got %x", sig, s.Sig)
@@ -48,12 +48,12 @@ func TestBatchMarshalling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != 117 {
-		t.Fatalf("invalid length for serialised stamp. expected 117, got %d", len(buf))
+	if len(buf) != 93 {
+		t.Fatalf("invalid length for serialised batch. expected 93, got %d", len(buf))
 	}
 	b := &postage.Batch{}
 	if err := b.UnmarshalBinary(buf); err != nil {
-		t.Fatalf("unexpected error unmarshalling stamp: %v", err)
+		t.Fatalf("unexpected error unmarshalling batch: %v", err)
 	}
 	if !bytes.Equal(b.ID, a.ID) {
 		t.Fatalf("id mismatch, expected %x, got %x", a.ID, b.ID)
@@ -61,11 +61,11 @@ func TestBatchMarshalling(t *testing.T) {
 	if !bytes.Equal(b.Owner, a.Owner) {
 		t.Fatalf("owner mismatch, expected %x, got %x", a.Owner, b.Owner)
 	}
-	if a.Amount.Uint64() != b.Amount.Uint64() {
-		t.Fatalf("amount mismatch, expected %d, got %d", a.Amount.Uint64(), b.Amount.Uint64())
+	if a.Value.Uint64() != b.Value.Uint64() {
+		t.Fatalf("value mismatch, expected %d, got %d", a.Value.Uint64(), b.Value.Uint64())
 	}
-	if a.Start.Uint64() != b.Start.Uint64() {
-		t.Fatalf("start mismatch, expected %d, got %d", a.Start.Uint64(), b.Start.Uint64())
+	if a.Start != b.Start {
+		t.Fatalf("start mismatch, expected %d, got %d", a.Start, b.Start)
 	}
 	if a.Depth != b.Depth {
 		t.Fatalf("depth mismatch, expected %d, got %d", a.Depth, b.Depth)
@@ -80,7 +80,7 @@ func newTestBatch(t *testing.T, owner []byte) *postage.Batch {
 	if err != nil {
 		t.Fatal(err)
 	}
-	amount64 := rand.Uint64()
+	value64 := rand.Uint64()
 	start64 := rand.Uint64()
 	if owner == nil {
 		owner = make([]byte, 20)
@@ -91,10 +91,10 @@ func newTestBatch(t *testing.T, owner []byte) *postage.Batch {
 	}
 	depth := uint8(16)
 	return &postage.Batch{
-		ID:     id,
-		Amount: big.NewInt(0).SetUint64(amount64),
-		Start:  big.NewInt(0).SetUint64(start64),
-		Owner:  owner,
-		Depth:  depth,
+		ID:    id,
+		Value: big.NewInt(0).SetUint64(value64),
+		Start: start64,
+		Owner: owner,
+		Depth: depth,
 	}
 }

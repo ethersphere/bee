@@ -2,6 +2,7 @@ package postage
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"math/big"
 
@@ -18,23 +19,22 @@ var (
 
 // Batch represents a postage batch, a payment on the blockchain
 type Batch struct {
-	ID     []byte   // batch ID
-	Amount *big.Int // overall balance of the batch
-	Start  *big.Int // blocknumber the batch was created
-	Owner  []byte   // owner's ethereum address
-	Depth  uint8    // batch depth, i.e., size = 2^{depth}
+	ID    []byte   // batch ID
+	Value *big.Int // overall balance of the batch
+	Start uint64   // blocknumber the batch was created
+	Owner []byte   // owner's ethereum address
+	Depth uint8    // batch depth, i.e., size = 2^{depth}
 }
 
 // MarshalBinary serialises a postage batch to a byte slice len 117
 func (b *Batch) MarshalBinary() ([]byte, error) {
-	out := make([]byte, 117)
+	out := make([]byte, 93)
 	copy(out, b.ID)
-	amount := b.Amount.Bytes()
-	copy(out[64-len(amount):], amount)
-	start := b.Start.Bytes()
-	copy(out[96-len(start):], start)
-	copy(out[96:], b.Owner)
-	out[116] = b.Depth
+	value := b.Value.Bytes()
+	copy(out[64-len(value):], value)
+	binary.BigEndian.PutUint64(out[64:72], b.Start)
+	copy(out[72:], b.Owner)
+	out[92] = b.Depth
 	return out, nil
 }
 
@@ -42,10 +42,10 @@ func (b *Batch) MarshalBinary() ([]byte, error) {
 // unsafe on slice index (len(buf) = 117) as only internally used in db
 func (b *Batch) UnmarshalBinary(buf []byte) error {
 	b.ID = buf[:32]
-	b.Amount = big.NewInt(0).SetBytes(buf[32:64])
-	b.Start = big.NewInt(0).SetBytes(buf[64:96])
-	b.Owner = buf[96:116]
-	b.Depth = buf[116]
+	b.Value = big.NewInt(0).SetBytes(buf[32:64])
+	b.Start = binary.BigEndian.Uint64(buf[64:72])
+	b.Owner = buf[72:92]
+	b.Depth = buf[92]
 	return nil
 }
 
@@ -54,20 +54,20 @@ func (b *Batch) UnmarshalBinary(buf []byte) error {
 // - authorisation - the batch owner is the stamp signer
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
-func (s *Stamp) Valid(addr swarm.Address) error {
-	toSign, err := toSignDigest(addr, s.ID)
+func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
+	toSign, err := toSignDigest(chunkAddr, s.BatchID)
 	if err != nil {
 		return err
 	}
-	pk, err := crypto.Recover(s.Sig, toSign)
+	signerPubkey, err := crypto.Recover(s.Sig, toSign)
 	if err != nil {
 		return err
 	}
-	owner, err := crypto.NewEthereumAddress(*pk)
+	signerAddr, err := crypto.NewEthereumAddress(*signerPubkey)
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(s.Owner, owner) {
+	if !bytes.Equal(signerAddr, ownerAddr) {
 		return ErrOwnerMismatch
 	}
 	return nil
@@ -75,13 +75,13 @@ func (s *Stamp) Valid(addr swarm.Address) error {
 
 // Stamp represents a postage stamp as attached to a chunk
 type Stamp struct {
-	*Batch        // postage batch
-	Sig    []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature
+	BatchID []byte // postage batch ID
+	Sig     []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature
 }
 
 // MarshalBinary gives the byte slice serialisation of a stamp: batchID[32]|Signature[65]
 func (s *Stamp) MarshalBinary() ([]byte, error) {
-	return append(append([]byte{}, s.ID...), s.Sig...), nil
+	return append(append([]byte{}, s.BatchID...), s.Sig...), nil
 }
 
 // UnmarshalBinary parses a serialised stamp into id and signature
@@ -89,7 +89,7 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	if len(buf) != 97 {
 		return ErrStampInvalid
 	}
-	s.Batch = &Batch{ID: buf[:32]}
+	s.BatchID = buf[:32]
 	s.Sig = buf[32:]
 	return nil
 }

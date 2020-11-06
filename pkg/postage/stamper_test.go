@@ -39,10 +39,9 @@ func TestStamperStamping(t *testing.T) {
 	//  tests a valid stamp
 	t.Run("valid stamp", func(t *testing.T) {
 		st := newTestStampIssuer(t)
-		b := newTestBatch(t, owner)
-		stamper := postage.NewStamper(b, st, signer)
+		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		if err := stamp.Valid(chunkAddr); err != nil {
+		if err := stamp.Valid(chunkAddr, owner); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -50,12 +49,11 @@ func TestStamperStamping(t *testing.T) {
 	// invalid stamp, incorrect chunk address (it still returns postage.ErrOwnerMismatch)
 	t.Run("invalid stamp", func(t *testing.T) {
 		st := newTestStampIssuer(t)
-		b := newTestBatch(t, owner)
-		stamper := postage.NewStamper(b, st, signer)
+		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		a := chunkAddr.Bytes()
 		a[0] ^= 0xff
-		if err := stamp.Valid(swarm.NewAddress(a)); err != postage.ErrOwnerMismatch {
+		if err := stamp.Valid(swarm.NewAddress(a), owner); err != postage.ErrOwnerMismatch {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})
@@ -65,7 +63,7 @@ func TestStamperStamping(t *testing.T) {
 	t.Run("bucket full", func(t *testing.T) {
 		b := newTestBatch(t, owner)
 		st := postage.NewStampIssuer("", "", b.ID, b.Depth, 8)
-		stamper := postage.NewStamper(b, st, signer)
+		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
 		// issue another 255
@@ -96,10 +94,9 @@ func TestStamperStamping(t *testing.T) {
 	t.Run("owner mismatch", func(t *testing.T) {
 		owner[0] ^= 0xff // bitflip the owner first byte, this case must come last!
 		st := newTestStampIssuer(t)
-		b := newTestBatch(t, owner)
-		stamper := postage.NewStamper(b, st, signer)
+		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		if err := stamp.Valid(chunkAddr); err != postage.ErrOwnerMismatch {
+		if err := stamp.Valid(chunkAddr, owner); err != postage.ErrOwnerMismatch {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})
