@@ -2,12 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package postage
+package batchstore
 
-import (
-	"github.com/ethersphere/bee/pkg/swarm"
-)
+const StateKey = stateKey
 
-func (st *StampIssuer) Inc(a swarm.Address) error {
-	return st.inc(a)
-}
+var BatchKey = batchKey
