@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package postage_test
 
 import (
@@ -11,7 +15,7 @@ import (
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
-// with all the active stamp issuers
+// with all the active stamp issuers.
 func TestSaveLoad(t *testing.T) {
 	store := storemock.NewStateStore()
 	saved := func(id int64) *postage.Service {

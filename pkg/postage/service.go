@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package postage
 
 import (
@@ -14,12 +18,12 @@ const (
 )
 
 var (
-	// ErrNotFound is the error returned when issuer with given batch ID does not exist
+	// ErrNotFound is the error returned when issuer with given batch ID does not exist.
 	ErrNotFound = errors.New("not found")
 )
 
 // Service handles postage batches
-// stores the active batches
+// stores the active batches.
 type Service struct {
 	lock    sync.Mutex
 	store   storage.StateStorer
@@ -27,7 +31,7 @@ type Service struct {
 	issuers []*StampIssuer
 }
 
-// NewService constructs a new Service
+// NewService constructs a new Service.
 func NewService(store storage.StateStorer, chainID int64) *Service {
 	return &Service{
 		store:   store,
@@ -35,21 +39,21 @@ func NewService(store storage.StateStorer, chainID int64) *Service {
 	}
 }
 
-// Add adds a stamp issuer to the active issuers
+// Add adds a stamp issuer to the active issuers.
 func (ps *Service) Add(st *StampIssuer) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	ps.issuers = append(ps.issuers, st)
 }
 
-// StampIssuers returns the currently active stamp issuers
+// StampIssuers returns the currently active stamp issuers.
 func (ps *Service) StampIssuers() []*StampIssuer {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	return ps.issuers
 }
 
-// GetStampIssuer finds a stamp issuer by batch ID
+// GetStampIssuer finds a stamp issuer by batch ID.
 func (ps *Service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
@@ -61,7 +65,7 @@ func (ps *Service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	return nil, ErrNotFound
 }
 
-// Load loads all active batches (stamp issuers) from the statestore
+// Load loads all active batches (stamp issuers) from the statestore.
 func (ps *Service) Load() error {
 	n := 0
 	if err := ps.store.Iterate(ps.key(), func(key, _ []byte) (stop bool, err error) {
@@ -81,7 +85,7 @@ func (ps *Service) Load() error {
 	return nil
 }
 
-// Save saves all the active stamp issuers to statestore
+// Save saves all the active stamp issuers to statestore.
 func (ps *Service) Save() error {
 	for i, st := range ps.issuers {
 		if err := ps.store.Put(ps.key(i), st); err != nil {

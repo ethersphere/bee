@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package postage_test
 
 import (
@@ -12,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-// TestStampMarshalling tests the idempotence  of binary marshal/unmarshals for Stamps
+// TestStampMarshalling tests the idempotence  of binary marshal/unmarshals for Stamps.
 func TestStampMarshalling(t *testing.T) {
 	id, err := crypto.LegacyKeccak256(nil)
 	if err != nil {
@@ -41,7 +45,7 @@ func TestStampMarshalling(t *testing.T) {
 
 }
 
-// TestBatchMarshalling tests the idempotence  of binary marshal/unmarshal for a Batch
+// TestBatchMarshalling tests the idempotence  of binary marshal/unmarshal for a Batch.
 func TestBatchMarshalling(t *testing.T) {
 	a := newTestBatch(t, nil)
 	buf, err := a.MarshalBinary()

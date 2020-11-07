@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package postage
 
 import (
@@ -11,13 +15,13 @@ import (
 )
 
 var (
-	// ErrOwnerMismatch is the error given for invalid signatures
+	// ErrOwnerMismatch is the error given for invalid signatures.
 	ErrOwnerMismatch = errors.New("owner mismatch")
-	// ErrStampInvalid is the error given if stamp cannot deserialise
+	// ErrStampInvalid is the error given if stamp cannot deserialise.
 	ErrStampInvalid = errors.New("invalid stamp")
 )
 
-// Batch represents a postage batch, a payment on the blockchain
+// Batch represents a postage batch, a payment on the blockchain.
 type Batch struct {
 	ID    []byte   // batch ID
 	Value *big.Int // overall balance of the batch
@@ -26,7 +30,7 @@ type Batch struct {
 	Depth uint8    // batch depth, i.e., size = 2^{depth}
 }
 
-// MarshalBinary serialises a postage batch to a byte slice len 117
+// MarshalBinary serialises a postage batch to a byte slice len 117.
 func (b *Batch) MarshalBinary() ([]byte, error) {
 	out := make([]byte, 93)
 	copy(out, b.ID)
@@ -38,8 +42,8 @@ func (b *Batch) MarshalBinary() ([]byte, error) {
 	return out, nil
 }
 
-// UnmarshalBinary deserialises the batch
-// unsafe on slice index (len(buf) = 117) as only internally used in db
+// UnmarshalBinary deserialises the batch.
+// Unsafe on slice index (len(buf) = 117) as only internally used in db.
 func (b *Batch) UnmarshalBinary(buf []byte) error {
 	b.ID = buf[:32]
 	b.Value = big.NewInt(0).SetBytes(buf[32:64])
@@ -73,18 +77,18 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
 	return nil
 }
 
-// Stamp represents a postage stamp as attached to a chunk
+// Stamp represents a postage stamp as attached to a chunk.
 type Stamp struct {
 	BatchID []byte // postage batch ID
 	Sig     []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature
 }
 
-// MarshalBinary gives the byte slice serialisation of a stamp: batchID[32]|Signature[65]
+// MarshalBinary gives the byte slice serialisation of a stamp: batchID[32]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {
 	return append(append([]byte{}, s.BatchID...), s.Sig...), nil
 }
 
-// UnmarshalBinary parses a serialised stamp into id and signature
+// UnmarshalBinary parses a serialised stamp into id and signature.
 func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	if len(buf) != 97 {
 		return ErrStampInvalid
@@ -94,7 +98,7 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
-// toSignDigest creates a digest to represent the stamp which is to be signed by the owner
+// toSignDigest creates a digest to represent the stamp which is to be signed by the owner.
 func toSignDigest(addr swarm.Address, id []byte) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(addr.Bytes())

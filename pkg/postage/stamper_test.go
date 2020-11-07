@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package postage_test
 
 import (
@@ -10,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestStamperStamping tests if the stamp created by the stamper is valid
+// TestStamperStamping tests if the stamp created by the stamper is valid.
 func TestStamperStamping(t *testing.T) {
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
@@ -36,7 +40,7 @@ func TestStamperStamping(t *testing.T) {
 		return chunkAddr, stamp
 	}
 
-	//  tests a valid stamp
+	// tests a valid stamp
 	t.Run("valid stamp", func(t *testing.T) {
 		st := newTestStampIssuer(t)
 		stamper := postage.NewStamper(st, signer)

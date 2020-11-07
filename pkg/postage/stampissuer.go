@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package postage
 
 import (
@@ -7,9 +11,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// StampIssuer is a local extension of a batch issuing stamps for uploads
-// a StampIssuer instance extends a batch with bucket collision tracking
-// embedded in multiple Stampers, can be used concurrently
+// StampIssuer is a local extension of a batch issuing stamps for uploads.
+// A StampIssuer instance extends a batch with bucket collision tracking
+// embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
 	label       string     // label to identify the batch period/importance
 	keyID       string     // owner identity
@@ -20,7 +24,7 @@ type StampIssuer struct {
 	buckets     []uint32   // collision buckets: counts per neighbourhoods limited to 2^{batchdepth-bucketdepth}
 }
 
-// NewStampIssuer constructs a StampIssuer as an extension of a batch for local upload
+// NewStampIssuer constructs a StampIssuer as an extension of a batch for local upload.
 func NewStampIssuer(label string, keyID string, batchID []byte, batchDepth, bucketDepth uint8) *StampIssuer {
 	return &StampIssuer{
 		label:       label,
@@ -52,7 +56,7 @@ func toBucket(depth uint8, addr swarm.Address) uint32 {
 	return i >> (32 - depth)
 }
 
-// Label returns the label of the issuer
+// Label returns the label of the issuer.
 func (st *StampIssuer) Label() string {
 	return st.label
 }
@@ -77,7 +81,7 @@ func (st *StampIssuer) MarshalBinary() ([]byte, error) {
 	return buf, nil
 }
 
-// UnmarshalBinary parses a serialised StampIssuer into the receiver struct
+// UnmarshalBinary parses a serialised StampIssuer into the receiver struct.
 func (st *StampIssuer) UnmarshalBinary(buf []byte) error {
 	st.label = toString(buf[:32])
 	st.keyID = toString(buf[32:64])
