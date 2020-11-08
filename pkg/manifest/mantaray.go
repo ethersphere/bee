@@ -45,6 +45,24 @@ func NewMantarayManifest(
 	}, nil
 }
 
+// NewMantarayManifestWithObfuscationKeyFn creates a new mantaray-based manifest
+// with configured obfuscation key
+//
+// NOTE: This should only be used in tests.
+func NewMantarayManifestWithObfuscationKeyFn(
+	encrypted bool,
+	storer storage.Storer,
+	obfuscationKeyFn func([]byte) (int, error),
+) (Interface, error) {
+	mm := &mantarayManifest{
+		trie:      mantaray.New(),
+		encrypted: encrypted,
+		storer:    storer,
+	}
+	mantaray.SetObfuscationKeyFn(obfuscationKeyFn)
+	return mm, nil
+}
+
 // NewMantarayManifestReference loads existing mantaray-based manifest.
 func NewMantarayManifestReference(
 	ctx context.Context,
