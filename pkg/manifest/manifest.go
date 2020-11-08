@@ -21,6 +21,14 @@ var (
 	// ErrInvalidManifestType is returned when an unknown manifest type
 	// is provided to the function.
 	ErrInvalidManifestType = errors.New("manifest: invalid type")
+
+	// ErrMissingReference is returned when the reference for the manifest file
+	// is missing.
+	ErrMissingReference = errors.New("manifest: missing reference")
+)
+
+var (
+	errStopIterator = errors.New("manifest: stop iterator")
 )
 
 // Interface for operations with manifest.
@@ -37,6 +45,10 @@ type Interface interface {
 	HasPrefix(string) (bool, error)
 	// Store stores the manifest, returning the resulting address.
 	Store(context.Context, storage.ModePut) (swarm.Address, error)
+
+	// IterateAddresses is used to iterate over chunks addresses for
+	// the manifest.
+	IterateAddresses(context.Context, swarm.AddressIterFunc) error
 }
 
 // Entry represents a single manifest entry.

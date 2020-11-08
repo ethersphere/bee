@@ -113,6 +113,7 @@ func (m *mantarayManifest) HasPrefix(prefix string) (bool, error) {
 func (m *mantarayManifest) Store(ctx context.Context, mode storage.ModePut) (swarm.Address, error) {
 
 	saver := newMantaraySaver(ctx, m.encrypted, m.storer, mode)
+	m.loader = saver
 
 	err := m.trie.Save(saver)
 	if err != nil {
@@ -122,6 +123,53 @@ func (m *mantarayManifest) Store(ctx context.Context, mode storage.ModePut) (swa
 	address := swarm.NewAddress(m.trie.Reference())
 
 	return address, nil
+}
+
+func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.AddressIterFunc) error {
+	reference := swarm.NewAddress(m.trie.Reference())
+
+	if swarm.ZeroAddress.Equal(reference) {
+		return ErrMissingReference
+	}
+
+	walker := func(path []byte, node *mantaray.Node, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if node != nil {
+			var stop bool
+
+			if node.Reference() != nil {
+				ref := swarm.NewAddress(node.Reference())
+
+				stop = fn(ref)
+				if stop {
+					return errStopIterator
+				}
+			}
+
+			if node.IsValueType() && node.Entry() != nil {
+				entry := swarm.NewAddress(node.Entry())
+				stop = fn(entry)
+				if stop {
+					return errStopIterator
+				}
+			}
+		}
+
+		return nil
+	}
+
+	err := m.trie.WalkNode([]byte{}, m.loader, walker)
+	if err != nil {
+		if !errors.Is(err, errStopIterator) {
+			return fmt.Errorf("manifest iterate addresses: %w", err)
+		}
+		// ignore error if interation stopped by caller
+	}
+
+	return nil
 }
 
 // mantarayLoadSaver implements required interface 'mantaray.LoadSaver'
