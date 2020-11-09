@@ -220,12 +220,7 @@ func (j *joiner) IterateChunkAddresses(fn swarm.AddressIterFunc) error {
 	var eg errgroup.Group
 	j.processChunkAddresses(fn, j.rootData, j.span, &eg)
 
-	err := eg.Wait()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return eg.Wait()
 }
 
 func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, subTrieSize int64, eg *errgroup.Group) {
