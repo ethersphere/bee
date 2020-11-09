@@ -243,6 +243,11 @@ func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, su
 			break
 		}
 
+		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
+		if sec <= 4096 {
+			continue
+		}
+
 		func(address swarm.Address, eg *errgroup.Group) {
 			eg.Go(func() error {
 				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
