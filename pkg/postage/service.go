@@ -22,9 +22,17 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
-// Service handles postage batches
+type Service interface {
+	Add(*StampIssuer)
+	StampIssuers() []*StampIssuer
+	GetStampIssuer([]byte) (*StampIssuer, error)
+	Load() error
+	Save() error
+}
+
+// service handles postage batches
 // stores the active batches.
-type Service struct {
+type service struct {
 	lock    sync.Mutex
 	store   storage.StateStorer
 	chainID int64
@@ -32,29 +40,29 @@ type Service struct {
 }
 
 // NewService constructs a new Service.
-func NewService(store storage.StateStorer, chainID int64) *Service {
-	return &Service{
+func NewService(store storage.StateStorer, chainID int64) Service {
+	return &service{
 		store:   store,
 		chainID: chainID,
 	}
 }
 
 // Add adds a stamp issuer to the active issuers.
-func (ps *Service) Add(st *StampIssuer) {
+func (ps *service) Add(st *StampIssuer) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	ps.issuers = append(ps.issuers, st)
 }
 
 // StampIssuers returns the currently active stamp issuers.
-func (ps *Service) StampIssuers() []*StampIssuer {
+func (ps *service) StampIssuers() []*StampIssuer {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	return ps.issuers
 }
 
 // GetStampIssuer finds a stamp issuer by batch ID.
-func (ps *Service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
+func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
@@ -66,7 +74,7 @@ func (ps *Service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 }
 
 // Load loads all active batches (stamp issuers) from the statestore.
-func (ps *Service) Load() error {
+func (ps *service) Load() error {
 	n := 0
 	if err := ps.store.Iterate(ps.key(), func(key, _ []byte) (stop bool, err error) {
 		n++
@@ -86,7 +94,7 @@ func (ps *Service) Load() error {
 }
 
 // Save saves all the active stamp issuers to statestore.
-func (ps *Service) Save() error {
+func (ps *service) Save() error {
 	for i, st := range ps.issuers {
 		if err := ps.store.Put(ps.keyForIndex(i), st); err != nil {
 			return err
@@ -96,12 +104,12 @@ func (ps *Service) Save() error {
 }
 
 // keyForIndex returns the statestore key for an issuer
-func (ps *Service) keyForIndex(i int) string {
+func (ps *service) keyForIndex(i int) string {
 	return fmt.Sprintf(ps.key()+"%d", i)
 }
 
 // key returns the statestore base key for an issuer
 // to disambiguate batches on different chains, chainID is part of the key
-func (ps *Service) key() string {
+func (ps *service) key() string {
 	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
 }

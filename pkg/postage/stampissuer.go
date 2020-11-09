@@ -25,6 +25,7 @@ type StampIssuer struct {
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local upload.
+// bucketDepth must always be smaller than batchDepth otherwise inc() panics.
 func NewStampIssuer(label string, keyID string, batchID []byte, batchDepth, bucketDepth uint8) *StampIssuer {
 	return &StampIssuer{
 		label:       label,

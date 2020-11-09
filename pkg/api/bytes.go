@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -42,15 +41,23 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, nil)
 		return
 	}
+	stamper, err := requestStamper(s.post, s.signer, batch)
+	if err != nil {
+		logger.Debugf("bytes upload: get stamper:%v", err)
+		logger.Error("bytes upload: stamper")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
 
-	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r), batch)
-	address, err := builder.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
+	p := requestPipelineFn(s.Storer, r, stamper)
+	address, err := p(ctx, r.Body, r.ContentLength)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)
 		logger.Error("bytes upload: split write all")
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
+
 	if created {
 		_, err = tag.DoneSplit(address)
 		if err != nil {

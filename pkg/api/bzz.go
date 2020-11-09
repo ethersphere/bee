@@ -108,7 +108,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	m, err := manifest.NewManifestReference(
 		manifestMetadata.MimeType,
 		e.Reference(),
-		loadsave.New(s.Storer, storage.ModePutRequest, false, nil), // mode and encryption values are fallback
+		loadsave.New(s.Storer, storage.ModePutRequest, false, nil), // mode and encryption values are fallback, stamper not needed since download
 	)
 	if err != nil {
 		logger.Debugf("bzz download: not manifest %s: %v", address, err)

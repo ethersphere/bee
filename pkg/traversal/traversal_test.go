@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/manifest"
+	postmock "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -136,7 +137,7 @@ func TestTraversalBytes(t *testing.T) {
 
 			bytesData := generateSampleData(tc.dataSize)
 
-			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(bytesData), int64(len(bytesData)))
 			if err != nil {
 				t.Fatal(err)
@@ -208,7 +209,7 @@ func TestTraversalFiles(t *testing.T) {
 
 			bytesData := generateSampleData(tc.filesSize)
 
-			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(bytesData), int64(len(bytesData)))
 			if err != nil {
 				t.Fatal(err)
@@ -223,7 +224,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 			mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 			if err != nil {
 				t.Fatal(err)
@@ -235,7 +236,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 			reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 			if err != nil {
 				t.Fatal(err)
@@ -462,7 +463,7 @@ func TestTraversalManifest(t *testing.T) {
 			ctx := context.Background()
 
 			var dirManifest manifest.Interface
-			ls := loadsave.New(mockStorer, storage.ModePutRequest, false, nil)
+			ls := loadsave.New(mockStorer, storage.ModePutRequest, false, postmock.NewStamper())
 			switch tc.manifestType {
 			case manifest.ManifestSimpleContentType:
 				dirManifest, err = manifest.NewSimpleManifest(ls)
@@ -482,7 +483,7 @@ func TestTraversalManifest(t *testing.T) {
 			for _, f := range tc.files {
 				bytesData := generateSampleData(f.size)
 
-				pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+				pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(bytesData), int64(len(bytesData)))
 				if err != nil {
 					t.Fatal(err)
@@ -499,7 +500,7 @@ func TestTraversalManifest(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 				mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 				if err != nil {
 					t.Fatal(err)
@@ -511,7 +512,7 @@ func TestTraversalManifest(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 				reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 				if err != nil {
 					t.Fatal(err)
@@ -539,7 +540,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 			mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 			if err != nil {
 				t.Fatal(err)
@@ -552,7 +553,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
+			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, postmock.NewStamper())
 			manifestFileReference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 			if err != nil {
 				t.Fatal(err)

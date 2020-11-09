@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
+	postmock "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -43,7 +44,7 @@ func TestBzz(t *testing.T) {
 			Logger: logging.New(ioutil.Discard, 5),
 		})
 		pipeWriteAll = func(r io.Reader, l int64) (swarm.Address, error) {
-			pipe := builder.NewPipelineBuilder(ctx, storer, storage.ModePutUpload, false, nil)
+			pipe := builder.NewPipelineBuilder(ctx, storer, storage.ModePutUpload, false, postmock.NewStamper())
 			return builder.FeedPipeline(ctx, pipe, r, l)
 		}
 	)

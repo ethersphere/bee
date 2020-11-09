@@ -7,6 +7,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -19,13 +20,15 @@ type loadSave struct {
 	storer    storage.Storer
 	mode      storage.ModePut
 	encrypted bool
+	stamper   postage.Stamper
 }
 
-func New(storer storage.Storer, mode storage.ModePut, enc bool, _ []byte) file.LoadSaver {
+func New(storer storage.Storer, mode storage.ModePut, enc bool, stamper postage.Stamper) file.LoadSaver {
 	return &loadSave{
 		storer:    storer,
 		mode:      mode,
 		encrypted: enc,
+		stamper:   stamper,
 	}
 }
 
@@ -45,7 +48,7 @@ func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
 }
 
 func (ls *loadSave) Save(ctx context.Context, data []byte) ([]byte, error) {
-	pipe := builder.NewPipelineBuilder(ctx, ls.storer, ls.mode, ls.encrypted, nil)
+	pipe := builder.NewPipelineBuilder(ctx, ls.storer, ls.mode, ls.encrypted, ls.stamper)
 	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return swarm.ZeroAddress.Bytes(), err

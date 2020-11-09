@@ -17,9 +17,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -71,6 +73,8 @@ type server struct {
 	Traversal traversal.Service
 	Logger    logging.Logger
 	Tracer    *tracing.Tracer
+	signer    crypto.Signer
+	post      postage.Service
 	Options
 	http.Handler
 	metrics metrics
@@ -91,13 +95,15 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, post postage.Service, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		Tags:      tags,
 		Storer:    storer,
 		Resolver:  resolver,
 		Pss:       pss,
 		Traversal: traversalService,
+		post:      post,
+		signer:    signer,
 		Options:   o,
 		Logger:    logger,
 		Tracer:    tracer,
@@ -269,10 +275,19 @@ func equalASCIIFold(s, t string) bool {
 
 type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Storer, r *http.Request, batch []byte) pipelineFunc {
+func requestPipelineFn(s storage.Storer, r *http.Request, st postage.Stamper) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt, nil)
+		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt, st)
 		return builder.FeedPipeline(ctx, pipe, r, l)
 	}
+}
+
+func requestStamper(post postage.Service, signer crypto.Signer, batch []byte) (postage.Stamper, error) {
+	i, err := post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, fmt.Errorf("get stamp issuer: %w", err)
+	}
+
+	return postage.NewStamper(i, signer), nil
 }
