@@ -40,7 +40,7 @@ type Store struct {
 	setAfterCloseCount  int
 }
 
-// Override the Set function to capture the ModeSetSyncPush
+// Override the Set function to capture the ModeSetSync
 func (s *Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
 	s.modeSetMu.Lock()
 	defer s.modeSetMu.Unlock()
@@ -67,8 +67,8 @@ func (s *Store) Close() error {
 
 // TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
-// as ModeSetSyncPush status.
-func TestSendChunkToPushSyncWithTag(t *testing.T) {
+// as ModeSetSync status.
+func TestSendChunkToSyncWithTag(t *testing.T) {
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
@@ -99,7 +99,7 @@ func TestSendChunkToPushSyncWithTag(t *testing.T) {
 		// Give some time for chunk to be pushed and receipt to be received
 		time.Sleep(10 * time.Millisecond)
 
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
 		if err == nil {
 			break
 		}
@@ -144,7 +144,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		// Give some time for chunk to be pushed and receipt to be received
 		time.Sleep(10 * time.Millisecond)
 
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
 		if err == nil {
 			break
 		}
@@ -157,7 +157,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 
 // TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent ot its closest peer and
 // get a invalid receipt (not with the address of the chunk sent). The test makes sure that this error
-// is received and the ModeSetSyncPush is not set for the chunk.
+// is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	chunk := createChunk()
 
@@ -182,7 +182,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		// Give some time for chunk to be pushed and receipt to be received
 		time.Sleep(10 * time.Millisecond)
 
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
 		if err != nil {
 			continue
 		}
@@ -195,7 +195,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 
 // TestSendChunkAndTimeoutinReceivingReceipt sends a chunk to pushsync to be sent ot its closest peer and
 // expects a timeout to get instead of getting a receipt. The test makes sure that timeout error
-// is received and the ModeSetSyncPush is not set for the chunk.
+// is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	chunk := createChunk()
 
@@ -224,7 +224,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		// Give some time for chunk to be pushed and receipt to be received
 		time.Sleep(10 * time.Millisecond)
 
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSyncPush, storer)
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
 		if err != nil {
 			continue
 		}

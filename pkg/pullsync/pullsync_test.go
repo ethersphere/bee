@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -56,7 +55,7 @@ func init() {
 func TestIncoming_WantEmptyInterval(t *testing.T) {
 	var (
 		mockTopmost        = uint64(5)
-		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp([]swarm.Address{}, mockTopmost, nil))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp([]swarm.Address{}, mockTopmost, nil))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder)
 	)
@@ -74,12 +73,11 @@ func TestIncoming_WantEmptyInterval(t *testing.T) {
 		t.Fatal("too many puts")
 	}
 
-	waitSet(t, serverDb, 0)
 }
 func TestIncoming_WantNone(t *testing.T) {
 	var (
 		mockTopmost        = uint64(5)
-		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(chunks...))
 	)
@@ -95,14 +93,12 @@ func TestIncoming_WantNone(t *testing.T) {
 	if clientDb.PutCalls() > 0 {
 		t.Fatal("too many puts")
 	}
-
-	waitSet(t, serverDb, 1)
 }
 
 func TestIncoming_WantOne(t *testing.T) {
 	var (
 		mockTopmost        = uint64(5)
-		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 	)
@@ -121,13 +117,12 @@ func TestIncoming_WantOne(t *testing.T) {
 	if clientDb.PutCalls() > 1 {
 		t.Fatal("too many puts")
 	}
-	waitSet(t, serverDb, 1)
 }
 
 func TestIncoming_WantAll(t *testing.T) {
 	var (
 		mockTopmost        = uint64(5)
-		ps, serverDb       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder)
 	)
@@ -146,7 +141,6 @@ func TestIncoming_WantAll(t *testing.T) {
 	if p := clientDb.PutCalls(); p != 5 {
 		t.Fatalf("want %d puts but got %d", 5, p)
 	}
-	waitSet(t, serverDb, 1)
 }
 
 func TestIncoming_UnsolicitedChunk(t *testing.T) {
@@ -225,21 +219,4 @@ func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.Pull
 	storage := mock.NewPullStorage(o...)
 	logger := logging.New(ioutil.Discard, 0)
 	return pullsync.New(s, storage, logger), storage
-}
-
-func waitSet(t *testing.T, db *mock.PullStorage, v int) {
-	time.Sleep(10 * time.Millisecond) // give leeway for the case where v==0
-	var s int
-	for i := 0; i < 10; i++ {
-		s = db.SetCalls()
-		switch {
-		case s > v:
-			t.Fatalf("too many Set calls: got %d want %d", s, v)
-		case s == v:
-			return
-		default:
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-	t.Fatalf("timed out waiting for set to be called. got %d calls want %d", s, v)
 }

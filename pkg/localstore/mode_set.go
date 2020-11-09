@@ -77,7 +77,7 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 			db.binIDs.PutInBatch(batch, uint64(po), id)
 		}
 
-	case storage.ModeSetSyncPush, storage.ModeSetSyncPull:
+	case storage.ModeSetSync:
 		for _, addr := range addrs {
 			c, err := db.setSync(batch, addr, mode)
 			if err != nil {
@@ -197,9 +197,7 @@ func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr swar
 }
 
 // setSync adds the chunk to the garbage collection after syncing by updating indexes
-// - ModeSetSyncPull - the corresponding tag is incremented, pull index item tag value
-//	 is then set to 0 to prevent duplicate increments for the same chunk synced multiple times
-// - ModeSetSyncPush - the corresponding tag is incremented, then item is removed
+// - ModeSetSync - the corresponding tag is incremented, then item is removed
 //   from push sync index
 // - update to gc index happens given item does not exist in pin index
 // Provided batch is updated.
@@ -228,36 +226,34 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 
-	if mode == storage.ModeSetSyncPush {
-		i, err := db.pushIndex.Get(item)
+	i, err = db.pushIndex.Get(item)
+	if err != nil {
+		if errors.Is(err, leveldb.ErrNotFound) {
+			// we handle this error internally, since this is an internal inconsistency of the indices
+			// this error can happen if the chunk is put with ModePutRequest or ModePutSync
+			// but this function is called with ModeSetSync
+			db.logger.Debugf("localstore: chunk with address %s not found in push index", addr)
+		} else {
+			return 0, err
+		}
+	}
+	if err == nil && db.tags != nil && i.Tag != 0 {
+		t, err := db.tags.Get(i.Tag)
 		if err != nil {
-			if errors.Is(err, leveldb.ErrNotFound) {
-				// we handle this error internally, since this is an internal inconsistency of the indices
-				// this error can happen if the chunk is put with ModePutRequest or ModePutSync
-				// but this function is called with ModeSetSyncPush
-				db.logger.Debugf("localstore: chunk with address %s not found in push index", addr)
-			} else {
+			// we cannot break or return here since the function needs to
+			// run to end from db.pushIndex.DeleteInBatch
+			db.logger.Errorf("localstore: get tags on push sync set uid %d: %v", i.Tag, err)
+		} else {
+			err = t.Inc(tags.StateSynced)
+			if err != nil {
 				return 0, err
 			}
 		}
-		if err == nil && db.tags != nil && i.Tag != 0 {
-			t, err := db.tags.Get(i.Tag)
-			if err != nil {
-				// we cannot break or return here since the function needs to
-				// run to end from db.pushIndex.DeleteInBatch
-				db.logger.Errorf("localstore: get tags on push sync set uid %d: %v", i.Tag, err)
-			} else {
-				err = t.Inc(tags.StateSynced)
-				if err != nil {
-					return 0, err
-				}
-			}
-		}
+	}
 
-		err = db.pushIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return 0, err
-		}
+	err = db.pushIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0, err
 	}
 
 	i, err = db.retrievalAccessIndex.Get(item)

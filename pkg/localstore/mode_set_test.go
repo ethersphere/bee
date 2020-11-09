@@ -19,11 +19,12 @@ package localstore
 import (
 	"context"
 	"errors"
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"io/ioutil"
 	"testing"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -72,7 +73,7 @@ func TestModeSetAccess(t *testing.T) {
 // here we try to set a normal tag (that should be handled by pushsync)
 // as a result we should expect the tag value to remain in the pull index
 // and we expect that the tag should not be incremented by pull sync set
-func TestModeSetSyncPullNormalTag(t *testing.T) {
+func TestModeSetSyncNormalTag(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
 	logger := logging.New(ioutil.Discard, 0)
 	db := newTestDB(t, &Options{Tags: tags.NewTags(mockStatestore, logger)})
@@ -105,7 +106,7 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
 	}
 
-	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,85 +125,8 @@ func TestModeSetSyncPullNormalTag(t *testing.T) {
 		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
 	}
 
-	// 1 stored (because incremented manually in test), 1 sent, 1 total
-	tagtesting.CheckTag(t, tag, 0, 1, 0, 1, 0, 1)
-}
-
-// TestModeSetSyncPushNormalTag makes sure that push sync increments tags
-// correctly on a normal tag (that is, a tag that is expected to show progress bars
-// according to push sync progress)
-func TestModeSetSyncPushNormalTag(t *testing.T) {
-	mockStatestore := statestore.NewStateStore()
-	logger := logging.New(ioutil.Discard, 0)
-	db := newTestDB(t, &Options{Tags: tags.NewTags(mockStatestore, logger)})
-
-	tag, err := db.tags.Create("test", 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ch := generateTestRandomChunk().WithTagID(tag.Uid)
-	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = tag.Inc(tags.StateStored) // so we don't get an error on tag.Status later on
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	item, err := db.pullIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if item.Tag != tag.Uid {
-		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
-	}
-
-	tagtesting.CheckTag(t, tag, 0, 1, 0, 0, 0, 1)
-
-	err = db.Set(context.Background(), storage.ModeSetSyncPush, ch.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if item.Tag != tag.Uid {
-		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
-	}
-
-	tagtesting.CheckTag(t, tag, 0, 1, 0, 0, 1, 1)
-
-	// call pull sync set, expect no changes
-	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	item, err = db.pullIndex.Get(shed.Item{
-		Address: ch.Address().Bytes(),
-		BinID:   1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tagtesting.CheckTag(t, tag, 0, 1, 0, 0, 1, 1)
-
-	if item.Tag != tag.Uid {
-		t.Fatalf("unexpected tag id value got %d want %d", item.Tag, tag.Uid)
-	}
+	// 1 stored (because incremented manually in test), 1 sent, 1 synced, 1 total
+	tagtesting.CheckTag(t, tag, 0, 1, 0, 1, 1, 1)
 }
 
 // TestModeSetRemove validates ModeSetRemove index values on the provided DB.
