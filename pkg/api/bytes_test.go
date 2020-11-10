@@ -10,12 +10,11 @@ import (
 	"net/http"
 	"testing"
 
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -35,7 +34,6 @@ func TestBytes(t *testing.T) {
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)

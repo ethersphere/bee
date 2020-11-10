@@ -81,6 +81,8 @@ const (
 	ModePutUploadPin
 	// ModePutRequestPin: the same as ModePutRequest but also pin the chunk with the put
 	ModePutRequestPin
+	// ModePutRequestCache forces a retrieved chunk to be stored in the cache
+	ModePutRequestCache
 )
 
 // ModeSet enumerates different Setter modes.

@@ -25,6 +25,7 @@ type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
 	logger           logging.Logger
+	validStamp       func(swarm.Chunk, []byte) (swarm.Chunk, error)
 	recoveryCallback recovery.Callback // this is the callback to be executed when a chunk fails to be retrieved
 }
 
@@ -33,8 +34,8 @@ var (
 )
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
-	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger}
+func New(s storage.Storer, validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
+	return &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
 }
 
 // Get retrieves a given chunk address.
@@ -53,8 +54,22 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				go s.recoveryCallback(addr, targets)
 				return nil, ErrRecoveryAttempt
 			}
+			stamp, err := ch.Stamp().MarshalBinary()
+			if err != nil {
+				return nil, err
+			}
 
-			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
+			mode := storage.ModePutRequest
+
+			cch, err := s.validStamp(ch, stamp)
+			if err != nil {
+				// if a chunk with an invalid postage stamp was received
+				// we force it into the cache.
+				mode = storage.ModePutRequestCache
+				cch = ch
+			}
+
+			_, err = s.Storer.Put(ctx, mode, cch)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve put: %w", err)
 			}

@@ -17,7 +17,9 @@ import (
 
 	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -155,7 +157,11 @@ func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 	store := statestore.NewStateStore()
-	s := api.New(tags.NewTags(store, logger), storer, nil, nil, nil, nil, logger, nil, api.Options{})
+	pk, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(pk)
+	mockPostage := mockpost.New()
+
+	s := api.New(tags.NewTags(store, logger), storer, nil, nil, nil, nil, mockPostage, nil, signer, logger, nil, api.Options{})
 	ts := httptest.NewServer(s)
 	srvUrl, err := url.Parse(ts.URL)
 	if err != nil {

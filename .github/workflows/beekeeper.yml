@@ -60,7 +60,7 @@ jobs:
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s
+          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s --postage
       - name: Test pingpong
         id: pingpong-1
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
@@ -112,7 +112,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (Node connection and clef enabled)
         run: |
-          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s
+          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --postage
       - name: Test pingpong
         id: pingpong-2
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done

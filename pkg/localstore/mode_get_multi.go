@@ -21,6 +21,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -50,7 +51,9 @@ func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm
 	}
 	chunks = make([]swarm.Chunk, len(out))
 	for i, ch := range out {
-		chunks[i] = swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithPinCounter(ch.PinCounter)
+		chunks[i] = swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).
+			WithPinCounter(ch.PinCounter).
+			WithStamp(postage.NewStamp(ch.BatchID, ch.Sig))
 	}
 	return chunks, nil
 }

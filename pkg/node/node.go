@@ -10,6 +10,7 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -35,6 +36,11 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/postage/listener"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -81,6 +87,7 @@ type Bee struct {
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
 	recoveryHandleCleanup    func()
+	listenerCloser           io.Closer
 }
 
 type Options struct {
@@ -115,6 +122,8 @@ type Options struct {
 	SwapFactoryAddress       string
 	SwapInitialDeposit       string
 	SwapEnable               bool
+	PostageContractAddress   string
+	PriceOracleAddress       string
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
@@ -254,6 +263,71 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		)
 	}
 
+	// localstore depends on batchstore
+	var path string
+
+	if o.DataDir != "" {
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+	lo := &localstore.Options{
+		Capacity:               o.DBCapacity,
+		OpenFilesLimit:         o.DBOpenFilesLimit,
+		BlockCacheCapacity:     o.DBBlockCacheCapacity,
+		WriteBufferSize:        o.DBWriteBufferSize,
+		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
+	}
+
+	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = storer
+
+	batchStore, err := batchstore.New(stateStore, storer.UnreserveBatch)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+	validStamp := postage.ValidStamp(batchStore)
+	post := postage.NewService(stateStore, chainID)
+
+	var postageContractService postagecontract.Interface
+	if !o.Standalone {
+		postageContractAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID)
+		if o.PostageContractAddress != "" {
+			if !common.IsHexAddress(o.PostageContractAddress) {
+				return nil, errors.New("malformed postage stamp address")
+			}
+			postageContractAddress = common.HexToAddress(o.PostageContractAddress)
+		}
+		if o.PriceOracleAddress != "" {
+			if !common.IsHexAddress(o.PriceOracleAddress) {
+				return nil, errors.New("malformed price oracle address")
+			}
+			priceOracleAddress = common.HexToAddress(o.PriceOracleAddress)
+		}
+		if (o.PostageContractAddress == "" || o.PriceOracleAddress == "") && !found {
+			return nil, errors.New("no known postage stamp addresses for this network")
+		}
+
+		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress)
+		b.listenerCloser = eventListener
+
+		_ = batchservice.New(batchStore, logger, eventListener)
+
+		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		postageContractService = postagecontract.New(
+			overlayEthAddress,
+			postageContractAddress,
+			erc20Address,
+			transactionService,
+			post,
+		)
+	}
+
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
@@ -389,24 +463,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	pricing.SetPaymentThresholdObserver(acc)
 	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 
-	var path string
-
-	if o.DataDir != "" {
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-	lo := &localstore.Options{
-		Capacity:               o.DBCapacity,
-		OpenFilesLimit:         o.DBOpenFilesLimit,
-		BlockCacheCapacity:     o.DBBlockCacheCapacity,
-		WriteBufferSize:        o.DBWriteBufferSize,
-		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-	}
-	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = storer
-
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer)
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
@@ -422,14 +478,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
 		recoverFunc := recovery.NewCallback(pssService)
-		ns = netstore.New(storer, recoverFunc, retrieve, logger)
+		ns = netstore.New(storer, validStamp, recoverFunc, retrieve, logger)
 	} else {
-		ns = netstore.New(storer, nil, retrieve, logger)
+		ns = netstore.New(storer, validStamp, nil, retrieve, logger)
 	}
 
 	traversalService := traversal.NewService(ns)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, pricer, signer, tracer)
+	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -449,7 +505,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSync := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, logger)
+	pullSync := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSync
 
 	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {
@@ -470,7 +526,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.APIAddr != "" {
 		// API server
 		feedFactory := factory.New(ns)
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, feedFactory, logger, tracer, api.Options{
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, feedFactory, post, postageContractService, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
@@ -609,6 +665,12 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.tagsCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("tag persistence: %w", err))
+	}
+
+	if b.listenerCloser != nil {
+		if err := b.listenerCloser.Close(); err != nil {
+			errs.add(fmt.Errorf("error listener: %w", err))
+		}
 	}
 
 	if err := b.stateStoreCloser.Close(); err != nil {

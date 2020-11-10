@@ -55,6 +55,8 @@ const (
 	optionNameSwapFactoryAddress        = "swap-factory-address"
 	optionNameSwapInitialDeposit        = "swap-initial-deposit"
 	optionNameSwapEnable                = "swap-enable"
+	optionNamePostageContractAddress    = "postage-stamp-address"
+	optionNamePriceOracleAddress        = "price-oracle-address"
 )
 
 func init() {
@@ -220,4 +222,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "100000000000000000", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
+	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
+	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle address")
 }

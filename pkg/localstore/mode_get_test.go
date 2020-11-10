@@ -22,11 +22,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
 // TestModeGetRequest validates ModeGetRequest index values on the provided DB.
 func TestModeGetRequest(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, nil)
 
 	uploadTimestamp := time.Now().UTC().UnixNano()
@@ -35,6 +38,10 @@ func TestModeGetRequest(t *testing.T) {
 	})()
 
 	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
 
 	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
@@ -98,8 +105,9 @@ func TestModeGetRequest(t *testing.T) {
 
 		t.Run("retrieve indexes", newRetrieveIndexesTestWithAccess(db, ch, uploadTimestamp, uploadTimestamp))
 
-		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, uploadTimestamp, 1, nil))
+		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, uploadTimestamp, 1, nil, postage.NewStamp(ch.Stamp().BatchID(), nil)))
 
+		t.Run("access count", newItemsCountTest(db.retrievalAccessIndex, 1))
 		t.Run("gc index count", newItemsCountTest(db.gcIndex, 1))
 
 		t.Run("gc size", newIndexGCSizeTest(db))
@@ -128,8 +136,9 @@ func TestModeGetRequest(t *testing.T) {
 
 		t.Run("retrieve indexes", newRetrieveIndexesTestWithAccess(db, ch, uploadTimestamp, accessTimestamp))
 
-		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, accessTimestamp, 1, nil))
+		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, accessTimestamp, 1, nil, postage.NewStamp(ch.Stamp().BatchID(), nil)))
 
+		t.Run("access count", newItemsCountTest(db.retrievalAccessIndex, 1))
 		t.Run("gc index count", newItemsCountTest(db.gcIndex, 1))
 
 		t.Run("gc size", newIndexGCSizeTest(db))
@@ -153,7 +162,7 @@ func TestModeGetRequest(t *testing.T) {
 
 		t.Run("retrieve indexes", newRetrieveIndexesTestWithAccess(db, ch, uploadTimestamp, uploadTimestamp))
 
-		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, uploadTimestamp, 1, nil))
+		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, uploadTimestamp, 1, nil, postage.NewStamp(ch.Stamp().BatchID(), nil)))
 
 		t.Run("gc index count", newItemsCountTest(db.gcIndex, 1))
 

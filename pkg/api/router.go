@@ -175,6 +175,27 @@ func (s *server) setupRouting() {
 		})),
 	)
 
+	handle(router, "/stamps", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+		})),
+	)
+
+	handle(router, "/stamps/{id}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampHandler),
+		})),
+	)
+
+	handle(router, "/stamps/{amount}/{depth}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.postageCreateHandler),
+		})),
+	)
+
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
