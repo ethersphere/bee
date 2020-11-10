@@ -177,8 +177,12 @@ func (s *traversalService) checkIsFile(
 			err = fmt.Errorf("traversal: read metadata: %s: %w", reference, err)
 			return
 		}
+
 		metadata = &entry.Metadata{}
-		err = json.Unmarshal(buf.Bytes(), metadata)
+
+		dec := json.NewDecoder(buf)
+		dec.DisallowUnknownFields()
+		err = dec.Decode(metadata)
 		if err != nil {
 			// may not be metadata JSON
 			err = nil
