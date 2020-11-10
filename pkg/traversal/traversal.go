@@ -44,7 +44,7 @@ func (s *traversalService) TraverseChunkAddresses(
 	reference swarm.Address,
 	encrypted bool,
 	chunkAddressFunc swarm.AddressIterFunc,
-) (err error) {
+) error {
 
 	isFile, e, metadata, err := s.checkIsFile(ctx, reference)
 	if err != nil {
@@ -73,7 +73,7 @@ func (s *traversalService) TraverseChunkAddresses(
 			// process as manifest
 
 			err = m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) (stop bool) {
-				err := s.TraverseChunkAddresses(ctx, manifestNodeAddr, encrypted, chunkAddressFunc)
+				err := s.traverseChunkAddressesFromManifest(ctx, manifestNodeAddr, encrypted, chunkAddressFunc)
 				if err != nil {
 					stop = true
 				}
@@ -95,40 +95,78 @@ func (s *traversalService) TraverseChunkAddresses(
 			}
 
 		} else {
-			// process as file
-
-			bytesReference := e.Reference()
-
-			err = s.processBytes(ctx, bytesReference, chunkAddressFunc)
+			err = s.traverseChunkAddressesAsFile(ctx, reference, chunkAddressFunc, e)
 			if err != nil {
-				// possible it was custom JSON bytes, which matches entry JSON
-				// but in fact is not file, and does not contain reference to
-				// existing address, which is why it was not found in storage
-				if !errors.Is(err, storage.ErrNotFound) {
-					return nil
-				}
-				// ignore
-			}
-
-			metadataReference := e.Metadata()
-
-			err = s.processBytes(ctx, metadataReference, chunkAddressFunc)
-			if err != nil {
-				return nil
-			}
-
-			if stop := chunkAddressFunc(reference); stop {
-				return nil
+				return err
 			}
 		}
 
 	} else {
-		// process as bytes
-
 		err = s.processBytes(ctx, reference, chunkAddressFunc)
 		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *traversalService) traverseChunkAddressesFromManifest(
+	ctx context.Context,
+	reference swarm.Address,
+	encrypted bool,
+	chunkAddressFunc swarm.AddressIterFunc,
+) error {
+
+	isFile, e, _, err := s.checkIsFile(ctx, reference)
+	if err != nil {
+		return err
+	}
+
+	if isFile {
+		err = s.traverseChunkAddressesAsFile(ctx, reference, chunkAddressFunc, e)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = s.processBytes(ctx, reference, chunkAddressFunc)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *traversalService) traverseChunkAddressesAsFile(
+	ctx context.Context,
+	reference swarm.Address,
+	chunkAddressFunc swarm.AddressIterFunc,
+	e *entry.Entry,
+) (err error) {
+
+	bytesReference := e.Reference()
+
+	err = s.processBytes(ctx, bytesReference, chunkAddressFunc)
+	if err != nil {
+		// possible it was custom JSON bytes, which matches entry JSON
+		// but in fact is not file, and does not contain reference to
+		// existing address, which is why it was not found in storage
+		if !errors.Is(err, storage.ErrNotFound) {
 			return nil
 		}
+		// ignore
+	}
+
+	metadataReference := e.Metadata()
+
+	err = s.processBytes(ctx, metadataReference, chunkAddressFunc)
+	if err != nil {
+		return
+	}
+
+	if stop := chunkAddressFunc(reference); stop {
+		return nil
 	}
 
 	return nil
