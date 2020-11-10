@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/postage"
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
@@ -231,7 +232,11 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 		streamtest.WithProtocols(server.Protocol()),
 	)
 	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil)
-	ns := netstore.New(storer, recoveryFunc, retrieve, logger)
+	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
+	}
+
+	ns := netstore.New(storer, validStamp, recoveryFunc, retrieve, logger)
 	return ns
 }
 

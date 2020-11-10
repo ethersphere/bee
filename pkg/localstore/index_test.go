@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -78,6 +79,7 @@ func TestDB_pullIndex(t *testing.T) {
 // a chunk with and performing operations using synced, access and
 // request modes.
 func TestDB_gcIndex(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, nil)
 
 	chunkCount := 50
@@ -87,6 +89,10 @@ func TestDB_gcIndex(t *testing.T) {
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
 
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {

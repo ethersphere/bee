@@ -4,14 +4,15 @@
 
 syntax = "proto3";
 
-package retieval;
+package retrieval;
 
 option go_package = "pb";
 
 message Request {
-    bytes Addr = 1;
+  bytes Addr = 1;
 }
 
 message Delivery {
-    bytes Data = 1;
+  bytes Data = 1;
+  bytes Stamp = 2;
 }
