@@ -20,6 +20,8 @@ type Reader interface {
 // Joiner provides the inverse functionality of the Splitter.
 type Joiner interface {
 	Reader
+	// IterateChunkAddresses is used to iterate over chunks addresses of some root hash.
+	IterateChunkAddresses(swarm.AddressIterFunc) error
 	// Size returns the span of the hash trie represented by the joiner's root hash.
 	Size() int64
 }
