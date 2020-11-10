@@ -137,7 +137,7 @@ func TestTraversalBytes(t *testing.T) {
 
 			bytesData := generateSampleData(tc.dataSize)
 
-			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(bytesData), int64(len(bytesData)))
 			if err != nil {
 				t.Fatal(err)
@@ -209,7 +209,7 @@ func TestTraversalFiles(t *testing.T) {
 
 			bytesData := generateSampleData(tc.filesSize)
 
-			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(bytesData), int64(len(bytesData)))
 			if err != nil {
 				t.Fatal(err)
@@ -224,7 +224,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 			mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 			if err != nil {
 				t.Fatal(err)
@@ -236,7 +236,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 			reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 			if err != nil {
 				t.Fatal(err)
@@ -455,7 +455,7 @@ func TestTraversalManifest(t *testing.T) {
 			ctx := context.Background()
 
 			var dirManifest manifest.Interface
-			ls := loadsave.New(mockStorer, storage.ModePutRequest, false)
+			ls := loadsave.New(mockStorer, storage.ModePutRequest, false, nil)
 			switch tc.manifestType {
 			case manifest.ManifestSimpleContentType:
 				dirManifest, err = manifest.NewSimpleManifest(ls)
@@ -475,7 +475,7 @@ func TestTraversalManifest(t *testing.T) {
 			for _, f := range tc.files {
 				bytesData := generateSampleData(f.size)
 
-				pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+				pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(bytesData), int64(len(bytesData)))
 				if err != nil {
 					t.Fatal(err)
@@ -492,7 +492,7 @@ func TestTraversalManifest(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 				mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 				if err != nil {
 					t.Fatal(err)
@@ -504,7 +504,7 @@ func TestTraversalManifest(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 				reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 				if err != nil {
 					t.Fatal(err)
@@ -532,7 +532,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 			mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 			if err != nil {
 				t.Fatal(err)
@@ -545,7 +545,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false, nil)
 			manifestFileReference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 			if err != nil {
 				t.Fatal(err)

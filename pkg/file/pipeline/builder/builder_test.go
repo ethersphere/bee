@@ -22,7 +22,7 @@ import (
 
 func TestPartialWrites(t *testing.T) {
 	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false, nil)
 	_, _ = p.Write([]byte("hello "))
 	_, _ = p.Write([]byte("world"))
 
@@ -38,7 +38,7 @@ func TestPartialWrites(t *testing.T) {
 
 func TestHelloWorld(t *testing.T) {
 	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false, nil)
 
 	data := []byte("hello world")
 	_, err := p.Write(data)
@@ -61,7 +61,7 @@ func TestAllVectors(t *testing.T) {
 		data, expect := test.GetVector(t, i)
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
 			m := mock.NewStorer()
-			p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+			p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false, nil)
 
 			_, err := p.Write(data)
 			if err != nil {
@@ -122,7 +122,7 @@ func benchmarkPipeline(b *testing.B, count int) {
 	b.StopTimer()
 
 	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false, nil)
 	data := make([]byte, count)
 	_, err := rand.Read(data)
 	if err != nil {

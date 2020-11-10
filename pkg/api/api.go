@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -29,11 +30,12 @@ import (
 )
 
 const (
-	SwarmPinHeader           = "Swarm-Pin"
-	SwarmTagUidHeader        = "Swarm-Tag-Uid"
-	SwarmEncryptHeader       = "Swarm-Encrypt"
-	SwarmIndexDocumentHeader = "Swarm-Index-Document"
-	SwarmErrorDocumentHeader = "Swarm-Error-Document"
+	SwarmPinHeader            = "Swarm-Pin"
+	SwarmTagUidHeader         = "Swarm-Tag-Uid"
+	SwarmEncryptHeader        = "Swarm-Encrypt"
+	SwarmIndexDocumentHeader  = "Swarm-Index-Document"
+	SwarmErrorDocumentHeader  = "Swarm-Error-Document"
+	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -51,6 +53,7 @@ const (
 var (
 	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
 	errNoResolver           = errors.New("no resolver connected")
+	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 )
 
 // Service is the API service interface.
@@ -190,6 +193,22 @@ func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
 }
 
+func requestPostageBatchId(r *http.Request) ([]byte, error) {
+	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
+		if len(h) != 64 {
+			return nil, errInvalidPostageBatch
+		}
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			return nil, errInvalidPostageBatch
+		}
+		return b, nil
+	}
+
+	// fallback to a slice of 32 zeros
+	return make([]byte, 32), nil
+}
+
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -266,10 +285,10 @@ func equalASCIIFold(s, t string) bool {
 
 type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
+func requestPipelineFn(s storage.Storer, r *http.Request, batch []byte) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt, nil)
 		return builder.FeedPipeline(ctx, pipe, r, l)
 	}
 }

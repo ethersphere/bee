@@ -14,8 +14,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/gorilla/mux"
-
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -26,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/gorilla/mux"
 )
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +108,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	m, err := manifest.NewManifestReference(
 		manifestMetadata.MimeType,
 		e.Reference(),
-		loadsave.New(s.Storer, storage.ModePutRequest, false), // mode and encryption values are fallback
+		loadsave.New(s.Storer, storage.ModePutRequest, false, nil), // mode and encryption values are fallback
 	)
 	if err != nil {
 		logger.Debugf("bzz download: not manifest %s: %v", address, err)
