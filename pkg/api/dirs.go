@@ -62,10 +62,20 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
-	p := requestPipelineFn(s.Storer, r)
+
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		logger.Debugf("dir upload: postage batch id:%v", err)
+		logger.Error("dir upload: postage batch id")
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
+
+	p := requestPipelineFn(s.Storer, r, batch)
 	encrypt := requestEncrypt(r)
-	l := loadsave.New(s.Storer, requestModePut(r), encrypt)
+	l := loadsave.New(s.Storer, requestModePut(r), encrypt, batch)
 	reference, err := storeDir(ctx, encrypt, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader), tag, created)
+
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
 		logger.Errorf("dir upload: store dir")

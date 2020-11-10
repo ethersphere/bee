@@ -163,8 +163,15 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		fileSize = uint64(n)
 		reader = tmp
 	}
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		logger.Debugf("file upload: postage batch id:%v", err)
+		logger.Error("file upload: postage batch id")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
 
-	p := requestPipelineFn(s.Storer, r)
+	p := requestPipelineFn(s.Storer, r, batch)
 
 	// first store the file and get its reference
 	fr, err := p(ctx, reader, int64(fileSize))
