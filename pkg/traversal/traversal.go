@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
@@ -100,7 +101,13 @@ func (s *traversalService) TraverseChunkAddresses(
 
 			err = s.processBytes(ctx, bytesReference, chunkAddressFunc)
 			if err != nil {
-				return nil
+				// possible it was custom JSON bytes, which matches entry JSON
+				// but in fact is not file, and does not contain reference to
+				// existing address, which is why it was not found in storage
+				if !errors.Is(err, storage.ErrNotFound) {
+					return nil
+				}
+				// ignore
 			}
 
 			metadataReference := e.Metadata()
