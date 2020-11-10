@@ -139,6 +139,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				SwapFactoryAddress:       c.config.GetString(optionNameSwapFactoryAddress),
 				SwapInitialDeposit:       c.config.GetString(optionNameSwapInitialDeposit),
 				SwapEnable:               c.config.GetBool(optionNameSwapEnable),
+				PostageContractAddress:   c.config.GetString(optionNamePostageContractAddress),
+				PriceOracleAddress:       c.config.GetString(optionNamePriceOracleAddress),
 			})
 			if err != nil {
 				return err
