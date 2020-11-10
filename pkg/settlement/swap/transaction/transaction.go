@@ -152,7 +152,6 @@ func (t *transactionService) Call(ctx context.Context, request *TxRequest) ([]by
 		Gas:      request.GasLimit,
 		Value:    request.Value,
 	}
-
 	data, err := t.backend.CallContract(ctx, msg, nil)
 	if err != nil {
 		return nil, err

@@ -35,11 +35,12 @@ func TestBytes(t *testing.T) {
 	var (
 		storerMock   = mock.NewStorer()
 		pinningMock  = pinning.NewServiceMock()
+		logger       = logging.New(ioutil.Discard, 0)
 		client, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Tags:    tags.NewTags(statestore.NewStateStore(), logging.New(ioutil.Discard, 0)),
 			Pinning: pinningMock,
-			Logger:  logging.New(ioutil.Discard, 5),
+			Logger:  logger,
 		})
 	)
 

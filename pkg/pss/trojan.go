@@ -269,7 +269,7 @@ func extractPublicKey(chunkData []byte) (*ecdsa.PublicKey, error) {
 // instead the hash of the secret key and the topic is matched against a hint (64 bit meta info)q
 // proper integrity check will disambiguate any potential collisions (false positives)
 // if the topic matches the hint, it returns the el-Gamal decryptor, otherwise an error
-func matchTopic(key *ecdsa.PrivateKey, pubkey *ecdsa.PublicKey, hint []byte, topic []byte) (encryption.Decrypter, error) {
+func matchTopic(key *ecdsa.PrivateKey, pubkey *ecdsa.PublicKey, hint, topic []byte) (encryption.Decrypter, error) {
 	dec, err := elgamal.NewDecrypter(key, pubkey, topic, swarm.NewHasher)
 	if err != nil {
 		return nil, err
