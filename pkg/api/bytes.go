@@ -35,7 +35,15 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r))
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		logger.Debugf("bytes upload: postage batch id:%v", err)
+		logger.Error("bytes upload: postage batch id")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r), batch)
 	address, err := builder.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)

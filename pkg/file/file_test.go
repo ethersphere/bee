@@ -44,7 +44,7 @@ func testSplitThenJoin(t *testing.T) {
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
 		store       = mock.NewStorer()
-		p           = builder.NewPipelineBuilder(context.Background(), store, storage.ModePutUpload, false)
+		p           = builder.NewPipelineBuilder(context.Background(), store, storage.ModePutUpload, false, nil)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
 
