@@ -7,6 +7,7 @@ package swarm
 
 import (
 	"bytes"
+	"encoding"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -118,7 +119,17 @@ type Chunk interface {
 	WithPinCounter(p uint64) Chunk
 	TagID() uint32
 	WithTagID(t uint32) Chunk
+	Stamp() Stamp
+	WithStamp(Stamp) Chunk
 	Equal(Chunk) bool
+}
+
+// Stamp interface for postage.Stamp to avoid circular dependency
+type Stamp interface {
+	BatchID() []byte
+	Sig() []byte
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
 }
 
 type chunk struct {
@@ -126,6 +137,7 @@ type chunk struct {
 	sdata      []byte
 	pinCounter uint64
 	tagID      uint32
+	stamp      Stamp
 }
 
 func NewChunk(addr Address, data []byte) Chunk {
@@ -145,6 +157,11 @@ func (c *chunk) WithTagID(t uint32) Chunk {
 	return c
 }
 
+func (c *chunk) WithStamp(stamp Stamp) Chunk {
+	c.stamp = stamp
+	return c
+}
+
 func (c *chunk) Address() Address {
 	return c.addr
 }
@@ -159,6 +176,10 @@ func (c *chunk) PinCounter() uint64 {
 
 func (c *chunk) TagID() uint32 {
 	return c.tagID
+}
+
+func (c *chunk) Stamp() Stamp {
+	return c.stamp
 }
 
 func (c *chunk) String() string {
