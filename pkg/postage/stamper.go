@@ -42,5 +42,5 @@ func (st *Stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err := st.issuer.inc(addr); err != nil {
 		return nil, err
 	}
-	return &Stamp{st.issuer.batchID, sig}, nil
+	return NewStamp(st.issuer.batchID, sig), nil
 }

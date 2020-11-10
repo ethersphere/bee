@@ -12,35 +12,27 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 )
 
 // TestStampMarshalling tests the idempotence  of binary marshal/unmarshals for Stamps.
 func TestStampMarshalling(t *testing.T) {
-	id, err := crypto.LegacyKeccak256(nil)
-	if err != nil {
-		t.Fatal(err)
+
+	sExp := postagetesting.NewStamp()
+	buf, _ := sExp.MarshalBinary()
+	if len(buf) != postage.StampSize {
+		t.Fatalf("invalid length for serialised stamp. expected %d, got  %d", postage.StampSize, len(buf))
 	}
-	sig := make([]byte, 65)
-	_, err = io.ReadFull(crand.Reader, sig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &postage.Stamp{BatchID: id, Sig: sig}
-	buf, _ := s.MarshalBinary()
-	if len(buf) != 97 {
-		t.Fatalf("invalid length for serialised stamp. expected 97, got  %d", len(buf))
-	}
-	s = &postage.Stamp{}
+	s := postage.NewStamp(nil, nil)
 	if err := s.UnmarshalBinary(buf); err != nil {
 		t.Fatalf("unexpected error unmarshalling stamp: %v", err)
 	}
-	if !bytes.Equal(s.BatchID, id) {
-		t.Fatalf("id mismatch, expected %x, got %x", id, s.BatchID)
+	if !bytes.Equal(sExp.BatchID(), s.BatchID()) {
+		t.Fatalf("id mismatch, expected %x, got %x", sExp.BatchID(), s.BatchID())
 	}
-	if !bytes.Equal(s.Sig, sig) {
-		t.Fatalf("sig mismatch, expected %x, got %x", sig, s.Sig)
+	if !bytes.Equal(sExp.Sig(), s.Sig()) {
+		t.Fatalf("sig mismatch, expected %x, got %x", sExp.Sig(), s.Sig())
 	}
 
 }

@@ -14,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const StampSize = 97
+
 var (
 	// ErrOwnerMismatch is the error given for invalid signatures.
 	ErrOwnerMismatch = errors.New("owner mismatch")
@@ -59,11 +61,11 @@ func (b *Batch) UnmarshalBinary(buf []byte) error {
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
 func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
-	toSign, err := toSignDigest(chunkAddr, s.BatchID)
+	toSign, err := toSignDigest(chunkAddr, s.batchID)
 	if err != nil {
 		return err
 	}
-	signerPubkey, err := crypto.Recover(s.Sig, toSign)
+	signerPubkey, err := crypto.Recover(s.sig, toSign)
 	if err != nil {
 		return err
 	}
@@ -77,24 +79,41 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
 	return nil
 }
 
+var _ swarm.Stamp = (*Stamp)(nil)
+
 // Stamp represents a postage stamp as attached to a chunk.
 type Stamp struct {
-	BatchID []byte // postage batch ID
-	Sig     []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature
+	batchID []byte // postage batch ID
+	sig     []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature
+}
+
+func NewStamp(batchID, sig []byte) *Stamp {
+	return &Stamp{batchID, sig}
+}
+
+func (s *Stamp) BatchID() []byte {
+	return s.batchID
+}
+
+func (s *Stamp) Sig() []byte {
+	return s.sig
 }
 
 // MarshalBinary gives the byte slice serialisation of a stamp: batchID[32]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {
-	return append(append([]byte{}, s.BatchID...), s.Sig...), nil
+	buf := make([]byte, StampSize)
+	copy(buf, s.batchID)
+	copy(buf[32:], s.sig)
+	return buf, nil
 }
 
 // UnmarshalBinary parses a serialised stamp into id and signature.
 func (s *Stamp) UnmarshalBinary(buf []byte) error {
-	if len(buf) != 97 {
+	if len(buf) != StampSize {
 		return ErrStampInvalid
 	}
-	s.BatchID = buf[:32]
-	s.Sig = buf[32:]
+	s.batchID = buf[:32]
+	s.sig = buf[32:]
 	return nil
 }
 
