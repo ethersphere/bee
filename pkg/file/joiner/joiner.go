@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/encryption/store"
@@ -229,6 +230,8 @@ func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, su
 		return
 	}
 
+	var wg sync.WaitGroup
+
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		select {
 		case <-j.ctx.Done():
@@ -249,7 +252,11 @@ func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, su
 		}
 
 		func(address swarm.Address, eg *errgroup.Group) {
+			wg.Add(1)
+
 			eg.Go(func() error {
+				defer wg.Done()
+
 				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 				if err != nil {
 					return err
@@ -261,6 +268,8 @@ func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, su
 				return nil
 			})
 		}(address, eg)
+
+		wg.Wait()
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -588,14 +587,12 @@ func traversalCheck(t *testing.T,
 
 	foundAddressesCount := 0
 	foundAddresses := make(map[string]struct{})
-	var traversalMu sync.Mutex
 
 	err = traversalService.TraverseChunkAddresses(
 		ctx,
 		reference,
 		false,
 		func(addr swarm.Address) (stop bool) {
-			traversalMu.Lock()
 			foundAddressesCount++
 			if !ignoreDuplicateHash {
 				if _, ok := foundAddresses[addr.String()]; ok {
@@ -603,7 +600,6 @@ func traversalCheck(t *testing.T,
 				}
 			}
 			foundAddresses[addr.String()] = struct{}{}
-			traversalMu.Unlock()
 			return false
 		})
 	if err != nil {
