@@ -87,25 +87,17 @@ func (s *traversalService) TraverseChunkAddresses(
 
 			err = s.processBytes(ctx, metadataReference, chunkAddressFunc)
 			if err != nil {
-				return nil
-			}
-
-			if stop := chunkAddressFunc(reference); stop {
-				return nil
-			}
-
-		} else {
-			err = s.traverseChunkAddressesAsFile(ctx, reference, chunkAddressFunc, e)
-			if err != nil {
 				return err
 			}
+
+			_ = chunkAddressFunc(reference)
+
+		} else {
+			return s.traverseChunkAddressesAsFile(ctx, reference, chunkAddressFunc, e)
 		}
 
 	} else {
-		err = s.processBytes(ctx, reference, chunkAddressFunc)
-		if err != nil {
-			return err
-		}
+		return s.processBytes(ctx, reference, chunkAddressFunc)
 	}
 
 	return nil
@@ -124,18 +116,10 @@ func (s *traversalService) traverseChunkAddressesFromManifest(
 	}
 
 	if isFile {
-		err = s.traverseChunkAddressesAsFile(ctx, reference, chunkAddressFunc, e)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = s.processBytes(ctx, reference, chunkAddressFunc)
-		if err != nil {
-			return err
-		}
+		return s.traverseChunkAddressesAsFile(ctx, reference, chunkAddressFunc, e)
 	}
 
-	return nil
+	return s.processBytes(ctx, reference, chunkAddressFunc)
 }
 
 func (s *traversalService) traverseChunkAddressesAsFile(
@@ -165,9 +149,7 @@ func (s *traversalService) traverseChunkAddressesAsFile(
 		return
 	}
 
-	if stop := chunkAddressFunc(reference); stop {
-		return nil
-	}
+	_ = chunkAddressFunc(reference)
 
 	return nil
 }
@@ -281,10 +263,7 @@ func (s *traversalService) processBytes(
 		return fmt.Errorf("traversal: joiner: %s: %w", reference, err)
 	}
 
-	err = j.IterateChunkAddresses(func(addr swarm.Address) (stop bool) {
-		stop = chunkAddressFunc(addr)
-		return
-	})
+	err = j.IterateChunkAddresses(chunkAddressFunc)
 	if err != nil {
 		return fmt.Errorf("traversal: iterate chunks: %s: %w", reference, err)
 	}
