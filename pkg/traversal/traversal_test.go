@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"mime"
 	"path"
@@ -20,7 +19,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -46,10 +44,6 @@ func generateSampleData(size int) (b []byte) {
 }
 
 func TestTraversalBytes(t *testing.T) {
-	var (
-		logger = logging.New(ioutil.Discard, 0)
-	)
-
 	testCases := []struct {
 		dataSize            int
 		expectedHashesCount int
@@ -143,17 +137,13 @@ func TestTraversalBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			traversalCheck(t, logger, mockStorer, address, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
+			traversalCheck(t, mockStorer, address, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}
 
 }
 
 func TestTraversalFiles(t *testing.T) {
-	var (
-		logger = logging.New(ioutil.Discard, 0)
-	)
-
 	testCases := []struct {
 		filesSize           int
 		contentType         string
@@ -242,7 +232,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			traversalCheck(t, logger, mockStorer, reference, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
+			traversalCheck(t, mockStorer, reference, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}
 
@@ -263,8 +253,6 @@ type fileChunks struct {
 
 func TestTraversalManifest(t *testing.T) {
 	var (
-		logger = logging.New(ioutil.Discard, 0)
-
 		obfuscationKey   = make([]byte, 32)
 		obfuscationKeyFn = func(p []byte) (n int, err error) {
 			n = copy(p, obfuscationKey)
@@ -557,14 +545,13 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			traversalCheck(t, logger, mockStorer, manifestFileReference, tc.expectedHashesCount, expectedHashes, tc.ignoreDuplicateHash)
+			traversalCheck(t, mockStorer, manifestFileReference, tc.expectedHashesCount, expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}
 
 }
 
 func traversalCheck(t *testing.T,
-	logger logging.Logger,
 	storer storage.Storer,
 	reference swarm.Address,
 	expectedHashesCount int,
@@ -577,7 +564,7 @@ func traversalCheck(t *testing.T,
 	sort.Strings(expectedHashes)
 
 	// traverse chunks
-	traversalService := traversal.NewService(logger, storer)
+	traversalService := traversal.NewService(storer)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -28,13 +27,11 @@ type Service interface {
 }
 
 type traversalService struct {
-	logger logging.Logger
 	storer storage.Storer
 }
 
-func NewService(logger logging.Logger, storer storage.Storer) Service {
+func NewService(storer storage.Storer) Service {
 	return &traversalService{
-		logger: logger,
 		storer: storer,
 	}
 }
