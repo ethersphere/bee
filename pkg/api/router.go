@@ -135,6 +135,30 @@ func (s *server) setupRouting() {
 		})),
 	)
 
+	handle(router, "/pinning/bytes/{address}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST":   http.HandlerFunc(s.pinBytesUploaded),
+			"DELETE": http.HandlerFunc(s.pinBytesRemovePinned),
+		})),
+	)
+
+	handle(router, "/pinning/files/{address}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST":   http.HandlerFunc(s.pinFilesUploaded),
+			"DELETE": http.HandlerFunc(s.pinFilesRemovePinned),
+		})),
+	)
+
+	handle(router, "/pinning/bzz/{address}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST":   http.HandlerFunc(s.pinBzzUploaded),
+			"DELETE": http.HandlerFunc(s.pinBzzRemovePinned),
+		})),
+	)
+
 	s.Handler = web.ChainHandlers(
 		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
 		handlers.CompressHandler,

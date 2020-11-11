@@ -56,6 +56,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/traversal"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -363,6 +364,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	pssService := pss.New(swarmPrivateKey, logger)
 	b.pssCloser = pssService
 
+	traversalService := traversal.NewService(storer)
+
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
@@ -412,7 +415,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagService, ns, multiResolver, pssService, logger, tracer, api.Options{
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
