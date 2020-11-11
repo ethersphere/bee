@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -36,16 +36,15 @@ type Interface interface {
 	// Type returns manifest implementation type information
 	Type() string
 	// Add a manifest entry to the specified path.
-	Add(string, Entry) error
+	Add(context.Context, string, Entry) error
 	// Remove a manifest entry on the specified path.
-	Remove(string) error
+	Remove(context.Context, string) error
 	// Lookup returns a manifest entry if one is found in the specified path.
-	Lookup(string) (Entry, error)
+	Lookup(context.Context, string) (Entry, error)
 	// HasPrefix tests whether the specified prefix path exists.
-	HasPrefix(string) (bool, error)
+	HasPrefix(context.Context, string) (bool, error)
 	// Store stores the manifest, returning the resulting address.
-	Store(context.Context, storage.ModePut) (swarm.Address, error)
-
+	Store(context.Context) (swarm.Address, error)
 	// IterateAddresses is used to iterate over chunks addresses for
 	// the manifest.
 	IterateAddresses(context.Context, swarm.AddressIterFunc) error
@@ -60,24 +59,20 @@ type Entry interface {
 }
 
 // NewDefaultManifest creates a new manifest with default type.
-func NewDefaultManifest(
-	encrypted bool,
-	storer storage.Storer,
-) (Interface, error) {
-	return NewManifest(DefaultManifestType, encrypted, storer)
+func NewDefaultManifest(ls file.LoadSaver) (Interface, error) {
+	return NewManifest(DefaultManifestType, ls)
 }
 
 // NewManifest creates a new manifest.
 func NewManifest(
 	manifestType string,
-	encrypted bool,
-	storer storage.Storer,
+	ls file.LoadSaver,
 ) (Interface, error) {
 	switch manifestType {
 	case ManifestSimpleContentType:
-		return NewSimpleManifest(encrypted, storer)
+		return NewSimpleManifest(ls)
 	case ManifestMantarayContentType:
-		return NewMantarayManifest(encrypted, storer)
+		return NewMantarayManifest(ls)
 	default:
 		return nil, ErrInvalidManifestType
 	}
@@ -85,17 +80,15 @@ func NewManifest(
 
 // NewManifestReference loads existing manifest.
 func NewManifestReference(
-	ctx context.Context,
 	manifestType string,
 	reference swarm.Address,
-	encrypted bool,
-	storer storage.Storer,
+	ls file.LoadSaver,
 ) (Interface, error) {
 	switch manifestType {
 	case ManifestSimpleContentType:
-		return NewSimpleManifestReference(ctx, reference, encrypted, storer)
+		return NewSimpleManifestReference(reference, ls)
 	case ManifestMantarayContentType:
-		return NewMantarayManifestReference(ctx, reference, encrypted, storer)
+		return NewMantarayManifestReference(reference, ls)
 	default:
 		return nil, ErrInvalidManifestType
 	}

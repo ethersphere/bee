@@ -22,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -50,7 +49,6 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger                  = tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 		fileName, contentLength string
 		fileSize                uint64
-		mode                    = requestModePut(r)
 		contentType             = r.Header.Get("Content-Type")
 	)
 
@@ -152,9 +150,10 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		reader = tmp
 	}
 
+	p := requestPipelineFn(ctx, s.Storer, r)
+
 	// first store the file and get its reference
-	pipe := builder.NewPipelineBuilder(ctx, s.Storer, mode, requestEncrypt(r))
-	fr, err := builder.FeedPipeline(ctx, pipe, reader, int64(fileSize))
+	fr, err := p(reader, int64(fileSize))
 	if err != nil {
 		logger.Debugf("file upload: file store, file %q: %v", fileName, err)
 		logger.Errorf("file upload: file store, file %q", fileName)
@@ -177,8 +176,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
-	pipe = builder.NewPipelineBuilder(ctx, s.Storer, mode, requestEncrypt(r))
-	mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+	mr, err := p(bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
 		logger.Errorf("file upload: metadata store, file %q", fileName)
@@ -195,8 +193,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "entry marshal error")
 		return
 	}
-	pipe = builder.NewPipelineBuilder(ctx, s.Storer, mode, requestEncrypt(r))
-	reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+	reference, err := p(bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		logger.Debugf("file upload: entry store, file %q: %v", fileName, err)
 		logger.Errorf("file upload: entry store, file %q", fileName)
