@@ -577,10 +577,7 @@ func traversalCheck(t *testing.T,
 	sort.Strings(expectedHashes)
 
 	// traverse chunks
-	traversalService, err := traversal.NewService(logger, storer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	traversalService := traversal.NewService(logger, storer)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -588,7 +585,7 @@ func traversalCheck(t *testing.T,
 	foundAddressesCount := 0
 	foundAddresses := make(map[string]struct{})
 
-	err = traversalService.TraverseChunkAddresses(
+	err := traversalService.TraverseChunkAddresses(
 		ctx,
 		reference,
 		false,

@@ -32,11 +32,11 @@ type traversalService struct {
 	storer storage.Storer
 }
 
-func NewService(logger logging.Logger, storer storage.Storer) (Service, error) {
+func NewService(logger logging.Logger, storer storage.Storer) Service {
 	return &traversalService{
 		logger: logger,
 		storer: storer,
-	}, nil
+	}
 }
 
 func (s *traversalService) TraverseChunkAddresses(
