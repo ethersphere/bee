@@ -199,7 +199,7 @@ LOOP:
 }
 
 func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
-	if err := s.storer.Set(ctx, storage.ModeSetSyncPush, ch.Address()); err != nil {
+	if err := s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 		s.logger.Errorf("pusher: error setting chunk as synced: %v", err)
 		s.metrics.ErrorSettingChunkToSynced.Inc()
 	}

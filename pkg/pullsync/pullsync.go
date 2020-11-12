@@ -267,7 +267,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 	}
 
 	// make an offer to the upstream peer in return for the requested range
-	offer, addrs, err := s.makeOffer(ctx, rn)
+	offer, _, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
@@ -287,12 +287,6 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		return fmt.Errorf("read want: %w", err)
 	}
 
-	// empty bitvector implies downstream peer does not want
-	// any chunks (it has them already). mark chunks as synced
-	if len(want.BitVector) == 0 {
-		return s.setChunks(ctx, addrs...)
-	}
-
 	chs, err := s.processWant(ctx, offer, &want)
 	if err != nil {
 		return fmt.Errorf("process want: %w", err)
@@ -305,18 +299,8 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		}
 	}
 
-	err = s.setChunks(ctx, addrs...)
-	if err != nil {
-		return err
-	}
-
 	time.Sleep(50 * time.Millisecond) //because of test, getting EOF w/o
 	return nil
-}
-
-func (s *Syncer) setChunks(ctx context.Context, addrs ...swarm.Address) error {
-	s.metrics.DbOpsCounter.Inc()
-	return s.storage.Set(ctx, storage.ModeSetSyncPull, addrs...)
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.

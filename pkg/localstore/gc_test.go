@@ -81,7 +81,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +173,7 @@ func TestPinGC(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,14 +270,14 @@ func TestGCAfterPin(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Pin before adding to GC in ModeSetSyncPull
+		// Pin before adding to GC in ModeSetSync
 		err = db.Set(context.Background(), storage.ModeSetPin, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 		pinAddrs = append(pinAddrs, ch.Address())
 
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -321,7 +321,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -363,7 +363,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+	err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +454,7 @@ func TestDB_gcSize(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -549,7 +549,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -565,7 +565,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -576,7 +576,7 @@ func TestPinAfterMultiGC(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -612,7 +612,7 @@ func generateAndPinAChunk(t *testing.T, db *DB) swarm.Chunk {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Set(context.Background(), storage.ModeSetSyncPull, pinnedChunk.Address())
+	err = db.Set(context.Background(), storage.ModeSetSync, pinnedChunk.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,7 +698,7 @@ func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+			err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -713,7 +713,7 @@ func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
 		} else {
 			// Non pinned chunks could be GC'd by the time they reach here.
 			// so it is okay to ignore the error
-			_ = db.Set(context.Background(), storage.ModeSetSyncPull, ch.Address())
+			_ = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 			_ = db.Set(context.Background(), storage.ModeSetAccess, ch.Address())
 			_, _ = db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 		}
