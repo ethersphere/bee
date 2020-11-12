@@ -53,6 +53,6 @@ func main() {
 	}
 	err = s.Run()
 	if err != nil {
-		logger.Error(err)
+		log.Fatal(err)
 	}
 }

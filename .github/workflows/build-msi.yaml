@@ -31,7 +31,9 @@ jobs:
         shell: bash
         run: |
           cp LICENSE packaging/.
-          mv bee-windows-amd64.exe packaging/bee.exe
+          # mv bee-windows-amd64.exe packaging/bee.exe
+          make binary
+          mv ./dist/bee.exe packaging/bee.exe
           cd packaging
           mkdir -p build
           msi="bee.msi"
