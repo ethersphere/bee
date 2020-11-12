@@ -575,7 +575,6 @@ func traversalCheck(t *testing.T,
 	err := traversalService.TraverseChunkAddresses(
 		ctx,
 		reference,
-		false,
 		func(addr swarm.Address) (stop bool) {
 			foundAddressesCount++
 			if !ignoreDuplicateHash {

@@ -19,11 +19,24 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+var (
+	// ErrInvalidType is returned when the reference was not expected type.
+	ErrInvalidType = errors.New("traversal: invalid type")
+)
+
 // Service is the service to find dependent chunks for an address.
 type Service interface {
 	// TraverseChunkAddresses iterates through each address related to
 	// the supplied one, if possible.
-	TraverseChunkAddresses(context.Context, swarm.Address, bool, swarm.AddressIterFunc) error
+	TraverseChunkAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
+
+	// TraverseBytesAddresses iterates through each address of a bytes.
+	TraverseBytesAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
+	// TraverseFileAddresses iterates through each address of a file.
+	TraverseFileAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
+	// TraverseManifestAddresses iterates through each address of a manifest,
+	// as well as each entry found in it.
+	TraverseManifestAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
 }
 
 type traversalService struct {
@@ -39,7 +52,6 @@ func NewService(storer storage.Storer) Service {
 func (s *traversalService) TraverseChunkAddresses(
 	ctx context.Context,
 	reference swarm.Address,
-	encrypted bool,
 	chunkAddressFunc swarm.AddressIterFunc,
 ) error {
 
@@ -54,7 +66,7 @@ func (s *traversalService) TraverseChunkAddresses(
 
 	if isFile {
 
-		isManifest, m, err := s.checkIsManifest(ctx, reference, encrypted, e, metadata)
+		isManifest, m, err := s.checkIsManifest(ctx, reference, e, metadata)
 		if err != nil {
 			return err
 		}
@@ -70,7 +82,7 @@ func (s *traversalService) TraverseChunkAddresses(
 			// process as manifest
 
 			err = m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) (stop bool) {
-				err := s.traverseChunkAddressesFromManifest(ctx, manifestNodeAddr, encrypted, chunkAddressFunc)
+				err := s.traverseChunkAddressesFromManifest(ctx, manifestNodeAddr, chunkAddressFunc)
 				if err != nil {
 					stop = true
 				}
@@ -100,10 +112,93 @@ func (s *traversalService) TraverseChunkAddresses(
 	return nil
 }
 
+func (s *traversalService) TraverseBytesAddresses(
+	ctx context.Context,
+	reference swarm.Address,
+	chunkAddressFunc swarm.AddressIterFunc,
+) error {
+	return s.processBytes(ctx, reference, chunkAddressFunc)
+}
+
+func (s *traversalService) TraverseFileAddresses(
+	ctx context.Context,
+	reference swarm.Address,
+	chunkAddressFunc swarm.AddressIterFunc,
+) error {
+
+	isFile, e, _, err := s.checkIsFile(ctx, reference)
+	if err != nil {
+		return err
+	}
+
+	// reference address could be missrepresented as file when:
+	// - content size is 64 bytes (or 128 for encrypted reference)
+	// - second reference exists and is JSON (and not actually file metadata)
+
+	if !isFile {
+		return ErrInvalidType
+	}
+
+	return s.traverseChunkAddressesAsFile(ctx, reference, chunkAddressFunc, e)
+}
+
+func (s *traversalService) TraverseManifestAddresses(
+	ctx context.Context,
+	reference swarm.Address,
+	chunkAddressFunc swarm.AddressIterFunc,
+) error {
+
+	isFile, e, metadata, err := s.checkIsFile(ctx, reference)
+	if err != nil {
+		return err
+	}
+
+	if !isFile {
+		return ErrInvalidType
+	}
+
+	isManifest, m, err := s.checkIsManifest(ctx, reference, e, metadata)
+	if err != nil {
+		return err
+	}
+
+	// reference address could be missrepresented as manifest when:
+	// - file content type is actually on of manifest type (manually set)
+	// - content was unmarshalled
+	//
+	// even though content could be unmarshaled in some case, iteration
+	// through addresses will not be possible
+
+	if !isManifest {
+		return ErrInvalidType
+	}
+
+	err = m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) (stop bool) {
+		err := s.traverseChunkAddressesFromManifest(ctx, manifestNodeAddr, chunkAddressFunc)
+		if err != nil {
+			stop = true
+		}
+		return
+	})
+	if err != nil {
+		return fmt.Errorf("traversal: iterate chunks: %s: %w", reference, err)
+	}
+
+	metadataReference := e.Metadata()
+
+	err = s.processBytes(ctx, metadataReference, chunkAddressFunc)
+	if err != nil {
+		return err
+	}
+
+	_ = chunkAddressFunc(reference)
+
+	return nil
+}
+
 func (s *traversalService) traverseChunkAddressesFromManifest(
 	ctx context.Context,
 	reference swarm.Address,
-	encrypted bool,
 	chunkAddressFunc swarm.AddressIterFunc,
 ) error {
 
@@ -223,16 +318,16 @@ func (s *traversalService) checkIsFile(
 func (s *traversalService) checkIsManifest(
 	ctx context.Context,
 	reference swarm.Address,
-	encrypted bool,
 	e *entry.Entry,
 	metadata *entry.Metadata,
 ) (isManifest bool, m manifest.Interface, err error) {
 
+	// NOTE: 'encrypted' parameter only used for saving manifest
 	m, err = manifest.NewManifestReference(
 		ctx,
 		metadata.MimeType,
 		e.Reference(),
-		encrypted,
+		false,
 		s.storer,
 	)
 	if err != nil {
