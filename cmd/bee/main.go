@@ -13,8 +13,6 @@ import (
 	"github.com/kardianos/service"
 )
 
-var logger service.Logger
-
 type program struct{}
 
 func (p *program) run() {
@@ -47,12 +45,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	logger, err = s.Logger(nil)
-	if err != nil {
-		log.Fatal(err)
-	}
 	err = s.Run()
 	if err != nil {
-		logger.Error(err)
+		log.Fatal(err)
 	}
 }
