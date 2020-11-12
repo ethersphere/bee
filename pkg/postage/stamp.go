@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// StampSize is the number of bytes in the serialisation of a stamp
 const StampSize = 97
 
 var (
@@ -87,14 +88,17 @@ type Stamp struct {
 	sig     []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature
 }
 
+// MewStamp constructs a stamp
 func NewStamp(batchID, sig []byte) *Stamp {
 	return &Stamp{batchID, sig}
 }
 
+// BatchID
 func (s *Stamp) BatchID() []byte {
 	return s.batchID
 }
 
+// Sig
 func (s *Stamp) Sig() []byte {
 	return s.sig
 }

@@ -76,7 +76,7 @@ func (ps *Service) Load() error {
 	}
 	for i := 0; i < n; i++ {
 		st := &StampIssuer{}
-		err := ps.store.Get(ps.key(i), st)
+		err := ps.store.Get(ps.keyForIndex(i), st)
 		if err != nil {
 			return err
 		}
@@ -88,20 +88,20 @@ func (ps *Service) Load() error {
 // Save saves all the active stamp issuers to statestore.
 func (ps *Service) Save() error {
 	for i, st := range ps.issuers {
-		if err := ps.store.Put(ps.key(i), st); err != nil {
+		if err := ps.store.Put(ps.keyForIndex(i), st); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// key returns the statestore key for an issuer
+// keyForIndex returns the statestore key for an issuer
+func (ps *Service) keyForIndex(i int) string {
+	return fmt.Sprintf(ps.key()+"%d", i)
+}
+
+// key returns the statestore base key for an issuer
 // to disambiguate batches on different chains, chainID is part of the key
-// if called with no index argument, it returns the common prefix used for iteration
-func (ps *Service) key(v ...int) string {
-	prefix := fmt.Sprintf(postagePrefix+"%d", ps.chainID)
-	if len(v) == 0 {
-		return prefix
-	}
-	return fmt.Sprintf(prefix+"%d", v[0])
+func (ps *Service) key() string {
+	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
 }
