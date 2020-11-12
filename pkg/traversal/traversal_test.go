@@ -44,6 +44,10 @@ func generateSampleData(size int) (b []byte) {
 }
 
 func TestTraversalBytes(t *testing.T) {
+	traverseFn := func(traversalService traversal.Service) func(context.Context, swarm.Address, swarm.AddressIterFunc) error {
+		return traversalService.TraverseBytesAddresses
+	}
+
 	testCases := []struct {
 		dataSize            int
 		expectedHashesCount int
@@ -137,13 +141,17 @@ func TestTraversalBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			traversalCheck(t, mockStorer, address, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
+			traversalCheck(t, mockStorer, traverseFn, address, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}
 
 }
 
 func TestTraversalFiles(t *testing.T) {
+	traverseFn := func(traversalService traversal.Service) func(context.Context, swarm.Address, swarm.AddressIterFunc) error {
+		return traversalService.TraverseFileAddresses
+	}
+
 	testCases := []struct {
 		filesSize           int
 		contentType         string
@@ -232,7 +240,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			traversalCheck(t, mockStorer, reference, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
+			traversalCheck(t, mockStorer, traverseFn, reference, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}
 
@@ -252,6 +260,10 @@ type fileChunks struct {
 }
 
 func TestTraversalManifest(t *testing.T) {
+	traverseFn := func(traversalService traversal.Service) func(context.Context, swarm.Address, swarm.AddressIterFunc) error {
+		return traversalService.TraverseManifestAddresses
+	}
+
 	var (
 		obfuscationKey   = make([]byte, 32)
 		obfuscationKeyFn = func(p []byte) (n int, err error) {
@@ -545,7 +557,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			traversalCheck(t, mockStorer, manifestFileReference, tc.expectedHashesCount, expectedHashes, tc.ignoreDuplicateHash)
+			traversalCheck(t, mockStorer, traverseFn, manifestFileReference, tc.expectedHashesCount, expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}
 
@@ -553,6 +565,7 @@ func TestTraversalManifest(t *testing.T) {
 
 func traversalCheck(t *testing.T,
 	storer storage.Storer,
+	traverseFn func(traversalService traversal.Service) func(context.Context, swarm.Address, swarm.AddressIterFunc) error,
 	reference swarm.Address,
 	expectedHashesCount int,
 	expectedHashes []string,
@@ -572,7 +585,7 @@ func traversalCheck(t *testing.T,
 	foundAddressesCount := 0
 	foundAddresses := make(map[string]struct{})
 
-	err := traversalService.TraverseChunkAddresses(
+	err := traverseFn(traversalService)(
 		ctx,
 		reference,
 		func(addr swarm.Address) (stop bool) {
