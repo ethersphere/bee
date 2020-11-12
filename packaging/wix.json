@@ -1,6 +1,6 @@
 {
-    "product": "bee",
-    "company": "ethswarm",
+    "product": "Bee",
+    "company": "Ethswarm",
     "license": "LICENSE",
     "upgrade-code": "",
     "files": {
@@ -29,7 +29,7 @@
       {"when": "uninstall", "command": "sc.exe delete BeeSvc"}
     ],
     "choco": {
-      "description": "Bee, Swarm client",
+      "description": "Bee, Swarm client.",
       "project-url": "https://github.com/ethersphere/bee",
       "tags": "bee",
       "license-url": "https://github.com/ethersphere/bee/blob/master/LICENSE"

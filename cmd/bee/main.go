@@ -13,8 +13,6 @@ import (
 	"github.com/kardianos/service"
 )
 
-var logger service.Logger
-
 type program struct{}
 
 func (p *program) run() {
@@ -39,15 +37,11 @@ func main() {
 	svcConfig := &service.Config{
 		Name:        "BeeSvc",
 		DisplayName: "Bee",
-		Description: "Swarm client implemented in Go.",
+		Description: "Bee, Swarm client.",
 	}
 
 	prg := &program{}
 	s, err := service.New(prg, svcConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-	logger, err = s.Logger(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
