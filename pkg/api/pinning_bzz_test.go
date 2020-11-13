@@ -1,0 +1,121 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package api_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"testing"
+
+	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/manifest/mantaray"
+)
+
+func TestPinBzzHandler(t *testing.T) {
+	var (
+		dirUploadResource     = "/dirs"
+		pinBzzResource        = "/pinning/bzz"
+		pinBzzAddressResource = func(addr string) string { return pinBzzResource + "/" + addr }
+		pinChunksResource     = "/pinning/chunks"
+
+		mockStorer       = mock.NewStorer()
+		mockStatestore   = statestore.NewStateStore()
+		traversalService = traversal.NewService(mockStorer)
+		logger           = logging.New(ioutil.Discard, 0)
+		client, _, _     = newTestServer(t, testServerOptions{
+			Storer:    mockStorer,
+			Traversal: traversalService,
+			Tags:      tags.NewTags(mockStatestore, logger),
+		})
+	)
+
+	var (
+		obfuscationKey   = make([]byte, 32)
+		obfuscationKeyFn = func(p []byte) (n int, err error) {
+			n = copy(p, obfuscationKey)
+			return
+		}
+	)
+	mantaray.SetObfuscationKeyFn(obfuscationKeyFn)
+
+	t.Run("pin-bzz-1", func(t *testing.T) {
+		files := []f{
+			{
+				data: []byte("<h1>Swarm"),
+				name: "index.html",
+				dir:  "",
+			},
+		}
+
+		tarReader := tarFiles(t, files)
+
+		rootHash := "a85aaea6a34a5c7127a3546196f2111f866fe369c6d6562ed5d3313a99388c03"
+
+		// verify directory tar upload response
+		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK,
+			jsonhttptest.WithRequestBody(tarReader),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(rootHash),
+			}),
+		)
+
+		jsonhttptest.Request(t, client, http.MethodPost, pinBzzAddressResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
+
+		expectedChunkCount := 7
+
+		var respBytes []byte
+
+		jsonhttptest.Request(t, client, http.MethodGet, pinChunksResource, http.StatusOK,
+			jsonhttptest.WithPutResponseBody(&respBytes),
+		)
+
+		read := bytes.NewReader(respBytes)
+
+		// get the reference as everytime it will change because of random encryption key
+		var resp api.ListPinnedChunksResponse
+		err := json.NewDecoder(read).Decode(&resp)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if expectedChunkCount != len(resp.Chunks) {
+			t.Fatalf("expected to find %d pinned chunks, got %d", expectedChunkCount, len(resp.Chunks))
+		}
+	})
+
+	t.Run("unpin-bzz-1", func(t *testing.T) {
+		rootHash := "a85aaea6a34a5c7127a3546196f2111f866fe369c6d6562ed5d3313a99388c03"
+
+		jsonhttptest.Request(t, client, http.MethodDelete, pinBzzAddressResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, pinChunksResource, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.ListPinnedChunksResponse{
+				Chunks: []api.PinnedChunk{},
+			}),
+		)
+	})
+
+}
