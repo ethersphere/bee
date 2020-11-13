@@ -75,8 +75,8 @@ func newCommand(opts ...option) (c *command, err error) {
 			PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 				return c.initConfig()
 			},
-			Run: func(cmd *cobra.Command, args []string) {
-				cmd.Help()
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return cmd.Help()
 			},
 			PersistentPostRun: func(cmd *cobra.Command, args []string) {
 				os.Exit(0)
