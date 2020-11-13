@@ -19,6 +19,7 @@ require (
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
 	github.com/ipfs/go-log/v2 v2.1.1 // indirect
+	github.com/kardianos/service v1.1.0
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libp2p/go-libp2p v0.10.0
 	github.com/libp2p/go-libp2p-autonat v0.3.0 // indirect
