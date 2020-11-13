@@ -26,9 +26,9 @@ var (
 
 // Service is the service to find dependent chunks for an address.
 type Service interface {
-	// TraverseChunkAddresses iterates through each address related to
-	// the supplied one, if possible.
-	TraverseChunkAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
+	// TraverseAddresses iterates through each address related to the supplied
+	// one, if possible.
+	TraverseAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
 
 	// TraverseBytesAddresses iterates through each address of a bytes.
 	TraverseBytesAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
@@ -49,7 +49,7 @@ func NewService(storer storage.Storer) Service {
 	}
 }
 
-func (s *traversalService) TraverseChunkAddresses(
+func (s *traversalService) TraverseAddresses(
 	ctx context.Context,
 	reference swarm.Address,
 	chunkAddressFunc swarm.AddressIterFunc,
