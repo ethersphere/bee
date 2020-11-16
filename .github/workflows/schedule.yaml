@@ -17,10 +17,10 @@ jobs:
           if [ $DAYS -eq 0 ]; then
             echo "There are new commits..."
             echo "Last commit from $AUTHOR, URL => $URL"
-            echo ::set-env name=GHA_REPO_RUN::true
+            echo "GHA_REPO_RUN=true" >> $GITHUB_ENV
           else
             echo "No new commits, exiting..."
-            echo ::set-env name=GHA_REPO_RUN::false
+            echo "GHA_REPO_RUN=false" >> $GITHUB_ENV
           fi
       - name: Trigger ArgoCD
         if: env.GHA_REPO_RUN == 'true'
