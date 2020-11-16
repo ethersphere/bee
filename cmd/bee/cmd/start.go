@@ -281,6 +281,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	return nil
 }
 
+// program implements a github.com/kardianos/service.Interface
+// to allow windows service support.
 type program struct {
 	start func()
 	stop  func()
