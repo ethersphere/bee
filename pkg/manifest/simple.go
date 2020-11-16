@@ -27,6 +27,7 @@ const (
 type simpleManifest struct {
 	manifest simple.Manifest
 
+	reference swarm.Address
 	encrypted bool
 	storer    storage.Storer
 }
@@ -52,6 +53,7 @@ func NewSimpleManifestReference(
 ) (Interface, error) {
 	m := &simpleManifest{
 		manifest:  simple.NewManifest(),
+		reference: reference,
 		encrypted: encrypted,
 		storer:    storer,
 	}
@@ -116,7 +118,49 @@ func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)
 	}
 
+	m.reference = address
+
 	return address, nil
+}
+
+func (m *simpleManifest) IterateAddresses(ctx context.Context, fn swarm.AddressIterFunc) error {
+	if swarm.ZeroAddress.Equal(m.reference) {
+		return ErrMissingReference
+	}
+
+	// NOTE: making it behave same for all manifest implementation
+	stop := fn(m.reference)
+	if stop {
+		return nil
+	}
+
+	walker := func(path string, entry simple.Entry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		ref, err := swarm.ParseHexAddress(entry.Reference())
+		if err != nil {
+			return err
+		}
+
+		stop := fn(ref)
+		if stop {
+			return errStopIterator
+		}
+
+		return nil
+	}
+
+	err := m.manifest.WalkEntry("", walker)
+	if err != nil {
+		if !errors.Is(err, errStopIterator) {
+			return fmt.Errorf("manifest iterate addresses: %w", err)
+		}
+		// ignore error if interation stopped by caller
+	}
+
+	return nil
 }
 
 func (m *simpleManifest) load(ctx context.Context, reference swarm.Address) error {

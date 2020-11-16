@@ -107,6 +107,25 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 		}
 		m.store[ch.Address().String()] = ch.Data()
 		m.modePut[ch.Address().String()] = mode
+
+		// pin chunks if needed
+		switch mode {
+		case storage.ModePutUploadPin:
+			// if mode is set pin, increment the pin counter
+			var found bool
+			addr := ch.Address()
+			for i, ad := range m.pinnedAddress {
+				if addr.String() == ad.String() {
+					m.pinnedCounter[i] = m.pinnedCounter[i] + 1
+					found = true
+				}
+			}
+			if !found {
+				m.pinnedAddress = append(m.pinnedAddress, addr)
+				m.pinnedCounter = append(m.pinnedCounter, uint64(1))
+			}
+		default:
+		}
 	}
 	return exist, nil
 }
