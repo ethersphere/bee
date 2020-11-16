@@ -34,11 +34,12 @@ import (
 )
 
 type signerConfig struct {
-	keystore  keystore.Service
-	signer    crypto.Signer
-	address   swarm.Address
-	publicKey *ecdsa.PublicKey
-	password  string
+	keystore         keystore.Service
+	signer           crypto.Signer
+	address          swarm.Address
+	publicKey        *ecdsa.PublicKey
+	libp2pPrivateKey *ecdsa.PrivateKey
+	password         string
 }
 
 func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (config *signerConfig, err error) {
@@ -136,12 +137,24 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}
 
 	logger.Infof("swarm public key %x", crypto.EncodeSecp256k1PublicKey(publicKey))
+
+	libp2pPrivateKey, created, err := keystore.Key("libp2p", password)
+	if err != nil {
+		return nil, fmt.Errorf("libp2p key: %w", err)
+	}
+	if created {
+		logger.Debugf("new libp2p key created")
+	} else {
+		logger.Debugf("using existing libp2p key")
+	}
+
 	return &signerConfig{
-		keystore:  keystore,
-		signer:    signer,
-		address:   address,
-		publicKey: publicKey,
-		password:  password,
+		keystore:         keystore,
+		signer:           signer,
+		address:          address,
+		publicKey:        publicKey,
+		libp2pPrivateKey: libp2pPrivateKey,
+		password:         password,
 	}, nil
 }
 
@@ -211,7 +224,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return err
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.keystore, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.keystore, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, node.Options{
 				DataDir:                c.config.GetString(optionNameDataDir),
 				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
 				Password:               signerConfig.password,
