@@ -31,6 +31,11 @@ type PeerAdder interface {
 	AddPeers(ctx context.Context, addr ...swarm.Address) error
 }
 
+type Peerer interface {
+	ClosestPeerer
+	EachPeerer
+}
+
 type ClosestPeerer interface {
 	ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error)
 }

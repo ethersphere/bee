@@ -21,6 +21,12 @@ type mock struct {
 	mtx             sync.Mutex
 }
 
+func WithPeers(peers ...swarm.Address) Option {
+	return optionFunc(func(d *mock) {
+		d.peers = peers
+	})
+}
+
 func WithAddPeersErr(err error) Option {
 	return optionFunc(func(d *mock) {
 		d.addPeersErr = err
@@ -91,13 +97,33 @@ func (_ *mock) NeighborhoodDepth() uint8 {
 }
 
 // EachPeer iterates from closest bin to farthest
-func (_ *mock) EachPeer(_ topology.EachPeerFunc) error {
-	panic("not implemented") // TODO: Implement
+func (d *mock) EachPeer(f topology.EachPeerFunc) (err error) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	for i, p := range d.peers {
+		_, _, err = f(p, uint8(i))
+		if err != nil {
+			return
+		}
+	}
+
+	return nil
 }
 
 // EachPeerRev iterates from farthest bin to closest
-func (_ *mock) EachPeerRev(_ topology.EachPeerFunc) error {
-	panic("not implemented") // TODO: Implement
+func (d *mock) EachPeerRev(f topology.EachPeerFunc) (err error) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	for i := len(d.peers) - 1; i >= 0; i-- {
+		_, _, err = f(d.peers[i], uint8(i))
+		if err != nil {
+			return
+		}
+	}
+
+	return nil
 }
 
 func (d *mock) MarshalJSON() ([]byte, error) {
