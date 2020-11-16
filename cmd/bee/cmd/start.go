@@ -229,9 +229,10 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			interruptChannel := make(chan os.Signal, 1)
 			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
+			// use github.com/kardianos/service to support running as a windows service
 			s, err := service.New(&program{
 				start: func() {
-					// Block main goroutine until it is interrupted
+					// Wait for a signal to stop the service execution
 					sig := <-interruptChannel
 
 					logger.Debugf("received signal: %v", sig)
@@ -267,11 +268,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			if err != nil {
 				return err
 			}
-			if err = s.Run(); err != nil {
-				return err
-			}
 
-			return nil
+			return s.Run()
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return c.config.BindPFlags(cmd.Flags())
