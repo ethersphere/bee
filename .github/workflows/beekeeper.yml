@@ -99,7 +99,7 @@ jobs:
           cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
       - name: Increase REPLICA to 5
         run: |
-          echo "::set-env name=REPLICA::5"
+          echo "REPLICA=5" >> $GITHUB_ENV
       - name: Set testing cluster (Node connection) 5 bee nodes
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
@@ -122,7 +122,7 @@ jobs:
           docker push ethersphere/bee:latest
       - name: Set IMAGE_DIGEST variable
         if: success()
-        run: echo "::set-env name=IMAGE_DIGEST::$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')"
+        run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
       - name: Trigger ArgoCD
         if: success()
         uses: peter-evans/repository-dispatch@v1
