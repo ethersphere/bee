@@ -30,7 +30,8 @@ const (
 )
 
 const (
-	maxPeers = 5
+	maxPeers          = 5
+	blocklistDuration = time.Minute
 )
 
 type PushSyncer interface {
@@ -42,7 +43,7 @@ type Receipt struct {
 }
 
 type PushSync struct {
-	streamer      p2p.Streamer
+	streamer      p2p.StreamerDisconnecter
 	storer        storage.Putter
 	peerSuggester topology.Peerer
 	tagger        *tags.Tags
@@ -56,7 +57,7 @@ type PushSync struct {
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.Streamer, storer storage.Putter, peerer topology.Peerer, tagger *tags.Tags, validator swarm.ValidatorWithCallback, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, peerer topology.Peerer, tagger *tags.Tags, validator swarm.ValidatorWithCallback, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		streamer:      streamer,
 		storer:        storer,
@@ -308,6 +309,9 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 			ps.logger.Debugf("pushsync-push: %w", lastErr)
+			if errors.Is(err, context.DeadlineExceeded) {
+				ps.blocklistPeer(peer)
+			}
 			continue
 		}
 
@@ -317,6 +321,9 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 			ps.logger.Debugf("pushsync-push: %w", lastErr)
+			if errors.Is(err, context.DeadlineExceeded) {
+				ps.blocklistPeer(peer)
+			}
 			continue
 		}
 		ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
@@ -399,6 +406,15 @@ func (ps *PushSync) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (
 	}
 
 	return closest, nil
+}
+
+func (ps *PushSync) blocklistPeer(peer swarm.Address) {
+	if err := ps.streamer.Blocklist(peer, blocklistDuration); err != nil {
+		ps.logger.Errorf("pushsync-push: unable to block peer %s", peer)
+		ps.logger.Debugf("pushsync-push: blocking peer %s: %v", peer, err)
+	} else {
+		ps.logger.Warningf("pushsync-push: peer %s blocked as unresponsive", peer)
+	}
 }
 
 func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Writer, p p2p.Peer, chunk swarm.Chunk) error {
