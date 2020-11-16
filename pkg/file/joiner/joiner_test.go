@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/ioutil"
 	mrand "math/rand"
-	"sync"
 	"testing"
 	"time"
 
@@ -801,12 +800,9 @@ func TestJoinerIterateChunkAddresses(t *testing.T) {
 	}
 
 	foundAddresses := make(map[string]struct{})
-	var foundAddressesMu sync.Mutex
 
 	err = j.IterateChunkAddresses(func(addr swarm.Address) (stop bool) {
-		foundAddressesMu.Lock()
 		foundAddresses[addr.String()] = struct{}{}
-		foundAddressesMu.Unlock()
 		return false
 	})
 	if err != nil {
