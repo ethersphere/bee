@@ -197,7 +197,7 @@ func (s *server) updatePinnedChunkPinCounter(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		s.Logger.Debugf("update pin counter: parse chunk ddress: %v", err)
 		s.Logger.Errorf("update pin counter: parse address")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
@@ -205,7 +205,7 @@ func (s *server) updatePinnedChunkPinCounter(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		s.Logger.Debugf("update pin counter: localstore has: %v", err)
 		s.Logger.Errorf("update pin counter: store")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.InternalServerError(w, err)
 		return
 	}
 
