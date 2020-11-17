@@ -314,7 +314,15 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
 
-	settlement.SetNotifyPaymentFunc(acc.NotifyPayment)
+	settlement.SetNotifyPaymentFunc(func(peer swarm.Address, amount uint64) error {
+		go func() {
+			err := acc.NotifyPayment(peer, amount)
+			if err != nil {
+				logger.Errorf("failed to notify accounting of payment: %v", err)
+			}
+		}()
+		return nil
+	})
 	pricing.SetPaymentThresholdObserver(acc)
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
