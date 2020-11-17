@@ -94,106 +94,15 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				debugAPIAddr = ""
 			}
 
-			var keystore keystore.Service
-			if c.config.GetString(optionNameDataDir) == "" {
-				keystore = memkeystore.New()
-				logger.Warning("data directory not provided, keys are not persisted")
-			} else {
-				keystore = filekeystore.New(filepath.Join(c.config.GetString(optionNameDataDir), "keys"))
+			signerConfig, err := c.configureSigner(cmd, logger)
+			if err != nil {
+				return err
 			}
 
-			var password string
-			if p := c.config.GetString(optionNamePassword); p != "" {
-				password = p
-			} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
-				b, err := ioutil.ReadFile(pf)
-				if err != nil {
-					return err
-				}
-				password = string(bytes.Trim(b, "\n"))
-			} else {
-				exists, err := keystore.Exists("swarm")
-				if err != nil {
-					return err
-				}
-				if exists {
-					password, err = terminalPromptPassword(cmd, c.passwordReader, "Password")
-					if err != nil {
-						return err
-					}
-				} else {
-					password, err = terminalPromptCreatePassword(cmd, c.passwordReader)
-					if err != nil {
-						return err
-					}
-				}
-			}
-
-			var signer crypto.Signer
-			var address swarm.Address
-			var publicKey *ecdsa.PublicKey
-
-			if c.config.GetBool(optionNameClefSignerEnable) {
-				endpoint := c.config.GetString(optionNameClefSignerEndpoint)
-				if endpoint == "" {
-					endpoint, err = clef.DefaultIpcPath()
-					if err != nil {
-						return err
-					}
-				}
-
-				externalSigner, err := external.NewExternalSigner(endpoint)
-				if err != nil {
-					return err
-				}
-
-				clefRPC, err := rpc.Dial(endpoint)
-				if err != nil {
-					return err
-				}
-
-				signer, err = clef.NewSigner(externalSigner, clefRPC, crypto.Recover)
-				if err != nil {
-					return err
-				}
-
-				publicKey, err = signer.PublicKey()
-				if err != nil {
-					return err
-				}
-
-				address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
-				if err != nil {
-					return err
-				}
-
-				logger.Infof("using swarm network address through clef: %s", address)
-			} else {
-				swarmPrivateKey, created, err := keystore.Key("swarm", password)
-				if err != nil {
-					return fmt.Errorf("swarm key: %w", err)
-				}
-				signer = crypto.NewDefaultSigner(swarmPrivateKey)
-				publicKey = &swarmPrivateKey.PublicKey
-
-				address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
-				if err != nil {
-					return err
-				}
-
-				if created {
-					logger.Infof("new swarm network address created: %s", address)
-				} else {
-					logger.Infof("using existing swarm network address: %s", address)
-				}
-			}
-
-			logger.Infof("swarm public key %x", crypto.EncodeSecp256k1PublicKey(publicKey))
-
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), address, *publicKey, keystore, signer, c.config.GetUint64(optionNameNetworkID), logger, node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.keystore, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, node.Options{
 				DataDir:                c.config.GetString(optionNameDataDir),
 				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
-				Password:               password,
+				Password:               signerConfig.password,
 				APIAddr:                c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr:           debugAPIAddr,
 				Addr:                   c.config.GetString(optionNameP2PAddr),
@@ -265,4 +174,129 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	c.setAllFlags(cmd)
 	c.root.AddCommand(cmd)
 	return nil
+}
+
+type signerConfig struct {
+	keystore         keystore.Service
+	signer           crypto.Signer
+	address          swarm.Address
+	publicKey        *ecdsa.PublicKey
+	libp2pPrivateKey *ecdsa.PrivateKey
+	password         string
+}
+
+func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (config *signerConfig, err error) {
+	var keystore keystore.Service
+	if c.config.GetString(optionNameDataDir) == "" {
+		keystore = memkeystore.New()
+		logger.Warning("data directory not provided, keys are not persisted")
+	} else {
+		keystore = filekeystore.New(filepath.Join(c.config.GetString(optionNameDataDir), "keys"))
+	}
+
+	var signer crypto.Signer
+	var address swarm.Address
+	var password string
+	var publicKey *ecdsa.PublicKey
+	if p := c.config.GetString(optionNamePassword); p != "" {
+		password = p
+	} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
+		b, err := ioutil.ReadFile(pf)
+		if err != nil {
+			return nil, err
+		}
+		password = string(bytes.Trim(b, "\n"))
+	} else {
+		exists, err := keystore.Exists("swarm")
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			password, err = terminalPromptPassword(cmd, c.passwordReader, "Password")
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			password, err = terminalPromptCreatePassword(cmd, c.passwordReader)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if c.config.GetBool(optionNameClefSignerEnable) {
+		endpoint := c.config.GetString(optionNameClefSignerEndpoint)
+		if endpoint == "" {
+			endpoint, err = clef.DefaultIpcPath()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		externalSigner, err := external.NewExternalSigner(endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		clefRPC, err := rpc.Dial(endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		signer, err = clef.NewSigner(externalSigner, clefRPC, crypto.Recover)
+		if err != nil {
+			return nil, err
+		}
+
+		publicKey, err = signer.PublicKey()
+		if err != nil {
+			return nil, err
+		}
+
+		address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
+		if err != nil {
+			return nil, err
+		}
+
+		logger.Infof("using swarm network address through clef: %s", address)
+	} else {
+		swarmPrivateKey, created, err := keystore.Key("swarm", password)
+		if err != nil {
+			return nil, fmt.Errorf("swarm key: %w", err)
+		}
+		signer = crypto.NewDefaultSigner(swarmPrivateKey)
+		publicKey = &swarmPrivateKey.PublicKey
+
+		address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
+		if err != nil {
+			return nil, err
+		}
+
+		if created {
+			logger.Infof("new swarm network address created: %s", address)
+		} else {
+			logger.Infof("using existing swarm network address: %s", address)
+		}
+	}
+
+	logger.Infof("swarm public key %x", crypto.EncodeSecp256k1PublicKey(publicKey))
+
+	libp2pPrivateKey, created, err := keystore.Key("libp2p", password)
+	if err != nil {
+		return nil, fmt.Errorf("libp2p key: %w", err)
+	}
+	if created {
+		logger.Debugf("new libp2p key created")
+	} else {
+		logger.Debugf("using existing libp2p key")
+	}
+
+	return &signerConfig{
+		keystore:         keystore,
+		signer:           signer,
+		address:          address,
+		publicKey:        publicKey,
+		libp2pPrivateKey: libp2pPrivateKey,
+		password:         password,
+	}, nil
 }

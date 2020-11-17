@@ -96,6 +96,10 @@ func newCommand(opts ...option) (c *command, err error) {
 		return nil, err
 	}
 
+	if err := c.initInitCmd(); err != nil {
+		return nil, err
+	}
+
 	c.initVersionCmd()
 
 	if err := c.initConfigurateOptionsCmd(); err != nil {
