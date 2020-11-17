@@ -33,11 +33,11 @@ func TestGatewayMode(t *testing.T) {
 	})
 
 	t.Run("pinning endpoints", func(t *testing.T) {
-		path := "/pinning/chunks/0773a91efd6547c754fc1d95fb1c62c7d1b47f959c2caa685dfec8736da95c1c"
+		path := "/pin/chunks/0773a91efd6547c754fc1d95fb1c62c7d1b47f959c2caa685dfec8736da95c1c"
 		jsonhttptest.Request(t, client, http.MethodGet, path, http.StatusForbidden, forbiddenResponseOption)
 		jsonhttptest.Request(t, client, http.MethodPost, path, http.StatusForbidden, forbiddenResponseOption)
 		jsonhttptest.Request(t, client, http.MethodDelete, path, http.StatusForbidden, forbiddenResponseOption)
-		jsonhttptest.Request(t, client, http.MethodGet, "/pinning/chunks", http.StatusForbidden, forbiddenResponseOption)
+		jsonhttptest.Request(t, client, http.MethodGet, "/pin/chunks", http.StatusForbidden, forbiddenResponseOption)
 	})
 
 	t.Run("tags endpoints", func(t *testing.T) {

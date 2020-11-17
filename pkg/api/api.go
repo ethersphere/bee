@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/traversal"
 )
 
 const (
@@ -57,12 +58,13 @@ type Service interface {
 }
 
 type server struct {
-	Tags     *tags.Tags
-	Storer   storage.Storer
-	Resolver resolver.Interface
-	Pss      pss.Interface
-	Logger   logging.Logger
-	Tracer   *tracing.Tracer
+	Tags      *tags.Tags
+	Storer    storage.Storer
+	Resolver  resolver.Interface
+	Pss       pss.Interface
+	Traversal traversal.Service
+	Logger    logging.Logger
+	Tracer    *tracing.Tracer
 	Options
 	http.Handler
 	metrics metrics
@@ -83,17 +85,18 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
-		Tags:     tags,
-		Storer:   storer,
-		Resolver: resolver,
-		Pss:      pss,
-		Options:  o,
-		Logger:   logger,
-		Tracer:   tracer,
-		metrics:  newMetrics(),
-		quit:     make(chan struct{}),
+		Tags:      tags,
+		Storer:    storer,
+		Resolver:  resolver,
+		Pss:       pss,
+		Traversal: traversalService,
+		Options:   o,
+		Logger:    logger,
+		Tracer:    tracer,
+		metrics:   newMetrics(),
+		quit:      make(chan struct{}),
 	}
 
 	s.setupRouting()
