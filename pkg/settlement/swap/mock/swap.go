@@ -22,12 +22,12 @@ type Service struct {
 	settlementsSentFunc func() (map[string]uint64, error)
 	settlementsRecvFunc func() (map[string]uint64, error)
 
-	receiveChequeFunc      func(context.Context, swarm.Address, *chequebook.SignedCheque) error
-	payFunc                func(context.Context, swarm.Address, uint64) error
-	setPaymentObserverFunc func(observer settlement.PaymentObserver)
-	handshakeFunc          func(swarm.Address, common.Address) error
-	lastSentChequeFunc     func(swarm.Address) (*chequebook.SignedCheque, error)
-	lastSentChequesFunc    func() (map[string]*chequebook.SignedCheque, error)
+	receiveChequeFunc    func(context.Context, swarm.Address, *chequebook.SignedCheque) error
+	payFunc              func(context.Context, swarm.Address, uint64) error
+	setNotifyPaymentFunc settlement.NotifyPaymentFunc
+	handshakeFunc        func(swarm.Address, common.Address) error
+	lastSentChequeFunc   func(swarm.Address) (*chequebook.SignedCheque, error)
+	lastSentChequesFunc  func() (map[string]*chequebook.SignedCheque, error)
 
 	lastReceivedChequeFunc  func(swarm.Address) (*chequebook.SignedCheque, error)
 	lastReceivedChequesFunc func() (map[string]*chequebook.SignedCheque, error)
@@ -75,9 +75,9 @@ func WithPayFunc(f func(context.Context, swarm.Address, uint64) error) Option {
 }
 
 // WithsettlementsFunc sets the mock settlements function
-func WithSetPaymentObserverFunc(f func(observer settlement.PaymentObserver)) Option {
+func WithSetNotifyPaymentFunc(f settlement.NotifyPaymentFunc) Option {
 	return optionFunc(func(s *Service) {
-		s.setPaymentObserverFunc = f
+		s.setNotifyPaymentFunc = f
 	})
 }
 
@@ -156,10 +156,9 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	return nil
 }
 
-// SetPaymentObserver is the mock SetPaymentObserver function of swap.
-func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
-	if s.setPaymentObserverFunc != nil {
-		s.setPaymentObserverFunc(observer)
+func (s *Service) SetNotifyPaymentFunc(f settlement.NotifyPaymentFunc) {
+	if s.setNotifyPaymentFunc != nil {
+		s.SetNotifyPaymentFunc(f)
 	}
 }
 

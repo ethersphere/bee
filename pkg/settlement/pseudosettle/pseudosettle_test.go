@@ -47,7 +47,7 @@ func TestPayment(t *testing.T) {
 
 	observer := newTestObserver()
 	recipient := pseudosettle.New(nil, logger, storeRecipient)
-	recipient.SetPaymentObserver(observer)
+	recipient.SetNotifyPaymentFunc(observer.NotifyPayment)
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
