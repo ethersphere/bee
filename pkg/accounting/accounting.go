@@ -43,7 +43,7 @@ type Interface interface {
 	Debit(peer swarm.Address, price uint64) error
 	// Balance returns the current balance for the given peer.
 	Balance(peer swarm.Address) (int64, error)
-	//
+	// SurplusBalance returns the current surplus balance for the given peer.
 	SurplusBalance(peer swarm.Address) (int64, error)
 	// Balances returns balances for all known peers.
 	Balances() (map[string]int64, error)
@@ -303,9 +303,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	defer accountingPeer.lock.Unlock()
 
 	cost := price
-
 	// see if peer has surplus balance to deduct this transaction of
-
 	surplusBalance, err := a.SurplusBalance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
