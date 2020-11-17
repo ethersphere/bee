@@ -306,9 +306,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	// see if peer has surplus balance to deduct this transaction of
 	surplusBalance, err := a.SurplusBalance(peer)
 	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to get surplus balance: %w", err)
-		}
+		return fmt.Errorf("failed to get surplus balance: %w", err)
 	}
 	if surplusBalance > 0 {
 
@@ -324,6 +322,9 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 			if err != nil {
 				return fmt.Errorf("failed to persist surplus balance: %w", err)
 			}
+			// count debit operations, terminate early
+			a.metrics.TotalDebitedAmount.Add(float64(price))
+			a.metrics.DebitEventsCount.Inc()
 			return nil
 		}
 
@@ -398,7 +399,7 @@ func (a *Accounting) SurplusBalance(peer swarm.Address) (balance int64, err erro
 
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, ErrPeerNoBalance
+			return 0, nil
 		}
 		return 0, err
 	}
@@ -531,9 +532,7 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 		surplus, err := a.SurplusBalance(peer)
 		if err != nil {
-			if !errors.Is(err, ErrPeerNoBalance) {
-				return fmt.Errorf("failed to get surplus balance: %w", err)
-			}
+			return fmt.Errorf("failed to get surplus balance: %w", err)
 		}
 		increasedSurplus := surplus + surplusGrowth
 		if increasedSurplus < surplus {
