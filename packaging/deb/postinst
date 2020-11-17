@@ -22,7 +22,7 @@ if [ -d /run/systemd/system ]; then
 fi
 
 if [ "$1" = "configure" ]; then
-    /usr/bin/bee init --config /etc/bee/bee.yaml 2>/dev/null
+    /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null 2>&1
     chown -R bee:bee /var/lib/bee/keys
     if [ -f /var/lib/bee/keys/swarm.key ]; then
         parse_json() { echo $1|sed -e 's/[{}]/''/g'|sed -e 's/", "/'\",\"'/g'|sed -e 's/" ,"/'\",\"'/g'|sed -e 's/" , "/'\",\"'/g'|sed -e 's/","/'\"---SEPERATOR---\"'/g'|awk -F=':' -v RS='---SEPERATOR---' "\$1~/\"$2\"/ {print}"|sed -e "s/\"$2\"://"|tr -d "\n\t"|sed -e 's/\\"/"/g'|sed -e 's/\\\\/\\/g'|sed -e 's/^[ \t]*//g'|sed -e 's/^"//' -e 's/"$//' ; }
