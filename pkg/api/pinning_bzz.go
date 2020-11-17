@@ -9,7 +9,6 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/mux"
@@ -40,16 +39,7 @@ func (s *server) pinBzz(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	chunkAddressFn := func(address swarm.Address) (stop bool) {
-		err := s.Storer.Set(r.Context(), storage.ModeSetPin, address)
-		if err != nil {
-			s.Logger.Debugf("pin bzz: pinning error: %v, addr %s, for address: %s", err, addr, address)
-			// stop pinning on first error
-			return true
-		}
-
-		return false
-	}
+	chunkAddressFn := s.pinChunkAddressFn(ctx, addr)
 
 	err = s.Traversal.TraverseManifestAddresses(ctx, addr, chunkAddressFn)
 	if err != nil {
@@ -94,20 +84,7 @@ func (s *server) unpinBzz(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	chunkAddressFn := func(address swarm.Address) (stop bool) {
-		_, err := s.Storer.PinCounter(address)
-		if err != nil {
-			return false
-		}
-
-		err = s.Storer.Set(r.Context(), storage.ModeSetUnpin, address)
-		if err != nil {
-			s.Logger.Debugf("pin bzz: unpinning error: %v, addr %s, for address: %s", err, addr, address)
-			// continue un-pinning all chunks
-		}
-
-		return false
-	}
+	chunkAddressFn := s.unpinChunkAddressFn(ctx, addr)
 
 	err = s.Traversal.TraverseManifestAddresses(ctx, addr, chunkAddressFn)
 	if err != nil {
