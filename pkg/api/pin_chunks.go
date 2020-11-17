@@ -150,7 +150,7 @@ func (s *server) getPinnedChunk(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Debugf("pin counter: parse chunk ddress: %v", err)
 		s.Logger.Errorf("pin counter: parse address")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
@@ -158,7 +158,7 @@ func (s *server) getPinnedChunk(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Debugf("pin counter: localstore has: %v", err)
 		s.Logger.Errorf("pin counter: store")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.InternalServerError(w, err)
 		return
 	}
 

@@ -29,7 +29,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Debugf("chunk upload: parse chunk address %s: %v", nameOrHex, err)
 		s.Logger.Error("chunk upload: parse chunk address")
-		jsonhttp.BadRequest(w, "invalid chunk address")
+		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
@@ -107,7 +107,7 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
 		s.Logger.Error("chunk: parse chunk address error")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.BadRequest(w, "invalid chunk address")
 		return
 	}
 

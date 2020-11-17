@@ -237,7 +237,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("file download: parse file address %s: %v", nameOrHex, err)
 		logger.Errorf("file download: parse file address %s", nameOrHex)
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
@@ -334,7 +334,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		}
 		logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
 		logger.Error("api download: invalid root chunk")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.InternalServerError(w, err)
 		return
 	}
 

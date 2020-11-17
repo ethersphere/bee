@@ -45,7 +45,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz download: parse address %s: %v", nameOrHex, err)
 		logger.Error("bzz download: parse address")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
@@ -116,7 +116,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz download: not manifest %s: %v", address, err)
 		logger.Error("bzz download: not manifest")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.BadRequest(w, nil)
 		return
 	}
 
