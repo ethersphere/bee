@@ -10,6 +10,7 @@ User=bee
 Group=bee
 ExecStart=/usr/bin/bee start --config=/etc/bee/bee.yaml
 Restart=on-failure
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
