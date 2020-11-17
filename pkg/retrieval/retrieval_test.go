@@ -14,7 +14,6 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -31,7 +30,6 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
 	mockStorer := storemock.NewStorer()
 	reqAddr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -51,7 +49,7 @@ func TestDelivery(t *testing.T) {
 	pricerMock := accountingmock.NewPricer(price, price)
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(swarm.MustParseHexAddress("00112234"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, mockValidator, nil)
+	server := retrieval.New(swarm.MustParseHexAddress("00112234"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil, nil)
 	recorder := streamtest.NewRecorderDisconnecter(streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	))
@@ -69,7 +67,7 @@ func TestDelivery(t *testing.T) {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), clientMockStorer, recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator, nil)
+	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), clientMockStorer, recorder, ps, logger, clientMockAccounting, pricerMock, nil, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, reqAddr)
@@ -135,7 +133,6 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
-	mockValidator := swarm.NewChunkValidator(mock.NewValidator(true))
 	pricer := accountingmock.NewPricer(1, 1)
 
 	// requesting a chunk from downstream peer is expected
@@ -145,13 +142,13 @@ func TestRetrieveChunk(t *testing.T) {
 		clientAddress := swarm.MustParseHexAddress("01")
 
 		serverStorer := storemock.NewStorer()
-		chunk := swarm.NewChunk(chunkAddress, []byte("some data"))
+		chunk := swarm.NewChunk(chunkAddress, []byte("some data")).ValidatedAs(1)
 		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, nil, nil)
 
 		recorder := streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithProtocols(server.Protocol())))
 
@@ -159,7 +156,7 @@ func TestRetrieveChunk(t *testing.T) {
 			_, _, _ = f(serverAddress, 0)
 			return nil
 		}}
-		client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+		client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, nil, nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
 		if err != nil {
@@ -177,7 +174,7 @@ func TestRetrieveChunk(t *testing.T) {
 		clientAddress := swarm.MustParseHexAddress("03")
 
 		serverStorer := storemock.NewStorer()
-		chunk := swarm.NewChunk(chunkAddress, []byte("some data"))
+		chunk := swarm.NewChunk(chunkAddress, []byte("some data")).ValidatedAs(1)
 		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 		if err != nil {
 			t.Fatal(err)
@@ -191,7 +188,7 @@ func TestRetrieveChunk(t *testing.T) {
 			logger,
 			accountingmock.NewAccounting(),
 			pricer,
-			mockValidator,
+			nil,
 			nil,
 		)
 
@@ -206,7 +203,7 @@ func TestRetrieveChunk(t *testing.T) {
 			logger,
 			accountingmock.NewAccounting(),
 			pricer,
-			mockValidator,
+			nil,
 			nil,
 		)
 
@@ -221,7 +218,7 @@ func TestRetrieveChunk(t *testing.T) {
 			logger,
 			accountingmock.NewAccounting(),
 			pricer,
-			mockValidator,
+			nil,
 			nil,
 		)
 

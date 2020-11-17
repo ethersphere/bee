@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/opentracing/opentracing-go"
+	opentracing "github.com/opentracing/opentracing-go"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -46,11 +46,11 @@ type Service struct {
 	logger        logging.Logger
 	accounting    accounting.Interface
 	pricer        accounting.Pricer
-	validator     swarm.Validator
+	validators    []swarm.Validator
 	tracer        *tracing.Tracer
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.StreamerDisconnecter, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.StreamerDisconnecter, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validators []swarm.Validator, tracer *tracing.Tracer) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -59,7 +59,7 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.StreamerDisconn
 		logger:        logger,
 		accounting:    accounting,
 		pricer:        pricer,
-		validator:     validator,
+		validators:    validators,
 		tracer:        tracer,
 	}
 }
@@ -182,8 +182,8 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	}
 
 	// credit the peer after successful delivery
-	chunk = swarm.NewChunk(addr, d.Data)
-	if !s.validator.Validate(chunk) {
+	chunk = swarm.NewChunk(addr, d.Data).ValidatedAs(1)
+	if valid, _ := chunk.Valid(s.validators...); !valid {
 		return nil, peer, err
 	}
 

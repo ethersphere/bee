@@ -17,22 +17,23 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+var (
+	ErrRecoveryAttempt = errors.New("recovery attempt")
+)
+
 type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
-	validator        swarm.Validator
+	validators       []swarm.Validator
 	logger           logging.Logger
-	recoveryCallback recovery.RecoveryHook // this is the callback to be executed when a chunk fails to be retrieved
+	recoveryCallback recovery.Callback // this is the callback to be executed when a chunk fails to be retrieved
+	callback         func(swarm.Chunk)
 }
 
-var (
-	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
-)
-
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, rcb recovery.RecoveryHook, r retrieval.Interface, logger logging.Logger,
-	validator swarm.Validator) storage.Storer {
-	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validator: validator}
+func New(s storage.Storer, rcb recovery.Callback, r retrieval.Interface, logger logging.Logger,
+	validators []swarm.Validator, callback func(swarm.Chunk)) storage.Storer {
+	return &store{Storer: s, recoveryCallback: rcb, retrieval: r, logger: logger, validators: validators, callback: callback}
 }
 
 // Get retrieves a given chunk address.
@@ -44,20 +45,12 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			ch, err = s.retrieval.RetrieveChunk(ctx, addr)
 			if err != nil {
-				if s.recoveryCallback == nil {
+				targets := sctx.GetTargets(ctx)
+				if targets == nil || s.recoveryCallback == nil {
 					return nil, err
 				}
-				targets := sctx.GetTargets(ctx)
-				if targets != nil {
-					go func() {
-						err := s.recoveryCallback(addr, targets)
-						if err != nil {
-							s.logger.Debugf("netstore: error while recovering chunk: %v", err)
-						}
-					}()
-					return nil, ErrRecoveryAttempt
-				}
-				return nil, fmt.Errorf("netstore retrieve chunk: %w", err)
+				go s.recoveryCallback(addr, targets)
+				return nil, ErrRecoveryAttempt
 			}
 
 			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
@@ -76,8 +69,12 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 // encountering an invalid chunk.
 func (s *store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
-		if !s.validator.Validate(ch) {
+		valid, typ := ch.Valid(s.validators...)
+		if !valid {
 			return nil, storage.ErrInvalidChunk
+		}
+		if typ == 1 {
+			go s.callback(ch)
 		}
 	}
 	return s.Storer.Put(ctx, mode, chs...)

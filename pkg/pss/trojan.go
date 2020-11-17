@@ -128,9 +128,9 @@ func Wrap(ctx context.Context, topic Topic, msg []byte, recipient *ecdsa.PublicK
 	return mine(ctx, odd, f)
 }
 
-// Unwrap takes a chunk, a topic and a private key, and tries to decrypt the payload
+// Unwrap takes a private key, a chunk, an array of possible topics and tries to decrypt the payload
 // using the private key, the prepended ephemeral public key for el-Gamal using the topic as salt
-func Unwrap(ctx context.Context, key *ecdsa.PrivateKey, chunk swarm.Chunk, topics []Topic) (topic Topic, msg []byte, err error) {
+func Unwrap(key *ecdsa.PrivateKey, chunk swarm.Chunk, quit chan struct{}, topics []Topic) (topic Topic, msg []byte, err error) {
 	chunkData := chunk.Data()
 	pubkey, err := extractPublicKey(chunkData)
 	if err != nil {
@@ -139,12 +139,13 @@ func Unwrap(ctx context.Context, key *ecdsa.PrivateKey, chunk swarm.Chunk, topic
 	hint := chunkData[:8]
 	for _, topic = range topics {
 		select {
-		case <-ctx.Done():
-			return Topic{}, nil, ctx.Err()
+		case <-quit:
+			return Topic{}, nil, errors.New("closing down")
 		default:
 		}
 		dec, err := matchTopic(key, pubkey, hint, topic[:])
 		if err != nil {
+			// fallback to topic-based encryption
 			privk := crypto.Secp256k1PrivateKeyFromBytes(topic[:])
 			dec, err = matchTopic(privk, pubkey, hint, topic[:])
 			if err != nil {

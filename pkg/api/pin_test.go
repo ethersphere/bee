@@ -10,14 +10,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/logging"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
@@ -31,8 +29,7 @@ func TestPinChunkHandler(t *testing.T) {
 		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
 		hash                 = swarm.MustParseHexAddress("aabbcc")
 		data                 = []byte("bbaatt")
-		mockValidator        = validator.NewMockValidator(hash, data)
-		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
+		mockValidatingStorer = mock.NewStorer()
 		mockStatestore       = statestore.NewStateStore()
 		logger               = logging.New(ioutil.Discard, 0)
 		tag                  = tags.NewTags(mockStatestore, logger)
@@ -195,7 +192,6 @@ func TestPinChunkHandler(t *testing.T) {
 		// post another chunk
 		hash2 := swarm.MustParseHexAddress("ddeeff")
 		data2 := []byte("eagle")
-		mockValidator.AddPair(hash2, data2)
 		jsonhttptest.Request(t, client, http.MethodPost, resource(hash2), http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(data2)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{

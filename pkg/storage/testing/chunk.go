@@ -40,7 +40,8 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	_, _ = rand.Read(data)
 	key := make([]byte, swarm.SectionSize)
 	_, _ = rand.Read(key)
-	return swarm.NewChunk(swarm.NewAddress(key), data)
+	ch := swarm.NewChunk(swarm.NewAddress(key), data)
+	return ch.ValidatedAs(1)
 }
 
 // GenerateTestRandomChunks generates a slice of random

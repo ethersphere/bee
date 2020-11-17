@@ -344,9 +344,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.localstoreCloser = storer
 
-	chunkvalidator := swarm.NewChunkValidator(content.NewValidator(), soc.NewValidator())
+	validators := []swarm.Validator{content.NewValidator(), soc.NewValidator()}
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), chunkvalidator, tracer)
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), validators, tracer)
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
@@ -366,13 +366,13 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
-		recoverFunc := recovery.NewRecoveryHook(pssService)
-		ns = netstore.New(storer, recoverFunc, retrieve, logger, chunkvalidator)
+		recoverFunc := recovery.NewCallback(pssService)
+		ns = netstore.New(storer, recoverFunc, retrieve, logger, validators, pssService.TryUnwrap)
 	} else {
-		ns = netstore.New(storer, nil, retrieve, logger, chunkvalidator)
+		ns = netstore.New(storer, nil, retrieve, logger, validators, pssService.TryUnwrap)
 	}
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, validators, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -384,7 +384,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
 		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
-		b.recoveryHandleCleanup = pssService.Register(recovery.RecoveryTopic, chunkRepairHandler)
+		b.recoveryHandleCleanup = pssService.Register(recovery.Topic, chunkRepairHandler)
 	}
 
 	pushSyncPusher := pusher.New(storer, kad, pushSyncProtocol, tagService, logger, tracer)
@@ -392,7 +392,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSync := pullsync.New(p2ps, pullStorage, logger)
+	pullSync := pullsync.New(p2ps, pullStorage, validators, logger)
 	b.pullSyncCloser = pullSync
 
 	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {

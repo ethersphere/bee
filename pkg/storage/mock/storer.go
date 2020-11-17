@@ -23,7 +23,7 @@ type MockStorer struct {
 	pinnedCounter   []uint64        // and its respective counter. These are stored as slices to preserve the order.
 	subpull         []storage.Descriptor
 	partialInterval bool
-	validator       swarm.Validator
+	validators      []swarm.Validator
 	morePull        chan struct{}
 	mtx             sync.Mutex
 	quit            chan struct{}
@@ -46,9 +46,9 @@ func WithBaseAddress(a swarm.Address) Option {
 	})
 }
 
-func WithValidator(v swarm.Validator) Option {
+func WithValidators(v []swarm.Validator) Option {
 	return optionFunc(func(m *MockStorer) {
-		m.validator = v
+		m.validators = v
 	})
 }
 
@@ -92,10 +92,8 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 
 	exist = make([]bool, len(chs))
 	for i, ch := range chs {
-		if m.validator != nil {
-			if !m.validator.Validate(ch) {
-				return nil, storage.ErrInvalidChunk
-			}
+		if valid, _ := ch.Valid(m.validators...); !valid {
+			return nil, storage.ErrInvalidChunk
 		}
 		exist[i], err = m.has(ctx, ch.Address())
 		if err != nil {

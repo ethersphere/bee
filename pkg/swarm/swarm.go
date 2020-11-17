@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/sha3"
@@ -28,6 +29,10 @@ const (
 
 var (
 	NewHasher = sha3.NewLegacyKeccak256
+)
+
+var (
+	ErrInvalidChunk = errors.New("invalid chunk")
 )
 
 // Address represents an address in Swarm metric space of
@@ -115,6 +120,8 @@ type Chunk interface {
 	TagID() uint32
 	WithTagID(t uint32) Chunk
 	Equal(Chunk) bool
+	Valid(...Validator) (bool, uint8)
+	ValidatedAs(typ uint8) Chunk
 }
 
 type chunk struct {
@@ -122,6 +129,8 @@ type chunk struct {
 	sdata      []byte
 	pinCounter uint64
 	tagID      uint32
+	checked    bool
+	typ        uint8
 }
 
 func NewChunk(addr Address, data []byte) Chunk {
@@ -157,35 +166,33 @@ func (c *chunk) TagID() uint32 {
 	return c.tagID
 }
 
+type Validator interface {
+	Validate(Chunk) bool
+}
+
+func (c *chunk) Valid(validators ...Validator) (bool, uint8) {
+	if c.checked {
+		return c.typ == 0, c.typ
+	}
+	for i, v := range validators {
+		if v.Validate(c) {
+			c.checked = true
+			c.typ = uint8(i) + 1
+		}
+	}
+	return false, c.typ
+}
+
+func (c *chunk) ValidatedAs(typ uint8) Chunk {
+	c.checked = true
+	c.typ = typ
+	return c
+}
+
 func (c *chunk) String() string {
 	return fmt.Sprintf("Address: %v Chunksize: %v", c.addr.String(), len(c.sdata))
 }
 
 func (c *chunk) Equal(cp Chunk) bool {
 	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
-}
-
-type Validator interface {
-	Validate(ch Chunk) (valid bool)
-}
-
-type chunkValidator struct {
-	set []Validator
-	Validator
-}
-
-func NewChunkValidator(v ...Validator) Validator {
-	return &chunkValidator{
-		set: v,
-	}
-}
-
-func (c *chunkValidator) Validate(ch Chunk) bool {
-	for _, v := range c.set {
-		if v.Validate(ch) {
-			return true
-		}
-	}
-
-	return false
 }

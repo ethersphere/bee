@@ -7,7 +7,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -61,21 +60,16 @@ func TestMockValidatingStorer(t *testing.T) {
 	invalidAddress := swarm.MustParseHexAddress(invalidAddressHex)
 
 	validContent := []byte("bbaatt")
-	invalidContent := []byte("bbaattss")
 
-	s := mock.NewStorer(mock.WithValidator(validator.NewMockValidator(validAddress, validContent)))
+	s := mock.NewStorer(nil)
 
 	ctx := context.Background()
 
-	if _, err := s.Put(ctx, storage.ModePutUpload, swarm.NewChunk(validAddress, validContent)); err != nil {
+	if _, err := s.Put(ctx, storage.ModePutUpload, swarm.NewChunk(validAddress, validContent).ValidatedAs(1)); err != nil {
 		t.Fatalf("expected not error but got: %v", err)
 	}
 
-	if _, err := s.Put(ctx, storage.ModePutUpload, swarm.NewChunk(invalidAddress, validContent)); err == nil {
-		t.Fatalf("expected error but got none")
-	}
-
-	if _, err := s.Put(ctx, storage.ModePutUpload, swarm.NewChunk(invalidAddress, invalidContent)); err == nil {
+	if _, err := s.Put(ctx, storage.ModePutUpload, swarm.NewChunk(invalidAddress, validContent).ValidatedAs(0)); err == nil {
 		t.Fatalf("expected error but got none")
 	}
 

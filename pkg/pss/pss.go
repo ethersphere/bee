@@ -31,7 +31,7 @@ type Interface interface {
 	// Register a Handler for a given Topic.
 	Register(Topic, Handler) func()
 	// TryUnwrap tries to unwrap a wrapped trojan message.
-	TryUnwrap(context.Context, swarm.Chunk)
+	TryUnwrap(swarm.Chunk)
 
 	SetPushSyncer(pushSyncer pushsync.PushSyncer)
 	io.Closer
@@ -127,12 +127,17 @@ func (p *pss) topics() []Topic {
 	return ts
 }
 
+func (p *pss) unwrap(chunk swarm.Chunk) (topic Topic, msg []byte, err error) {
+	return Unwrap(p.key, chunk, p.quit, p.topics())
+}
+
 // TryUnwrap allows unwrapping a chunk as a trojan message and calling its handlers based on the topic.
-func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) {
+func (p *pss) TryUnwrap(c swarm.Chunk) {
 	if len(c.Data()) < swarm.ChunkWithSpanSize {
 		return // chunk not full
 	}
-	topic, msg, err := Unwrap(ctx, p.key, c, p.topics())
+
+	topic, msg, err := p.unwrap(c)
 	if err != nil {
 		return // cannot unwrap
 	}
@@ -141,7 +146,7 @@ func (p *pss) TryUnwrap(ctx context.Context, c swarm.Chunk) {
 		return // no handler
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	var wg sync.WaitGroup
 	go func() {

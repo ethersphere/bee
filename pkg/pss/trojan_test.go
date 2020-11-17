@@ -59,7 +59,7 @@ func TestUnwrap(t *testing.T) {
 	topic1 := pss.NewTopic("topic-1")
 	topic2 := pss.NewTopic("topic-2")
 
-	unwrapTopic, unwrapMsg, err := pss.Unwrap(context.Background(), key, chunk, []pss.Topic{topic1, topic2, topic})
+	unwrapTopic, unwrapMsg, err := pss.Unwrap(key, chunk, make(chan struct{}), []pss.Topic{topic1, topic2, topic})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestUnwrapTopicEncrypted(t *testing.T) {
 	topic1 := pss.NewTopic("topic-1")
 	topic2 := pss.NewTopic("topic-2")
 
-	unwrapTopic, unwrapMsg, err := pss.Unwrap(context.Background(), key, chunk, []pss.Topic{topic1, topic2, topic})
+	unwrapTopic, unwrapMsg, err := pss.Unwrap(key, chunk, make(chan struct{}), []pss.Topic{topic1, topic2, topic})
 	if err != nil {
 		t.Fatal(err)
 	}
