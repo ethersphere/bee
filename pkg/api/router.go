@@ -126,6 +126,10 @@ func (s *server) setupRouting() {
 			"GET":    http.HandlerFunc(s.getPinnedChunk),
 			"POST":   http.HandlerFunc(s.pinChunk),
 			"DELETE": http.HandlerFunc(s.unpinChunk),
+			"PUT": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(1024),
+				web.FinalHandlerFunc(s.updatePinnedChunkPinCounter),
+			),
 		})),
 	)
 	handle(router, "/pin/chunks", web.ChainHandlers(
