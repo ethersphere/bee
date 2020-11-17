@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -181,4 +182,34 @@ func (s *server) getPinnedChunk(w http.ResponseWriter, r *http.Request) {
 		Address:    addr,
 		PinCounter: pinCounter,
 	})
+}
+
+func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) (stop bool) {
+	return func(address swarm.Address) (stop bool) {
+		err := s.Storer.Set(ctx, storage.ModeSetPin, address)
+		if err != nil {
+			s.Logger.Debugf("pin error: for reference %s, address %s: %w", reference, address, err)
+			// stop pinning on first error
+			return true
+		}
+
+		return false
+	}
+}
+
+func (s *server) unpinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) (stop bool) {
+	return func(address swarm.Address) (stop bool) {
+		_, err := s.Storer.PinCounter(address)
+		if err != nil {
+			return false
+		}
+
+		err = s.Storer.Set(ctx, storage.ModeSetUnpin, address)
+		if err != nil {
+			s.Logger.Debugf("unpin error: for reference %s, address %s: %w", reference, address, err)
+			// continue un-pinning all chunks
+		}
+
+		return false
+	}
 }
