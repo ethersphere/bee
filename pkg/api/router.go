@@ -138,24 +138,24 @@ func (s *server) setupRouting() {
 	handle(router, "/pinning/bytes/{address}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST":   http.HandlerFunc(s.pinBytesUploaded),
-			"DELETE": http.HandlerFunc(s.pinBytesRemovePinned),
+			"POST":   http.HandlerFunc(s.pinBytes),
+			"DELETE": http.HandlerFunc(s.unpinBytes),
 		})),
 	)
 
 	handle(router, "/pinning/files/{address}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST":   http.HandlerFunc(s.pinFilesUploaded),
-			"DELETE": http.HandlerFunc(s.pinFilesRemovePinned),
+			"POST":   http.HandlerFunc(s.pinFile),
+			"DELETE": http.HandlerFunc(s.unpinFile),
 		})),
 	)
 
 	handle(router, "/pinning/bzz/{address}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST":   http.HandlerFunc(s.pinBzzUploaded),
-			"DELETE": http.HandlerFunc(s.pinBzzRemovePinned),
+			"POST":   http.HandlerFunc(s.pinBzz),
+			"DELETE": http.HandlerFunc(s.unpinBzz),
 		})),
 	)
 

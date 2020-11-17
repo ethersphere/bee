@@ -15,8 +15,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// pinBytesUploaded is used to pin an already uploaded content.
-func (s *server) pinBytesUploaded(w http.ResponseWriter, r *http.Request) {
+// pinBytes is used to pin an already uploaded content.
+func (s *server) pinBytes(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
 		s.Logger.Debugf("pin bytes: parse address: %v", err)
@@ -69,8 +69,8 @@ func (s *server) pinBytesUploaded(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, nil)
 }
 
-// pinBytesRemovePinned removes pinning from content.
-func (s *server) pinBytesRemovePinned(w http.ResponseWriter, r *http.Request) {
+// unpinBytes removes pinning from content.
+func (s *server) unpinBytes(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
 		s.Logger.Debugf("pin bytes: parse address: %v", err)
