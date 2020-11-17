@@ -191,6 +191,7 @@ type updatePinCounter struct {
 	PinCounter uint64 `json:"pinCounter"`
 }
 
+// updatePinnedChunkPinCounter allows changing the pin counter for the chunk.
 func (s *server) updatePinnedChunkPinCounter(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
@@ -281,6 +282,9 @@ func (s *server) updatePinnedChunkPinCounter(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// updatePinCount changes pin counter for a chunk address.
+// This is done with a loop, depending on the delta value supplied.
+// NOTE: If the value is too large, it will result in many database operations.
 func (s *server) updatePinCount(ctx context.Context, reference swarm.Address, delta int) error {
 	diff := delta
 	mode := storage.ModeSetPin
