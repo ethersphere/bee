@@ -92,7 +92,7 @@ func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }
 
-func (_ *mock) NeighborhoodDepth() uint8 {
+func (*mock) NeighborhoodDepth() uint8 {
 	return 0
 }
 
