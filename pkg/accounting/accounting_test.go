@@ -225,6 +225,59 @@ func TestAccountingOverflowReserve(t *testing.T) {
 	}
 }
 
+func TestAccountingOverflowSurplusBalance(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	settlement := mockSettlement.NewSettlement()
+
+	acc, err := accounting.NewAccounting(testPaymentThresholdLarge, 0, 0, logger, store, settlement, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Try Debiting a large amount to peer so balance is large positive
+	err = acc.Debit(peer1Addr, testPaymentThresholdLarge-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Notify of incoming payment from same peer, so balance goes to 0 with surplusbalance 2
+	err = acc.NotifyPayment(peer1Addr, math.MaxInt64)
+	if err != nil {
+		t.Fatal("Unexpected overflow from  NotifyPayment")
+	}
+	// sanity check surplus balance
+	val, err := acc.SurplusBalance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Surplusbalance")
+	}
+	if val != 2 {
+		t.Fatal("Not expected surplus balance")
+	}
+	// sanity check balance
+	val, err = acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Balance")
+	}
+	if val != 0 {
+		t.Fatal("Unexpected balance")
+	}
+	// Notify of incoming payment from same peer, further decreasing balance, this should overflow
+	err = acc.NotifyPayment(peer1Addr, math.MaxInt64)
+	if err == nil {
+		t.Fatal("Expected overflow from NotifyPayment")
+	}
+	// If we had other error, assert fail
+	if !errors.Is(err, accounting.ErrOverflow) {
+		t.Fatal("Expected overflow error from NotifyPayment")
+	}
+
+}
 func TestAccountingOverflowNotifyPayment(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -525,6 +578,113 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	}
 	if balance != 0 {
 		t.Fatalf("expected balance to be reset. got %d", balance)
+	}
+}
+
+func TestAccountingSurplusBalance(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	settlement := mockSettlement.NewSettlement()
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 0, 0, logger, store, settlement, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Try Debiting a large amount to peer so balance is large positive
+	err = acc.Debit(peer1Addr, testPaymentThreshold-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Notify of incoming payment from same peer, so balance goes to 0 with surplusbalance 2
+	err = acc.NotifyPayment(peer1Addr, testPaymentThreshold+1)
+	if err != nil {
+		t.Fatal("Unexpected overflow from doable NotifyPayment")
+	}
+	//sanity check surplus balance
+	val, err := acc.SurplusBalance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Surplusbalance")
+	}
+	if val != 2 {
+		t.Fatal("Not expected surplus balance")
+	}
+	//sanity check balance
+	val, err = acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Balance")
+	}
+	if val != 0 {
+		t.Fatal("Not expected balance")
+	}
+	// Notify of incoming payment from same peer, so balance goes to 0 with surplusbalance 10002 (testpaymentthreshold+2)
+	err = acc.NotifyPayment(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal("Unexpected error from NotifyPayment")
+	}
+	//sanity check surplus balance
+	val, err = acc.SurplusBalance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Surplusbalance")
+	}
+	if val != testPaymentThreshold+2 {
+		t.Fatal("Unexpected surplus balance")
+	}
+	//sanity check balance
+	val, err = acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Balance")
+	}
+	if val != 0 {
+		t.Fatal("Not expected balance, expected 0")
+	}
+	// Debit for same peer, so balance stays 0 with surplusbalance decreasing to 2
+	err = acc.Debit(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal("Unexpected error from Credit")
+	}
+	// samity check surplus balance
+	val, err = acc.SurplusBalance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Surplusbalance")
+	}
+	if val != 2 {
+		t.Fatal("Unexpected surplus balance")
+	}
+	//sanity check balance
+	val, err = acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Balance")
+	}
+	if val != 0 {
+		t.Fatal("Not expected balance, expected 0")
+	}
+	// Debit for same peer, so balance goes to 9998 (testpaymentthreshold - 2) with surplusbalance decreasing to 0
+	err = acc.Debit(peer1Addr, testPaymentThreshold)
+	if err != nil {
+		t.Fatal("Unexpected error from NotifyPayment")
+	}
+	// samity check surplus balance
+	val, err = acc.SurplusBalance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Surplusbalance")
+	}
+	if val != 0 {
+		t.Fatal("Unexpected surplus balance")
+	}
+	//sanity check balance
+	val, err = acc.Balance(peer1Addr)
+	if err != nil {
+		t.Fatal("Error checking Balance")
+	}
+	if val != testPaymentThreshold-2 {
+		t.Fatal("Not expected balance, expected 0")
 	}
 }
 

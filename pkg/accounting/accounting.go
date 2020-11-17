@@ -54,7 +54,6 @@ type accountingPeer struct {
 	lock             sync.Mutex // lock to be held during any accounting action for this peer
 	reservedBalance  uint64     // amount currently reserved for active peer interaction
 	paymentThreshold uint64     // the threshold at which the peer expects us to pay
-	surplus          bool       // signals wether peer has surplus to be used for debiting
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -306,13 +305,14 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	cost := price
 
 	// see if peer has surplus balance to deduct this transaction of
-	if accountingPeer.surplus {
-		surplusBalance, err := a.SurplusBalance(peer)
-		if err != nil {
-			if !errors.Is(err, ErrPeerNoBalance) {
-				return fmt.Errorf("failed to get surplus balance: %w", err)
-			}
+
+	surplusBalance, err := a.SurplusBalance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return fmt.Errorf("failed to get surplus balance: %w", err)
 		}
+	}
+	if surplusBalance > 0 {
 
 		// get new surplus balance after deduct
 		newSurplusBalance, err := subtractI64mU64(surplusBalance, price)
@@ -326,16 +326,11 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 			if err != nil {
 				return fmt.Errorf("failed to persist surplus balance: %w", err)
 			}
-			if newSurplusBalance == 0 {
-				// if we have run out of surplus balance, let's set surplus flag to false
-				accountingPeer.surplus = false
-			}
 			return nil
 		}
 
 		// if we still have something to debit, than have run out of surplus balance,
 		// let's set surplus flag to false and store 0 as surplus balance
-		accountingPeer.surplus = false
 		err = a.store.Put(peerSurplusBalanceKey(peer), 0)
 		if err != nil {
 			return fmt.Errorf("failed to persist surplus balance: %w", err)
@@ -435,8 +430,6 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 			reservedBalance: 0,
 			// initially assume the peer has the same threshold as us
 			paymentThreshold: a.paymentThreshold,
-			// set surplus to true, so first debit will try using surplus, and will set this to false if there's none
-			surplus: true,
 		}
 		a.accountingPeers[peer.String()] = peerData
 	}
@@ -553,8 +546,6 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		if err != nil {
 			return fmt.Errorf("failed to persist surplus balance: %w", err)
 		}
-
-		accountingPeer.surplus = true
 	}
 
 	return nil
