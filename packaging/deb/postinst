@@ -23,6 +23,7 @@ fi
 
 if [ "$1" = "configure" ]; then
     /usr/bin/bee init --config /etc/bee/bee.yaml
+    chown -R bee:bee /var/lib/bee/keys
     if [ -f /var/lib/bee/keys/swarm.key ]; then
         parse_json() { echo $1|sed -e 's/[{}]/''/g'|sed -e 's/", "/'\",\"'/g'|sed -e 's/" ,"/'\",\"'/g'|sed -e 's/" , "/'\",\"'/g'|sed -e 's/","/'\"---SEPERATOR---\"'/g'|awk -F=':' -v RS='---SEPERATOR---' "\$1~/\"$2\"/ {print}"|sed -e "s/\"$2\"://"|tr -d "\n\t"|sed -e 's/\\"/"/g'|sed -e 's/\\\\/\\/g'|sed -e 's/^[ \t]*//g'|sed -e 's/^"//' -e 's/"$//' ; }
         echo "Prefund this address $(parse_json $(cat /var/lib/bee/keys/swarm.key) address)"
