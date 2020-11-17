@@ -25,9 +25,9 @@ import (
 func TestPinFilesHandler(t *testing.T) {
 	var (
 		fileUploadResource      = "/files"
-		pinFilesResource        = "/pinning/files"
+		pinFilesResource        = "/pin/files"
 		pinFilesAddressResource = func(addr string) string { return pinFilesResource + "/" + addr }
-		pinChunksResource       = "/pinning/chunks"
+		pinChunksResource       = "/pin/chunks"
 
 		simpleData = []byte("this is a simple text")
 

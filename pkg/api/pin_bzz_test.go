@@ -26,9 +26,9 @@ import (
 func TestPinBzzHandler(t *testing.T) {
 	var (
 		dirUploadResource     = "/dirs"
-		pinBzzResource        = "/pinning/bzz"
+		pinBzzResource        = "/pin/bzz"
 		pinBzzAddressResource = func(addr string) string { return pinBzzResource + "/" + addr }
-		pinChunksResource     = "/pinning/chunks"
+		pinChunksResource     = "/pin/chunks"
 
 		mockStorer       = mock.NewStorer()
 		mockStatestore   = statestore.NewStateStore()

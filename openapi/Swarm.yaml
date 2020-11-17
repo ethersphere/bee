@@ -474,7 +474,7 @@ paths:
         default:
           description: Default response
 
-  '/pinning/chunks/{address}':
+  '/pin/chunks/{address}':
     parameters:
         - in: path
           name: address
@@ -538,7 +538,7 @@ paths:
         default:
           description: Default response
 
-  '/pinning/chunks':
+  '/pin/chunks':
     get:
       summary: Get list of pinned chunks
       tags:
@@ -557,7 +557,7 @@ paths:
         default:
           description: Default response
 
-  '/pinning/bytes/{address}':
+  '/pin/bytes/{address}':
     parameters:
         - in: path
           name: address
@@ -604,7 +604,7 @@ paths:
         default:
           description: Default response
 
-  '/pinning/files/{address}':
+  '/pin/files/{address}':
     parameters:
         - in: path
           name: address
@@ -651,7 +651,7 @@ paths:
         default:
           description: Default response
 
-  '/pinning/bzz/{address}':
+  '/pin/bzz/{address}':
     parameters:
         - in: path
           name: address

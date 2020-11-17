@@ -25,9 +25,9 @@ import (
 func TestPinBytesHandler(t *testing.T) {
 	var (
 		bytesUploadResource     = "/bytes"
-		pinBytesResource        = "/pinning/bytes"
+		pinBytesResource        = "/pin/bytes"
 		pinBytesAddressResource = func(addr string) string { return pinBytesResource + "/" + addr }
-		pinChunksResource       = "/pinning/chunks"
+		pinChunksResource       = "/pin/chunks"
 
 		simpleData = []byte("this is a simple text")
 

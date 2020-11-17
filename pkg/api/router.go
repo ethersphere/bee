@@ -120,7 +120,7 @@ func (s *server) setupRouting() {
 		})),
 	)
 
-	handle(router, "/pinning/chunks/{address}", web.ChainHandlers(
+	handle(router, "/pin/chunks/{address}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getPinnedChunk),
@@ -128,14 +128,14 @@ func (s *server) setupRouting() {
 			"DELETE": http.HandlerFunc(s.unpinChunk),
 		})),
 	)
-	handle(router, "/pinning/chunks", web.ChainHandlers(
+	handle(router, "/pin/chunks", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.listPinnedChunks),
 		})),
 	)
 
-	handle(router, "/pinning/bytes/{address}", web.ChainHandlers(
+	handle(router, "/pin/bytes/{address}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST":   http.HandlerFunc(s.pinBytes),
@@ -143,7 +143,7 @@ func (s *server) setupRouting() {
 		})),
 	)
 
-	handle(router, "/pinning/files/{address}", web.ChainHandlers(
+	handle(router, "/pin/files/{address}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST":   http.HandlerFunc(s.pinFile),
@@ -151,7 +151,7 @@ func (s *server) setupRouting() {
 		})),
 	)
 
-	handle(router, "/pinning/bzz/{address}", web.ChainHandlers(
+	handle(router, "/pin/bzz/{address}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST":   http.HandlerFunc(s.pinBzz),
