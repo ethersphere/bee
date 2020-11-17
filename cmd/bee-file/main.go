@@ -253,7 +253,7 @@ If --output-dir is set, the retrieved file will be written to the speficied dire
 	c.Flags().BoolVarP(&outFileForce, "force", "f", false, "overwrite existing output file")
 	c.Flags().StringVarP(&outDir, "output-dir", "d", "", "save directory")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
-	c.Flags().IntVar(&port, "port", 8080, "api port")
+	c.Flags().IntVar(&port, "port", 1633, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().BoolVarP(&retrieve, "retrieve", "r", false, "retrieve file from referenced entry")
 	c.Flags().BoolVar(&useHttp, "http", false, "save entry to bee http api")

@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=build /src/dist/bee /usr/local/bin/bee
 
-EXPOSE 6060 7070 8080
+EXPOSE 1633 1634 1635
 USER bee
 WORKDIR /home/bee
 
