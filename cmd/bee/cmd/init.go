@@ -42,10 +42,7 @@ func (c *command) initInitCmd() (err error) {
 			}
 
 			_, err = c.configureSigner(cmd, logger)
-			if err != nil {
-				return err
-			}
-			return nil
+			return err
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return c.config.BindPFlags(cmd.Flags())
