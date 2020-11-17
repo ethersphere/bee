@@ -4,15 +4,13 @@ if [ "$1" = "configure" ]; then
     if [ -z "$2" ]; then
         . /usr/share/debconf/confmodule
 
-        # db_get bee/geth-endpoint
-
         db_input high bee/geth-endpoint || true
         if db_go; then
             db_get bee/geth-endpoint
             grep -v BEE_SWAP_ENDPOINT /etc/default/bee > /etc/default/bee.tmp
             echo "BEE_SWAP_ENDPOINT=$RET" >> /etc/default/bee.tmp && mv /etc/default/bee.tmp /etc/default/bee
         fi
-        if [ ! -f /var/lib/bee/keys/swarm.key ]; then
+        if [ ! -f /var/lib/bee/keys/libp2p.key ]; then
             /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null 2>&1
             chown -R bee:bee /var/lib/bee/keys
         fi
