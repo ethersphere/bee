@@ -8,8 +8,4 @@ fi
 if [ $1 -eq 2 ] ; then
     # Upgrade
     systemctl --no-reload restart bee.service &>/dev/null || :
-<<<<<<< HEAD
 fi
-=======
-fi
->>>>>>> b77aed6b21d4462989bfbfaaea4f1b62fc0ddc31
