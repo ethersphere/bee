@@ -72,6 +72,7 @@ func (d *mock) AddPeers(_ context.Context, addrs ...swarm.Address) error {
 
 	return nil
 }
+
 func (d *mock) Connected(ctx context.Context, addr swarm.Address) error {
 	return d.AddPeers(ctx, addr)
 }
@@ -84,8 +85,36 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
-	return d.closestPeer, d.closestPeerErr
+func (d *mock) ClosestPeer(_ swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+	if len(skipPeers) == 0 {
+		return d.closestPeer, d.closestPeerErr
+	}
+
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	skipPeer := false
+
+	for _, p := range d.peers {
+		for _, a := range skipPeers {
+			if a.Equal(p) {
+				skipPeer = true
+				break
+			}
+		}
+		if skipPeer {
+			skipPeer = false
+			continue
+		}
+
+		peerAddr = p
+	}
+
+	if peerAddr.IsZero() {
+		return peerAddr, topology.ErrNotFound
+	}
+
+	return peerAddr, nil
 }
 
 func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {

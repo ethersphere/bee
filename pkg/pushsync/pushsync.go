@@ -45,7 +45,7 @@ type Receipt struct {
 type PushSync struct {
 	streamer      p2p.StreamerDisconnecter
 	storer        storage.Putter
-	peerSuggester topology.Peerer
+	peerSuggester topology.ClosestPeerer
 	tagger        *tags.Tags
 	validator     swarm.ValidatorWithCallback
 	logger        logging.Logger
@@ -57,11 +57,11 @@ type PushSync struct {
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, peerer topology.Peerer, tagger *tags.Tags, validator swarm.ValidatorWithCallback, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, validator swarm.ValidatorWithCallback, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		streamer:      streamer,
 		storer:        storer,
-		peerSuggester: peerer,
+		peerSuggester: closestPeerer,
 		tagger:        tagger,
 		validator:     validator,
 		logger:        logger,
@@ -247,42 +247,31 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		}
 
 		// find next closes peer
-		var (
-			peer swarm.Address
-			err  error
-		)
+		peer, err := ps.peerSuggester.ClosestPeer(ch.Address(), skipPeers...)
+		if err != nil {
+			if errors.Is(err, topology.ErrNotFound) {
+				// NOTE: needed for tests
+				skipPeers = append(skipPeers, peer)
+				continue
+			}
 
-		if i == 0 {
-			peer, err = ps.peerSuggester.ClosestPeer(ch.Address())
-			if err != nil {
-				if errors.Is(err, topology.ErrNotFound) {
-					// NOTE: needed for tests
-					continue
-				}
-
-				if errors.Is(err, topology.ErrWantSelf) {
-					// this is to make sure that the sent number does not diverge from the synced counter
-					t, err := ps.tagger.Get(ch.TagID())
-					if err == nil && t != nil {
-						err = t.Inc(tags.StateSent)
-						if err != nil {
-							return nil, err
-						}
+			if errors.Is(err, topology.ErrWantSelf) {
+				// this is to make sure that the sent number does not diverge from the synced counter
+				t, err := ps.tagger.Get(ch.TagID())
+				if err == nil && t != nil {
+					err = t.Inc(tags.StateSent)
+					if err != nil {
+						return nil, err
 					}
-
-					// if you are the closest node return a receipt immediately
-					return &Receipt{
-						Address: ch.Address(),
-					}, nil
 				}
 
-				return nil, fmt.Errorf("closest peer: %w", err)
+				// if you are the closest node return a receipt immediately
+				return &Receipt{
+					Address: ch.Address(),
+				}, nil
 			}
-		} else {
-			peer, err = ps.closestPeer(ch.Address(), skipPeers)
-			if err != nil {
-				return nil, fmt.Errorf("closest peer: %w", err)
-			}
+
+			return nil, fmt.Errorf("closest peer: %w", err)
 		}
 
 		// save found peer (to be skipped if there is some error with him)
@@ -363,49 +352,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}
 
 	return nil, topology.ErrNotFound
-}
-
-// closestPeer returns address of the peer that is closest to the chunk with
-// provided address addr. This function will ignore peers with addresses
-// provided in skipPeers.
-func (ps *PushSync) closestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
-	closest := swarm.Address{}
-	err := ps.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		for _, a := range skipPeers {
-			if a.Equal(peer) {
-				return false, false, nil
-			}
-		}
-		if closest.IsZero() {
-			closest = peer
-			return false, false, nil
-		}
-		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
-		if err != nil {
-			return false, false, fmt.Errorf("distance compare error. addr %s closest %s peer %s: %w", addr.String(), closest.String(), peer.String(), err)
-		}
-		switch dcmp {
-		case 0:
-			// do nothing
-		case -1:
-			// current peer is closer
-			closest = peer
-		case 1:
-			// closest is already closer to chunk
-			// do nothing
-		}
-		return false, false, nil
-	})
-	if err != nil {
-		return swarm.Address{}, err
-	}
-
-	// check if found
-	if closest.IsZero() {
-		return swarm.Address{}, topology.ErrNotFound
-	}
-
-	return closest, nil
 }
 
 func (ps *PushSync) blocklistPeer(peer swarm.Address) {
