@@ -17,9 +17,9 @@ data-dir: /var/lib/bee
 ## db capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # db-capacity: 5000000
 ## debug HTTP API listen address (default ":1635")
-# debug-api-addr: :1635
+# debug-api-addr: 127.0.0.1:1635
 ## enable debug HTTP API
-# debug-api-enable: true
+# debug-api-enable: false
 ## disable a set of sensitive features in the api
 # gateway-mode: false
 ## enable global pinning
