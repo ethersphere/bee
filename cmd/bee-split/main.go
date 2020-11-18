@@ -128,7 +128,7 @@ Chunks are saved in individual files, and the file names will be the hex address
 	c.Flags().StringVarP(&outdir, "output-dir", "d", "", "saves chunks to given directory")
 	c.Flags().Int64VarP(&inputLength, "count", "c", 0, "read at most this many bytes")
 	c.Flags().StringVar(&host, "host", "127.0.0.1", "api host")
-	c.Flags().IntVar(&port, "port", 8080, "api port")
+	c.Flags().IntVar(&port, "port", 1633, "api port")
 	c.Flags().BoolVar(&ssl, "ssl", false, "use ssl")
 	c.Flags().BoolVar(&useHttp, "http", false, "save chunks to bee http api")
 	c.Flags().StringVar(&verbosity, "info", "0", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
