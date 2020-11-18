@@ -235,7 +235,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 }
 
 // putSync adds an Item to the batch by updating required indexes:
-//  - put to indexes: retrieve, pull
+//  - put to indexes: retrieve, pull, gc
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
 func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
@@ -257,6 +257,10 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 		return false, 0, err
 	}
 	err = db.pullIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
+	gcSizeChange, err = db.setGC(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
