@@ -19,7 +19,7 @@ servers:
         default: 'localhost'
         description: Base address of the local bee node main API
       port:
-        default: 8080
+        default: 1633
         description: Service port provided in bee node config
 
   - url: 'http://{apiRoot}:{port}'
@@ -28,7 +28,7 @@ servers:
         default: 'localhost'
         description: Base address of the local bee node main API
       port:
-        default: 8080
+        default: 1633
         description: Service port provided in bee node config
 
 paths:

@@ -782,7 +782,7 @@ func removeOne(k *kademlia.Kad, peer swarm.Address) {
 	k.Disconnected(p2p.Peer{Address: peer})
 }
 
-const underlayBase = "/ip4/127.0.0.1/tcp/7070/dns/"
+const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 
 func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address) {
 	t.Helper()
