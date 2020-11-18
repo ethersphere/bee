@@ -90,6 +90,12 @@ func (s *server) setupRouting() {
 	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
+	router.Handle("/balances/compensated", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
+	})
+	router.Handle("/balances/compensated/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
+	})
 
 	router.Handle("/settlements", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.settlementsHandler),
