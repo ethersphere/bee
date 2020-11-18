@@ -13,7 +13,7 @@ if [ "$1" = "purge" ]; then
         deb-systemd-helper purge bee.service >/dev/null
         deb-systemd-helper unmask bee.service >/dev/null
     fi
-    userdel -r bee
+    # userdel -r bee
 fi
 
 
