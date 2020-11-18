@@ -416,8 +416,7 @@ func balanceKeyPeer(key []byte) (swarm.Address, error) {
 	return addr, nil
 }
 
-// NotifyPayment implements the PaymentObserver interface. It is called by
-// Settlement when we receive a payment.
+// NotifyPayment is called by Settlement when we receive a payment.
 func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
@@ -453,6 +452,18 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
+	return nil
+}
+
+// AsyncNotifyPayment calls notify payment in a go routine
+// This is needed when accounting needs to be notified but the accounting lock is already held
+func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount uint64) error {
+	go func() {
+		err := a.NotifyPayment(peer, amount)
+		if err != nil {
+			a.logger.Errorf("failed to notify accounting of payment: %v", err)
+		}
+	}()
 	return nil
 }
 
