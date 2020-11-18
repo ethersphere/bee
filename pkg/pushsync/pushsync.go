@@ -315,6 +315,15 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			continue
 		}
 
+		// if you manage to get a tag, just increment the respective counter
+		t, err := ps.tagger.Get(ch.TagID())
+		if err == nil && t != nil {
+			err = t.Inc(tags.StateSent)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		receiptRTTTimer := time.Now()
 		receipt, err := ps.receiveReceipt(ctx, r)
 		if err != nil {
@@ -327,15 +336,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			continue
 		}
 		ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
-
-		// if you manage to get a tag, just increment the respective counter
-		t, err := ps.tagger.Get(ch.TagID())
-		if err == nil && t != nil {
-			err = t.Inc(tags.StateSent)
-			if err != nil {
-				return nil, err
-			}
-		}
 
 		// Check if the receipt is valid
 		if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
