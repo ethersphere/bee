@@ -188,25 +188,25 @@ func (d *driver) Connected(ctx context.Context, addr swarm.Address) error {
 	return d.AddPeers(ctx, addr)
 }
 
-func (_ *driver) Disconnected(swarm.Address) {
+func (*driver) Disconnected(swarm.Address) {
 	// TODO: implement if necessary
 }
 
-func (_ *driver) NeighborhoodDepth() uint8 {
+func (*driver) NeighborhoodDepth() uint8 {
 	return 0
 }
 
 // EachPeer iterates from closest bin to farthest
-func (_ *driver) EachPeer(_ topology.EachPeerFunc) error {
+func (*driver) EachPeer(_ topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
 // EachPeerRev iterates from farthest bin to closest
-func (_ *driver) EachPeerRev(_ topology.EachPeerFunc) error {
+func (*driver) EachPeerRev(_ topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
-func (_ *driver) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+func (*driver) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	//TODO implement if necessary
 	return c, unsubscribe
 }
