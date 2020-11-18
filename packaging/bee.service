@@ -1,5 +1,5 @@
 [Unit]
-Description=Ethereum Swarm node
+Description=Bee - Ethereum Swarm node
 Documentation=https://swarm-gateways.net/bzz:/docs.swarm.eth/
 After=network.target
 
