@@ -318,6 +318,8 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 
 		// if nothing left for debiting, store new surplus balance and return from debit
 		if newSurplusBalance >= 0 {
+			a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is %d", peer, price, newSurplusBalance)
+
 			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
 			if err != nil {
 				return fmt.Errorf("failed to persist surplus balance: %w", err)
@@ -328,23 +330,27 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 			return nil
 		}
 
-		// if we still have something to debit, than have run out of surplus balance,
-		// let's store 0 as surplus balance
-		err = a.store.Put(peerSurplusBalanceKey(peer), 0)
-		if err != nil {
-			return fmt.Errorf("failed to persist surplus balance: %w", err)
-		}
-
 		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
 		debitIncrease, err := subtractU64mI64(price, surplusBalance)
 		if err != nil {
 			return err
 		}
+
 		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
 		if debitIncrease <= 0 {
 			return fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
 		}
 		cost = uint64(debitIncrease)
+
+		// if we still have something to debit, than have run out of surplus balance,
+		// let's store 0 as surplus balance
+		a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is 0", peer, debitIncrease)
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), 0)
+		if err != nil {
+			return fmt.Errorf("failed to persist surplus balance: %w", err)
+		}
+
 	}
 
 	currentBalance, err := a.Balance(peer)
@@ -538,6 +544,8 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		if increasedSurplus < surplus {
 			return ErrOverflow
 		}
+
+		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, surplusGrowth, increasedSurplus)
 
 		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
 		if err != nil {
