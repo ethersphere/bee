@@ -1,4 +1,4 @@
-Template: bee/geth-endpoint
+Template: bee/ethereum-endpoint
 Type: string
-Description: Set geth endpoint for bee.
- Bee has SWAP enabled by default and needs geth endpoint to operate.
+Description: Set ethereum endpoint for bee.
+ Bee has SWAP enabled by default and needs ethereum endpoint to operate.

@@ -4,9 +4,9 @@ if [ "$1" = "configure" ]; then
     if [ -z "$2" ]; then
         . /usr/share/debconf/confmodule
 
-        db_input high bee/geth-endpoint || true
+        db_input high bee/ethereum-endpoint || true
         if db_go; then
-            db_get bee/geth-endpoint
+            db_get bee/ethereum-endpoint
             grep -v BEE_SWAP_ENDPOINT /etc/default/bee > /etc/default/bee.tmp
             echo "BEE_SWAP_ENDPOINT=$RET" >> /etc/default/bee.tmp && mv /etc/default/bee.tmp /etc/default/bee
         fi
@@ -16,7 +16,8 @@ if [ "$1" = "configure" ]; then
         fi
         if [ -f /var/lib/bee/keys/swarm.key ]; then
             parse_json() { echo $1|sed -e 's/[{}]/''/g'|sed -e 's/", "/'\",\"'/g'|sed -e 's/" ,"/'\",\"'/g'|sed -e 's/" , "/'\",\"'/g'|sed -e 's/","/'\"---SEPERATOR---\"'/g'|awk -F=':' -v RS='---SEPERATOR---' "\$1~/\"$2\"/ {print}"|sed -e "s/\"$2\"://"|tr -d "\n\t"|sed -e 's/\\"/"/g'|sed -e 's/\\\\/\\/g'|sed -e 's/^[ \t]*//g'|sed -e 's/^"//' -e 's/"$//' ; }
-            echo "Prefund this address $(parse_json $(cat /var/lib/bee/keys/swarm.key) address)"
+            echo "Please make sure there is sufficient eth and bzz available on $(parse_json $(cat /var/lib/bee/keys/swarm.key) address)"
+            echo "You can get both goerli eth and goerli bzz from https://faucet.ethswarm.org"
         fi
     fi
 
