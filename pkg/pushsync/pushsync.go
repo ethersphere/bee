@@ -239,12 +239,25 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		lastErr   error
 	)
 
+	deferFuncs := make([]func(), 0)
+	defersFn := func() {
+		if len(deferFuncs) > 0 {
+			for _, deferFn := range deferFuncs {
+				deferFn()
+			}
+			deferFuncs = deferFuncs[:0]
+		}
+	}
+	defer defersFn()
+
 	for i := 0; i < maxPeers; i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
 		}
+
+		defersFn()
 
 		// find next closes peer
 		peer, err := ps.peerSuggester.ClosestPeer(ch.Address(), skipPeers...)
@@ -283,7 +296,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		if err != nil {
 			return nil, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
 		}
-		defer ps.accounting.Release(peer, receiptPrice)
+		deferFuncs = append(deferFuncs, func() { ps.accounting.Release(peer, receiptPrice) })
 
 		streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 		if err != nil {
@@ -291,7 +304,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			ps.logger.Debugf("pushsync-push: %w", lastErr)
 			continue
 		}
-		defer func() { go streamer.FullClose() }()
+		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
 
 		w, r := protobuf.NewWriterAndReader(streamer)
 		if err := ps.sendChunkDelivery(ctx, w, ch); err != nil {
