@@ -130,6 +130,8 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
-	w.Header().Set(TargetsRecoveryHeader, targets)
+	if targets != "" {
+		w.Header().Set(TargetsRecoveryHeader, targets)
+	}
 	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()))
 }
