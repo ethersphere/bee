@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,6 +18,51 @@ import (
 )
 
 const chequebookKey = "chequebook"
+
+func checkBalance(
+	ctx context.Context,
+	logger logging.Logger,
+	swapInitialDeposit uint64,
+	swapBackend transaction.Backend,
+	chainId int64,
+	overlayEthAddress common.Address,
+	erc20BindingFunc ERC20BindingFunc,
+	erc20Address common.Address,
+	backoffDuration time.Duration,
+	maxRetries uint64,
+) error {
+	timeoutCtx, cancel := context.WithTimeout(ctx, backoffDuration*time.Duration(maxRetries))
+	defer cancel()
+
+	erc20Token, err := erc20BindingFunc(erc20Address, swapBackend)
+	if err != nil {
+		return err
+	}
+
+	for {
+		balance, err := erc20Token.BalanceOf(&bind.CallOpts{
+			Context: timeoutCtx,
+		}, overlayEthAddress)
+		if err != nil {
+			return err
+		}
+
+		if balance.Cmp(big.NewInt(int64(swapInitialDeposit))) < 0 {
+			logger.Warningf("please make sure there is sufficient eth and bzz available on %x.", overlayEthAddress)
+			if chainId == 5 {
+				logger.Warning("on goerli you can get both goerli eth and goerli bzz from https://faucet.ethswarm.org.")
+			}
+			select {
+			case <-time.After(backoffDuration):
+			case <-timeoutCtx.Done():
+				return fmt.Errorf("insufficient token for initial deposit")
+			}
+			continue
+		}
+
+		return nil
+	}
+}
 
 // Init initialises the chequebook service.
 func Init(
@@ -52,24 +98,9 @@ func Init(
 
 		logger.Info("no chequebook found, deploying new one.")
 		if swapInitialDeposit != 0 {
-			erc20Token, err := erc20BindingFunc(erc20Address, swapBackend)
+			err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20BindingFunc, erc20Address, 20*time.Second, 10)
 			if err != nil {
 				return nil, err
-			}
-
-			balance, err := erc20Token.BalanceOf(&bind.CallOpts{
-				Context: ctx,
-			}, overlayEthAddress)
-			if err != nil {
-				return nil, err
-			}
-
-			if balance.Cmp(big.NewInt(int64(swapInitialDeposit))) < 0 {
-				logger.Warningf("please make sure there is sufficient eth and bzz available on %x.", overlayEthAddress)
-				if chainId == 5 {
-					logger.Warning("on goerli you can get both goerli eth and goerli bzz from https://faucet.ethswarm.org.")
-				}
-				return nil, fmt.Errorf("insufficient token for initial deposit")
 			}
 		}
 
