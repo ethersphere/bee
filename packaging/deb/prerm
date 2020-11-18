@@ -1,0 +1,5 @@
+#!/bin/sh -e
+
+if [ -d /run/systemd/system ]; then
+        deb-systemd-invoke stop bee.service >/dev/null
+fi
