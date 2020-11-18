@@ -1,4 +1,4 @@
 if [ $1 -eq 0 ] ; then
     # Package removal, not upgrade
-    userdel -r bee
+    userdel -r bee >/dev/null || :
 fi
