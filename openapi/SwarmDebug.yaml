@@ -71,7 +71,50 @@ paths:
           description: Swarm address of peer
       responses:
         '200':
-          description: Peer is known
+          description: Balance with the specific peer
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Balance'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+ 
+ '/balances/compensated':
+    get:
+      summary: Get the compensated balances with all known peers
+      tags:
+        - Balance
+      responses:
+        '200':
+          description: Own balances compensated by surplus balances with all known peers
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Balances'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/balances/compensated/{address}':
+    get:
+      summary: Get the compensated balance with a specific peer
+      tags:
+        - Balance
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      responses:
+        '200':
+          description: Balance compensated by surplus balance with the specific peer
           content:
             application/json:
               schema:
