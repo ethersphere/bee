@@ -455,8 +455,8 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	return nil
 }
 
-// AsyncNotifyPayment calls notify payment in a go routine
-// This is needed when accounting needs to be notified but the accounting lock is already held
+// AsyncNotifyPayment calls notify payment in a go routine.
+// This is needed when accounting needs to be notified but the accounting lock is already held.
 func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount uint64) error {
 	go func() {
 		err := a.NotifyPayment(peer, amount)
