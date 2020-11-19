@@ -33,6 +33,7 @@ import (
 type testServerOptions struct {
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
+	PSSPublicKey    ecdsa.PublicKey
 	EthereumAddress common.Address
 	P2P             *p2pmock.Service
 	Pingpong        pingpong.Interface
@@ -57,7 +58,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	settlement := settlementmock.NewSettlement(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
-	s := debugapi.New(o.Overlay, o.PublicKey, o.EthereumAddress, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, swapserv, chequebook)
+	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.P2P, o.Pingpong, topologyDriver, o.Storer, logging.New(ioutil.Discard, 0), nil, o.Tags, acc, settlement, true, swapserv, chequebook)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 

@@ -16,10 +16,11 @@ import (
 )
 
 type addressesResponse struct {
-	Overlay   swarm.Address         `json:"overlay"`
-	Underlay  []multiaddr.Multiaddr `json:"underlay"`
-	Ethereum  common.Address        `json:"ethereum"`
-	PublicKey string                `json:"public_key"`
+	Overlay      swarm.Address         `json:"overlay"`
+	Underlay     []multiaddr.Multiaddr `json:"underlay"`
+	Ethereum     common.Address        `json:"ethereum"`
+	PublicKey    string                `json:"public_key"`
+	PSSPublicKey string                `json:"pss_public_key"`
 }
 
 func (s *server) addressesHandler(w http.ResponseWriter, r *http.Request) {
@@ -30,9 +31,10 @@ func (s *server) addressesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonhttp.OK(w, addressesResponse{
-		Overlay:   s.Overlay,
-		Underlay:  underlay,
-		Ethereum:  s.EthereumAddress,
-		PublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.PublicKey)),
+		Overlay:      s.Overlay,
+		Underlay:     underlay,
+		Ethereum:     s.EthereumAddress,
+		PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.PublicKey)),
+		PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.PSSPublicKey)),
 	})
 }
