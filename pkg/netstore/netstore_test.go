@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	validatormock "github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -98,12 +98,12 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 }
 
 func TestRecovery(t *testing.T) {
-	hookWasCalled := make(chan bool, 1)
+	callbackWasCalled := make(chan bool, 1)
 	rec := &mockRecovery{
-		hookC: hookWasCalled,
+		callbackC: callbackWasCalled,
 	}
 
-	retrieve, _, nstore := newRetrievingNetstore(rec)
+	retrieve, _, nstore := newRetrievingNetstore(rec.recovery)
 	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
 	ctx := context.Background()
@@ -115,10 +115,10 @@ func TestRecovery(t *testing.T) {
 	}
 
 	select {
-	case <-hookWasCalled:
+	case <-callbackWasCalled:
 		break
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("recovery hook was not called")
+		t.Fatal("recovery callback was not called")
 	}
 }
 
@@ -136,19 +136,11 @@ func TestInvalidRecoveryFunction(t *testing.T) {
 }
 
 // returns a mock retrieval protocol, a mock local storage and a netstore
-func newRetrievingNetstore(rec *mockRecovery) (ret *retrievalMock, mockStore, ns storage.Storer) {
+func newRetrievingNetstore(rec recovery.Callback) (ret *retrievalMock, mockStore, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 0)
-	validator := swarm.NewChunkValidator(validatormock.NewValidator(true))
-
-	var nstore storage.Storer
-	if rec != nil {
-		nstore = netstore.New(store, rec.recovery, retrieve, logger, validator)
-	} else {
-		nstore = netstore.New(store, nil, retrieve, logger, validator)
-	}
-	return retrieve, store, nstore
+	return retrieve, store, netstore.New(store, rec, retrieve, logger)
 }
 
 type retrievalMock struct {
@@ -169,13 +161,12 @@ func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (
 }
 
 type mockRecovery struct {
-	hookC chan bool
+	callbackC chan bool
 }
 
 // Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets pss.Targets) error {
-	mr.hookC <- true
-	return nil
+func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets pss.Targets) {
+	mr.callbackC <- true
 }
 
 func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {

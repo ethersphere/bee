@@ -16,27 +16,26 @@ import (
 )
 
 const (
-	// RecoveryTopicText is the string used to construct the recovery topic.
-	RecoveryTopicText = "RECOVERY"
+	// TopicText is the string used to construct the recovery topic.
+	TopicText = "RECOVERY"
 )
 
 var (
-	// RecoveryTopic is the topic used for repairing globally pinned chunks.
-	RecoveryTopic = pss.NewTopic(RecoveryTopicText)
+	// Topic is the topic used for repairing globally pinned chunks.
+	Topic = pss.NewTopic(TopicText)
 )
 
-// RecoveryHook defines code to be executed upon failing to retrieve chunks.
-type RecoveryHook func(chunkAddress swarm.Address, targets pss.Targets) error
+// Callback defines code to be executed upon failing to retrieve chunks.
+type Callback func(chunkAddress swarm.Address, targets pss.Targets)
 
-// NewRecoveryHook returns a new RecoveryHook with the sender function defined.
-func NewRecoveryHook(pssSender pss.Sender) RecoveryHook {
-	privk := crypto.Secp256k1PrivateKeyFromBytes([]byte(RecoveryTopicText))
+// NewsCallback returns a new Callback with the sender function defined.
+func NewCallback(pssSender pss.Sender) Callback {
+	privk := crypto.Secp256k1PrivateKeyFromBytes([]byte(TopicText))
 	recipient := privk.PublicKey
-	return func(chunkAddress swarm.Address, targets pss.Targets) error {
+	return func(chunkAddress swarm.Address, targets pss.Targets) {
 		payload := chunkAddress
 		ctx := context.Background()
-		err := pssSender.Send(ctx, RecoveryTopic, payload.Bytes(), &recipient, targets)
-		return err
+		_ = pssSender.Send(ctx, Topic, payload.Bytes(), &recipient, targets)
 	}
 }
 

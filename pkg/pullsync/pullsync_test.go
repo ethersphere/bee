@@ -217,6 +217,20 @@ func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 
 func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.PullStorage) {
 	storage := mock.NewPullStorage(o...)
+	c := make(chan swarm.Chunk)
+	validator := &mockValidator{c}
 	logger := logging.New(ioutil.Discard, 0)
-	return pullsync.New(s, storage, logger), storage
+	return pullsync.New(s, storage, validator, logger), storage
+}
+
+type mockValidator struct {
+	c chan swarm.Chunk
+}
+
+func (*mockValidator) Validate(swarm.Chunk) bool {
+	return true
+}
+
+func (mv *mockValidator) ValidWithCallback(c swarm.Chunk) (bool, func()) {
+	return true, func() { mv.c <- c }
 }

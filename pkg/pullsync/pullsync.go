@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -57,12 +56,13 @@ type Interface interface {
 }
 
 type Syncer struct {
-	streamer p2p.Streamer
-	metrics  metrics
-	logger   logging.Logger
-	storage  pullstorage.Storer
-	quit     chan struct{}
-	wg       sync.WaitGroup
+	streamer  p2p.Streamer
+	metrics   metrics
+	logger    logging.Logger
+	storage   pullstorage.Storer
+	quit      chan struct{}
+	wg        sync.WaitGroup
+	validator swarm.ValidatorWithCallback
 
 	ruidMtx sync.Mutex
 	ruidCtx map[uint32]func()
@@ -71,15 +71,16 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, logger logging.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, validator swarm.ValidatorWithCallback, logger logging.Logger) *Syncer {
 	return &Syncer{
-		streamer: streamer,
-		storage:  storage,
-		metrics:  newMetrics(),
-		logger:   logger,
-		ruidCtx:  make(map[uint32]func()),
-		wg:       sync.WaitGroup{},
-		quit:     make(chan struct{}),
+		streamer:  streamer,
+		storage:   storage,
+		metrics:   newMetrics(),
+		validator: validator,
+		logger:    logger,
+		ruidCtx:   make(map[uint32]func()),
+		wg:        sync.WaitGroup{},
+		quit:      make(chan struct{}),
 	}
 }
 
@@ -212,8 +213,17 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		delete(wantChunks, addr.String())
 		s.metrics.DbOpsCounter.Inc()
 		s.metrics.DeliveryCounter.Inc()
-		if err = s.storage.Put(ctx, storage.ModePutSync, swarm.NewChunk(addr, delivery.Data)); err != nil {
+
+		chunk := swarm.NewChunk(addr, delivery.Data)
+		valid, callback := s.validator.ValidWithCallback(chunk)
+		if !valid {
+			return 0, ru.Ruid, swarm.ErrInvalidChunk
+		}
+		if err = s.storage.Put(ctx, storage.ModePutSync, chunk); err != nil {
 			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", err)
+		}
+		if callback != nil {
+			go callback()
 		}
 	}
 	return offer.Topmost, ru.Ruid, nil
