@@ -29,6 +29,11 @@ const (
 	streamName      = "pushsync"
 )
 
+const (
+	maxPeers          = 5
+	blocklistDuration = time.Minute
+)
+
 type PushSyncer interface {
 	PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error)
 }
@@ -38,7 +43,7 @@ type Receipt struct {
 }
 
 type PushSync struct {
-	streamer      p2p.Streamer
+	streamer      p2p.StreamerDisconnecter
 	storer        storage.Putter
 	peerSuggester topology.ClosestPeerer
 	tagger        *tags.Tags
@@ -52,7 +57,7 @@ type PushSync struct {
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.Streamer, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, validator swarm.ValidatorWithCallback, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, validator swarm.ValidatorWithCallback, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		streamer:      streamer,
 		storer:        storer,
@@ -229,80 +234,146 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-push", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 
-	peer, err := ps.peerSuggester.ClosestPeer(ch.Address())
-	if err != nil {
-		if errors.Is(err, topology.ErrWantSelf) {
-			// this is to make sure that the sent number does not diverge from the synced counter
-			t, err := ps.tagger.Get(ch.TagID())
-			if err == nil && t != nil {
-				err = t.Inc(tags.StateSent)
-				if err != nil {
-					return nil, err
-				}
+	var (
+		skipPeers []swarm.Address
+		lastErr   error
+	)
+
+	deferFuncs := make([]func(), 0)
+	defersFn := func() {
+		if len(deferFuncs) > 0 {
+			for _, deferFn := range deferFuncs {
+				deferFn()
+			}
+			deferFuncs = deferFuncs[:0]
+		}
+	}
+	defer defersFn()
+
+	for i := 0; i < maxPeers; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		defersFn()
+
+		// find next closes peer
+		peer, err := ps.peerSuggester.ClosestPeer(ch.Address(), skipPeers...)
+		if err != nil {
+			if errors.Is(err, topology.ErrNotFound) {
+				// NOTE: needed for tests
+				skipPeers = append(skipPeers, peer)
+				continue
 			}
 
-			// if you are the closest node return a receipt immediately
-			return &Receipt{
-				Address: ch.Address(),
-			}, nil
+			if errors.Is(err, topology.ErrWantSelf) {
+				// this is to make sure that the sent number does not diverge from the synced counter
+				t, err := ps.tagger.Get(ch.TagID())
+				if err == nil && t != nil {
+					err = t.Inc(tags.StateSent)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				// if you are the closest node return a receipt immediately
+				return &Receipt{
+					Address: ch.Address(),
+				}, nil
+			}
+
+			return nil, fmt.Errorf("closest peer: %w", err)
 		}
-		return nil, fmt.Errorf("closest peer: %w", err)
-	}
 
-	// compute the price we pay for this receipt and reserve it for the rest of this function
-	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
-	err = ps.accounting.Reserve(ctx, peer, receiptPrice)
-	if err != nil {
-		return nil, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
-	}
-	defer ps.accounting.Release(peer, receiptPrice)
+		// save found peer (to be skipped if there is some error with him)
+		skipPeers = append(skipPeers, peer)
 
-	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
-	if err != nil {
-		return nil, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
-	}
-	defer func() { go streamer.FullClose() }()
+		// compute the price we pay for this receipt and reserve it for the rest of this function
+		receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
+		err = ps.accounting.Reserve(ctx, peer, receiptPrice)
+		if err != nil {
+			return nil, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
+		}
+		deferFuncs = append(deferFuncs, func() { ps.accounting.Release(peer, receiptPrice) })
 
-	w, r := protobuf.NewWriterAndReader(streamer)
-	if err := ps.sendChunkDelivery(ctx, w, ch); err != nil {
-		_ = streamer.Reset()
-		return nil, fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
-	}
+		streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+		if err != nil {
+			lastErr = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
+			ps.logger.Debugf("pushsync-push: %w", lastErr)
+			continue
+		}
+		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
 
-	//  if you manage to get a tag, just increment the respective counter
-	t, err := ps.tagger.Get(ch.TagID())
-	if err == nil && t != nil {
-		err = t.Inc(tags.StateSent)
+		w, r := protobuf.NewWriterAndReader(streamer)
+		if err := ps.sendChunkDelivery(ctx, w, ch); err != nil {
+			_ = streamer.Reset()
+			lastErr = fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
+			ps.logger.Debugf("pushsync-push: %w", lastErr)
+			if errors.Is(err, context.DeadlineExceeded) {
+				ps.blocklistPeer(peer)
+			}
+			continue
+		}
+
+		// if you manage to get a tag, just increment the respective counter
+		t, err := ps.tagger.Get(ch.TagID())
+		if err == nil && t != nil {
+			err = t.Inc(tags.StateSent)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		receiptRTTTimer := time.Now()
+		receipt, err := ps.receiveReceipt(ctx, r)
+		if err != nil {
+			_ = streamer.Reset()
+			lastErr = fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
+			ps.logger.Debugf("pushsync-push: %w", lastErr)
+			if errors.Is(err, context.DeadlineExceeded) {
+				ps.blocklistPeer(peer)
+			}
+			continue
+		}
+		ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
+
+		// Check if the receipt is valid
+		if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
+			ps.metrics.InvalidReceiptReceived.Inc()
+			_ = streamer.Reset()
+			return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
+		}
+
+		err = ps.accounting.Credit(peer, receiptPrice)
 		if err != nil {
 			return nil, err
 		}
+
+		rec := &Receipt{
+			Address: swarm.NewAddress(receipt.Address),
+		}
+
+		return rec, nil
 	}
 
-	receiptRTTTimer := time.Now()
-	receipt, err := ps.receiveReceipt(ctx, r)
-	if err != nil {
-		_ = streamer.Reset()
-		return nil, fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
-	}
-	ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
+	ps.logger.Tracef("pushsync-push: failed to push chunk %s: reached max peers of %v", ch.Address(), maxPeers)
 
-	// Check if the receipt is valid
-	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
-		ps.metrics.InvalidReceiptReceived.Inc()
-		_ = streamer.Reset()
-		return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
-	err = ps.accounting.Credit(peer, receiptPrice)
-	if err != nil {
-		return nil, err
-	}
+	return nil, topology.ErrNotFound
+}
 
-	rec := &Receipt{
-		Address: swarm.NewAddress(receipt.Address),
+func (ps *PushSync) blocklistPeer(peer swarm.Address) {
+	if err := ps.streamer.Blocklist(peer, blocklistDuration); err != nil {
+		ps.logger.Errorf("pushsync-push: unable to block peer %s", peer)
+		ps.logger.Debugf("pushsync-push: blocking peer %s: %v", peer, err)
+	} else {
+		ps.logger.Warningf("pushsync-push: peer %s blocked as unresponsive", peer)
 	}
-
-	return rec, nil
 }
 
 func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Writer, p p2p.Peer, chunk swarm.Chunk) error {

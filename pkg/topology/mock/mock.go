@@ -21,6 +21,12 @@ type mock struct {
 	mtx             sync.Mutex
 }
 
+func WithPeers(peers ...swarm.Address) Option {
+	return optionFunc(func(d *mock) {
+		d.peers = peers
+	})
+}
+
 func WithAddPeersErr(err error) Option {
 	return optionFunc(func(d *mock) {
 		d.addPeersErr = err
@@ -66,6 +72,7 @@ func (d *mock) AddPeers(_ context.Context, addrs ...swarm.Address) error {
 
 	return nil
 }
+
 func (d *mock) Connected(ctx context.Context, addr swarm.Address) error {
 	return d.AddPeers(ctx, addr)
 }
@@ -78,26 +85,74 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address) (peerAddr swarm.Address, err error) {
-	return d.closestPeer, d.closestPeerErr
+func (d *mock) ClosestPeer(_ swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+	if len(skipPeers) == 0 {
+		return d.closestPeer, d.closestPeerErr
+	}
+
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	skipPeer := false
+
+	for _, p := range d.peers {
+		for _, a := range skipPeers {
+			if a.Equal(p) {
+				skipPeer = true
+				break
+			}
+		}
+		if skipPeer {
+			skipPeer = false
+			continue
+		}
+
+		peerAddr = p
+	}
+
+	if peerAddr.IsZero() {
+		return peerAddr, topology.ErrNotFound
+	}
+
+	return peerAddr, nil
 }
 
 func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }
 
-func (_ *mock) NeighborhoodDepth() uint8 {
+func (*mock) NeighborhoodDepth() uint8 {
 	return 0
 }
 
 // EachPeer iterates from closest bin to farthest
-func (_ *mock) EachPeer(_ topology.EachPeerFunc) error {
-	panic("not implemented") // TODO: Implement
+func (d *mock) EachPeer(f topology.EachPeerFunc) (err error) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	for i, p := range d.peers {
+		_, _, err = f(p, uint8(i))
+		if err != nil {
+			return
+		}
+	}
+
+	return nil
 }
 
 // EachPeerRev iterates from farthest bin to closest
-func (_ *mock) EachPeerRev(_ topology.EachPeerFunc) error {
-	panic("not implemented") // TODO: Implement
+func (d *mock) EachPeerRev(f topology.EachPeerFunc) (err error) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	for i := len(d.peers) - 1; i >= 0; i-- {
+		_, _, err = f(d.peers[i], uint8(i))
+		if err != nil {
+			return
+		}
+	}
+
+	return nil
 }
 
 func (d *mock) MarshalJSON() ([]byte, error) {
