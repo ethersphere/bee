@@ -291,6 +291,12 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		logger.Debugf("using existing libp2p key")
 	}
 
+	overlayEthAddress, err := signer.EthereumAddress()
+	if err != nil {
+		return nil, err
+	}
+	logger.Infof("using ethereum address %x", overlayEthAddress)
+
 	return &signerConfig{
 		keystore:         keystore,
 		signer:           signer,
