@@ -138,6 +138,8 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookAddress'
+        default:
+          description: Default response
 
   '/chequebook/balance':
     get:
@@ -387,6 +389,8 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
+        default:
+          description: Default response
 
   '/welcome-message':
     get:
