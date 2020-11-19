@@ -165,26 +165,18 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
 func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
-	i, err := db.retrievalDataIndex.Get(item)
-	switch {
-	case err == nil:
-		exists = true
-		item.StoreTimestamp = i.StoreTimestamp
-		item.BinID = i.BinID
-	case errors.Is(err, leveldb.ErrNotFound):
-		// no chunk accesses
-		exists = false
-	default:
+	has, err := db.retrievalDataIndex.Has(item)
+	if err != nil {
 		return false, 0, err
 	}
-	if item.StoreTimestamp == 0 {
-		item.StoreTimestamp = now()
+	if has {
+		return true, 0, nil
 	}
-	if item.BinID == 0 {
-		item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
-		if err != nil {
-			return false, 0, err
-		}
+
+	item.StoreTimestamp = now()
+	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
+	if err != nil {
+		return false, 0, err
 	}
 
 	gcSizeChange, err = db.setGC(batch, item)
@@ -197,7 +189,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		return false, 0, err
 	}
 
-	return exists, gcSizeChange, nil
+	return false, gcSizeChange, nil
 }
 
 // putUpload adds an Item to the batch by updating required indexes:
@@ -235,7 +227,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 }
 
 // putSync adds an Item to the batch by updating required indexes:
-//  - put to indexes: retrieve, pull
+//  - put to indexes: retrieve, pull, gc
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
 func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
@@ -257,6 +249,10 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 		return false, 0, err
 	}
 	err = db.pullIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
+	gcSizeChange, err = db.setGC(batch, item)
 	if err != nil {
 		return false, 0, err
 	}

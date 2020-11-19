@@ -1,0 +1,4 @@
+Template: bee/ethereum-endpoint
+Type: string
+Description: Set ethereum endpoint for bee.
+ Bee has SWAP enabled by default and needs ethereum endpoint to operate.

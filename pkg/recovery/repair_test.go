@@ -30,40 +30,39 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-// TestRecoveryHook tests that a recovery hook can be created and called.
-func TestRecoveryHook(t *testing.T) {
-	// test variables needed to be correctly set for any recovery hook to reach the sender func
+// TestCallback tests that a  callback can be created and called.
+func TestCallback(t *testing.T) {
+	// test variables needed to be correctly set for any recovery callback to reach the sender func
 	chunkAddr := chunktesting.GenerateTestRandomChunk().Address()
 	targets := pss.Targets{[]byte{0xED}}
 
 	//setup the sender
-	hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+	callbackWasCalled := make(chan bool) // channel to check if callback is called
 	pssSender := &mockPssSender{
-		hookC: hookWasCalled,
+		callbackC: callbackWasCalled,
 	}
 
-	// create recovery hook and call it
-	recoveryHook := recovery.NewRecoveryHook(pssSender)
-	if err := recoveryHook(chunkAddr, targets); err != nil {
-		t.Fatal(err)
-	}
+	// create recovery callback and call it
+	recoveryCallback := recovery.NewCallback(pssSender)
+	go recoveryCallback(chunkAddr, targets)
+
 	select {
-	case <-hookWasCalled:
+	case <-callbackWasCalled:
 		break
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("recovery hook was not called")
+		t.Fatal("recovery callback was not called")
 	}
 }
 
-// RecoveryHookTestCase is a struct used as test cases for the TestRecoveryHookCalls func.
-type recoveryHookTestCase struct {
+// CallbackTestCase is a struct used as test cases for the TestCallbackCalls func.
+type recoveryCallbackTestCase struct {
 	name           string
 	ctx            context.Context
 	expectsFailure bool
 }
 
-// TestRecoveryHookCalls verifies that recovery hooks are being called as expected when net store attempts to get a chunk.
-func TestRecoveryHookCalls(t *testing.T) {
+// TestCallbackCalls verifies that recovery callbacks are being called as expected when net store attempts to get a chunk.
+func TestCallbackCalls(t *testing.T) {
 	// generate test chunk, store and publisher
 	c := chunktesting.GenerateTestRandomChunk()
 	ref := c.Address()
@@ -72,7 +71,7 @@ func TestRecoveryHookCalls(t *testing.T) {
 	// test cases variables
 	targetContext := sctx.SetTargets(context.Background(), target)
 
-	for _, tc := range []recoveryHookTestCase{
+	for _, tc := range []recoveryCallbackTestCase{
 		{
 			name:           "targets set in context",
 			ctx:            targetContext,
@@ -80,13 +79,13 @@ func TestRecoveryHookCalls(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			hookWasCalled := make(chan bool, 1) // channel to check if hook is called
+			callbackWasCalled := make(chan bool, 1) // channel to check if callback is called
 
 			// setup the sender
 			pssSender := &mockPssSender{
-				hookC: hookWasCalled,
+				callbackC: callbackWasCalled,
 			}
-			recoverFunc := recovery.NewRecoveryHook(pssSender)
+			recoverFunc := recovery.NewCallback(pssSender)
 			ns := newTestNetStore(t, recoverFunc)
 
 			// fetch test chunk
@@ -97,16 +96,16 @@ func TestRecoveryHookCalls(t *testing.T) {
 
 			// checks whether the callback is invoked or the test case times out
 			select {
-			case <-hookWasCalled:
+			case <-callbackWasCalled:
 				if !tc.expectsFailure {
 					return
 				}
-				t.Fatal("recovery hook was unexpectedly called")
+				t.Fatal("recovery callback was unexpectedly called")
 			case <-time.After(1000 * time.Millisecond):
 				if tc.expectsFailure {
 					return
 				}
-				t.Fatal("recovery hook was not called when expected")
+				t.Fatal("recovery callback was not called when expected")
 			}
 		})
 	}
@@ -212,7 +211,7 @@ func TestNewRepairHandler(t *testing.T) {
 }
 
 // newTestNetStore creates a test store with a set RemoteGet func.
-func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.Storer {
+func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Storer {
 	t.Helper()
 	storer := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 5)
@@ -231,7 +230,7 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.RecoveryHook) storage.S
 		streamtest.WithProtocols(server.Protocol()),
 	))
 	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil, nil)
-	ns := netstore.New(storer, recoveryFunc, retrieve, logger, nil)
+	ns := netstore.New(storer, recoveryFunc, retrieve, logger)
 	return ns
 }
 
@@ -247,11 +246,11 @@ func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
 }
 
 type mockPssSender struct {
-	hookC chan bool
+	callbackC chan bool
 }
 
 // Send mocks the pss Send function
 func (mp *mockPssSender) Send(ctx context.Context, topic pss.Topic, payload []byte, recipient *ecdsa.PublicKey, targets pss.Targets) error {
-	mp.hookC <- true
+	mp.callbackC <- true
 	return nil
 }

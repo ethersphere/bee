@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/sha3"
@@ -28,6 +29,10 @@ const (
 
 var (
 	NewHasher = sha3.NewLegacyKeccak256
+)
+
+var (
+	ErrInvalidChunk = errors.New("invalid chunk")
 )
 
 // Address represents an address in Swarm metric space of
@@ -163,29 +168,4 @@ func (c *chunk) String() string {
 
 func (c *chunk) Equal(cp Chunk) bool {
 	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
-}
-
-type Validator interface {
-	Validate(ch Chunk) (valid bool)
-}
-
-type chunkValidator struct {
-	set []Validator
-	Validator
-}
-
-func NewChunkValidator(v ...Validator) Validator {
-	return &chunkValidator{
-		set: v,
-	}
-}
-
-func (c *chunkValidator) Validate(ch Chunk) bool {
-	for _, v := range c.set {
-		if v.Validate(ch) {
-			return true
-		}
-	}
-
-	return false
 }

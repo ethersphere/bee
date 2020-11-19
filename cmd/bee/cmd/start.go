@@ -99,7 +99,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return err
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.keystore, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.keystore, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
 				DataDir:                c.config.GetString(optionNameDataDir),
 				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
 				Password:               signerConfig.password,
@@ -182,6 +182,7 @@ type signerConfig struct {
 	address          swarm.Address
 	publicKey        *ecdsa.PublicKey
 	libp2pPrivateKey *ecdsa.PrivateKey
+	pssPrivateKey    *ecdsa.PrivateKey
 	password         string
 }
 
@@ -207,7 +208,10 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		}
 		password = string(bytes.Trim(b, "\n"))
 	} else {
-		exists, err := keystore.Exists("swarm")
+		// if libp2p key exists we can assume all required keys exist
+		// so prompt for a password to unlock them
+		// otherwise prompt for new password with confirmation to create them
+		exists, err := keystore.Exists("libp2p")
 		if err != nil {
 			return nil, err
 		}
@@ -291,7 +295,19 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		logger.Debugf("using existing libp2p key")
 	}
 
-	overlayEthAddress, err := signer.EthereumAddress()
+	pssPrivateKey, created, err := keystore.Key("pss", password)
+	if err != nil {
+		return nil, fmt.Errorf("pss key: %w", err)
+	}
+	if created {
+		logger.Debugf("new pss key created")
+	} else {
+		logger.Debugf("using existing pss key")
+	}
+
+	logger.Infof("pss public key %x", crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey))
+  
+  overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +319,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		address:          address,
 		publicKey:        publicKey,
 		libp2pPrivateKey: libp2pPrivateKey,
+		pssPrivateKey:    pssPrivateKey,
 		password:         password,
 	}, nil
 }
