@@ -161,9 +161,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, err
 		}
 
-		// print ethereum address so users know which address we need to fund
-		logger.Infof("using ethereum address %x", overlayEthAddress)
-
 		chainID, err := swapBackend.ChainID(p2pCtx)
 		if err != nil {
 			logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
