@@ -73,7 +73,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				for _, ch := range chunks {
-					newRetrieveIndexesTestWithAccess(db, ch, storeTimestamp, wantTimestamp)(t)
+					newRetrieveIndexesTestWithAccess(db, ch, storeTimestamp, storeTimestamp)(t)
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
