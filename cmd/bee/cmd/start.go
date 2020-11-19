@@ -176,13 +176,11 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 }
 
 type signerConfig struct {
-	keystore         keystore.Service
 	signer           crypto.Signer
 	address          swarm.Address
 	publicKey        *ecdsa.PublicKey
 	libp2pPrivateKey *ecdsa.PrivateKey
 	pssPrivateKey    *ecdsa.PrivateKey
-	password         string
 }
 
 func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (config *signerConfig, err error) {
@@ -313,12 +311,10 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	logger.Infof("using ethereum address %x", overlayEthAddress)
 
 	return &signerConfig{
-		keystore:         keystore,
 		signer:           signer,
 		address:          address,
 		publicKey:        publicKey,
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,
-		password:         password,
 	}, nil
 }
