@@ -99,10 +99,9 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return err
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.keystore, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
 				DataDir:                c.config.GetString(optionNameDataDir),
 				DBCapacity:             c.config.GetUint64(optionNameDBCapacity),
-				Password:               signerConfig.password,
 				APIAddr:                c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr:           debugAPIAddr,
 				Addr:                   c.config.GetString(optionNameP2PAddr),
