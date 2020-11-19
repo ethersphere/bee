@@ -107,9 +107,11 @@ func TestModePutSync(t *testing.T) {
 				po := db.po(ch.Address())
 				binIDs[po]++
 
-				newRetrieveIndexesTest(db, ch, wantTimestamp, 0)(t)
+				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
 				newPullIndexTest(db, ch, binIDs[po], nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
+				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newIndexGCSizeTest(db)(t)
 			}
 		})
 	}
