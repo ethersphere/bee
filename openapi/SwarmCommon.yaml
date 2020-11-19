@@ -32,6 +32,8 @@ components:
           $ref: '#/components/schemas/EthereumAddress'
         public_key:
           $ref: '#/components/schemas/PublicKey'
+        pss_public_key:
+          $ref: '#/components/schemas/PublicKey'
 
     Balance:
       type: object

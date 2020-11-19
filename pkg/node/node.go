@@ -112,7 +112,7 @@ type Options struct {
 	SwapEnable             bool
 }
 
-func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey *ecdsa.PrivateKey, o Options) (*Bee, error) {
+func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, keystore keystore.Service, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (*Bee, error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -344,13 +344,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	// instantiate the pss object
-	swarmPrivateKey, _, err := keystore.Key("swarm", o.Password)
-	if err != nil {
-		return nil, fmt.Errorf("swarm key: %w", err)
-	}
-
-	pssService := pss.New(swarmPrivateKey, logger)
+	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
 	traversalService := traversal.NewService(storer)
@@ -439,7 +433,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.DebugAPIAddr != "" {
 		// Debug API server
 
-		debugAPIService := debugapi.New(swarmAddress, publicKey, overlayEthAddress, p2ps, pingPong, kad, storer, logger, tracer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService)
+		debugAPIService := debugapi.New(swarmAddress, publicKey, pssPrivateKey.PublicKey, overlayEthAddress, p2ps, pingPong, kad, storer, logger, tracer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService)
 		// register metrics from components
 		debugAPIService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
