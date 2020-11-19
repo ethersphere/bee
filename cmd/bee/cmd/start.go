@@ -307,6 +307,12 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 
 	logger.Infof("pss public key %x", crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey))
 
+	overlayEthAddress, err := signer.EthereumAddress()
+	if err != nil {
+		return nil, err
+	}
+	logger.Infof("using ethereum address %x", overlayEthAddress)
+
 	return &signerConfig{
 		keystore:         keystore,
 		signer:           signer,
