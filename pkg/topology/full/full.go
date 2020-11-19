@@ -137,7 +137,7 @@ func (d *driver) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 
 // ClosestPeer returns the closest connected peer we have in relation to a
 // given chunk address. Returns topology.ErrWantSelf in case base is the closest to the chunk.
-func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
+func (d *driver) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
 	connectedPeers := d.p2pService.Peers()
 	if len(connectedPeers) == 0 {
 		return swarm.Address{}, topology.ErrNotFound
@@ -145,7 +145,21 @@ func (d *driver) ClosestPeer(addr swarm.Address) (swarm.Address, error) {
 
 	// start checking closest from _self_
 	closest := d.base
+	skipPeer := false
 	for _, peer := range connectedPeers {
+		if len(skipPeers) > 0 {
+			for _, a := range skipPeers {
+				if a.Equal(peer.Address) {
+					skipPeer = true
+					break
+				}
+			}
+			if skipPeer {
+				skipPeer = false
+				continue
+			}
+		}
+
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Address.Bytes())
 		if err != nil {
 			return swarm.Address{}, err
@@ -174,25 +188,25 @@ func (d *driver) Connected(ctx context.Context, addr swarm.Address) error {
 	return d.AddPeers(ctx, addr)
 }
 
-func (_ *driver) Disconnected(swarm.Address) {
+func (*driver) Disconnected(swarm.Address) {
 	// TODO: implement if necessary
 }
 
-func (_ *driver) NeighborhoodDepth() uint8 {
+func (*driver) NeighborhoodDepth() uint8 {
 	return 0
 }
 
 // EachPeer iterates from closest bin to farthest
-func (_ *driver) EachPeer(_ topology.EachPeerFunc) error {
+func (*driver) EachPeer(_ topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
 // EachPeerRev iterates from farthest bin to closest
-func (_ *driver) EachPeerRev(_ topology.EachPeerFunc) error {
+func (*driver) EachPeerRev(_ topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
-func (_ *driver) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+func (*driver) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	//TODO implement if necessary
 	return c, unsubscribe
 }
