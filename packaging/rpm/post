@@ -1,23 +1,33 @@
 if [ $1 -eq 1 ] ; then
     # Initial installation
-    echo "Bee has SWAP enabled by default and needs ethereum endpoint to operate"
-    echo "Set ethereum endpoint for bee swap-endpoint inside /etc/bee/bee.yaml or BEE_SWAP_ENDPOINT inside /etc/default/bee"
+    echo "Bee has SWAP enabled by default and needs ethereum endpoint to operate."
+    echo "Set ethereum endpoint for bee swap-endpoint inside /etc/bee/bee.yaml"
     if [ ! -f /var/lib/bee/keys/libp2p.key ]; then
         /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null 2>&1
         chown -R bee:bee /var/lib/bee/keys
     fi
+    echo "It is recommended to use external signer with bee. Bee has support for clef."
+    echo "Download and install latest bee-clef release from https://github.com/ethersphere/bee-clef"
+    echo "Enable external signer setting clef-signer-enable to true inside /etc/bee/bee.yaml"
     if [ -f /var/lib/bee/keys/swarm.key ]; then
         parse_json() { echo $1|sed -e 's/[{}]/''/g'|sed -e 's/", "/'\",\"'/g'|sed -e 's/" ,"/'\",\"'/g'|sed -e 's/" , "/'\",\"'/g'|sed -e 's/","/'\"---SEPERATOR---\"'/g'|awk -F=':' -v RS='---SEPERATOR---' "\$1~/\"$2\"/ {print}"|sed -e "s/\"$2\"://"|tr -d "\n\t"|sed -e 's/\\"/"/g'|sed -e 's/\\\\/\\/g'|sed -e 's/^[ \t]*//g'|sed -e 's/^"//' -e 's/"$//' ; }
+        echo "If you don't want to use external signer even if we recommended it."
         echo "Please make sure there is sufficient eth and bzz available on $(parse_json $(cat /var/lib/bee/keys/swarm.key) address)"
         echo "You can get both goerli eth and goerli bzz from https://faucet.ethswarm.org"
     fi
     systemctl --no-reload preset bee.service &>/dev/null || :
     systemctl --no-reload enable bee.service &>/dev/null || :
-    echo "Service already enabled, after initial configuration"
+    echo "If you enabled external signer. Run"
+    echo "/usr/bin/bee init --config /etc/bee/bee.yaml 2>&1 | grep ethereum | cut -d' ' -f6 | tr -d '"'"
+    echo "Prefund that address at https://faucet.ethswarm.org"
+    echo "Service already enabled, after initial configuration."
     echo "Start service with systemctl --no-reload start bee.service"
 fi
 
 if [ $1 -eq 2 ] ; then
     # Upgrade
+    if [ -S /var/lib/bee-clef/clef.ipc ]; then
+        chmod 660 /var/lib/bee-clef/clef.ipc
+    fi
     systemctl --no-reload restart bee.service &>/dev/null || :
 fi
