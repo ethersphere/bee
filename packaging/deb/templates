@@ -2,3 +2,10 @@ Template: bee/ethereum-endpoint
 Type: string
 Description: Set ethereum endpoint for bee.
  Bee has SWAP enabled by default and needs ethereum endpoint to operate.
+
+Template: bee/clef-enable
+Type: boolean
+Description: Do you want to enable clef support?
+ It is recommended to use external signer with bee.
+ Bee has out-of-the-box support for clef.
+ Download and install latest bee-clef release from https://github.com/ethersphere/bee-clef
