@@ -90,8 +90,8 @@ var (
 	ErrPeerNoBalance = errors.New("no balance for peer")
 	// ErrOverflow denotes an arithmetic operation overflowed.
 	ErrOverflow = errors.New("overflow error")
-	// ErrInValue denotes an invalid value read from store
-	ErrInValue = errors.New("invalid value")
+	// ErrInvalidValue denotes an invalid value read from store
+	ErrInvalidValue = errors.New("invalid value")
 )
 
 // NewAccounting creates a new Accounting instance with the provided options.
@@ -176,7 +176,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 
 	// uint64 conversion of surplusbalance is safe because surplusbalance is always positive
 	if additionalDebt < 0 {
-		return ErrInValue
+		return ErrInvalidValue
 	}
 
 	increasedExpectedDebt, err := addI64pU64(expectedDebt, uint64(additionalDebt))
@@ -449,7 +449,7 @@ func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated int64, 
 		return 0, err
 	}
 	if surplus < 0 {
-		return 0, ErrInValue
+		return 0, ErrInvalidValue
 	}
 	// Compensated balance is balance decreased by surplus balance
 	compensated, err = subtractI64mU64(balance, uint64(surplus))
