@@ -42,7 +42,7 @@ paths:
 
   '/balances':
     get:
-      summary: Get the balances with all known peers
+      summary: Get the balances with all known peers including prepaid services
       tags:
         - Balance
       responses:
@@ -59,7 +59,7 @@ paths:
 
   '/balances/{address}':
     get:
-      summary: Get the balances with a specific peer
+      summary: Get the balances with a specific peer including prepaid services
       tags:
         - Balance
       parameters:
@@ -83,14 +83,14 @@ paths:
         default:
           description: Default response
  
-  '/balances/compensated':
+  '/balances/consumed':
     get:
-      summary: Get the compensated balances with all known peers
+      summary: Get the past due consumption balances with all known peers
       tags:
         - Balance
       responses:
         '200':
-          description: Own balances compensated by surplus balances with all known peers
+          description: Own past due consumption balances with all known peers
           content:
             application/json:
               schema:
@@ -100,9 +100,9 @@ paths:
         default:
           description: Default response
 
-  '/balances/compensated/{address}':
+  '/balances/consumed/{address}':
     get:
-      summary: Get the compensated balance with a specific peer
+      summary: Get the past due consumption balance with a specific peer
       tags:
         - Balance
       parameters:
@@ -114,7 +114,7 @@ paths:
           description: Swarm address of peer
       responses:
         '200':
-          description: Balance compensated by surplus balance with the specific peer
+          description: Past-due consumption balance with the specific peer
           content:
             application/json:
               schema:
