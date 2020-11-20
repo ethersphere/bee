@@ -19,7 +19,7 @@ servers:
         default: 'localhost'
         description: Base address of the local bee node debug API
       port:
-        default: 1635
+        default: 6060
         description: Service port provided in bee node config
 
 paths:
@@ -83,7 +83,7 @@ paths:
         default:
           description: Default response
  
- '/balances/compensated':
+  '/balances/compensated':
     get:
       summary: Get the compensated balances with all known peers
       tags:
@@ -138,8 +138,6 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookAddress'
-        default:
-          description: Default response
 
   '/chequebook/balance':
     get:
@@ -389,8 +387,6 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
-        default:
-          description: Default response
 
   '/welcome-message':
     get:

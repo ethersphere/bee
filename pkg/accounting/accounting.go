@@ -49,7 +49,7 @@ type Interface interface {
 	Balances() (map[string]int64, error)
 	// CompensatedBalance returns the current balance deducted by current surplus balance for the given peer.
 	CompensatedBalance(peer swarm.Address) (int64, error)
-	// Balance returns the compensated balances for all known peers.
+	// CompensatedBalances returns the compensated balances for all known peers.
 	CompensatedBalances() (map[string]int64, error)
 }
 
