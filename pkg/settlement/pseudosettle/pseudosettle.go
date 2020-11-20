@@ -32,11 +32,11 @@ var (
 )
 
 type Service struct {
-	streamer p2p.Streamer
-	logger   logging.Logger
-	store    storage.StateStorer
-	observer settlement.PaymentObserver
-	metrics  metrics
+	streamer          p2p.Streamer
+	logger            logging.Logger
+	store             storage.StateStorer
+	notifyPaymentFunc settlement.NotifyPaymentFunc
+	metrics           metrics
 }
 
 func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer) *Service {
@@ -105,7 +105,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
-	return s.observer.NotifyPayment(p.Address, req.Amount)
+	return s.notifyPaymentFunc(p.Address, req.Amount)
 }
 
 // Pay initiates a payment to the given peer
@@ -148,9 +148,9 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	return nil
 }
 
-// SetPaymentObserver sets the payment observer which will be notified of incoming payments
-func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
-	s.observer = observer
+// SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify
+func (s *Service) SetNotifyPaymentFunc(notifyPaymentFunc settlement.NotifyPaymentFunc) {
+	s.notifyPaymentFunc = notifyPaymentFunc
 }
 
 // TotalSent returns the total amount sent to a peer

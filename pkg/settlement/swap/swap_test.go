@@ -144,7 +144,7 @@ func TestReceiveCheque(t *testing.T) {
 	)
 
 	observer := &testObserver{}
-	swap.SetPaymentObserver(observer)
+	swap.SetNotifyPaymentFunc(observer.NotifyPayment)
 
 	err := swap.ReceiveCheque(context.Background(), peer, cheque)
 	if err != nil {
@@ -207,7 +207,7 @@ func TestReceiveChequeReject(t *testing.T) {
 	)
 
 	observer := &testObserver{}
-	swap.SetPaymentObserver(observer)
+	swap.SetNotifyPaymentFunc(observer.NotifyPayment)
 
 	err := swap.ReceiveCheque(context.Background(), peer, cheque)
 	if err == nil {
@@ -259,7 +259,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 	)
 
 	observer := &testObserver{}
-	swapService.SetPaymentObserver(observer)
+	swapService.SetNotifyPaymentFunc(observer.NotifyPayment)
 
 	err := swapService.ReceiveCheque(context.Background(), peer, cheque)
 	if err == nil {

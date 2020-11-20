@@ -115,7 +115,7 @@ func (s *Service) SettlementsReceived() (map[string]uint64, error) {
 	return s.settlementsRecv, nil
 }
 
-func (s *Service) SetPaymentObserver(settlement.PaymentObserver) {
+func (s *Service) SetNotifyPaymentFunc(settlement.NotifyPaymentFunc) {
 }
 
 // Option is the option passed to the mock settlement service

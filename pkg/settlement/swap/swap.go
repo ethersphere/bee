@@ -47,17 +47,17 @@ type ApiInterface interface {
 
 // Service is the implementation of the swap settlement layer.
 type Service struct {
-	proto       swapprotocol.Interface
-	logger      logging.Logger
-	store       storage.StateStorer
-	observer    settlement.PaymentObserver
-	metrics     metrics
-	chequebook  chequebook.Service
-	chequeStore chequebook.ChequeStore
-	cashout     chequebook.CashoutService
-	p2pService  p2p.Service
-	addressbook Addressbook
-	networkID   uint64
+	proto             swapprotocol.Interface
+	logger            logging.Logger
+	store             storage.StateStorer
+	notifyPaymentFunc settlement.NotifyPaymentFunc
+	metrics           metrics
+	chequebook        chequebook.Service
+	chequeStore       chequebook.ChequeStore
+	cashout           chequebook.CashoutService
+	p2pService        p2p.Service
+	addressbook       Addressbook
+	networkID         uint64
 }
 
 // New creates a new swap Service.
@@ -102,7 +102,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 
 	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
 
-	return s.observer.NotifyPayment(peer, amount.Uint64())
+	return s.notifyPaymentFunc(peer, amount.Uint64())
 }
 
 // Pay initiates a payment to the given peer
@@ -129,9 +129,9 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	return nil
 }
 
-// SetPaymentObserver sets the payment observer which will be notified of incoming payments
-func (s *Service) SetPaymentObserver(observer settlement.PaymentObserver) {
-	s.observer = observer
+// SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify
+func (s *Service) SetNotifyPaymentFunc(notifyPaymentFunc settlement.NotifyPaymentFunc) {
+	s.notifyPaymentFunc = notifyPaymentFunc
 }
 
 // TotalSent returns the total amount sent to a peer
