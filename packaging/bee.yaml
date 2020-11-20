@@ -7,7 +7,7 @@
 ## enable clef signer
 # clef-signer-enable: false
 ## clef signer endpoint
-# clef-signer-endpoint: ""
+clef-signer-endpoint: /var/lib/bee-clef/clef.ipc
 ## config file (default is /home/<user>/.bee.yaml)
 config: /etc/bee/bee.yaml
 ## origins with CORS headers enabled

@@ -84,16 +84,27 @@ func (s *server) setupRouting() {
 			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
 		),
 	})
+
 	router.Handle("/balances", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
+	})
+
+	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
+	})
+
+	router.Handle("/consumed", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.balancesHandler),
 	})
-	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
+
+	router.Handle("/consumed/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
 
 	router.Handle("/settlements", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.settlementsHandler),
 	})
+
 	router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peerSettlementsHandler),
 	})
