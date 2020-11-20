@@ -526,7 +526,7 @@ paths:
         - Chunk pinning
       responses:
         '200':
-          description: Pinning state of chunk  with address
+          description: Pinning state of chunk with address
           content:
             application/json:
               schema:
@@ -535,6 +535,25 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    put:
+      summary: Update chunk pin counter
+      tags:
+        - Chunk pinning
+      responses:
+        '200':
+          description: Pinning state of chunk with address
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/PinningState'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
         default:
           description: Default response
 

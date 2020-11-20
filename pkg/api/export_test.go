@@ -15,6 +15,7 @@ type (
 	TagRequest               = tagRequest
 	PinnedChunk              = pinnedChunk
 	ListPinnedChunksResponse = listPinnedChunksResponse
+	UpdatePinCounter         = updatePinCounter
 )
 
 var (
