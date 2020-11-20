@@ -18,16 +18,17 @@ if [ $1 -eq 1 ] ; then
     systemctl --no-reload preset bee.service &>/dev/null || :
     systemctl --no-reload enable bee.service &>/dev/null || :
     echo "If you enabled external signer. Run"
-    echo "/usr/bin/bee init --config /etc/bee/bee.yaml 2>&1 | grep ethereum | cut -d' ' -f6 | tr -d '"'"
+    echo "sudo /usr/bin/bee init --config /etc/bee/bee.yaml 2>&1 | grep ethereum | cut -d' ' -f6 | tr -d '\"'"
     echo "Prefund that address at https://faucet.ethswarm.org"
     echo "Service already enabled, after initial configuration."
     echo "Start service with systemctl --no-reload start bee.service"
 fi
 
+if [ -S /var/lib/bee-clef/clef.ipc ]; then
+    chmod 660 /var/lib/bee-clef/clef.ipc
+fi
+
 if [ $1 -eq 2 ] ; then
     # Upgrade
-    if [ -S /var/lib/bee-clef/clef.ipc ]; then
-        chmod 660 /var/lib/bee-clef/clef.ipc
-    fi
     systemctl --no-reload restart bee.service &>/dev/null || :
 fi
