@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -83,18 +82,13 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
+
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  swarm.ChunkSize,
 		WriteBufferSize: swarm.ChunkSize,
-		CheckOrigin: func(r *http.Request) bool {
-			fmt.Println(r.Header)
-			o := r.Header.Get("Origin")
-			if o == "" || o != "" && (s.CORSAllowedOrigins == nil || containsOrigin(o, s.CORSAllowedOrigins)) {
-				return true
-			}
-			return false
-		},
+		CheckOrigin:     s.checkSameOrigin,
 	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.Logger.Debugf("pss ws: upgrade: %v", err)
