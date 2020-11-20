@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,13 +201,9 @@ func (s *server) checkOrigin(r *http.Request) bool {
 	if len(origin) == 0 {
 		return true
 	}
-	u, err := url.Parse(origin[0])
-	if err != nil {
-		return false
-	}
-	hosts := append(s.CORSAllowedOrigins, r.Host)
+	hosts := append(s.CORSAllowedOrigins, "http://"+r.Host)
 	for _, v := range hosts {
-		if equalASCIIFold(u.Host, v) || v == "*" {
+		if equalASCIIFold(origin[0], v) || v == "*" {
 			return true
 		}
 	}
