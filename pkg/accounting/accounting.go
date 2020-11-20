@@ -47,6 +47,10 @@ type Interface interface {
 	SurplusBalance(peer swarm.Address) (int64, error)
 	// Balances returns balances for all known peers.
 	Balances() (map[string]int64, error)
+	// CompensatedBalance returns the current balance deducted by current surplus balance for the given peer.
+	CompensatedBalance(peer swarm.Address) (int64, error)
+	// CompensatedBalances returns the compensated balances for all known peers.
+	CompensatedBalances() (map[string]int64, error)
 }
 
 // accountingPeer holds all in-memory accounting information for one peer.
@@ -86,6 +90,8 @@ var (
 	ErrPeerNoBalance = errors.New("no balance for peer")
 	// ErrOverflow denotes an arithmetic operation overflowed.
 	ErrOverflow = errors.New("overflow error")
+	// ErrInValue denotes an invalid value read from store
+	ErrInValue = errors.New("invalid value")
 )
 
 // NewAccounting creates a new Accounting instance with the provided options.
@@ -163,10 +169,25 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		threshold = 0
 	}
 
+	additionalDebt, err := a.SurplusBalance(peer)
+	if err != nil {
+		return fmt.Errorf("failed to load surplus balance: %w", err)
+	}
+
+	// uint64 conversion of surplusbalance is safe because surplusbalance is always positive
+	if additionalDebt < 0 {
+		return ErrInValue
+	}
+
+	increasedExpectedDebt, err := addI64pU64(expectedDebt, uint64(additionalDebt))
+	if err != nil {
+		return err
+	}
+
 	// If our expected debt is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
-	if expectedDebt >= int64(threshold) && currentBalance < 0 {
+	if increasedExpectedDebt >= int64(threshold) && currentBalance < 0 {
 		err = a.settle(ctx, peer, accountingPeer)
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
@@ -174,11 +195,15 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		// if we settled successfully our balance is back at 0
 		// and the expected debt therefore equals next reserved amount
 		expectedDebt = int64(nextReserved)
+		increasedExpectedDebt, err = addI64pU64(expectedDebt, uint64(additionalDebt))
+		if err != nil {
+			return err
+		}
 	}
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
 	// this can happen if there is a large number of concurrent requests to the same peer
-	if expectedDebt > int64(a.paymentThreshold) {
+	if increasedExpectedDebt > int64(a.paymentThreshold) {
 		a.metrics.AccountingBlocksCount.Inc()
 		return ErrOverdraft
 	}
@@ -413,6 +438,28 @@ func (a *Accounting) SurplusBalance(peer swarm.Address) (balance int64, err erro
 	return balance, nil
 }
 
+// CompensatedBalance returns balance decreased by surplus balance
+func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated int64, err error) {
+	balance, err := a.Balance(peer)
+	if err != nil {
+		return 0, err
+	}
+	surplus, err := a.SurplusBalance(peer)
+	if err != nil {
+		return 0, err
+	}
+	if surplus < 0 {
+		return 0, ErrInValue
+	}
+	// Compensated balance is balance decreased by surplus balance
+	compensated, err = subtractI64mU64(balance, uint64(surplus))
+	if err != nil {
+		return 0, err
+	}
+
+	return compensated, nil
+}
+
 // peerBalanceKey returns the balance storage key for the given peer.
 func peerBalanceKey(peer swarm.Address) string {
 	return fmt.Sprintf("%s%s", balancesPrefix, peer.String())
@@ -472,11 +519,76 @@ func (a *Accounting) Balances() (map[string]int64, error) {
 	return s, nil
 }
 
+// Balances gets balances for all peers from store.
+func (a *Accounting) CompensatedBalances() (map[string]int64, error) {
+	s := make(map[string]int64)
+
+	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
+		addr, err := balanceKeyPeer(key)
+		if err != nil {
+			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+		}
+		if _, ok := s[addr.String()]; !ok {
+			value, err := a.CompensatedBalance(addr)
+			if err != nil {
+				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
+			}
+
+			s[addr.String()] = value
+		}
+
+		return false, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.store.Iterate(balancesSurplusPrefix, func(key, val []byte) (stop bool, err error) {
+		addr, err := surplusBalanceKeyPeer(key)
+		if err != nil {
+			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+		}
+		if _, ok := s[addr.String()]; !ok {
+			value, err := a.CompensatedBalance(addr)
+			if err != nil {
+				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
+			}
+
+			s[addr.String()] = value
+		}
+
+		return false, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return s, nil
+}
+
 // balanceKeyPeer returns the embedded peer from the balance storage key.
 func balanceKeyPeer(key []byte) (swarm.Address, error) {
 	k := string(key)
 
 	split := strings.SplitAfter(k, balancesPrefix)
+	if len(split) != 2 {
+		return swarm.ZeroAddress, errors.New("no peer in key")
+	}
+
+	addr, err := swarm.ParseHexAddress(split[1])
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return addr, nil
+}
+
+func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
+	k := string(key)
+
+	split := strings.SplitAfter(k, balancesSurplusPrefix)
 	if len(split) != 2 {
 		return swarm.ZeroAddress, errors.New("no peer in key")
 	}
@@ -507,6 +619,28 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		}
 
 	}
+	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
+	if currentBalance <= 0 {
+		surplus, err := a.SurplusBalance(peer)
+		if err != nil {
+			return fmt.Errorf("failed to get surplus balance: %w", err)
+		}
+		increasedSurplus, err := addI64pU64(surplus, amount)
+		if err != nil {
+			return err
+		}
+
+		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, amount, increasedSurplus)
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
+		if err != nil {
+			return fmt.Errorf("failed to persist surplus balance: %w", err)
+		}
+
+		return nil
+	}
+
+	// if current balance is positive, let's make a partial credit to
 	newBalance, err := subtractI64mU64(currentBalance, amount)
 	if err != nil {
 		return err

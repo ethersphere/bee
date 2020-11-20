@@ -299,16 +299,18 @@ func TestAccountingOverflowNotifyPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Notify of incoming payment from same peer, further decreasing balance, this should overflow
+
+	// NotifyPayment for peer should now fill the surplus balance
 	err = acc.NotifyPayment(peer1Addr, math.MaxInt64)
-	if err == nil {
-		t.Fatal("Expected overflow from NotifyPayment")
+	if err != nil {
+		t.Fatalf("Expected no error but got one: %v", err)
 	}
-	// If we had other error, assert fail
+
+	// Notify of incoming payment from same peer, further increasing the surplus balance into an overflow
+	err = acc.NotifyPayment(peer1Addr, 1)
 	if !errors.Is(err, accounting.ErrOverflow) {
 		t.Fatalf("expected overflow error from Debit, got %v", err)
 	}
-
 }
 
 func TestAccountingOverflowDebit(t *testing.T) {

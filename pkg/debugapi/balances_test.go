@@ -19,7 +19,7 @@ import (
 )
 
 func TestBalances(t *testing.T) {
-	balancesFunc := func() (ret map[string]int64, err error) {
+	compensatedBalancesFunc := func() (ret map[string]int64, err error) {
 		ret = make(map[string]int64)
 		ret["DEAD"] = 1000000000000000000
 		ret["BEEF"] = -100000000000000000
@@ -27,7 +27,7 @@ func TestBalances(t *testing.T) {
 		return ret, err
 	}
 	testServer := newTestServer(t, testServerOptions{
-		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
+		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})
 
 	expected := &debugapi.BalancesResponse{
@@ -61,11 +61,11 @@ func TestBalances(t *testing.T) {
 
 func TestBalancesError(t *testing.T) {
 	wantErr := errors.New("ASDF")
-	balancesFunc := func() (ret map[string]int64, err error) {
+	compensatedBalancesFunc := func() (ret map[string]int64, err error) {
 		return nil, wantErr
 	}
 	testServer := newTestServer(t, testServerOptions{
-		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
+		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances", http.StatusInternalServerError,
@@ -78,11 +78,11 @@ func TestBalancesError(t *testing.T) {
 
 func TestBalancesPeers(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
-	balanceFunc := func(swarm.Address) (int64, error) {
+	compensatedBalanceFunc := func(swarm.Address) (int64, error) {
 		return 1000000000000000000, nil
 	}
 	testServer := newTestServer(t, testServerOptions{
-		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
+		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusOK,
@@ -96,11 +96,11 @@ func TestBalancesPeers(t *testing.T) {
 func TestBalancesPeersError(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	wantErr := errors.New("Error")
-	balanceFunc := func(swarm.Address) (int64, error) {
+	compensatedBalanceFunc := func(swarm.Address) (int64, error) {
 		return 0, wantErr
 	}
 	testServer := newTestServer(t, testServerOptions{
-		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
+		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusInternalServerError,
@@ -113,11 +113,11 @@ func TestBalancesPeersError(t *testing.T) {
 
 func TestBalancesPeersNoBalance(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
-	balanceFunc := func(swarm.Address) (int64, error) {
+	compensatedBalanceFunc := func(swarm.Address) (int64, error) {
 		return 0, accounting.ErrPeerNoBalance
 	}
 	testServer := newTestServer(t, testServerOptions{
-		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
+		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusNotFound,
@@ -169,4 +169,127 @@ func equalBalances(a, b *debugapi.BalancesResponse) bool {
 	}
 
 	return true
+}
+
+func TestConsumedBalances(t *testing.T) {
+	balancesFunc := func() (ret map[string]int64, err error) {
+		ret = make(map[string]int64)
+		ret["DEAD"] = 1000000000000000000
+		ret["BEEF"] = -100000000000000000
+		ret["PARTY"] = 0
+		return ret, err
+	}
+	testServer := newTestServer(t, testServerOptions{
+		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
+	})
+
+	expected := &debugapi.BalancesResponse{
+		[]debugapi.BalanceResponse{
+			{
+				Peer:    "DEAD",
+				Balance: 1000000000000000000,
+			},
+			{
+				Peer:    "BEEF",
+				Balance: -100000000000000000,
+			},
+			{
+				Peer:    "PARTY",
+				Balance: 0,
+			},
+		},
+	}
+
+	// We expect a list of items unordered by peer:
+	var got *debugapi.BalancesResponse
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed", http.StatusOK,
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
+	)
+
+	if !equalBalances(got, expected) {
+		t.Errorf("got balances: %v, expected: %v", got, expected)
+	}
+
+}
+
+func TestConsumedError(t *testing.T) {
+	wantErr := errors.New("ASDF")
+	balancesFunc := func() (ret map[string]int64, err error) {
+		return nil, wantErr
+	}
+	testServer := newTestServer(t, testServerOptions{
+		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed", http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrCantBalances,
+			Code:    http.StatusInternalServerError,
+		}),
+	)
+}
+
+func TestConsumedPeers(t *testing.T) {
+	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
+	balanceFunc := func(swarm.Address) (int64, error) {
+		return 1000000000000000000, nil
+	}
+	testServer := newTestServer(t, testServerOptions{
+		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed/"+peer, http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.BalanceResponse{
+			Peer:    peer,
+			Balance: 1000000000000000000,
+		}),
+	)
+}
+
+func TestConsumedPeersError(t *testing.T) {
+	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
+	wantErr := errors.New("Error")
+	balanceFunc := func(swarm.Address) (int64, error) {
+		return 0, wantErr
+	}
+	testServer := newTestServer(t, testServerOptions{
+		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed/"+peer, http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrCantBalance,
+			Code:    http.StatusInternalServerError,
+		}),
+	)
+}
+
+func TestConsumedPeersNoBalance(t *testing.T) {
+	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
+	balanceFunc := func(swarm.Address) (int64, error) {
+		return 0, accounting.ErrPeerNoBalance
+	}
+	testServer := newTestServer(t, testServerOptions{
+		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed/"+peer, http.StatusNotFound,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrNoBalance,
+			Code:    http.StatusNotFound,
+		}),
+	)
+}
+
+func TestConsumedInvalidAddress(t *testing.T) {
+	peer := "bad peer address"
+
+	testServer := newTestServer(t, testServerOptions{})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed/"+peer, http.StatusNotFound,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: debugapi.ErrInvaliAddress,
+			Code:    http.StatusNotFound,
+		}),
+	)
 }
