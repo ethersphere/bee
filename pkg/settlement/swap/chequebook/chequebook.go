@@ -221,7 +221,7 @@ func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) error
 	return nil
 }
 
-func (s *service) unreserveTotalIssued(ctx context.Context, amount *big.Int) {
+func (s *service) unreserveTotalIssued(amount *big.Int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.totalIssuedReserved = s.totalIssuedReserved.Sub(s.totalIssuedReserved, amount)
@@ -234,7 +234,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	if err != nil {
 		return err
 	}
-	defer s.unreserveTotalIssued(ctx, amount)
+	defer s.unreserveTotalIssued(amount)
 
 	var cumulativePayout *big.Int
 	lastCheque, err := s.LastCheque(beneficiary)
