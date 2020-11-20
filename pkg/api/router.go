@@ -166,7 +166,7 @@ func (s *server) setupRouting() {
 		s.pageviewMetricsHandler,
 		func(h http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if o := r.Header.Get("Origin"); o != "" && (s.CORSAllowedOrigins == nil || containsOrigin(o, s.CORSAllowedOrigins)) {
+				if o := r.Header.Get("Origin"); o != "" && (len(s.CORSAllowedOrigins) == 0 || s.checkOrigin(r)) {
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
 					w.Header().Set("Access-Control-Allow-Origin", o)
 					w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method")
@@ -179,15 +179,6 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidHeadersHandler,
 		web.FinalHandler(router),
 	)
-}
-
-func containsOrigin(s string, l []string) (ok bool) {
-	for _, e := range l {
-		if e == s || e == "*" {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {

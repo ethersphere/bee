@@ -197,7 +197,7 @@ func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 }
 
 // checkSameOrigin returns true if the origin is not set or is equal to the request host.
-func (s *server) checkSameOrigin(r *http.Request) bool {
+func (s *server) checkOrigin(r *http.Request) bool {
 	origin := r.Header["Origin"]
 	if len(origin) == 0 {
 		return true
@@ -208,7 +208,7 @@ func (s *server) checkSameOrigin(r *http.Request) bool {
 	}
 	hosts := append(s.CORSAllowedOrigins, r.Host)
 	for _, v := range hosts {
-		if equalASCIIFold(u.Host, v) {
+		if equalASCIIFold(u.Host, v) || v == "*" {
 			return true
 		}
 	}
