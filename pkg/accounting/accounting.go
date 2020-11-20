@@ -619,18 +619,6 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		}
 
 	}
-	newBalance, err := subtractI64mU64(currentBalance, amount)
-	if err != nil {
-		return err
-	}
-
-	// Don't allow a payment to put us into debt
-	// This is to prevent another node tricking us into settling by settling
-	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
-	nextBalance := newBalance
-	if newBalance < 0 {
-		nextBalance = 0
-	}
 
 	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
 	if currentBalance <= 0 {
@@ -654,6 +642,18 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	}
 
 	// if current balance is positive, let's make a partial credit to
+	newBalance, err := subtractI64mU64(currentBalance, amount)
+	if err != nil {
+		return err
+	}
+
+	// Don't allow a payment to put us into debt
+	// This is to prevent another node tricking us into settling by settling
+	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
+	nextBalance := newBalance
+	if newBalance < 0 {
+		nextBalance = 0
+	}
 
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
 
