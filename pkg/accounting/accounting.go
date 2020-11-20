@@ -203,7 +203,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
 	// this can happen if there is a large number of concurrent requests to the same peer
-	if increasedExpectedDebt > int64(a.paymentThreshold) {
+	if increasedExpectedDebt > int64(accountingPeer.paymentThreshold) {
 		a.metrics.AccountingBlocksCount.Inc()
 		return ErrOverdraft
 	}
