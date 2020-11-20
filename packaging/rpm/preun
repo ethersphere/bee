@@ -1,0 +1,5 @@
+systemctl --no-reload stop --now bee.service &>/dev/null || :
+if [ $1 -eq 0 ] ; then
+    # Package removal, not upgrade
+    systemctl --no-reload disable --now bee.service &>/dev/null || :
+fi

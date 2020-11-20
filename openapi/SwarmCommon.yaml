@@ -32,6 +32,8 @@ components:
           $ref: '#/components/schemas/EthereumAddress'
         public_key:
           $ref: '#/components/schemas/PublicKey'
+        pss_public_key:
+          $ref: '#/components/schemas/PublicKey'
 
     Balance:
       type: object
@@ -189,7 +191,7 @@ components:
 
     P2PUnderlay:
       type: string
-      example: "/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAmTm17toLDaPYzRyjKn27iCB76yjKnJ5DjQXneFmifFvaX"
+      example: "/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAmTm17toLDaPYzRyjKn27iCB76yjKnJ5DjQXneFmifFvaX"
 
     Peers:
       type: object

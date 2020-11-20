@@ -28,7 +28,7 @@ import (
 
 func TestAddPeers(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7070/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS")
+	underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS")
 	if err != nil {
 		t.Fatal(err)
 	}

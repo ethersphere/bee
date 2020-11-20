@@ -156,7 +156,7 @@ func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 	store := statestore.NewStateStore()
-	s := api.New(tags.NewTags(store, logger), storer, nil, nil, logger, nil, api.Options{})
+	s := api.New(tags.NewTags(store, logger), storer, nil, nil, nil, logger, nil, api.Options{})
 	ts := httptest.NewServer(s)
 	srvUrl, err := url.Parse(ts.URL)
 	if err != nil {

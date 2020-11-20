@@ -73,7 +73,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				for _, ch := range chunks {
-					newRetrieveIndexesTestWithAccess(db, ch, storeTimestamp, wantTimestamp)(t)
+					newRetrieveIndexesTestWithAccess(db, ch, storeTimestamp, storeTimestamp)(t)
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
@@ -107,9 +107,11 @@ func TestModePutSync(t *testing.T) {
 				po := db.po(ch.Address())
 				binIDs[po]++
 
-				newRetrieveIndexesTest(db, ch, wantTimestamp, 0)(t)
+				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
 				newPullIndexTest(db, ch, binIDs[po], nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
+				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newIndexGCSizeTest(db)(t)
 			}
 		})
 	}
