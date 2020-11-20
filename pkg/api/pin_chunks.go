@@ -6,7 +6,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io/ioutil"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -182,6 +185,129 @@ func (s *server) getPinnedChunk(w http.ResponseWriter, r *http.Request) {
 		Address:    addr,
 		PinCounter: pinCounter,
 	})
+}
+
+type updatePinCounter struct {
+	PinCounter uint64 `json:"pinCounter"`
+}
+
+// updatePinnedChunkPinCounter allows changing the pin counter for the chunk.
+func (s *server) updatePinnedChunkPinCounter(w http.ResponseWriter, r *http.Request) {
+	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	if err != nil {
+		s.Logger.Debugf("update pin counter: parse chunk ddress: %v", err)
+		s.Logger.Errorf("update pin counter: parse address")
+		jsonhttp.BadRequest(w, "bad address")
+		return
+	}
+
+	has, err := s.Storer.Has(r.Context(), addr)
+	if err != nil {
+		s.Logger.Debugf("update pin counter: localstore has: %v", err)
+		s.Logger.Errorf("update pin counter: store")
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	if !has {
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+
+	pinCounter, err := s.Storer.PinCounter(addr)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			jsonhttp.NotFound(w, nil)
+			return
+		}
+		s.Logger.Debugf("pin counter: get pin counter: %v", err)
+		s.Logger.Errorf("pin counter: get pin counter")
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		if jsonhttp.HandleBodyReadError(err, w) {
+			return
+		}
+		s.Logger.Debugf("update pin counter: read request body error: %v", err)
+		s.Logger.Error("update pin counter: read request body error")
+		jsonhttp.InternalServerError(w, "cannot read request")
+		return
+	}
+
+	newPinCount := updatePinCounter{}
+	if len(body) > 0 {
+		err = json.Unmarshal(body, &newPinCount)
+		if err != nil {
+			s.Logger.Debugf("update pin counter: unmarshal pin counter error: %v", err)
+			s.Logger.Errorf("update pin counter: unmarshal pin counter error")
+			jsonhttp.InternalServerError(w, "error unmarshaling pin counter")
+			return
+		}
+	}
+
+	if newPinCount.PinCounter > math.MaxInt32 {
+		s.Logger.Errorf("update pin counter: invalid pin counter %d", newPinCount.PinCounter)
+		jsonhttp.BadRequest(w, "invalid pin counter")
+		return
+	}
+
+	diff := newPinCount.PinCounter - pinCounter
+
+	err = s.updatePinCount(r.Context(), addr, int(diff))
+	if err != nil {
+		s.Logger.Debugf("update pin counter: update error: %v, addr %s", err, addr)
+		s.Logger.Error("update pin counter: update")
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	pinCounter, err = s.Storer.PinCounter(addr)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			pinCounter = 0
+		} else {
+			s.Logger.Debugf("update pin counter: get pin counter: %v", err)
+			s.Logger.Errorf("update pin counter: get pin counter")
+			jsonhttp.InternalServerError(w, err)
+			return
+		}
+	}
+
+	jsonhttp.OK(w, pinnedChunk{
+		Address:    addr,
+		PinCounter: pinCounter,
+	})
+}
+
+// updatePinCount changes pin counter for a chunk address.
+// This is done with a loop, depending on the delta value supplied.
+// NOTE: If the value is too large, it will result in many database operations.
+func (s *server) updatePinCount(ctx context.Context, reference swarm.Address, delta int) error {
+	diff := delta
+	mode := storage.ModeSetPin
+
+	if diff < 0 {
+		diff = -diff
+		mode = storage.ModeSetUnpin
+	}
+
+	for i := 0; i < diff; i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		err := s.Storer.Set(ctx, mode, reference)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) (stop bool) {
