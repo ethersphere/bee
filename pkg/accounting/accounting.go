@@ -634,10 +634,6 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
 	if currentBalance <= 0 {
-		if err != nil {
-			return err
-		}
-
 		surplus, err := a.SurplusBalance(peer)
 		if err != nil {
 			return fmt.Errorf("failed to get surplus balance: %w", err)
