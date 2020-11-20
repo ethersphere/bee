@@ -307,6 +307,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 
 	logger.Infof("pss public key %x", crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey))
 
+	// postinst and post scripts inside packaging/{deb,rpm} depend and parse on this log output
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
