@@ -28,12 +28,9 @@ type Interface interface {
 	SettlementsSent() (map[string]uint64, error)
 	// SettlementsReceived returns received settlements for each individual known peer
 	SettlementsReceived() (map[string]uint64, error)
-	// SetPaymentObserver sets the PaymentObserver to notify
-	SetPaymentObserver(observer PaymentObserver)
+	// SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify
+	SetNotifyPaymentFunc(notifyPaymentFunc NotifyPaymentFunc)
 }
 
-// PaymentObserver is the interface Settlement uses to notify other components of an incoming payment
-type PaymentObserver interface {
-	// NotifyPayment is called when a payment from peer was successfully received
-	NotifyPayment(peer swarm.Address, amount uint64) error
-}
+// NotifyPaymentFunc is called when a payment from peer was successfully received
+type NotifyPaymentFunc func(peer swarm.Address, amount uint64) error
