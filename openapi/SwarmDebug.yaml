@@ -83,7 +83,7 @@ paths:
         default:
           description: Default response
  
-  '/balances/consumed':
+  '/consumed':
     get:
       summary: Get the past due consumption balances with all known peers
       tags:
@@ -100,7 +100,7 @@ paths:
         default:
           description: Default response
 
-  '/balances/consumed/{address}':
+  '/consumed/{address}':
     get:
       summary: Get the past due consumption balance with a specific peer
       tags:
