@@ -71,8 +71,9 @@ type service struct {
 	erc20ABI      abi.ABI
 	erc20Instance ERC20Binding
 
-	store        storage.StateStorer
-	chequeSigner ChequeSigner
+	store               storage.StateStorer
+	chequeSigner        ChequeSigner
+	totalIssuedReserved *big.Int
 }
 
 // New creates a new chequebook service for the provided chequebook contract.
@@ -98,17 +99,18 @@ func New(backend transaction.Backend, transactionService transaction.Service, ad
 	}
 
 	return &service{
-		backend:            backend,
-		transactionService: transactionService,
-		address:            address,
-		chequebookABI:      chequebookABI,
-		chequebookInstance: chequebookInstance,
-		ownerAddress:       ownerAddress,
-		erc20Address:       erc20Address,
-		erc20ABI:           erc20ABI,
-		erc20Instance:      erc20Instance,
-		store:              store,
-		chequeSigner:       chequeSigner,
+		backend:             backend,
+		transactionService:  transactionService,
+		address:             address,
+		chequebookABI:       chequebookABI,
+		chequebookInstance:  chequebookInstance,
+		ownerAddress:        ownerAddress,
+		erc20Address:        erc20Address,
+		erc20ABI:            erc20ABI,
+		erc20Instance:       erc20Instance,
+		store:               store,
+		chequeSigner:        chequeSigner,
+		totalIssuedReserved: big.NewInt(0),
 	}, nil
 }
 
@@ -202,10 +204,7 @@ func lastIssuedChequeKey(beneficiary common.Address) string {
 	return fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
 }
 
-// Issue issues a new cheque and passes it to sendChequeFunc
-// if sendChequeFunc succeeds the cheque is considered sent and saved
-func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error {
-	// don't allow concurrent issuing of cheques
+func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -214,9 +213,28 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		return err
 	}
 
-	if amount.Cmp(availableBalance) > 0 {
+	if amount.Cmp(big.NewInt(0).Sub(availableBalance, s.totalIssuedReserved)) > 0 {
 		return ErrOutOfFunds
 	}
+
+	s.totalIssuedReserved = s.totalIssuedReserved.Add(s.totalIssuedReserved, amount)
+	return nil
+}
+
+func (s *service) unreserveTotalIssued(ctx context.Context, amount *big.Int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.totalIssuedReserved = s.totalIssuedReserved.Sub(s.totalIssuedReserved, amount)
+}
+
+// Issue issues a new cheque and passes it to sendChequeFunc
+// if sendChequeFunc succeeds the cheque is considered sent and saved
+func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error {
+	err := s.reserveTotalIssued(ctx, amount)
+	if err != nil {
+		return err
+	}
+	defer s.unreserveTotalIssued(ctx, amount)
 
 	var cumulativePayout *big.Int
 	lastCheque, err := s.LastCheque(beneficiary)
@@ -261,6 +279,9 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	if err != nil {
 		return err
 	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	totalIssued, err := s.totalIssued()
 	if err != nil {
