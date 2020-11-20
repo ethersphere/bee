@@ -196,7 +196,7 @@ func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 	}
 }
 
-// checkSameOrigin returns true if the origin is not set or is equal to the request host.
+// checkOrigin returns true if the origin is not set or is equal to the request host.
 func (s *server) checkOrigin(r *http.Request) bool {
 	origin := r.Header["Origin"]
 	if len(origin) == 0 {

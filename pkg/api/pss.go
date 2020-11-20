@@ -86,7 +86,7 @@ func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  swarm.ChunkSize,
 		WriteBufferSize: swarm.ChunkSize,
-		CheckOrigin:     s.checkSameOrigin,
+		CheckOrigin:     s.checkOrigin,
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
