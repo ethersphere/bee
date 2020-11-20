@@ -42,7 +42,7 @@ paths:
 
   '/balances':
     get:
-      summary: Get the balances with all known peers
+      summary: Get the balances with all known peers including prepaid services
       tags:
         - Balance
       responses:
@@ -59,7 +59,7 @@ paths:
 
   '/balances/{address}':
     get:
-      summary: Get the balances with a specific peer
+      summary: Get the balances with a specific peer including prepaid services
       tags:
         - Balance
       parameters:
@@ -71,7 +71,50 @@ paths:
           description: Swarm address of peer
       responses:
         '200':
-          description: Peer is known
+          description: Balance with the specific peer
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Balance'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+ 
+  '/consumed':
+    get:
+      summary: Get the past due consumption balances with all known peers
+      tags:
+        - Balance
+      responses:
+        '200':
+          description: Own past due consumption balances with all known peers
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Balances'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/consumed/{address}':
+    get:
+      summary: Get the past due consumption balance with a specific peer
+      tags:
+        - Balance
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+          required: true
+          description: Swarm address of peer
+      responses:
+        '200':
+          description: Past-due consumption balance with the specific peer
           content:
             application/json:
               schema:
