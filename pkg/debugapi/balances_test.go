@@ -171,8 +171,6 @@ func equalBalances(a, b *debugapi.BalancesResponse) bool {
 	return true
 }
 
-//#####
-
 func TestConsumedBalances(t *testing.T) {
 	balancesFunc := func() (ret map[string]int64, err error) {
 		ret = make(map[string]int64)
