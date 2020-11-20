@@ -108,10 +108,6 @@ func NewAccounting(
 		return nil, fmt.Errorf("tolerance plus threshold too big: %w", ErrOverflow)
 	}
 
-	if PaymentTolerance > PaymentThreshold/2 {
-		return nil, ErrInvalidPaymentTolerance
-	}
-
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
 		paymentThreshold: PaymentThreshold,
