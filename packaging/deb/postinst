@@ -1,6 +1,7 @@
 #!/bin/sh -e
 
 if [ "$1" = "configure" ]; then
+    START=true
     if [ -z "$2" ]; then
         . /usr/share/debconf/confmodule
 
@@ -14,11 +15,35 @@ if [ "$1" = "configure" ]; then
             /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null 2>&1
             chown -R bee:bee /var/lib/bee/keys
         fi
-        if [ -f /var/lib/bee/keys/swarm.key ]; then
-            parse_json() { echo $1|sed -e 's/[{}]/''/g'|sed -e 's/", "/'\",\"'/g'|sed -e 's/" ,"/'\",\"'/g'|sed -e 's/" , "/'\",\"'/g'|sed -e 's/","/'\"---SEPERATOR---\"'/g'|awk -F=':' -v RS='---SEPERATOR---' "\$1~/\"$2\"/ {print}"|sed -e "s/\"$2\"://"|tr -d "\n\t"|sed -e 's/\\"/"/g'|sed -e 's/\\\\/\\/g'|sed -e 's/^[ \t]*//g'|sed -e 's/^"//' -e 's/"$//' ; }
-            echo "Please make sure there is sufficient eth and bzz available on $(parse_json $(cat /var/lib/bee/keys/swarm.key) address)"
-            echo "You can get both goerli eth and goerli bzz from https://faucet.ethswarm.org"
+        db_input high bee/clef-enable || true
+        if db_go; then
+            db_get bee/clef-enable
+            if [ "$RET" = true ]; then
+                grep -v BEE_CLEF_SIGNER_ENABLE /etc/default/bee > /etc/default/bee.tmp
+                echo "BEE_CLEF_SIGNER_ENABLE=true" >> /etc/default/bee.tmp && mv /etc/default/bee.tmp /etc/default/bee
+            fi
         fi
+        set +e
+        RESP=$(BEE_CLEF_SIGNER_ENABLE=$RET /usr/bin/bee init --config /etc/bee/bee.yaml 2>&1)
+        set -e
+        case "$RESP" in
+            Error*)
+                START=false
+                echo "Enabled clef-signer but clef is not running."
+                echo "Check https://docs.ethswarm.org/ for more info and how to fix."
+                echo "Or install latest release of bee-clef from https://github.com/ethersphere/bee-clef and reinstall bee."
+                echo "Start bee with systemctl --no-reload start bee.service"
+                ;;
+            *)
+                ETH_ADDRESS=$(echo "$RESP" | grep ethereum | cut -d' ' -f6 | tr -d '"')
+                echo "Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address."
+                echo "You can get both goerli eth and goerli bzz from https://faucet.ethswarm.org."
+                ;;
+        esac
+    fi
+
+    if [ -S /var/lib/bee-clef/clef.ipc ]; then
+        chmod 660 /var/lib/bee-clef/clef.ipc
     fi
 
     deb-systemd-helper unmask bee.service >/dev/null || true
@@ -30,6 +55,8 @@ if [ "$1" = "configure" ]; then
     fi
     if [ -d /run/systemd/system ]; then
         systemctl --system daemon-reload >/dev/null || true
-        deb-systemd-invoke start bee.service >/dev/null || true
+        if [ $START = true ]; then
+            deb-systemd-invoke start bee.service >/dev/null || true
+        fi
     fi
 fi
