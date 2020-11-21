@@ -135,8 +135,7 @@ brews:
     install: |
       (etc/"bee").mkpath
       (var/"lib/bee").mkpath
-      bin.install "bee"
-      sbin.install "packaging/homebrew/bee-get-addr" => "bee-get-addr"
+      bin.install ["bee", "packaging/homebrew/bee-get-addr"]
       etc.install "packaging/homebrew/bee.yaml" => "bee/bee.yaml" unless File.exists? etc/"bee/bee.yaml"
     post_install: |
       system("openssl", "rand", "-base64", "32", "-out", var/"lib/bee/password")
