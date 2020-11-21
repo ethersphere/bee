@@ -1,0 +1,20 @@
+#!/bin/sh
+
+RESP=$(/usr/local/bin/bee init --config /usr/local/etc/bee/bee.yaml 2>&1)
+case "$RESP" in
+    Error*)
+        echo "
+Enabled clef-signer but clef is not running.
+Check https://docs.ethswarm.org/ for more info.
+After you fix configuration run 'bee-get-addr' again.
+        "
+        ;;
+    *)
+        ETH_ADDRESS=$(echo "$RESP" | grep ethereum | cut -d' ' -f6 | tr -d '"')
+        echo "
+Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.
+You can get both goerli eth and goerli bzz from https://faucet.ethswarm.org
+After you get the funds start service with 'brew services start bee'.
+        "
+        ;;
+esac
