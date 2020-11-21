@@ -65,11 +65,14 @@ nfpms:
     formats:
       - deb
       - rpm
+    
+    files:
+      "packaging/bee.service": "/lib/systemd/system/bee.service"
+      "packaging/bee-get-addr": "/usr/bin/bee-get-addr"
 
     config_files:
       "packaging/bee.yaml": "/etc/bee/bee.yaml"
       "packaging/default": "/etc/default/bee"
-      "packaging/bee.service": "/lib/systemd/system/bee.service"
 
     overrides:
       deb:
@@ -90,8 +93,5 @@ nfpms:
           postinstall: ./packaging/rpm/post
           preremove: ./packaging/rpm/preun
           postremove: ./packaging/rpm/postun
-    deb:
-      scripts:
-        templates: ./packaging/deb/templates
 
     bindir: /usr/bin
