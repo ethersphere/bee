@@ -125,7 +125,7 @@ jobs:
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --pay-threshold 100000 --geth --clef
+          ./beeinfra.sh install --local -r "${REPLICA}" --pay-threshold 100000 --geth --clef
       - name: Test fullconnectivity
         id: fullconnectivity-3
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
