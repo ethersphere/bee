@@ -1,8 +1,11 @@
 name: Beekeeper
 
 on:
-  repository_dispatch:
-    types: [trigger-beekeeper]
+  pull_request: #remove after testing
+    branches:
+      - '**'
+  # repository_dispatch:
+  #   types: [trigger-beekeeper]
 
 jobs:
   beekeeper:
@@ -114,6 +117,24 @@ jobs:
       - name: Test pin bytes
         id: pin-bytes
         run: ./beekeeper check pin-bytes --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Destroy the cluster
+        run: |
+          ./beeinfra.sh destroy
+          grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
+      - name: Set testing cluster (clef enabled)
+        run: |
+          echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
+          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
+          ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --pay-threshold 100000 --geth --clef
+      - name: Test fullconnectivity
+        id: fullconnectivity-3
+        run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Test pingpong
+        id: pingpong-3
+        run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Test settlements
+        id: settlements-2
+        run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count 10 -t 100000
       - name: Retag Docker image and push
         if: success()
         run: |
@@ -140,7 +161,7 @@ jobs:
           if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
           if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
           if ${{ steps.balances.outcome=='failure' }}; then FAILED=balances; fi
-          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          if ${{ steps.settlements-1.outcome=='failure' }}; then FAILED=settlements-1; fi
           if ${{ steps.pushsync-bytes.outcome=='failure' }}; then FAILED=pushsync-bytes; fi
           if ${{ steps.pushsync-chunks.outcome=='failure' }}; then FAILED=pushsync-chunks; fi
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
@@ -150,6 +171,9 @@ jobs:
           if ${{ steps.gc-chunk.outcome=='failure' }}; then FAILED=gc-chunk; fi
           if ${{ steps.pin-chunk.outcome=='failure' }}; then FAILED=pin-chunk; fi
           if ${{ steps.pin-bytes.outcome=='failure' }}; then FAILED=pin-bytes; fi
+          if ${{ steps.fullconnectivity-3.outcome=='failure' }}; then FAILED=fullconnectivity-3; fi
+          if ${{ steps.pingpong-3.outcome=='failure' }}; then FAILED=pingpong-3; fi
+          if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Merge run**\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
