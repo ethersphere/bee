@@ -139,7 +139,7 @@ brews:
       etc.install "packaging/homebrew/bee.yaml" => "bee/bee.yaml" unless File.exists? etc/"bee/bee.yaml"
     post_install: |
       system("openssl", "rand", "-base64", "32", "-out", var/"lib/bee/password")
-      system("/usr/local/bin/bee", "init", "--config", "/usr/local/etc/bee/bee.yaml", ">/dev/null", "2>&1")
+      system(bin/"bee", "init", "--config", etc/"bee/bee.yaml", ">/dev/null", "2>&1")
     plist: |
       <?xml version="1.0" encoding="UTF-8"?>
       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
