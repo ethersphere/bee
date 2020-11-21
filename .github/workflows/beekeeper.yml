@@ -121,6 +121,9 @@ jobs:
         run: |
           ./beeinfra.sh destroy
           grep -vE 'bee|registry.localhost' /etc/hosts | sudo tee /etc/hosts
+      - name: Decrease REPLICA to 3
+        run: |
+          echo "REPLICA=3" >> $GITHUB_ENV
       - name: Set testing cluster (clef enabled)
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
