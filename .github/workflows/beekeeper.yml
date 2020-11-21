@@ -1,11 +1,8 @@
 name: Beekeeper
 
 on:
-  pull_request: #remove after testing
-    branches:
-      - '**'
-  # repository_dispatch:
-  #   types: [trigger-beekeeper]
+  repository_dispatch:
+    types: [trigger-beekeeper]
 
 jobs:
   beekeeper:
