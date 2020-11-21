@@ -201,7 +201,11 @@ func (s *server) checkOrigin(r *http.Request) bool {
 	if len(origin) == 0 {
 		return true
 	}
-	hosts := append(s.CORSAllowedOrigins, "http://"+r.Host)
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	hosts := append(s.CORSAllowedOrigins, scheme+"://"+r.Host)
 	for _, v := range hosts {
 		if equalASCIIFold(origin[0], v) || v == "*" {
 			return true
