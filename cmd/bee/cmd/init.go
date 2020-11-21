@@ -5,12 +5,11 @@
 package cmd
 
 import (
-	"fmt"
 	"io/ioutil"
-	"strings"
+	"os"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -23,25 +22,13 @@ func (c *command) initInitCmd() (err error) {
 				return cmd.Help()
 			}
 
-			var logger logging.Logger
-			switch v := strings.ToLower(c.config.GetString(optionNameVerbosity)); v {
-			case "0", "silent":
-				logger = logging.New(ioutil.Discard, 0)
-			case "1", "error":
-				logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
-			case "2", "warn":
-				logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
-			case "3", "info":
-				logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
-			case "4", "debug":
-				logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
-			case "5", "trace":
-				logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
-			default:
-				return fmt.Errorf("unknown verbosity level %q", v)
-			}
+			res, err := c.configureSigner(cmd, logging.New(ioutil.Discard, 0))
 
-			_, err = c.configureSigner(cmd, logger)
+			cmd.SetOut(os.Stdout)
+			cmd.Printf("0x%x\n", crypto.EncodeSecp256k1PublicKey(res.publicKey))
+			cmd.Printf("0x%x\n", crypto.EncodeSecp256k1PublicKey(&res.pssPrivateKey.PublicKey))
+			cmd.Printf("0x%x\n", res.overlayEthAddress)
+
 			return err
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {

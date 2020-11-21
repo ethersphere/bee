@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/external"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/crypto/clef"
@@ -176,11 +177,12 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 }
 
 type signerConfig struct {
-	signer           crypto.Signer
-	address          swarm.Address
-	publicKey        *ecdsa.PublicKey
-	libp2pPrivateKey *ecdsa.PrivateKey
-	pssPrivateKey    *ecdsa.PrivateKey
+	signer            crypto.Signer
+	address           swarm.Address
+	publicKey         *ecdsa.PublicKey
+	libp2pPrivateKey  *ecdsa.PrivateKey
+	pssPrivateKey     *ecdsa.PrivateKey
+	overlayEthAddress common.Address
 }
 
 func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (config *signerConfig, err error) {
@@ -312,10 +314,11 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	logger.Infof("using ethereum address %x", overlayEthAddress)
 
 	return &signerConfig{
-		signer:           signer,
-		address:          address,
-		publicKey:        publicKey,
-		libp2pPrivateKey: libp2pPrivateKey,
-		pssPrivateKey:    pssPrivateKey,
+		signer:            signer,
+		address:           address,
+		publicKey:         publicKey,
+		libp2pPrivateKey:  libp2pPrivateKey,
+		pssPrivateKey:     pssPrivateKey,
+		overlayEthAddress: overlayEthAddress,
 	}, nil
 }
