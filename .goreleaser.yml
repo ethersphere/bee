@@ -1,50 +1,62 @@
 project_name: bee
 
 builds:
-  - main: ./cmd/bee/main.go
-
+  - main: ./cmd/bee
     binary: bee
-
     flags:
       - -v
       - -trimpath
-
     ldflags:
       - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
-
     env:
       - CGO_ENABLED=0
-
     goos:
-      - darwin
       - linux
       - windows
-
     goarch:
       - amd64
       - 386
       - arm64
       - arm
-
+    goarm:
+      - 7
     ignore:
-      - goos: darwin
-        goarch: 386
-      - goos: darwin
-        goarch: arm64
-      - goos: darwin
-        goarch: arm
       - goos: windows
         goarch: arm64
       - goos: windows
         goarch: arm
+  - id: darwin
+    main: ./cmd/bee
+    binary: bee
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
 
 snapshot:
   name_template: "{{.Tag}}-snapshot"
 
 archives:
-  - name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-
+  -
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format: binary
+  -
+    id: homebrew
+    builds:
+    - darwin
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    files:
+    - packaging/homebrew/bee.yaml
+    - packaging/homebrew/bee-get-addr
+    - LICENSE
+    - README.md
 
 nfpms:
   - file_name_template: "{{ tolower .ProjectName }}_{{ tolower .Version }}_{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
@@ -95,3 +107,62 @@ nfpms:
           postremove: ./packaging/rpm/postun
 
     bindir: /usr/bin
+
+brews:
+  - name: swarm-bee
+    tap:
+      owner: ethersphere
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_PAT }}"
+    ids:
+      - homebrew
+    commit_author:
+      name: bee-worker
+      email: bee-worker@ethswarm.org
+    homepage: https://swarm.ethereum.org/
+    description: Ethereum Swarm node
+    caveats: |
+        Logs:   #{var}/log/bee/bee.log
+        Config: #{etc}/bee/bee.yaml
+
+        Bee has SWAP enabled by default and it needs ethereum endpoint to operate.
+        It is recommended to use external signer with bee.
+        Check documentation for more info https://docs.ethswarm.org/
+
+        After you finish configuration run 'bee-get-addr'.
+    test: |
+      system "#{bin}/bee version"
+    install: |
+      (etc/"bee").mkpath
+      (var/"lib/bee").mkpath
+      bin.install ["bee", "packaging/homebrew/bee-get-addr"]
+      etc.install "packaging/homebrew/bee.yaml" => "bee/bee.yaml" unless File.exists? etc/"bee/bee.yaml"
+    post_install: |
+      system("openssl", "rand", "-base64", "32", "-out", var/"lib/bee/password")
+      system(bin/"bee", "init", "--config", etc/"bee/bee.yaml", ">/dev/null", "2>&1")
+    plist: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+        <key>KeepAlive</key>
+        <true/>
+        <key>Label</key>
+        <string>#{plist_name}</string>
+        <key>ProgramArguments</key>
+        <array>
+          <string>#{bin}/bee</string>
+          <string>start</string>
+          <string>--config</string>
+          <string>#{etc}/bee/bee.yaml</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>WorkingDirectory</key>
+        <string>/usr/local</string>
+        <key>StandardOutPath</key>
+        <string>#{var}/log/bee/bee.log</string>
+        <key>StandardErrorPath</key>
+        <string>#{var}/log/bee/bee.log</string>
+      </dict>
+      </plist>
