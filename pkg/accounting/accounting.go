@@ -83,9 +83,6 @@ var (
 	ErrOverdraft = errors.New("attempted overdraft")
 	// ErrDisconnectThresholdExceeded denotes a peer has exceeded the disconnect threshold.
 	ErrDisconnectThresholdExceeded = errors.New("disconnect threshold exceeded")
-	// ErrInvalidPaymentTolerance denotes the payment tolerance is too high
-	// compared to the payment threshold.
-	ErrInvalidPaymentTolerance = errors.New("payment tolerance must be less than half the payment threshold")
 	// ErrPeerNoBalance is the error returned if no balance in store exists for a peer
 	ErrPeerNoBalance = errors.New("no balance for peer")
 	// ErrOverflow denotes an arithmetic operation overflowed.
@@ -106,10 +103,6 @@ func NewAccounting(
 ) (*Accounting, error) {
 	if PaymentTolerance+PaymentThreshold > math.MaxInt64 {
 		return nil, fmt.Errorf("tolerance plus threshold too big: %w", ErrOverflow)
-	}
-
-	if PaymentTolerance > PaymentThreshold/2 {
-		return nil, ErrInvalidPaymentTolerance
 	}
 
 	return &Accounting{
