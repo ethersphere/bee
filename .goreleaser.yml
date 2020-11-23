@@ -122,8 +122,8 @@ brews:
     homepage: https://swarm.ethereum.org/
     description: Ethereum Swarm node
     caveats: |
-        Logs:   #{var}/log/bee/bee.log
-        Config: #{etc}/bee/bee.yaml
+        Logs:   #{var}/log/swarm-bee/bee.log
+        Config: #{etc}/swarm-bee/bee.yaml
 
         Bee has SWAP enabled by default and it needs ethereum endpoint to operate.
         It is recommended to use external signer with bee.
@@ -133,13 +133,13 @@ brews:
     test: |
       system "#{bin}/bee version"
     install: |
-      (etc/"bee").mkpath
-      (var/"lib/bee").mkpath
+      (etc/"swarm-bee").mkpath
+      (var/"lib/swarm-bee").mkpath
       bin.install ["bee", "packaging/homebrew/bee-get-addr"]
-      etc.install "packaging/homebrew/bee.yaml" => "bee/bee.yaml" unless File.exists? etc/"bee/bee.yaml"
+      etc.install "packaging/homebrew/bee.yaml" => "swarm-bee/bee.yaml" unless File.exists? etc/"swarm-bee/bee.yaml"
     post_install: |
-      system("openssl", "rand", "-base64", "32", "-out", var/"lib/bee/password")
-      system(bin/"bee", "init", "--config", etc/"bee/bee.yaml", ">/dev/null", "2>&1")
+      system("openssl", "rand", "-base64", "32", "-out", var/"lib/swarm-bee/password")
+      system(bin/"bee", "init", "--config", etc/"swarm-bee/bee.yaml", ">/dev/null", "2>&1")
     plist: |
       <?xml version="1.0" encoding="UTF-8"?>
       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -154,15 +154,15 @@ brews:
           <string>#{bin}/bee</string>
           <string>start</string>
           <string>--config</string>
-          <string>#{etc}/bee/bee.yaml</string>
+          <string>#{etc}/swarm-bee/bee.yaml</string>
         </array>
         <key>RunAtLoad</key>
         <true/>
         <key>WorkingDirectory</key>
         <string>/usr/local</string>
         <key>StandardOutPath</key>
-        <string>#{var}/log/bee/bee.log</string>
+        <string>#{var}/log/swarm-bee/bee.log</string>
         <key>StandardErrorPath</key>
-        <string>#{var}/log/bee/bee.log</string>
+        <string>#{var}/log/swarm-bee/bee.log</string>
       </dict>
       </plist>
