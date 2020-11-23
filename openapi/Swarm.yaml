@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  version: 0.3.0
+  version: 0.4.0
   title: Swarm API
   description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations'
 
@@ -375,15 +375,15 @@ paths:
       summary: 'Create Tag'
       tags:
         - Tag
-      parameters:
-        - in: query
-          name: name
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/TagName'
-          required: true
-          description: Tagname
+      requestBody:
+        description: Optional description in *Markdown*
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'SwarmCommon.yaml#/components/schemas/NewTagRequest'
       responses:
-        '200':
+        '201':
           description: New Tag Info
           content:
             application/json:
