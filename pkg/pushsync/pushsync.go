@@ -30,8 +30,7 @@ const (
 )
 
 const (
-	maxPeers          = 5
-	blocklistDuration = time.Minute
+	maxPeers = 5
 )
 
 type PushSyncer interface {
@@ -311,9 +310,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
 			ps.logger.Debugf("pushsync-push: %v", lastErr)
-			if errors.Is(err, context.DeadlineExceeded) {
-				ps.blocklistPeer(peer)
-			}
 			continue
 		}
 
@@ -332,9 +328,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
 			ps.logger.Debugf("pushsync-push: %v", lastErr)
-			if errors.Is(err, context.DeadlineExceeded) {
-				ps.blocklistPeer(peer)
-			}
 			continue
 		}
 		ps.metrics.ReceiptRTT.Observe(time.Since(receiptRTTTimer).Seconds())
@@ -365,15 +358,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}
 
 	return nil, topology.ErrNotFound
-}
-
-func (ps *PushSync) blocklistPeer(peer swarm.Address) {
-	if err := ps.streamer.Blocklist(peer, blocklistDuration); err != nil {
-		ps.logger.Errorf("pushsync-push: unable to block peer %s", peer)
-		ps.logger.Debugf("pushsync-push: blocking peer %s: %v", peer, err)
-	} else {
-		ps.logger.Warningf("pushsync-push: peer %s blocked as unresponsive", peer)
-	}
 }
 
 func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Writer, p p2p.Peer, chunk swarm.Chunk) error {
