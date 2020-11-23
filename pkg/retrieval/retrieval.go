@@ -92,8 +92,17 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 		defer span.Finish()
 
 		var skipPeers []swarm.Address
+
+	LOOP:
 		for i := 0; i < maxPeers; i++ {
+			select {
+			case <-ctx.Done():
+				break LOOP
+			default:
+			}
+
 			var peer swarm.Address
+
 			chunk, peer, err := s.retrieveChunk(ctx, addr, skipPeers)
 			if err != nil {
 				if peer.IsZero() {
@@ -288,6 +297,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}); err != nil {
 		return fmt.Errorf("write delivery: %w", err)
 	}
+
+	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
 	// compute the price we charge for this chunk and debit it from p's balance
 	chunkPrice := s.pricer.Price(chunk.Address())
