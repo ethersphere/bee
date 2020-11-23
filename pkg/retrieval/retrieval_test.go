@@ -52,9 +52,9 @@ func TestDelivery(t *testing.T) {
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(swarm.MustParseHexAddress("00112234"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, mockValidator, nil)
-	recorder := streamtest.NewRecorderDisconnecter(streamtest.New(
+	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
-	))
+	)
 
 	clientMockAccounting := accountingmock.NewAccounting()
 
@@ -153,7 +153,7 @@ func TestRetrieveChunk(t *testing.T) {
 
 		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
 
-		recorder := streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithProtocols(server.Protocol())))
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
 
 		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 			_, _, _ = f(serverAddress, 0)
@@ -198,7 +198,7 @@ func TestRetrieveChunk(t *testing.T) {
 		forwarder := retrieval.New(
 			forwarderAddress,
 			storemock.NewStorer(), // no chunk in forwarder's store
-			streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithProtocols(server.Protocol()))), // connect to server
+			streamtest.New(streamtest.WithProtocols(server.Protocol())), // connect to server
 			mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 				_, _, _ = f(serverAddress, 0) // suggest server's address
 				return nil
@@ -213,7 +213,7 @@ func TestRetrieveChunk(t *testing.T) {
 		client := retrieval.New(
 			clientAddress,
 			storemock.NewStorer(), // no chunk in clients's store
-			streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithProtocols(forwarder.Protocol()))), // connect to forwarder
+			streamtest.New(streamtest.WithProtocols(forwarder.Protocol())), // connect to forwarder
 			mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 				_, _, _ = f(forwarderAddress, 0) // suggest forwarder's address
 				return nil
