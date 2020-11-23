@@ -48,6 +48,11 @@ func TestGatewayMode(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, "/tags", http.StatusForbidden, forbiddenResponseOption)
 	})
 
+	t.Run("pss endpoints", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/test-topic/ab", http.StatusForbidden, forbiddenResponseOption)
+		jsonhttptest.Request(t, client, http.MethodGet, "/pss/subscribe/test-topic", http.StatusForbidden, forbiddenResponseOption)
+	})
+
 	t.Run("pinning", func(t *testing.T) {
 		headerOption := jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true")
 
