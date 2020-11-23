@@ -7,13 +7,13 @@
 ## enable clef signer
 # clef-signer-enable: false
 ## clef signer endpoint
-clef-signer-endpoint: /usr/local/var/lib/bee-clef/clef.ipc
+clef-signer-endpoint: /usr/local/var/lib/swarm-clef/clef.ipc
 ## config file (default is /home/<user>/.bee.yaml)
-config: /usr/local/etc/bee/bee.yaml
+config: /usr/local/etc/swarm-bee/bee.yaml
 ## origins with CORS headers enabled
 # cors-allowed-origins: []
 ## data directory (default "/home/<user>/.bee")
-data-dir: /usr/local/var/lib/bee
+data-dir: /usr/local/var/lib/swarm-bee
 ## db capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # db-capacity: 5000000
 ## debug HTTP API listen address (default ":1635")
@@ -37,7 +37,7 @@ data-dir: /usr/local/var/lib/bee
 ## password for decrypting keys
 # password: ""
 ## path to a file that contains password for decrypting keys
-password-file: /usr/local/var/lib/bee/password
+password-file: /usr/local/var/lib/swarm-bee/password
 ## amount in BZZ below the peers payment threshold when we initiate settlement (default 10000)
 # payment-early: 10000
 ## threshold in BZZ where you expect to get paid from your peers (default 100000)
