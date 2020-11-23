@@ -376,7 +376,6 @@ paths:
       tags:
         - Tag
       requestBody:
-        description: Optional description in *Markdown*
         required: true
         content:
           application/json:
