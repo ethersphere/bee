@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  version: 0.3.0
+  version: 0.4.0
   title: Common Data Types
   description: |
     \*****bzzz*****
