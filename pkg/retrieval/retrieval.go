@@ -253,7 +253,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}()
 	var req pb.Request
-	if err := r.ReadMsg(&req); err != nil {
+	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
