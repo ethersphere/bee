@@ -729,22 +729,6 @@ func TestAccountingNotifyPayment(t *testing.T) {
 	}
 }
 
-func TestAccountingInvalidPaymentTolerance(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
-
-	store := mock.NewStateStore()
-	defer store.Close()
-
-	_, err := accounting.NewAccounting(testPaymentThreshold, testPaymentThreshold/2+1, 1000, logger, store, nil, nil)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	if err != accounting.ErrInvalidPaymentTolerance {
-		t.Fatalf("got wrong error. got %v wanted %v", err, accounting.ErrInvalidPaymentTolerance)
-	}
-}
-
 type pricingMock struct {
 	called           bool
 	peer             swarm.Address
