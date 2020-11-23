@@ -1,6 +1,6 @@
 #!/bin/sh
 
-RESP=$(/usr/local/bin/bee init --config /usr/local/etc/bee/bee.yaml 2>&1)
+RESP=$(/usr/local/bin/bee init --config /usr/local/etc/swarm-bee/bee.yaml 2>&1)
 case "$RESP" in
     Error*)
         echo "
