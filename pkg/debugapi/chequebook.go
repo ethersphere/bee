@@ -18,16 +18,17 @@ import (
 )
 
 var (
-	errChequebookBalance    = "cannot get chequebook balance"
-	errChequebookNoAmount   = "did not specify amount"
-	errChequebookNoWithdraw = "cannot withdraw"
-	errChequebookNoDeposit  = "cannot deposit"
-	errCantLastChequePeer   = "cannot get last cheque for peer"
-	errCantLastCheque       = "cannot get last cheque for all peers"
-	errCannotCash           = "cannot cash cheque"
-	errCannotCashStatus     = "cannot get cashout status"
-	errNoCashout            = "no prior cashout"
-	errNoCheque             = "no prior cheque"
+	errChequebookBalance           = "cannot get chequebook balance"
+	errChequebookNoAmount          = "did not specify amount"
+	errChequebookNoWithdraw        = "cannot withdraw"
+	errChequebookNoDeposit         = "cannot deposit"
+	errChequebookInsufficientFunds = "insufficient funds"
+	errCantLastChequePeer          = "cannot get last cheque for peer"
+	errCantLastCheque              = "cannot get last cheque for all peers"
+	errCannotCash                  = "cannot cash cheque"
+	errCannotCashStatus            = "cannot get cashout status"
+	errNoCashout                   = "no prior cashout"
+	errNoCheque                    = "no prior cheque"
 )
 
 type chequebookBalanceResponse struct {
@@ -298,6 +299,12 @@ func (s *server) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	txHash, err := s.Chequebook.Withdraw(r.Context(), amount)
+	if errors.Is(err, chequebook.ErrInsufficientFunds) {
+		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
+		s.Logger.Debugf("debug api: chequebook withdraw: %v", err)
+		s.Logger.Error("debug api: cannot withdraw from chequebook")
+		return
+	}
 	if err != nil {
 		jsonhttp.InternalServerError(w, errChequebookNoWithdraw)
 		s.Logger.Debugf("debug api: chequebook withdraw: %v", err)
@@ -324,6 +331,12 @@ func (s *server) chequebookDepositHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	txHash, err := s.Chequebook.Deposit(r.Context(), amount)
+	if errors.Is(err, chequebook.ErrInsufficientFunds) {
+		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
+		s.Logger.Debugf("debug api: chequebook deposit: %v", err)
+		s.Logger.Error("debug api: cannot deposit from chequebook")
+		return
+	}
 	if err != nil {
 		jsonhttp.InternalServerError(w, errChequebookNoDeposit)
 		s.Logger.Debugf("debug api: chequebook deposit: %v", err)
