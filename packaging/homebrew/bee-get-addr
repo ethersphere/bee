@@ -14,6 +14,7 @@ After you fix configuration run 'bee-get-addr' again.
         echo "
 Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.
 You can get both goerli eth and goerli bzz from https://faucet.ethswarm.org?address=$ETH_ADDRESS
+
 After you get the funds start service with 'brew services start swarm-bee'.
         "
         ;;
