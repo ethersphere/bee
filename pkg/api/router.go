@@ -90,14 +90,20 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/pss/send/{topic}/{targets}", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
-			web.FinalHandlerFunc(s.pssPostHandler),
-		),
-	})
+	handle(router, "/pss/send/{topic}/{targets}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
+				web.FinalHandlerFunc(s.pssPostHandler),
+			),
+		})),
+	)
 
-	handle(router, "/pss/subscribe/{topic}", http.HandlerFunc(s.pssWsHandler))
+	handle(router, "/pss/subscribe/{topic}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandlerFunc(s.pssWsHandler),
+	))
 
 	handle(router, "/tags", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
