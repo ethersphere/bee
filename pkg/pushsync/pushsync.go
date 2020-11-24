@@ -308,7 +308,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		w, r := protobuf.NewWriterAndReader(streamer)
 		if err := ps.sendChunkDelivery(ctx, w, ch); err != nil {
 			_ = streamer.Reset()
-			lastErr = fmt.Errorf("chunk deliver to peer %s: %w", peer.String(), err)
+			lastErr = fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)
 			ps.logger.Debugf("pushsync-push: %v", lastErr)
 			continue
 		}
@@ -326,7 +326,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		receipt, err := ps.receiveReceipt(ctx, r)
 		if err != nil {
 			_ = streamer.Reset()
-			lastErr = fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
+			lastErr = fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
 			ps.logger.Debugf("pushsync-push: %v", lastErr)
 			continue
 		}
