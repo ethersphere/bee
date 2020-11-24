@@ -344,12 +344,6 @@ paths:
             $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
           required: true
           description: Swarm address of content
-        - in: path
-          name: path
-          schema:
-            type: string
-          required: true
-          description: Path to the file in the collection.
         - in: query
           name: targets
           schema:
