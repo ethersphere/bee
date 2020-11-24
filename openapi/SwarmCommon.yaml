@@ -169,7 +169,7 @@ components:
         Name:
           type: string
         Address:
-          type: '#/components/schemas/SwarmAddress'
+          $ref: '#/components/schemas/SwarmAddress'
 
     NewTagResponse:
       type: object
