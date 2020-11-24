@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  version: 0.3.0
+  version: 0.4.0
   title: Swarm API
   description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations'
 
@@ -208,6 +208,11 @@ paths:
             type: boolean
           required: false
           description: Represents the encrypting state of the file
+        - in: header
+          name: Content-Type
+          schema:
+            type: string
+            description: The specified content-type is preserved for download of the asset
       requestBody:
         content:
           multipart/form-data:
@@ -258,7 +263,6 @@ paths:
               schema:
                 type: string
                 format: binary
-
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '404':
@@ -305,7 +309,7 @@ paths:
             type: string
             example: error.html
           required: false
-          description: Configure custom error document to be returned when an error occurs while fetching path from collection
+          description: Configure custom error document to be returned when a specified path can not be found in collection
       requestBody:
         content:
           application/x-tar:
@@ -323,6 +327,42 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/400'
         '403':
           $ref: 'SwarmCommon.yaml#/components/responses/403'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/bzz/{reference}':
+    get:
+      summary: 'Get index document from a collection of files'
+      tags:
+        - Collection
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
+          required: true
+          description: Swarm address of content
+        - in: query
+          name: targets
+          schema:
+            type: string
+          required: false
+          description: Global pinning targets prefix
+      responses:
+        '200':
+          description: Ok
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '404':
+          $ref: 'SwarmCommon.yaml#/components/responses/404'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -375,15 +415,14 @@ paths:
       summary: 'Create Tag'
       tags:
         - Tag
-      parameters:
-        - in: query
-          name: name
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/TagName'
-          required: true
-          description: Tagname
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'SwarmCommon.yaml#/components/schemas/NewTagRequest'
       responses:
-        '200':
+        '201':
           description: New Tag Info
           content:
             application/json:

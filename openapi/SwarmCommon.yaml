@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
-  version: '0.3.0'
-  title: 'Common Data Types'
+  version: 0.4.0
+  title: Common Data Types
   description: |
     \*****bzzz*****
 
@@ -162,6 +162,14 @@ components:
 
     MultiAddress:
       type: string
+
+    NewTagRequest:
+      type: object
+      properties:
+        Name:
+          type: string
+        Address:
+          type: '#/components/schemas/SwarmAddress'
 
     NewTagResponse:
       type: object
