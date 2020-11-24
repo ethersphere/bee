@@ -462,6 +462,7 @@ func TestAddressBookPrune(t *testing.T) {
 
 // TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
 func TestClosestPeer(t *testing.T) {
+	_ = waitPeers
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
 	logger := logging.New(ioutil.Discard, 0)
