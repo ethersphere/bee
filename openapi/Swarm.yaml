@@ -293,12 +293,19 @@ paths:
           required: false
           description: Represents the encrypting state of the collection
         - in: header
-          name: swarm-index
+          name: swarm-index-document
           schema:
             type: string
             example: index.html
           required: false
           description: Default file to be referenced on path, if exists under that path
+        - in: header
+          name: swarm-error-document
+          schema:
+            type: string
+            example: error.html
+          required: false
+          description: Configure custom error document to be returned when an error occurs while fetching path from collection
       requestBody:
         content:
           application/x-tar:
