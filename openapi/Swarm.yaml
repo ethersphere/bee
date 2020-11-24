@@ -309,7 +309,7 @@ paths:
             type: string
             example: error.html
           required: false
-          description: Configure custom error document to be returned when an error occurs while fetching path from collection
+          description: Configure custom error document to be returned when a specified path can not be found in collection
       requestBody:
         content:
           application/x-tar:
