@@ -128,7 +128,12 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 			return swarm.ZeroAddress, fmt.Errorf("read tar stream: %w", err)
 		}
 
-		filePath := fileHeader.Name
+		filePath := filepath.Clean(fileHeader.Name)
+
+		if filePath == "." {
+			logger.Warningf("skipping file upload empty path")
+			continue
+		}
 
 		// only store regular files
 		if !fileHeader.FileInfo().Mode().IsRegular() {

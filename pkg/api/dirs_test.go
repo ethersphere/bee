@@ -223,6 +223,32 @@ func TestDirs(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "invalid archive paths",
+			files: []f{
+				{
+					data:      []byte("<h1>Swarm"),
+					name:      "index.html",
+					dir:       "",
+					filePath:  "./index.html",
+					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
+				},
+				{
+					data:      []byte("body {}"),
+					name:      "app.css",
+					dir:       "",
+					filePath:  "./app.css",
+					reference: swarm.MustParseHexAddress("9813953280d7e02cde1efea92fe4a8fc0fdfded61e185620b43128c9b74a3e9c"),
+				},
+				{
+					data:      []byte("document"),
+					name:      "app.js",
+					dir:       "",
+					filePath:  "./app.js",
+					reference: swarm.MustParseHexAddress("410791f2885c342cb5477aca9fa0bbaf20075f74e5a84aeac06ba002818e21ff"),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// tar all the test case files
@@ -395,9 +421,14 @@ func tarFiles(t *testing.T, files []f) *bytes.Buffer {
 	tw := tar.NewWriter(&buf)
 
 	for _, file := range files {
+		filePath := path.Join(file.dir, file.name)
+		if file.filePath != "" {
+			filePath = file.filePath
+		}
+
 		// create tar header and write it
 		hdr := &tar.Header{
-			Name: path.Join(file.dir, file.name),
+			Name: filePath,
 			Mode: 0600,
 			Size: int64(len(file.data)),
 		}
@@ -424,6 +455,7 @@ type f struct {
 	data      []byte
 	name      string
 	dir       string
+	filePath  string
 	reference swarm.Address
 	header    http.Header
 }
