@@ -135,6 +135,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 			continue
 		}
 
+		// always use Unix path separator
 		filePath = strings.ReplaceAll(filePath, "\\", "/")
 
 		// only store regular files
