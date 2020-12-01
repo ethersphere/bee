@@ -232,9 +232,6 @@ func TestDirs(t *testing.T) {
 					dir:       "",
 					filePath:  "./index.html",
 					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
-					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
-					},
 				},
 				{
 					data:      []byte("body {}"),
@@ -242,19 +239,14 @@ func TestDirs(t *testing.T) {
 					dir:       "",
 					filePath:  "./app.css",
 					reference: swarm.MustParseHexAddress("9813953280d7e02cde1efea92fe4a8fc0fdfded61e185620b43128c9b74a3e9c"),
-					header: http.Header{
-						"Content-Type": {"text/css; charset=utf-8"},
-					},
 				},
 				{
-					data:      []byte("document"),
-					name:      "app.js",
+					data: []byte(`User-agent: *
+Disallow: /`),
+					name:      "robots.txt",
 					dir:       "",
-					filePath:  "./app.js",
-					reference: swarm.MustParseHexAddress("410791f2885c342cb5477aca9fa0bbaf20075f74e5a84aeac06ba002818e21ff"),
-					header: http.Header{
-						"Content-Type": {"application/javascript"},
-					},
+					filePath:  "./robots.txt",
+					reference: swarm.MustParseHexAddress("84a620dcaf6b3ad25251c4b4d7097fa47266908a4664408057e07eb823a6a79e"),
 				},
 			},
 		},
