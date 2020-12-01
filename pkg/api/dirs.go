@@ -135,6 +135,8 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 			continue
 		}
 
+		filePath = strings.ReplaceAll(filePath, "\\", "/")
+
 		// only store regular files
 		if !fileHeader.FileInfo().Mode().IsRegular() {
 			logger.Warningf("skipping file upload for %s as it is not a regular file", filePath)
