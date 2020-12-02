@@ -442,7 +442,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("addr from p2p: %w", err)
 	}
 
-	if _, found := s.peers.overlay(info.ID); found {
+	if _, found := s.peers.isConnected(info.ID, addr); found {
 		return nil, p2p.ErrAlreadyConnected
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type peerRegistry struct {
@@ -159,6 +160,27 @@ func (r *peerRegistry) peerID(overlay swarm.Address) (peerID libp2ppeer.ID, foun
 func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (swarm.Address, bool) {
 	r.mu.RLock()
 	overlay, found := r.overlays[peerID]
+	r.mu.RUnlock()
+	return overlay, found
+}
+
+func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, addr ma.Multiaddr) (swarm.Address, bool) {
+	r.mu.RLock()
+	overlay, found := r.overlays[peerID]
+	if found {
+		// check connection remote address
+		if conns, ok := r.connections[peerID]; ok {
+			found = false
+			for c := range conns {
+				dAddr := addr.Decapsulate(c.RemoteMultiaddr())
+				if !addr.Equal(dAddr) {
+					// we ARE connected to the peer on expected address
+					found = true
+					break
+				}
+			}
+		}
+	}
 	r.mu.RUnlock()
 	return overlay, found
 }
