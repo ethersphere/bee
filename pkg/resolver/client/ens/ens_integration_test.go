@@ -29,42 +29,42 @@ func TestENSntegration(t *testing.T) {
 	}{
 		// TODO: add a test targeting a resolver with an invalid contenthash
 		// record.
-		// {
-		// 	desc:     "invalid resolver endpoint",
-		// 	endpoint: "example.com",
-		// 	wantErr:  ens.ErrFailedToConnect,
-		// },
+		{
+			desc:     "invalid resolver endpoint",
+			endpoint: "example.com",
+			wantErr:  ens.ErrFailedToConnect,
+		},
 		{
 			desc:    "no domain",
 			name:    "idonthaveadomain",
 			wantErr: ens.ErrResolveFailed,
 		},
-		// {
-		// 	desc:    "no eth domain",
-		// 	name:    "centralized.com",
-		// 	wantErr: ens.ErrResolveFailed,
-		// },
-		// {
-		// 	desc:    "not registered",
-		// 	name:    "unused.test.swarm.eth",
-		// 	wantErr: ens.ErrResolveFailed,
-		// },
-		// {
-		// 	desc:    "no content hash",
-		// 	name:    "nocontent.resolver.test.swarm.eth",
-		// 	wantErr: ens.ErrResolveFailed,
-		// },
-		// {
-		// 	desc:            "invalid contract address",
-		// 	contractAddress: "0xFFFFFFFF",
-		// 	name:            "example.resolver.test.swarm.eth",
-		// 	wantErr:         ens.ErrFailedToConnect,
-		// },
-		// {
-		// 	desc:    "ok",
-		// 	name:    "example.resolver.test.swarm.eth",
-		// 	wantAdr: defaultAddr,
-		// },
+		{
+			desc:    "no eth domain",
+			name:    "centralized.com",
+			wantErr: ens.ErrResolveFailed,
+		},
+		{
+			desc:    "not registered",
+			name:    "unused.test.swarm.eth",
+			wantErr: ens.ErrResolveFailed,
+		},
+		{
+			desc:    "no content hash",
+			name:    "nocontent.resolver.test.swarm.eth",
+			wantErr: ens.ErrResolveFailed,
+		},
+		{
+			desc:            "invalid contract address",
+			contractAddress: "0xFFFFFFFF",
+			name:            "example.resolver.test.swarm.eth",
+			wantErr:         ens.ErrFailedToConnect,
+		},
+		{
+			desc:    "ok",
+			name:    "example.resolver.test.swarm.eth",
+			wantAdr: defaultAddr,
+		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
