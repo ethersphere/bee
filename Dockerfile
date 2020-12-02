@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y \
     groupadd -r bee --gid 999; \
     useradd -r -g bee --uid 999 --no-log-init -m bee;
 
+# make sure mounted volumes have correct permissions
+RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
+
 COPY --from=build /src/dist/bee /usr/local/bin/bee
 
 EXPOSE 1633 1634 1635
