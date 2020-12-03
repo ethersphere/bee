@@ -7,11 +7,11 @@ services:
     environment:
       - CLEF_CHAINID
     volumes:
-      - clef:/home/clef/.clef
+      - clef:/app/data
     command: full
 
   bee:
-    image: ethersphere/bee:local
+    image: ethersphere/bee:0.4.0
     restart: unless-stopped
     environment:
       - BEE_API_ADDR
