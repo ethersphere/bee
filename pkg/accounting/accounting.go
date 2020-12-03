@@ -450,6 +450,7 @@ func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated int64, 
 		}
 	}
 
+	// if surplus is 0 and peer has no balance, propagate ErrPeerNoBalance
 	if surplus == 0 && errors.Is(err, ErrPeerNoBalance) {
 		return 0, err
 	}
