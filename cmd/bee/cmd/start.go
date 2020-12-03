@@ -44,11 +44,6 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
-			isWindowsService, err := isWindowsService()
-			if err != nil {
-				return fmt.Errorf("failed to determine if we are running in service: %w", err)
-			}
-
 			var logger logging.Logger
 			switch v := strings.ToLower(c.config.GetString(optionNameVerbosity)); v {
 			case "0", "silent":
@@ -65,6 +60,11 @@ func (c *command) initStartCmd() (err error) {
 				logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
 			default:
 				return fmt.Errorf("unknown verbosity level %q", v)
+			}
+
+			isWindowsService, err := isWindowsService()
+			if err != nil {
+				return fmt.Errorf("failed to determine if we are running in service: %w", err)
 			}
 
 			// If the resolver is specified, resolve all connection strings
