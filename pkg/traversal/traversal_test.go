@@ -462,15 +462,15 @@ func TestTraversalManifest(t *testing.T) {
 			ctx := context.Background()
 
 			var dirManifest manifest.Interface
-
+			ls := loadsave.New(mockStorer, storage.ModePutRequest, false)
 			switch tc.manifestType {
 			case manifest.ManifestSimpleContentType:
-				dirManifest, err = manifest.NewSimpleManifest(loadsave.New(mockStorer, storage.ModePutRequest, false))
+				dirManifest, err = manifest.NewSimpleManifest(ls)
 				if err != nil {
 					t.Fatal(err)
 				}
 			case manifest.ManifestMantarayContentType:
-				dirManifest, err = manifest.NewMantarayManifestWithObfuscationKeyFn(loadsave.New(mockStorer, storage.ModePutRequest, false), obfuscationKeyFn)
+				dirManifest, err = manifest.NewMantarayManifestWithObfuscationKeyFn(ls, obfuscationKeyFn)
 				if err != nil {
 					t.Fatal(err)
 				}
