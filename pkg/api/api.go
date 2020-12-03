@@ -248,11 +248,11 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
-type pipelineFunc func(io.Reader, int64) (swarm.Address, error)
+type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
 
-func requestPipelineFn(ctx context.Context, s storage.Storer, r *http.Request) pipelineFunc {
+func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
-	return func(r io.Reader, l int64) (swarm.Address, error) {
+	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r, l)
 	}

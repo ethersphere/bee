@@ -60,7 +60,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
-	p := requestPipelineFn(ctx, s.Storer, r)
+	p := requestPipelineFn(s.Storer, r)
 	l := loadsave.New(s.Storer, requestModePut(r), requestEncrypt(r))
 	reference, err := storeDir(ctx, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader))
 	if err != nil {
@@ -147,7 +147,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p p
 			contentType: contentType,
 			reader:      tarReader,
 		}
-		fileReference, err := storeFile(fileInfo, p)
+		fileReference, err := storeFile(ctx, fileInfo, p)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
@@ -197,7 +197,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p p
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	mr, err := p(bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
 	}
@@ -209,7 +209,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p p
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
 
-	manifestFileReference, err := p(bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+	manifestFileReference, err := p(ctx, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
 	}
@@ -219,9 +219,9 @@ func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p p
 
 // storeFile uploads the given file and returns its reference
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code
-func storeFile(fileInfo *fileUploadInfo, p pipelineFunc) (swarm.Address, error) {
+func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc) (swarm.Address, error) {
 	// first store the file and get its reference
-	fr, err := p(fileInfo.reader, fileInfo.size)
+	fr, err := p(ctx, fileInfo.reader, fileInfo.size)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split file: %w", err)
 	}
@@ -239,7 +239,7 @@ func storeFile(fileInfo *fileUploadInfo, p pipelineFunc) (swarm.Address, error) 
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
 	}
 
-	mr, err := p(bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
 	}
@@ -250,7 +250,7 @@ func storeFile(fileInfo *fileUploadInfo, p pipelineFunc) (swarm.Address, error) 
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
 	}
-	ref, err := p(bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+	ref, err := p(ctx, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
 	}

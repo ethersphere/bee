@@ -150,10 +150,10 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		reader = tmp
 	}
 
-	p := requestPipelineFn(ctx, s.Storer, r)
+	p := requestPipelineFn(s.Storer, r)
 
 	// first store the file and get its reference
-	fr, err := p(reader, int64(fileSize))
+	fr, err := p(ctx, reader, int64(fileSize))
 	if err != nil {
 		logger.Debugf("file upload: file store, file %q: %v", fileName, err)
 		logger.Errorf("file upload: file store, file %q", fileName)
@@ -176,7 +176,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
-	mr, err := p(bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
 		logger.Errorf("file upload: metadata store, file %q", fileName)
@@ -193,7 +193,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "entry marshal error")
 		return
 	}
-	reference, err := p(bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
+	reference, err := p(ctx, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
 	if err != nil {
 		logger.Debugf("file upload: entry store, file %q: %v", fileName, err)
 		logger.Errorf("file upload: entry store, file %q", fileName)
