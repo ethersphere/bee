@@ -44,6 +44,11 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
+			isWindowsService, err := isWindowsService()
+			if err != nil {
+				return fmt.Errorf("failed to determine if we are running in service: %w", err)
+			}
+
 			var logger logging.Logger
 			switch v := strings.ToLower(c.config.GetString(optionNameVerbosity)); v {
 			case "0", "silent":
@@ -167,12 +172,6 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 					case <-done:
 					}
 				},
-			}
-
-			isWindowsService, err := p.IsWindowsService()
-			if err != nil {
-				logger.Errorf("failed to determine if we are running in service: %v", err)
-				return fmt.Errorf("failed to check if is Windows service: %w", err)
 			}
 
 			if isWindowsService {

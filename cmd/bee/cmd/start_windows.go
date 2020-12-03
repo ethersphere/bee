@@ -10,6 +10,6 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-func (p *program) IsWindowsService() (bool, error) {
+func isWindowsService() (bool, error) {
 	return svc.IsWindowsService()
 }

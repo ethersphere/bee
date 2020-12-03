@@ -6,6 +6,6 @@
 
 package cmd
 
-func (p *program) IsWindowsService() (bool, error) {
+func isWindowsService() (bool, error) {
 	return false, nil
 }
