@@ -435,7 +435,9 @@ func (a *Accounting) SurplusBalance(peer swarm.Address) (balance int64, err erro
 func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated int64, err error) {
 	balance, err := a.Balance(peer)
 	if err != nil {
-		return 0, err
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return 0, err
+		}
 	}
 	surplus, err := a.SurplusBalance(peer)
 	if err != nil {
