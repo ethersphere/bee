@@ -67,6 +67,14 @@ func (c *command) initStartCmd() (err error) {
 				return fmt.Errorf("failed to determine if we are running in service: %w", err)
 			}
 
+			if isWindowsService {
+				var err error
+				logger, err = createWindowsEventLogger("BeeSvc", logger)
+				if err != nil {
+					return fmt.Errorf("failed to create windows logger %w", err)
+				}
+			}
+
 			// If the resolver is specified, resolve all connection strings
 			// and fail on any errors.
 			var resolverCfgs []multiresolver.ConnectionConfig
