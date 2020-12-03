@@ -94,6 +94,7 @@ jobs:
         run: |
           mkdir -p ~/.kube
           cp $(k3d get-kubeconfig --name='k3s-default') ~/.kube/config
+          echo "kubeconfig: ${HOME}/.kube/config" > ~/.beekeeper.yaml
       - name: Increase REPLICA to 5
         run: |
           echo "REPLICA=5" >> $GITHUB_ENV
