@@ -44,44 +44,27 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
-			isWindowsService, err := isWindowsService()
-			if err != nil {
-				return fmt.Errorf("failed to determine if we are running in service: %w", err)
-			}
-
-			var level logrus.Level
+			var logger logging.Logger
 			switch v := strings.ToLower(c.config.GetString(optionNameVerbosity)); v {
 			case "0", "silent":
-				break
+				logger = logging.New(ioutil.Discard, 0)
 			case "1", "error":
-				level = logrus.ErrorLevel
+				logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
 			case "2", "warn":
-				level = logrus.WarnLevel
+				logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
 			case "3", "info":
-				level = logrus.InfoLevel
+				logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
 			case "4", "debug":
-				level = logrus.DebugLevel
+				logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
 			case "5", "trace":
-				level = logrus.TraceLevel
+				logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
 			default:
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
 
-			if isWindowsService {
-				// max 'warning' level for Windows service
-				switch level {
-				case logrus.ErrorLevel, logrus.WarnLevel:
-					break
-				default:
-					level = logrus.WarnLevel
-				}
-			}
-
-			var logger logging.Logger
-			if level == 0 {
-				logger = logging.New(ioutil.Discard, 0)
-			} else {
-				logger = logging.New(cmd.OutOrStdout(), level)
+			isWindowsService, err := isWindowsService()
+			if err != nil {
+				return fmt.Errorf("failed to determine if we are running in service: %w", err)
 			}
 
 			if isWindowsService {
