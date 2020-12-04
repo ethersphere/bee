@@ -28,9 +28,7 @@ type simpleManifest struct {
 }
 
 // NewSimpleManifest creates a new simple manifest.
-func NewSimpleManifest(
-	ls file.LoadSaver,
-) (Interface, error) {
+func NewSimpleManifest(ls file.LoadSaver) (Interface, error) {
 	return &simpleManifest{
 		manifest: simple.NewManifest(),
 		ls:       ls,
