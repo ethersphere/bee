@@ -58,27 +58,27 @@ func (l *windowsEventLogger) Debug(args ...interface{}) {
 }
 
 func (l *windowsEventLogger) Infof(format string, args ...interface{}) {
-	l.winlog.Info(1, fmt.Sprintf(format, args...))
+	l.winlog.Info(1633, fmt.Sprintf(format, args...))
 }
 
 func (l *windowsEventLogger) Info(args ...interface{}) {
-	l.winlog.Info(1, fmt.Sprint(args...))
+	l.winlog.Info(1633, fmt.Sprint(args...))
 }
 
 func (l *windowsEventLogger) Warningf(format string, args ...interface{}) {
-	l.winlog.Warning(2, fmt.Sprintf(format, args...))
+	l.winlog.Warning(1633, fmt.Sprintf(format, args...))
 }
 
 func (l *windowsEventLogger) Warning(args ...interface{}) {
-	l.winlog.Warning(2, fmt.Sprint(args...))
+	l.winlog.Warning(1633, fmt.Sprint(args...))
 }
 
 func (l *windowsEventLogger) Errorf(format string, args ...interface{}) {
-	l.winlog.Error(3, fmt.Sprintf(format, args...))
+	l.winlog.Error(1633, fmt.Sprintf(format, args...))
 }
 
 func (l *windowsEventLogger) Error(args ...interface{}) {
-	l.winlog.Error(3, fmt.Sprint(args...))
+	l.winlog.Error(1633, fmt.Sprint(args...))
 }
 
 func (l *windowsEventLogger) WithField(key string, value interface{}) *logrus.Entry {
