@@ -14,10 +14,6 @@ import (
 // TestValidator checks that the validator evaluates correctly
 // on valid and invalid input
 func TestValidator(t *testing.T) {
-
-	// instantiate validator
-	validator := content.NewValidator()
-
 	// generate address from pre-generated hex of 'foo' from legacy bmt
 	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
@@ -30,13 +26,13 @@ func TestValidator(t *testing.T) {
 	binary.LittleEndian.PutUint64(fooBytes, uint64(fooLength))
 	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
-	if !validator.Validate(ch) {
+	if !content.Valid(ch) {
 		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 
 	// now test with incorrect data
 	ch = swarm.NewChunk(address, fooBytes[:len(fooBytes)-1])
-	if validator.Validate(ch) {
+	if content.Valid(ch) {
 		t.Fatalf("data '%s' should not have validated to hash '%s'", ch.Data(), ch.Address())
 	}
 }

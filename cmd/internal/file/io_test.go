@@ -21,6 +21,7 @@ import (
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
@@ -43,18 +44,16 @@ func TestApiStore(t *testing.T) {
 	}
 	a := cmdfile.NewApiStore(host, port, false)
 
-	chunkAddr := swarm.MustParseHexAddress(hashOfFoo)
-	chunkData := []byte("foo")
-	ch := swarm.NewChunk(chunkAddr, chunkData)
+	ch := testingc.GenerateTestRandomChunk()
 	_, err = a.Put(ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = storer.Get(ctx, storage.ModeGetRequest, chunkAddr)
+	_, err = storer.Get(ctx, storage.ModeGetRequest, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
-	chResult, err := a.Get(ctx, storage.ModeGetRequest, chunkAddr)
+	chResult, err := a.Get(ctx, storage.ModeGetRequest, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
