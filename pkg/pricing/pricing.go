@@ -76,7 +76,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	var req pb.AnnouncePaymentThreshold
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
-		s.logger.Debugf("error receiving payment threshold announcement from peer %v", p.Address)
+		s.logger.Debugf("could not receive payment threshold announcement from peer %v", p.Address)
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, req.PaymentThreshold)
@@ -87,7 +87,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 	err := s.AnnouncePaymentThreshold(ctx, p.Address, s.paymentThreshold)
 	if err != nil {
-		s.logger.Warningf("error sending payment threshold announcement to peer %v", p.Address)
+		s.logger.Warningf("could not send payment threshold announcement to peer %v", p.Address)
 	}
 	return err
 }

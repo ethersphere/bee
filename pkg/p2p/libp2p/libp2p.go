@@ -378,7 +378,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					_ = s.Disconnect(overlay)
 				}
 
-				logger.Debugf("error handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
+				logger.Debugf("could not handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
 				return
 			}
 		})
