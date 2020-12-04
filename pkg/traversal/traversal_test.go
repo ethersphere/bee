@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
+	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -461,15 +462,15 @@ func TestTraversalManifest(t *testing.T) {
 			ctx := context.Background()
 
 			var dirManifest manifest.Interface
-
+			ls := loadsave.New(mockStorer, storage.ModePutRequest, false)
 			switch tc.manifestType {
 			case manifest.ManifestSimpleContentType:
-				dirManifest, err = manifest.NewSimpleManifest(false, mockStorer)
+				dirManifest, err = manifest.NewSimpleManifest(ls)
 				if err != nil {
 					t.Fatal(err)
 				}
 			case manifest.ManifestMantarayContentType:
-				dirManifest, err = manifest.NewMantarayManifestWithObfuscationKeyFn(false, mockStorer, obfuscationKeyFn)
+				dirManifest, err = manifest.NewMantarayManifestWithObfuscationKeyFn(ls, obfuscationKeyFn)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -518,14 +519,14 @@ func TestTraversalManifest(t *testing.T) {
 
 				filePath := path.Join(f.dir, fileName)
 
-				err = dirManifest.Add(filePath, manifest.NewEntry(reference, nil))
+				err = dirManifest.Add(ctx, filePath, manifest.NewEntry(reference, nil))
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
 
 			// save manifest
-			manifestBytesReference, err := dirManifest.Store(ctx, storage.ModePutUpload)
+			manifestBytesReference, err := dirManifest.Store(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
