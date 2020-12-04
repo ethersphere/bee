@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -324,11 +325,9 @@ func (s *traversalService) checkIsManifest(
 
 	// NOTE: 'encrypted' parameter only used for saving manifest
 	m, err = manifest.NewManifestReference(
-		ctx,
 		metadata.MimeType,
 		e.Reference(),
-		false,
-		s.storer,
+		loadsave.New(s.storer, storage.ModePutRequest, false),
 	)
 	if err != nil {
 		if err == manifest.ErrInvalidManifestType {

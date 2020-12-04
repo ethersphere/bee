@@ -5,15 +5,11 @@
 package manifest
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/manifest/simple"
 )
@@ -28,36 +24,25 @@ type simpleManifest struct {
 	manifest simple.Manifest
 
 	reference swarm.Address
-	encrypted bool
-	storer    storage.Storer
+	ls        file.LoadSaver
 }
 
 // NewSimpleManifest creates a new simple manifest.
-func NewSimpleManifest(
-	encrypted bool,
-	storer storage.Storer,
-) (Interface, error) {
+func NewSimpleManifest(ls file.LoadSaver) (Interface, error) {
 	return &simpleManifest{
-		manifest:  simple.NewManifest(),
-		encrypted: encrypted,
-		storer:    storer,
+		manifest: simple.NewManifest(),
+		ls:       ls,
 	}, nil
 }
 
 // NewSimpleManifestReference loads existing simple manifest.
-func NewSimpleManifestReference(
-	ctx context.Context,
-	reference swarm.Address,
-	encrypted bool,
-	storer storage.Storer,
-) (Interface, error) {
+func NewSimpleManifestReference(ref swarm.Address, l file.LoadSaver) (Interface, error) {
 	m := &simpleManifest{
 		manifest:  simple.NewManifest(),
-		reference: reference,
-		encrypted: encrypted,
-		storer:    storer,
+		reference: ref,
+		ls:        l,
 	}
-	err := m.load(ctx, reference)
+	err := m.load(context.Background(), ref)
 	return m, err
 }
 
@@ -65,14 +50,13 @@ func (m *simpleManifest) Type() string {
 	return ManifestSimpleContentType
 }
 
-func (m *simpleManifest) Add(path string, entry Entry) error {
+func (m *simpleManifest) Add(_ context.Context, path string, entry Entry) error {
 	e := entry.Reference().String()
 
 	return m.manifest.Add(path, e, entry.Metadata())
 }
 
-func (m *simpleManifest) Remove(path string) error {
-
+func (m *simpleManifest) Remove(_ context.Context, path string) error {
 	err := m.manifest.Remove(path)
 	if err != nil {
 		if errors.Is(err, simple.ErrNotFound) {
@@ -84,8 +68,7 @@ func (m *simpleManifest) Remove(path string) error {
 	return nil
 }
 
-func (m *simpleManifest) Lookup(path string) (Entry, error) {
-
+func (m *simpleManifest) Lookup(_ context.Context, path string) (Entry, error) {
 	n, err := m.manifest.Lookup(path)
 	if err != nil {
 		return nil, ErrNotFound
@@ -101,26 +84,22 @@ func (m *simpleManifest) Lookup(path string) (Entry, error) {
 	return entry, nil
 }
 
-func (m *simpleManifest) HasPrefix(prefix string) (bool, error) {
+func (m *simpleManifest) HasPrefix(_ context.Context, prefix string) (bool, error) {
 	return m.manifest.HasPrefix(prefix), nil
 }
 
-func (m *simpleManifest) Store(ctx context.Context, mode storage.ModePut) (swarm.Address, error) {
-
+func (m *simpleManifest) Store(ctx context.Context) (swarm.Address, error) {
 	data, err := m.manifest.MarshalBinary()
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest marshal error: %w", err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, m.storer, mode, m.encrypted)
-	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+	ref, err := m.ls.Save(ctx, data)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)
 	}
-
-	m.reference = address
-
-	return address, nil
+	m.reference = swarm.NewAddress(ref)
+	return m.reference, nil
 }
 
 func (m *simpleManifest) IterateAddresses(ctx context.Context, fn swarm.AddressIterFunc) error {
@@ -164,18 +143,12 @@ func (m *simpleManifest) IterateAddresses(ctx context.Context, fn swarm.AddressI
 }
 
 func (m *simpleManifest) load(ctx context.Context, reference swarm.Address) error {
-	j, _, err := joiner.New(ctx, m.storer, reference)
-	if err != nil {
-		return fmt.Errorf("new joiner: %w", err)
-	}
-
-	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, buf)
+	buf, err := m.ls.Load(ctx, reference.Bytes())
 	if err != nil {
 		return fmt.Errorf("manifest load error: %w", err)
 	}
 
-	err = m.manifest.UnmarshalBinary(buf.Bytes())
+	err = m.manifest.UnmarshalBinary(buf)
 	if err != nil {
 		return fmt.Errorf("manifest unmarshal error: %w", err)
 	}

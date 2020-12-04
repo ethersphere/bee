@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
+	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
@@ -98,19 +99,19 @@ func TestBzz(t *testing.T) {
 		}
 
 		// save manifest
-		m, err := manifest.NewDefaultManifest(false, storer)
+		m, err := manifest.NewDefaultManifest(loadsave.New(storer, storage.ModePutRequest, false))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		e := manifest.NewEntry(fileReference, nil)
 
-		err = m.Add(filePath, e)
+		err = m.Add(ctx, filePath, e)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		manifestBytesReference, err := m.Store(context.Background(), storage.ModePutUpload)
+		manifestBytesReference, err := m.Store(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}

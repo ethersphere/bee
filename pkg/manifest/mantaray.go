@@ -5,15 +5,11 @@
 package manifest
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/manifest/mantaray"
 )
@@ -27,21 +23,14 @@ const (
 type mantarayManifest struct {
 	trie *mantaray.Node
 
-	encrypted bool
-	storer    storage.Storer
-
-	loader mantaray.LoadSaver
+	ls file.LoadSaver
 }
 
 // NewMantarayManifest creates a new mantaray-based manifest.
-func NewMantarayManifest(
-	encrypted bool,
-	storer storage.Storer,
-) (Interface, error) {
+func NewMantarayManifest(ls file.LoadSaver) (Interface, error) {
 	return &mantarayManifest{
-		trie:      mantaray.New(),
-		encrypted: encrypted,
-		storer:    storer,
+		trie: mantaray.New(),
+		ls:   ls,
 	}, nil
 }
 
@@ -50,14 +39,12 @@ func NewMantarayManifest(
 //
 // NOTE: This should only be used in tests.
 func NewMantarayManifestWithObfuscationKeyFn(
-	encrypted bool,
-	storer storage.Storer,
+	ls file.LoadSaver,
 	obfuscationKeyFn func([]byte) (int, error),
 ) (Interface, error) {
 	mm := &mantarayManifest{
-		trie:      mantaray.New(),
-		encrypted: encrypted,
-		storer:    storer,
+		trie: mantaray.New(),
+		ls:   ls,
 	}
 	mantaray.SetObfuscationKeyFn(obfuscationKeyFn)
 	return mm, nil
@@ -65,16 +52,12 @@ func NewMantarayManifestWithObfuscationKeyFn(
 
 // NewMantarayManifestReference loads existing mantaray-based manifest.
 func NewMantarayManifestReference(
-	ctx context.Context,
 	reference swarm.Address,
-	encrypted bool,
-	storer storage.Storer,
+	ls file.LoadSaver,
 ) (Interface, error) {
 	return &mantarayManifest{
-		trie:      mantaray.NewNodeRef(reference.Bytes()),
-		encrypted: encrypted,
-		storer:    storer,
-		loader:    newMantarayLoader(ctx, encrypted, storer),
+		trie: mantaray.NewNodeRef(reference.Bytes()),
+		ls:   ls,
 	}, nil
 }
 
@@ -82,17 +65,17 @@ func (m *mantarayManifest) Type() string {
 	return ManifestMantarayContentType
 }
 
-func (m *mantarayManifest) Add(path string, entry Entry) error {
+func (m *mantarayManifest) Add(ctx context.Context, path string, entry Entry) error {
 	p := []byte(path)
 	e := entry.Reference().Bytes()
 
-	return m.trie.Add(p, e, entry.Metadata(), m.loader)
+	return m.trie.Add(ctx, p, e, entry.Metadata(), m.ls)
 }
 
-func (m *mantarayManifest) Remove(path string) error {
+func (m *mantarayManifest) Remove(ctx context.Context, path string) error {
 	p := []byte(path)
 
-	err := m.trie.Remove(p, m.loader)
+	err := m.trie.Remove(ctx, p, m.ls)
 	if err != nil {
 		if errors.Is(err, mantaray.ErrNotFound) {
 			return ErrNotFound
@@ -103,10 +86,10 @@ func (m *mantarayManifest) Remove(path string) error {
 	return nil
 }
 
-func (m *mantarayManifest) Lookup(path string) (Entry, error) {
+func (m *mantarayManifest) Lookup(ctx context.Context, path string) (Entry, error) {
 	p := []byte(path)
 
-	node, err := m.trie.LookupNode(p, m.loader)
+	node, err := m.trie.LookupNode(ctx, p, m.ls)
 	if err != nil {
 		if errors.Is(err, mantaray.ErrNotFound) {
 			return nil, ErrNotFound
@@ -125,18 +108,14 @@ func (m *mantarayManifest) Lookup(path string) (Entry, error) {
 	return entry, nil
 }
 
-func (m *mantarayManifest) HasPrefix(prefix string) (bool, error) {
+func (m *mantarayManifest) HasPrefix(ctx context.Context, prefix string) (bool, error) {
 	p := []byte(prefix)
 
-	return m.trie.HasPrefix(p, m.loader)
+	return m.trie.HasPrefix(ctx, p, m.ls)
 }
 
-func (m *mantarayManifest) Store(ctx context.Context, mode storage.ModePut) (swarm.Address, error) {
-
-	saver := newMantaraySaver(ctx, m.encrypted, m.storer, mode)
-	m.loader = saver
-
-	err := m.trie.Save(saver)
+func (m *mantarayManifest) Store(ctx context.Context) (swarm.Address, error) {
+	err := m.trie.Save(ctx, m.ls)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)
 	}
@@ -182,7 +161,7 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 		return nil
 	}
 
-	err := m.trie.WalkNode([]byte{}, m.loader, walker)
+	err := m.trie.WalkNode(ctx, []byte{}, m.ls, walker)
 	if err != nil {
 		if !errors.Is(err, errStopIterator) {
 			return fmt.Errorf("manifest iterate addresses: %w", err)
@@ -191,68 +170,4 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 	}
 
 	return nil
-}
-
-// mantarayLoadSaver implements required interface 'mantaray.LoadSaver'
-type mantarayLoadSaver struct {
-	ctx       context.Context
-	encrypted bool
-	storer    storage.Storer
-	modePut   storage.ModePut
-}
-
-func newMantarayLoader(
-	ctx context.Context,
-	encrypted bool,
-	storer storage.Storer,
-) *mantarayLoadSaver {
-	return &mantarayLoadSaver{
-		ctx:       ctx,
-		encrypted: encrypted,
-		storer:    storer,
-	}
-}
-
-func newMantaraySaver(
-	ctx context.Context,
-	encrypted bool,
-	storer storage.Storer,
-	modePut storage.ModePut,
-) *mantarayLoadSaver {
-	return &mantarayLoadSaver{
-		ctx:       ctx,
-		encrypted: encrypted,
-		storer:    storer,
-		modePut:   modePut,
-	}
-}
-
-func (ls *mantarayLoadSaver) Load(ref []byte) ([]byte, error) {
-	ctx := ls.ctx
-
-	j, _, err := joiner.New(ctx, ls.storer, swarm.NewAddress(ref))
-	if err != nil {
-		return nil, err
-	}
-
-	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, buf)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-func (ls *mantarayLoadSaver) Save(data []byte) ([]byte, error) {
-	ctx := ls.ctx
-
-	pipe := builder.NewPipelineBuilder(ctx, ls.storer, ls.modePut, ls.encrypted)
-	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
-
-	if err != nil {
-		return swarm.ZeroAddress.Bytes(), err
-	}
-
-	return address.Bytes(), nil
 }
