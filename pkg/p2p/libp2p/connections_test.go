@@ -194,13 +194,14 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
-
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
+		// creating new remote host for each address
+		s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+
 		if _, err := s2.Connect(ctx, addr); err != nil {
 			t.Fatal(err)
 		}
@@ -221,6 +222,8 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 
 		expectPeers(t, s2)
 		expectPeersEventually(t, s1)
+
+		s2.Close()
 	}
 }
 
