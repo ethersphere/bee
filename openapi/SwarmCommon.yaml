@@ -193,7 +193,7 @@ components:
         name:
           type: string
         address:
-          type: string
+          $ref: '#/components/schemas/SwarmAddress'
         startedAt:
           $ref: '#/components/schemas/DateTime'
 
