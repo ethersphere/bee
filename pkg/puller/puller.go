@@ -274,7 +274,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 		cursors, err := p.syncer.GetCursors(ctx, peer)
 		if err != nil {
 			if logMore {
-				p.logger.Debugf("error getting cursors from peer %s: %v", peer.String(), err)
+				p.logger.Debugf("could not get cursors from peer %s: %v", peer.String(), err)
 			}
 			delete(p.syncPeers[po], peer.String())
 			return
@@ -366,7 +366,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
-			p.logger.Errorf("error persisting interval for peer, quitting")
+			p.logger.Errorf("could not persist interval for peer %s, quitting", peer)
 			return
 		}
 	}
