@@ -40,6 +40,8 @@ var (
 	ErrInvalidContentHash = errors.New("invalid swarm content hash")
 	// errNotImplemented denotes that the function has not been implemented.
 	errNotImplemented = errors.New("function not implemented")
+	// errNameNotRegistered denotes that the name is not registered.
+	errNameNotRegistered = errors.New("name is not registered")
 )
 
 // Client is a name resolution client that can connect to ENS via an
