@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
@@ -135,8 +136,13 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 			continue
 		}
 
-		// always use Unix path separator
-		filePath = strings.ReplaceAll(filePath, "\\", "/")
+		if fileHeader.Name != filePath {
+			// file path was cleaned
+			if runtime.GOOS == "windows" {
+				// use Unix path separator
+				filePath = filepath.ToSlash(filePath)
+			}
+		}
 
 		// only store regular files
 		if !fileHeader.FileInfo().Mode().IsRegular() {
