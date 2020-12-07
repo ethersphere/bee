@@ -165,26 +165,32 @@ func (r *peerRegistry) overlay(peerID libp2ppeer.ID) (swarm.Address, bool) {
 }
 
 func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr) (swarm.Address, bool) {
+	if remoteAddr == nil {
+		return swarm.ZeroAddress, false
+	}
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	overlay, found := r.overlays[peerID]
+	if !found {
+		return swarm.ZeroAddress, false
+	}
 
-	if found && remoteAddr != nil {
-		// check connection remote address
-		if conns, ok := r.connections[peerID]; ok {
-			found = false
-			for c := range conns {
-				if c.RemoteMultiaddr().Equal(remoteAddr) {
-					// we ARE connected to the peer on expected address
-					found = true
-					break
-				}
-			}
+	// check connection remote address
+	conns, ok := r.connections[peerID]
+	if !ok {
+		return swarm.ZeroAddress, false
+	}
+
+	for c := range conns {
+		if c.RemoteMultiaddr().Equal(remoteAddr) {
+			// we ARE connected to the peer on expected address
+			return overlay, true
 		}
 	}
 
-	return overlay, found
+	return swarm.ZeroAddress, false
 }
 
 func (r *peerRegistry) remove(overlay swarm.Address) (bool, libp2ppeer.ID) {
