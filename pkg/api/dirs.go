@@ -131,7 +131,7 @@ func storeDir(ctx context.Context, reader io.ReadCloser, s storage.Storer, mode 
 		filePath := filepath.Clean(fileHeader.Name)
 
 		if filePath == "." {
-			logger.Warningf("skipping file upload empty path")
+			logger.Warning("skipping file upload empty path")
 			continue
 		}
 
