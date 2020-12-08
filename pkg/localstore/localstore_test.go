@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
+	mockbatchstore "github.com/ethersphere/bee/pkg/storage/mock/batchstore"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -156,8 +157,11 @@ func newTestDB(t testing.TB, o *Options) *DB {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
+
+	batchStore := mockbatchstore.New()
+
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := New("", baseKey, o, logger)
+	db, err := New("", baseKey, o, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,8 +175,9 @@ func newTestDB(t testing.TB, o *Options) *DB {
 }
 
 var (
-	generateTestRandomChunk  = chunktesting.GenerateTestRandomChunk
-	generateTestRandomChunks = chunktesting.GenerateTestRandomChunks
+	generateTestRandomChunk   = chunktesting.GenerateTestRandomChunk
+	generateTestRandomChunkAt = chunktesting.GenerateTestRandomChunkAt
+	generateTestRandomChunks  = chunktesting.GenerateTestRandomChunks
 )
 
 // chunkAddresses return chunk addresses of provided chunks.

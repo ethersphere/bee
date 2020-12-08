@@ -113,6 +113,8 @@ func TestModePutSync(t *testing.T) {
 				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			}
+			newItemsCountTest(db.gcIndex, tc.count)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }

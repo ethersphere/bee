@@ -20,7 +20,9 @@ import (
 	"math/rand"
 	"time"
 
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 func init() {
@@ -40,7 +42,16 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	_, _ = rand.Read(data)
 	key := make([]byte, swarm.SectionSize)
 	_, _ = rand.Read(key)
-	return swarm.NewChunk(swarm.NewAddress(key), data)
+	stamp := postagetesting.NewStamp()
+	return swarm.NewChunk(swarm.NewAddress(key), data).WithStamp(stamp)
+}
+
+func GenerateTestRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
+	data := make([]byte, swarm.ChunkSize)
+	_, _ = rand.Read(data)
+	addr := swarmtesting.RandomAddressAt(target, po)
+	stamp := postagetesting.NewStamp()
+	return swarm.NewChunk(addr, data).WithStamp(stamp)
 }
 
 // GenerateTestRandomChunks generates a slice of random

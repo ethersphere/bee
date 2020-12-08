@@ -52,6 +52,7 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	mockbatchstore "github.com/ethersphere/bee/pkg/storage/mock/batchstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -323,7 +324,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	lo := &localstore.Options{
 		Capacity: o.DBCapacity,
 	}
-	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
+	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, mockbatchstore.New(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}

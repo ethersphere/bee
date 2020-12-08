@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	mockbatchstore "github.com/ethersphere/bee/pkg/storage/mock/batchstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/mock"
@@ -345,7 +345,7 @@ func createChunk() swarm.Chunk {
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
-	storer, err := localstore.New("", addr.Bytes(), nil, logger)
+	storer, err := localstore.New("", addr.Bytes(), nil, mockbatchstore.New(), logger)
 	if err != nil {
 		t.Fatal(err)
 	}

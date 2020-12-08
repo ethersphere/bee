@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	mockbatchstore "github.com/ethersphere/bee/pkg/storage/mock/batchstore"
 )
 
 func TestOneMigration(t *testing.T) {
@@ -58,10 +59,10 @@ func TestOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := logging.New(ioutil.Discard, 0)
+	batchStore := mockbatchstore.New()
 
-	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, logger)
+	logger := logging.New(ioutil.Discard, 0)
+	db, err := New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ func TestOneMigration(t *testing.T) {
 	DbSchemaCurrent = dbSchemaNext
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil, logger)
+	db, err = New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,10 +146,9 @@ func TestManyMigrations(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
+	batchStore := mockbatchstore.New()
 	logger := logging.New(ioutil.Discard, 0)
-
-	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, logger)
+	db, err := New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestManyMigrations(t *testing.T) {
 	DbSchemaCurrent = "salvation"
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil, logger)
+	db, err = New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,10 +225,9 @@ func TestMigrationErrorFrom(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
+	batchStore := mockbatchstore.New()
 	logger := logging.New(ioutil.Discard, 0)
-
-	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, logger)
+	db, err := New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +240,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	DbSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil, logger)
+	_, err = New(dir, baseKey, nil, batchStore, logger)
 	if !strings.Contains(err.Error(), errMissingCurrentSchema.Error()) {
 		t.Fatalf("expected errCannotFindSchema but got %v", err)
 	}
@@ -286,10 +285,9 @@ func TestMigrationErrorTo(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	batchStore := mockbatchstore.New()
 	logger := logging.New(ioutil.Discard, 0)
-
-	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, logger)
+	db, err := New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +300,7 @@ func TestMigrationErrorTo(t *testing.T) {
 	DbSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil, logger)
+	_, err = New(dir, baseKey, nil, batchStore, logger)
 	if !strings.Contains(err.Error(), errMissingTargetSchema.Error()) {
 		t.Fatalf("expected errMissingTargetSchema but got %v", err)
 	}

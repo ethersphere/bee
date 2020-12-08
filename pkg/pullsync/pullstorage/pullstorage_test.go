@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	mockbatchstore "github.com/ethersphere/bee/pkg/storage/mock/batchstore"
 	stesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -341,7 +342,7 @@ func newTestDB(t testing.TB, o *localstore.Options) (baseKey []byte, db *localst
 	}
 
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := localstore.New("", baseKey, o, logger)
+	db, err := localstore.New("", baseKey, o, mockbatchstore.New(), logger)
 	if err != nil {
 		t.Fatal(err)
 	}

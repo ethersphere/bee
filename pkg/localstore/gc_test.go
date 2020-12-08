@@ -29,39 +29,40 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
+	mockbatchstore "github.com/ethersphere/bee/pkg/storage/mock/batchstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// TestDB_collectGarbageWorker tests garbage collection runs
+// TestDB_GCWorker tests garbage collection runs
 // by uploading and syncing a number of chunks.
-func TestDB_collectGarbageWorker(t *testing.T) {
-	testDBCollectGarbageWorker(t)
+func TestDB_GCWorker(t *testing.T) {
+	testDBGCWorker(t)
 }
 
-// TestDB_collectGarbageWorker_multipleBatches tests garbage
+// TestDB_GCWorker_multipleBatches tests garbage
 // collection runs by uploading and syncing a number of
 // chunks by having multiple smaller batches.
-func TestDB_collectGarbageWorker_multipleBatches(t *testing.T) {
+func TestDB_GCWorker_multipleBatches(t *testing.T) {
 	// lower the maximal number of chunks in a single
 	// gc batch to ensure multiple batches.
 	defer func(s uint64) { gcBatchSize = s }(gcBatchSize)
 	gcBatchSize = 2
 
-	testDBCollectGarbageWorker(t)
+	testDBGCWorker(t)
 }
 
-// testDBCollectGarbageWorker is a helper test function to test
+// testDBGCWorker is a helper test function to test
 // garbage collection runs by uploading and syncing a number of chunks.
-func testDBCollectGarbageWorker(t *testing.T) {
+func testDBGCWorker(t *testing.T) {
 
 	chunkCount := 150
 
 	var closed chan struct{}
-	testHookCollectGarbageChan := make(chan uint64)
-	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+	testGCHookChan := make(chan uint64)
+	t.Cleanup(setTestGCHook(func(collectedCount uint64) {
 		select {
-		case testHookCollectGarbageChan <- collectedCount:
+		case testGCHookChan <- collectedCount:
 		case <-closed:
 		}
 	}))
@@ -70,60 +71,47 @@ func testDBCollectGarbageWorker(t *testing.T) {
 	})
 	closed = db.close
 
-	addrs := make([]swarm.Address, 0)
-
-	// upload random chunks
-	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunk()
-
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		addrs = append(addrs, ch.Address())
-
+	chunks := generateTestRandomChunks(chunkCount)
+	_, err := db.Put(context.Background(), storage.ModePutSync, chunks...)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	gcTarget := db.gcTarget()
-
-	for {
+	target := db.gcTarget()
+	sizef := func() uint64 {
+		size, err := db.gcSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return size
+	}
+	size := sizef()
+	for target < size {
+		t.Logf("GC index: size=%d, target=%d", size, target)
 		select {
-		case <-testHookCollectGarbageChan:
+		case <-testGCHookChan:
 		case <-time.After(10 * time.Second):
-			t.Error("collect garbage timeout")
+			t.Fatalf("collect garbage timeout. ")
 		}
-		gcSize, err := db.gcSize.Get()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if gcSize == gcTarget {
-			break
-		}
+		size = sizef()
 	}
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(target)))
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
-
-	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(target)))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
 	// the first synced chunk should be removed
 	t.Run("get the first synced chunk", func(t *testing.T) {
-		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, chunks[0].Address())
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
 		}
 	})
 
 	t.Run("only first inserted chunks should be removed", func(t *testing.T) {
-		for i := 0; i < (chunkCount - int(gcTarget)); i++ {
-			_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
+		for i := 0; i < (chunkCount - int(target)); i++ {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, chunks[i].Address())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
 			}
@@ -132,7 +120,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 
 	// last synced chunk should not be removed
 	t.Run("get most recent synced chunk", func(t *testing.T) {
-		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[len(addrs)-1])
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, chunks[len(chunks)-1].Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -148,10 +136,10 @@ func TestPinGC(t *testing.T) {
 	dbCapacity := uint64(100)
 
 	var closed chan struct{}
-	testHookCollectGarbageChan := make(chan uint64)
-	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+	testGCHookChan := make(chan uint64)
+	t.Cleanup(setTestGCHook(func(collectedCount uint64) {
 		select {
-		case testHookCollectGarbageChan <- collectedCount:
+		case testGCHookChan <- collectedCount:
 		case <-closed:
 		}
 	}))
@@ -193,7 +181,7 @@ func TestPinGC(t *testing.T) {
 
 	for {
 		select {
-		case <-testHookCollectGarbageChan:
+		case <-testGCHookChan:
 		case <-time.After(10 * time.Second):
 			t.Error("collect garbage timeout")
 		}
@@ -297,17 +285,17 @@ func TestGCAfterPin(t *testing.T) {
 	}
 }
 
-// TestDB_collectGarbageWorker_withRequests is a helper test function
+// TestDB_GCWorker_withRequests is a helper test function
 // to test garbage collection runs by uploading, syncing and
 // requesting a number of chunks.
-func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
+func TestDB_GCWorker_withRequests(t *testing.T) {
 	db := newTestDB(t, &Options{
 		Capacity: 100,
 	})
 
-	testHookCollectGarbageChan := make(chan uint64)
-	defer setTestHookCollectGarbage(func(collectedCount uint64) {
-		testHookCollectGarbageChan <- collectedCount
+	testGCHookChan := make(chan uint64)
+	defer setTestGCHook(func(collectedCount uint64) {
+		testGCHookChan <- collectedCount
 	})()
 
 	addrs := make([]swarm.Address, 0)
@@ -376,7 +364,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	var totalCollectedCount uint64
 	for {
 		select {
-		case c := <-testHookCollectGarbageChan:
+		case c := <-testGCHookChan:
 			totalCollectedCount += c
 		case <-time.After(10 * time.Second):
 			t.Error("collect garbage timeout")
@@ -438,8 +426,9 @@ func TestDB_gcSize(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
+	batchStore := mockbatchstore.New()
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := New(dir, baseKey, nil, logger)
+	db, err := New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +452,7 @@ func TestDB_gcSize(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err = New(dir, baseKey, nil, logger)
+	db, err = New(dir, baseKey, nil, batchStore, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,22 +461,22 @@ func TestDB_gcSize(t *testing.T) {
 	t.Run("gc index size", newIndexGCSizeTest(db))
 }
 
-// setTestHookCollectGarbage sets testHookCollectGarbage and
+// setTestGCHook sets testGCHook and
 // returns a function that will reset it to the
 // value before the change.
-func setTestHookCollectGarbage(h func(collectedCount uint64)) (reset func()) {
-	current := testHookCollectGarbage
-	reset = func() { testHookCollectGarbage = current }
-	testHookCollectGarbage = h
+func setTestGCHook(h func(collectedCount uint64)) (reset func()) {
+	current := testGCHook
+	reset = func() { testGCHook = current }
+	testGCHook = h
 	return reset
 }
 
-// TestSetTestHookCollectGarbage tests if setTestHookCollectGarbage changes
-// testHookCollectGarbage function correctly and if its reset function
+// TestSetTestGCHook tests if setTestGCHook changes
+// testGCHook function correctly and if its reset function
 // resets the original function.
-func TestSetTestHookCollectGarbage(t *testing.T) {
+func TestSetTestGCHook(t *testing.T) {
 	// Set the current function after the test finishes.
-	defer func(h func(collectedCount uint64)) { testHookCollectGarbage = h }(testHookCollectGarbage)
+	defer func(h func(collectedCount uint64)) { testGCHook = h }(testGCHook)
 
 	// expected value for the unchanged function
 	original := 1
@@ -498,12 +487,12 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 	var got int
 
 	// define the original (unchanged) functions
-	testHookCollectGarbage = func(_ uint64) {
+	testGCHook = func(_ uint64) {
 		got = original
 	}
 
 	// set got variable
-	testHookCollectGarbage(0)
+	testGCHook(0)
 
 	// test if got variable is set correctly
 	if got != original {
@@ -511,12 +500,12 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 	}
 
 	// set the new function
-	reset := setTestHookCollectGarbage(func(_ uint64) {
+	reset := setTestGCHook(func(_ uint64) {
 		got = changed
 	})
 
 	// set got variable
-	testHookCollectGarbage(0)
+	testGCHook(0)
 
 	// test if got variable is set correctly to changed value
 	if got != changed {
@@ -527,7 +516,7 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 	reset()
 
 	// set got variable
-	testHookCollectGarbage(0)
+	testGCHook(0)
 
 	// test if got variable is set correctly to original value
 	if got != original {
@@ -621,10 +610,10 @@ func generateAndPinAChunk(t *testing.T, db *DB) swarm.Chunk {
 
 func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
 	var closed chan struct{}
-	testHookCollectGarbageChan := make(chan uint64)
-	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+	testGCHookChan := make(chan uint64)
+	t.Cleanup(setTestGCHook(func(collectedCount uint64) {
 		select {
-		case testHookCollectGarbageChan <- collectedCount:
+		case testGCHookChan <- collectedCount:
 		case <-closed:
 		}
 	}))

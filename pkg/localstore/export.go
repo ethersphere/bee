@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -61,10 +62,16 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		hdr := &tar.Header{
 			Name: hex.EncodeToString(item.Address),
 			Mode: 0644,
-			Size: int64(len(item.Data)),
+			Size: int64(postage.StampSize + len(item.Data)),
 		}
 
 		if err := tw.WriteHeader(hdr); err != nil {
+			return false, err
+		}
+		if _, err := tw.Write(item.BatchID); err != nil {
+			return false, err
+		}
+		if _, err := tw.Write(item.Sig); err != nil {
 			return false, err
 		}
 		if _, err := tw.Write(item.Data); err != nil {
@@ -135,19 +142,28 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 				continue
 			}
 
-			data, err := ioutil.ReadAll(tr)
+			rawdata, err := ioutil.ReadAll(tr)
 			if err != nil {
 				select {
 				case errC <- err:
 				case <-ctx.Done():
 				}
 			}
+			stamp := postage.NewStamp(nil, nil)
+			err = stamp.UnmarshalBinary(rawdata[:postage.StampSize])
+			if err != nil {
+				select {
+				case errC <- err:
+				case <-ctx.Done():
+				}
+			}
+			data := rawdata[postage.StampSize:]
 			key := swarm.NewAddress(keybytes)
 
 			var ch swarm.Chunk
 			switch version {
 			case currentExportVersion:
-				ch = swarm.NewChunk(key, data)
+				ch = swarm.NewChunk(key, data).WithStamp(stamp)
 			default:
 				select {
 				case errC <- fmt.Errorf("unsupported export data version %q", version):

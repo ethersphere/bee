@@ -41,7 +41,11 @@ func TestExportImport(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		chunks[ch.Address().String()] = ch.Data()
+		stamp, err := ch.Stamp().MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		chunks[ch.Address().String()] = append(stamp, ch.Data()...)
 	}
 
 	var buf bytes.Buffer
@@ -71,9 +75,13 @@ func TestExportImport(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := ch.Data()
+		stamp, err := ch.Stamp().MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := append(stamp, ch.Data()...)
 		if !bytes.Equal(got, want) {
-			t.Fatalf("chunk %s: got data %x, want %x", addr, got, want)
+			t.Fatalf("chunk %s: got stamp+data %x, want %x", addr, got, want)
 		}
 	}
 }

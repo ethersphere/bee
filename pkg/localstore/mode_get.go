@@ -21,11 +21,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/syndtr/goleveldb/leveldb"
-
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Get returns a chunk from the database. If the chunk is
@@ -50,7 +50,10 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 		}
 		return nil, err
 	}
-	return swarm.NewChunk(swarm.NewAddress(out.Address), out.Data).WithPinCounter(out.PinCounter), nil
+	return swarm.NewChunk(swarm.NewAddress(out.Address), out.Data).
+		WithPinCounter(out.PinCounter).
+		// WithTag(out.Tag).
+		WithStamp(postage.NewStamp(out.BatchID, out.Sig)), nil
 }
 
 // get returns Item from the retrieval index

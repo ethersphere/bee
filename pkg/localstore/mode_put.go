@@ -165,11 +165,11 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
 func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
-	has, err := db.retrievalDataIndex.Has(item)
+	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
 		return false, 0, err
 	}
-	if has {
+	if exists {
 		return true, 0, nil
 	}
 
@@ -178,13 +178,15 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
-
 	gcSizeChange, err = db.setGC(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
-
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
+	err = db.postage.putInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
@@ -204,7 +206,6 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if exists {
 		return true, 0, nil
 	}
-
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
@@ -222,7 +223,10 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if err != nil {
 		return false, 0, err
 	}
-
+	err = db.postage.putInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	return false, 0, nil
 }
 
@@ -238,9 +242,12 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if exists {
 		return true, 0, nil
 	}
-
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
+	if err != nil {
+		return false, 0, err
+	}
+	gcSizeChange, err = db.setGC(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
@@ -252,11 +259,10 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.setGC(batch, item)
+	err = db.postage.putInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
-
 	return false, gcSizeChange, nil
 }
 

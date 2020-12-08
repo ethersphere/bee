@@ -101,35 +101,36 @@ func (db *DB) Put(key, value []byte) (err error) {
 // Get wraps LevelDB Get method to increment metrics counter.
 func (db *DB) Get(key []byte) (value []byte, err error) {
 	value, err = db.ldb.Get(key, nil)
-	if errors.Is(err, leveldb.ErrNotFound) {
-		db.metrics.GetNotFoundCounter.Inc()
-		return nil, err
-	} else {
-		db.metrics.GetFailCounter.Inc()
-	}
 	db.metrics.GetCounter.Inc()
+	if err != nil {
+		db.metrics.GetFailCounter.Inc()
+		if errors.Is(err, leveldb.ErrNotFound) {
+			db.metrics.GetNotFoundCounter.Inc()
+		}
+		return nil, err
+	}
 	return value, nil
 }
 
 // Has wraps LevelDB Has method to increment metrics counter.
 func (db *DB) Has(key []byte) (yes bool, err error) {
 	yes, err = db.ldb.Has(key, nil)
+	db.metrics.HasCounter.Inc()
 	if err != nil {
 		db.metrics.HasFailCounter.Inc()
 		return false, err
 	}
-	db.metrics.HasCounter.Inc()
 	return yes, nil
 }
 
 // Delete wraps LevelDB Delete method to increment metrics counter.
 func (db *DB) Delete(key []byte) (err error) {
 	err = db.ldb.Delete(key, nil)
+	db.metrics.DeleteCounter.Inc()
 	if err != nil {
 		db.metrics.DeleteFailCounter.Inc()
 		return err
 	}
-	db.metrics.DeleteCounter.Inc()
 	return nil
 }
 
@@ -142,11 +143,11 @@ func (db *DB) NewIterator() iterator.Iterator {
 // WriteBatch wraps LevelDB Write method to increment metrics counter.
 func (db *DB) WriteBatch(batch *leveldb.Batch) (err error) {
 	err = db.ldb.Write(batch, nil)
+	db.metrics.WriteBatchCounter.Inc()
 	if err != nil {
 		db.metrics.WriteBatchFailCounter.Inc()
 		return err
 	}
-	db.metrics.WriteBatchCounter.Inc()
 	return nil
 }
 

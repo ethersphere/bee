@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	mockbatchstore "github.com/ethersphere/bee/pkg/storage/mock/batchstore"
 	mockvalidator "github.com/ethersphere/bee/pkg/storage/mock/validator"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -405,7 +406,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	t.Helper()
 	logger := logging.New(ioutil.Discard, 0)
 
-	storer, err := localstore.New("", addr.Bytes(), nil, logger)
+	storer, err := localstore.New("", addr.Bytes(), nil, mockbatchstore.New(), logger)
 	if err != nil {
 		t.Fatal(err)
 	}
