@@ -8,9 +8,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+	goens "github.com/wealdtech/go-ens/v3"
 
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -20,29 +21,30 @@ func TestNewENSClient(t *testing.T) {
 	testCases := []struct {
 		desc         string
 		endpoint     string
-		dialFn       func(string) (*ethclient.Client, error)
+		address      string
+		connectFn    func(string, string) (*ethclient.Client, *goens.Registry, error)
 		wantErr      error
 		wantEndpoint string
 	}{
 		{
-			desc:     "nil dial function",
-			endpoint: "someaddress.net",
-			dialFn:   nil,
-			wantErr:  ens.ErrNotImplemented,
+			desc:      "nil dial function",
+			endpoint:  "someaddress.net",
+			connectFn: nil,
+			wantErr:   ens.ErrNotImplemented,
 		},
 		{
 			desc:     "error in dial function",
 			endpoint: "someaddress.com",
-			dialFn: func(string) (*ethclient.Client, error) {
-				return nil, errors.New("dial error")
+			connectFn: func(s1, s2 string) (*ethclient.Client, *goens.Registry, error) {
+				return nil, nil, errors.New("dial error")
 			},
 			wantErr: ens.ErrFailedToConnect,
 		},
 		{
 			desc:     "regular endpoint",
 			endpoint: "someaddress.org",
-			dialFn: func(string) (*ethclient.Client, error) {
-				return &ethclient.Client{}, nil
+			connectFn: func(s1, s2 string) (*ethclient.Client, *goens.Registry, error) {
+				return &ethclient.Client{}, nil, nil
 			},
 			wantEndpoint: "someaddress.org",
 		},
@@ -50,7 +52,8 @@ func TestNewENSClient(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			cl, err := ens.NewClient(tC.endpoint,
-				ens.WithDialFunc(tC.dialFn),
+				ens.WithConnectFunc(tC.connectFn),
+				ens.WithContractAddress(tC.address),
 			)
 			if err != nil {
 				if !errors.Is(err, tC.wantErr) {
@@ -75,8 +78,8 @@ func TestClose(t *testing.T) {
 		ethCl := ethclient.NewClient(rpc.DialInProc(rpcServer))
 
 		cl, err := ens.NewClient("",
-			ens.WithDialFunc(func(string) (*ethclient.Client, error) {
-				return ethCl, nil
+			ens.WithConnectFunc(func(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
+				return ethCl, nil, nil
 			}),
 		)
 		if err != nil {
@@ -94,8 +97,8 @@ func TestClose(t *testing.T) {
 	})
 	t.Run("not connected", func(t *testing.T) {
 		cl, err := ens.NewClient("",
-			ens.WithDialFunc(func(string) (*ethclient.Client, error) {
-				return nil, nil
+			ens.WithConnectFunc(func(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
+				return nil, nil, nil
 			}),
 		)
 		if err != nil {
@@ -114,13 +117,16 @@ func TestClose(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
-	addr := swarm.MustParseHexAddress("aaabbbcc")
+	testContractAddrString := "00000000000C2E074eC69A0dFb2997BA6C702e1B"
+	testContractAddr := common.HexToAddress(testContractAddrString)
+	testSwarmAddr := swarm.MustParseHexAddress("aaabbbcc")
 
 	testCases := []struct {
-		desc      string
-		name      string
-		resolveFn func(bind.ContractBackend, string) (string, error)
-		wantErr   error
+		desc         string
+		name         string
+		contractAddr string
+		resolveFn    func(*goens.Registry, common.Address, string) (string, error)
+		wantErr      error
 	}{
 		{
 			desc:      "nil resolve function",
@@ -129,38 +135,48 @@ func TestResolve(t *testing.T) {
 		},
 		{
 			desc: "resolve function internal error",
-			resolveFn: func(bind.ContractBackend, string) (string, error) {
+			resolveFn: func(*goens.Registry, common.Address, string) (string, error) {
 				return "", errors.New("internal error")
 			},
 			wantErr: ens.ErrResolveFailed,
 		},
 		{
 			desc: "resolver returns empty string",
-			resolveFn: func(bind.ContractBackend, string) (string, error) {
+			resolveFn: func(*goens.Registry, common.Address, string) (string, error) {
 				return "", nil
 			},
 			wantErr: ens.ErrInvalidContentHash,
 		},
 		{
 			desc: "resolve does not prefix address with /swarm",
-			resolveFn: func(bind.ContractBackend, string) (string, error) {
-				return addr.String(), nil
+			resolveFn: func(*goens.Registry, common.Address, string) (string, error) {
+				return testSwarmAddr.String(), nil
 			},
 			wantErr: ens.ErrInvalidContentHash,
 		},
 		{
 			desc: "resolve returns prefixed address",
-			resolveFn: func(bind.ContractBackend, string) (string, error) {
-				return ens.SwarmContentHashPrefix + addr.String(), nil
+			resolveFn: func(*goens.Registry, common.Address, string) (string, error) {
+				return ens.SwarmContentHashPrefix + testSwarmAddr.String(), nil
 			},
 			wantErr: ens.ErrInvalidContentHash,
+		},
+		{
+			desc: "expect properly set contract address",
+			resolveFn: func(b *goens.Registry, c common.Address, s string) (string, error) {
+				if c != testContractAddr {
+					return "", errors.New("invalid contract address")
+				}
+				return ens.SwarmContentHashPrefix + testSwarmAddr.String(), nil
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			cl, err := ens.NewClient("example.com",
-				ens.WithDialFunc(func(string) (*ethclient.Client, error) {
-					return nil, nil
+				ens.WithContractAddress(testContractAddrString),
+				ens.WithConnectFunc(func(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
+					return nil, nil, nil
 				}),
 				ens.WithResolveFunc(tC.resolveFn),
 			)

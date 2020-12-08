@@ -20,11 +20,12 @@ func TestENSntegration(t *testing.T) {
 	defaultAddr := swarm.MustParseHexAddress("00cb23598c2e520b6a6aae3ddc94fed4435a2909690bdd709bf9d9e7c2aadfad")
 
 	testCases := []struct {
-		desc     string
-		endpoint string
-		name     string
-		wantAdr  swarm.Address
-		wantErr  error
+		desc            string
+		endpoint        string
+		contractAddress string
+		name            string
+		wantAdr         swarm.Address
+		wantErr         error
 	}{
 		// TODO: add a test targeting a resolver with an invalid contenthash
 		// record.
@@ -54,6 +55,12 @@ func TestENSntegration(t *testing.T) {
 			wantErr: ens.ErrResolveFailed,
 		},
 		{
+			desc:            "invalid contract address",
+			contractAddress: "0xFFFFFFFF",
+			name:            "example.resolver.test.swarm.eth",
+			wantErr:         ens.ErrFailedToConnect,
+		},
+		{
 			desc:    "ok",
 			name:    "example.resolver.test.swarm.eth",
 			wantAdr: defaultAddr,
@@ -65,9 +72,9 @@ func TestENSntegration(t *testing.T) {
 				tC.endpoint = defaultEndpoint
 			}
 
-			ensClient, err := ens.NewClient(tC.endpoint)
+			ensClient, err := ens.NewClient(tC.endpoint, ens.WithContractAddress(tC.contractAddress))
 			if err != nil {
-				if !errors.Is(err, ens.ErrFailedToConnect) {
+				if !errors.Is(err, tC.wantErr) {
 					t.Errorf("got %v, want %v", err, tC.wantErr)
 				}
 				return

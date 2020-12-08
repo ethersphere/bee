@@ -74,14 +74,9 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 	// Attempt to conect to each resolver using the connection string.
 	for _, c := range mr.cfgs {
 
-		// Warn user that the resolver address field is not used.
-		if c.Address != "" {
-			log.Warningf("name resolver: connection string %q contains resolver address field, which is currently unused", c.Address)
-		}
-
 		// NOTE: if we want to create a specific client based on the TLD
 		// we can do it here.
-		mr.connectENSClient(c.TLD, c.Endpoint)
+		mr.connectENSClient(c.TLD, c.Address, c.Endpoint)
 	}
 
 	return mr
@@ -189,13 +184,18 @@ func getTLD(name string) string {
 	return path.Ext(strings.ToLower(name))
 }
 
-func (mr *MultiResolver) connectENSClient(tld string, endpoint string) {
+func (mr *MultiResolver) connectENSClient(tld string, address string, endpoint string) {
 	log := mr.logger
 
-	log.Debugf("name resolver: resolver for %q: connecting to endpoint %s", tld, endpoint)
-	ensCl, err := ens.NewClient(endpoint)
+	if address == "" {
+		log.Debugf("name resolver: resolver for %q: connecting to endpoint %s", tld, endpoint)
+	} else {
+		log.Debugf("name resolver: resolver for %q: connecting to endpoint %s with contract address %s", tld, endpoint, address)
+	}
+
+	ensCl, err := ens.NewClient(endpoint, ens.WithContractAddress(address))
 	if err != nil {
-		log.Errorf("name resolver: resolver for %q domain: failed to connect to %q: %v", tld, endpoint, err)
+		log.Errorf("name resolver: resolver for %q domain on endpoint %q: %v", tld, endpoint, err)
 	} else {
 		log.Infof("name resolver: resolver for %q domain: connected to %s", tld, endpoint)
 		mr.PushResolver(tld, ensCl)
