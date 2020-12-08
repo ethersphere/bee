@@ -433,16 +433,26 @@ func (a *Accounting) SurplusBalance(peer swarm.Address) (balance int64, err erro
 
 // CompensatedBalance returns balance decreased by surplus balance
 func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated int64, err error) {
-	balance, err := a.Balance(peer)
-	if err != nil {
-		return 0, err
-	}
+
 	surplus, err := a.SurplusBalance(peer)
 	if err != nil {
 		return 0, err
 	}
+
 	if surplus < 0 {
 		return 0, ErrInvalidValue
+	}
+
+	balance, err := a.Balance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return 0, err
+		}
+	}
+
+	// if surplus is 0 and peer has no balance, propagate ErrPeerNoBalance
+	if surplus == 0 && errors.Is(err, ErrPeerNoBalance) {
+		return 0, err
 	}
 	// Compensated balance is balance decreased by surplus balance
 	compensated, err = subtractI64mU64(balance, uint64(surplus))
