@@ -142,51 +142,49 @@ func (c *Client) Close() error {
 }
 
 func wrapDial(endpoint string, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
-
 	// Dial the eth client.
 	ethCl, err := ethclient.Dial(endpoint)
 	if err != nil {
-		return nil, nil, fmt.Errorf("wrapdial: dial: %w", err)
+		return nil, nil, fmt.Errorf("dial: %w", err)
 	}
 
 	// Obtain the ENS registry.
 	registry, err := goens.NewRegistryAt(ethCl, common.HexToAddress(contractAddr))
 	if err != nil {
-		return nil, nil, fmt.Errorf("wrapdial: new registry: %w", err)
+		return nil, nil, fmt.Errorf("new registry: %w", err)
 	}
 
 	// Ensure that the ENS registry client is deployed to the given contract address.
 	_, err = registry.Owner("")
 	if err != nil {
-		return nil, nil, fmt.Errorf("wrapdial: owner: %w", err)
+		return nil, nil, fmt.Errorf("owner: %w", err)
 	}
 
 	return ethCl, registry, nil
 }
 
 func wrapResolve(registry *goens.Registry, addr common.Address, name string) (string, error) {
-
 	// Ensure the name is registered.
 	ownerAddress, err := registry.Owner(name)
 	if err != nil {
-		return "", fmt.Errorf("wrapresolve: owner: %w", err)
+		return "", fmt.Errorf("owner: %w", err)
 	}
 
 	// If the name is not registered, return an error.
 	if bytes.Equal(ownerAddress.Bytes(), goens.UnknownAddress.Bytes()) {
-		return "", fmt.Errorf("wrapresolve: %w", errNameNotRegistered)
+		return "", errNameNotRegistered
 	}
 
 	// Obtain the resolver for this domain name.
 	ensR, err := registry.Resolver(name)
 	if err != nil {
-		return "", fmt.Errorf("wrapresolve: resolver: %w", err)
+		return "", fmt.Errorf("resolver: %w", err)
 	}
 
 	// Try and read out the content hash record.
 	ch, err := ensR.Contenthash()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("contenthash: %w", err)
 	}
 
 	return goens.ContenthashToString(ch)
