@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
@@ -129,7 +130,17 @@ func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p p
 			return swarm.ZeroAddress, fmt.Errorf("read tar stream: %w", err)
 		}
 
-		filePath := fileHeader.Name
+		filePath := filepath.Clean(fileHeader.Name)
+
+		if filePath == "." {
+			logger.Warning("skipping file upload empty path")
+			continue
+		}
+
+		if runtime.GOOS == "windows" {
+			// always use Unix path separator
+			filePath = filepath.ToSlash(filePath)
+		}
 
 		// only store regular files
 		if !fileHeader.FileInfo().Mode().IsRegular() {
