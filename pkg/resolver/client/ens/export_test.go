@@ -5,23 +5,24 @@
 package ens
 
 import (
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	goens "github.com/wealdtech/go-ens/v3"
 )
 
 const SwarmContentHashPrefix = swarmContentHashPrefix
 
 var ErrNotImplemented = errNotImplemented
 
-// WithDialFunc will set the Dial function implementaton.
-func WithDialFunc(fn func(ep string) (*ethclient.Client, error)) Option {
+// WithConnectFunc will set the Dial function implementaton.
+func WithConnectFunc(fn func(endpoint string, contractAddr string) (*ethclient.Client, *goens.Registry, error)) Option {
 	return func(c *Client) {
-		c.dialFn = fn
+		c.connectFn = fn
 	}
 }
 
 // WithResolveFunc will set the Resolve function implementation.
-func WithResolveFunc(fn func(backend bind.ContractBackend, input string) (string, error)) Option {
+func WithResolveFunc(fn func(registry *goens.Registry, addr common.Address, input string) (string, error)) Option {
 	return func(c *Client) {
 		c.resolveFn = fn
 	}

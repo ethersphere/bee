@@ -5,11 +5,12 @@
 package ens
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	goens "github.com/wealdtech/go-ens/v3"
 
@@ -17,7 +18,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const swarmContentHashPrefix = "/swarm/"
+const (
+	defaultENSContractAddress = "00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
+	swarmContentHashPrefix    = "/swarm/"
+)
 
 // Address is the swarm bzz address.
 type Address = swarm.Address
@@ -36,15 +40,19 @@ var (
 	ErrInvalidContentHash = errors.New("invalid swarm content hash")
 	// errNotImplemented denotes that the function has not been implemented.
 	errNotImplemented = errors.New("function not implemented")
+	// errNameNotRegistered denotes that the name is not registered.
+	errNameNotRegistered = errors.New("name is not registered")
 )
 
 // Client is a name resolution client that can connect to ENS via an
 // Ethereum endpoint.
 type Client struct {
-	endpoint  string
-	ethCl     *ethclient.Client
-	dialFn    func(string) (*ethclient.Client, error)
-	resolveFn func(bind.ContractBackend, string) (string, error)
+	endpoint     string
+	contractAddr string
+	ethCl        *ethclient.Client
+	connectFn    func(string, string) (*ethclient.Client, *goens.Registry, error)
+	resolveFn    func(*goens.Registry, common.Address, string) (string, error)
+	registry     *goens.Registry
 }
 
 // Option is a function that applies an option to a Client.
@@ -54,7 +62,7 @@ type Option func(*Client)
 func NewClient(endpoint string, opts ...Option) (client.Interface, error) {
 	c := &Client{
 		endpoint:  endpoint,
-		dialFn:    ethclient.Dial,
+		connectFn: wrapDial,
 		resolveFn: wrapResolve,
 	}
 
@@ -63,18 +71,30 @@ func NewClient(endpoint string, opts ...Option) (client.Interface, error) {
 		o(c)
 	}
 
-	// Connect to the name resolution service.
-	if c.dialFn == nil {
-		return nil, fmt.Errorf("dialFn: %w", errNotImplemented)
+	// Set the default ENS contract address.
+	if c.contractAddr == "" {
+		c.contractAddr = defaultENSContractAddress
 	}
 
-	ethCl, err := c.dialFn(c.endpoint)
+	// Establish a connection to the ENS.
+	if c.connectFn == nil {
+		return nil, fmt.Errorf("connectFn: %w", errNotImplemented)
+	}
+	ethCl, registry, err := c.connectFn(c.endpoint, c.contractAddr)
 	if err != nil {
 		return nil, fmt.Errorf("%v: %w", err, ErrFailedToConnect)
 	}
 	c.ethCl = ethCl
+	c.registry = registry
 
 	return c, nil
+}
+
+// WithContractAddress will set the ENS contract address.
+func WithContractAddress(addr string) Option {
+	return func(c *Client) {
+		c.contractAddr = addr
+	}
 }
 
 // IsConnected returns true if there is an active RPC connection with an
@@ -94,7 +114,7 @@ func (c *Client) Resolve(name string) (Address, error) {
 		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", errNotImplemented)
 	}
 
-	hash, err := c.resolveFn(c.ethCl, name)
+	hash, err := c.resolveFn(c.registry, common.HexToAddress(c.contractAddr), name)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("%v: %w", err, ErrResolveFailed)
 	}
@@ -121,18 +141,50 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func wrapResolve(backend bind.ContractBackend, name string) (string, error) {
-
-	// Connect to the ENS resolver for the provided name.
-	ensR, err := goens.NewResolver(backend, name)
+func wrapDial(endpoint string, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
+	// Dial the eth client.
+	ethCl, err := ethclient.Dial(endpoint)
 	if err != nil {
-		return "", err
+		return nil, nil, fmt.Errorf("dial: %w", err)
+	}
+
+	// Obtain the ENS registry.
+	registry, err := goens.NewRegistryAt(ethCl, common.HexToAddress(contractAddr))
+	if err != nil {
+		return nil, nil, fmt.Errorf("new registry: %w", err)
+	}
+
+	// Ensure that the ENS registry client is deployed to the given contract address.
+	_, err = registry.Owner("")
+	if err != nil {
+		return nil, nil, fmt.Errorf("owner: %w", err)
+	}
+
+	return ethCl, registry, nil
+}
+
+func wrapResolve(registry *goens.Registry, addr common.Address, name string) (string, error) {
+	// Ensure the name is registered.
+	ownerAddress, err := registry.Owner(name)
+	if err != nil {
+		return "", fmt.Errorf("owner: %w", err)
+	}
+
+	// If the name is not registered, return an error.
+	if bytes.Equal(ownerAddress.Bytes(), goens.UnknownAddress.Bytes()) {
+		return "", errNameNotRegistered
+	}
+
+	// Obtain the resolver for this domain name.
+	ensR, err := registry.Resolver(name)
+	if err != nil {
+		return "", fmt.Errorf("resolver: %w", err)
 	}
 
 	// Try and read out the content hash record.
 	ch, err := ensR.Contenthash()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("contenthash: %w", err)
 	}
 
 	return goens.ContenthashToString(ch)
