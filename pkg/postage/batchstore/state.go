@@ -3,6 +3,7 @@ package batchstore
 import (
 	"encoding"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -25,6 +26,9 @@ func (st *state) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, 9)
 	binary.BigEndian.PutUint64(buf, st.block)
 	totalBytes := st.total.Bytes()
+	if totalBytes > uint8.MaxValue {
+		return nil, fmt.Errorf("too many bytes?")
+	}
 	buf[8] = uint8(len(totalBytes))
 	buf = append(buf, totalBytes...)
 	return append(buf, st.price.Bytes()...), nil
@@ -47,6 +51,7 @@ func (st *state) load(store storage.StateStorer) error {
 		st.price = big.NewInt(0)
 		return nil
 	}
+	// do we want to also persist here? ie. getOrCreate
 	return err
 }
 

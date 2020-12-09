@@ -43,7 +43,11 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r), batch)
+	// create stamper
+	// get the postage batch data from batch store - is done under the hood by the following call
+	stamper := s.postage.GetStamper(batch)
+
+	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r), stamper)
 	address, err := builder.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)
