@@ -5,6 +5,10 @@
 package batchstore
 
 import (
+	"encoding"
+	"encoding/binary"
+	"fmt"
+	"math"
 	"math/big"
 	"sync"
 
@@ -13,9 +17,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
-var (
+const (
 	batchKeyPrefix = "batchKeyPrefix"
 	valueKeyPrefix = "valueKeyPrefix"
+	stateKey       = "stateKey"
 )
 
 var _ postage.EventUpdater = (*Store)(nil)
@@ -32,9 +37,12 @@ type Store struct {
 func New(store storage.StateStorer, logger logging.Logger) (*Store, error) {
 	// initialise state from statestore or start with 0-s
 	st := &state{}
-	if err := st.load(store); err != nil {
-		return nil, err
+	err := store.Get(stateKey, st)
+	if err == storage.ErrNotFound {
+		st.total = big.NewInt(0)
+		st.price = big.NewInt(0)
 	}
+
 	s := &Store{
 		store:  store,
 		logger: logger,
@@ -45,44 +53,36 @@ func New(store storage.StateStorer, logger logging.Logger) (*Store, error) {
 // settle retrieves the current state
 // - sets the cumulative outpayment normalised, cno+=price*period
 // - sets the new block number
-// caller holds the store mutex
 func (s *Store) settle(block uint64) {
-	period := int64(block - s.state.block)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	updatePeriod := int64(block - s.state.block)
 	s.state.block = block
-	s.state.total.Add(s.state.total, new(big.Int).Mul(s.state.price, big.NewInt(period)))
+	s.state.total.Add(s.state.total, new(big.Int).Mul(s.state.price, big.NewInt(updatePeriod)))
+
+	_ = s.store.Put(stateKey, s.state)
 }
 
-func (s *Store) get(id []byte) (*postage.Batch, error) {
-	b := &postage.Batch{}
+func (s *Store) get(id []byte) (*Batch, error) {
+	b := &Batch{}
 	err := s.store.Get(batchKey(id), b)
 	return b, err
 }
 
-func (s *Store) put(b *postage.Batch) error {
+func (s *Store) put(b *Batch) error {
 	return s.store.Put(batchKey(b.ID), b)
 }
 
-func (s *Store) replace(id []byte, oldValue, newValue *big.Int) error {
-	err := s.store.Delete(valueKey(oldValue))
-	if err != nil {
-		return err
-	}
-	return s.store.Put(valueKey(newValue), id)
-}
-
 func (s *Store) Create(id []byte, owner []byte, value *big.Int, depth uint8) error {
-	b := &postage.Batch{
+	b := &Batch{
 		ID:    id,
 		Start: s.state.block,
 		Owner: owner,
 		Depth: depth,
+		Value: value,
 	}
 
-	panic("@zelig - should we have b.Add(value)?")
-	value, err := s.balance(b, value)
-	if err != nil {
-		return err
-	}
 	return s.put(b)
 }
 
@@ -91,10 +91,7 @@ func (s *Store) TopUp(id []byte, value *big.Int) error {
 	if err != nil {
 		return err
 	}
-	value, err := s.balance(b, value)
-	if err != nil {
-		return err
-	}
+	b.Value = value
 	return s.put(b)
 }
 
@@ -123,4 +120,41 @@ func valueKey(v *big.Int) string {
 	value := v.Bytes()
 	copy(key[32-len(value):], value)
 	return valueKeyPrefix + string(key)
+}
+
+// state implements BinaryMarshaler interface
+var _ encoding.BinaryMarshaler = (*state)(nil)
+
+// state represents the current state of the reserve
+type state struct {
+	block uint64   // the block number of the last postage event
+	total *big.Int // cumulative amount paid per stamp
+	price *big.Int // bzz/chunk/block normalised price, comes from the oracle
+}
+
+// MarshalBinary serialises the state to be used by the state store
+func (st *state) MarshalBinary() ([]byte, error) {
+	buf := make([]byte, 9)
+	binary.BigEndian.PutUint64(buf, st.block)
+	totalBytes := st.total.Bytes()
+	if len(totalBytes) > math.MaxUint8 {
+		return nil, fmt.Errorf("cumulative payout too large")
+	}
+
+	buf[8] = uint8(len(totalBytes))
+	buf = append(buf, totalBytes...)
+	return append(buf, st.price.Bytes()...), nil
+}
+
+// UnmarshalBinary deserialises the state to be used by the state store
+func (st *state) UnmarshalBinary(buf []byte) error {
+	st.block = binary.BigEndian.Uint64(buf[:8])
+	totalLen := int(buf[8])
+	if totalLen > math.MaxUint8 {
+		return fmt.Errorf("cumulative payout too large")
+	}
+
+	st.total = new(big.Int).SetBytes(buf[9 : 9+totalLen])
+	st.price = new(big.Int).SetBytes(buf[9+totalLen:])
+	return nil
 }
