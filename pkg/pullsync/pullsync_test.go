@@ -33,9 +33,10 @@ func someChunks(i ...int) (c []swarm.Chunk) {
 }
 
 func init() {
-	chunks = make([]swarm.Chunk, 5)
-	addrs = make([]swarm.Address, 5)
-	for i := 0; i < 5; i++ {
+	n := 5
+	chunks = make([]swarm.Chunk, n)
+	addrs = make([]swarm.Address, n)
+	for i := 0; i < n; i++ {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
 	}

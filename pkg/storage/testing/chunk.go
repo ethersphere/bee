@@ -28,14 +28,6 @@ import (
 // fixtreuChunks are pregenerated content-addressed chunks necessary for explicit
 // test scenarios where random generated chunks are not good enough.
 var fixtureChunks = map[string]swarm.Chunk{
-	"0000": swarm.NewChunk(
-		swarm.MustParseHexAddress(""),
-		[]byte{},
-	),
-	"0011": swarm.NewChunk(
-		swarm.MustParseHexAddress(""),
-		[]byte{},
-	),
 	"0025": swarm.NewChunk(
 		swarm.MustParseHexAddress("0025737be11979e91654dffd2be817ac1e52a2dadb08c97a7cef12f937e707bc"),
 		[]byte{72, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 149, 179, 31, 244, 146, 247, 129, 123, 132, 248, 215, 77, 44, 47, 91, 248, 229, 215, 89, 156, 210, 243, 3, 110, 204, 74, 101, 119, 53, 53, 145, 188, 193, 153, 130, 197, 83, 152, 36, 140, 150, 209, 191, 214, 193, 4, 144, 121, 32, 45, 205, 220, 59, 227, 28, 43, 161, 51, 108, 14, 106, 180, 135, 2},
@@ -59,13 +51,7 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-// GenerateTestRandomChunk generates a Chunk that is not
-// valid, but it contains a random key and a random value.
-// This function is faster then storage.GenerateRandomChunk
-// which generates a valid chunk.
-// Some tests in do not need valid chunks, just
-// random data, and their execution time can be decreased
-// using this function.
+// GenerateTestRandomChunk generates a valid content addressed chunk.
 func GenerateTestRandomChunk() swarm.Chunk {
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)
@@ -89,6 +75,8 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	return swarm.NewChunk(swarm.NewAddress(ref), data)
 }
 
+// GenerateTestRandomInvalidChunk generates a random, however invalid, content
+// addressed chunk.
 func GenerateTestRandomInvalidChunk() swarm.Chunk {
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)

@@ -49,7 +49,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource(someHash), http.StatusBadRequest,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "Bad Request",
+				Message: http.StatusText(http.StatusBadRequest),
 				Code:    http.StatusBadRequest,
 			}),
 		)
@@ -61,7 +61,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	t.Run("empty chunk", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource(someHash), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "Bad Request",
+				Message: http.StatusText(http.StatusBadRequest),
 				Code:    http.StatusBadRequest,
 			}),
 		)
