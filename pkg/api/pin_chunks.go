@@ -41,8 +41,14 @@ func (s *server) pinChunk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !has {
-		jsonhttp.NotFound(w, nil)
-		return
+		_, err := s.Storer.Get(r.Context(), storage.ModeGetRequest, addr)
+		if err != nil {
+			s.Logger.Debugf("pin chunk: netstore get: %v", err)
+			s.Logger.Error("pin chunk: netstore")
+
+			jsonhttp.NotFound(w, nil)
+			return
+		}
 	}
 
 	err = s.Storer.Set(r.Context(), storage.ModeSetPin, addr)
@@ -312,10 +318,26 @@ func (s *server) updatePinCount(ctx context.Context, reference swarm.Address, de
 
 func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) (stop bool) {
 	return func(address swarm.Address) (stop bool) {
-		err := s.Storer.Set(ctx, storage.ModeSetPin, address)
+		// NOTE: stop pinning on first error
+
+		has, err := s.Storer.Has(ctx, address)
+		if err != nil {
+			s.Logger.Debugf("pin error: localstore has: for reference %s, address %s: %w", reference, address, err)
+			return true
+		}
+
+		if !has {
+			// chunk not found locally, try to get from netstore
+			_, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
+			if err != nil {
+				s.Logger.Debugf("pin error: netstore get: for reference %s, address %s: %w", reference, address, err)
+				return true
+			}
+		}
+
+		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
 		if err != nil {
 			s.Logger.Debugf("pin error: for reference %s, address %s: %w", reference, address, err)
-			// stop pinning on first error
 			return true
 		}
 
