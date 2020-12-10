@@ -3,16 +3,3 @@
 // license that can be found in the LICENSE file.
 
 package batchstore_test
-
-import (
-	"testing"
-
-	"github.com/ethersphere/bee/pkg/postage/batchstore"
-)
-
-func TestStateMarshalling(t *testing.T) {
-	state := &batchstore.State{
-		block: 0,
-	}
-
-}
