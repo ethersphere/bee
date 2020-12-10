@@ -328,11 +328,19 @@ func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address)
 
 		if !has {
 			// chunk not found locally, try to get from netstore
-			_, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
+			ch, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
 			if err != nil {
 				s.Logger.Debugf("pin traversal: storer get: for reference %s, address %s: %w", reference, address, err)
 				return true
 			}
+
+			_, err = s.Storer.Put(ctx, storage.ModePutRequestPin, ch)
+			if err != nil {
+				s.Logger.Debugf("pin traversal: storer put pin: for reference %s, address %s: %w", reference, address, err)
+				return true
+			}
+
+			return false
 		}
 
 		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
