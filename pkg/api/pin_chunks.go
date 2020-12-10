@@ -322,7 +322,7 @@ func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address)
 
 		has, err := s.Storer.Has(ctx, address)
 		if err != nil {
-			s.Logger.Debugf("pin error: localstore has: for reference %s, address %s: %w", reference, address, err)
+			s.Logger.Debugf("pin traversal: localstore has: for reference %s, address %s: %w", reference, address, err)
 			return true
 		}
 
@@ -330,14 +330,14 @@ func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address)
 			// chunk not found locally, try to get from netstore
 			_, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
 			if err != nil {
-				s.Logger.Debugf("pin error: netstore get: for reference %s, address %s: %w", reference, address, err)
+				s.Logger.Debugf("pin traversal: storer get: for reference %s, address %s: %w", reference, address, err)
 				return true
 			}
 		}
 
 		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
 		if err != nil {
-			s.Logger.Debugf("pin error: for reference %s, address %s: %w", reference, address, err)
+			s.Logger.Debugf("pin traversal: storer set pin: for reference %s, address %s: %w", reference, address, err)
 			return true
 		}
 
@@ -354,7 +354,7 @@ func (s *server) unpinChunkAddressFn(ctx context.Context, reference swarm.Addres
 
 		err = s.Storer.Set(ctx, storage.ModeSetUnpin, address)
 		if err != nil {
-			s.Logger.Debugf("unpin error: for reference %s, address %s: %w", reference, address, err)
+			s.Logger.Debugf("unpin traversal: for reference %s, address %s: %w", reference, address, err)
 			// continue un-pinning all chunks
 		}
 
