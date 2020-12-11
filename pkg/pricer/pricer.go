@@ -1,0 +1,196 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package pricer
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
+)
+
+const (
+	priceTablePrefix string = "pricetable_"
+)
+
+var _ Pricer = (*Service)(nil)
+
+// Pricer returns pricing information for chunk hashes and proximity orders
+type Pricer interface {
+	// PeerPrice is the price the peer charges for a given chunk hash.
+	PeerPrice(peer, chunk swarm.Address) uint64
+	// PeerPricePO is the price the peer charges for a given proximity order.
+	PeerPricePO(peer swarm.Address, PO uint8) (uint64, error)
+	// Price is the price we charge for a given chunk hash.
+	Price(chunk swarm.Address) uint64
+	// PricePO is the price we charge for a given proximity order.
+	PricePO(PO uint8) (uint64, error)
+}
+
+type pricingPeer struct {
+	lock sync.Mutex
+}
+
+type Service struct {
+	pricingPeersMu sync.Mutex
+	pricingPeers   map[string]*pricingPeer
+	logger         logging.Logger
+	store          storage.StateStorer
+	overlay        swarm.Address
+	topology       topology.Driver
+	poPrice        uint64
+}
+
+func New(logger logging.Logger, store storage.StateStorer, topology topology.Driver, overlay swarm.Address, poPrice uint64) *Service {
+	return &Service{
+		logger:       logger,
+		pricingPeers: make(map[string]*pricingPeer),
+		store:        store,
+		overlay:      overlay,
+		topology:     topology,
+		poPrice:      poPrice,
+	}
+}
+
+// PeerPrice returns the price for the PO of a chunk from the table stored for the node.
+func (s *Service) PriceTable() (priceTable []uint64) {
+	err := s.store.Get(priceTableKey(), &priceTable)
+	if err != nil {
+		priceTable = s.DefaultPriceTable()
+	}
+	return priceTable
+}
+
+// PeerPriceTable returns the price table stored for the given peer.
+// If we can't get price table from store, we return the default price table
+func (s *Service) PeerPriceTable(peer, chunk swarm.Address) (priceTable []uint64, err error) {
+	err = s.store.Get(peerPriceTableKey(peer), &priceTable)
+	if err != nil {
+		priceTable = s.DefaultPriceTable() // get default pricetable
+	}
+	return priceTable, nil
+}
+
+// PeerPrice returns the price for the PO of a chunk from the table stored for the node.
+func (s *Service) Price(chunk swarm.Address) uint64 {
+	proximity := swarm.Proximity(s.overlay.Bytes(), chunk.Bytes())
+	price, err := s.PricePO(proximity)
+
+	if err != nil {
+		price = s.DefaultPrice(proximity)
+	}
+
+	return price
+}
+
+// PricePO returns the price for a PO from the table stored for the node.
+func (s *Service) PricePO(PO uint8) (uint64, error) {
+	var priceTable []uint64
+	err := s.store.Get(priceTableKey(), &priceTable)
+	if err != nil {
+		priceTable = s.DefaultPriceTable()
+	}
+
+	proximity := PO
+	if int(PO) >= len(priceTable) {
+		proximity = uint8(len(priceTable) - 1)
+	}
+
+	return priceTable[proximity], nil
+}
+
+// PeerPrice returns the price for the PO of a chunk from the table stored for the given peer.
+func (s *Service) PeerPrice(peer, chunk swarm.Address) uint64 {
+	proximity := swarm.Proximity(peer.Bytes(), chunk.Bytes())
+	price, err := s.PeerPricePO(peer, proximity)
+
+	if err != nil {
+		price = s.DefaultPrice(proximity)
+	}
+
+	return price
+}
+
+// PeerPricePO returns the price for a PO from the table stored for the given peer.
+func (s *Service) PeerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
+	var priceTable []uint64
+	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return 0, err
+		}
+		// get default pricetable
+	}
+
+	proximity := PO
+	if int(PO) >= len(priceTable) {
+		proximity = uint8(len(priceTable) - 1)
+	}
+
+	return priceTable[proximity], nil
+
+}
+
+// peerPriceTableKey returns the price table storage key for the given peer.
+func peerPriceTableKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s%s", priceTablePrefix, peer.String())
+}
+
+// priceTableKey returns the price table storage key for own price table
+func priceTableKey() string {
+	return fmt.Sprintf("%s%s", priceTablePrefix, "self")
+}
+
+func (s *Service) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
+	s.pricingPeersMu.Lock()
+	defer s.pricingPeersMu.Unlock()
+
+	peerData, ok := s.pricingPeers[peer.String()]
+	if !ok {
+		peerData = &pricingPeer{}
+		s.pricingPeers[peer.String()] = peerData
+	}
+
+	return peerData, nil
+}
+
+// NotifyPriceTable should be called to notify pricer of changes in the peers pricetable
+func (s *Service) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
+	pricingPeer, err := s.getPricingPeer(peer)
+	if err != nil {
+		return err
+	}
+
+	pricingPeer.lock.Lock()
+	defer pricingPeer.lock.Unlock()
+
+	err = s.store.Put(peerPriceTableKey(peer), priceTable)
+	if err != nil {
+		return fmt.Errorf("failed to persist pricetable for peer %v: %w", peer, err)
+	}
+
+	return nil
+}
+
+func (s *Service) DefaultPriceTable() (priceTable []uint64) {
+	neighborhoodDepth := s.topology.NeighborhoodDepth()
+	for i := uint8(0); i <= neighborhoodDepth; i++ {
+		priceTable[i] = uint64(neighborhoodDepth-i+1) * s.poPrice
+	}
+
+	return priceTable
+}
+
+func (s *Service) DefaultPrice(PO uint8) uint64 {
+	neighborhoodDepth := s.topology.NeighborhoodDepth()
+	if PO > neighborhoodDepth {
+		PO = neighborhoodDepth
+	}
+	return uint64(neighborhoodDepth-PO+1) * s.poPrice
+}
