@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -130,7 +130,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	spanBytes := chunkData[cursor : cursor+swarm.SpanSize]
 	cursor += swarm.SpanSize
 
-	ch, err := content.NewChunkWithSpanBytes(chunkData[cursor:], spanBytes)
+	ch, err := contentAddressedChunk(chunkData[cursor:], spanBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -230,4 +230,24 @@ func recoverAddress(signature, digest []byte) ([]byte, error) {
 		return nil, err
 	}
 	return recoveredEthereumAddress, nil
+}
+
+func contentAddressedChunk(data, spanBytes []byte) (swarm.Chunk, error) {
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
+
+	// execute hash, compare and return result
+	err := hasher.SetSpanBytes(spanBytes)
+	if err != nil {
+		return nil, err
+	}
+	_, err = hasher.Write(data)
+	if err != nil {
+		return nil, err
+	}
+	s := hasher.Sum(nil)
+
+	payload := append(spanBytes, data...)
+	address := swarm.NewAddress(s)
+	return swarm.NewChunk(address, payload), nil
 }

@@ -9,12 +9,11 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/content/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -22,6 +21,7 @@ import (
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -30,17 +30,12 @@ var testTimeout = 5 * time.Second
 
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
-	mockValidator := mock.NewValidator(true)
+	logger := logging.New(os.Stdout, 5)
 	mockStorer := storemock.NewStorer()
-	reqAddr, err := swarm.ParseHexAddress("00112233")
-	if err != nil {
-		t.Fatal(err)
-	}
-	reqData := []byte("data data data")
+	chunk := testingc.FixtureChunk("0033")
 
 	// put testdata in the mock store of the server
-	_, err = mockStorer.Put(context.Background(), storage.ModePutUpload, swarm.NewChunk(reqAddr, reqData))
+	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +46,7 @@ func TestDelivery(t *testing.T) {
 	pricerMock := accountingmock.NewPricer(price, price)
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(swarm.MustParseHexAddress("00112234"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, mockValidator, nil)
+	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
@@ -60,7 +55,7 @@ func TestDelivery(t *testing.T) {
 
 	// client mock storer does not store any data at this point
 	// but should be checked at at the end of the test for the
-	// presence of the reqAddr key and value to ensure delivery
+	// presence of the chunk address key and value to ensure delivery
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
@@ -69,15 +64,15 @@ func TestDelivery(t *testing.T) {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), clientMockStorer, recorder, ps, logger, clientMockAccounting, pricerMock, mockValidator, nil)
+	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), clientMockStorer, recorder, ps, logger, clientMockAccounting, pricerMock, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-	v, err := client.RetrieveChunk(ctx, reqAddr)
+	v, err := client.RetrieveChunk(ctx, chunk.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(v.Data(), reqData) {
-		t.Fatalf("request and response data not equal. got %s want %s", v, reqData)
+	if !bytes.Equal(v.Data(), chunk.Data()) {
+		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
 	}
 	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
 	if err != nil {
@@ -133,35 +128,32 @@ func TestDelivery(t *testing.T) {
 }
 
 func TestRetrieveChunk(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(os.Stdout, 5)
 
-	mockValidator := mock.NewValidator(true)
 	pricer := accountingmock.NewPricer(1, 1)
 
 	// requesting a chunk from downstream peer is expected
 	t.Run("downstream", func(t *testing.T) {
 		serverAddress := swarm.MustParseHexAddress("03")
-		chunkAddress := swarm.MustParseHexAddress("02")
 		clientAddress := swarm.MustParseHexAddress("01")
+		chunk := testingc.FixtureChunk("02c2")
 
 		serverStorer := storemock.NewStorer()
-		chunk := swarm.NewChunk(chunkAddress, []byte("some data"))
 		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
-
+		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, nil)
 		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
 
 		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 			_, _, _ = f(serverAddress, 0)
 			return nil
 		}}
-		client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, mockValidator, nil)
+		client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, nil)
 
-		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -171,13 +163,13 @@ func TestRetrieveChunk(t *testing.T) {
 	})
 
 	t.Run("forward", func(t *testing.T) {
-		chunkAddress := swarm.MustParseHexAddress("00")
-		serverAddress := swarm.MustParseHexAddress("01")
-		forwarderAddress := swarm.MustParseHexAddress("02")
-		clientAddress := swarm.MustParseHexAddress("03")
+		chunk := testingc.FixtureChunk("0025")
+
+		serverAddress := swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000000")
+		forwarderAddress := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
+		clientAddress := swarm.MustParseHexAddress("030000000000000000000000000000000000000000000000000000000000000000")
 
 		serverStorer := storemock.NewStorer()
-		chunk := swarm.NewChunk(chunkAddress, []byte("some data"))
 		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 		if err != nil {
 			t.Fatal(err)
@@ -185,13 +177,12 @@ func TestRetrieveChunk(t *testing.T) {
 
 		server := retrieval.New(
 			serverAddress,
-			serverStorer, // chunk is in sever's store
+			serverStorer, // chunk is in server's store
 			nil,
 			nil,
 			logger,
 			accountingmock.NewAccounting(),
 			pricer,
-			mockValidator,
 			nil,
 		)
 
@@ -206,7 +197,6 @@ func TestRetrieveChunk(t *testing.T) {
 			logger,
 			accountingmock.NewAccounting(),
 			pricer,
-			mockValidator,
 			nil,
 		)
 
@@ -221,11 +211,10 @@ func TestRetrieveChunk(t *testing.T) {
 			logger,
 			accountingmock.NewAccounting(),
 			pricer,
-			mockValidator,
 			nil,
 		)
 
-		got, err := client.RetrieveChunk(context.Background(), chunkAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
+	"github.com/ethersphere/bee/pkg/content"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -46,11 +48,10 @@ type Service struct {
 	logger        logging.Logger
 	accounting    accounting.Interface
 	pricer        accounting.Pricer
-	validator     swarm.Validator
 	tracer        *tracing.Tracer
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, validator swarm.Validator, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -59,7 +60,6 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		logger:        logger,
 		accounting:    accounting,
 		pricer:        pricer,
-		validator:     validator,
 		tracer:        tracer,
 	}
 }
@@ -141,7 +141,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	}
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
-
 	peer, err = s.closestPeer(addr, skipPeers, allowUpstream)
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
@@ -169,7 +168,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
 		Addr: addr.Bytes(),
 	}); err != nil {
@@ -181,12 +179,14 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
 
-	// credit the peer after successful delivery
 	chunk = swarm.NewChunk(addr, d.Data)
-	if !s.validator.Validate(chunk) {
-		return nil, peer, err
+	if !content.Valid(chunk) {
+		if !soc.Valid(chunk) {
+			return nil, peer, swarm.ErrInvalidChunk
+		}
 	}
 
+	// credit the peer after successful delivery
 	err = s.accounting.Credit(peer, chunkPrice)
 	if err != nil {
 		return nil, peer, err
@@ -236,7 +236,6 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 	if closest.IsZero() {
 		return swarm.Address{}, topology.ErrNotFound
 	}
-
 	if allowUpstream {
 		return closest, nil
 	}

@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -22,7 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	mockvalidator "github.com/ethersphere/bee/pkg/storage/mock/validator"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -37,18 +37,15 @@ const (
 // and expects a receipt. The message are intercepted in the outgoing stream to check for correctness.
 func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	// chunk data to upload
-	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	chunkData := []byte("1234")
-	chunk := swarm.NewChunk(chunkAddress, chunkData)
+	chunk := testingc.FixtureChunk("7000")
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
 	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
-	validator := testValidator(chunkAddress, chunkData, nil)
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, validator, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
@@ -69,10 +66,10 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	}
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordAndTest(t, closestPeer, recorder, chunkAddress, chunkData)
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), chunk.Data())
 
 	// this intercepts the incoming receipt message
-	waitOnRecordAndTest(t, closestPeer, recorder, chunkAddress, nil)
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
 
 	balance, err := pivotAccounting.Balance(closestPeer)
 	if err != nil {
@@ -97,32 +94,28 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 // it also checks wether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
 	// chunk data to upload
-	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	chunkData := []byte("1234")
-
+	chunk := testingc.FixtureChunk("7000")
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
 	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
-	callbackC := make(chan swarm.Chunk, 1)
-	validator := testValidator(chunkAddress, chunkData, callbackC)
+	callbackC := make(chan struct{}, 1)
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, validator, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, chanFunc(callbackC), mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
-	validator = testValidator(chunkAddress, chunkData, nil)
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
-	psPivot, storerPivot, pivotTags, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, validator, mock.WithClosestPeer(closestPeer))
+	psPivot, storerPivot, pivotTags, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, nil, mock.WithClosestPeer(closestPeer))
 	defer storerPivot.Close()
 
 	ta, err := pivotTags.Create("test", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunk := swarm.NewChunk(chunkAddress, chunkData).WithTagID(ta.Uid)
+	chunk = chunk.WithTagID(ta.Uid)
 
 	ta1, err := pivotTags.Get(ta.Uid)
 	if err != nil {
@@ -144,10 +137,10 @@ func TestPushChunkToClosest(t *testing.T) {
 	}
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordAndTest(t, closestPeer, recorder, chunkAddress, chunkData)
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), chunk.Data())
 
 	// this intercepts the incoming receipt message
-	waitOnRecordAndTest(t, closestPeer, recorder, chunkAddress, nil)
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
 
 	ta2, err := pivotTags.Get(ta.Uid)
 	if err != nil {
@@ -185,10 +178,7 @@ func TestPushChunkToClosest(t *testing.T) {
 
 func TestPushChunkToNextClosest(t *testing.T) {
 	// chunk data to upload
-	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	chunkData := []byte("1234")
-
-	validator := testValidator(chunkAddress, chunkData, nil)
+	chunk := testingc.FixtureChunk("7000")
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
@@ -202,10 +192,10 @@ func TestPushChunkToNextClosest(t *testing.T) {
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer1, storerPeer1, _, peerAccounting1 := createPushSyncNode(t, peer1, nil, validator, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer1, storerPeer1, _, peerAccounting1 := createPushSyncNode(t, peer1, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer1.Close()
 
-	psPeer2, storerPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, nil, validator, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer2, storerPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer2.Close()
 
 	recorder := streamtest.New(
@@ -244,7 +234,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunk := swarm.NewChunk(chunkAddress, chunkData).WithTagID(ta.Uid)
+	chunk = chunk.WithTagID(ta.Uid)
 
 	ta1, err := pivotTags.Get(ta.Uid)
 	if err != nil {
@@ -266,10 +256,10 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	}
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordAndTest(t, peer2, recorder, chunkAddress, chunkData)
+	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), chunk.Data())
 
 	// this intercepts the incoming receipt message
-	waitOnRecordAndTest(t, peer2, recorder, chunkAddress, nil)
+	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), nil)
 
 	ta2, err := pivotTags.Get(ta.Uid)
 	if err != nil {
@@ -315,30 +305,27 @@ func TestPushChunkToNextClosest(t *testing.T) {
 //
 func TestHandler(t *testing.T) {
 	// chunk data to upload
-	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	chunkData := []byte("1234")
-	chunk := swarm.NewChunk(chunkAddress, chunkData)
+	chunk := testingc.FixtureChunk("7000")
 
 	// create a pivot node and a mocked closest node
 	pivotPeer := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
-	validator := testValidator(chunkAddress, chunkData, nil)
 
 	// Create the closest peer
-	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, nil, validator, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
 	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()))
 
 	// creating the pivot peer
-	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, closestRecorder, validator, mock.WithClosestPeer(closestPeer))
+	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, closestRecorder, nil, mock.WithClosestPeer(closestPeer))
 	defer storerPivotDB.Close()
 
 	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()))
 
 	// Creating the trigger peer
-	psTriggerPeer, triggerStorerDB, _, triggerAccounting := createPushSyncNode(t, triggerPeer, pivotRecorder, validator, mock.WithClosestPeer(pivotPeer))
+	psTriggerPeer, triggerStorerDB, _, triggerAccounting := createPushSyncNode(t, triggerPeer, pivotRecorder, nil, mock.WithClosestPeer(pivotPeer))
 	defer triggerStorerDB.Close()
 
 	receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
@@ -351,17 +338,17 @@ func TestHandler(t *testing.T) {
 	}
 
 	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
-	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunkAddress, chunkData)
+	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunk.Address(), chunk.Data())
 
 	// Pivot peer will forward the chunk to its closest peer. Intercept the incoming stream from pivot node and check
 	// for the correctness of the chunk
-	waitOnRecordAndTest(t, closestPeer, closestRecorder, chunkAddress, chunkData)
+	waitOnRecordAndTest(t, closestPeer, closestRecorder, chunk.Address(), chunk.Data())
 
 	// Similarly intercept the same incoming stream to see if the closest peer is sending a proper receipt
-	waitOnRecordAndTest(t, closestPeer, closestRecorder, chunkAddress, nil)
+	waitOnRecordAndTest(t, closestPeer, closestRecorder, chunk.Address(), nil)
 
 	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
-	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunkAddress, nil)
+	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunk.Address(), nil)
 
 	balance, err := triggerAccounting.Balance(pivotPeer)
 	if err != nil {
@@ -401,9 +388,9 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, validator swarm.ValidatorWithCallback, mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
+func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
 	t.Helper()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(os.Stdout, 5)
 
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)
 	if err != nil {
@@ -417,8 +404,11 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	mockPricer := accountingmock.NewPricer(fixedPrice, fixedPrice)
 
 	recorderDisconnecter := streamtest.NewRecorderDisconnecter(recorder)
+	if unwrap == nil {
+		unwrap = func(swarm.Chunk) {}
+	}
 
-	return pushsync.New(recorderDisconnecter, storer, mockTopology, mtag, validator, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
+	return pushsync.New(recorderDisconnecter, storer, mockTopology, mtag, unwrap, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
@@ -471,10 +461,8 @@ func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.
 	}
 }
 
-func testValidator(chunkAddress swarm.Address, chunkData []byte, callbackC chan swarm.Chunk) swarm.ValidatorWithCallback {
-	validators := []swarm.Validator{mockvalidator.NewMockValidator(chunkAddress, chunkData)}
-	if callbackC != nil {
-		return swarm.NewMultiValidator(validators, func(c swarm.Chunk) { callbackC <- c })
+func chanFunc(c chan<- struct{}) func(swarm.Chunk) {
+	return func(_ swarm.Chunk) {
+		c <- struct{}{}
 	}
-	return swarm.NewMultiValidator(validators)
 }

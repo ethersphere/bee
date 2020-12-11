@@ -5,29 +5,35 @@
 package content
 
 import (
+	"bytes"
+
+	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ swarm.Validator = (*Validator)(nil)
-
-// Validator validates that the address of a given chunk
-// is the content address of its contents.
-type Validator struct {
-}
-
-// NewValidator constructs a new Validator
-func NewValidator() swarm.Validator {
-	return &Validator{}
-}
-
-// Validate performs the validation check.
-func (v *Validator) Validate(ch swarm.Chunk) (valid bool) {
-	chunkData := ch.Data()
-	rch, err := contentChunkFromBytes(chunkData)
-	if err != nil {
+// Valid checks whether the given chunk is a valid content-addressed chunk.
+func Valid(c swarm.Chunk) bool {
+	data := c.Data()
+	if len(data) < swarm.SpanSize {
 		return false
 	}
 
-	address := ch.Address()
-	return address.Equal(rch.Address())
+	span := data[:swarm.SpanSize]
+	content := data[swarm.SpanSize:]
+
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
+
+	// execute hash, compare and return result
+	err := hasher.SetSpanBytes(span)
+	if err != nil {
+		return false
+	}
+	_, err = hasher.Write(content)
+	if err != nil {
+		return false
+	}
+	s := hasher.Sum(nil)
+
+	return bytes.Equal(s, c.Address().Bytes())
 }
