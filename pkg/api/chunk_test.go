@@ -21,7 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock/validator"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -30,53 +30,49 @@ import (
 func TestChunkUploadDownload(t *testing.T) {
 
 	var (
-		targets              = "0x222"
-		resource             = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
-		resourceTargets      = func(addr swarm.Address) string { return "/chunks/" + addr.String() + "?targets=" + targets }
-		validHash            = swarm.MustParseHexAddress("aabbcc")
-		invalidHash          = swarm.MustParseHexAddress("bbccdd")
-		validContent         = []byte("bbaatt")
-		invalidContent       = []byte("bbaattss")
-		mockValidator        = validator.NewMockValidator(validHash, validContent)
-		mockStatestore       = statestore.NewStateStore()
-		logger               = logging.New(ioutil.Discard, 0)
-		tag                  = tags.NewTags(mockStatestore, logger)
-		mockValidatingStorer = mock.NewStorer(mock.WithValidator(mockValidator))
-		client, _, _         = newTestServer(t, testServerOptions{
-			Storer: mockValidatingStorer,
+		targets         = "0x222"
+		resource        = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		resourceTargets = func(addr swarm.Address) string { return "/chunks/" + addr.String() + "?targets=" + targets }
+		someHash        = swarm.MustParseHexAddress("aabbcc")
+		chunk           = testingc.GenerateTestRandomChunk()
+		mockStatestore  = statestore.NewStateStore()
+		logger          = logging.New(ioutil.Discard, 0)
+		tag             = tags.NewTags(mockStatestore, logger)
+		mockStorer      = mock.NewStorer()
+		client, _, _    = newTestServer(t, testServerOptions{
+			Storer: mockStorer,
 			Tags:   tag,
 		})
 	)
 
-	t.Run("invalid hash", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(invalidHash), http.StatusBadRequest,
-			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+	t.Run("invalid chunk", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, resource(someHash), http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "chunk write error",
+				Message: http.StatusText(http.StatusBadRequest),
 				Code:    http.StatusBadRequest,
 			}),
 		)
 
 		// make sure chunk is not retrievable
-		_ = request(t, client, http.MethodGet, resource(invalidHash), nil, http.StatusNotFound)
+		_ = request(t, client, http.MethodGet, resource(someHash), nil, http.StatusNotFound)
 	})
 
-	t.Run("invalid content", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(invalidHash), http.StatusBadRequest,
-			jsonhttptest.WithRequestBody(bytes.NewReader(invalidContent)),
+	t.Run("empty chunk", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, resource(someHash), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "chunk write error",
+				Message: http.StatusText(http.StatusBadRequest),
 				Code:    http.StatusBadRequest,
 			}),
 		)
 
-		// make sure not retrievable
-		_ = request(t, client, http.MethodGet, resource(validHash), nil, http.StatusNotFound)
+		// make sure chunk is not retrievable
+		_ = request(t, client, http.MethodGet, resource(someHash), nil, http.StatusNotFound)
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
-			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
@@ -84,20 +80,20 @@ func TestChunkUploadDownload(t *testing.T) {
 		)
 
 		// try to fetch the same chunk
-		resp := request(t, client, http.MethodGet, resource(validHash), nil, http.StatusOK)
+		resp := request(t, client, http.MethodGet, resource(chunk.Address()), nil, http.StatusOK)
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(validContent, data) {
+		if !bytes.Equal(chunk.Data(), data) {
 			t.Fatal("data retrieved doesnt match uploaded content")
 		}
 	})
 
 	t.Run("pin-invalid-value", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
-			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
@@ -106,13 +102,13 @@ func TestChunkUploadDownload(t *testing.T) {
 		)
 
 		// Also check if the chunk is NOT pinned
-		if mockValidatingStorer.GetModeSet(validHash) == storage.ModeSetPin {
+		if mockStorer.GetModeSet(chunk.Address()) == storage.ModeSetPin {
 			t.Fatal("chunk should not be pinned")
 		}
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
-			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
@@ -120,13 +116,13 @@ func TestChunkUploadDownload(t *testing.T) {
 		)
 
 		// Also check if the chunk is NOT pinned
-		if mockValidatingStorer.GetModeSet(validHash) == storage.ModeSetPin {
+		if mockStorer.GetModeSet(chunk.Address()) == storage.ModeSetPin {
 			t.Fatal("chunk should not be pinned")
 		}
 	})
 	t.Run("pin-ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(validHash), http.StatusOK,
-			jsonhttptest.WithRequestBody(bytes.NewReader(validContent)),
+		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
@@ -135,13 +131,13 @@ func TestChunkUploadDownload(t *testing.T) {
 		)
 
 		// Also check if the chunk is pinned
-		if mockValidatingStorer.GetModePut(validHash) != storage.ModePutUploadPin {
+		if mockStorer.GetModePut(chunk.Address()) != storage.ModePutUploadPin {
 			t.Fatal("chunk is not pinned")
 		}
 
 	})
 	t.Run("retrieve-targets", func(t *testing.T) {
-		resp := request(t, client, http.MethodGet, resourceTargets(validHash), nil, http.StatusOK)
+		resp := request(t, client, http.MethodGet, resourceTargets(chunk.Address()), nil, http.StatusOK)
 
 		// Check if the target is obtained correctly
 		if resp.Header.Get(api.TargetsRecoveryHeader) != targets {

@@ -222,7 +222,7 @@ func TestGenerateTestRandomChunk(t *testing.T) {
 		t.Errorf("first chunk address length %v, want %v", addrLen, 32)
 	}
 	dataLen := len(c1.Data())
-	if dataLen != swarm.ChunkSize {
+	if dataLen != swarm.ChunkSize+swarm.SpanSize {
 		t.Errorf("first chunk data length %v, want %v", dataLen, swarm.ChunkSize)
 	}
 	addrLen = len(c2.Address().Bytes())
@@ -230,7 +230,7 @@ func TestGenerateTestRandomChunk(t *testing.T) {
 		t.Errorf("second chunk address length %v, want %v", addrLen, 32)
 	}
 	dataLen = len(c2.Data())
-	if dataLen != swarm.ChunkSize {
+	if dataLen != swarm.ChunkSize+swarm.SpanSize {
 		t.Errorf("second chunk data length %v, want %v", dataLen, swarm.ChunkSize)
 	}
 	if c1.Address().Equal(c2.Address()) {

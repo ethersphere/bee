@@ -6,7 +6,6 @@ package pullsync_test
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -17,17 +16,12 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage/mock"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
-	addrs = []swarm.Address{
-		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001"),
-		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000002"),
-		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000003"),
-		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000004"),
-		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000005"),
-	}
+	addrs  []swarm.Address
 	chunks []swarm.Chunk
 )
 
@@ -39,11 +33,12 @@ func someChunks(i ...int) (c []swarm.Chunk) {
 }
 
 func init() {
-	chunks = make([]swarm.Chunk, 5)
-	for i := 0; i < 5; i++ {
-		data := make([]byte, swarm.ChunkSize)
-		_, _ = rand.Read(data)
-		chunks[i] = swarm.NewChunk(addrs[i], data)
+	n := 5
+	chunks = make([]swarm.Chunk, n)
+	addrs = make([]swarm.Address, n)
+	for i := 0; i < n; i++ {
+		chunks[i] = testingc.GenerateTestRandomChunk()
+		addrs[i] = chunks[i].Address()
 	}
 }
 
@@ -217,20 +212,7 @@ func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 
 func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.PullStorage) {
 	storage := mock.NewPullStorage(o...)
-	c := make(chan swarm.Chunk)
-	validator := &mockValidator{c}
 	logger := logging.New(ioutil.Discard, 0)
-	return pullsync.New(s, storage, validator, logger), storage
-}
-
-type mockValidator struct {
-	c chan swarm.Chunk
-}
-
-func (*mockValidator) Validate(swarm.Chunk) bool {
-	return true
-}
-
-func (mv *mockValidator) ValidWithCallback(c swarm.Chunk) (bool, func()) {
-	return true, func() { mv.c <- c }
+	unwrap := func(swarm.Chunk) {}
+	return pullsync.New(s, storage, unwrap, logger), storage
 }
