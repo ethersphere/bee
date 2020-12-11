@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"sync"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -26,7 +25,6 @@ var _ postage.EventUpdater = (*Store)(nil)
 // Store is a local store for postage batches
 type Store struct {
 	store storage.StateStorer // state store backend to persist batches
-	mu    sync.Mutex          // mutex to lock statestore during atomic changes
 
 	block uint64   // the block number of the last postage event
 	total *big.Int // cumulative amount paid per stamp
@@ -51,20 +49,6 @@ func New(store storage.StateStorer) (*Store, error) {
 	return s, nil
 }
 
-// Settle retrieves the current state
-// - sets the cumulative outpayment normalised, cno+=price*period
-// - sets the new block number
-func (s *Store) Settle(block uint64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	updatePeriod := int64(block - s.block)
-	s.block = block
-	s.total.Add(s.total, new(big.Int).Mul(s.price, big.NewInt(updatePeriod)))
-
-	return s.store.Put(stateKey, s)
-}
-
 func (s *Store) Get(id []byte) (*Batch, error) {
 	b := &Batch{}
 	err := s.store.Get(batchKey(id), b)
@@ -79,24 +63,19 @@ func (s *Store) Block() uint64 {
 	return s.block
 }
 
-func (s *Store) Total() *big.Int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *Store) SetBlock(b uint64) {
 
+}
+
+func (s *Store) Total() *big.Int {
 	return new(big.Int).SetBytes(s.total.Bytes())
 }
 
 func (s *Store) Price() *big.Int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	return new(big.Int).SetBytes(s.price.Bytes())
 }
 
 func (s *Store) Create(id []byte, owner []byte, value *big.Int, depth uint8) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	b := &Batch{
 		ID:    id,
 		Start: s.block,
@@ -128,9 +107,6 @@ func (s *Store) UpdateDepth(id []byte, depth uint8) error {
 }
 
 func (s *Store) UpdatePrice(price *big.Int) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.price = price
 	return s.store.Put(stateKey, s)
 }

@@ -27,11 +27,6 @@ type Event interface {
 	Update(s EventUpdater) error
 }
 
-// Events provides an iterator for postage events
-type Events interface {
-	Each(from uint64, update func(block uint64, ev Event) error) func()
-}
-
 // Listener provides a blockchain event iterator
 type Listener interface {
 	// - it starts at block from

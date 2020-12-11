@@ -12,6 +12,8 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 var (
@@ -24,7 +26,7 @@ var (
 	eventSignatures = []string{
 		"BatchCreated(bytes32,uint256,address,uint256)",
 		"BatchTopUp(bytes32,uint256)",
-		"BatchDepthIncrease(bytes32,uint256",
+		"BatchDepthIncrease(bytes32,uint256)",
 		"PriceUpdate(uint256)",
 	}
 	eventNames = []string{
@@ -35,21 +37,6 @@ var (
 	}
 )
 
-func eventTypes(i int) postage.Event {
-	switch i {
-	case 0:
-		return &batchCreatedEvent{}
-	case 1:
-		return &batchTopUpEvent{}
-	case 2:
-		return &batchDepthIncreaseEvent{}
-	case 3:
-		return &priceUpdateEvent{}
-	default:
-		return nil
-	}
-}
-
 // event BatchCreated(bytes32 indexed batchId, uint256 initialBalance, address owner, uint256 depth);
 type batchCreatedEvent struct {
 	batchID [32]byte
@@ -58,18 +45,10 @@ type batchCreatedEvent struct {
 	depth   *big.Int
 }
 
-func (e *batchCreatedEvent) Update(s postage.EventUpdater) error {
-	return s.Create(e.batchID[:], e.owner[:], e.balance, uint8(e.depth.Uint64()))
-}
-
 // event BatchTopUp(bytes32 indexed batchId, uint256 topupAmount);
 type batchTopUpEvent struct {
 	batchID [32]byte
 	amount  *big.Int
-}
-
-func (e *batchTopUpEvent) Update(s postage.EventUpdater) error {
-	return s.TopUp(e.batchID[:], e.amount)
 }
 
 // event BatchDepthIncrease(bytes32 indexed batchId, uint256 newDepth);
@@ -78,34 +57,43 @@ type batchDepthIncreaseEvent struct {
 	depth   *big.Int
 }
 
-func (e *batchDepthIncreaseEvent) Update(s postage.EventUpdater) error {
-	return s.UpdateDepth(e.batchID[:], uint8(e.depth.Uint64()))
-
-}
-
 // event PriceUpdate(uint256 price);
 type priceUpdateEvent struct {
 	price *big.Int
 }
 
-func (e *priceUpdateEvent) Update(s postage.EventUpdater) error {
-	return s.UpdatePrice(e.price)
-}
-
-// parse reifies the event log type as a struct
-//  weakly unsafe in that if there is another event, nil is returned
 func parse(log types.Log) postage.Event {
 	sigdigest := log.Topics[0].Hex()
-	for i, digest := range contractEventDigests {
-		if digest == sigdigest {
-			ev := eventTypes(i)
-			if err := contractABI.Unpack(ev, eventNames[i], log.Data); err != nil {
-				return nil
-			}
-			return ev
+	switch signdigest {
+	//batchCreatedEvent
+	case contractEventDigests[0]:
+		ev := &batchCreatedEvent{}
+		if err := contractABI.Unpack(ev, eventNames[0], log.Data); err != nil {
+			return nil
 		}
+
+	//batchTopUpEvent
+	case contractEventDigests[1]:
+		ev := &batchTopUpEvent{}
+		if err := contractABI.Unpack(ev, eventNames[1], log.Data); err != nil {
+			return nil
+		}
+
+	//batchDepthIncreaseEvent
+	case contractEventDigests[2]:
+		ev := &batchDepthIncreaseEvent{}
+		if err := contractABI.Unpack(ev, eventNames[2], log.Data); err != nil {
+			return nil
+		}
+
+	//priceUpdateEvent
+	case contractEventDigests[3]:
+		ev := &priceUpdateEvent{}
+		if err := contractABI.Unpack(ev, eventNames[3], log.Data); err != nil {
+			return nil
+		}
+	default:
 	}
-	return nil
 }
 
 func parseABI(json string) abi.ABI {
@@ -130,32 +118,55 @@ func digestSig(sigs []string) []string {
 
 var _ postage.Events = (*Events)(nil)
 
-// Events provides an iterator listening to postage events
 type Events struct {
+	block uint64
+	price *big.Int
+	total *big.Int
+
 	lis    postage.Listener
+	store  *batchstore.Store
 	logger logging.Logger
+
+	quit chan struct{}
 }
 
-// New is constructor for Events
-func New(lis postage.Listener, logger logging.Logger) *Events {
-	return &Events{lis, logger}
+func New(lis postage.Listener, st storage.StateStorer, logger logging.Logger) (*Events, error) {
+	store, err := batchstore.New(st)
+	block := store.Block()
+	e := &Events{
+		store:  store,
+		lis:    lis,
+		logger: logger,
+		quit:   make(chan struct{}),
+	}
 }
 
-// Each starts the forever loop that keeps the batch Store in sync with the blockchain
-// takes a postage.Listener interface as argument and uses it as an iterator
-func (e Events) Each(from uint64, f func(uint64, postage.Event) error) func() {
+func (e *Events) Each(from uint64, f func(uint64, postage.Event) error) func() {
 	update := func(ev types.Log) error {
 		return f(ev.BlockNumber, parse(ev))
 	}
-	quit := make(chan struct{})
-	stop := func() { close(quit) }
-	// Listener Listen call is the forever loop listening to blockchain events
 	go e.listen(from, quit, update)
 	return stop
 }
 
-func (e Events) listen(from uint64, quit chan struct{}, update func(types.Log) error) {
+func (e *Events) listen(from uint64, quit chan struct{}, update func(types.Log) error) {
 	if err := e.lis.Listen(from, quit, update); err != nil {
 		e.logger.Errorf("error syncing batches with the blockchain: %v", err)
 	}
+}
+
+func (e *Events) Close() error {
+	close(e.quit)
+}
+
+// Settle retrieves the current state
+// - sets the cumulative outpayment normalised, cno+=price*period
+// - sets the new block number
+func (s *Events) Settle(block uint64) error {
+
+	updatePeriod := int64(block - s.block)
+	s.block = block
+	s.total.Add(s.total, new(big.Int).Mul(s.price, big.NewInt(updatePeriod)))
+
+	return s.store.Put(stateKey, s)
 }
