@@ -11,6 +11,6 @@ func NewStamper() postage.Stamper {
 	return &mockStamper{}
 }
 
-func (_ mockStamper) Stamp(_ swarm.Address) (*postage.Stamp, error) {
+func (mockStamper) Stamp(_ swarm.Address) (*postage.Stamp, error) {
 	return &postage.Stamp{}, nil
 }

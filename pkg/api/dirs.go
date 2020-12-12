@@ -119,7 +119,7 @@ func validateRequest(r *http.Request) error {
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string) (swarm.Address, error) {
+func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename, errorFilename string) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
 	dirManifest, err := manifest.NewDefaultManifest(ls)
