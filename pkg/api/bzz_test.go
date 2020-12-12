@@ -100,7 +100,7 @@ func TestBzz(t *testing.T) {
 		}
 
 		// save manifest
-		m, err := manifest.NewDefaultManifest(loadsave.New(storer, storage.ModePutRequest, false, nil))
+		m, err := manifest.NewDefaultManifest(loadsave.New(storer, storage.ModePutRequest, false, postmock.NewStamper()))
 		if err != nil {
 			t.Fatal(err)
 		}
