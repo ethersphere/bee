@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"testing"
 	"time"
 
@@ -101,7 +100,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
-	log := logging.New(os.Stdout, 5)
+	log := logging.New(ioutil.Discard, 0)
 
 	testCases := []struct {
 		desc       string
@@ -182,7 +181,7 @@ func TestPostageHeaderError(t *testing.T) {
 	var (
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(os.Stdout, 5)
+		logger         = logging.New(ioutil.Discard, 0)
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
