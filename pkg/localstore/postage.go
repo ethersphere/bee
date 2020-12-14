@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	// ErrOverissued is returned if number of chunks found in neighbourhood extrapolates to overissued stamp
+	// ErrBatchOverissued is returned if number of chunks found in neighbourhood extrapolates to overissued stamp
 	// count(batch, po) > 1<< (depth(batch) - po)
 	ErrBatchOverissued = errors.New("postage batch overissued")
 	ErrBatchNotFound   = errors.New("postage batch not found or expired")
@@ -167,14 +167,3 @@ func (p *postageBatches) deleteInBatch(batch *leveldb.Batch, item shed.Item) err
 	}
 	return nil
 }
-
-// func (p *postageBatches) moveChunksToGC(batch *leveldb.Batch, batchID []byte, po int) error {
-// 	return p.chunks.Iterate(func(item shed.Item) (stop bool, err error) {
-// 		if p.po(item.Address) > po {
-// 			return true, nil
-// 		}
-// 		// put to gc queue
-// 		return false, nil
-// 	}, &shed.IterateOptions{StartFrom: &shed.Item{BatchID: batchID}})
-
-// }

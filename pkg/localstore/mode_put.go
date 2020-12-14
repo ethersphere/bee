@@ -106,11 +106,12 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			}
 			gcSizeChange += c
 			if mode == storage.ModePutUploadPin {
-				err = db.setPin(batch, ch.Address())
+				c, err = db.setPin(batch, ch.Address())
 				if err != nil {
 					return nil, err
 				}
 			}
+			gcSizeChange += c
 		}
 
 	case storage.ModePutSync:
@@ -178,7 +179,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.setGC(batch, item)
+	gcSizeChange, err = db.putToGC(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
@@ -247,7 +248,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.setGC(batch, item)
+	gcSizeChange, err = db.putToGC(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
@@ -266,13 +267,9 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	return false, gcSizeChange, nil
 }
 
-// setGC is a helper function used to add chunks to the retrieval access
-// index and the gc index in the cases that the putToGCCheck condition
-// warrants a gc set. this is to mitigate index leakage in edge cases where
-// a chunk is added to a node's localstore and given that the chunk is
-// already within that node's NN (thus, it can be added to the gc index
-// safely)
-func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
+// putToGC is a helper function used to add chunks to the retrieval access
+// index and the gc index
+func (db *DB) putToGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
 	if item.BinID == 0 {
 		i, err := db.retrievalDataIndex.Get(item)
 		if err != nil {

@@ -519,7 +519,7 @@ func TestSetNow(t *testing.T) {
 	}
 }
 
-func testIndexCounts(t *testing.T, pushIndex, pullIndex, gcIndex, gcExcludeIndex, pinIndex, retrievalDataIndex, retrievalAccessIndex int, indexInfo map[string]int) {
+func testIndexCounts(t *testing.T, pushIndex, pullIndex, gcIndex, pinIndex, retrievalDataIndex, retrievalAccessIndex int, indexInfo map[string]int) {
 	t.Helper()
 	if indexInfo["pushIndex"] != pushIndex {
 		t.Fatalf("pushIndex count mismatch. got %d want %d", indexInfo["pushIndex"], pushIndex)
@@ -531,10 +531,6 @@ func testIndexCounts(t *testing.T, pushIndex, pullIndex, gcIndex, gcExcludeIndex
 
 	if indexInfo["gcIndex"] != gcIndex {
 		t.Fatalf("gcIndex count mismatch. got %d want %d", indexInfo["gcIndex"], gcIndex)
-	}
-
-	if indexInfo["gcExcludeIndex"] != gcExcludeIndex {
-		t.Fatalf("gcExcludeIndex count mismatch. got %d want %d", indexInfo["gcExcludeIndex"], gcExcludeIndex)
 	}
 
 	if indexInfo["pinIndex"] != pinIndex {
@@ -573,7 +569,7 @@ func TestDBDebugIndexes(t *testing.T) {
 	}
 
 	// for reference: testIndexCounts(t *testing.T, pushIndex, pullIndex, gcIndex, gcExcludeIndex, pinIndex, retrievalDataIndex, retrievalAccessIndex int, indexInfo map[string]int)
-	testIndexCounts(t, 1, 1, 0, 0, 0, 1, 0, indexCounts)
+	testIndexCounts(t, 1, 1, 0, 0, 1, 0, indexCounts)
 
 	// set the chunk for pinning and expect the index count to grow
 	err = db.Set(context.Background(), storage.ModeSetPin, ch.Address())
@@ -587,19 +583,6 @@ func TestDBDebugIndexes(t *testing.T) {
 	}
 
 	// assert that there's a pin and gc exclude entry now
-	testIndexCounts(t, 1, 1, 0, 1, 1, 1, 0, indexCounts)
-
-	// set the chunk as accessed and expect the access index to grow
-	err = db.Set(context.Background(), storage.ModeSetAccess, ch.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
-	indexCounts, err = db.DebugIndices()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// assert that there's a pin and gc exclude entry now
-	testIndexCounts(t, 1, 1, 0, 1, 1, 1, 1, indexCounts)
+	testIndexCounts(t, 1, 1, 0, 1, 1, 0, indexCounts)
 
 }

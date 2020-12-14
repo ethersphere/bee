@@ -21,12 +21,10 @@ import (
 	"errors"
 	"io/ioutil"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-
 	"github.com/ethersphere/bee/pkg/shed"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	tagtesting "github.com/ethersphere/bee/pkg/tags/testing"
@@ -34,42 +32,6 @@ import (
 )
 
 // TestModeSetAccess validates ModeSetAccess index values on the provided DB.
-func TestModeSetAccess(t *testing.T) {
-	for _, tc := range multiChunkTestCases {
-		t.Run(tc.name, func(t *testing.T) {
-			db := newTestDB(t, nil)
-
-			chunks := generateTestRandomChunks(tc.count)
-
-			wantTimestamp := time.Now().UTC().UnixNano()
-			defer setNow(func() (t int64) {
-				return wantTimestamp
-			})()
-
-			err := db.Set(context.Background(), storage.ModeSetAccess, chunkAddresses(chunks)...)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			binIDs := make(map[uint8]uint64)
-
-			for _, ch := range chunks {
-				po := db.po(ch.Address())
-				binIDs[po]++
-
-				newPullIndexTest(db, ch, binIDs[po], nil)(t)
-				newGCIndexTest(db, ch, wantTimestamp, wantTimestamp, binIDs[po], nil)(t)
-			}
-
-			t.Run("gc index count", newItemsCountTest(db.gcIndex, tc.count))
-
-			t.Run("pull index count", newItemsCountTest(db.pullIndex, tc.count))
-
-			t.Run("gc size", newIndexGCSizeTest(db))
-		})
-	}
-}
-
 // here we try to set a normal tag (that should be handled by pushsync)
 // as a result we should expect the tag value to remain in the pull index
 // and we expect that the tag should not be incremented by pull sync set

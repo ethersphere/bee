@@ -18,7 +18,6 @@ package localstore
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -93,13 +92,6 @@ func (db *DB) gc() (collectedCount uint64, done bool, err error) {
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
 
-	// run through the recently pinned chunks and
-	// remove them from the gcIndex before iterating through gcIndex
-	err = db.removeChunksInExcludeIndexFromGC()
-	if err != nil {
-		return 0, true, fmt.Errorf("remove chunks in exclude index: %v", err)
-	}
-
 	gcSize, err := db.gcSize.Get()
 	if err != nil {
 		return 0, true, err
@@ -107,44 +99,17 @@ func (db *DB) gc() (collectedCount uint64, done bool, err error) {
 	db.metrics.GCSize.Inc()
 
 	done = true
-	err = db.gcIndex.Iterate(func(e shed.Item) (stop bool, err error) {
+	err = db.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 		if gcSize-collectedCount <= target {
 			return true, nil
 		}
-
-		item, err := db.retrievalDataIndex.Get(e)
+		gcSizeChange, err := db.setRemove(batch, item)
 		if err != nil {
 			return true, nil
 		}
-		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
-		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
-
-		// delete from retrieve, pull, gc
-		err = db.retrievalDataIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return true, nil
-		}
-		err = db.retrievalAccessIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return true, nil
-		}
-		err = db.pullIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return true, nil
-		}
-		err = db.gcIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return true, nil
-		}
-		err = db.postage.deleteInBatch(batch, item)
-		if err != nil {
-			fmt.Printf("postage-delete: %v, %#v\n", err, item)
-			return true, nil
-		}
-		collectedCount++
+		collectedCount += uint64(-gcSizeChange)
 		if collectedCount >= gcBatchSize {
-			// bach size limit reached,
-			// another gc run is needed
+			// batch size limit reached, another gc run is needed
 			done = false
 			return true, nil
 		}
@@ -158,80 +123,10 @@ func (db *DB) gc() (collectedCount uint64, done bool, err error) {
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
-		db.metrics.GCExcludeWriteBatchError.Inc()
+		db.metrics.GCWriteBatchError.Inc()
 		return 0, false, err
 	}
 	return collectedCount, done, nil
-}
-
-// removeChunksInExcludeIndexFromGC removed any recently chunks in the exclude Index, from the gcIndex.
-func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
-	db.metrics.GCExcludeCounter.Inc()
-	defer totalTimeMetric(db.metrics.TotalTimeGCExclude, time.Now())
-	defer func() {
-		if err != nil {
-			db.metrics.GCExcludeError.Inc()
-		}
-	}()
-
-	batch := new(leveldb.Batch)
-	excludedCount := 0
-	var gcSizeChange int64
-	err = db.gcExcludeIndex.Iterate(func(item shed.Item) (stop bool, err error) {
-		// Get access timestamp
-		retrievalAccessIndexItem, err := db.retrievalAccessIndex.Get(item)
-		if err != nil {
-			return false, err
-		}
-		item.AccessTimestamp = retrievalAccessIndexItem.AccessTimestamp
-
-		// Get the binId
-		retrievalDataIndexItem, err := db.retrievalDataIndex.Get(item)
-		if err != nil {
-			return false, err
-		}
-		item.BinID = retrievalDataIndexItem.BinID
-
-		// Check if this item is in gcIndex and remove it
-		ok, err := db.gcIndex.Has(item)
-		if err != nil {
-			return false, nil
-		}
-		if ok {
-			err = db.gcIndex.DeleteInBatch(batch, item)
-			if err != nil {
-				return false, nil
-			}
-			if _, err := db.gcIndex.Get(item); err == nil {
-				gcSizeChange--
-			}
-			excludedCount++
-			err = db.gcExcludeIndex.DeleteInBatch(batch, item)
-			if err != nil {
-				return false, nil
-			}
-		}
-
-		return false, nil
-	}, nil)
-	if err != nil {
-		return err
-	}
-
-	// update the gc size based on the no of entries deleted in gcIndex
-	err = db.incGCSizeInBatch(batch, gcSizeChange)
-	if err != nil {
-		return err
-	}
-
-	db.metrics.GCExcludeCounter.Inc()
-	err = db.shed.WriteBatch(batch)
-	if err != nil {
-		db.metrics.GCExcludeWriteBatchError.Inc()
-		return err
-	}
-
-	return nil
 }
 
 // gcTrigger retruns the absolute value for garbage collection
@@ -262,23 +157,11 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 		return err
 	}
 
-	var newSize uint64
-	if change > 0 {
-		newSize = gcSize + uint64(change)
-	} else {
-		// 'change' is an int64 and is negative
-		// a conversion is needed with correct sign
-		c := uint64(-change)
-		if c > gcSize {
-			// protect uint64 undeflow
-			return nil
-		}
-		newSize = gcSize - c
-	}
-	db.gcSize.PutInBatch(batch, newSize)
+	gcSize = uint64(int64(gcSize) + change)
+	db.gcSize.PutInBatch(batch, gcSize)
 
 	// trigger garbage collection if we reached the capacity
-	if newSize >= db.capacity {
+	if gcSize >= db.capacity {
 		db.triggerGarbageCollection()
 	}
 	return nil

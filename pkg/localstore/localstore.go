@@ -82,9 +82,6 @@ type DB struct {
 	// garbage collection index
 	gcIndex shed.Index
 
-	// garbage collection exclude index for pinned contents
-	gcExcludeIndex shed.Index
-
 	// pin files Index
 	pinIndex shed.Index
 
@@ -163,9 +160,9 @@ func New(path string, baseKey []byte, o *Options, batchStore BatchStore, logger 
 		// is triggered during already running function
 		gcTrigger:    make(chan struct{}, 1),
 		gcWorkerDone: make(chan struct{}),
-		close:   make(chan struct{}),
-		metrics: newMetrics(),
-		logger:  logger,
+		close:        make(chan struct{}),
+		metrics:      newMetrics(),
+		logger:       logger,
 	}
 	if db.capacity == 0 {
 		db.capacity = defaultCapacity
@@ -397,26 +394,6 @@ func New(path string, baseKey []byte, o *Options, batchStore BatchStore, logger 
 		return nil, err
 	}
 
-	// Create a index structure for excluding pinned chunks from gcIndex
-	db.gcExcludeIndex, err = db.shed.NewIndex("Hash->nil", shed.IndexFuncs{
-		EncodeKey: func(fields shed.Item) (key []byte, err error) {
-			return fields.Address, nil
-		},
-		DecodeKey: func(key []byte) (e shed.Item, err error) {
-			e.Address = key
-			return e, nil
-		},
-		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			return nil, nil
-		},
-		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			return e, nil
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	db.postage, err = db.newPostageBatches(batchStore)
 	if err != nil {
 		return nil, err
@@ -471,7 +448,6 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 		"pushIndex":               db.pushIndex,
 		"pullIndex":               db.pullIndex,
 		"gcIndex":                 db.gcIndex,
-		"gcExcludeIndex":          db.gcExcludeIndex,
 		"pinIndex":                db.pinIndex,
 		"postageBatchChunksIndex": db.postage.chunks,
 		"postageBatchCountsIndex": db.postage.counts,

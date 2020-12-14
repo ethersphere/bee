@@ -84,8 +84,6 @@ type ModeSet int
 
 func (m ModeSet) String() string {
 	switch m {
-	case ModeSetAccess:
-		return "Access"
 	case ModeSetSync:
 		return "Sync"
 	case ModeSetRemove:
