@@ -20,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
-	postmock "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -185,7 +184,7 @@ func TestEncryptDecrypt(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx := context.Background()
-			pipe := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true, postmock.NewStamper())
+			pipe := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true, nil)
 			testDataReader := bytes.NewReader(testData)
 			resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader, int64(len(testData)))
 			if err != nil {

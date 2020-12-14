@@ -23,7 +23,7 @@ type loadSave struct {
 	stamper   postage.Stamper
 }
 
-func New(storer storage.Storer, mode storage.ModePut, enc bool, stamper postage.Stamper) file.LoadSaver {
+func New(storer storage.Storer, mode storage.ModePut, enc bool) file.LoadSaver {
 	return &loadSave{
 		storer:    storer,
 		mode:      mode,
@@ -48,7 +48,7 @@ func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
 }
 
 func (ls *loadSave) Save(ctx context.Context, data []byte) ([]byte, error) {
-	pipe := builder.NewPipelineBuilder(ctx, ls.storer, ls.mode, ls.encrypted, ls.stamper)
+	pipe := builder.NewPipelineBuilder(ctx, ls.storer, ls.mode, ls.encrypted)
 	address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return swarm.ZeroAddress.Bytes(), err

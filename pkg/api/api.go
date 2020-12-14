@@ -273,9 +273,33 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
+type stamperPutter struct {
+	stamper postage.Stamper
+	storer  storage.Putter
+}
+
+func newStamperPutter(s storage.Putter, post postage.Service, signer crypto.Signer, batch []byte) (storage.Putter, error) {
+	stamper, err := post.GetStamper(batch, signer)
+	if err != nil {
+		return nil, fmt.Errorf("get stamper: %w", err)
+	}
+
+	return &stamperPutter{storer: s, stamper: stamper}
+}
+
+func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	// ...
+	for i, c := range chs {
+		chs[i] = c.WithStamp(p.stamper.Stamp(c))
+	}
+
+	return p.Put(ctx, mode, chs...)
+}
+
 type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
 
 func requestPipelineFn(s storage.Storer, r *http.Request, st postage.Stamper) pipelineFunc {
+
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt, st)
