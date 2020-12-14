@@ -297,7 +297,7 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 		chs[i] = c.WithStamp(stamp)
 	}
 
-	return p.Put(ctx, mode, chs...)
+	return p.Storer.Put(ctx, mode, chs...)
 }
 
 type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)

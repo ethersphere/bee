@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -30,11 +31,11 @@ func TestBytes(t *testing.T) {
 		expHash        = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(ioutil.Discard, 0)
+		logger         = logging.New(os.Stdout, 5)
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(ioutil.Discard, 5),
+			Logger: logger,
 		})
 	)
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)

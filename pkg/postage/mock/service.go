@@ -26,7 +26,7 @@ func New(o ...Option) postage.Service {
 	// de facto mandatory in the package
 
 	id := make([]byte, 32)
-	st := postage.NewStampIssuer("test fallback", "test identity", id, 12, 6)
+	st := postage.NewStampIssuer("test fallback", "test identity", id, 24, 6)
 	m.Add(st)
 
 	return m
