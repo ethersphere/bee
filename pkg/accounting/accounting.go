@@ -93,8 +93,8 @@ var (
 
 // NewAccounting creates a new Accounting instance with the provided options.
 func NewAccounting(
-	PaymentThreshold uint64,
-	PaymentTolerance uint64,
+	PaymentThreshold,
+	PaymentTolerance,
 	EarlyPayment uint64,
 	Logger logging.Logger,
 	Store storage.StateStorer,
