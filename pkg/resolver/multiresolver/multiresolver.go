@@ -184,7 +184,7 @@ func getTLD(name string) string {
 	return path.Ext(strings.ToLower(name))
 }
 
-func (mr *MultiResolver) connectENSClient(tld string, address string, endpoint string) {
+func (mr *MultiResolver) connectENSClient(tld, address, endpoint string) {
 	log := mr.logger
 
 	if address == "" {

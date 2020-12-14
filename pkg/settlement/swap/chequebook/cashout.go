@@ -95,7 +95,7 @@ func cashoutActionKey(chequebook common.Address) string {
 }
 
 // CashCheque sends a cashout transaction for the last cheque of the chequebook
-func (s *cashoutService) CashCheque(ctx context.Context, chequebook common.Address, recipient common.Address) (common.Hash, error) {
+func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient common.Address) (common.Hash, error) {
 	cheque, err := s.chequeStore.LastCheque(chequebook)
 	if err != nil {
 		return common.Hash{}, err
