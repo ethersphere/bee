@@ -274,23 +274,27 @@ func equalASCIIFold(s, t string) bool {
 }
 
 type stamperPutter struct {
+	storage.Storer
 	stamper postage.Stamper
-	storer  storage.Putter
 }
 
-func newStamperPutter(s storage.Putter, post postage.Service, signer crypto.Signer, batch []byte) (storage.Putter, error) {
-	stamper, err := post.GetStamper(batch, signer)
+func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (storage.Storer, error) {
+	i, err := post.GetStampIssuer(batch)
 	if err != nil {
-		return nil, fmt.Errorf("get stamper: %w", err)
+		return nil, fmt.Errorf("stamp issuer: %w", err)
 	}
 
-	return &stamperPutter{storer: s, stamper: stamper}
+	stamper := postage.NewStamper(i, signer)
+	return &stamperPutter{Storer: s, stamper: stamper}, nil
 }
 
 func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	// ...
 	for i, c := range chs {
-		chs[i] = c.WithStamp(p.stamper.Stamp(c))
+		stamp, err := p.stamper.Stamp(c.Address())
+		if err != nil {
+			return nil, err
+		}
+		chs[i] = c.WithStamp(stamp)
 	}
 
 	return p.Put(ctx, mode, chs...)
@@ -298,20 +302,10 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 
 type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Storer, r *http.Request, st postage.Stamper) pipelineFunc {
-
+func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt, st)
+		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r, l)
 	}
-}
-
-func requestStamper(post postage.Service, signer crypto.Signer, batch []byte) (postage.Stamper, error) {
-	i, err := post.GetStampIssuer(batch)
-	if err != nil {
-		return nil, fmt.Errorf("get stamp issuer: %w", err)
-	}
-
-	return postage.NewStamper(i, signer), nil
 }

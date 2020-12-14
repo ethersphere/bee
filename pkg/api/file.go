@@ -157,15 +157,15 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stamper, err := requestStamper(s.post, s.signer, batch)
+	putter, err := newStamperPutter(s.Storer, s.post, s.signer, batch)
 	if err != nil {
-		logger.Debugf("file upload: get stamper:%v", err)
-		logger.Error("file upload: stamper")
+		logger.Debugf("file upload: putter:%v", err)
+		logger.Error("file upload: putter")
 		jsonhttp.BadRequest(w, nil)
 		return
 	}
 
-	p := requestPipelineFn(s.Storer, r, stamper)
+	p := requestPipelineFn(putter, r)
 
 	// first store the file and get its reference
 	fr, err := p(ctx, reader, int64(fileSize))

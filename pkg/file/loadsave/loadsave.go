@@ -7,7 +7,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -20,7 +19,6 @@ type loadSave struct {
 	storer    storage.Storer
 	mode      storage.ModePut
 	encrypted bool
-	stamper   postage.Stamper
 }
 
 func New(storer storage.Storer, mode storage.ModePut, enc bool) file.LoadSaver {
@@ -28,7 +26,6 @@ func New(storer storage.Storer, mode storage.ModePut, enc bool) file.LoadSaver {
 		storer:    storer,
 		mode:      mode,
 		encrypted: enc,
-		stamper:   stamper,
 	}
 }
 

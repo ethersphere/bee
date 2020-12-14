@@ -69,16 +69,16 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stamper, err := requestStamper(s.post, s.signer, batch)
+	putter, err := newStamperPutter(s.Storer, s.post, s.signer, batch)
 	if err != nil {
-		logger.Debugf("dirs upload: get stamper:%v", err)
-		logger.Error("dirs upload: stamper")
+		logger.Debugf("dirs upload: putter:%v", err)
+		logger.Error("dirs upload: putter")
 		jsonhttp.BadRequest(w, nil)
 		return
 	}
 
-	p := requestPipelineFn(s.Storer, r, stamper)
-	l := loadsave.New(s.Storer, requestModePut(r), requestEncrypt(r), stamper)
+	p := requestPipelineFn(putter, r)
+	l := loadsave.New(s.Storer, requestModePut(r), requestEncrypt(r))
 	reference, err := storeDir(ctx, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader))
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
