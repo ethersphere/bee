@@ -1,7 +1,7 @@
 version: "3"
 
 services:
-  signer:
+  clef:
     image: ethersphere/clef:0.4.4
     restart: unless-stopped
     environment:
@@ -10,7 +10,7 @@ services:
       - clef:/app/data
     command: full
 
-  app:
+  bee:
     image: ethersphere/bee:0.4.1
     restart: unless-stopped
     environment:
@@ -55,7 +55,7 @@ services:
       - bee:/home/bee/.bee
     command: start
     depends_on:
-      - signer
+      - clef
 volumes:
   clef:
   bee:
