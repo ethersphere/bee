@@ -2,8 +2,6 @@ package postage
 
 import (
 	"math/big"
-
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events emitted by
@@ -15,16 +13,9 @@ type EventUpdater interface {
 	UpdatePrice(price *big.Int) error
 }
 
-// Event is the interface subsuming all postage contract blockchain events
-//
-// postage contract event  | golang Event              | Update call on EventUpdater
-// ------------------------+---------------------------+---------------------------
-// BatchCreated            | batchCreatedEvent         | Create
-// BatchTopUp              | batchTopUpEvent           | TopUp
-// BatchDepthIncrease      | batchDepthIncreaseEvent   | UpdateDepth
-// PriceUpdate             | priceUpdateEvent          | UpdatePrice
-type Event interface {
-	Update(s EventUpdater) error
+type BatchStorer interface {
+	Get(id []byte) *postage.Batch
+	Put(*postage.Batch) error
 }
 
 // Listener provides a blockchain event iterator
@@ -32,5 +23,5 @@ type Listener interface {
 	// - it starts at block from
 	// - it terminates  with no error when quit channel is closed
 	// - if the update function returns an error, the call returns with that error
-	Listen(from uint64, quit chan struct{}, update func(types.Log) error) error
+	Listen(from uint64, quit chan struct{}, update func(EventUpdater) error) error
 }
