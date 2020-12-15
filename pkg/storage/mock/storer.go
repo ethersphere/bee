@@ -144,6 +144,16 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 		m.modeSet[addr.String()] = mode
 		switch mode {
 		case storage.ModeSetPin:
+			// check if chunk exists
+			has, err := m.has(ctx, addr)
+			if err != nil {
+				return err
+			}
+
+			if !has {
+				return storage.ErrNotFound
+			}
+
 			// if mode is set pin, increment the pin counter
 			var found bool
 			for i, ad := range m.pinnedAddress {
