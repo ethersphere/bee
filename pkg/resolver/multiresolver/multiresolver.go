@@ -189,7 +189,7 @@ func getTLD(name string) string {
 	return path.Ext(strings.ToLower(name))
 }
 
-func (mr *MultiResolver) connectENSClient(tld string, endpoint string) {
+func (mr *MultiResolver) connectENSClient(tld, endpoint string) {
 	log := mr.logger
 
 	log.Debugf("name resolver: resolver for %q: connecting to endpoint %s", tld, endpoint)

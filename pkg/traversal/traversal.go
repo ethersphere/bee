@@ -327,7 +327,7 @@ func (s *traversalService) checkIsManifest(
 	m, err = manifest.NewManifestReference(
 		metadata.MimeType,
 		e.Reference(),
-		loadsave.New(s.storer, storage.ModePutRequest, false, nil),
+		loadsave.New(s.storer, storage.ModePutRequest, false),
 	)
 	if err != nil {
 		if err == manifest.ErrInvalidManifestType {

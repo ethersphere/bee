@@ -69,8 +69,16 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := requestPipelineFn(s.Storer, r, batch)
-	l := loadsave.New(s.Storer, requestModePut(r), requestEncrypt(r), batch)
+	putter, err := newStamperPutter(s.Storer, s.post, s.signer, batch)
+	if err != nil {
+		logger.Debugf("dirs upload: putter:%v", err)
+		logger.Error("dirs upload: putter")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	p := requestPipelineFn(putter, r)
+	l := loadsave.New(s.Storer, requestModePut(r), requestEncrypt(r))
 	reference, err := storeDir(ctx, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader))
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
@@ -111,7 +119,7 @@ func validateRequest(r *http.Request) error {
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string) (swarm.Address, error) {
+func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename, errorFilename string) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
 	dirManifest, err := manifest.NewDefaultManifest(ls)
