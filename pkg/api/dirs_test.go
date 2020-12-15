@@ -330,7 +330,7 @@ Disallow: /`),
 			verifyManifest, err := manifest.NewManifestReference(
 				manifest.DefaultManifestType,
 				e.Reference(),
-				loadsave.New(storer, storage.ModePutRequest, false, nil),
+				loadsave.New(storer, storage.ModePutRequest, false),
 			)
 			if err != nil {
 				t.Fatal(err)
