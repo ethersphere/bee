@@ -32,32 +32,35 @@ func (s *server) pinChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	has, err := s.Storer.Has(r.Context(), addr)
+	err = s.Storer.Set(r.Context(), storage.ModeSetPin, addr)
 	if err != nil {
-		s.Logger.Debugf("pin chunk: localstore has: %v", err)
-		s.Logger.Error("pin chunk: store")
-		jsonhttp.InternalServerError(w, err)
-		return
-	}
+		if errors.Is(err, storage.ErrNotFound) {
+			ch, err := s.Storer.Get(r.Context(), storage.ModeGetRequest, addr)
+			if err != nil {
+				s.Logger.Debugf("pin chunk: netstore get: %v", err)
+				s.Logger.Error("pin chunk: netstore")
 
-	if !has {
-		_, err := s.Storer.Get(r.Context(), storage.ModeGetRequest, addr)
-		if err != nil {
-			s.Logger.Debugf("pin chunk: netstore get: %v", err)
-			s.Logger.Error("pin chunk: netstore")
+				jsonhttp.NotFound(w, nil)
+				return
+			}
 
-			jsonhttp.NotFound(w, nil)
+			_, err = s.Storer.Put(r.Context(), storage.ModePutRequestPin, ch)
+			if err != nil {
+				s.Logger.Debugf("pin chunk: storer put pin: %v", err)
+				s.Logger.Error("pin chunk: storer put pin")
+
+				jsonhttp.InternalServerError(w, err)
+				return
+			}
+		} else {
+			s.Logger.Debugf("pin chunk: pinning error: %v, addr %s", err, addr)
+			s.Logger.Error("pin chunk: cannot pin chunk")
+
+			jsonhttp.InternalServerError(w, "cannot pin chunk")
 			return
 		}
 	}
 
-	err = s.Storer.Set(r.Context(), storage.ModeSetPin, addr)
-	if err != nil {
-		s.Logger.Debugf("pin chunk: pinning error: %v, addr %s", err, addr)
-		s.Logger.Error("pin chunk: cannot pin chunk")
-		jsonhttp.InternalServerError(w, "cannot pin chunk")
-		return
-	}
 	jsonhttp.OK(w, nil)
 }
 
@@ -320,33 +323,27 @@ func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address)
 	return func(address swarm.Address) (stop bool) {
 		// NOTE: stop pinning on first error
 
-		has, err := s.Storer.Has(ctx, address)
+		err := s.Storer.Set(ctx, storage.ModeSetPin, address)
 		if err != nil {
-			s.Logger.Debugf("pin traversal: localstore has: for reference %s, address %s: %w", reference, address, err)
-			return true
-		}
+			if errors.Is(err, storage.ErrNotFound) {
+				// chunk not found locally, try to get from netstore
+				ch, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
+				if err != nil {
+					s.Logger.Debugf("pin traversal: storer get: for reference %s, address %s: %w", reference, address, err)
+					return true
+				}
 
-		if !has {
-			// chunk not found locally, try to get from netstore
-			ch, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
-			if err != nil {
-				s.Logger.Debugf("pin traversal: storer get: for reference %s, address %s: %w", reference, address, err)
+				_, err = s.Storer.Put(ctx, storage.ModePutRequestPin, ch)
+				if err != nil {
+					s.Logger.Debugf("pin traversal: storer put pin: for reference %s, address %s: %w", reference, address, err)
+					return true
+				}
+
+				return false
+			} else {
+				s.Logger.Debugf("pin traversal: storer set pin: for reference %s, address %s: %w", reference, address, err)
 				return true
 			}
-
-			_, err = s.Storer.Put(ctx, storage.ModePutRequestPin, ch)
-			if err != nil {
-				s.Logger.Debugf("pin traversal: storer put pin: for reference %s, address %s: %w", reference, address, err)
-				return true
-			}
-
-			return false
-		}
-
-		err = s.Storer.Set(ctx, storage.ModeSetPin, address)
-		if err != nil {
-			s.Logger.Debugf("pin traversal: storer set pin: for reference %s, address %s: %w", reference, address, err)
-			return true
 		}
 
 		return false
