@@ -34,7 +34,6 @@ func TestBytes(t *testing.T) {
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(ioutil.Discard, 5),
 		})
 	)
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)

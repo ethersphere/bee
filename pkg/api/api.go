@@ -17,9 +17,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -71,6 +73,8 @@ type server struct {
 	Traversal traversal.Service
 	Logger    logging.Logger
 	Tracer    *tracing.Tracer
+	signer    crypto.Signer
+	post      postage.Service
 	Options
 	http.Handler
 	metrics metrics
@@ -91,13 +95,15 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, post postage.Service, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		Tags:      tags,
 		Storer:    storer,
 		Resolver:  resolver,
 		Pss:       pss,
 		Traversal: traversalService,
+		post:      post,
+		signer:    signer,
 		Options:   o,
 		Logger:    logger,
 		Tracer:    tracer,
@@ -279,12 +285,39 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
+type stamperPutter struct {
+	storage.Storer
+	stamper postage.Stamper
+}
+
+func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (storage.Storer, error) {
+	i, err := post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	stamper := postage.NewStamper(i, signer)
+	return &stamperPutter{Storer: s, stamper: stamper}, nil
+}
+
+func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	for i, c := range chs {
+		stamp, err := p.stamper.Stamp(c.Address())
+		if err != nil {
+			return nil, err
+		}
+		chs[i] = c.WithStamp(stamp)
+	}
+
+	return p.Storer.Put(ctx, mode, chs...)
+}
+
 type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Storer, r *http.Request, batch []byte) pipelineFunc {
+func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt, nil)
+		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r, l)
 	}
 }
