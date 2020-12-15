@@ -15,19 +15,27 @@ type BatchService struct {
 
 func New(lis postage.Listener, st postage.BatchStorer, logger logging.Logger) (*Events, error) {
 	store, err := batchstore.New(st)
-	block := store.Block()
-	e := &Events{
-		store:  store,
-		lis:    lis,
-		logger: logger,
-		quit:   make(chan struct{}),
-	}
 }
 
-func (svc *BatchService) listen(from uint64, quit chan struct{}, update func(types.Log) error) {
-	if err := e.lis.Listen(from, quit, svc); err != nil {
-		e.logger.Errorf("error syncing batches with the blockchain: %v", err)
+func (s *BatchService) Create(id []byte, owner []byte, amount *big.Int, depth uint8) error {
+	batch := &postage.Batch{
+		ID: id,
+		....
 	}
+
+	return s.store.Save()
+}
+
+func (s *BatchService) TopUp(id []byte, amount *big.Int) error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (s *BatchService) UpdateDepth(id []byte, depth uint8) error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (s *BatchService) UpdatePrice(price *big.Int) error {
+	panic("not implemented") // TODO: Implement
 }
 
 func (e *Events) Close() error {
@@ -38,7 +46,6 @@ func (e *Events) Close() error {
 // - sets the cumulative outpayment normalised, cno+=price*period
 // - sets the new block number
 func (s *Events) Settle(block uint64) error {
-
 	updatePeriod := int64(block - s.block)
 	s.block = block
 	s.total.Add(s.total, new(big.Int).Mul(s.price, big.NewInt(updatePeriod)))

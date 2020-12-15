@@ -55,7 +55,7 @@ func (s *Store) Get(id []byte) (*Batch, error) {
 	return b, err
 }
 
-func (s *Store) put(b *Batch) error {
+func (s *Store) Put(b *Batch) error {
 	return s.store.Put(batchKey(b.ID), b)
 }
 
