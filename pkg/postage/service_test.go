@@ -18,7 +18,7 @@ import (
 // with all the active stamp issuers.
 func TestSaveLoad(t *testing.T) {
 	store := storemock.NewStateStore()
-	saved := func(id int64) *postage.Service {
+	saved := func(id int64) postage.Service {
 		ps := postage.NewService(store, id)
 		for i := 0; i < 16; i++ {
 			ps.Add(newTestStampIssuer(t))
@@ -28,7 +28,7 @@ func TestSaveLoad(t *testing.T) {
 		}
 		return ps
 	}
-	loaded := func(id int64) *postage.Service {
+	loaded := func(id int64) postage.Service {
 		ps := postage.NewService(store, id)
 		if err := ps.Load(); err != nil {
 			t.Fatal(err)
