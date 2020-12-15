@@ -43,10 +43,10 @@ func TestBzz(t *testing.T) {
 		client, _, _        = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(ioutil.Discard, 5),
+			Logger: logging.New(ioutil.Discard, 0),
 		})
 		pipeWriteAll = func(r io.Reader, l int64) (swarm.Address, error) {
-			pipe := builder.NewPipelineBuilder(ctx, storer, storage.ModePutUpload, false, nil)
+			pipe := builder.NewPipelineBuilder(ctx, storer, storage.ModePutUpload, false)
 			return builder.FeedPipeline(ctx, pipe, r, l)
 		}
 	)
@@ -102,7 +102,7 @@ func TestBzz(t *testing.T) {
 		}
 
 		// save manifest
-		m, err := manifest.NewDefaultManifest(loadsave.New(storer, storage.ModePutRequest, false, nil), false)
+		m, err := manifest.NewDefaultManifest(loadsave.New(storer, storage.ModePutRequest, false), false)
 		if err != nil {
 			t.Fatal(err)
 		}

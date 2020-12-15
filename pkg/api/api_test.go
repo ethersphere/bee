@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
@@ -47,6 +49,10 @@ type testServerOptions struct {
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string) {
+	pk, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(pk)
+	mockPostage := mockpost.New()
+
 	if o.Logger == nil {
 		o.Logger = logging.New(ioutil.Discard, 0)
 	}
@@ -56,7 +62,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.WsPingPeriod == 0 {
 		o.WsPingPeriod = 60 * time.Second
 	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Feeds, o.Logger, nil, api.Options{
+	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Feeds, mockPostage, signer, o.Logger, nil, api.Options{
 		GatewayMode:  o.GatewayMode,
 		WsPingPeriod: o.WsPingPeriod,
 	})
@@ -114,11 +120,11 @@ func request(t *testing.T, client *http.Client, method, resource string, body io
 
 func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
+	log := logging.New(ioutil.Discard, 0)
 
 	testCases := []struct {
 		desc       string
 		name       string
-		log        logging.Logger
 		res        resolver.Interface
 		noResolver bool
 		wantAdr    swarm.Address
@@ -163,9 +169,6 @@ func TestParseName(t *testing.T) {
 		},
 	}
 	for _, tC := range testCases {
-		if tC.log == nil {
-			tC.log = logging.New(ioutil.Discard, 0)
-		}
 		if tC.res == nil && !tC.noResolver {
 			tC.res = resolverMock.NewResolver(
 				resolverMock.WithResolveFunc(func(string) (swarm.Address, error) {
@@ -173,7 +176,11 @@ func TestParseName(t *testing.T) {
 				}))
 		}
 
-		s := api.New(nil, nil, tC.res, nil, nil, nil, tC.log, nil, api.Options{}).(*api.Server)
+		pk, _ := crypto.GenerateSecp256k1Key()
+		signer := crypto.NewDefaultSigner(pk)
+		mockPostage := mockpost.New()
+
+		s := api.New(nil, nil, tC.res, nil, nil, nil, mockPostage, signer, log, nil, api.Options{}).(*api.Server)
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)
