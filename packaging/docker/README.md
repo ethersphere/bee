@@ -1,4 +1,4 @@
-# Docker
+# Docker compose
 
 The docker-compose provides an app container for Bee itself and a signer container for Clef.
 To prepare your machine to run docker compose execute
