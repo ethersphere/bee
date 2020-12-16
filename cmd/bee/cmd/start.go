@@ -34,6 +34,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	serviceName = "BeeSvc"
+)
+
 func (c *command) initStartCmd() (err error) {
 
 	cmd := &cobra.Command{
@@ -69,7 +73,7 @@ func (c *command) initStartCmd() (err error) {
 
 			if isWindowsService {
 				var err error
-				logger, err = createWindowsEventLogger("BeeSvc", logger)
+				logger, err = createWindowsEventLogger(serviceName, logger)
 				if err != nil {
 					return fmt.Errorf("failed to create windows logger %w", err)
 				}
@@ -184,7 +188,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 
 			if isWindowsService {
 				s, err := service.New(p, &service.Config{
-					Name:        "BeeSvc",
+					Name:        serviceName,
 					DisplayName: "Bee",
 					Description: "Bee, Swarm client.",
 				})
