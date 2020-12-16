@@ -1,20 +1,20 @@
-package batchstore_test
+package postage_test
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"io"
 	"math/big"
 	"math/rand"
 	"testing"
 
-	crand "crypto/rand"
-
-	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/postage"
 )
 
 // TestBatchMarshalling tests the idempotence  of binary marshal/unmarshal for a Batch.
 func TestBatchMarshalling(t *testing.T) {
 	a := newTestBatch(t, nil)
+
 	buf, err := a.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
@@ -22,7 +22,7 @@ func TestBatchMarshalling(t *testing.T) {
 	if len(buf) != 93 {
 		t.Fatalf("invalid length for serialised batch. expected 93, got %d", len(buf))
 	}
-	b := &batchstore.Batch{}
+	b := &postage.Batch{}
 	if err := b.UnmarshalBinary(buf); err != nil {
 		t.Fatalf("unexpected error unmarshalling batch: %v", err)
 	}
@@ -43,8 +43,9 @@ func TestBatchMarshalling(t *testing.T) {
 	}
 }
 
-func newTestBatch(t *testing.T, owner []byte) *batchstore.Batch {
+func newTestBatch(t *testing.T, owner []byte) *postage.Batch {
 	t.Helper()
+
 	id := make([]byte, 32)
 	_, err := io.ReadFull(crand.Reader, id)
 	if err != nil {
@@ -60,9 +61,10 @@ func newTestBatch(t *testing.T, owner []byte) *batchstore.Batch {
 		}
 	}
 	depth := uint8(16)
-	return &batchstore.Batch{
+
+	return &postage.Batch{
 		ID:    id,
-		Value: big.NewInt(0).SetUint64(value64),
+		Value: (new(big.Int)).SetUint64(value64),
 		Start: start64,
 		Owner: owner,
 		Depth: depth,
