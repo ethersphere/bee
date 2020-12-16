@@ -1,6 +1,6 @@
-# Docker
+# Docker compose
 
-The docker-compose provides an app container for bee itself and a signer container for Clef.
+The docker-compose provides an app container for Bee itself and a signer container for Clef.
 To prepare your machine to run docker compose execute
 ```
 mkdir -p bee && cd bee
@@ -26,7 +26,7 @@ Mount password file local file system by adding
 ```
 - ./password:/password
 ```
-to app volumes inside `docker-compose.yml`
+to bee volumes inside `docker-compose.yml`
 
 Start it with
 ```
@@ -35,5 +35,5 @@ docker-compose up -d
 
 From logs find URL line with `on goerli you can get both goerli eth and goerli bzz from` and prefund your node
 ```
-docker-compose logs -f app
+docker-compose logs -f bee
 ```

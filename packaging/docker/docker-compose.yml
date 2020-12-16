@@ -48,9 +48,9 @@ services:
       - BEE_VERBOSITY
       - BEE_WELCOME_MESSAGE
     ports:
-      - "${API_ADDR:-1633}:${BEE_API_ADDR:-1633}"
-      - "${P2P_ADDR:-1634}:${BEE_P2P_ADDR:-1634}"
-      - "127.0.0.1:${DEBUG_API_ADDR:-1635}:${BEE_DEBUG_API_ADDR:-1635}"
+      - "${API_ADDR:-1633}${BEE_API_ADDR:-:1633}"
+      - "${P2P_ADDR:-1634}${BEE_P2P_ADDR:-:1634}"
+      - "${DEBUG_API_ADDR:-127.0.0.1:1635}${BEE_DEBUG_API_ADDR:-:1635}"
     volumes:
       - bee:/home/bee/.bee
     command: start

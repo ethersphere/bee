@@ -26,7 +26,7 @@
 ## debug HTTP API listen address (default ":1635")
 # BEE_DEBUG_API_ADDR=:1635
 ## enable debug HTTP API
-# BEE_DEBUG_API_ENABLE=true
+# BEE_DEBUG_API_ENABLE=false
 ## disable a set of sensitive features in the api
 # BEE_GATEWAY_MODE=false
 ## enable global pinning
@@ -35,8 +35,8 @@
 # BEE_NAT_ADDR=""
 ## ID of the Swarm network (default 1)
 # BEE_NETWORK_ID=1
-## P2P listen address (default ":1644")
-# BEE_P2P_ADDR=:1644
+## P2P listen address (default ":1634")
+# BEE_P2P_ADDR=:1634
 ## enable P2P QUIC protocol
 # BEE_P2P_QUIC_ENABLE=false
 ## enable P2P WebSocket transport
