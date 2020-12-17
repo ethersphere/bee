@@ -2,18 +2,18 @@ package postage_test
 
 import (
 	"bytes"
-	crand "crypto/rand"
-	"io"
-	"math/big"
-	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 )
 
 // TestBatchMarshalling tests the idempotence  of binary marshal/unmarshal for a Batch.
 func TestBatchMarshalling(t *testing.T) {
-	a := newTestBatch(t, nil)
+	a, err := postagetesting.NewBatch()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	buf, err := a.MarshalBinary()
 	if err != nil {
@@ -40,33 +40,5 @@ func TestBatchMarshalling(t *testing.T) {
 	}
 	if a.Depth != b.Depth {
 		t.Fatalf("depth mismatch, expected %d, got %d", a.Depth, b.Depth)
-	}
-}
-
-func newTestBatch(t *testing.T, owner []byte) *postage.Batch {
-	t.Helper()
-
-	id := make([]byte, 32)
-	_, err := io.ReadFull(crand.Reader, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	value64 := rand.Uint64()
-	start64 := rand.Uint64()
-	if owner == nil {
-		owner = make([]byte, 20)
-		_, err = io.ReadFull(crand.Reader, owner)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	depth := uint8(16)
-
-	return &postage.Batch{
-		ID:    id,
-		Value: (new(big.Int)).SetUint64(value64),
-		Start: start64,
-		Owner: owner,
-		Depth: depth,
 	}
 }

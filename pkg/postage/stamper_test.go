@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -66,7 +67,12 @@ func TestStamperStamping(t *testing.T) {
 	// tests that Stamps returns with postage.ErrBucketFull iff
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
-		b := newTestBatch(t, owner)
+		b, err := postagetesting.NewBatch(
+			postagetesting.WithOwner(owner),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
 		st := postage.NewStampIssuer("", "", b.ID, b.Depth, 8)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
@@ -89,7 +95,7 @@ func TestStamperStamping(t *testing.T) {
 			}
 		}
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
-		_, err := stamper.Stamp(chunkAddr)
+		_, err = stamper.Stamp(chunkAddr)
 		if err != postage.ErrBucketFull {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
 		}

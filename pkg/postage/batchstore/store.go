@@ -15,8 +15,6 @@ const (
 	stateKey       = "stateKey"
 )
 
-var _ postage.BatchStorer = (*Store)(nil)
-
 // Store is a local store for postage batches
 type Store struct {
 	store storage.StateStorer // State store backend to persist batches
