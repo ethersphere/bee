@@ -1,53 +1,35 @@
-package events
+package batchservice
 
-// type BatchService struct {
-// 	total *state
-// }
+import (
+	"math/big"
 
-// func New(lis postage.Listener, st postage.BatchStorer, logger logging.Logger) (*Events, error) {
-// 	store, err := batchstore.New(st)
-// }
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchstore"
+)
 
-// // func (s *BatchService) Create(id []byte, owner []byte, amount *big.Int, depth uint8) error {
-// // 	batch := &postage.Batch{
-// // 		ID: id,
-// // 		....
-// // 	}
+type BatchService struct{}
 
-// // 	return s.store.Save()
-// // }
+func New(st postage.BatchStorer, logger logging.Logger) (*Events, error) {
+	store, err := batchstore.New(st)
+}
 
-// func (s *BatchService) TopUp(id []byte, amount *big.Int) error {
-// 	panic("not implemented") // TODO: Implement
-// }
+func (s *BatchService) Create(id []byte, owner []byte, amount *big.Int, depth uint8) error {
+	batch := &postage.Batch{
+		//ID: id,
+	}
 
-// func (s *BatchService) UpdateDepth(id []byte, depth uint8) error {
-// 	panic("not implemented") // TODO: Implement
-// }
+	return s.store.Save()
+}
 
-// func (s *BatchService) UpdatePrice(price *big.Int) error {
-// 	panic("not implemented") // TODO: Implement
-// }
+func (s *BatchService) TopUp(id []byte, amount *big.Int) error {
+	panic("not implemented") // TODO: Implement
+}
 
-// func (e *Events) Close() error {
-// 	close(e.quit)
-// }
+func (s *BatchService) UpdateDepth(id []byte, depth uint8) error {
+	panic("not implemented") // TODO: Implement
+}
 
-// // Settle retrieves the current state
-// // - sets the cumulative outpayment normalised, cno+=price*period
-// // - sets the new block number
-// func (s *Events) Settle(block uint64) error {
-// 	updatePeriod := int64(block - s.block)
-// 	s.block = block
-// 	s.total.Add(s.total, new(big.Int).Mul(s.price, big.NewInt(updatePeriod)))
-
-// 	return s.store.Put(stateKey, s)
-// }
-
-// func TestTopUp() {
-
-// 	mockBatchStore := newMockBatchStore()
-// 	batchService := New()
-
-// 	batchService.TopUp()
-// }
+func (s *BatchService) UpdatePrice(price *big.Int) error {
+	panic("not implemented") // TODO: Implement
+}

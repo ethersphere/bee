@@ -48,6 +48,7 @@ func TestBatchPutGet(t *testing.T) {
 	}
 	compareBatches(t, want, got)
 
+	// TODO: got -> mutate, persist, load, check correct values
 }
 
 // TODO: share this code between postage and batchstore tests?

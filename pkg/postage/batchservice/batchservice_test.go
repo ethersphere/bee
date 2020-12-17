@@ -1,4 +1,4 @@
-package events_test
+package batchservice_test
 
 // import (
 // 	"fmt"
