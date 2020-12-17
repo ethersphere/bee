@@ -26,6 +26,12 @@ func TestPinning(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// chunk must be present
+	_, err = db.Put(context.Background(), storage.ModePutUpload, chunks...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	err = db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...)
 	if err != nil {
 		t.Fatal(err)
@@ -52,8 +58,14 @@ func TestPinCounter(t *testing.T) {
 	chunk := generateTestRandomChunk()
 	db := newTestDB(t, nil)
 
+	// chunk must be present
+	_, err := db.Put(context.Background(), storage.ModePutUpload, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// pin once
-	err := db.Set(context.Background(), storage.ModeSetPin, swarm.NewAddress(chunk.Address().Bytes()))
+	err = db.Set(context.Background(), storage.ModeSetPin, swarm.NewAddress(chunk.Address().Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,8 +107,14 @@ func TestPaging(t *testing.T) {
 	addresses := chunksToSortedStrings(chunks)
 	db := newTestDB(t, nil)
 
+	// chunk must be present
+	_, err := db.Put(context.Background(), storage.ModePutUpload, chunks...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// pin once
-	err := db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...)
+	err = db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...)
 	if err != nil {
 		t.Fatal(err)
 	}

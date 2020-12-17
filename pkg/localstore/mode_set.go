@@ -97,7 +97,16 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 
 	case storage.ModeSetPin:
 		for _, addr := range addrs {
-			err := db.setPin(batch, addr)
+			has, err := db.retrievalDataIndex.Has(addressToItem(addr))
+			if err != nil {
+				return err
+			}
+
+			if !has {
+				return storage.ErrNotFound
+			}
+
+			err = db.setPin(batch, addr)
 			if err != nil {
 				return err
 			}

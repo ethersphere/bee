@@ -77,6 +77,8 @@ const (
 	ModePutUpload
 	// ModePutUploadPin: the same as ModePutUpload but also pin the chunk atomically with the put
 	ModePutUploadPin
+	// ModePutRequestPin: the same as ModePutRequest but also pin the chunk with the put
+	ModePutRequestPin
 )
 
 // ModeSet enumerates different Setter modes.

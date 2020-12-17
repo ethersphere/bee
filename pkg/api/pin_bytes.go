@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/mux"
@@ -33,8 +34,14 @@ func (s *server) pinBytes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !has {
-		jsonhttp.NotFound(w, nil)
-		return
+		_, err := s.Storer.Get(r.Context(), storage.ModeGetRequest, addr)
+		if err != nil {
+			s.Logger.Debugf("pin chunk: netstore get: %v", err)
+			s.Logger.Error("pin chunk: netstore")
+
+			jsonhttp.NotFound(w, nil)
+			return
+		}
 	}
 
 	ctx := r.Context()
