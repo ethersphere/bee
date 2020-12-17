@@ -1,11 +1,10 @@
 name: Beekeeper
 
 on:
-  # repository_dispatch:
-  #   types: [trigger-beekeeper]
+  repository_dispatch:
+    types: [trigger-beekeeper]
   pull_request:
-    branches:
-      - '**'
+    types: [ready_for_review]
 
 jobs:
   beekeeper:
@@ -115,22 +114,22 @@ jobs:
       #   id: chunkrepair-2
       #   run: ./beekeeper check chunkrepair --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Retag Docker image and push
-        if: success()
+        if: github.ref == 'refs/heads/master' && success()
         run: |
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-      #     docker push ethersphere/bee:latest
-      # - name: Set IMAGE_DIGEST variable
-      #   if: success()
-      #   run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
-      # - name: Trigger ArgoCD
-      #   if: success()
-      #   uses: peter-evans/repository-dispatch@v1
-      #   with:
-      #     token: ${{ secrets.REPO_GHA_PAT }}
-      #     repository: ethersphere/bee-argo
-      #     event-type: trigger-argo
-      #     client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
+          docker push ethersphere/bee:latest
+      - name: Set IMAGE_DIGEST variable
+        if: github.ref == 'refs/heads/master' && success()
+        run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
+      - name: Trigger ArgoCD
+        if: github.ref == 'refs/heads/master' && success()
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.REPO_GHA_PAT }}
+          repository: ethersphere/bee-argo
+          event-type: trigger-argo
+          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
       - name: Debug workflow if failed
         if: failure()
         run: |
