@@ -1,8 +1,11 @@
 name: Beekeeper
 
 on:
-  repository_dispatch:
-    types: [trigger-beekeeper]
+  # repository_dispatch:
+  #   types: [trigger-beekeeper]
+  pull_request:
+    branches:
+      - '**'
 
 jobs:
   beekeeper:
@@ -111,35 +114,23 @@ jobs:
       # - name: Test chunkrepair
       #   id: chunkrepair-2
       #   run: ./beekeeper check chunkrepair --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test manifest
-        id: manifest-2
-        run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test gc
-        id: gc-chunk-2
-        run: ./beekeeper check gc --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test pin chunk
-        id: pin-chunk-2
-        run: ./beekeeper check pin-chunk --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test pin bytes
-        id: pin-bytes-2
-        run: ./beekeeper check pin-bytes --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Retag Docker image and push
         if: success()
         run: |
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          docker push ethersphere/bee:latest
-      - name: Set IMAGE_DIGEST variable
-        if: success()
-        run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
-      - name: Trigger ArgoCD
-        if: success()
-        uses: peter-evans/repository-dispatch@v1
-        with:
-          token: ${{ secrets.REPO_GHA_PAT }}
-          repository: ethersphere/bee-argo
-          event-type: trigger-argo
-          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
+      #     docker push ethersphere/bee:latest
+      # - name: Set IMAGE_DIGEST variable
+      #   if: success()
+      #   run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
+      # - name: Trigger ArgoCD
+      #   if: success()
+      #   uses: peter-evans/repository-dispatch@v1
+      #   with:
+      #     token: ${{ secrets.REPO_GHA_PAT }}
+      #     repository: ethersphere/bee-argo
+      #     event-type: trigger-argo
+      #     client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -164,10 +155,6 @@ jobs:
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval-2.outcome=='failure' }}; then FAILED=retrieval-2; fi
           # if ${{ steps.chunkrepair-2.outcome=='failure' }}; then FAILED=chunkrepair-2; fi
-          if ${{ steps.manifest-2.outcome=='failure' }}; then FAILED=manifest-2; fi
-          if ${{ steps.gc-chunk-2.outcome=='failure' }}; then FAILED=gc-chunk-2; fi
-          if ${{ steps.pin-chunk-2.outcome=='failure' }}; then FAILED=pin-chunk-2; fi
-          if ${{ steps.pin-bytes-2.outcome=='failure' }}; then FAILED=pin-bytes-2; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Merge run**\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
