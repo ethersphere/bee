@@ -8,6 +8,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -120,22 +121,16 @@ func validateRequest(r *http.Request) error {
 func storeDir(ctx context.Context, nonceKey []byte, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
-	var (
-		dirManifest manifest.Interface
-		err         error
-	)
-
-	if len(nonceKey) == 0 {
-		dirManifest, err = manifest.NewDefaultManifest(ls)
-	} else {
-		obfuscationKeyFn := func(p []byte) (n int, err error) {
-			n = copy(p, nonceKey)
-			return
+	obfuscationKeyFn := func(p []byte) (n int, err error) {
+		if len(nonceKey) == 0 {
+			return rand.Read(p)
 		}
 
-		dirManifest, err = manifest.NewDefaultManifestWithObfuscationKeyFn(ls, obfuscationKeyFn)
+		n = copy(p, nonceKey)
+		return
 	}
 
+	dirManifest, err := manifest.NewDefaultManifestWithObfuscationKeyFn(ls, obfuscationKeyFn)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
