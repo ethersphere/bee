@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pricing/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -28,6 +29,12 @@ var _ Interface = (*Service)(nil)
 // Interface is the main interface of the pricing protocol
 type Interface interface {
 	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
+	AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
+}
+
+// PriceTableObserver is used for being notified of price table updates
+type PriceTableObserver interface {
+	NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 }
 
 // PaymentThresholdObserver is used for being notified of payment threshold updates
@@ -36,16 +43,20 @@ type PaymentThresholdObserver interface {
 }
 
 type Service struct {
+	overlay                  swarm.Address
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
 	paymentThreshold         *big.Int
+	pricer                   *pricer.Service
 	paymentThresholdObserver PaymentThresholdObserver
+	priceTableObserver       PriceTableObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int, pricer *pricer.Service) *Service {
 	return &Service{
 		streamer:         streamer,
 		logger:           logger,
+		pricer:           pricer,
 		paymentThreshold: paymentThreshold,
 	}
 }
@@ -77,12 +88,26 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	var req pb.AnnouncePaymentThreshold
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
-		s.logger.Debugf("could not receive payment threshold announcement from peer %v", p.Address)
+		s.logger.Debugf("could not receive payment threshold and/or price table announcement from peer %v", p.Address)
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
+
 	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, paymentThreshold)
 
+	s.logger.Tracef("received payment threshold and/or price table announcement from peer %v of %d", p.Address, req.PaymentThreshold)
+
+	if req.ProximityPrice != nil {
+		err = s.priceTableObserver.NotifyPriceTable(p.Address, req.ProximityPrice)
+		if err != nil {
+			s.logger.Debugf("error receiving pricetable from peer %v: %w", p.Address, err)
+			s.logger.Errorf("error receiving pricetable from peer %v: %w", p.Address, err)
+		}
+	}
+
+	if big.Int(0).cmp(paymentThreshold) == 0 {
+		return err
+	}
 	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, paymentThreshold)
 }
 
@@ -120,7 +145,39 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 	return err
 }
 
+// AnnouncePaymentThresholdAndPriceTable announces own payment threshold and pricetable to peer
+func (s *Service) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
+
+	s.logger.Tracef("sending payment threshold announcement to peer %v of %d", peer, paymentThreshold)
+	w := protobuf.NewWriter(stream)
+	err = w.WriteMsgWithContext(ctx, &pb.AnnouncePaymentThreshold{
+		PaymentThreshold: paymentThreshold.Bytes(),
+		ProximityPrice:   s.pricer.PriceTable(),
+	})
+
+	return err
+}
+
 // SetPaymentThresholdObserver sets the PaymentThresholdObserver to be used when receiving a new payment threshold
 func (s *Service) SetPaymentThresholdObserver(observer PaymentThresholdObserver) {
 	s.paymentThresholdObserver = observer
+}
+
+// SetPriceTableObserver sets the PriceTableObserver to be used when receiving a new pricetable
+func (s *Service) SetPriceTableObserver(observer PriceTableObserver) {
+	s.priceTableObserver = observer
 }
