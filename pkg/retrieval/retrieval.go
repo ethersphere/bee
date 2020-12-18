@@ -59,7 +59,6 @@ type Service struct {
 }
 
 func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *Service {
-
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,

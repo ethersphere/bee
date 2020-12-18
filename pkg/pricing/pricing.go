@@ -43,6 +43,7 @@ type PaymentThresholdObserver interface {
 }
 
 type Service struct {
+	overlay                  swarm.Address
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
 	paymentThreshold         *big.Int
