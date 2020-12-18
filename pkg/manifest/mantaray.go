@@ -35,7 +35,7 @@ func NewMantarayManifest(ls file.LoadSaver) (Interface, error) {
 }
 
 // NewMantarayManifestWithObfuscationKeyFn creates a new mantaray-based manifest
-// with configured obfuscation key
+// with configured obfuscation key function.
 //
 // NOTE: This should only be used in tests.
 func NewMantarayManifestWithObfuscationKeyFn(
