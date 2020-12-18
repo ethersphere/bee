@@ -62,7 +62,6 @@ type PushSync struct {
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
 func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *PushSync {
-
 	ps := &PushSync{
 		streamer:      streamer,
 		storer:        storer,
