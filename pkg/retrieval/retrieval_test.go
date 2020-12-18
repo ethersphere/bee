@@ -16,10 +16,12 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -43,8 +45,9 @@ func TestDelivery(t *testing.T) {
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
 		price      = uint64(10)
-		pricerMock = accountingmock.NewPricer(price, price)
+		pricerMock = pricermock.NewMockService()
 	)
+
 	// put testdata in the mock store of the server
 	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -135,7 +138,7 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 	var (
 		logger = logging.New(ioutil.Discard, 0)
-		pricer = accountingmock.NewPricer(1, 1)
+		pricer = pricermock.NewMockService()
 	)
 
 	// requesting a chunk from downstream peer is expected
@@ -236,8 +239,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")
 
-	price := uint64(1)
-	pricerMock := accountingmock.NewPricer(price, price)
+	price := uint64(10)
+	pricerMock := pricermock.NewMockService()
 
 	clientAddress := swarm.MustParseHexAddress("1010")
 

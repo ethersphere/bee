@@ -35,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
@@ -310,6 +311,19 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var settlement settlement.Interface
 	var swapService *swap.Service
 
+	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
+	b.topologyCloser = kad
+	hive.SetAddPeersHandler(kad.AddPeers)
+	p2ps.SetPickyNotifier(kad)
+	addrs, err := p2ps.Addresses()
+	if err != nil {
+		return nil, fmt.Errorf("get server addresses: %w", err)
+	}
+
+	for _, addr := range addrs {
+		logger.Debugf("p2p address: %s", addr)
+	}
+
 	if o.SwapEnable {
 		swapService, err = InitSwap(
 			p2ps,
@@ -337,7 +351,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if !ok {
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
-	pricing := pricing.New(p2ps, logger, paymentThreshold)
+	pricer := pricer.New(logger, stateStore, kad, swarmAddress, 1000000000)
+	pricing := pricing.New(p2ps, logger, paymentThreshold, pricer)
+	pricing.SetPriceTableObserver(pricer)
+
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
@@ -366,19 +383,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 	pricing.SetPaymentThresholdObserver(acc)
 
-	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
-	b.topologyCloser = kad
-	hive.SetAddPeersHandler(kad.AddPeers)
-	p2ps.SetPickyNotifier(kad)
-	addrs, err := p2ps.Addresses()
-	if err != nil {
-		return nil, fmt.Errorf("get server addresses: %w", err)
-	}
-
-	for _, addr := range addrs {
-		logger.Debugf("p2p address: %s", addr)
-	}
-
 	var path string
 
 	if o.DataDir != "" {
@@ -397,7 +401,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.localstoreCloser = storer
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, accounting.NewFixedPricer(swarmAddress, 1000000000), tracer)
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer)
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
@@ -419,7 +423,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	traversalService := traversal.NewService(ns)
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 1000000000), tracer)
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, pricer, tracer)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)

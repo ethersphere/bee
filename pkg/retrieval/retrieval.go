@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/pricer"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -52,12 +53,13 @@ type Service struct {
 	singleflight  singleflight.Group
 	logger        logging.Logger
 	accounting    accounting.Interface
-	pricer        accounting.Pricer
 	metrics       metrics
+	pricer        pricer.Interface
 	tracer        *tracing.Tracer
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *Service {
+
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -356,7 +358,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
 	// compute the price we charge for this chunk and debit it from p's balance
-	chunkPrice := s.pricer.Price(chunk.Address())
+	chunkPrice := s.pricer.PriceForPeer(p.Address, chunk.Address())
 	err = s.accounting.Debit(p.Address, chunkPrice)
 	if err != nil {
 		return err

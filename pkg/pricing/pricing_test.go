@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/pricing/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -37,7 +38,9 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 	testThreshold := big.NewInt(100000)
 	observer := &testObserver{}
 
-	recipient := pricing.New(nil, logger, testThreshold)
+	pricerMockService := pricermock.NewMockService()
+
+	recipient := pricing.New(nil, logger, testThreshold, pricerMockService)
 	recipient.SetPaymentThresholdObserver(observer)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
@@ -47,7 +50,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 		streamtest.WithBaseAddr(peerID),
 	)
 
-	payer := pricing.New(recorder, logger, testThreshold)
+	payer := pricing.New(recorder, logger, testThreshold, pricerMockService)
 
 	paymentThreshold := big.NewInt(10000)
 

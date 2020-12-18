@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -53,14 +54,15 @@ type PushSync struct {
 	unwrap        func(swarm.Chunk)
 	logger        logging.Logger
 	accounting    accounting.Interface
-	pricer        accounting.Pricer
+	pricer        pricer.Interface
 	metrics       metrics
 	tracer        *tracing.Tracer
 }
 
 var timeToLive = 5 * time.Second // request time to live
 
-func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *PushSync {
+
 	ps := &PushSync{
 		streamer:      streamer,
 		storer:        storer,
@@ -122,6 +124,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
+	price := ps.pricer.PriceForPeer(p.Address, chunk.Address())
+
 	receipt, err := ps.pushToClosest(ctx, chunk)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
@@ -135,7 +139,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-			return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
+			return ps.accounting.Debit(p.Address, price)
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
 	}
@@ -145,7 +149,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
-	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
+	return ps.accounting.Debit(p.Address, price)
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
