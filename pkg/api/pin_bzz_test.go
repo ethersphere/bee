@@ -24,7 +24,7 @@ import (
 
 func TestPinBzzHandler(t *testing.T) {
 	var (
-		dirUploadResource     = "/dirs?nonce=0000"
+		dirUploadResource     = "/dirs?obfuscationKey=0000"
 		pinBzzResource        = "/pin/bzz"
 		pinBzzAddressResource = func(addr string) string { return pinBzzResource + "/" + addr }
 		pinChunksResource     = "/pin/chunks"

@@ -95,7 +95,7 @@ func TestDirs(t *testing.T) {
 		wantIndexFilename   string
 		wantErrorFilename   string
 		wantHashReference   swarm.Address
-		nonceKey            string
+		obfuscationKey      string
 		indexFilenameOption jsonhttptest.Option
 		errorFilenameOption jsonhttptest.Option
 		files               []f // files in dir for test case
@@ -258,7 +258,7 @@ Disallow: /`),
 		{
 			name:              "with nonce key",
 			wantHashReference: swarm.MustParseHexAddress("a85aaea6a34a5c7127a3546196f2111f866fe369c6d6562ed5d3313a99388c03"),
-			nonceKey:          "0000",
+			obfuscationKey:    "0000",
 			files: []f{
 				{
 					data:      []byte("<h1>Swarm"),
@@ -290,8 +290,8 @@ Disallow: /`),
 
 			url := dirUploadResource
 
-			if tc.nonceKey != "" {
-				url = url + "?nonce=" + tc.nonceKey
+			if tc.obfuscationKey != "" {
+				url = url + "?obfuscationKey=" + tc.obfuscationKey
 			}
 
 			// verify directory tar upload response
