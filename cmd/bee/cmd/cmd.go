@@ -55,9 +55,6 @@ const (
 	optionNameSwapFactoryAddress        = "swap-factory-address"
 	optionNameSwapInitialDeposit        = "swap-initial-deposit"
 	optionNameSwapEnable                = "swap-enable"
-	optionNameStorerMargin              = "storer-margin"
-	optionNameForwarderMargin           = "forwarder-margin"
-	optionNameToleranceMargin           = "tolerance-margin"
 )
 
 func init() {
@@ -223,8 +220,4 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "100000000000000000", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
-	cmd.Flags().Uint64(optionNameStorerMargin, 8, "price margin charged by the node for chunks belonging to neighborhood")
-	cmd.Flags().Uint64(optionNameForwarderMargin, 9, "price margin charged by the node for chunks forwarded")
-	cmd.Flags().Uint64(optionNameToleranceMargin, 11, "price margin tolerated by the node per proximity from neighborhood depth")
-
 }

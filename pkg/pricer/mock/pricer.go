@@ -5,21 +5,19 @@
 package mock
 
 import (
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type Service struct {
-	peerPrice             uint64
-	price                 uint64
-	peerPriceFunc         func(peer, chunk swarm.Address) uint64
-	priceForPeerFunc      func(peer, chunk swarm.Address) uint64
-	priceTableFunc        func() (priceTable []uint64)
-	peerPriceTableFunc    func(peer, chunk swarm.Address) (priceTable []uint64, err error)
-	pricePOFunc           func(PO uint8) (uint64, error)
-	peerPricePOFunc       func(peer swarm.Address, PO uint8) (uint64, error)
-	notifyPriceTableFunc  func(peer swarm.Address, priceTable []uint64) error
-	defaultPriceTableFunc func() (priceTable []uint64)
-	defaultPriceFunc      func(PO uint8) uint64
+	peerPrice            uint64
+	price                uint64
+	peerPriceFunc        func(peer, chunk swarm.Address) uint64
+	priceForPeerFunc     func(peer, chunk swarm.Address) uint64
+	priceTableFunc       func() (priceTable []uint64)
+	notifyPriceTableFunc func(peer swarm.Address, priceTable []uint64) error
+	priceHeadlerFunc     func(p2p.Headers, swarm.Address) p2p.Headers
+	notifyPeerPriceFunc  func(peer swarm.Address, price uint64, index uint8) error
 }
 
 // WithReserveFunc sets the mock Reserve function
@@ -36,10 +34,28 @@ func WithPriceForPeerFunc(f func(peer, chunk swarm.Address) uint64) Option {
 	})
 }
 
+func WithPrice(p uint64) Option {
+	return optionFunc(func(s *Service) {
+		s.price = p
+	})
+}
+
+func WithPeerPrice(p uint64) Option {
+	return optionFunc(func(s *Service) {
+		s.peerPrice = p
+	})
+}
+
 // WithPriceTableFunc sets the mock Release function
 func WithPriceTableFunc(f func() (priceTable []uint64)) Option {
 	return optionFunc(func(s *Service) {
 		s.priceTableFunc = f
+	})
+}
+
+func WithPriceHeadlerFunc(f func(headers p2p.Headers, addr swarm.Address) p2p.Headers) Option {
+	return optionFunc(func(s *Service) {
+		s.priceHeadlerFunc = f
 	})
 }
 
@@ -73,41 +89,25 @@ func (pricer *Service) PriceTable() (priceTable []uint64) {
 	}
 	return nil
 }
-func (pricer *Service) PeerPriceTable(peer, chunk swarm.Address) (priceTable []uint64, err error) {
-	if pricer.peerPriceTableFunc != nil {
-		return pricer.peerPriceTableFunc(peer, chunk)
-	}
-	return nil, nil
-}
-func (pricer *Service) PricePO(PO uint8) (uint64, error) {
-	if pricer.pricePOFunc != nil {
-		return pricer.pricePOFunc(PO)
-	}
-	return 0, nil
-}
-func (pricer *Service) PeerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
-	if pricer.peerPricePOFunc != nil {
-		return pricer.peerPricePOFunc(peer, PO)
-	}
-	return 0, nil
-}
 func (pricer *Service) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
 	if pricer.notifyPriceTableFunc != nil {
 		return pricer.notifyPriceTableFunc(peer, priceTable)
 	}
 	return nil
 }
-func (pricer *Service) DefaultPriceTable() (priceTable []uint64) {
-	if pricer.defaultPriceTableFunc != nil {
-		return pricer.defaultPriceTableFunc()
+
+func (pricer *Service) PriceHeadler(headers p2p.Headers, addr swarm.Address) p2p.Headers {
+	if pricer.priceHeadlerFunc != nil {
+		return pricer.priceHeadlerFunc(headers, addr)
+	}
+	return p2p.Headers{}
+}
+
+func (pricer *Service) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error {
+	if pricer.notifyPeerPriceFunc != nil {
+		return pricer.notifyPeerPriceFunc(peer, price, index)
 	}
 	return nil
-}
-func (pricer *Service) DefaultPrice(PO uint8) uint64 {
-	if pricer.defaultPriceFunc != nil {
-		return pricer.defaultPriceFunc(PO)
-	}
-	return 0
 }
 
 // Option is the option passed to the mock accounting service

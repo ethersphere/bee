@@ -219,13 +219,14 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 
 	mockStorer := storemock.NewStorer()
 	serverMockAccounting := accountingmock.NewAccounting()
+
 	pricerMock := pricermock.NewMockService()
 	peerID := swarm.MustParseHexAddress("deadbeef")
 	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, nil, nil)
+	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)

@@ -1,4 +1,4 @@
-// Copyright 2021 The Swarm Authors. All rights reserved.
+// Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -315,6 +315,22 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
+
+	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
+	}
+
+	pricer := pricer.New(logger, stateStore, swarmAddress, 1000000000)
+	pricer.SetTopology(kad)
+
+	pricing := pricing.New(p2ps, logger, paymentThreshold, pricer)
+	pricing.SetPriceTableObserver(pricer)
+
+	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
+		return nil, fmt.Errorf("pricing service: %w", err)
+	}
+
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)
@@ -347,18 +363,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		settlement = pseudosettleService
 	}
 
-	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
-	}
-	pricer := pricer.New(logger, stateStore, kad, swarmAddress, 1000000000)
-	pricing := pricing.New(p2ps, logger, paymentThreshold, pricer)
-	pricing.SetPriceTableObserver(pricer)
-
-	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
-		return nil, fmt.Errorf("pricing service: %w", err)
-	}
-
 	paymentTolerance, ok := new(big.Int).SetString(o.PaymentTolerance, 10)
 	if !ok {
 		return nil, fmt.Errorf("invalid payment tolerance: %s", paymentTolerance)
@@ -376,12 +380,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		settlement,
 		pricing,
 	)
+
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
 
-	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 	pricing.SetPaymentThresholdObserver(acc)
+	pricing.SetPriceTableObserver(pricer)
+	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 
 	var path string
 
