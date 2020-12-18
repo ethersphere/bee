@@ -94,6 +94,8 @@ func TestDirs(t *testing.T) {
 		name                string
 		wantIndexFilename   string
 		wantErrorFilename   string
+		wantHashReference   swarm.Address
+		nonceKey            string
 		indexFilenameOption jsonhttptest.Option
 		errorFilenameOption jsonhttptest.Option
 		files               []f // files in dir for test case
@@ -253,6 +255,20 @@ Disallow: /`),
 				},
 			},
 		},
+		{
+			name:              "with nonce key",
+			wantHashReference: swarm.MustParseHexAddress("a85aaea6a34a5c7127a3546196f2111f866fe369c6d6562ed5d3313a99388c03"),
+			nonceKey:          "0000",
+			files: []f{
+				{
+					data:      []byte("<h1>Swarm"),
+					name:      "index.html",
+					dir:       "",
+					filePath:  "./index.html",
+					reference: swarm.MustParseHexAddress("bcb1bfe15c36f1a529a241f4d0c593e5648aa6d40859790894c6facb41a6ef28"),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// tar all the test case files
@@ -272,22 +288,35 @@ Disallow: /`),
 				options = append(options, tc.errorFilenameOption)
 			}
 
+			url := dirUploadResource
+
+			if tc.nonceKey != "" {
+				url = url + "?nonce=" + tc.nonceKey
+			}
+
 			// verify directory tar upload response
-			jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
+			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusOK, options...)
 
 			read := bytes.NewReader(respBytes)
 
-			// get the reference as everytime it will change because of random encryption key
+			// get the reference as everytime it may change because of random encryption key
 			var resp api.FileUploadResponse
 			err := json.NewDecoder(read).Decode(&resp)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			// NOTE: reference will be different each time, due to manifest randomness
+			// NOTE: reference may be different each time, due to manifest randomness
 
 			if resp.Reference.String() == "" {
 				t.Fatalf("expected file reference, did not got any")
+			}
+
+			if !swarm.ZeroAddress.Equal(tc.wantHashReference) {
+				// expecting deterministic reference in this case
+				if !resp.Reference.Equal(tc.wantHashReference) {
+					t.Fatalf("expected root reference to match %s, got %s", tc.wantHashReference, resp.Reference)
+				}
 			}
 
 			// read manifest metadata

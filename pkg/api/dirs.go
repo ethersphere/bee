@@ -8,6 +8,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,11 +60,24 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var nonceKey []byte
+	nonce := r.URL.Query().Get("nonce")
+	if nonce != "" {
+		nonceKey, err = hex.DecodeString(nonce)
+		if err != nil {
+			logger.Debugf("dir upload: cannot parse nonce: %v", err)
+			logger.Error("dir upload: cannot parse nonce")
+
+			jsonhttp.BadRequest(w, "cannot parse nonce")
+			return
+		}
+	}
+
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 	p := requestPipelineFn(s.Storer, r)
 	l := loadsave.New(s.Storer, requestModePut(r), requestEncrypt(r))
-	reference, err := storeDir(ctx, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader))
+	reference, err := storeDir(ctx, nonceKey, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader))
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
 		logger.Errorf("dir upload: store dir")
@@ -103,10 +117,25 @@ func validateRequest(r *http.Request) error {
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string) (swarm.Address, error) {
+func storeDir(ctx context.Context, nonceKey []byte, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
-	dirManifest, err := manifest.NewDefaultManifest(ls)
+	var (
+		dirManifest manifest.Interface
+		err         error
+	)
+
+	if len(nonceKey) == 0 {
+		dirManifest, err = manifest.NewDefaultManifest(ls)
+	} else {
+		obfuscationKeyFn := func(p []byte) (n int, err error) {
+			n = copy(p, nonceKey)
+			return
+		}
+
+		dirManifest, err = manifest.NewDefaultManifestWithObfuscationKeyFn(ls, obfuscationKeyFn)
+	}
+
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
