@@ -17,6 +17,12 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 1
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            /tmp/k3s-v1.19.5+k3s2
+          key: k3s-v1.19.5+k3s2
       - name: Install bee-local
         run: |
           # sudo mv $(command -v brew){,_disable}
