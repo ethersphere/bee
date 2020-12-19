@@ -21,7 +21,8 @@ const (
 )
 
 type mantarayManifest struct {
-	trie *mantaray.Node
+	trie           *mantaray.Node
+	obfuscationKey []byte
 
 	ls file.LoadSaver
 }
@@ -34,19 +35,21 @@ func NewMantarayManifest(ls file.LoadSaver) (Interface, error) {
 	}, nil
 }
 
-// NewMantarayManifestWithObfuscationKeyFn creates a new mantaray-based manifest
-// with configured obfuscation key function.
+// NewMantarayManifestWithObfuscationKey creates a new mantaray-based manifest
+// with configured obfuscation key.
 //
 // NOTE: This should only be used in tests.
-func NewMantarayManifestWithObfuscationKeyFn(
+func NewMantarayManifestWithObfuscationKey(
 	ls file.LoadSaver,
-	obfuscationKeyFn func([]byte) (int, error),
+	obfuscationKey []byte,
 ) (Interface, error) {
 	mm := &mantarayManifest{
 		trie: mantaray.New(),
 		ls:   ls,
 	}
-	mantaray.SetObfuscationKeyFn(obfuscationKeyFn)
+	mm.obfuscationKey = append(obfuscationKey[:0:0], obfuscationKey...)
+	// NOTE: it will be copied to all trie nodes
+	mm.trie.SetObfuscationKey(mm.obfuscationKey)
 	return mm, nil
 }
 

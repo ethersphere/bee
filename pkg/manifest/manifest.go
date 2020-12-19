@@ -63,13 +63,13 @@ func NewDefaultManifest(ls file.LoadSaver) (Interface, error) {
 	return NewManifest(DefaultManifestType, ls)
 }
 
-// NewDefaultManifestWithObfuscationKeyFn creates a new manifest with default
-// type with configured obfuscation key function.
-func NewDefaultManifestWithObfuscationKeyFn(
+// NewDefaultManifestWithObfuscationKey creates a new manifest of default
+// type with configured obfuscation key.
+func NewDefaultManifestWithObfuscationKey(
 	ls file.LoadSaver,
-	obfuscationKeyFn func([]byte) (int, error),
+	obfuscationKey []byte,
 ) (Interface, error) {
-	return NewManifestWithObfuscationKeyFn(DefaultManifestType, ls, obfuscationKeyFn)
+	return NewManifestWithObfuscationKey(DefaultManifestType, ls, obfuscationKey)
 }
 
 // NewManifest creates a new manifest.
@@ -87,19 +87,19 @@ func NewManifest(
 	}
 }
 
-// NewManifestWithObfuscationKeyFn creates a new manifest with configured
-// obfuscation key function.
-func NewManifestWithObfuscationKeyFn(
+// NewManifestWithObfuscationKey creates a new manifest with configured
+// obfuscation key.
+func NewManifestWithObfuscationKey(
 	manifestType string,
 	ls file.LoadSaver,
-	obfuscationKeyFn func([]byte) (int, error),
+	obfuscationKey []byte,
 ) (Interface, error) {
 	switch manifestType {
 	case ManifestSimpleContentType:
 		// not supported for 'simple' type
 		return NewSimpleManifest(ls)
 	case ManifestMantarayContentType:
-		return NewMantarayManifestWithObfuscationKeyFn(ls, obfuscationKeyFn)
+		return NewMantarayManifestWithObfuscationKey(ls, obfuscationKey)
 	default:
 		return nil, ErrInvalidManifestType
 	}
