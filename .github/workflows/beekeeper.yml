@@ -36,7 +36,7 @@ jobs:
           chmod +x beekeeper
       - name: Prepare testing cluster (DNS discovery)
         run: |
-          printf "${CR_PAT}" | docker login ghcr.io -u bee-worker --password-stdin
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           ./beeinfra.sh prepare --geth --k3s
       - name: Set kube config
         run: |
