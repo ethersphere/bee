@@ -27,7 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/manifest/mantaray"
 )
 
 const (
@@ -108,17 +107,7 @@ func validateRequest(r *http.Request) error {
 func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
-	var (
-		dirManifest manifest.Interface
-		err         error
-	)
-
-	if encrypt {
-		// NOTE: will generate random obfuscation key for manifest
-		dirManifest, err = manifest.NewDefaultManifest(ls)
-	} else {
-		dirManifest, err = manifest.NewDefaultManifestWithObfuscationKey(ls, mantaray.ZeroObfuscationKey)
-	}
+	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
