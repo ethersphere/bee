@@ -24,7 +24,7 @@ import (
 
 func TestPinBzzHandler(t *testing.T) {
 	var (
-		dirUploadResource     = "/dirs?obfuscationKey=0000"
+		dirUploadResource     = "/dirs"
 		pinBzzResource        = "/pin/bzz"
 		pinBzzAddressResource = func(addr string) string { return pinBzzResource + "/" + addr }
 		pinChunksResource     = "/pin/chunks"
@@ -79,7 +79,6 @@ func TestPinBzzHandler(t *testing.T) {
 
 		read := bytes.NewReader(respBytes)
 
-		// get the reference as everytime it will change because of random encryption key
 		var resp api.ListPinnedChunksResponse
 		err := json.NewDecoder(read).Decode(&resp)
 		if err != nil {

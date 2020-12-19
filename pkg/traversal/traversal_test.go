@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/manifest/mantaray"
 )
 
 var (
@@ -265,8 +266,6 @@ func TestTraversalManifest(t *testing.T) {
 		return traversalService.TraverseManifestAddresses
 	}
 
-	var obfuscationKey = make([]byte, 32)
-
 	testCases := []struct {
 		manifestType        string
 		files               []file
@@ -464,7 +463,7 @@ func TestTraversalManifest(t *testing.T) {
 					t.Fatal(err)
 				}
 			case manifest.ManifestMantarayContentType:
-				dirManifest, err = manifest.NewMantarayManifestWithObfuscationKey(ls, obfuscationKey)
+				dirManifest, err = manifest.NewMantarayManifestWithObfuscationKey(ls, mantaray.ZeroObfuscationKey)
 				if err != nil {
 					t.Fatal(err)
 				}

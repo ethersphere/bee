@@ -10,7 +10,7 @@ require (
 	github.com/ethereum/go-ethereum v1.9.20
 	github.com/ethersphere/bmt v0.1.4
 	github.com/ethersphere/langos v1.0.0
-	github.com/ethersphere/manifest v0.3.6-0.20201219094757-ca4bdf6230ce
+	github.com/ethersphere/manifest v0.3.6-0.20201219111500-ac38cbddff4d
 	github.com/ethersphere/sw3-bindings/v2 v2.1.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
