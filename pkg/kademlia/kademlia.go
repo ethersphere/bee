@@ -336,6 +336,10 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 	i, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
+			if !i.Overlay.Equal(peer) {
+				return errOverlayMismatch
+			}
+
 			return nil
 		}
 

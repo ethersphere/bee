@@ -453,8 +453,12 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	remoteAddr := addr.Decapsulate(hostAddr)
 
-	if _, found := s.peers.isConnected(info.ID, remoteAddr); found {
-		return nil, p2p.ErrAlreadyConnected
+	if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
+		address = &bzz.Address{
+			Overlay:  overlay,
+			Underlay: addr,
+		}
+		return address, p2p.ErrAlreadyConnected
 	}
 
 	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
