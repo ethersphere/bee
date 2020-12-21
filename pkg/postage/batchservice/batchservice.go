@@ -16,21 +16,20 @@ type BatchService struct {
 	logger logging.Logger
 }
 
-// Option is an option passed to NewBatchService
-type Option func(*BatchService)
-
 // NewBatchService will create a new BatchService
-func NewBatchService(storer postage.BatchStorer, logger logging.Logger, opts ...Option) postage.EventUpdater {
+func NewBatchService(storer postage.BatchStorer, logger logging.Logger) (postage.EventUpdater, error) {
 	b := BatchService{
 		storer: storer,
 		logger: logger,
 	}
 
-	for _, opt := range opts {
-		opt(&b)
+	cs, err := storer.GetChainState()
+	if err != nil {
+		return nil, fmt.Errorf("new batch service: %v", err)
 	}
+	b.cs = *cs
 
-	return &b
+	return &b, nil
 }
 
 // Create will create a new batch and store it in the BatchStore.
@@ -94,6 +93,10 @@ func (svc *BatchService) UpdateDepth(id []byte, depth uint8) error {
 // price from the chain in the service chain state.
 func (svc *BatchService) UpdatePrice(price *big.Int) error {
 	svc.cs.Price = price
+
+	if err := svc.storer.PutChainState(&svc.cs); err != nil {
+		return fmt.Errorf("update price: %w", err)
+	}
 
 	svc.logger.Debugf("updated chain price to %s", svc.cs.Price)
 	return nil

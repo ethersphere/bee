@@ -14,13 +14,100 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 )
 
+func TestBatchStoreGet(t *testing.T) {
+	stateStore := mock.NewStateStore()
+
+	testBatch, err := postagetest.NewBatch()
+	if err != nil {
+		t.Fatalf("create test batch: %v", err)
+	}
+	key := batchstore.BatchKey(testBatch.ID)
+
+	err = stateStore.Put(key, testBatch)
+	if err != nil {
+		t.Fatalf("store batch: %v", err)
+	}
+
+	bStore := batchstore.New(stateStore)
+
+	got, err := bStore.Get(testBatch.ID)
+	if err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+
+	compareBatches(t, testBatch, got)
+}
+
+func TestBatchStorePut(t *testing.T) {
+	stateStore := mock.NewStateStore()
+	bStore := batchstore.New(stateStore)
+
+	testBatch, err := postagetest.NewBatch()
+	if err != nil {
+		t.Fatalf("create test batch: %v", err)
+	}
+	key := batchstore.BatchKey(testBatch.ID)
+
+	err = bStore.Put(testBatch)
+	if err != nil {
+		t.Fatalf("put batch: %v", err)
+	}
+
+	var got postage.Batch
+	err = stateStore.Get(key, &got)
+	if err != nil {
+		t.Fatalf("store get batch: %v", err)
+	}
+
+	compareBatches(t, testBatch, &got)
+}
+
+func TestBatchStoreGetChainState(t *testing.T) {
+	stateStore := mock.NewStateStore()
+	bStore := batchstore.New(stateStore)
+
+	testState := postagetest.NewChainState()
+
+	err := stateStore.Put(batchstore.StateKey, testState)
+	if err != nil {
+		t.Fatalf("stateStore put: %v", err)
+	}
+
+	got, err := bStore.GetChainState()
+	if err != nil {
+		t.Fatalf("get chain state: %v", err)
+	}
+
+	compareChainState(t, testState, got)
+}
+
+func TestBatchStorePutChainState(t *testing.T) {
+	stateStore := mock.NewStateStore()
+	bStore := batchstore.New(stateStore)
+
+	testState := postagetest.NewChainState()
+
+	err := bStore.PutChainState(testState)
+	if err != nil {
+		t.Fatalf("put chain state: %v", err)
+	}
+
+	var got postage.ChainState
+	err = stateStore.Get(batchstore.StateKey, &got)
+	if err != nil {
+		t.Fatalf("statestore get: %v", err)
+	}
+
+	compareChainState(t, testState, &got)
+}
+
 func compareBatches(t *testing.T, want, got *postage.Batch) {
 	t.Helper()
 
 	if !bytes.Equal(want.ID, got.ID) {
 		t.Fatalf("batch ID: want %v, got %v", want.ID, got.ID)
 	}
-	if want.Value.Uint64() != got.Value.Uint64() {
+	if want.Value.Cmp(got.Value) != 0 {
 		t.Fatalf("value: want %v, got %v", want.Value, got.Value)
 	}
 	if want.Start != got.Start {
@@ -34,25 +121,16 @@ func compareBatches(t *testing.T, want, got *postage.Batch) {
 	}
 }
 
-func TestBatchPutGet(t *testing.T) {
-	bs := batchstore.New(mock.NewStateStore())
+func compareChainState(t *testing.T, want, got *postage.ChainState) {
+	t.Helper()
 
-	want, err := postagetest.NewBatch()
-	if err != nil {
-		t.Fatal(err)
+	if want.Block != got.Block {
+		t.Fatalf("block: want %v, got %v", want.Block, got.Block)
 	}
-
-	err = bs.Put(want)
-	if err != nil {
-		t.Fatal(err)
+	if want.Price.Cmp(got.Price) != 0 {
+		t.Fatalf("price: want %v, got %v", want.Price, got.Price)
 	}
-
-	got, err := bs.Get(want.ID)
-	if err != nil {
-		t.Fatal(err)
+	if want.Total.Cmp(got.Total) != 0 {
+		t.Fatalf("total: want %v, got %v", want.Total, got.Total)
 	}
-
-	compareBatches(t, want, got)
-
-	// TODO: got -> mutate, persist, load, check correct values
 }

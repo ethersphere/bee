@@ -19,7 +19,7 @@ type BatchStorer interface {
 	Get(id []byte) (*Batch, error)
 	Put(*Batch) error
 	PutChainState(*ChainState) error
-	GetChainState() *ChainState
+	GetChainState() (*ChainState, error)
 }
 
 // Listener provides a blockchain event iterator

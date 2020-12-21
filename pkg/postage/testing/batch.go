@@ -29,11 +29,11 @@ func NewBatch(opts ...BatchOption) (*postage.Batch, error) {
 		}
 		b.ID = id
 	}
-	if b.Value.Uint64() == 0 {
+	if b.Value == nil {
 		b.Value = (new(big.Int)).SetUint64(rand.Uint64())
 
 	}
-	if b.Value.Uint64() == 0 {
+	if b.Value == nil {
 		b.Start = rand.Uint64()
 	}
 	if b.Owner == nil {

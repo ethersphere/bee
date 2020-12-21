@@ -12,7 +12,7 @@ import (
 const (
 	batchKeyPrefix = "batchKeyPrefix"
 	// valueKeyPrefix = "valueKeyPrefix"
-	// stateKey       = "stateKey"
+	stateKey = "stateKey"
 )
 
 // Store is a local store for postage batches
@@ -27,9 +27,9 @@ func New(store storage.StateStorer) postage.BatchStorer {
 
 // Get returns a batch from the batchstore with the given ID
 func (s *Store) Get(id []byte) (*postage.Batch, error) {
-	b := &postage.Batch{}
-	err := s.store.Get(batchKey(id), b)
-	return b, err
+	var b postage.Batch
+	err := s.store.Get(batchKey(id), &b)
+	return &b, err
 }
 
 // Put stores a given batch in the batchstore with the given ID
@@ -40,13 +40,15 @@ func (s *Store) Put(b *postage.Batch) error {
 // PutChainState implements BatchStorer. It stores the chain state in the batch
 // store
 func (s *Store) PutChainState(state *postage.ChainState) error {
-	panic("not implemented")
+	return s.store.Put(stateKey, state)
 }
 
 // GetChainState implements BatchStorer. It returns the stored chain state from
 // the batch store
-func (s *Store) GetChainState() *postage.ChainState {
-	panic("not implemented")
+func (s *Store) GetChainState() (*postage.ChainState, error) {
+	var cs postage.ChainState
+	err := s.store.Get(stateKey, &cs)
+	return &cs, err
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index
