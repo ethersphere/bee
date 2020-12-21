@@ -35,7 +35,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	batch, err := requestPostageBatchId(r)
+	_, err = requestPostageBatchId(r)
 	if err != nil {
 		logger.Debugf("bytes upload: postage batch id:%v", err)
 		logger.Error("bytes upload: postage batch id")
@@ -45,9 +45,9 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// create stamper
 	// get the postage batch data from batch store - is done under the hood by the following call
-	stamper := s.postage.GetStamper(batch)
+	// stamper := s.postage.GetStamper(batch)
 
-	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r), stamper)
+	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r), nil)
 	address, err := builder.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)

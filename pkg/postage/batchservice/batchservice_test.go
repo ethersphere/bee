@@ -1,53 +1,17 @@
 package batchservice_test
 
-// import (
-// 	"fmt"
-// 	"math/big"
-// 	"testing"
+import (
+	"io/ioutil"
 
-// 	"github.com/ethersphere/bee/pkg/postage"
-// )
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchservice"
+	batchstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+)
 
-// func TestSync(t *testing.T) {
+func newTestBatchService() postage.EventUpdater {
+	log := logging.New(ioutil.Discard, 0)
+	store := batchstoremock.New()
 
-// }
-
-// type testEvents struct {
-// 	in    <-chan string
-// 	out   chan string
-// 	err   chan error
-// 	block uint64
-// }
-
-// func (te *testEvents) Create(id []byte, owner []byte, amount *big.Int, depth uint8) error {
-// 	ev := fmt.Sprintf("%d:create(%x,%x,%s,%d)", te.block, id, owner, amount, depth)
-// 	te.out <- ev
-// 	return nil
-// }
-
-// func (te *testEvents) TopUp(id []byte, amount *big.Int) error {
-// 	ev := fmt.Sprintf("%d:topup(%x,%s)", te.block, id, amount)
-// 	te.out <- ev
-// 	return nil
-// }
-
-// func (te *testEvents) UpdateDepth(id []byte, depth uint8) error {
-// 	ev := fmt.Sprintf("%d:depth(%x,%d)", te.block, id, depth)
-// 	te.out <- ev
-// 	return nil
-// }
-
-// func (te *testEvents) UpdatePrice(price *big.Int) error {
-// 	ev := fmt.Sprintf("%d:price(%s)", te.block, price)
-// 	te.out <- ev
-// 	return nil
-// }
-
-// //
-// func (te *testEvents) LastBlock() uint64 {
-// 	return te.block
-// }
-// func (te *testEvents) Update(block uint64, ev postage.Event) error {
-// 	te.block = block
-// 	return ev.Update(te)
-// }
+	return batchservice.NewBatchService(store, log)
+}

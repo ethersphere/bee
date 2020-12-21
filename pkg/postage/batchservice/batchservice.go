@@ -9,24 +9,18 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-type chainState struct {
-	Block uint64   `json:"block"` // The block number of the last postage event
-	Total *big.Int `json:"total"` // Cumulative amount paid per stamp
-	Price *big.Int `json:"price"` // Bzz/chunk/block normalised price
-}
-
-// BatchService implements EventUpdater.
+// BatchService implements EventUpdater
 type BatchService struct {
-	cs     chainState
+	cs     postage.ChainState
 	storer postage.BatchStorer
 	logger logging.Logger
 }
 
-// BatchServiceOption is an option passed to NewBatchService
-type BatchServiceOption func(*BatchService)
+// Option is an option passed to NewBatchService
+type Option func(*BatchService)
 
 // NewBatchService will create a new BatchService
-func NewBatchService(storer postage.BatchStorer, logger logging.Logger, opts ...BatchServiceOption) postage.EventUpdater {
+func NewBatchService(storer postage.BatchStorer, logger logging.Logger, opts ...Option) postage.EventUpdater {
 	b := BatchService{
 		storer: storer,
 		logger: logger,
