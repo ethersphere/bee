@@ -29,8 +29,13 @@ import (
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/kardianos/service"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+)
+
+const (
+	serviceName = "SwarmBeeSvc"
 )
 
 func (c *command) initStartCmd() (err error) {
@@ -59,6 +64,19 @@ func (c *command) initStartCmd() (err error) {
 				logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
 			default:
 				return fmt.Errorf("unknown verbosity level %q", v)
+			}
+
+			isWindowsService, err := isWindowsService()
+			if err != nil {
+				return fmt.Errorf("failed to determine if we are running in service: %w", err)
+			}
+
+			if isWindowsService {
+				var err error
+				logger, err = createWindowsEventLogger(serviceName, logger)
+				if err != nil {
+					return fmt.Errorf("failed to create windows logger %w", err)
+				}
 			}
 
 			// If the resolver is specified, resolve all connection strings
@@ -136,31 +154,55 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			interruptChannel := make(chan os.Signal, 1)
 			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
-			// Block main goroutine until it is interrupted
-			sig := <-interruptChannel
+			p := &program{
+				start: func() {
+					// Block main goroutine until it is interrupted
+					sig := <-interruptChannel
 
-			logger.Debugf("received signal: %v", sig)
-			logger.Info("shutting down")
+					logger.Debugf("received signal: %v", sig)
+					logger.Info("shutting down")
+				},
+				stop: func() {
+					// Shutdown
+					done := make(chan struct{})
+					go func() {
+						defer close(done)
 
-			// Shutdown
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
+						ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+						defer cancel()
 
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				defer cancel()
+						if err := b.Shutdown(ctx); err != nil {
+							logger.Errorf("shutdown: %v", err)
+						}
+					}()
 
-				if err := b.Shutdown(ctx); err != nil {
-					logger.Errorf("shutdown: %v", err)
+					// If shutdown function is blocking too long,
+					// allow process termination by receiving another signal.
+					select {
+					case sig := <-interruptChannel:
+						logger.Debugf("received signal: %v", sig)
+					case <-done:
+					}
+				},
+			}
+
+			if isWindowsService {
+				s, err := service.New(p, &service.Config{
+					Name:        serviceName,
+					DisplayName: "Bee",
+					Description: "Bee, Swarm client.",
+				})
+				if err != nil {
+					return err
 				}
-			}()
 
-			// If shutdown function is blocking too long,
-			// allow process termination by receiving another signal.
-			select {
-			case sig := <-interruptChannel:
-				logger.Debugf("received signal: %v", sig)
-			case <-done:
+				if err = s.Run(); err != nil {
+					return err
+				}
+			} else {
+				// start blocks until some interrupt is received
+				p.start()
+				p.stop()
 			}
 
 			return nil
@@ -172,6 +214,22 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 
 	c.setAllFlags(cmd)
 	c.root.AddCommand(cmd)
+	return nil
+}
+
+type program struct {
+	start func()
+	stop  func()
+}
+
+func (p *program) Start(s service.Service) error {
+	// Start should not block. Do the actual work async.
+	go p.start()
+	return nil
+}
+
+func (p *program) Stop(s service.Service) error {
+	p.stop()
 	return nil
 }
 
