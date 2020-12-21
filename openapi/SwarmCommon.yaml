@@ -16,7 +16,7 @@ components:
     Address:
       type: object
       properties:
-        Address:
+        address:
           $ref: '#/components/schemas/SwarmAddress'
 
     Addresses:
