@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	serviceName = "BeeSvc"
+	serviceName = "SwarmBeeSvc"
 )
 
 func (c *command) initStartCmd() (err error) {
