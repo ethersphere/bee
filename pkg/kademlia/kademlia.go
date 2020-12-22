@@ -250,12 +250,11 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 
 		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
 			k.logger.Tracef("connecting to bootnode %s", addr)
-			attempts++
 			if attempts >= maxBootnodeAttempts {
 				return true, nil
 			}
-
 			bzzAddress, err := k.p2p.Connect(ctx, addr)
+			attempts++
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
 					k.logger.Debugf("connect fail %s: %v", addr, err)
