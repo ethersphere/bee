@@ -103,7 +103,7 @@ func (db *DB) gc() (collectedCount uint64, done bool, err error) {
 		if gcSize-collectedCount <= target {
 			return true, nil
 		}
-		gcSizeChange, err := db.setRemove(batch, item)
+		gcSizeChange, err := db.setRemove(batch, item, false)
 		if err != nil {
 			return true, nil
 		}

@@ -179,10 +179,6 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.putToGC(batch, item)
-	if err != nil {
-		return false, 0, err
-	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
@@ -191,7 +187,10 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
-
+	gcSizeChange, err = db.preserveOrCache(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	return false, gcSizeChange, nil
 }
 
@@ -248,10 +247,6 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.putToGC(batch, item)
-	if err != nil {
-		return false, 0, err
-	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
@@ -264,12 +259,16 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
+	gcSizeChange, err = db.preserveOrCache(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	return false, gcSizeChange, nil
 }
 
-// putToGC is a helper function used to add chunks to the retrieval access
-// index and the gc index
-func (db *DB) putToGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
+// preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache 
+// (the retrieval access index and the gc index)
+func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
 	if item.BinID == 0 {
 		i, err := db.retrievalDataIndex.Get(item)
 		if err != nil {

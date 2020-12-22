@@ -70,7 +70,7 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	case storage.ModeSetRemove:
 		for _, addr := range addrs {
 			item := addressToItem(addr)
-			c, err := db.setRemove(batch, item)
+			c, err := db.setRemove(batch, item, true)
 			if err != nil {
 				return err
 			}
@@ -172,13 +172,13 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 		return 0, err
 	}
 
-	return db.putToGC(batch, item)
+	return db.preserveOrCache(batch, item)
 }
 
 // setRemove removes the chunk by updating indexes:
 //  - delete from retrieve, pull, gc
 // Provided batch is updated.
-func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
+func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSizeChange int64, err error) {
 	if item.AccessTimestamp == 0 {
 		i, err := db.retrievalAccessIndex.Get(item)
 		switch {
@@ -215,17 +215,23 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item) (gcSizeChange int6
 	if err != nil {
 		return 0, err
 	}
+	// unless called by GC which iterates through the gcIndex
 	// a check is needed for decrementing gcSize
-	// as delete is not reporting if the key/value pair
-	// is deleted or not
-	if _, err := db.gcIndex.Get(item); err == nil {
-		gcSizeChange = -1
+	// as delete is not reporting if the key/value pair is deleted or not
+	if check {
+		_, err := db.gcIndex.Get(item)
+		if err != nil {
+			if !errors.Is(err, leveldb.ErrNotFound) {
+				return 0, err
+			}
+			return 0, db.pinIndex.DeleteInBatch(batch, item)
+		}
 	}
 	err = db.gcIndex.DeleteInBatch(batch, item)
 	if err != nil {
 		return 0, err
 	}
-	return gcSizeChange, nil
+	return -1, nil
 }
 
 // setPin increments pin counter for the chunk by updating
