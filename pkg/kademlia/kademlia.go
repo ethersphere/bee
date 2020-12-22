@@ -241,7 +241,7 @@ func (k *Kad) Start(ctx context.Context) error {
 
 func (k *Kad) connectBootnodes(ctx context.Context) {
 	var attempts, connected int
-	const totalAttempts = maxBootnodeAttempts * len(k.bootnodes)
+	var totalAttempts = maxBootnodeAttempts * len(k.bootnodes)
 
 	for _, addr := range k.bootnodes {
 		if attempts >= totalAttempts || connected >= 3 {
@@ -262,6 +262,7 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 					k.logger.Warningf("connect to bootnode %s", addr)
 					return false, err
 				}
+				k.logger.Debugf("connect to bootnode fail: %v", err)
 				return false, nil
 			}
 
