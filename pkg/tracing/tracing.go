@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -34,6 +35,14 @@ type contextKey struct{}
 
 // LogField is the key in log message field that holds tracing id value.
 const LogField = "traceid"
+
+const (
+	// TraceContextHeaderName is the http header name used to propagate tracing context.
+	TraceContextHeaderName = "trace-id"
+
+	// TraceBaggageHeaderPrefix is the prefix for http headers used to propagate baggage.
+	TraceBaggageHeaderPrefix = "ctx-"
+)
 
 // Tracer connect to a tracing server and handles tracing spans and contexts
 // by using opentracing Tracer.
@@ -66,6 +75,10 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 			LogSpans:            true,
 			BufferFlushInterval: 1 * time.Second,
 			LocalAgentHostPort:  o.Endpoint,
+		},
+		Headers: &jaeger.HeadersConfig{
+			TraceContextHeaderName:   TraceContextHeaderName,
+			TraceBaggageHeaderPrefix: TraceBaggageHeaderPrefix,
 		},
 	}
 
@@ -156,6 +169,62 @@ func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers
 	if err != nil {
 		return ctx, err
 	}
+	return WithContext(ctx, c), nil
+}
+
+// AddContextHTTPHeader adds a tracing span context to provided HTTP headers
+// from the go context. If the tracing span context is not present in
+// go context, ErrContextNotFound is returned.
+func (t *Tracer) AddContextHTTPHeader(ctx context.Context, headers http.Header) error {
+	if t == nil {
+		t = noopTracer
+	}
+
+	c := FromContext(ctx)
+	if c == nil {
+		return ErrContextNotFound
+	}
+
+	carrier := opentracing.HTTPHeadersCarrier(headers)
+	if err := t.tracer.Inject(c, opentracing.HTTPHeaders, carrier); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// FromHTTPHeaders returns tracing span context from HTTP headers. If the tracing
+// span context is not present in go context, ErrContextNotFound is returned.
+func (t *Tracer) FromHTTPHeaders(headers http.Header) (opentracing.SpanContext, error) {
+	if t == nil {
+		t = noopTracer
+	}
+
+	carrier := opentracing.HTTPHeadersCarrier(headers)
+	c, err := t.tracer.Extract(opentracing.HTTPHeaders, carrier)
+	if err != nil {
+		if errors.Is(err, opentracing.ErrSpanContextNotFound) {
+			return nil, ErrContextNotFound
+		}
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// WithContextFromHTTPHeaders returns a new context with injected tracing span
+// context if they are found in HTTP headers. If the tracing span context is not
+// present in go context, ErrContextNotFound is returned.
+func (t *Tracer) WithContextFromHTTPHeaders(ctx context.Context, headers http.Header) (context.Context, error) {
+	if t == nil {
+		t = noopTracer
+	}
+
+	c, err := t.FromHTTPHeaders(headers)
+	if err != nil {
+		return ctx, err
+	}
+
 	return WithContext(ctx, c), nil
 }
 

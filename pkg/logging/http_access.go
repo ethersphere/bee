@@ -56,6 +56,9 @@ func NewHTTPAccessLogHandler(logger Logger, level logrus.Level, message string) 
 			if v := r.Header.Get("X-Real-Ip"); v != "" {
 				fields["x-real-ip"] = v
 			}
+			if v := r.Header.Get("Trace-Id"); v != "" {
+				fields["traceid"] = v
+			}
 			logger.WithFields(fields).Log(rl.level, message)
 		})
 	}
