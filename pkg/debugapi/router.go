@@ -142,7 +142,7 @@ func (s *server) setupRouting() {
 	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "debug api access"),
 		handlers.CompressHandler,
 		// todo: add recovery handler
 		web.NoCacheHeadersHandler,

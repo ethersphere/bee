@@ -13,11 +13,12 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/tracing"
 )
 
 // NewHTTPAccessLogHandler creates a handler that will log a message after a
 // request has been served.
-func NewHTTPAccessLogHandler(logger logging.Logger, level logrus.Level, message string) func(h http.Handler) http.Handler {
+func NewHTTPAccessLogHandler(logger logging.Logger, level logrus.Level, tracer *tracing.Tracer, message string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			startTime := time.Now()
@@ -28,6 +29,10 @@ func NewHTTPAccessLogHandler(logger logging.Logger, level logrus.Level, message 
 			if rl.level == 0 {
 				return
 			}
+
+			ctx, _ := tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
+
+			logger := tracing.NewLoggerWithTraceID(ctx, logger)
 
 			status := rl.status
 			if status == 0 {
@@ -58,9 +63,7 @@ func NewHTTPAccessLogHandler(logger logging.Logger, level logrus.Level, message 
 			if v := r.Header.Get("X-Real-Ip"); v != "" {
 				fields["x-real-ip"] = v
 			}
-			if v := r.Header.Get("Trace-Id"); v != "" {
-				fields["traceid"] = v
-			}
+
 			logger.WithFields(fields).Log(rl.level, message)
 		})
 	}

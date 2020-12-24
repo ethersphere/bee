@@ -171,7 +171,7 @@ func (s *server) setupRouting() {
 	)
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "api access"),
 		handlers.CompressHandler,
 		// todo: add recovery handler
 		s.pageviewMetricsHandler,
