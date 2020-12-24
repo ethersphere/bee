@@ -9,20 +9,21 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"resenje.org/web"
+
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/logging/httpaccess"
 )
 
 func (s *server) setupRouting() {
 	baseRouter := http.NewServeMux()
 
 	baseRouter.Handle("/metrics", web.ChainHandlers(
-		logging.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
 			s.metricsRegistry,
 			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
@@ -46,11 +47,11 @@ func (s *server) setupRouting() {
 	router.Handle("/debug/vars", expvar.Handler())
 
 	router.Handle("/health", web.ChainHandlers(
-		logging.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(s.statusHandler),
 	))
 	router.Handle("/readiness", web.ChainHandlers(
-		logging.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(s.statusHandler),
 	))
 
@@ -141,7 +142,7 @@ func (s *server) setupRouting() {
 	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
-		logging.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, "debug api access"),
 		handlers.CompressHandler,
 		// todo: add recovery handler
 		web.NoCacheHeadersHandler,
