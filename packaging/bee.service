@@ -1,6 +1,6 @@
 [Unit]
 Description=Bee - Ethereum Swarm node
-Documentation=https://swarm-gateways.net/bzz:/docs.swarm.eth/
+Documentation=https://swarm-gateways.net/bzz:/docs.swarm.eth/docs/
 After=network.target
 
 [Service]
