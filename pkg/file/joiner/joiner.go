@@ -230,6 +230,17 @@ func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, su
 		return
 	}
 
+	select {
+	case <-j.ctx.Done():
+		if err := j.ctx.Err(); err != nil {
+			eg.Go(func() error {
+				return err
+			})
+		}
+		return
+	default:
+	}
+
 	var wg sync.WaitGroup
 
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
