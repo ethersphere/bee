@@ -233,7 +233,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 	default:
 	}
 
-	eg, _ := errgroup.WithContext(ctx)
+	eg, ectx := errgroup.WithContext(ctx)
 
 	var wg sync.WaitGroup
 
@@ -256,7 +256,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			eg.Go(func() error {
 				defer wg.Done()
 
-				ch, err := j.getter.Get(ctx, storage.ModeGetRequest, address)
+				ch, err := j.getter.Get(ectx, storage.ModeGetRequest, address)
 				if err != nil {
 					return err
 				}
@@ -264,7 +264,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 				chunkData := ch.Data()[8:]
 				subtrieSpan := int64(chunkToSpan(ch.Data()))
 
-				return j.processChunkAddresses(ctx, fn, chunkData, subtrieSpan)
+				return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan)
 			})
 		}(address, eg)
 
