@@ -138,22 +138,20 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 		}
 
 		if node != nil {
-			var stop bool
-
 			if node.Reference() != nil {
 				ref := swarm.NewAddress(node.Reference())
 
-				stop = fn(ref)
-				if stop {
-					return errStopIterator
+				err = fn(ref)
+				if err != nil {
+					return err
 				}
 			}
 
 			if node.IsValueType() && node.Entry() != nil {
 				entry := swarm.NewAddress(node.Entry())
-				stop = fn(entry)
-				if stop {
-					return errStopIterator
+				err = fn(entry)
+				if err != nil {
+					return err
 				}
 			}
 		}
@@ -163,10 +161,7 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 
 	err := m.trie.WalkNode(ctx, []byte{}, m.ls, walker)
 	if err != nil {
-		if !errors.Is(err, errStopIterator) {
-			return fmt.Errorf("manifest iterate addresses: %w", err)
-		}
-		// ignore error if interation stopped by caller
+		return fmt.Errorf("manifest iterate addresses: %w", err)
 	}
 
 	return nil

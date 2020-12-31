@@ -123,6 +123,7 @@ func TestPinBytesHandler(t *testing.T) {
 		)
 
 		hashes := []string{rootHash, data1Hash, data2Hash}
+		sort.Strings(hashes)
 
 		expectedResponse := api.ListPinnedChunksResponse{
 			Chunks: []api.PinnedChunk{},

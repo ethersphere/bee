@@ -213,13 +213,13 @@ func (j *joiner) Seek(offset int64, whence int) (int64, error) {
 
 func (j *joiner) IterateChunkAddresses(fn swarm.AddressIterFunc) error {
 	// report root address
-	stop := fn(j.addr)
-	if stop {
-		return nil
+	err := fn(j.addr)
+	if err != nil {
+		return err
 	}
 
-	var eg errgroup.Group
-	j.processChunkAddresses(fn, j.rootData, j.span, &eg)
+	eg, _ := errgroup.WithContext(j.ctx)
+	j.processChunkAddresses(fn, j.rootData, j.span, eg)
 
 	return eg.Wait()
 }
@@ -233,17 +233,14 @@ func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, su
 	var wg sync.WaitGroup
 
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
-		select {
-		case <-j.ctx.Done():
-			return
-		default:
-		}
 
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
 
-		stop := fn(address)
-		if stop {
-			break
+		if err := fn(address); err != nil {
+			eg.Go(func() error {
+				return err
+			})
+			return
 		}
 
 		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)

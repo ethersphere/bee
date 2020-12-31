@@ -6,16 +6,9 @@ package addresses
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-)
-
-var (
-	// ErrStopIterator is returned iterator function marks that iteration should
-	// be stopped.
-	ErrStopIterator = errors.New("stop iterator")
 )
 
 type addressesGetterStore struct {
@@ -35,10 +28,6 @@ func (s *addressesGetterStore) Get(ctx context.Context, mode storage.ModeGet, ad
 		return
 	}
 
-	stop := s.fn(ch.Address())
-	if stop {
-		return ch, ErrStopIterator
-	}
-
+	err = s.fn(ch.Address())
 	return
 }
