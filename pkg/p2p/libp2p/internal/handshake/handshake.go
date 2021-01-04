@@ -52,9 +52,6 @@ var (
 
 	// ErrWelcomeMessageLength is returned if the welcome message is longer than the maximum length
 	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
-
-	// ErrLoopbackDialup is returned when a node tries to connect to itself.
-	ErrLoopbackDialup = errors.New("loopback dialup")
 )
 
 // AdvertisableAddressResolver can Resolve a Multiaddress.
@@ -302,10 +299,6 @@ func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck
-	}
-
-	if bzzAddress.Overlay.Equal(s.overlay) {
-		return nil, ErrLoopbackDialup
 	}
 
 	return bzzAddress, nil
