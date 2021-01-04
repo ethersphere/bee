@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -128,19 +127,11 @@ func TestPinBytesHandler(t *testing.T) {
 
 		// NOTE: all this because we cannot rely on sort from response
 
-		var respBytes []byte
+		var resp api.ListPinnedChunksResponse
 
 		jsonhttptest.Request(t, client, http.MethodGet, pinChunksResource, http.StatusOK,
-			jsonhttptest.WithPutResponseBody(&respBytes),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
-
-		read := bytes.NewReader(respBytes)
-
-		var resp api.ListPinnedChunksResponse
-		err := json.NewDecoder(read).Decode(&resp)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		if len(hashes) != len(resp.Chunks) {
 			t.Fatalf("expected to find %d pinned chunks, got %d", len(hashes), len(resp.Chunks))
