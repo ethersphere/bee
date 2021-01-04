@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	nnLowWatermark  = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
-	maxConnAttempts = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	nnLowWatermark      = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	maxConnAttempts     = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	maxBootnodeAttempts = 3 // how many attempts to dial to bootnodes before giving up
 )
 
 var (
@@ -218,6 +219,7 @@ func (k *Kad) manage() {
 			}
 
 			if k.connectedPeers.Length() == 0 {
+				k.logger.Debug("kademlia has no connected peers, trying bootnodes")
 				k.connectBootnodes(ctx)
 			}
 
@@ -238,21 +240,28 @@ func (k *Kad) Start(ctx context.Context) error {
 }
 
 func (k *Kad) connectBootnodes(ctx context.Context) {
-	var count int
+	var attempts, connected int
+	var totalAttempts = maxBootnodeAttempts * len(k.bootnodes)
+
 	for _, addr := range k.bootnodes {
-		if count >= 3 {
+		if attempts >= totalAttempts || connected >= 3 {
 			return
 		}
 
 		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
 			k.logger.Tracef("connecting to bootnode %s", addr)
+			if attempts >= maxBootnodeAttempts {
+				return true, nil
+			}
 			bzzAddress, err := k.p2p.Connect(ctx, addr)
+			attempts++
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
 					k.logger.Debugf("connect fail %s: %v", addr, err)
 					k.logger.Warningf("connect to bootnode %s", addr)
 					return false, err
 				}
+				k.logger.Debugf("connect to bootnode fail: %v", err)
 				return false, nil
 			}
 
@@ -260,9 +269,9 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 				return false, err
 			}
 			k.logger.Tracef("connected to bootnode %s", addr)
-			count++
+			connected++
 			// connect to max 3 bootnodes
-			return count >= 3, nil
+			return connected >= 3, nil
 		}); err != nil {
 			k.logger.Debugf("discover fail %s: %v", addr, err)
 			k.logger.Warningf("discover to bootnode %s", addr)
