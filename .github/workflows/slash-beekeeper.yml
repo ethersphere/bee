@@ -73,6 +73,9 @@ jobs:
       - name: Test pin bytes
         id: pin-bytes-1
         run: ./beekeeper check pin-bytes --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Test pin remote chunks
+        id: pin-remote-1
+        run: ./beekeeper check pin-remote --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Destroy the cluster
         run: |
           ./beeinfra.sh destroy
@@ -122,6 +125,7 @@ jobs:
           if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
           if ${{ steps.pin-chunk-1.outcome=='failure' }}; then FAILED=pin-chunk-1; fi
           if ${{ steps.pin-bytes-1.outcome=='failure' }}; then FAILED=pin-bytes-1; fi
+          if ${{ steps.pin-remote-1.outcome=='failure' }}; then FAILED=pin-remote-1; fi
           if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
           if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
           if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi
