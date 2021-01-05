@@ -96,7 +96,7 @@ jobs:
         run: ./beekeeper check pin-remote --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Destroy the cluster
         run: |
-          ./beeinfra.sh destroy --k3s
+          ./beeinfra.sh uninstall
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
           ./beeinfra.sh prepare --geth --clef --k3s
@@ -142,17 +142,17 @@ jobs:
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
           docker push ethersphere/bee:latest
-      # - name: Set IMAGE_DIGEST variable
-      #   if: success()
-      #   run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
-      # - name: Trigger ArgoCD
-      #   if: success()
-      #   uses: peter-evans/repository-dispatch@v1
-      #   with:
-      #     token: ${{ secrets.REPO_GHA_PAT }}
-      #     repository: ethersphere/bee-argo
-      #     event-type: trigger-argo
-      #     client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
+      - name: Set IMAGE_DIGEST variable
+        if: github.ref == 'refs/heads/master' && success()
+        run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
+      - name: Trigger ArgoCD
+        if: github.ref == 'refs/heads/master' && success()
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.REPO_GHA_PAT }}
+          repository: ethersphere/bee-argo
+          event-type: trigger-argo
+          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
       - name: Debug workflow if failed
         if: failure()
         run: |
