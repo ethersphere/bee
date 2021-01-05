@@ -189,8 +189,20 @@ func requestEncrypt(r *http.Request) bool {
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			span, _, ctx := s.Tracer.StartSpanFromContext(r.Context(), spanName, s.Logger)
+			ctx, err := s.Tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
+			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
+				s.Logger.Debugf("span '%s': extract tracing context: %v", spanName, err)
+				// ignore
+			}
+
+			span, _, ctx := s.Tracer.StartSpanFromContext(ctx, spanName, s.Logger)
 			defer span.Finish()
+
+			err = s.Tracer.AddContextHTTPHeader(ctx, r.Header)
+			if err != nil {
+				s.Logger.Debugf("span '%s': inject tracing context: %v", spanName, err)
+				// ignore
+			}
 
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
