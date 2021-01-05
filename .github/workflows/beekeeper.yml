@@ -57,7 +57,7 @@ jobs:
           ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s
       - name: Test pingpong
         id: pingpong-1
-        run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+        run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test fullconnectivity
         id: fullconnectivity-1
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
@@ -109,7 +109,7 @@ jobs:
           ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s
       - name: Test pingpong
         id: pingpong-2
-        run: ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+        run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test fullconnectivity
         id: fullconnectivity-2
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
@@ -157,7 +157,6 @@ jobs:
         if: failure()
         run: |
           export FAILED='no-test'
-          if ${{ steps.pingpong-1.outcome=='failure' }}; then FAILED=pingpong-1; fi
           if ${{ steps.fullconnectivity-1.outcome=='failure' }}; then FAILED=fullconnectivity-1; fi
           if ${{ steps.settlements-1.outcome=='failure' }}; then FAILED=settlements-1; fi
           if ${{ steps.balances-1.outcome=='failure' }}; then FAILED=balances-1; fi
@@ -169,7 +168,6 @@ jobs:
           if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
           if ${{ steps.pin-chunk-1.outcome=='failure' }}; then FAILED=pin-chunk-1; fi
           if ${{ steps.pin-bytes-1.outcome=='failure' }}; then FAILED=pin-bytes-1; fi
-          if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
           if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
           if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi
           if ${{ steps.balances-2.outcome=='failure' }}; then FAILED=balances-2; fi
