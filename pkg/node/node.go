@@ -338,8 +338,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
-	traversalService := traversal.NewService(storer)
-
 	var ns storage.Storer
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
@@ -348,6 +346,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	} else {
 		ns = netstore.New(storer, nil, retrieve, logger)
 	}
+
+	traversalService := traversal.NewService(ns)
 
 	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 10), tracer)
 

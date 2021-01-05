@@ -281,6 +281,11 @@ func (s *traversalService) checkIsFile(
 			return
 		}
 
+		// address sizes must match
+		if len(reference.Bytes()) != len(e.Reference().Bytes()) {
+			return
+		}
+
 		// NOTE: any bytes will unmarshall to addresses; we need to check metadata
 
 		// read metadata

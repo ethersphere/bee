@@ -73,7 +73,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	binIDs := make(map[uint8]uint64)
 
 	switch mode {
-	case storage.ModePutRequest:
+	case storage.ModePutRequest, storage.ModePutRequestPin:
 		for i, ch := range chs {
 			if containsChunk(ch.Address(), chs[:i]...) {
 				exist[i] = true
@@ -85,6 +85,13 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			}
 			exist[i] = exists
 			gcSizeChange += c
+
+			if mode == storage.ModePutRequestPin {
+				err = db.setPin(batch, ch.Address())
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 
 	case storage.ModePutUpload, storage.ModePutUploadPin:
