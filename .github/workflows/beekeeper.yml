@@ -25,6 +25,11 @@ jobs:
           path: |
             /tmp/k3s-v1.19.5+k3s2
           key: k3s-v1.19.5+k3s2
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Install bee-local
         run: |
           # sudo mv $(command -v brew){,_disable}
@@ -126,16 +131,17 @@ jobs:
       # - name: Test chunkrepair
       #   id: chunkrepair-2
       #   run: ./beekeeper check chunkrepair --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Retag Docker image and push for cache
+        if: success()
+        run: |
+          docker tag registry.localhost:5000/ethersphere/bee:latest ghcr.io/ethersphere/bee
+          docker push ghcr.io/ethersphere/bee
       - name: Retag Docker image and push
         if: github.ref == 'refs/heads/master' && success()
         run: |
-          docker tag registry.localhost:5000/ethersphere/bee:build ghcr.io/ethersphere/bee:build
-          docker tag registry.localhost:5000/ethersphere/bee:latest ghcr.io/ethersphere/bee:runtime
-          docker push ghcr.io/ethersphere/bee:build
-          docker push ghcr.io/ethersphere/bee:runtime
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          # docker push ethersphere/bee:latest
+          docker push ethersphere/bee:latest
       # - name: Set IMAGE_DIGEST variable
       #   if: success()
       #   run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
