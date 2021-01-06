@@ -8,7 +8,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -279,12 +278,12 @@ Disallow: /`),
 			// tar all the test case files
 			tarReader := tarFiles(t, tc.files)
 
-			var respBytes []byte
+			var resp api.FileUploadResponse
 
 			options := []jsonhttptest.Option{
 				jsonhttptest.WithRequestBody(tarReader),
 				jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
-				jsonhttptest.WithPutResponseBody(&respBytes),
+				jsonhttptest.WithUnmarshalJSONResponse(&resp),
 			}
 			if tc.indexFilenameOption != nil {
 				options = append(options, tc.indexFilenameOption)
@@ -298,15 +297,6 @@ Disallow: /`),
 
 			// verify directory tar upload response
 			jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
-
-			read := bytes.NewReader(respBytes)
-
-			// get the reference
-			var resp api.FileUploadResponse
-			err := json.NewDecoder(read).Decode(&resp)
-			if err != nil {
-				t.Fatal(err)
-			}
 
 			if resp.Reference.String() == "" {
 				t.Fatalf("expected file reference, did not got any")

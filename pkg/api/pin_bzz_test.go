@@ -5,8 +5,6 @@
 package api_test
 
 import (
-	"bytes"
-	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -71,19 +69,12 @@ func TestPinBzzHandler(t *testing.T) {
 
 		expectedChunkCount := 7
 
-		var respBytes []byte
+		// get the reference as everytime it will change because of random encryption key
+		var resp api.ListPinnedChunksResponse
 
 		jsonhttptest.Request(t, client, http.MethodGet, pinChunksResource, http.StatusOK,
-			jsonhttptest.WithPutResponseBody(&respBytes),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
-
-		read := bytes.NewReader(respBytes)
-
-		var resp api.ListPinnedChunksResponse
-		err := json.NewDecoder(read).Decode(&resp)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		if expectedChunkCount != len(resp.Chunks) {
 			t.Fatalf("expected to find %d pinned chunks, got %d", expectedChunkCount, len(resp.Chunks))
