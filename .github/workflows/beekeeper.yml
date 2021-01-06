@@ -75,12 +75,12 @@ jobs:
       # - name: Test chunkrepair
       #   id: chunkrepair-1
       #   run: ./beekeeper check chunkrepair --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test manifest
-        id: manifest-1
-        run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test gc
         id: gc-chunk-1
         run: ./beekeeper check gc --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Test manifest
+        id: manifest-1
+        run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pin chunk
         id: pin-chunk-1
         run: ./beekeeper check pin-chunk --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
