@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethersphere/bee"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/crypto/clef"
 	"github.com/ethersphere/bee/pkg/keystore"
@@ -90,22 +91,23 @@ func (c *command) initStartCmd() (err error) {
 				}
 			}
 
-			bee := `
+			beeASCII := `
 Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
-                \     /                
-            \    o ^ o    /            
-              \ (     ) /              
-   ____________(%%%%%%%)____________   
-  (     /   /  )%%%%%%%(  \   \     )  
-  (___/___/__/           \__\___\___)  
-     (     /  /(%%%%%%%)\  \     )     
-      (__/___/ (%%%%%%%) \___\__)      
-              /(       )\              
-            /   (%%%%%)   \            
-                 (%%%)                 
+                \     /
+            \    o ^ o    /
+              \ (     ) /
+   ____________(%%%%%%%)____________
+  (     /   /  )%%%%%%%(  \   \     )
+  (___/___/__/           \__\___\___)
+     (     /  /(%%%%%%%)\  \     )
+      (__/___/ (%%%%%%%) \___\__)
+              /(       )\
+            /   (%%%%%)   \
+                 (%%%)
                    !                   `
 
-			fmt.Println(bee)
+			fmt.Println(beeASCII)
+			logger.Debugf("version: %v", bee.Version)
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
