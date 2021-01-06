@@ -22,12 +22,11 @@ func NewGetter(getter storage.Getter, fn swarm.AddressIterFunc) storage.Getter {
 	return &addressesGetterStore{getter, fn}
 }
 
-func (s *addressesGetterStore) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
-	ch, err = s.getter.Get(ctx, mode, addr)
+func (s *addressesGetterStore) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (swarm.Chunk, error) {
+	ch, err := s.getter.Get(ctx, mode, addr)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	err = s.fn(ch.Address())
-	return
+	return ch, s.fn(ch.Address())
 }
