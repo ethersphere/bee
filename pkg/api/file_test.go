@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -281,7 +280,7 @@ func TestRangeRequests(t *testing.T) {
 			uploadEndpoint:   "/dirs",
 			downloadEndpoint: "/bzz",
 			filepath:         "/ipsum/lorem.txt",
-			reference:        "",
+			reference:        "96c68b99304b0868189e5c1d6c10be1984d93e88aab0384907f6b8814f60150b",
 			reader: tarFiles(t, []f{
 				{
 					data:      data,
@@ -347,32 +346,10 @@ func TestRangeRequests(t *testing.T) {
 
 			uploadReference := upload.reference
 
-			var respBytes []byte
-
 			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusOK,
 				jsonhttptest.WithRequestBody(upload.reader),
 				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
-				jsonhttptest.WithPutResponseBody(&respBytes),
 			)
-
-			if uploadReference == "" {
-				// NOTE: reference will be different each time, due to manifest randomness
-
-				read := bytes.NewReader(respBytes)
-
-				// get the reference as everytime it will change because of random encryption key
-				var resp api.FileUploadResponse
-				err := json.NewDecoder(read).Decode(&resp)
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				if resp.Reference.String() == "" {
-					t.Fatalf("expected file reference, did not got any")
-				}
-
-				uploadReference = resp.Reference.String()
-			}
 
 			for _, tc := range ranges {
 				t.Run(tc.name, func(t *testing.T) {
