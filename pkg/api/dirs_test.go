@@ -92,6 +92,8 @@ func TestDirs(t *testing.T) {
 	// valid tars
 	for _, tc := range []struct {
 		name                string
+		expectedReference   swarm.Address
+		encrypt             bool
 		wantIndexFilename   string
 		wantErrorFilename   string
 		indexFilenameOption jsonhttptest.Option
@@ -99,7 +101,8 @@ func TestDirs(t *testing.T) {
 		files               []f // files in dir for test case
 	}{
 		{
-			name: "non-nested files without extension",
+			name:              "non-nested files without extension",
+			expectedReference: swarm.MustParseHexAddress("126140bb0a33d62c4efb0523db2c26be849fcf458504618de785e2a219bad374"),
 			files: []f{
 				{
 					data:      []byte("first file data"),
@@ -122,7 +125,8 @@ func TestDirs(t *testing.T) {
 			},
 		},
 		{
-			name: "nested files with extension",
+			name:              "nested files with extension",
+			expectedReference: swarm.MustParseHexAddress("cad4b3847bd59532d9e73623d67c52e0c8d4e017d308bbaecb54f2866a91769d"),
 			files: []f{
 				{
 					data:      []byte("robots text"),
@@ -154,7 +158,8 @@ func TestDirs(t *testing.T) {
 			},
 		},
 		{
-			name: "no index filename",
+			name:              "no index filename",
+			expectedReference: swarm.MustParseHexAddress("a85aaea6a34a5c7127a3546196f2111f866fe369c6d6562ed5d3313a99388c03"),
 			files: []f{
 				{
 					data:      []byte("<h1>Swarm"),
@@ -169,6 +174,7 @@ func TestDirs(t *testing.T) {
 		},
 		{
 			name:                "explicit index filename",
+			expectedReference:   swarm.MustParseHexAddress("7d41402220f8e397ddf74d0cf4ac2055e753102bde0d622c45b03cea2b28b023"),
 			wantIndexFilename:   "index.html",
 			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
 			files: []f{
@@ -185,6 +191,7 @@ func TestDirs(t *testing.T) {
 		},
 		{
 			name:                "nested index filename",
+			expectedReference:   swarm.MustParseHexAddress("45249cf9caad842b31b29b831a1ff12aa2b711e7c282fa7a5f8c0fb544143421"),
 			wantIndexFilename:   "index.html",
 			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
 			files: []f{
@@ -201,6 +208,7 @@ func TestDirs(t *testing.T) {
 		},
 		{
 			name:                "explicit index and error filename",
+			expectedReference:   swarm.MustParseHexAddress("2046a4f758e2c0579ab923206a13fb041cec0925a6396f4f772c7ce859b8ca42"),
 			wantIndexFilename:   "index.html",
 			wantErrorFilename:   "error.html",
 			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
@@ -227,7 +235,8 @@ func TestDirs(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid archive paths",
+			name:              "invalid archive paths",
+			expectedReference: swarm.MustParseHexAddress("6e6adb1ce936990cf1b7ecf8f01a8e3e8f939375b9bddb3d666151e0bdc08d4e"),
 			files: []f{
 				{
 					data:      []byte("<h1>Swarm"),
@@ -253,6 +262,18 @@ Disallow: /`),
 				},
 			},
 		},
+		{
+			name:    "encrypted",
+			encrypt: true,
+			files: []f{
+				{
+					data:     []byte("<h1>Swarm"),
+					name:     "index.html",
+					dir:      "",
+					filePath: "./index.html",
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// tar all the test case files
@@ -271,23 +292,31 @@ Disallow: /`),
 			if tc.errorFilenameOption != nil {
 				options = append(options, tc.errorFilenameOption)
 			}
+			if tc.encrypt {
+				options = append(options, jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "true"))
+			}
 
 			// verify directory tar upload response
 			jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
 
 			read := bytes.NewReader(respBytes)
 
-			// get the reference as everytime it will change because of random encryption key
+			// get the reference
 			var resp api.FileUploadResponse
 			err := json.NewDecoder(read).Decode(&resp)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			// NOTE: reference will be different each time, due to manifest randomness
-
 			if resp.Reference.String() == "" {
 				t.Fatalf("expected file reference, did not got any")
+			}
+
+			// NOTE: reference will be different each time when encryption is enabled
+			if !tc.encrypt {
+				if !resp.Reference.Equal(tc.expectedReference) {
+					t.Fatalf("expected root reference to match %s, got %s", tc.expectedReference, resp.Reference)
+				}
 			}
 
 			// read manifest metadata
@@ -327,8 +356,10 @@ Disallow: /`),
 
 				fileReference := entry.Reference()
 
-				if !bytes.Equal(file.reference.Bytes(), fileReference.Bytes()) {
-					t.Fatalf("expected file reference to match %s, got %s", file.reference, fileReference)
+				if !tc.encrypt {
+					if !bytes.Equal(file.reference.Bytes(), fileReference.Bytes()) {
+						t.Fatalf("expected file reference to match %s, got %s", file.reference, fileReference)
+					}
 				}
 
 				jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(fileReference.String()), http.StatusOK,
