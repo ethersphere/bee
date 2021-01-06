@@ -346,12 +346,9 @@ func TestRangeRequests(t *testing.T) {
 
 			uploadReference := upload.reference
 
-			var respBytes []byte
-
 			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusOK,
 				jsonhttptest.WithRequestBody(upload.reader),
 				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
-				jsonhttptest.WithPutResponseBody(&respBytes),
 			)
 
 			for _, tc := range ranges {
