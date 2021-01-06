@@ -265,14 +265,6 @@ func TestTraversalManifest(t *testing.T) {
 		return traversalService.TraverseManifestAddresses
 	}
 
-	var (
-		obfuscationKey   = make([]byte, 32)
-		obfuscationKeyFn = func(p []byte) (n int, err error) {
-			n = copy(p, obfuscationKey)
-			return
-		}
-	)
-
 	testCases := []struct {
 		manifestType        string
 		files               []file
@@ -470,7 +462,7 @@ func TestTraversalManifest(t *testing.T) {
 					t.Fatal(err)
 				}
 			case manifest.ManifestMantarayContentType:
-				dirManifest, err = manifest.NewMantarayManifestWithObfuscationKeyFn(ls, obfuscationKeyFn)
+				dirManifest, err = manifest.NewMantarayManifest(ls, false)
 				if err != nil {
 					t.Fatal(err)
 				}

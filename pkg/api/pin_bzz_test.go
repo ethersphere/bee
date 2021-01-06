@@ -20,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/ethersphere/manifest/mantaray"
 )
 
 func TestPinBzzHandler(t *testing.T) {
@@ -40,15 +39,6 @@ func TestPinBzzHandler(t *testing.T) {
 			Tags:      tags.NewTags(mockStatestore, logger),
 		})
 	)
-
-	var (
-		obfuscationKey   = make([]byte, 32)
-		obfuscationKeyFn = func(p []byte) (n int, err error) {
-			n = copy(p, obfuscationKey)
-			return
-		}
-	)
-	mantaray.SetObfuscationKeyFn(obfuscationKeyFn)
 
 	t.Run("pin-bzz-1", func(t *testing.T) {
 		files := []f{
@@ -89,7 +79,6 @@ func TestPinBzzHandler(t *testing.T) {
 
 		read := bytes.NewReader(respBytes)
 
-		// get the reference as everytime it will change because of random encryption key
 		var resp api.ListPinnedChunksResponse
 		err := json.NewDecoder(read).Decode(&resp)
 		if err != nil {

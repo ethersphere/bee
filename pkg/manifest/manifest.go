@@ -59,20 +59,24 @@ type Entry interface {
 }
 
 // NewDefaultManifest creates a new manifest with default type.
-func NewDefaultManifest(ls file.LoadSaver) (Interface, error) {
-	return NewManifest(DefaultManifestType, ls)
+func NewDefaultManifest(
+	ls file.LoadSaver,
+	encrypted bool,
+) (Interface, error) {
+	return NewManifest(DefaultManifestType, ls, encrypted)
 }
 
 // NewManifest creates a new manifest.
 func NewManifest(
 	manifestType string,
 	ls file.LoadSaver,
+	encrypted bool,
 ) (Interface, error) {
 	switch manifestType {
 	case ManifestSimpleContentType:
 		return NewSimpleManifest(ls)
 	case ManifestMantarayContentType:
-		return NewMantarayManifest(ls)
+		return NewMantarayManifest(ls, encrypted)
 	default:
 		return nil, ErrInvalidManifestType
 	}

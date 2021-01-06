@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -306,32 +305,23 @@ func TestTags(t *testing.T) {
 	t.Run("dir tags", func(t *testing.T) {
 		// upload a dir without supplying tag
 		tarReader := tarFiles(t, []f{{
-			data: []byte("some data"),
+			data: []byte("some dir data"),
 			name: "binary-file",
 		}})
-
-		var respBytes []byte
+		expectedHash := swarm.MustParseHexAddress("3dc643abeb3db60a4dfb72008b577dd9a573abaa74c6afe37a75c63ceea829f6")
+		expectedResponse := api.FileUploadResponse{Reference: expectedHash}
 
 		respHeaders := jsonhttptest.Request(t, client, http.MethodPost, dirResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(tarReader),
+			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
-			jsonhttptest.WithPutResponseBody(&respBytes),
 		)
-
-		read := bytes.NewReader(respBytes)
-
-		// get the reference as everytime it will change because of random encryption key
-		var resp api.FileUploadResponse
-		err := json.NewDecoder(read).Decode(&resp)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagUidHeader))
 		if err != nil {
 			t.Fatal(err)
 		}
-		tagValueTest(t, uint32(tagId), 7, 7, 1, 0, 0, 7, resp.Reference, client)
+		tagValueTest(t, uint32(tagId), 7, 7, 0, 0, 0, 7, expectedHash, client)
 	})
 
 	t.Run("bytes tags", func(t *testing.T) {
