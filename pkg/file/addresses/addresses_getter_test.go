@@ -52,11 +52,12 @@ func TestAddressesGetterIterateChunkAddresses(t *testing.T) {
 	foundAddresses := make(map[string]struct{})
 	var foundAddressesMu sync.Mutex
 
-	addressIterFunc := func(addr swarm.Address) (stop bool) {
+	addressIterFunc := func(addr swarm.Address) error {
 		foundAddressesMu.Lock()
+		defer foundAddressesMu.Unlock()
+
 		foundAddresses[addr.String()] = struct{}{}
-		foundAddressesMu.Unlock()
-		return false
+		return nil
 	}
 
 	addressesGetter := addresses.NewGetter(store, addressIterFunc)

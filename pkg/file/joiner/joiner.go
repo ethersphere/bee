@@ -213,37 +213,36 @@ func (j *joiner) Seek(offset int64, whence int) (int64, error) {
 
 func (j *joiner) IterateChunkAddresses(fn swarm.AddressIterFunc) error {
 	// report root address
-	stop := fn(j.addr)
-	if stop {
+	err := fn(j.addr)
+	if err != nil {
+		return err
+	}
+
+	return j.processChunkAddresses(j.ctx, fn, j.rootData, j.span)
+}
+
+func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIterFunc, data []byte, subTrieSize int64) error {
+	// we are at a leaf data chunk
+	if subTrieSize <= int64(len(data)) {
 		return nil
 	}
 
-	var eg errgroup.Group
-	j.processChunkAddresses(fn, j.rootData, j.span, &eg)
-
-	return eg.Wait()
-}
-
-func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, subTrieSize int64, eg *errgroup.Group) {
-	// we are at a leaf data chunk
-	if subTrieSize <= int64(len(data)) {
-		return
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
+
+	eg, ectx := errgroup.WithContext(ctx)
 
 	var wg sync.WaitGroup
 
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
-		select {
-		case <-j.ctx.Done():
-			return
-		default:
-		}
 
 		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
 
-		stop := fn(address)
-		if stop {
-			break
+		if err := fn(address); err != nil {
+			return err
 		}
 
 		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
@@ -257,20 +256,22 @@ func (j *joiner) processChunkAddresses(fn swarm.AddressIterFunc, data []byte, su
 			eg.Go(func() error {
 				defer wg.Done()
 
-				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
+				ch, err := j.getter.Get(ectx, storage.ModeGetRequest, address)
 				if err != nil {
 					return err
 				}
 
 				chunkData := ch.Data()[8:]
 				subtrieSpan := int64(chunkToSpan(ch.Data()))
-				j.processChunkAddresses(fn, chunkData, subtrieSpan, eg)
-				return nil
+
+				return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan)
 			})
 		}(address, eg)
 
 		wg.Wait()
 	}
+
+	return eg.Wait()
 }
 
 func (j *joiner) Size() int64 {

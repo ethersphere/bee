@@ -319,8 +319,8 @@ func (s *server) updatePinCount(ctx context.Context, reference swarm.Address, de
 	return nil
 }
 
-func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) (stop bool) {
-	return func(address swarm.Address) (stop bool) {
+func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) error {
+	return func(address swarm.Address) error {
 		// NOTE: stop pinning on first error
 
 		err := s.Storer.Set(ctx, storage.ModeSetPin, address)
@@ -330,31 +330,31 @@ func (s *server) pinChunkAddressFn(ctx context.Context, reference swarm.Address)
 				ch, err := s.Storer.Get(ctx, storage.ModeGetRequest, address)
 				if err != nil {
 					s.Logger.Debugf("pin traversal: storer get: for reference %s, address %s: %w", reference, address, err)
-					return true
+					return err
 				}
 
 				_, err = s.Storer.Put(ctx, storage.ModePutRequestPin, ch)
 				if err != nil {
 					s.Logger.Debugf("pin traversal: storer put pin: for reference %s, address %s: %w", reference, address, err)
-					return true
+					return err
 				}
 
-				return false
-			} else {
-				s.Logger.Debugf("pin traversal: storer set pin: for reference %s, address %s: %w", reference, address, err)
-				return true
+				return nil
 			}
+
+			s.Logger.Debugf("pin traversal: storer set pin: for reference %s, address %s: %w", reference, address, err)
+			return err
 		}
 
-		return false
+		return nil
 	}
 }
 
-func (s *server) unpinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) (stop bool) {
-	return func(address swarm.Address) (stop bool) {
+func (s *server) unpinChunkAddressFn(ctx context.Context, reference swarm.Address) func(address swarm.Address) error {
+	return func(address swarm.Address) error {
 		_, err := s.Storer.PinCounter(address)
 		if err != nil {
-			return false
+			return err
 		}
 
 		err = s.Storer.Set(ctx, storage.ModeSetUnpin, address)
@@ -363,6 +363,6 @@ func (s *server) unpinChunkAddressFn(ctx context.Context, reference swarm.Addres
 			// continue un-pinning all chunks
 		}
 
-		return false
+		return nil
 	}
 }

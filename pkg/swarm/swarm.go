@@ -109,8 +109,7 @@ func (a Address) MarshalJSON() ([]byte, error) {
 var ZeroAddress = NewAddress(nil)
 
 // AddressIterFunc is a callback on every address that is found by the iterator.
-// By returning a true for stop variable, iteration should stop.
-type AddressIterFunc func(address Address) (stop bool)
+type AddressIterFunc func(address Address) error
 
 type Chunk interface {
 	Address() Address
