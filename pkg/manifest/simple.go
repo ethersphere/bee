@@ -108,9 +108,9 @@ func (m *simpleManifest) IterateAddresses(ctx context.Context, fn swarm.AddressI
 	}
 
 	// NOTE: making it behave same for all manifest implementation
-	stop := fn(m.reference)
-	if stop {
-		return nil
+	err := fn(m.reference)
+	if err != nil {
+		return fmt.Errorf("manifest iterate addresses: %w", err)
 	}
 
 	walker := func(path string, entry simple.Entry, err error) error {
@@ -123,20 +123,12 @@ func (m *simpleManifest) IterateAddresses(ctx context.Context, fn swarm.AddressI
 			return err
 		}
 
-		stop := fn(ref)
-		if stop {
-			return errStopIterator
-		}
-
-		return nil
+		return fn(ref)
 	}
 
-	err := m.manifest.WalkEntry("", walker)
+	err = m.manifest.WalkEntry("", walker)
 	if err != nil {
-		if !errors.Is(err, errStopIterator) {
-			return fmt.Errorf("manifest iterate addresses: %w", err)
-		}
-		// ignore error if interation stopped by caller
+		return fmt.Errorf("manifest iterate addresses: %w", err)
 	}
 
 	return nil

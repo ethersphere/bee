@@ -27,10 +27,6 @@ var (
 	ErrMissingReference = errors.New("manifest: missing reference")
 )
 
-var (
-	errStopIterator = errors.New("manifest: stop iterator")
-)
-
 // Interface for operations with manifest.
 type Interface interface {
 	// Type returns manifest implementation type information

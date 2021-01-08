@@ -123,21 +123,33 @@ func TestPinBytesHandler(t *testing.T) {
 		)
 
 		hashes := []string{rootHash, data1Hash, data2Hash}
+		sort.Strings(hashes)
 
-		expectedResponse := api.ListPinnedChunksResponse{
-			Chunks: []api.PinnedChunk{},
-		}
+		// NOTE: all this because we cannot rely on sort from response
 
-		for _, h := range hashes {
-			expectedResponse.Chunks = append(expectedResponse.Chunks, api.PinnedChunk{
-				Address:    swarm.MustParseHexAddress(h),
-				PinCounter: 1,
-			})
-		}
+		var resp api.ListPinnedChunksResponse
 
 		jsonhttptest.Request(t, client, http.MethodGet, pinChunksResource, http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
+
+		if len(hashes) != len(resp.Chunks) {
+			t.Fatalf("expected to find %d pinned chunks, got %d", len(hashes), len(resp.Chunks))
+		}
+
+		respChunksHashes := make([]string, 0)
+
+		for _, rc := range resp.Chunks {
+			respChunksHashes = append(respChunksHashes, rc.Address.String())
+		}
+
+		sort.Strings(respChunksHashes)
+
+		for i, h := range hashes {
+			if h != respChunksHashes[i] {
+				t.Fatalf("expected to find %s address, found %s", h, respChunksHashes[i])
+			}
+		}
 	})
 
 }
