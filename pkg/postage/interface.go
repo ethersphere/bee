@@ -29,8 +29,7 @@ type Storer interface {
 // Listener provides a blockchain event iterator
 type Listener interface {
 	// - it starts at block from
-	// - it terminates  with no error when quit channel is closed
 	// - if the update function returns an error, the call returns with that error
 	// TODO: remove from, do not leak blockchain internals
-	Listen(from uint64, updater EventUpdater, quit chan struct{}) error
+	Listen(from uint64, updater EventUpdater) error
 }
