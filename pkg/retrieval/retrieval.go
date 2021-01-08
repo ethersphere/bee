@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -83,6 +84,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	maxPeers             = 5
 	retrieveChunkTimeout = 10 * time.Second
+
+	retrieveRetryIntervalDuration = 5 * time.Second
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
@@ -95,34 +98,73 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 		defer span.Finish()
 
-		var skipPeers []swarm.Address
+		sps := newSkipPeersService()
 
-	LOOP:
-		for i := 0; i < maxPeers; i++ {
-			select {
-			case <-ctx.Done():
-				break LOOP
-			default:
+		ticker := time.NewTicker(retrieveRetryIntervalDuration)
+
+		var (
+			peerAttempt int
+			wgChan      sync.WaitGroup
+		)
+
+		doneC := make(chan swarm.Chunk)
+		errC := make(chan error)
+
+		defer func() {
+			wgChan.Wait()
+
+			close(doneC)
+			close(errC)
+		}()
+
+		for {
+			if peerAttempt < maxPeers {
+				peerAttempt++
+
+				s.metrics.PeerRequestCounter.Inc()
+
+				wgChan.Add(1)
+
+				go func() {
+					defer wgChan.Done()
+
+					chunk, peer, err := s.retrieveChunk(ctx, addr, sps)
+					if err != nil {
+						if peer.IsZero() {
+							select {
+							case errC <- err:
+							default:
+							}
+							return
+						}
+
+						logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
+						return
+					}
+
+					select {
+					case doneC <- chunk:
+					default:
+					}
+				}()
+			} else {
+				ticker.Stop()
 			}
 
-			s.metrics.PeerRequestCounter.Inc()
-
-			var peer swarm.Address
-
-			chunk, peer, err := s.retrieveChunk(ctx, addr, skipPeers)
-			if err != nil {
-				if peer.IsZero() {
+			select {
+			case <-ticker.C:
+				break
+			case chunk := <-doneC:
+				return chunk, nil
+			case err := <-errC:
+				if err != nil {
 					return nil, err
 				}
-				logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
-				skipPeers = append(skipPeers, peer)
-				continue
+			case <-ctx.Done():
+				logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
+				return nil, storage.ErrNotFound
 			}
-			logger.Tracef("retrieval: got chunk %s from peer %s", addr, peer)
-			return chunk, nil
 		}
-		logger.Tracef("retrieval: failed to get chunk %s: reached max peers of %v", addr, maxPeers)
-		return nil, storage.ErrNotFound
 	})
 	if err != nil {
 		return nil, err
@@ -131,7 +173,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (chunk swarm.Chunk, peer swarm.Address, err error) {
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sps *skipPeersService) (chunk swarm.Chunk, peer swarm.Address, err error) {
 	startTimer := time.Now()
 
 	v := ctx.Value(requestSourceContextKey{})
@@ -143,7 +185,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if src, ok := v.(string); ok {
 		sourcePeerAddr, err = swarm.ParseHexAddress(src)
 		if err == nil {
-			skipPeers = append(skipPeers, sourcePeerAddr)
+			sps.AddAddressToSkip(sourcePeerAddr)
 		}
 		// do not allow upstream requests if the request was forwarded to this node
 		// to avoid the request loops
@@ -153,7 +195,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 
-	peer, err = s.closestPeer(addr, skipPeers, allowUpstream)
+	peer, err = s.closestPeer(addr, sps.Addresses(), allowUpstream)
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
 	}
@@ -171,6 +213,8 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 			WithLabelValues(strconv.Itoa(poGain)).
 			Inc()
 	}
+
+	sps.AddAddressToSkip(peer)
 
 	// compute the price we pay for this chunk and reserve it for the rest of this function
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
