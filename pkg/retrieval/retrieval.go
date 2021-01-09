@@ -119,9 +119,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 			if peerAttempt != maxPeers {
 				wgChan.Add(peerAttempt - maxPeers)
 			}
-		}()
-
-		go func() {
 			wgChan.Wait()
 
 			close(resultC)
