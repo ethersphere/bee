@@ -33,11 +33,11 @@ func (s *stream) Headers() p2p.Headers {
 
 func (s *stream) FullClose() error {
 	if err := s.CloseWrite(); err != nil {
-		s.Reset()
+		_ = s.Reset()
 		return err
 	}
 	// So we don't wait forever
-	s.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = s.SetDeadline(time.Now().Add(5 * time.Second))
 
 	// We *have* to observe the EOF. Otherwise, we leak the stream.
 	// Now, technically, we should do this *before*
@@ -47,11 +47,11 @@ func (s *stream) FullClose() error {
 	// protocol the other side is speaking.
 	n, err := s.Read([]byte{0})
 	if n > 0 || err == nil {
-		s.Reset()
+		_ = s.Reset()
 		return errors.New("expected eof") //ErrExpectedEOF
 	}
 	if err != io.EOF {
-		s.Reset()
+		_ = s.Reset()
 		return err
 	}
 	return nil
