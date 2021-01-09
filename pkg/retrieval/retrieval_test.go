@@ -9,12 +9,15 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -222,6 +225,80 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
 	})
+}
+
+func TestRetrievePreemptiveRetry(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	chunk := testingc.FixtureChunk("0025")
+
+	price := uint64(1)
+	pricerMock := accountingmock.NewPricer(price, price)
+
+	clientAddress := swarm.MustParseHexAddress("1010")
+
+	serverAddress1 := swarm.MustParseHexAddress("0001")
+	serverAddress2 := swarm.MustParseHexAddress("0002")
+	peers := []swarm.Address{
+		serverAddress1,
+		serverAddress2,
+	}
+
+	serverStorer1 := storemock.NewStorer()
+	serverStorer2 := storemock.NewStorer()
+
+	// we put chunk to server 2
+	_, err := serverStorer2.Put(context.Background(), storage.ModePutUpload, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server1 := retrieval.New(serverAddress1, serverStorer1, nil, nil, logger, accountingmock.NewAccounting(), pricerMock, nil)
+	server2 := retrieval.New(serverAddress2, serverStorer2, nil, nil, logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			server1.Protocol(),
+			server2.Protocol(),
+		),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+					// NOTE: return error for peer1
+					if serverAddress1.Equal(peer.Address) {
+						return fmt.Errorf("peer not reachable: %s", peer.Address.String())
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+		),
+	)
+
+	peerID := 0
+	clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+		_, _, _ = f(peers[peerID], 0)
+		// circulate suggested peers
+		peerID++
+		if peerID >= len(peers) {
+			peerID = 0
+		}
+		return nil
+	}}
+	client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+	got, err := client.RetrieveChunk(context.Background(), chunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(got.Data(), chunk.Data()) {
+		t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+	}
 }
 
 type mockPeerSuggester struct {
