@@ -36,7 +36,6 @@ func TestHeaders(t *testing.T) {
 			t.Fatalf("got peer %v, want %v", p.Address, overlay2)
 		}
 		gotHeaders = stream.Headers()
-		fmt.Println("prot")
 		close(handled)
 		return nil
 	})); err != nil {
