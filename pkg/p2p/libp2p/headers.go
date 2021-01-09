@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 )
 
-var sendHeadersTimeout = 10 * time.Second
+var sendHeadersTimeout = 1 * time.Second
 
 func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
@@ -23,13 +23,14 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 	defer cancel()
 
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headers)); err != nil {
-		return fmt.Errorf("write message: %w", err)
+		return fmt.Errorf("send write message: %w", err)
 	}
-
+	fmt.Println("wrote headers")
 	h := new(pb.Headers)
 	if err := r.ReadMsgWithContext(ctx, h); err != nil {
-		return fmt.Errorf("read message: %w", err)
+		return fmt.Errorf("send read message: %w", err)
 	}
+	fmt.Println("read headers")
 
 	stream.headers = headersPBToP2P(h)
 
@@ -44,7 +45,7 @@ func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
 
 	headers := new(pb.Headers)
 	if err := r.ReadMsgWithContext(ctx, headers); err != nil {
-		return fmt.Errorf("read message: %w", err)
+		return fmt.Errorf("handle read message: %w", err)
 	}
 
 	stream.headers = headersPBToP2P(headers)
@@ -55,7 +56,7 @@ func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
 	}
 
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
-		return fmt.Errorf("write message: %w", err)
+		return fmt.Errorf("handle write message: %w", err)
 	}
 	return nil
 }

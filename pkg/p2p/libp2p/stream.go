@@ -28,5 +28,6 @@ func (s *stream) Headers() p2p.Headers {
 }
 
 func (s *stream) FullClose() error {
-	return s.Close() // this needs to change. since FullClose no longer exists
+	_ = s.CloseWrite() // this needs to change. since FullClose no longer exists
+	s.Read()
 }
