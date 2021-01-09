@@ -6,7 +6,6 @@ package libp2p
 
 import (
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
@@ -29,5 +28,5 @@ func (s *stream) Headers() p2p.Headers {
 }
 
 func (s *stream) FullClose() error {
-	return helpers.FullClose(s)
+	return s.Close() // this needs to change. since FullClose no longer exists
 }

@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
-	autonat "github.com/libp2p/go-libp2p-autonat-svc"
+	autonat "github.com/libp2p/go-libp2p-autonat"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -176,11 +176,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
-	if _, err = autonat.NewAutoNATService(ctx, h,
-		// Support same non default security and transport options as
-		// original host.
-		append(transports, security)...,
-	); err != nil {
+	if _, err = autonat.New(ctx, h); err != nil {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
