@@ -25,9 +25,10 @@ func New(st storage.StateStorer) postage.Storer {
 
 // Get returns a batch from the batchstore with the given ID
 func (s *store) Get(id []byte) (*postage.Batch, error) {
-	var b postage.Batch
-	err := s.store.Get(batchKey(id), &b)
-	return &b, err
+	b := &postage.Batch{}
+	err := s.store.Get(batchKey(id), b)
+
+	return b, err
 }
 
 // Put stores a given batch in the batchstore with the given ID
@@ -44,9 +45,10 @@ func (s *store) PutChainState(state *postage.ChainState) error {
 // GetChainState implements BatchStorer. It returns the stored chain state from
 // the batch store
 func (s *store) GetChainState() (*postage.ChainState, error) {
-	var cs postage.ChainState
-	err := s.store.Get(stateKey, &cs)
-	return &cs, err
+	cs := &postage.ChainState{}
+	err := s.store.Get(stateKey, cs)
+
+	return cs, err
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index
