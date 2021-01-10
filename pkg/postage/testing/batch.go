@@ -49,29 +49,22 @@ func NewBigInt() *big.Int {
 // MustNewBatch will create a new test batch. Fields that are not supplied will
 // be filled with random data. Panics on errors
 func MustNewBatch(opts ...BatchOption) *postage.Batch {
-	var b postage.Batch
+	b := &postage.Batch{
+		ID:    MustNewID(),
+		Value: NewBigInt(),
+		Start: rand.Uint64(),
+		Depth: defaultDepth,
+	}
 
 	for _, opt := range opts {
-		opt(&b)
+		opt(b)
 	}
 
-	if b.ID == nil {
-		b.ID = MustNewID()
-	}
-	if b.Value == nil {
-		b.Value = NewBigInt()
-	}
-	if b.Value == nil {
-		b.Start = rand.Uint64()
-	}
 	if b.Owner == nil {
 		b.Owner = MustNewAddress()
 	}
-	if b.Depth == 0 {
-		b.Depth = defaultDepth
-	}
 
-	return &b
+	return b
 }
 
 // WithOwner will set the batch owner
