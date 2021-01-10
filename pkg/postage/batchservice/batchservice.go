@@ -29,7 +29,7 @@ func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, er
 
 	cs, err := storer.GetChainState()
 	if err != nil {
-		return nil, fmt.Errorf("new batch service: %v", err)
+		return nil, fmt.Errorf("get chain state: %w", err)
 	}
 	b.cs = cs
 
@@ -48,7 +48,7 @@ func (svc *BatchService) Create(id, owner []byte, value *big.Int, depth uint8) e
 
 	err := svc.storer.Put(b)
 	if err != nil {
-		return fmt.Errorf("CreateBatch: %w", err)
+		return fmt.Errorf("put: %w", err)
 	}
 
 	svc.logger.Debugf("created batch id %s", hex.EncodeToString(b.ID))
@@ -60,14 +60,14 @@ func (svc *BatchService) Create(id, owner []byte, value *big.Int, depth uint8) e
 func (svc *BatchService) TopUp(id []byte, amount *big.Int) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
-		return fmt.Errorf("TopUp: %w", err)
+		return fmt.Errorf("get: %w", err)
 	}
 
 	b.Value.Add(b.Value, amount)
 
 	err = svc.storer.Put(b)
 	if err != nil {
-		return fmt.Errorf("TopUp: %w", err)
+		return fmt.Errorf("put: %w", err)
 	}
 
 	svc.logger.Debugf("topped up batch id %s with %v", hex.EncodeToString(b.ID), b.Value)
@@ -79,14 +79,14 @@ func (svc *BatchService) TopUp(id []byte, amount *big.Int) error {
 func (svc *BatchService) UpdateDepth(id []byte, depth uint8) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("get: %w", err)
 	}
 
 	b.Depth = depth
 
 	err = svc.storer.Put(b)
 	if err != nil {
-		return fmt.Errorf("update depth: %w", err)
+		return fmt.Errorf("put: %w", err)
 	}
 
 	svc.logger.Debugf("updated depth of batch id %s to %d", hex.EncodeToString(b.ID), b.Depth)
@@ -99,7 +99,7 @@ func (svc *BatchService) UpdatePrice(price *big.Int) error {
 	svc.cs.Price = price
 
 	if err := svc.storer.PutChainState(svc.cs); err != nil {
-		return fmt.Errorf("update price: %w", err)
+		return fmt.Errorf("put chain state: %w", err)
 	}
 
 	svc.logger.Debugf("updated chain price to %s", svc.cs.Price)
