@@ -19,7 +19,9 @@ func TestBatchStoreGet(t *testing.T) {
 	batchStore := mock.New(
 		mock.WithGetErr(errors.New("fails"), 3),
 	)
-	batchStore.Put(testBatch)
+	if err := batchStore.Put(testBatch); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := batchStore.Get(postagetesting.MustNewID()); err == nil {
 		t.Fatal("expected error")
