@@ -11,8 +11,7 @@ import (
 
 const (
 	batchKeyPrefix = "batchKeyPrefix"
-	// valueKeyPrefix = "valueKeyPrefix"
-	stateKey = "stateKey"
+	stateKey       = "stateKey"
 )
 
 type store struct {

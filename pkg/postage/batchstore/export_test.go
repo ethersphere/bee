@@ -4,6 +4,8 @@
 
 package batchstore
 
+// StateKey is the localstore key for the chain state.
 const StateKey = stateKey
 
+// BatchKey returns the index key for the batch ID used in the by-ID batch index.
 var BatchKey = batchKey
