@@ -54,22 +54,23 @@ type Stamp struct {
 	sig     []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature
 }
 
-// NewStamp constructs a stamp
+// NewStamp constructs a new stamp from a given batch ID and signature.
 func NewStamp(batchID, sig []byte) *Stamp {
 	return &Stamp{batchID, sig}
 }
 
-// BatchID returns the batch ID from a stamp
+// BatchID returns the batch ID of the stamp.
 func (s *Stamp) BatchID() []byte {
 	return s.batchID
 }
 
-// Sig returns the signature of the stamp
+// Sig returns the signature of the stamp.
 func (s *Stamp) Sig() []byte {
 	return s.sig
 }
 
-// MarshalBinary gives the byte slice serialisation of a stamp: batchID[32]|Signature[65].
+// MarshalBinary gives the byte slice serialisation of a stamp:
+// batchID[32]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, StampSize)
 	copy(buf, s.batchID)
@@ -87,7 +88,8 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
-// toSignDigest creates a digest to represent the stamp which is to be signed by the owner.
+// toSignDigest creates a digest to represent the stamp which is to be signed by
+// the owner.
 func toSignDigest(addr swarm.Address, id []byte) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(addr.Bytes())

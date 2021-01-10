@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-// NewChainState will create a new ChainState with random values
+// NewChainState will create a new ChainState with random values.
 func NewChainState() *postage.ChainState {
 	return &postage.ChainState{
 		Block: rand.Uint64(),

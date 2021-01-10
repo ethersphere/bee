@@ -14,7 +14,7 @@ import (
 const signatureSize = 65
 
 // MustNewSignature will create a new random signature (65 byte slice). Panics
-// on errors
+// on errors.
 func MustNewSignature() []byte {
 	sig := make([]byte, signatureSize)
 	_, err := io.ReadFull(crand.Reader, sig)
@@ -24,7 +24,8 @@ func MustNewSignature() []byte {
 	return sig
 }
 
-// MustNewStamp will generate a postage stamp with random data. Panics on errors
+// MustNewStamp will generate a postage stamp with random data. Panics on
+// errors.
 func MustNewStamp() *postage.Stamp {
 	return postage.NewStamp(MustNewID(), MustNewSignature())
 }

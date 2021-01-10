@@ -6,34 +6,36 @@ package mock
 
 import "github.com/ethersphere/bee/pkg/postage"
 
-func WithMockBatch(id []byte) Option {
-	return optionFunc(func(m *mockPostage) {
+type optionFunc func(*mockPostage)
 
-	})
-}
-
+// Option is an option passed to a mock postage Service.
 type Option interface {
 	apply(*mockPostage)
 }
-type optionFunc func(*mockPostage)
 
 func (f optionFunc) apply(r *mockPostage) { f(r) }
 
+// New creates a new mock postage service.
 func New(o ...Option) postage.Service {
 	m := &mockPostage{}
 	for _, v := range o {
 		v.apply(m)
 	}
 
-	// add the fallback value we have in the api right now.
-	// in the future this needs to go away once batch id becomes
-	// de facto mandatory in the package
+	// Add the fallback value we have in the api right now.
+	// In the future this needs to go away once batch id becomes de facto
+	// mandatory in the package.
 
 	id := make([]byte, 32)
 	st := postage.NewStampIssuer("test fallback", "test identity", id, 24, 6)
 	m.Add(st)
 
 	return m
+}
+
+// WithMockBatch sets the mock batch on the mock postage service.
+func WithMockBatch(id []byte) Option {
+	return optionFunc(func(m *mockPostage) {})
 }
 
 type mockPostage struct {

@@ -15,15 +15,15 @@ const (
 )
 
 type store struct {
-	store storage.StateStorer // State store backend to persist batches
+	store storage.StateStorer // State store backend to persist batches.
 }
 
-// New constructs a new postage batch store
+// New constructs a new postage batch store.
 func New(st storage.StateStorer) postage.Storer {
 	return &store{st}
 }
 
-// Get returns a batch from the batchstore with the given ID
+// Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
@@ -31,19 +31,19 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	return b, err
 }
 
-// Put stores a given batch in the batchstore with the given ID
+// Put stores a given batch in the batchstore with the given ID.
 func (s *store) Put(b *postage.Batch) error {
 	return s.store.Put(batchKey(b.ID), b)
 }
 
 // PutChainState implements BatchStorer. It stores the chain state in the batch
-// store
+// store.
 func (s *store) PutChainState(state *postage.ChainState) error {
 	return s.store.Put(stateKey, state)
 }
 
 // GetChainState implements BatchStorer. It returns the stored chain state from
-// the batch store
+// the batch store.
 func (s *store) GetChainState() (*postage.ChainState, error) {
 	cs := &postage.ChainState{}
 	err := s.store.Get(stateKey, cs)
@@ -51,7 +51,7 @@ func (s *store) GetChainState() (*postage.ChainState, error) {
 	return cs, err
 }
 
-// batchKey returns the index key for the batch ID used in the by-ID batch index
+// batchKey returns the index key for the batch ID used in the by-ID batch index.
 func batchKey(id []byte) string {
 	return batchKeyPrefix + string(id)
 }

@@ -12,7 +12,8 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 )
 
-// TestBatchMarshalling tests the idempotence  of binary marshal/unmarshal for a Batch.
+// TestBatchMarshalling tests the idempotence  of binary marshal/unmarshal for a
+// Batch.
 func TestBatchMarshalling(t *testing.T) {
 	a := postagetesting.MustNewBatch()
 

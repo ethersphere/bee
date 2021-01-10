@@ -20,7 +20,7 @@ const defaultDepth = 16
 // BatchOption is an optional parameter for NewBatch
 type BatchOption func(c *postage.Batch)
 
-// MustNewID will generate a new random ID (32 byte slice). Panics on errors
+// MustNewID will generate a new random ID (32 byte slice). Panics on errors.
 func MustNewID() []byte {
 	id := make([]byte, 32)
 	_, err := io.ReadFull(crand.Reader, id)
@@ -31,7 +31,7 @@ func MustNewID() []byte {
 }
 
 // MustNewAddress will generate a new random address (20 byte slice). Panics on
-// errors
+// errors.
 func MustNewAddress() []byte {
 	addr := make([]byte, 20)
 	_, err := io.ReadFull(crand.Reader, addr)
@@ -47,7 +47,7 @@ func NewBigInt() *big.Int {
 }
 
 // MustNewBatch will create a new test batch. Fields that are not supplied will
-// be filled with random data. Panics on errors
+// be filled with random data. Panics on errors.
 func MustNewBatch(opts ...BatchOption) *postage.Batch {
 	b := &postage.Batch{
 		ID:    MustNewID(),
@@ -67,15 +67,15 @@ func MustNewBatch(opts ...BatchOption) *postage.Batch {
 	return b
 }
 
-// WithOwner will set the batch owner
+// WithOwner will set the batch owner on a randomized batch.
 func WithOwner(owner []byte) BatchOption {
 	return func(b *postage.Batch) {
 		b.Owner = owner
 	}
 }
 
-// CompareBatches is a testing helper that compares two batches and returns that
-// fails the test if they are not fully equal.
+// CompareBatches is a testing helper that compares two batches and fails the
+// test if all fields are not equal.
 //
 // Fails on first different value and prints the comparison.
 func CompareBatches(t *testing.T, want, got *postage.Batch) {
