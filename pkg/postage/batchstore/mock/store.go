@@ -29,13 +29,13 @@ type Option func(*BatchStore)
 
 // New creates a new mock BatchStore
 func New(opts ...Option) *BatchStore {
-	var bs BatchStore
+	bs := &BatchStore{}
 
 	for _, o := range opts {
-		o(&bs)
+		o(bs)
 	}
 
-	return &bs
+	return bs
 }
 
 // WithChainState the initial ChainStore

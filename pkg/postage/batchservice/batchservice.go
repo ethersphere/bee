@@ -22,7 +22,7 @@ type BatchService struct {
 
 // New will create a new BatchService.
 func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, error) {
-	b := BatchService{
+	b := &BatchService{
 		storer: storer,
 		logger: logger,
 	}
@@ -33,12 +33,12 @@ func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, er
 	}
 	b.cs = cs
 
-	return &b, nil
+	return b, nil
 }
 
 // Create will create a new batch and store it in the BatchStore.
 func (svc *BatchService) Create(id, owner []byte, value *big.Int, depth uint8) error {
-	b := postage.Batch{
+	b := &postage.Batch{
 		ID:    id,
 		Owner: owner,
 		Value: value,
@@ -46,7 +46,7 @@ func (svc *BatchService) Create(id, owner []byte, value *big.Int, depth uint8) e
 		Depth: depth,
 	}
 
-	err := svc.storer.Put(&b)
+	err := svc.storer.Put(b)
 	if err != nil {
 		return fmt.Errorf("CreateBatch: %w", err)
 	}
