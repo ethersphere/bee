@@ -51,7 +51,7 @@ func (svc *BatchService) Create(id, owner []byte, value *big.Int, depth uint8) e
 		return fmt.Errorf("CreateBatch: %w", err)
 	}
 
-	svc.logger.Debugf("created batch id %x", hex.EncodeToString(b.ID))
+	svc.logger.Debugf("created batch id %s", hex.EncodeToString(b.ID))
 	return nil
 }
 
@@ -70,7 +70,7 @@ func (svc *BatchService) TopUp(id []byte, amount *big.Int) error {
 		return fmt.Errorf("TopUp: %w", err)
 	}
 
-	svc.logger.Debugf("topped up batch id %x with %v", hex.EncodeToString(b.ID), b.Value)
+	svc.logger.Debugf("topped up batch id %s with %v", hex.EncodeToString(b.ID), b.Value)
 	return nil
 }
 
@@ -89,7 +89,7 @@ func (svc *BatchService) UpdateDepth(id []byte, depth uint8) error {
 		return fmt.Errorf("update depth: %w", err)
 	}
 
-	svc.logger.Debugf("updated depth of batch id %x to %d", hex.EncodeToString(b.ID), b.Depth)
+	svc.logger.Debugf("updated depth of batch id %s to %d", hex.EncodeToString(b.ID), b.Depth)
 	return nil
 }
 
