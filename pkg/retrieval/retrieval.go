@@ -158,7 +158,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 
 			select {
 			case <-ticker.C:
-				break
+				// break
 			case result := <-resultC:
 				if result.err != nil {
 					return nil, result.err
