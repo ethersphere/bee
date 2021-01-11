@@ -17,16 +17,16 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/listener"
 )
 
-var hash common.Hash
-var addr common.Address
+var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
+var addr common.Address = common.HexToAddress("abcdef")
 var createdTopic = common.HexToHash("3f6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
 
 func init() {
-	a := make([]byte, 20)
-	a[0] = 20
-	copy(addr[:], a)
-	h := make([]byte, 32)
-	copy(hash[:], h)
+	//a := make([]byte, 20)
+	//a[0] = 20
+	//copy(addr[:], a)
+	//h := make([]byte, 32)
+	//copy(hash[:], h)
 }
 
 func TestListener(t *testing.T) {
@@ -35,7 +35,9 @@ func TestListener(t *testing.T) {
 	//mockId := make([]byte, 32)
 	//mockOwner := make([]byte, 32)
 	ev := newEventUpdaterMock()
-	mf := newMockFilterer(newCreateEvent())
+	mf := newMockFilterer(
+		newCreateEvent(hash, big.NewInt(42), big.NewInt(43), 100),
+	)
 	listener := listener.New(mf)
 	listener.Listen(0, ev)
 	for i := 0; i < 10; i++ {
@@ -59,7 +61,7 @@ type updater struct {
 	updatePriceCalled bool
 }
 
-func (u *updater) Create(id []byte, owner []byte, amount *big.Int, depth uint8) error {
+func (u *updater) Create(id []byte, owner []byte, amount *big.Int, normalisedAmount *big.Int, depth uint8) error {
 	fmt.Println(id)
 	fmt.Println(owner)
 	fmt.Println(depth)
@@ -124,16 +126,16 @@ func parseABI(json string) abi.ABI {
 	return cabi
 }
 
-func newCreateEvent() types.Log {
+func newCreateEvent(batchID common.Hash, totalAmount *big.Int, normalisedBalance *big.Int, depth uint8) types.Log {
 	a := parseABI(listener.Abi)
-	b, err := a.Events["BatchCreated"].Inputs.Pack(hash, big.NewInt(42), big.NewInt(42), addr, uint8(12))
+	b, err := a.Events["BatchCreated"].Inputs[1:].NonIndexed().Pack(totalAmount, normalisedBalance, addr, depth)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(b)
 	l := types.Log{
 		Data:   b,
-		Topics: []common.Hash{createdTopic, hash}, // 1st item is the function sig digest, 2nd is always the batch id
+		Topics: []common.Hash{createdTopic, batchID}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 
 	return l
@@ -156,6 +158,7 @@ func (s *sub) Err() <-chan error {
 }
 
 func TestT(t *testing.T) {
+	t.Skip()
 	eventSignatures := []string{
 		"BatchCreated(bytes32,uint256,uint256,address,uint8)",
 		"BatchTopUp(bytes32,uint256)",
