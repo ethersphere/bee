@@ -18,7 +18,8 @@ type Batch struct {
 	Depth uint8    // batch depth, i.e., size = 2^{depth}
 }
 
-// MarshalBinary serialises a postage batch to a byte slice len 117.
+// MarshalBinary implements BinaryMarshaller. It will attempt to serialize the
+// postage batch to a byte slice.
 func (b *Batch) MarshalBinary() ([]byte, error) {
 	out := make([]byte, 93)
 	copy(out, b.ID)
@@ -30,8 +31,8 @@ func (b *Batch) MarshalBinary() ([]byte, error) {
 	return out, nil
 }
 
-// UnmarshalBinary deserialises the batch.
-// Unsafe on slice index (len(buf) = 117) as only internally used in db.
+// UnmarshalBinary implements BinaryUnmarshaller. It will attempt deserialize
+// the given byte slice into the batch.
 func (b *Batch) UnmarshalBinary(buf []byte) error {
 	b.ID = buf[:32]
 	b.Value = big.NewInt(0).SetBytes(buf[32:64])
