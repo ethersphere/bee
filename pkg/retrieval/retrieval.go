@@ -358,7 +358,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
 	// compute the price we charge for this chunk and debit it from p's balance
-	chunkPrice := s.pricer.Price(chunk.Address())
+	chunkPrice := s.pricer.PriceForPeer(p.Address, chunk.Address())
 	err = s.accounting.Debit(p.Address, chunkPrice)
 	if err != nil {
 		return err

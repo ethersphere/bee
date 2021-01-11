@@ -25,12 +25,8 @@ var _ Pricer = (*Service)(nil)
 type Pricer interface {
 	// PeerPrice is the price the peer charges for a given chunk hash.
 	PeerPrice(peer, chunk swarm.Address) uint64
-	// PeerPricePO is the price the peer charges for a given proximity order.
-	PeerPricePO(peer swarm.Address, PO uint8) (uint64, error)
-	// Price is the price we charge for a given chunk hash.
-	Price(chunk swarm.Address) uint64
-	// PricePO is the price we charge for a given proximity order.
-	PricePO(PO uint8) (uint64, error)
+	// PriceForPeer is the price we charge for a given chunk hash.
+	PriceForPeer(peer, chunk swarm.Address) uint64
 }
 
 type pricingPeer struct {
@@ -77,9 +73,20 @@ func (s *Service) PeerPriceTable(peer, chunk swarm.Address) (priceTable []uint64
 	return priceTable, nil
 }
 
-// PeerPrice returns the price for the PO of a chunk from the table stored for the node.
-func (s *Service) Price(chunk swarm.Address) uint64 {
+// PriceForPeer returns the price for the PO of a chunk from the table stored for the node.
+// Taking into consideration that the peer might be an in-neighborhood peer,
+// if the chunk is at least neighborhood depth proximate to both the node and the peer, the price is 0
+func (s *Service) PriceForPeer(peer, chunk swarm.Address) uint64 {
 	proximity := swarm.Proximity(s.overlay.Bytes(), chunk.Bytes())
+	neighborhoodDepth := s.topology.NeighborhoodDepth()
+
+	if proximity >= neighborhoodDepth {
+		peerproximity := swarm.Proximity(peer.Bytes(), chunk.Bytes())
+		if peerproximity >= neighborhoodDepth {
+			return 0
+		}
+	}
+
 	price, err := s.PricePO(proximity)
 
 	if err != nil {
@@ -106,8 +113,29 @@ func (s *Service) PricePO(PO uint8) (uint64, error) {
 }
 
 // PeerPrice returns the price for the PO of a chunk from the table stored for the given peer.
+// Taking into consideration that the peer might be an in-neighborhood peer,
+// if the chunk is at least neighborhood depth proximate to both the node and the peer, the price is 0
 func (s *Service) PeerPrice(peer, chunk swarm.Address) uint64 {
 	proximity := swarm.Proximity(peer.Bytes(), chunk.Bytes())
+
+	// Determine neighborhood depth presumed by peer based on pricetable rows
+	var priceTable []uint64
+	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
+
+	peerNeighborhoodDepth := uint8(len(priceTable) - 1)
+	if err != nil {
+		peerNeighborhoodDepth = s.topology.NeighborhoodDepth()
+	}
+
+	// determine whether the chunk is within presumed neighborhood depth of peer
+	if proximity >= peerNeighborhoodDepth {
+		// determine if we are as well if the chunk is within presumed neighborhood depth of peer to us
+		selfproximity := swarm.Proximity(s.overlay.Bytes(), chunk.Bytes())
+		if selfproximity >= peerNeighborhoodDepth {
+			return 0
+		}
+	}
+
 	price, err := s.PeerPricePO(peer, proximity)
 
 	if err != nil {
@@ -125,7 +153,7 @@ func (s *Service) PeerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return 0, err
 		}
-		// get default pricetable
+		priceTable = s.DefaultPriceTable()
 	}
 
 	proximity := PO
