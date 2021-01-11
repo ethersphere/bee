@@ -171,33 +171,6 @@ func (s *Service) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, pee
 	return err
 }
 
-// AnnouncePaymentThresholdAndPriceTable announces own payment threshold and pricetable to peer
-func (s *Service) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = stream.Reset()
-		} else {
-			go stream.FullClose()
-		}
-	}()
-
-	s.logger.Tracef("sending payment threshold announcement to peer %v of %d", peer, paymentThreshold)
-	w := protobuf.NewWriter(stream)
-	err = w.WriteMsgWithContext(ctx, &pb.AnnouncePaymentThreshold{
-		PaymentThreshold: paymentThreshold,
-		ProximityPrice:   s.pricer.PriceTable(),
-	})
-
-	return err
-}
-
 // SetPaymentThresholdObserver sets the PaymentThresholdObserver to be used when receiving a new payment threshold
 func (s *Service) SetPaymentThresholdObserver(observer PaymentThresholdObserver) {
 	s.paymentThresholdObserver = observer

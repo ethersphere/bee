@@ -67,6 +67,7 @@ func (s *Pricer) PriceTable() (priceTable []uint64) {
 // PeerPriceTable returns the price table stored for the given peer.
 // If we can't get price table from store, we return the default price table
 func (s *Pricer) PeerPriceTable(peer, chunk swarm.Address) (priceTable []uint64, err error) {
+
 	err = s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
 		priceTable = s.DefaultPriceTable() // get default pricetable
@@ -199,6 +200,7 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 	pricingPeer.lock.Lock()
 	defer pricingPeer.lock.Unlock()
 	s.logger.Debugf("Storing pricetable %v for peer %v", priceTable, peer)
+
 	err = s.store.Put(peerPriceTableKey(peer), priceTable)
 	if err != nil {
 		return fmt.Errorf("failed to persist pricetable for peer %v: %w", peer, err)
