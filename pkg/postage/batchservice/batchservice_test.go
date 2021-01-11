@@ -51,7 +51,7 @@ func TestBatchServiceCreate(t *testing.T) {
 	testChainState := postagetesting.NewChainState()
 
 	t.Run("expect put create put error", func(t *testing.T) {
-		svc, _ := testNewStoreAndService(
+		svc, _ := newTestStoreAndService(
 			t,
 			mock.WithChainState(testChainState),
 			mock.WithPutErr(testErr, 0),
@@ -68,7 +68,7 @@ func TestBatchServiceCreate(t *testing.T) {
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore := testNewStoreAndService(
+		svc, batchStore := newTestStoreAndService(
 			t,
 			mock.WithChainState(testChainState),
 		)
@@ -112,7 +112,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	testTopUpAmount := big.NewInt(10000000000000)
 
 	t.Run("expect get error", func(t *testing.T) {
-		svc, _ := testNewStoreAndService(
+		svc, _ := newTestStoreAndService(
 			t,
 			// NOTE: we skip the error on the first get call in batchservice.New.
 			mock.WithGetErr(testErr, 1),
@@ -124,7 +124,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	})
 
 	t.Run("expect put error", func(t *testing.T) {
-		svc, batchStore := testNewStoreAndService(
+		svc, batchStore := newTestStoreAndService(
 			t,
 			mock.WithPutErr(testErr, 1),
 		)
@@ -136,7 +136,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore := testNewStoreAndService(t)
+		svc, batchStore := newTestStoreAndService(t)
 		putBatch(t, batchStore, testBatch)
 
 		want := testBatch.Value
@@ -163,7 +163,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	testBatch := postagetesting.MustNewBatch()
 
 	t.Run("expect get error", func(t *testing.T) {
-		svc, _ := testNewStoreAndService(
+		svc, _ := newTestStoreAndService(
 			t,
 			mock.WithGetErr(testErr, 1),
 		)
@@ -174,7 +174,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	})
 
 	t.Run("expect put error", func(t *testing.T) {
-		svc, batchStore := testNewStoreAndService(
+		svc, batchStore := newTestStoreAndService(
 			t,
 			mock.WithPutErr(testErr, 1),
 		)
@@ -186,7 +186,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore := testNewStoreAndService(t)
+		svc, batchStore := newTestStoreAndService(t)
 		putBatch(t, batchStore, testBatch)
 
 		if err := svc.UpdateDepth(testBatch.ID, testNewDepth); err != nil {
@@ -210,7 +210,7 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 	testNewPrice := big.NewInt(20000000)
 
 	t.Run("expect put error", func(t *testing.T) {
-		svc, batchStore := testNewStoreAndService(
+		svc, batchStore := newTestStoreAndService(
 			t,
 			mock.WithChainState(testChainState),
 			mock.WithPutErr(testErr, 1),
@@ -223,7 +223,7 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore := testNewStoreAndService(
+		svc, batchStore := newTestStoreAndService(
 			t,
 			mock.WithChainState(testChainState),
 		)
@@ -243,7 +243,7 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 	})
 }
 
-func testNewStoreAndService(t *testing.T, opts ...mock.Option) (postage.EventUpdater, postage.Storer) {
+func newTestStoreAndService(t *testing.T, opts ...mock.Option) (postage.EventUpdater, postage.Storer) {
 	t.Helper()
 
 	store := mock.New(opts...)
