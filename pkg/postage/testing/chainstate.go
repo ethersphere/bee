@@ -22,7 +22,6 @@ func NewChainState() *postage.ChainState {
 
 // CompareChainState is a test helper that compares two ChainStates and fails
 // the test if they are not exactly equal.
-//
 // Fails on first difference and returns a descriptive comparison.
 func CompareChainState(t *testing.T, want, got *postage.ChainState) {
 	t.Helper()

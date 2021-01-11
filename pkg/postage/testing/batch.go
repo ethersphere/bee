@@ -76,7 +76,6 @@ func WithOwner(owner []byte) BatchOption {
 
 // CompareBatches is a testing helper that compares two batches and fails the
 // test if all fields are not equal.
-//
 // Fails on first different value and prints the comparison.
 func CompareBatches(t *testing.T, want, got *postage.Batch) {
 	t.Helper()
