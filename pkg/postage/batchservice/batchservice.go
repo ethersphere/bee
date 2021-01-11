@@ -13,8 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-// BatchService implements the EventUpdater interface.
-type BatchService struct {
+type batchService struct {
 	cs     *postage.ChainState
 	storer postage.Storer
 	logger logging.Logger
@@ -22,7 +21,7 @@ type BatchService struct {
 
 // New will create a new BatchService.
 func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, error) {
-	b := &BatchService{
+	b := &batchService{
 		storer: storer,
 		logger: logger,
 	}
@@ -37,7 +36,7 @@ func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, er
 }
 
 // Create will create a new batch and store it in the BatchStore.
-func (svc *BatchService) Create(id, owner []byte, value *big.Int, depth uint8) error {
+func (svc *batchService) Create(id, owner []byte, value *big.Int, depth uint8) error {
 	b := &postage.Batch{
 		ID:    id,
 		Owner: owner,
@@ -57,7 +56,7 @@ func (svc *BatchService) Create(id, owner []byte, value *big.Int, depth uint8) e
 
 // TopUp implements the EventUpdater interface. It tops ups a batch with the
 // given ID with the given amount of BZZ.
-func (svc *BatchService) TopUp(id []byte, amount *big.Int) error {
+func (svc *batchService) TopUp(id []byte, amount *big.Int) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
@@ -76,7 +75,7 @@ func (svc *BatchService) TopUp(id []byte, amount *big.Int) error {
 
 // UpdateDepth implements the EventUpdater inteface. It sets the new depth of a
 // batch with the given ID.
-func (svc *BatchService) UpdateDepth(id []byte, depth uint8) error {
+func (svc *batchService) UpdateDepth(id []byte, depth uint8) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
@@ -95,7 +94,7 @@ func (svc *BatchService) UpdateDepth(id []byte, depth uint8) error {
 
 // UpdatePrice implements the EventUpdater interface. It sets the current
 // price from the chain in the service chain state.
-func (svc *BatchService) UpdatePrice(price *big.Int) error {
+func (svc *batchService) UpdatePrice(price *big.Int) error {
 	svc.cs.Price = price
 
 	if err := svc.storer.PutChainState(svc.cs); err != nil {
