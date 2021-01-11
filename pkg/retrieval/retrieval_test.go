@@ -238,8 +238,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 	clientAddress := swarm.MustParseHexAddress("1010")
 
-	serverAddress1 := swarm.MustParseHexAddress("0001")
-	serverAddress2 := swarm.MustParseHexAddress("0002")
+	serverAddress1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
+	serverAddress2 := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
 	peers := []swarm.Address{
 		serverAddress1,
 		serverAddress2,
@@ -345,6 +345,34 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		)
 
 		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+	})
+
+	t.Run("peer forwards request", func(t *testing.T) {
+		// server 2 has the chunk
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		server1Recorder := streamtest.New(
+			streamtest.WithProtocols(server2.Protocol()),
+		)
+
+		// server 1 will forward request to server 2
+		server1 := retrieval.New(serverAddress1, serverStorer1, server1Recorder, peerSuggesterFn(serverAddress2), logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		clientRecorder := streamtest.New(
+			streamtest.WithProtocols(server1.Protocol()),
+		)
+
+		// client only knows about server 1
+		client := retrieval.New(clientAddress, nil, clientRecorder, peerSuggesterFn(serverAddress1), logger, accountingmock.NewAccounting(), pricerMock, nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
