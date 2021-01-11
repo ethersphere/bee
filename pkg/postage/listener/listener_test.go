@@ -1,6 +1,7 @@
 package listener_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -34,27 +35,38 @@ func TestListener(t *testing.T) {
 	// then we would like to assert the appropriate EventUpdater method was called
 	//mockId := make([]byte, 32)
 	//mockOwner := make([]byte, 32)
-	ev := newEventUpdaterMock()
+	c := createArgs{
+		id:               hash[:],
+		owner:            addr[:],
+		amount:           big.NewInt(42),
+		normalisedAmount: big.NewInt(43),
+		depth:            100,
+	}
+
+	ev, evC := newEventUpdaterMock()
 	mf := newMockFilterer(
-		newCreateEvent(hash, big.NewInt(42), big.NewInt(43), 100),
+		newCreateEvent(c.id, c.amount, c.normalisedAmount, c.depth),
 	)
 	listener := listener.New(mf)
 	listener.Listen(0, ev)
-	for i := 0; i < 10; i++ {
-		if ev.createCalled {
-			return
-			t.Log("expected Create event to be called")
-		}
-		time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-evC:
+
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for event")
 	}
-	t.Fatal("timed out")
 }
 
-func newEventUpdaterMock() *updater {
-	return &updater{}
+func newEventUpdaterMock() (*updater, chan interface{}) {
+	c := make(chan interface{})
+	return &updater{
+		eventC: c,
+	}, c
 }
 
 type updater struct {
+	eventC            chan interface{}
 	createCalled      bool
 	topupCalled       bool
 	updateDepthCalled bool
@@ -62,10 +74,6 @@ type updater struct {
 }
 
 func (u *updater) Create(id []byte, owner []byte, amount *big.Int, normalisedAmount *big.Int, depth uint8) error {
-	fmt.Println(id)
-	fmt.Println(owner)
-	fmt.Println(depth)
-	fmt.Println(amount)
 	u.createCalled = true
 	return nil
 }
@@ -179,4 +187,37 @@ func digestSig(sigs []string) []string {
 		digests[i] = hex.EncodeToString(h)
 	}
 	return digests
+}
+
+type createArgs struct {
+	id               []byte
+	owner            []byte
+	amount           *big.Int
+	normalisedAmount *big.Int
+	depth            uint8
+}
+
+func (c createArgs) compare(cc createArgs) {
+	if !bytes.Equal(c.id, cc.id) {
+		t.Fatal("id mismatch")
+	}
+
+	if !bytes.Equal(c.owner, cc.owner) {
+		t.Fatal("owner mismatch")
+	}
+
+}
+
+type topupArgs struct {
+	id     []byte
+	amount *big.Int
+}
+
+type depthArgs struct {
+	id    []byte
+	depth uint8
+}
+
+type priceArgs struct {
+	price *big.Int
 }
