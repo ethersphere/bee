@@ -13,6 +13,10 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
+var (
+	closeDeadline  = 30 * time.Second
+	errExpectedEof = errors.New("read: expected eof")
+)
 var _ p2p.Stream = (*stream)(nil)
 
 type stream struct {
@@ -36,8 +40,9 @@ func (s *stream) FullClose() error {
 		_ = s.Reset()
 		return err
 	}
+
 	// So we don't wait forever
-	_ = s.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = s.SetDeadline(time.Now().Add(closeDeadline))
 
 	// We *have* to observe the EOF. Otherwise, we leak the stream.
 	// Now, technically, we should do this *before*
@@ -48,7 +53,7 @@ func (s *stream) FullClose() error {
 	n, err := s.Read([]byte{0})
 	if n > 0 || err == nil {
 		_ = s.Reset()
-		return errors.New("expected eof") //ErrExpectedEOF
+		return errExpectedEof
 	}
 	if err != io.EOF {
 		_ = s.Reset()
