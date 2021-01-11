@@ -12,47 +12,66 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 )
 
-func TestBatchStoreGet(t *testing.T) {
+func TestBatchStorePutGet(t *testing.T) {
 	const testCnt = 3
 
 	testBatch := postagetesting.MustNewBatch()
 	batchStore := mock.New(
-		mock.WithGetErr(errors.New("fails"), 3),
-	)
-	if err := batchStore.Put(testBatch); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := batchStore.Get(postagetesting.MustNewID()); err == nil {
-		t.Fatal("expected error")
-	}
-
-	for i := 0; i < testCnt-1; i++ {
-		if _, err := batchStore.Get(testBatch.ID); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if _, err := batchStore.Get(postagetesting.MustNewID()); err == nil {
-		t.Fatal("expected error")
-	}
-}
-
-func TestBatchStorePut(t *testing.T) {
-	const testCnt = 3
-
-	testBatch := postagetesting.MustNewBatch()
-	batchStore := mock.New(
-		mock.WithPutErr(errors.New("fails"), 3),
+		mock.WithGetErr(errors.New("fails"), testCnt),
+		mock.WithPutErr(errors.New("fails"), testCnt),
 	)
 
+	// Put should return error after a number of tries:
 	for i := 0; i < testCnt; i++ {
 		if err := batchStore.Put(testBatch); err != nil {
 			t.Fatal(err)
 		}
 	}
-
 	if err := batchStore.Put(testBatch); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// Get should fail on wrong id, and after a number of tries:
+	if _, err := batchStore.Get(postagetesting.MustNewID()); err == nil {
+		t.Fatal("expected error")
+	}
+	for i := 0; i < testCnt-1; i++ {
+		if _, err := batchStore.Get(testBatch.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := batchStore.Get(postagetesting.MustNewID()); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestBatchStorePutGetChainState(t *testing.T) {
+	const testCnt = 3
+
+	testChainState := postagetesting.NewChainState()
+	batchStore := mock.New(
+		mock.WithChainState(testChainState),
+		mock.WithGetErr(errors.New("fails"), testCnt),
+		mock.WithPutErr(errors.New("fails"), testCnt),
+	)
+
+	// PutChainState should return an error after a number of tries:
+	for i := 0; i < testCnt; i++ {
+		if err := batchStore.PutChainState(testChainState); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := batchStore.PutChainState(testChainState); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// GetChainState should return an error after a number of tries:
+	for i := 0; i < testCnt; i++ {
+		if _, err := batchStore.GetChainState(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := batchStore.GetChainState(); err == nil {
 		t.Fatal("expected error")
 	}
 }
