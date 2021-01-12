@@ -36,7 +36,7 @@ type listener struct {
 
 func New(
 	ev BlockHeightContractFilterer,
-	postageStampAddress common.Address,
+	postageStampAddress,
 	priceOracleAddress common.Address,
 ) postage.Listener {
 	postageStampABI := parseABI(PostageStampABI)
@@ -62,7 +62,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
 	return nil
 }
 
-func (l *listener) parseEvent(a abi.ABI, eventName string, c interface{}, e types.Log) error {
+func (l *listener) parseEvent(a *abi.ABI, eventName string, c interface{}, e types.Log) error {
 	err := a.Unpack(c, eventName, e.Data)
 	if err != nil {
 		return err
@@ -86,7 +86,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	switch eventSig {
 	case l.batchCreatedTopic:
 		c := &batchCreatedEvent{}
-		err := l.parseEvent(l.postageStampABI, "BatchCreated", c, e)
+		err := l.parseEvent(&l.postageStampABI, "BatchCreated", c, e)
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		)
 	case l.batchTopupTopic:
 		c := &batchTopUpEvent{}
-		err := l.parseEvent(l.postageStampABI, "BatchTopUp", c, e)
+		err := l.parseEvent(&l.postageStampABI, "BatchTopUp", c, e)
 		if err != nil {
 			return err
 		}
@@ -110,7 +110,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		)
 	case l.batchDepthIncreaseTopic:
 		c := &batchDepthIncreaseEvent{}
-		err := l.parseEvent(l.postageStampABI, "BatchDepthIncrease", c, e)
+		err := l.parseEvent(&l.postageStampABI, "BatchDepthIncrease", c, e)
 		if err != nil {
 			return err
 		}
@@ -121,7 +121,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		)
 	case l.priceUpdateTopic:
 		c := &priceUpdateEvent{}
-		err := l.parseEvent(l.priceOracleABI, "PriceUpdate", c, e)
+		err := l.parseEvent(&l.priceOracleABI, "PriceUpdate", c, e)
 		if err != nil {
 			return err
 		}
