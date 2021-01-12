@@ -22,40 +22,33 @@ var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc651
 var addr common.Address = common.HexToAddress("abcdef")
 var createdTopic = common.HexToHash("3f6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
 
-func init() {
-	//a := make([]byte, 20)
-	//a[0] = 20
-	//copy(addr[:], a)
-	//h := make([]byte, 32)
-	//copy(hash[:], h)
-}
-
 func TestListener(t *testing.T) {
 	// test that when the listener gets a certain event
 	// then we would like to assert the appropriate EventUpdater method was called
-	//mockId := make([]byte, 32)
-	//mockOwner := make([]byte, 32)
-	c := createArgs{
-		id:               hash[:],
-		owner:            addr[:],
-		amount:           big.NewInt(42),
-		normalisedAmount: big.NewInt(43),
-		depth:            100,
-	}
+	t.Run("create event", func(t *testing.T) {
+		c := createArgs{
+			id:               hash[:],
+			owner:            addr[:],
+			amount:           big.NewInt(42),
+			normalisedAmount: big.NewInt(43),
+			depth:            100,
+		}
 
-	ev, evC := newEventUpdaterMock()
-	mf := newMockFilterer(
-		newCreateEvent(c.id, c.amount, c.normalisedAmount, c.depth),
-	)
-	listener := listener.New(mf)
-	listener.Listen(0, ev)
+		ev, evC := newEventUpdaterMock()
+		mf := newMockFilterer(
+			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
+		)
+		listener := listener.New(mf)
+		listener.Listen(0, ev)
 
-	select {
-	case <-evC:
+		select {
+		case e := <-evC:
+			e.(createArgs).compare(t, c) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+	})
 
-	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for event")
-	}
 }
 
 func newEventUpdaterMock() (*updater, chan interface{}) {
@@ -66,30 +59,38 @@ func newEventUpdaterMock() (*updater, chan interface{}) {
 }
 
 type updater struct {
-	eventC            chan interface{}
-	createCalled      bool
-	topupCalled       bool
-	updateDepthCalled bool
-	updatePriceCalled bool
+	eventC chan interface{}
 }
 
 func (u *updater) Create(id []byte, owner []byte, amount *big.Int, normalisedAmount *big.Int, depth uint8) error {
-	u.createCalled = true
+	u.eventC <- createArgs{
+		id:               id,
+		owner:            owner,
+		amount:           amount,
+		normalisedAmount: normalisedAmount,
+		depth:            depth,
+	}
 	return nil
 }
 
 func (u *updater) TopUp(id []byte, amount *big.Int) error {
-	u.topupCalled = true
+	u.eventC <- topupArgs{
+		id:     id,
+		amount: amount,
+	}
 	return nil
 }
 
 func (u *updater) UpdateDepth(id []byte, depth uint8) error {
-	u.updateDepthCalled = true
+	u.eventC <- depthArgs{
+		id:    id,
+		depth: depth,
+	}
 	return nil
 }
 
 func (u *updater) UpdatePrice(price *big.Int) error {
-	u.updatePriceCalled = true
+	u.eventC <- priceArgs{price}
 	return nil
 }
 
@@ -197,15 +198,19 @@ type createArgs struct {
 	depth            uint8
 }
 
-func (c createArgs) compare(cc createArgs) {
-	if !bytes.Equal(c.id, cc.id) {
-		t.Fatal("id mismatch")
+func (c createArgs) compare(t *testing.T, want createArgs) {
+	if !bytes.Equal(c.id, want.id) {
+		t.Fatalf("id mismatch. got %v want %v", c.id, want.id)
 	}
-
-	if !bytes.Equal(c.owner, cc.owner) {
-		t.Fatal("owner mismatch")
+	if !bytes.Equal(c.owner, want.owner) {
+		t.Fatalf("owner mismatch. got %v want %v", c.owner, want.owner)
 	}
-
+	if c.amount.Cmp(want.amount) != 0 {
+		t.Fatalf("amount mismatch. got %v want %v", c.amount.String(), want.amount.String())
+	}
+	if c.normalisedAmount.Cmp(want.normalisedAmount) != 0 {
+		t.Fatalf("normalised amount mismatch. got %v want %v", c.normalisedAmount.String(), want.normalisedAmount.String())
+	}
 }
 
 type topupArgs struct {
@@ -213,11 +218,35 @@ type topupArgs struct {
 	amount *big.Int
 }
 
+func (ta topupArgs) compare(t *testing.T, want topupArgs) {
+	if !bytes.Equal(ta.id, want.id) {
+		t.Fatalf("id mismatch. got %v want %v", ta.id, want.id)
+	}
+	if ta.amount.Cmp(want.amount) != 0 {
+		t.Fatalf("amount mismatch. got %s want %s", ta.amount.String(), want.amount.String())
+	}
+}
+
 type depthArgs struct {
 	id    []byte
 	depth uint8
 }
 
+func (d depthArgs) compare(t *testing.T, want depthArgs) {
+	if !bytes.Equal(d.id, want.id) {
+		t.Fatalf("id mismatch. got %v want %v", d.id, want.id)
+	}
+	if d.depth != want.depth {
+		t.Fatalf("depth mismatch. got %d want %d", d.depth, want.depth)
+	}
+}
+
 type priceArgs struct {
 	price *big.Int
+}
+
+func (p priceArgs) compare(t *testing.T, want priceArgs) {
+	if p.price.Cmp(want.price) != 0 {
+		t.Fatalf("price mismatch. got %s want %s", p.price.String(), want.price.String())
+	}
 }
