@@ -24,6 +24,7 @@ var (
 	createdTopic       = postageStampABI.Events["BatchCreated"].ID
 	topupTopic         = postageStampABI.Events["BatchTopUp"].ID
 	depthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
+	priceUpdateTopic   = priceOracleABI.Events["PriceUpdate"].ID
 )
 
 func TestListener(t *testing.T) {
@@ -106,6 +107,29 @@ func TestListener(t *testing.T) {
 		}
 	})
 
+	t.Run("priceUpdate event", func(t *testing.T) {
+		priceUpdate := priceArgs{
+			price: big.NewInt(500),
+		}
+
+		ev, evC := newEventUpdaterMock()
+		mf := newMockFilterer(
+			newPriceUpdateEvent(priceUpdate.price),
+		)
+		listener := listener.New(mf)
+		err := listener.Listen(0, ev)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case e := <-evC:
+			e.(priceArgs).compare(t, priceUpdate) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+	})
+
 	t.Run("multiple events", func(t *testing.T) {
 		c := createArgs{
 			id:               hash[:],
@@ -127,11 +151,16 @@ func TestListener(t *testing.T) {
 			normalisedBalance: big.NewInt(2),
 		}
 
+		priceUpdate := priceArgs{
+			price: big.NewInt(500),
+		}
+
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
 			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
 			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
+			newPriceUpdateEvent(priceUpdate.price),
 		)
 		listener := listener.New(mf)
 		err := listener.Listen(0, ev)
@@ -156,6 +185,13 @@ func TestListener(t *testing.T) {
 		select {
 		case e := <-evC:
 			e.(depthArgs).compare(t, depthIncrease) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case e := <-evC:
+			e.(priceArgs).compare(t, priceUpdate)
 		case <-time.After(5 * time.Second):
 			t.Fatal("timed out waiting for event")
 		}
@@ -282,6 +318,17 @@ func newDepthIncreaseEvent(batchID common.Hash, newDepth uint8, normalisedBalanc
 	}
 }
 
+func newPriceUpdateEvent(price *big.Int) types.Log {
+	b, err := priceOracleABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(price)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{
+		Data:   b,
+		Topics: []common.Hash{priceUpdateTopic},
+	}
+}
+
 type sub struct {
 	c chan error
 }
@@ -360,10 +407,8 @@ type priceArgs struct {
 	price *big.Int
 }
 
-/*
 func (p priceArgs) compare(t *testing.T, want priceArgs) {
 	if p.price.Cmp(want.price) != 0 {
 		t.Fatalf("price mismatch. got %s want %s", p.price.String(), want.price.String())
 	}
 }
-*/
