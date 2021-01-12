@@ -23,11 +23,11 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 	defer cancel()
 
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headers)); err != nil {
-		return fmt.Errorf("send write message: %w", err)
+		return fmt.Errorf("write message: %w", err)
 	}
 	h := new(pb.Headers)
 	if err := r.ReadMsgWithContext(ctx, h); err != nil {
-		return fmt.Errorf("send read message: %w", err)
+		return fmt.Errorf("read message: %w", err)
 	}
 
 	stream.headers = headersPBToP2P(h)
@@ -43,7 +43,7 @@ func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
 
 	headers := new(pb.Headers)
 	if err := r.ReadMsgWithContext(ctx, headers); err != nil {
-		return fmt.Errorf("handle read message: %w", err)
+		return fmt.Errorf("read message: %w", err)
 	}
 
 	stream.headers = headersPBToP2P(headers)
@@ -54,7 +54,7 @@ func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
 	}
 
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
-		return fmt.Errorf("handle write message: %w", err)
+		return fmt.Errorf("write message: %w", err)
 	}
 	return nil
 }
