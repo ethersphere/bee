@@ -143,6 +143,14 @@ func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
 			l.postageStampAddress,
 			l.priceOracleAddress,
 		},
+		Topics: [][]common.Hash{
+			{
+				l.batchCreatedTopic,
+				l.batchTopupTopic,
+				l.batchDepthIncreaseTopic,
+				l.priceUpdateTopic,
+			},
+		},
 	}
 	events, err := l.ev.FilterLogs(ctx, query)
 	if err != nil {
