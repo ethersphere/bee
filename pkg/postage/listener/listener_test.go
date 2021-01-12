@@ -3,7 +3,6 @@ package listener_test
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"strings"
@@ -14,13 +13,17 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage/listener"
 )
 
 var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
 var addr common.Address = common.HexToAddress("abcdef")
-var createdTopic = common.HexToHash("3f6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
+var (
+	postageStampABI    = parseABI(listener.Abi)
+	createdTopic       = postageStampABI.Events["BatchCreated"].ID
+	topupTopic         = postageStampABI.Events["BatchTopUp"].ID
+	depthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
+)
 
 func TestListener(t *testing.T) {
 	// test that when the listener gets a certain event
@@ -34,9 +37,23 @@ func TestListener(t *testing.T) {
 			depth:            100,
 		}
 
+		topup := topupArgs{
+			id:                hash[:],
+			amount:            big.NewInt(0),
+			normalisedBalance: big.NewInt(1),
+		}
+
+		depthIncrease := depthArgs{
+			id:                hash[:],
+			depth:             200,
+			normalisedBalance: big.NewInt(2),
+		}
+
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
+			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
+			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
 		)
 		listener := listener.New(mf)
 		listener.Listen(0, ev)
@@ -44,6 +61,20 @@ func TestListener(t *testing.T) {
 		select {
 		case e := <-evC:
 			e.(createArgs).compare(t, c) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case e := <-evC:
+			e.(topupArgs).compare(t, topup) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case e := <-evC:
+			e.(depthArgs).compare(t, depthIncrease) // event args should be equal
 		case <-time.After(5 * time.Second):
 			t.Fatal("timed out waiting for event")
 		}
@@ -73,18 +104,20 @@ func (u *updater) Create(id []byte, owner []byte, amount *big.Int, normalisedAmo
 	return nil
 }
 
-func (u *updater) TopUp(id []byte, amount *big.Int) error {
+func (u *updater) TopUp(id []byte, amount *big.Int, normalisedBalance *big.Int) error {
 	u.eventC <- topupArgs{
-		id:     id,
-		amount: amount,
+		id:                id,
+		amount:            amount,
+		normalisedBalance: normalisedBalance,
 	}
 	return nil
 }
 
-func (u *updater) UpdateDepth(id []byte, depth uint8) error {
+func (u *updater) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error {
 	u.eventC <- depthArgs{
-		id:    id,
-		depth: depth,
+		id:                id,
+		depth:             depth,
+		normalisedBalance: normalisedBalance,
 	}
 	return nil
 }
@@ -136,19 +169,36 @@ func parseABI(json string) abi.ABI {
 }
 
 func newCreateEvent(batchID common.Hash, totalAmount *big.Int, normalisedBalance *big.Int, depth uint8) types.Log {
-	a := parseABI(listener.Abi)
-	b, err := a.Events["BatchCreated"].Inputs[1:].NonIndexed().Pack(totalAmount, normalisedBalance, addr, depth)
+	b, err := postageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(totalAmount, normalisedBalance, addr, depth)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(b)
-	l := types.Log{
+	return types.Log{
 		Data:   b,
 		Topics: []common.Hash{createdTopic, batchID}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
+}
 
-	return l
+func newTopupEvent(batchID common.Hash, topupAmount *big.Int, normalisedBalance *big.Int) types.Log {
+	b, err := postageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(topupAmount, normalisedBalance)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{
+		Data:   b,
+		Topics: []common.Hash{topupTopic, batchID}, // 1st item is the function sig digest, 2nd is always the batch id
+	}
+}
 
+func newDepthIncreaseEvent(batchID common.Hash, newDepth uint8, normalisedBalance *big.Int) types.Log {
+	b, err := postageStampABI.Events["BatchDepthIncrease"].Inputs.NonIndexed().Pack(newDepth, normalisedBalance)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{
+		Data:   b,
+		Topics: []common.Hash{depthIncreaseTopic, batchID}, // 1st item is the function sig digest, 2nd is always the batch id
+	}
 }
 
 type sub struct {
@@ -164,30 +214,6 @@ func newSub() *sub {
 func (s *sub) Unsubscribe() {}
 func (s *sub) Err() <-chan error {
 	return s.c
-}
-
-func TestT(t *testing.T) {
-	t.Skip()
-	eventSignatures := []string{
-		"BatchCreated(bytes32,uint256,uint256,address,uint8)",
-		"BatchTopUp(bytes32,uint256)",
-		"BatchDepthIncrease(bytes32,uint256)",
-		"PriceUpdate(uint256)",
-	}
-
-	t.Fatal(digestSig(eventSignatures))
-}
-
-func digestSig(sigs []string) []string {
-	digests := make([]string, 4)
-	for i, s := range sigs {
-		h, err := crypto.LegacyKeccak256([]byte(s))
-		if err != nil {
-			panic(fmt.Sprintf("error digesting signatures: %v", err))
-		}
-		digests[i] = hex.EncodeToString(h)
-	}
-	return digests
 }
 
 type createArgs struct {
@@ -214,8 +240,9 @@ func (c createArgs) compare(t *testing.T, want createArgs) {
 }
 
 type topupArgs struct {
-	id     []byte
-	amount *big.Int
+	id                []byte
+	amount            *big.Int
+	normalisedBalance *big.Int
 }
 
 func (ta topupArgs) compare(t *testing.T, want topupArgs) {
@@ -225,11 +252,15 @@ func (ta topupArgs) compare(t *testing.T, want topupArgs) {
 	if ta.amount.Cmp(want.amount) != 0 {
 		t.Fatalf("amount mismatch. got %s want %s", ta.amount.String(), want.amount.String())
 	}
+	if ta.normalisedBalance.Cmp(want.normalisedBalance) != 0 {
+		t.Fatalf("normalised balance mismatch. got %v want %v", ta.normalisedBalance.String(), want.normalisedBalance.String())
+	}
 }
 
 type depthArgs struct {
-	id    []byte
-	depth uint8
+	id                []byte
+	depth             uint8
+	normalisedBalance *big.Int
 }
 
 func (d depthArgs) compare(t *testing.T, want depthArgs) {
@@ -238,6 +269,9 @@ func (d depthArgs) compare(t *testing.T, want depthArgs) {
 	}
 	if d.depth != want.depth {
 		t.Fatalf("depth mismatch. got %d want %d", d.depth, want.depth)
+	}
+	if d.normalisedBalance.Cmp(want.normalisedBalance) != 0 {
+		t.Fatalf("normalised balance mismatch. got %v want %v", d.normalisedBalance.String(), want.normalisedBalance.String())
 	}
 }
 

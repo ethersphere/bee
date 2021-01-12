@@ -12,8 +12,8 @@ import (
 // emitted by the postage contract on the blockchain
 type EventUpdater interface {
 	Create(id []byte, owner []byte, amount *big.Int, normalisedBalance *big.Int, depth uint8) error
-	TopUp(id []byte, amount *big.Int) error
-	UpdateDepth(id []byte, depth uint8) error
+	TopUp(id []byte, amount *big.Int, normalisedBalance *big.Int) error
+	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error
 	UpdatePrice(price *big.Int) error
 }
 

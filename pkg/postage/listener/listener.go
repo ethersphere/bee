@@ -1,8 +1,8 @@
 package listener
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -11,23 +11,15 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-var eventDigests = []string{
-	"3f6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246",
-	"a8c128cf3a23d40c5ad64da7f5a25e4db463e2384fd4a5a1688f944920e19f12",
-	"698f3fe3df04971a4e823110dd82c87c330d312fd393f95634050da6f3524b8a",
-	"ae46785019700e30375a5d7b4f91e32f8060ef085111f896ebf889450aa2ab5a",
-}
-
-var createdTopic = common.HexToHash("3f6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
-var functionSigs = []string{
-	"BatchCreated(bytes32,uint256,uint256,address,uint8)",
-	"BatchTopUp(bytes32,uint256,uint256)",
-	"BatchDepthIncrease(bytes32,uint256,uint256)",
-	"PriceUpdate(uint256)",
-}
+var (
+	createdTopic       = common.HexToHash("3f6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
+	topupTopic         = common.HexToHash("af5756c62d6c0722ef9be1f82bef97ab06ea5aea7f3eb8ad348422079f01d88d")
+	depthIncreaseTopic = common.HexToHash("af27998ec15e9d3809edad41aec1b5551d8412e71bd07c91611a0237ead1dc8e")
+)
 
 type BlockHeightContractFilterer interface {
 	bind.ContractFilterer
@@ -51,6 +43,66 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
 	return nil
 }
 
+func (l *listener) parseEvent(a abi.ABI, eventName string, c interface{}, e types.Log) error {
+	err := a.Unpack(c, eventName, e.Data)
+	if err != nil {
+		return err
+	}
+
+	var indexed abi.Arguments
+	for _, arg := range a.Events[eventName].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	abi.ParseTopics(c, indexed, e.Topics[1:])
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (l *listener) processEvent(a abi.ABI, e types.Log, updater postage.EventUpdater) error {
+	eventSig := e.Topics[0]
+	if eventSig == createdTopic {
+		c := &batchCreatedEvent{}
+		err := l.parseEvent(a, "BatchCreated", c, e)
+		if err != nil {
+			return err
+		}
+		return updater.Create(
+			c.BatchId[:],
+			c.Owner.Bytes(),
+			c.TotalAmount,
+			c.NormalisedBalance,
+			c.Depth,
+		)
+	} else if eventSig == topupTopic {
+		c := &batchTopUpEvent{}
+		err := l.parseEvent(a, "BatchTopUp", c, e)
+		if err != nil {
+			return err
+		}
+		return updater.TopUp(
+			c.BatchId[:],
+			c.TopupAmount,
+			c.NormalisedBalance,
+		)
+	} else if eventSig == depthIncreaseTopic {
+		c := &batchDepthIncreaseEvent{}
+		err := l.parseEvent(a, "BatchDepthIncrease", c, e)
+		if err != nil {
+			return err
+		}
+		return updater.UpdateDepth(
+			c.BatchId[:],
+			c.NewDepth,
+			c.NormalisedBalance,
+		)
+	}
+	return errors.New("unknown event")
+}
+
 func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
 	ctx := context.Background()
 	a := parseABI(Abi)
@@ -63,31 +115,10 @@ func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
 	if err != nil {
 		panic(err)
 	}
-	for _, e := range events {
-		if bytes.Equal(e.Topics[0][:], createdTopic[:]) {
-			c := &batchCreatedEvent{}
-			err := a.Unpack(c, "BatchCreated", e.Data)
-			var indexed abi.Arguments
-			for _, arg := range a.Events["BatchCreated"].Inputs {
-				if arg.Indexed {
-					indexed = append(indexed, arg)
-				}
-			}
-			abi.ParseTopics(c, indexed, e.Topics[1:])
-			if err != nil {
-				panic(err)
-			}
 
-			err = updater.Create(
-				c.BatchId[:],
-				c.Owner.Bytes(),
-				c.TotalAmount,
-				c.NormalisedBalance,
-				c.Depth,
-			)
-			if err != nil {
-				panic(err)
-			}
+	for _, e := range events {
+		if err = l.processEvent(a, e, updater); err != nil {
+			panic(err)
 		}
 	}
 }
@@ -120,7 +151,7 @@ type batchTopUpEvent struct {
 
 type batchDepthIncreaseEvent struct {
 	BatchId           [32]byte
-	NewDepth          *big.Int
+	NewDepth          uint8
 	NormalisedBalance *big.Int
 }
 
