@@ -19,7 +19,8 @@ import (
 var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
 var addr common.Address = common.HexToAddress("abcdef")
 var (
-	postageStampABI    = parseABI(listener.Abi)
+	postageStampABI    = parseABI(listener.PostageStampABI)
+	priceOracleABI     = parseABI(listener.PriceOracleABI)
 	createdTopic       = postageStampABI.Events["BatchCreated"].ID
 	topupTopic         = postageStampABI.Events["BatchTopUp"].ID
 	depthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID

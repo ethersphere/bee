@@ -23,19 +23,25 @@ type BlockHeightContractFilterer interface {
 type listener struct {
 	ev                      BlockHeightContractFilterer
 	postageStampABI         abi.ABI
+	priceOracleABI          abi.ABI
 	batchCreatedTopic       common.Hash
 	batchTopupTopic         common.Hash
 	batchDepthIncreaseTopic common.Hash
+
+	postageStampAddress common.Address
+	priceOracleAddress  common.Address
 }
 
 func New(ev BlockHeightContractFilterer) postage.Listener {
-	abi := parseABI(Abi)
+	postageStampABI := parseABI(PostageStampABI)
+	priceOracleABI := parseABI(PriceOracleABI)
 	return &listener{
 		ev:                      ev,
-		postageStampABI:         abi,
-		batchCreatedTopic:       abi.Events["BatchCreated"].ID,
-		batchTopupTopic:         abi.Events["BatchTopUp"].ID,
-		batchDepthIncreaseTopic: abi.Events["BatchDepthIncrease"].ID,
+		postageStampABI:         postageStampABI,
+		priceOracleABI:          priceOracleABI,
+		batchCreatedTopic:       postageStampABI.Events["BatchCreated"].ID,
+		batchTopupTopic:         postageStampABI.Events["BatchTopUp"].ID,
+		batchDepthIncreaseTopic: postageStampABI.Events["BatchDepthIncrease"].ID,
 	}
 }
 
