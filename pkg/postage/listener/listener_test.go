@@ -173,7 +173,7 @@ type updater struct {
 	eventC chan interface{}
 }
 
-func (u *updater) Create(id []byte, owner []byte, amount *big.Int, normalisedAmount *big.Int, depth uint8) error {
+func (u *updater) Create(id, owner []byte, amount, normalisedAmount *big.Int, depth uint8) error {
 	u.eventC <- createArgs{
 		id:               id,
 		owner:            owner,
@@ -184,7 +184,7 @@ func (u *updater) Create(id []byte, owner []byte, amount *big.Int, normalisedAmo
 	return nil
 }
 
-func (u *updater) TopUp(id []byte, amount *big.Int, normalisedBalance *big.Int) error {
+func (u *updater) TopUp(id []byte, amount, normalisedBalance *big.Int) error {
 	u.eventC <- topupArgs{
 		id:                id,
 		amount:            amount,
@@ -248,7 +248,7 @@ func parseABI(json string) abi.ABI {
 	return cabi
 }
 
-func newCreateEvent(batchID common.Hash, totalAmount *big.Int, normalisedBalance *big.Int, depth uint8) types.Log {
+func newCreateEvent(batchID common.Hash, totalAmount, normalisedBalance *big.Int, depth uint8) types.Log {
 	b, err := postageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(totalAmount, normalisedBalance, addr, depth)
 	if err != nil {
 		panic(err)
@@ -259,7 +259,7 @@ func newCreateEvent(batchID common.Hash, totalAmount *big.Int, normalisedBalance
 	}
 }
 
-func newTopupEvent(batchID common.Hash, topupAmount *big.Int, normalisedBalance *big.Int) types.Log {
+func newTopupEvent(batchID common.Hash, topupAmount, normalisedBalance *big.Int) types.Log {
 	b, err := postageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(topupAmount, normalisedBalance)
 	if err != nil {
 		panic(err)

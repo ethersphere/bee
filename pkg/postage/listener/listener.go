@@ -28,7 +28,7 @@ type listener struct {
 	batchDepthIncreaseTopic common.Hash
 }
 
-func New(ev BlockHeightContractFilterer) *listener {
+func New(ev BlockHeightContractFilterer) postage.Listener {
 	abi := parseABI(Abi)
 	return &listener{
 		ev:                      ev,
@@ -44,6 +44,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
 	if err != nil {
 		return err
 	}
+
 	go l.catchUp(from, blockHeight, updater)
 	return nil
 }
