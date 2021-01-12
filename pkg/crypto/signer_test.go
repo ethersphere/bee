@@ -211,3 +211,33 @@ func TestRecoverEIP712(t *testing.T) {
 		t.Fatalf("recovered wrong public key. wanted %x, got %x", privKey.PublicKey, pubKey)
 	}
 }
+
+func TestDefaultSignerDeterministic(t *testing.T) {
+	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	digest, err := hex.DecodeString("2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := crypto.NewDefaultSigner(privKey)
+	sig, err := signer.Sign(digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expSig, err := hex.DecodeString("336d24afef78c5883b96ad9a62552a8db3d236105cb059ddd04dc49680869dc16234f6852c277087f025d4114c4fac6b40295ecffd1194a84cdb91bd571769491b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(expSig, sig) {
+		t.Fatal("signature mismatch")
+	}
+}
