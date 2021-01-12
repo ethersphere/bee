@@ -60,7 +60,7 @@ func (l *listener) parseEvent(eventName string, c interface{}, e types.Log) erro
 			indexed = append(indexed, arg)
 		}
 	}
-	abi.ParseTopics(c, indexed, e.Topics[1:])
+	err = abi.ParseTopics(c, indexed, e.Topics[1:])
 	if err != nil {
 		return err
 	}
@@ -161,6 +161,8 @@ type batchDepthIncreaseEvent struct {
 	NormalisedBalance *big.Int
 }
 
+/*
 type priceUpdateEvent struct {
 	Price *big.Int
 }
+*/

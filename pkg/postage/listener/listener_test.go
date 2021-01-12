@@ -42,7 +42,10 @@ func TestListener(t *testing.T) {
 			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
 		)
 		listener := listener.New(mf)
-		listener.Listen(0, ev)
+		err := listener.Listen(0, ev)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		select {
 		case e := <-evC:
@@ -64,7 +67,10 @@ func TestListener(t *testing.T) {
 			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
 		)
 		listener := listener.New(mf)
-		listener.Listen(0, ev)
+		err := listener.Listen(0, ev)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		select {
 		case e := <-evC:
@@ -86,7 +92,10 @@ func TestListener(t *testing.T) {
 			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
 		)
 		listener := listener.New(mf)
-		listener.Listen(0, ev)
+		err := listener.Listen(0, ev)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		select {
 		case e := <-evC:
@@ -124,7 +133,10 @@ func TestListener(t *testing.T) {
 			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
 		)
 		listener := listener.New(mf)
-		listener.Listen(0, ev)
+		err := listener.Listen(0, ev)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		select {
 		case e := <-evC:
@@ -347,8 +359,10 @@ type priceArgs struct {
 	price *big.Int
 }
 
+/*
 func (p priceArgs) compare(t *testing.T, want priceArgs) {
 	if p.price.Cmp(want.price) != 0 {
 		t.Fatalf("price mismatch. got %s want %s", p.price.String(), want.price.String())
 	}
 }
+*/
