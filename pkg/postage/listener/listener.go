@@ -22,7 +22,7 @@ type BlockHeightContractFilterer interface {
 
 type listener struct {
 	ev                      BlockHeightContractFilterer
-	abi                     abi.ABI
+	postageStampABI         abi.ABI
 	batchCreatedTopic       common.Hash
 	batchTopupTopic         common.Hash
 	batchDepthIncreaseTopic common.Hash
@@ -32,7 +32,7 @@ func New(ev BlockHeightContractFilterer) *listener {
 	abi := parseABI(Abi)
 	return &listener{
 		ev:                      ev,
-		abi:                     abi,
+		postageStampABI:         abi,
 		batchCreatedTopic:       abi.Events["BatchCreated"].ID,
 		batchTopupTopic:         abi.Events["BatchTopUp"].ID,
 		batchDepthIncreaseTopic: abi.Events["BatchDepthIncrease"].ID,
@@ -49,13 +49,13 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
 }
 
 func (l *listener) parseEvent(eventName string, c interface{}, e types.Log) error {
-	err := l.abi.Unpack(c, eventName, e.Data)
+	err := l.postageStampABI.Unpack(c, eventName, e.Data)
 	if err != nil {
 		return err
 	}
 
 	var indexed abi.Arguments
-	for _, arg := range l.abi.Events[eventName].Inputs {
+	for _, arg := range l.postageStampABI.Events[eventName].Inputs {
 		if arg.Indexed {
 			indexed = append(indexed, arg)
 		}
