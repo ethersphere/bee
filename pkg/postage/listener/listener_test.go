@@ -37,6 +37,74 @@ func TestListener(t *testing.T) {
 			depth:            100,
 		}
 
+		ev, evC := newEventUpdaterMock()
+		mf := newMockFilterer(
+			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
+		)
+		listener := listener.New(mf)
+		listener.Listen(0, ev)
+
+		select {
+		case e := <-evC:
+			e.(createArgs).compare(t, c) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+	})
+
+	t.Run("topup event", func(t *testing.T) {
+		topup := topupArgs{
+			id:                hash[:],
+			amount:            big.NewInt(0),
+			normalisedBalance: big.NewInt(1),
+		}
+
+		ev, evC := newEventUpdaterMock()
+		mf := newMockFilterer(
+			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
+		)
+		listener := listener.New(mf)
+		listener.Listen(0, ev)
+
+		select {
+		case e := <-evC:
+			e.(topupArgs).compare(t, topup) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+	})
+
+	t.Run("depthIncrease event", func(t *testing.T) {
+		depthIncrease := depthArgs{
+			id:                hash[:],
+			depth:             200,
+			normalisedBalance: big.NewInt(2),
+		}
+
+		ev, evC := newEventUpdaterMock()
+		mf := newMockFilterer(
+			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
+		)
+		listener := listener.New(mf)
+		listener.Listen(0, ev)
+
+		select {
+		case e := <-evC:
+			e.(depthArgs).compare(t, depthIncrease) // event args should be equal
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for event")
+		}
+	})
+
+	t.Run("multiple events", func(t *testing.T) {
+		c := createArgs{
+			id:               hash[:],
+			owner:            addr[:],
+			amount:           big.NewInt(42),
+			normalisedAmount: big.NewInt(43),
+			depth:            100,
+		}
+
 		topup := topupArgs{
 			id:                hash[:],
 			amount:            big.NewInt(0),
