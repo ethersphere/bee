@@ -21,14 +21,21 @@ type BlockHeightContractFilterer interface {
 }
 
 type listener struct {
-	ev  BlockHeightContractFilterer
-	abi abi.ABI
+	ev                      BlockHeightContractFilterer
+	abi                     abi.ABI
+	batchCreatedTopic       common.Hash
+	batchTopupTopic         common.Hash
+	batchDepthIncreaseTopic common.Hash
 }
 
 func New(ev BlockHeightContractFilterer) *listener {
+	abi := parseABI(Abi)
 	return &listener{
-		ev:  ev,
-		abi: parseABI(Abi),
+		ev:                      ev,
+		abi:                     abi,
+		batchCreatedTopic:       abi.Events["BatchCreated"].ID,
+		batchTopupTopic:         abi.Events["BatchTopUp"].ID,
+		batchDepthIncreaseTopic: abi.Events["BatchDepthIncrease"].ID,
 	}
 }
 
@@ -62,7 +69,8 @@ func (l *listener) parseEvent(eventName string, c interface{}, e types.Log) erro
 
 func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
 	eventSig := e.Topics[0]
-	if eventSig == l.abi.Events["BatchCreated"].ID {
+	switch eventSig {
+	case l.batchCreatedTopic:
 		c := &batchCreatedEvent{}
 		err := l.parseEvent("BatchCreated", c, e)
 		if err != nil {
@@ -75,7 +83,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.NormalisedBalance,
 			c.Depth,
 		)
-	} else if eventSig == l.abi.Events["BatchTopUp"].ID {
+	case l.batchTopupTopic:
 		c := &batchTopUpEvent{}
 		err := l.parseEvent("BatchTopUp", c, e)
 		if err != nil {
@@ -86,7 +94,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.TopupAmount,
 			c.NormalisedBalance,
 		)
-	} else if eventSig == l.abi.Events["BatchDepthIncrease"].ID {
+	case l.batchDepthIncreaseTopic:
 		c := &batchDepthIncreaseEvent{}
 		err := l.parseEvent("BatchDepthIncrease", c, e)
 		if err != nil {
@@ -97,8 +105,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.NewDepth,
 			c.NormalisedBalance,
 		)
+	default:
+		return errors.New("unknown event")
 	}
-	return errors.New("unknown event")
 }
 
 func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
