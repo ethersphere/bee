@@ -15,23 +15,21 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-var (
-	createdTopic       = common.HexToHash("3f6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
-	topupTopic         = common.HexToHash("af5756c62d6c0722ef9be1f82bef97ab06ea5aea7f3eb8ad348422079f01d88d")
-	depthIncreaseTopic = common.HexToHash("af27998ec15e9d3809edad41aec1b5551d8412e71bd07c91611a0237ead1dc8e")
-)
-
 type BlockHeightContractFilterer interface {
 	bind.ContractFilterer
 	BlockHeight(context.Context) (uint64, error)
 }
 
 type listener struct {
-	ev BlockHeightContractFilterer
+	ev  BlockHeightContractFilterer
+	abi abi.ABI
 }
 
 func New(ev BlockHeightContractFilterer) *listener {
-	return &listener{ev: ev}
+	return &listener{
+		ev:  ev,
+		abi: parseABI(Abi),
+	}
 }
 
 func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
@@ -43,14 +41,14 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
 	return nil
 }
 
-func (l *listener) parseEvent(a abi.ABI, eventName string, c interface{}, e types.Log) error {
-	err := a.Unpack(c, eventName, e.Data)
+func (l *listener) parseEvent(eventName string, c interface{}, e types.Log) error {
+	err := l.abi.Unpack(c, eventName, e.Data)
 	if err != nil {
 		return err
 	}
 
 	var indexed abi.Arguments
-	for _, arg := range a.Events[eventName].Inputs {
+	for _, arg := range l.abi.Events[eventName].Inputs {
 		if arg.Indexed {
 			indexed = append(indexed, arg)
 		}
@@ -62,11 +60,11 @@ func (l *listener) parseEvent(a abi.ABI, eventName string, c interface{}, e type
 	return nil
 }
 
-func (l *listener) processEvent(a abi.ABI, e types.Log, updater postage.EventUpdater) error {
+func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
 	eventSig := e.Topics[0]
-	if eventSig == createdTopic {
+	if eventSig == l.abi.Events["BatchCreated"].ID {
 		c := &batchCreatedEvent{}
-		err := l.parseEvent(a, "BatchCreated", c, e)
+		err := l.parseEvent("BatchCreated", c, e)
 		if err != nil {
 			return err
 		}
@@ -77,9 +75,9 @@ func (l *listener) processEvent(a abi.ABI, e types.Log, updater postage.EventUpd
 			c.NormalisedBalance,
 			c.Depth,
 		)
-	} else if eventSig == topupTopic {
+	} else if eventSig == l.abi.Events["BatchTopUp"].ID {
 		c := &batchTopUpEvent{}
-		err := l.parseEvent(a, "BatchTopUp", c, e)
+		err := l.parseEvent("BatchTopUp", c, e)
 		if err != nil {
 			return err
 		}
@@ -88,9 +86,9 @@ func (l *listener) processEvent(a abi.ABI, e types.Log, updater postage.EventUpd
 			c.TopupAmount,
 			c.NormalisedBalance,
 		)
-	} else if eventSig == depthIncreaseTopic {
+	} else if eventSig == l.abi.Events["BatchDepthIncrease"].ID {
 		c := &batchDepthIncreaseEvent{}
-		err := l.parseEvent(a, "BatchDepthIncrease", c, e)
+		err := l.parseEvent("BatchDepthIncrease", c, e)
 		if err != nil {
 			return err
 		}
@@ -105,7 +103,6 @@ func (l *listener) processEvent(a abi.ABI, e types.Log, updater postage.EventUpd
 
 func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
 	ctx := context.Background()
-	a := parseABI(Abi)
 
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(from)),
@@ -117,7 +114,7 @@ func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
 	}
 
 	for _, e := range events {
-		if err = l.processEvent(a, e, updater); err != nil {
+		if err = l.processEvent(e, updater); err != nil {
 			panic(err)
 		}
 	}
