@@ -29,9 +29,16 @@ type listener struct {
 	batchTopupTopic         common.Hash
 	batchDepthIncreaseTopic common.Hash
 	priceUpdateTopic        common.Hash
+
+	postageStampAddress common.Address
+	priceOracleAddress  common.Address
 }
 
-func New(ev BlockHeightContractFilterer) postage.Listener {
+func New(
+	ev BlockHeightContractFilterer,
+	postageStampAddress common.Address,
+	priceOracleAddress common.Address,
+) postage.Listener {
 	postageStampABI := parseABI(PostageStampABI)
 	priceOracleABI := parseABI(PriceOracleABI)
 	return &listener{
@@ -132,6 +139,10 @@ func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(from)),
 		ToBlock:   big.NewInt(int64(to)),
+		Addresses: []common.Address{
+			l.postageStampAddress,
+			l.priceOracleAddress,
+		},
 	}
 	events, err := l.ev.FilterLogs(ctx, query)
 	if err != nil {

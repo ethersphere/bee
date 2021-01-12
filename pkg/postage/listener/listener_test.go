@@ -18,6 +18,10 @@ import (
 
 var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
 var addr common.Address = common.HexToAddress("abcdef")
+
+var postageStampAddress common.Address = common.HexToAddress("eeee")
+var priceOracleAddress common.Address = common.HexToAddress("eeef")
+
 var (
 	postageStampABI    = parseABI(listener.PostageStampABI)
 	priceOracleABI     = parseABI(listener.PriceOracleABI)
@@ -43,7 +47,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
 		)
-		listener := listener.New(mf)
+		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -68,7 +72,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
 		)
-		listener := listener.New(mf)
+		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -93,7 +97,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
 		)
-		listener := listener.New(mf)
+		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -116,7 +120,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newPriceUpdateEvent(priceUpdate.price),
 		)
-		listener := listener.New(mf)
+		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -162,7 +166,7 @@ func TestListener(t *testing.T) {
 			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
 			newPriceUpdateEvent(priceUpdate.price),
 		)
-		listener := listener.New(mf)
+		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
