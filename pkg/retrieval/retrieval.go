@@ -142,7 +142,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 						}
 
 						select {
-						case resultC <- retrieveChunkResult{err: storage.ErrNotFound}:
+						case resultC <- retrieveChunkResult{err: err}:
 						default:
 						}
 						return
@@ -164,11 +164,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				peersResults++
 
 				if result.err != nil {
-					if errors.Is(result.err, storage.ErrNotFound) && peersResults != maxPeers {
-						break
-					}
-
-					return nil, result.err
+					break
 				}
 
 				if result.chunk == nil {
@@ -179,6 +175,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				return result.chunk, nil
 			case <-ctx.Done():
 				logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
+				return nil, storage.ErrNotFound
+			}
+
+			// all results received
+			if peersResults >= maxPeers {
+				logger.Tracef("retrieval: failed to get chunk %s", addr)
 				return nil, storage.ErrNotFound
 			}
 		}
