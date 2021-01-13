@@ -25,6 +25,7 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headers)); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
+
 	h := new(pb.Headers)
 	if err := r.ReadMsgWithContext(ctx, h); err != nil {
 		return fmt.Errorf("read message: %w", err)
