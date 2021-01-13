@@ -106,6 +106,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 		sps := newSkipPeersService()
 
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
+		defer ticker.Stop()
 
 		var (
 			peerAttempt int
