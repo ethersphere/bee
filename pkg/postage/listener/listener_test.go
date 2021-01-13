@@ -48,7 +48,7 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
+				c.toLog(),
 			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
@@ -75,7 +75,7 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
+				topup.toLog(),
 			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
@@ -102,7 +102,7 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
+				depthIncrease.toLog(),
 			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
@@ -127,7 +127,7 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				newPriceUpdateEvent(priceUpdate.price),
+				priceUpdate.toLog(),
 			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
@@ -172,10 +172,10 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
-				newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
-				newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
-				newPriceUpdateEvent(priceUpdate.price),
+				c.toLog(),
+				topup.toLog(),
+				depthIncrease.toLog(),
+				priceUpdate.toLog(),
 			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
@@ -279,12 +279,6 @@ func WithFilterLogEvents(events ...types.Log) Option {
 	})
 }
 
-func WithSubscriptionEvents(events ...types.Log) Option {
-	return optionFunc(func(s *mockFilterer) {
-		s.subscriptionEvents = events
-	})
-}
-
 func (m *mockFilterer) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	return m.filterLogEvents, nil
 }
@@ -313,50 +307,6 @@ func parseABI(json string) abi.ABI {
 		panic(fmt.Sprintf("error creating ABI for postage contract: %v", err))
 	}
 	return cabi
-}
-
-func newCreateEvent(batchID common.Hash, totalAmount, normalisedBalance *big.Int, depth uint8) types.Log {
-	b, err := postageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(totalAmount, normalisedBalance, addr, depth)
-	if err != nil {
-		panic(err)
-	}
-	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{createdTopic, batchID}, // 1st item is the function sig digest, 2nd is always the batch id
-	}
-}
-
-func newTopupEvent(batchID common.Hash, topupAmount, normalisedBalance *big.Int) types.Log {
-	b, err := postageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(topupAmount, normalisedBalance)
-	if err != nil {
-		panic(err)
-	}
-	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{topupTopic, batchID}, // 1st item is the function sig digest, 2nd is always the batch id
-	}
-}
-
-func newDepthIncreaseEvent(batchID common.Hash, newDepth uint8, normalisedBalance *big.Int) types.Log {
-	b, err := postageStampABI.Events["BatchDepthIncrease"].Inputs.NonIndexed().Pack(newDepth, normalisedBalance)
-	if err != nil {
-		panic(err)
-	}
-	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{depthIncreaseTopic, batchID}, // 1st item is the function sig digest, 2nd is always the batch id
-	}
-}
-
-func newPriceUpdateEvent(price *big.Int) types.Log {
-	b, err := priceOracleABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(price)
-	if err != nil {
-		panic(err)
-	}
-	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{priceUpdateTopic},
-	}
 }
 
 type sub struct {
@@ -397,6 +347,17 @@ func (c createArgs) compare(t *testing.T, want createArgs) {
 	}
 }
 
+func (c createArgs) toLog() types.Log {
+	b, err := postageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.depth)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{
+		Data:   b,
+		Topics: []common.Hash{createdTopic, common.BytesToHash(c.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+	}
+}
+
 type topupArgs struct {
 	id                []byte
 	amount            *big.Int
@@ -412,6 +373,17 @@ func (ta topupArgs) compare(t *testing.T, want topupArgs) {
 	}
 	if ta.normalisedBalance.Cmp(want.normalisedBalance) != 0 {
 		t.Fatalf("normalised balance mismatch. got %v want %v", ta.normalisedBalance.String(), want.normalisedBalance.String())
+	}
+}
+
+func (ta topupArgs) toLog() types.Log {
+	b, err := postageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(ta.amount, ta.normalisedBalance)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{
+		Data:   b,
+		Topics: []common.Hash{topupTopic, common.BytesToHash(ta.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -433,6 +405,17 @@ func (d depthArgs) compare(t *testing.T, want depthArgs) {
 	}
 }
 
+func (d depthArgs) toLog() types.Log {
+	b, err := postageStampABI.Events["BatchDepthIncrease"].Inputs.NonIndexed().Pack(d.depth, d.normalisedBalance)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{
+		Data:   b,
+		Topics: []common.Hash{depthIncreaseTopic, common.BytesToHash(d.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+	}
+}
+
 type priceArgs struct {
 	price *big.Int
 }
@@ -440,6 +423,17 @@ type priceArgs struct {
 func (p priceArgs) compare(t *testing.T, want priceArgs) {
 	if p.price.Cmp(want.price) != 0 {
 		t.Fatalf("price mismatch. got %s want %s", p.price.String(), want.price.String())
+	}
+}
+
+func (p priceArgs) toLog() types.Log {
+	b, err := priceOracleABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(p.price)
+	if err != nil {
+		panic(err)
+	}
+	return types.Log{
+		Data:   b,
+		Topics: []common.Hash{priceUpdateTopic},
 	}
 }
 
