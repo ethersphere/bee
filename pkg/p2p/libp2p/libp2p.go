@@ -498,6 +498,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("peer blocklisted")
 	}
+
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := handshakeStream.FullClose(); err != nil {
 			_ = s.Disconnect(i.BzzAddress.Overlay)
