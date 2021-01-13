@@ -18,6 +18,7 @@ type metrics struct {
 	TotalSynced       prometheus.Counter
 	TotalErrors       prometheus.Counter
 	MarkAndSweepTimer prometheus.Histogram
+	SyncTime          prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -42,11 +43,18 @@ func newMetrics() metrics {
 			Name:      "total_errors",
 			Help:      "Total errors encountered.",
 		}),
-		MarkAndSweepTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
+		MarkAndSweepTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "mark_and_sweep_time",
 			Help:      "Histogram of time spent in mark and sweep.",
+			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
+		}),
+		SyncTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "sync_time",
+			Help:      "Histogram of time spent to fully sync a chunk.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
 	}
