@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -14,6 +16,15 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
+)
+
+const (
+	blockPage = 500 // how many blocks to sync every time
+	tailSize  = 100 // how many blocks to tail from the tip of the chain
+)
+
+var (
+	chainUpdateInterval = 30 * time.Second
 )
 
 type BlockHeightContractFilterer interface {
@@ -34,6 +45,9 @@ type listener struct {
 
 	postageStampAddress common.Address
 	priceOracleAddress  common.Address
+
+	quit chan struct{}
+	wg   sync.WaitGroup
 }
 
 func New(
@@ -57,15 +71,13 @@ func New(
 }
 
 func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
-	blockHeight, err := l.ev.BlockHeight(context.Background())
-	if err != nil {
-		return err
-	}
+	l.wg.Add(1)
 
 	go func() {
-		err := l.catchUp(from, blockHeight, updater)
+		defer l.wg.Done()
+		err := l.sync(from, updater)
 		if err != nil {
-			l.logger.Errorf("event listener catchUp: %v", err)
+			l.logger.Errorf("event listener sync: %v", err)
 		}
 	}()
 
@@ -158,17 +170,40 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) error {
+func (l *listener) sync(from, updater postage.EventUpdater) error {
 	ctx := context.Background()
-
-	events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
-	if err != nil {
-		return err
-	}
-
-	for _, e := range events {
-		if err = l.processEvent(e, updater); err != nil {
+	paged := make(chan struct{}, 1)
+	for {
+		select {
+		case <-paged:
+			// if we paged then it means there's more things to sync on
+		case <-time.After(chainUpdateInterval):
+		case <-l.quit:
+			return nil
+		}
+		to, err := l.ev.BlockHeight(context.Background())
+		if err != nil {
 			return err
+		}
+
+		// consider to-tailSize as the "latest" block we need to sync to
+		to = to - tailSize
+
+		// do some paging (sub-optimal)
+		if to-from > blockPage {
+			paged <- struct{}{}
+			to = from + blockPage
+		}
+
+		events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
+		if err != nil {
+			return err
+		}
+
+		for _, e := range events {
+			if err = l.processEvent(e, updater); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -176,6 +211,19 @@ func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) error 
 }
 
 func (l *listener) Close() error {
+	close(l.quit)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		l.wg.Wait()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		return errors.New("postage listener closed with running goroutines")
+	}
 	return nil
 }
 
