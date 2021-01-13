@@ -14,38 +14,38 @@ type metrics struct {
 	// to be able to return them by Metrics()
 	// using reflection
 
-	TotalChunksToBeSentCounter prometheus.Counter
-	TotalChunksSynced          prometheus.Counter
-	ErrorSettingChunkToSynced  prometheus.Counter
-	MarkAndSweepTimer          prometheus.Histogram
+	TotalToPush       prometheus.Counter
+	TotalSynced       prometheus.Counter
+	TotalErrors       prometheus.Counter
+	MarkAndSweepTimer prometheus.Histogram
 }
 
 func newMetrics() metrics {
-	subsystem := "pushsync"
+	subsystem := "pusher"
 
 	return metrics{
-		TotalChunksToBeSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalToPush: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_chunk_to_be_sent",
-			Help:      "Total chunks to be sent.",
+			Name:      "total_to_push",
+			Help:      "Total chunks to push (chunks may be repeated).",
 		}),
-		TotalChunksSynced: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalSynced: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_chunk_synced",
+			Name:      "total_synced",
 			Help:      "Total chunks synced successfully with valid receipts.",
 		}),
-		ErrorSettingChunkToSynced: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "cannot_set_chunk_sync_in_db",
-			Help:      "Total no of times the chunk cannot be synced in DB.",
+			Name:      "total_errors",
+			Help:      "Total errors encountered.",
 		}),
 		MarkAndSweepTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "mark_and_sweep_time_histogram",
+			Name:      "mark_and_sweep_time",
 			Help:      "Histogram of time spent in mark and sweep.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
