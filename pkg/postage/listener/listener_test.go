@@ -47,7 +47,9 @@ func TestListener(t *testing.T) {
 
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
-			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
+			WithFilterLogEvents(
+				newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
+			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
@@ -72,7 +74,9 @@ func TestListener(t *testing.T) {
 
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
-			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
+			WithFilterLogEvents(
+				newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
+			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
@@ -97,7 +101,9 @@ func TestListener(t *testing.T) {
 
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
-			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
+			WithFilterLogEvents(
+				newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
+			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
@@ -120,7 +126,9 @@ func TestListener(t *testing.T) {
 
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
-			newPriceUpdateEvent(priceUpdate.price),
+			WithFilterLogEvents(
+				newPriceUpdateEvent(priceUpdate.price),
+			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
@@ -163,10 +171,12 @@ func TestListener(t *testing.T) {
 
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
-			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
-			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
-			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
-			newPriceUpdateEvent(priceUpdate.price),
+			WithFilterLogEvents(
+				newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
+				newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
+				newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
+				newPriceUpdateEvent(priceUpdate.price),
+			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
@@ -202,7 +212,6 @@ func TestListener(t *testing.T) {
 			t.Fatal("timed out waiting for event")
 		}
 	})
-
 }
 
 func newEventUpdaterMock() (*updater, chan interface{}) {
@@ -251,23 +260,38 @@ func (u *updater) UpdatePrice(price *big.Int) error {
 }
 
 type mockFilterer struct {
-	events []types.Log
-	sub    *sub
+	filterLogEvents    []types.Log
+	subscriptionEvents []types.Log
+	sub                *sub
 }
 
-func newMockFilterer(logs ...types.Log) *mockFilterer {
-	return &mockFilterer{
-		events: logs,
+func newMockFilterer(opts ...Option) *mockFilterer {
+	mock := new(mockFilterer)
+	for _, o := range opts {
+		o.apply(mock)
 	}
+	return mock
+}
+
+func WithFilterLogEvents(events ...types.Log) Option {
+	return optionFunc(func(s *mockFilterer) {
+		s.filterLogEvents = events
+	})
+}
+
+func WithSubscriptionEvents(events ...types.Log) Option {
+	return optionFunc(func(s *mockFilterer) {
+		s.subscriptionEvents = events
+	})
 }
 
 func (m *mockFilterer) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	return m.events, nil
+	return m.filterLogEvents, nil
 }
 
 func (m *mockFilterer) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	go func() {
-		for _, ev := range m.events {
+		for _, ev := range m.subscriptionEvents {
 			ch <- ev
 		}
 	}()
@@ -418,3 +442,11 @@ func (p priceArgs) compare(t *testing.T, want priceArgs) {
 		t.Fatalf("price mismatch. got %s want %s", p.price.String(), want.price.String())
 	}
 }
+
+type Option interface {
+	apply(*mockFilterer)
+}
+
+type optionFunc func(*mockFilterer)
+
+func (f optionFunc) apply(r *mockFilterer) { f(r) }
