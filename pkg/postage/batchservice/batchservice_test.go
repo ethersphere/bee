@@ -61,6 +61,7 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
+			testBatch.NormalisedBalance,
 			testBatch.Depth,
 		); err == nil {
 			t.Fatalf("expected error")
@@ -77,6 +78,7 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
+			testBatch.NormalisedBalance,
 			testBatch.Depth,
 		); err != nil {
 			t.Fatalf("got error %v", err)
@@ -102,6 +104,9 @@ func TestBatchServiceCreate(t *testing.T) {
 		if got.Start != testChainState.Block {
 			t.Fatalf("batch start block different form chain state: want %v, got %v", got.Start, testChainState.Block)
 		}
+		if got.NormalisedBalance.Cmp(testBatch.NormalisedBalance) != 0 {
+			t.Fatalf("normalised batch value: want %v, got %v", testBatch.NormalisedBalance.String(), got.NormalisedBalance.String())
+		}
 
 	})
 
@@ -118,7 +123,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 			mock.WithGetErr(testErr, 1),
 		)
 
-		if err := svc.TopUp(testBatch.ID, testTopUpAmount); err == nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testBatch.NormalisedBalance); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -130,7 +135,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 		)
 		putBatch(t, batchStore, testBatch)
 
-		if err := svc.TopUp(testBatch.ID, testTopUpAmount); err == nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testBatch.NormalisedBalance); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -142,7 +147,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 		want := testBatch.Value
 		want.Add(want, testTopUpAmount)
 
-		if err := svc.TopUp(testBatch.ID, testTopUpAmount); err != nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testBatch.NormalisedBalance); err != nil {
 			t.Fatalf("top up: %v", err)
 		}
 
@@ -155,6 +160,9 @@ func TestBatchServiceTopUp(t *testing.T) {
 			t.Fatalf("topped up amount: got %v, want %v", got.Value, want)
 		}
 
+		if got.NormalisedBalance.Cmp(testBatch.NormalisedBalance) != 0 {
+			t.Fatalf("normalised batch value: want %v, got %v", testBatch.NormalisedBalance.String(), got.NormalisedBalance.String())
+		}
 	})
 }
 
@@ -168,7 +176,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 			mock.WithGetErr(testErr, 1),
 		)
 
-		if err := svc.UpdateDepth(testBatch.ID, testNewDepth); err == nil {
+		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testBatch.NormalisedBalance); err == nil {
 			t.Fatal("expected get error")
 		}
 	})
@@ -180,7 +188,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 		)
 		putBatch(t, batchStore, testBatch)
 
-		if err := svc.UpdateDepth(testBatch.ID, testNewDepth); err == nil {
+		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testBatch.NormalisedBalance); err == nil {
 			t.Fatal("expected put error")
 		}
 	})
@@ -189,7 +197,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(t)
 		putBatch(t, batchStore, testBatch)
 
-		if err := svc.UpdateDepth(testBatch.ID, testNewDepth); err != nil {
+		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testBatch.NormalisedBalance); err != nil {
 			t.Fatalf("update depth: %v", err)
 		}
 
@@ -200,6 +208,10 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 		if val.Depth != testNewDepth {
 			t.Fatalf("wrong batch depth set: want %v, got %v", testNewDepth, val.Depth)
+		}
+
+		if val.NormalisedBalance.Cmp(testBatch.NormalisedBalance) != 0 {
+			t.Fatalf("normalised batch value: want %v, got %v", testBatch.NormalisedBalance.String(), val.NormalisedBalance.String())
 		}
 	})
 }

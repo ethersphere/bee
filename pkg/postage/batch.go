@@ -11,11 +11,12 @@ import (
 
 // Batch represents a postage batch, a payment on the blockchain.
 type Batch struct {
-	ID    []byte   // batch ID
-	Value *big.Int // overall balance of the batch
-	Start uint64   // block number the batch was created
-	Owner []byte   // owner's ethereum address
-	Depth uint8    // batch depth, i.e., size = 2^{depth}
+	ID                []byte   // batch ID
+	Value             *big.Int // overall balance of the batch
+	Start             uint64   // block number the batch was created
+	Owner             []byte   // owner's ethereum address
+	Depth             uint8    // batch depth, i.e., size = 2^{depth}
+	NormalisedBalance *big.Int // normalised balance of the batch
 }
 
 // MarshalBinary implements BinaryMarshaller. It will attempt to serialize the
