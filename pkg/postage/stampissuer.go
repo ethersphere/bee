@@ -15,16 +15,18 @@ import (
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	label       string     // label to identify the batch period/importance
-	keyID       string     // owner identity
-	batchID     []byte     // the batch stamps are issued from
-	batchDepth  uint8      // batch depth: batch size = 2^{depth}
-	bucketDepth uint8      // bucket depth: the depth of collision buckets uniformity
-	mu          sync.Mutex // mutex for buckets
-	buckets     []uint32   // collision buckets: counts per neighbourhoods limited to 2^{batchdepth-bucketdepth}
+	label       string     // Label to identify the batch period/importance.
+	keyID       string     // Owner identity.
+	batchID     []byte     // The batch stamps are issued from.
+	batchDepth  uint8      // Batch depth: batch size = 2^{depth}.
+	bucketDepth uint8      // Bucket depth: the depth of collision buckets uniformity.
+	mu          sync.Mutex // Mutex for buckets.
+	buckets     []uint32   // Collision buckets: counts per neighbourhoods (limited to 2^{batchdepth-bucketdepth}).
 }
 
-// NewStampIssuer constructs a StampIssuer as an extension of a batch for local upload.
+// NewStampIssuer constructs a StampIssuer as an extension of a batch for local
+// upload.
+//
 // bucketDepth must always be smaller than batchDepth otherwise inc() panics.
 func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth uint8) *StampIssuer {
 	return &StampIssuer{
@@ -37,8 +39,8 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth
 	}
 }
 
-// inc increments the count in the correct collision bucket
-// for a newly stamped chunk with address addr
+// inc increments the count in the correct collision bucket for a newly stamped
+// chunk with address addr.
 func (st *StampIssuer) inc(addr swarm.Address) error {
 	st.mu.Lock()
 	defer st.mu.Unlock()
