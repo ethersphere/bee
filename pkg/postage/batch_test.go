@@ -21,7 +21,7 @@ func TestBatchMarshalling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != 93 {
+	if len(buf) != 157 {
 		t.Fatalf("invalid length for serialised batch. expected 93, got %d", len(buf))
 	}
 	b := &postage.Batch{}
@@ -42,5 +42,8 @@ func TestBatchMarshalling(t *testing.T) {
 	}
 	if a.Depth != b.Depth {
 		t.Fatalf("depth mismatch, expected %d, got %d", a.Depth, b.Depth)
+	}
+	if a.NormalisedBalance.Uint64() != b.NormalisedBalance.Uint64() {
+		t.Fatalf("normalised balance mismatch, expected %d, got %d", a.NormalisedBalance.Uint64(), b.NormalisedBalance.Uint64())
 	}
 }
