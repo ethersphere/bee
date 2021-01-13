@@ -14,11 +14,12 @@ type metrics struct {
 	// to be able to return them by Metrics()
 	// using reflection
 
-	TotalToPush       prometheus.Counter
-	TotalSynced       prometheus.Counter
-	TotalErrors       prometheus.Counter
-	MarkAndSweepTimer prometheus.Histogram
-	SyncTime          prometheus.Histogram
+	TotalToPush      prometheus.Counter
+	TotalSynced      prometheus.Counter
+	TotalErrors      prometheus.Counter
+	MarkAndSweepTime prometheus.Histogram
+	SyncTime         prometheus.Histogram
+	ErrorTime        prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -54,7 +55,14 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "sync_time",
-			Help:      "Histogram of time spent to fully sync a chunk.",
+			Help:      "Histogram of time spent to sync a chunk.",
+			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
+		}),
+		ErrorTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "error_time",
+			Help:      "Histogram of time spent before giving up on syncing a chunk.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
 	}

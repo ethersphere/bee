@@ -121,14 +121,19 @@ LOOP:
 			mtx.Unlock()
 
 			go func(ctx context.Context, ch swarm.Chunk) {
-				var err error
+				var (
+					err       error
+					startTime = time.Now()
+				)
 				defer func() {
 					if err == nil {
 						s.metrics.TotalSynced.Inc()
+						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 						// only print this if there was no error while sending the chunk
 						s.logger.Tracef("pusher pushed chunk %s", ch.Address().String())
 					} else {
 						s.metrics.TotalErrors.Inc()
+						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
 					}
 					mtx.Lock()
 					delete(inflight, ch.Address().String())
@@ -166,7 +171,7 @@ LOOP:
 
 			// reset timer to go off after retryInterval
 			timer.Reset(retryInterval)
-			s.metrics.MarkAndSweepTimer.Observe(time.Since(startTime).Seconds())
+			s.metrics.MarkAndSweepTime.Observe(time.Since(startTime).Seconds())
 
 			if span != nil {
 				span.Finish()
