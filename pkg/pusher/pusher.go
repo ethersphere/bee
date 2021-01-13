@@ -96,7 +96,8 @@ LOOP:
 			// postpone a retry only after we've finished processing everything in index
 			timer.Reset(retryInterval)
 			chunksInBatch++
-			s.metrics.TotalChunksToBeSentCounter.Inc()
+			s.metrics.TotalToPush.Inc()
+
 			select {
 			case sem <- struct{}{}:
 			case <-s.quit:
@@ -120,11 +121,19 @@ LOOP:
 			mtx.Unlock()
 
 			go func(ctx context.Context, ch swarm.Chunk) {
-				var err error
+				var (
+					err       error
+					startTime = time.Now()
+				)
 				defer func() {
 					if err == nil {
+						s.metrics.TotalSynced.Inc()
+						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 						// only print this if there was no error while sending the chunk
 						s.logger.Tracef("pusher pushed chunk %s", ch.Address().String())
+					} else {
+						s.metrics.TotalErrors.Inc()
+						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
 					}
 					mtx.Lock()
 					delete(inflight, ch.Address().String())
@@ -145,7 +154,6 @@ LOOP:
 					s.logger.Debugf("pusher: error setting chunk as synced: %v", err)
 					return
 				}
-
 			}(ctx, ch)
 		case <-timer.C:
 			// initially timer is set to go off as well as every time we hit the end of push index
@@ -163,7 +171,7 @@ LOOP:
 
 			// reset timer to go off after retryInterval
 			timer.Reset(retryInterval)
-			s.metrics.MarkAndSweepTimer.Observe(time.Since(startTime).Seconds())
+			s.metrics.MarkAndSweepTime.Observe(time.Since(startTime).Seconds())
 
 			if span != nil {
 				span.Finish()
@@ -201,8 +209,8 @@ LOOP:
 func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
 	if err := s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 		s.logger.Errorf("pusher: error setting chunk as synced: %v", err)
-		s.metrics.ErrorSettingChunkToSynced.Inc()
 	}
+
 	t, err := s.tagg.Get(ch.TagID())
 	if err == nil && t != nil {
 		err = t.Inc(tags.StateSynced)
