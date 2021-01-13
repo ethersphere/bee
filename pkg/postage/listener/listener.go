@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
@@ -21,6 +22,7 @@ type BlockHeightContractFilterer interface {
 }
 
 type listener struct {
+	logger          logging.Logger
 	ev              BlockHeightContractFilterer
 	postageStampABI abi.ABI
 	priceOracleABI  abi.ABI
@@ -35,6 +37,7 @@ type listener struct {
 }
 
 func New(
+	logger logging.Logger,
 	ev BlockHeightContractFilterer,
 	postageStampAddress,
 	priceOracleAddress common.Address,
@@ -42,6 +45,7 @@ func New(
 	postageStampABI := parseABI(PostageStampABI)
 	priceOracleABI := parseABI(PriceOracleABI)
 	return &listener{
+		logger:                  logger,
 		ev:                      ev,
 		postageStampABI:         postageStampABI,
 		priceOracleABI:          priceOracleABI,
@@ -58,8 +62,33 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) error {
 		return err
 	}
 
-	go l.catchUp(from, blockHeight, updater)
+	go func() {
+		err := l.catchUp(from, blockHeight, updater)
+		if err != nil {
+			l.logger.Errorf("event listener catchUp: %v", err)
+		}
+	}()
+
 	return nil
+}
+
+func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
+	return ethereum.FilterQuery{
+		FromBlock: from,
+		ToBlock:   to,
+		Addresses: []common.Address{
+			l.postageStampAddress,
+			l.priceOracleAddress,
+		},
+		Topics: [][]common.Hash{
+			{
+				l.batchCreatedTopic,
+				l.batchTopupTopic,
+				l.batchDepthIncreaseTopic,
+				l.priceUpdateTopic,
+			},
+		},
+	}
 }
 
 func (l *listener) parseEvent(a *abi.ABI, eventName string, c interface{}, e types.Log) error {
@@ -74,11 +103,7 @@ func (l *listener) parseEvent(a *abi.ABI, eventName string, c interface{}, e typ
 			indexed = append(indexed, arg)
 		}
 	}
-	err = abi.ParseTopics(c, indexed, e.Topics[1:])
-	if err != nil {
-		return err
-	}
-	return nil
+	return abi.ParseTopics(c, indexed, e.Topics[1:])
 }
 
 func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
@@ -133,35 +158,21 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) {
+func (l *listener) catchUp(from, to uint64, updater postage.EventUpdater) error {
 	ctx := context.Background()
 
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
-		ToBlock:   big.NewInt(int64(to)),
-		Addresses: []common.Address{
-			l.postageStampAddress,
-			l.priceOracleAddress,
-		},
-		Topics: [][]common.Hash{
-			{
-				l.batchCreatedTopic,
-				l.batchTopupTopic,
-				l.batchDepthIncreaseTopic,
-				l.priceUpdateTopic,
-			},
-		},
-	}
-	events, err := l.ev.FilterLogs(ctx, query)
+	events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	for _, e := range events {
 		if err = l.processEvent(e, updater); err != nil {
-			panic(err)
+			return err
 		}
 	}
+
+	return nil
 }
 
 func (l *listener) Close() error {

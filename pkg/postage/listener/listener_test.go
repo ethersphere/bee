@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage/listener"
 )
 
@@ -47,7 +49,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newCreateEvent(common.BytesToHash(c.id), c.amount, c.normalisedAmount, c.depth),
 		)
-		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
+		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -72,7 +74,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newTopupEvent(common.BytesToHash(topup.id), topup.amount, topup.normalisedBalance),
 		)
-		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
+		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -97,7 +99,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
 		)
-		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
+		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -120,7 +122,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			newPriceUpdateEvent(priceUpdate.price),
 		)
-		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
+		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
@@ -166,7 +168,7 @@ func TestListener(t *testing.T) {
 			newDepthIncreaseEvent(common.BytesToHash(depthIncrease.id), depthIncrease.depth, depthIncrease.normalisedBalance),
 			newPriceUpdateEvent(priceUpdate.price),
 		)
-		listener := listener.New(mf, postageStampAddress, priceOracleAddress)
+		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
 		err := listener.Listen(0, ev)
 		if err != nil {
 			t.Fatal(err)
