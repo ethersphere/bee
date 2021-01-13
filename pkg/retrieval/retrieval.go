@@ -109,9 +109,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 		defer ticker.Stop()
 
 		var (
-			peerAttempt int
-			resultC     = make(chan retrieveChunkResult)
-			wgChan      sync.WaitGroup
+			peerAttempt  int
+			peersResults int
+			resultC      = make(chan retrieveChunkResult)
+			wgChan       sync.WaitGroup
 		)
 
 		wgChan.Add(maxPeers)
@@ -136,15 +137,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 
 					chunk, peer, err := s.retrieveChunk(ctx, addr, sps)
 					if err != nil {
-						if peer.IsZero() {
-							select {
-							case resultC <- retrieveChunkResult{err: err}:
-							default:
-							}
-							return
+						if !peer.IsZero() {
+							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
 						}
-
-						logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
 
 						select {
 						case resultC <- retrieveChunkResult{err: storage.ErrNotFound}:
@@ -166,8 +161,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 			case <-ticker.C:
 				// break
 			case result := <-resultC:
+				peersResults++
+
 				if result.err != nil {
-					if errors.Is(result.err, storage.ErrNotFound) {
+					if errors.Is(result.err, storage.ErrNotFound) && peersResults != maxPeers {
 						break
 					}
 
