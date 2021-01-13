@@ -50,10 +50,11 @@ func NewBigInt() *big.Int {
 // be filled with random data. Panics on errors.
 func MustNewBatch(opts ...BatchOption) *postage.Batch {
 	b := &postage.Batch{
-		ID:    MustNewID(),
-		Value: NewBigInt(),
-		Start: rand.Uint64(),
-		Depth: defaultDepth,
+		ID:                MustNewID(),
+		Value:             NewBigInt(),
+		Start:             rand.Uint64(),
+		Depth:             defaultDepth,
+		NormalisedBalance: NewBigInt(),
 	}
 
 	for _, opt := range opts {
