@@ -170,9 +170,10 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) sync(from, updater postage.EventUpdater) error {
+func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 	ctx := context.Background()
 	paged := make(chan struct{}, 1)
+	paged <- struct{}{}
 	for {
 		select {
 		case <-paged:
