@@ -10,10 +10,6 @@ import (
 )
 
 type metrics struct {
-	// all metrics fields must be exported
-	// to be able to return them by Metrics()
-	// using reflection
-
 	TotalToPush       prometheus.Counter
 	TotalSynced       prometheus.Counter
 	TotalErrors       prometheus.Counter
