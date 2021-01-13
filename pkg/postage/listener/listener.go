@@ -207,8 +207,6 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func (l *listener) Close() error {
