@@ -173,10 +173,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	// Support same non default security and transport options as
+	// original host.
+	dialer, err := libp2p.New(ctx, append(transports, security)...)
+	if err != nil {
+		return nil, err
+	}
+
 	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
-	if _, err = autonat.New(ctx, h); err != nil {
+	if _, err = autonat.New(ctx, h, autonat.EnableService(dialer.Network())); err != nil {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
