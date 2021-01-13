@@ -37,13 +37,14 @@ func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, er
 
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchStore.
-func (svc *batchService) Create(id, owner []byte, value *big.Int, depth uint8) error {
+func (svc *batchService) Create(id, owner []byte, value *big.Int, normalisedBalance *big.Int, depth uint8) error {
 	b := &postage.Batch{
-		ID:    id,
-		Owner: owner,
-		Value: value,
-		Start: svc.cs.Block,
-		Depth: depth,
+		ID:                id,
+		Owner:             owner,
+		Value:             value,
+		Start:             svc.cs.Block,
+		Depth:             depth,
+		NormalisedBalance: normalisedBalance,
 	}
 
 	err := svc.storer.Put(b)
@@ -57,13 +58,14 @@ func (svc *batchService) Create(id, owner []byte, value *big.Int, depth uint8) e
 
 // TopUp implements the EventUpdater interface. It tops ups a batch with the
 // given ID with the given amount.
-func (svc *batchService) TopUp(id []byte, amount *big.Int) error {
+func (svc *batchService) TopUp(id []byte, amount *big.Int, normalisedBalance *big.Int) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
 	}
 
 	b.Value.Add(b.Value, amount)
+	b.NormalisedBalance.Set(normalisedBalance)
 
 	err = svc.storer.Put(b)
 	if err != nil {
@@ -76,13 +78,14 @@ func (svc *batchService) TopUp(id []byte, amount *big.Int) error {
 
 // UpdateDepth implements the EventUpdater inteface. It sets the new depth of a
 // batch with the given ID.
-func (svc *batchService) UpdateDepth(id []byte, depth uint8) error {
+func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
 	}
 
 	b.Depth = depth
+	b.NormalisedBalance.Set(normalisedBalance)
 
 	err = svc.storer.Put(b)
 	if err != nil {
