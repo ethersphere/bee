@@ -22,6 +22,7 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
+// Service is the postage service interface.
 type Service interface {
 	Add(*StampIssuer)
 	StampIssuers() []*StampIssuer

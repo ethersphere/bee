@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package testing
 
 import (
@@ -7,16 +11,21 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-func NewStamp() *postage.Stamp {
-	id := make([]byte, 32)
-	_, err := io.ReadFull(crand.Reader, id)
+const signatureSize = 65
+
+// MustNewSignature will create a new random signature (65 byte slice). Panics
+// on errors.
+func MustNewSignature() []byte {
+	sig := make([]byte, signatureSize)
+	_, err := io.ReadFull(crand.Reader, sig)
 	if err != nil {
-		panic(err.Error())
+		panic(err)
 	}
-	sig := make([]byte, 65)
-	_, err = io.ReadFull(crand.Reader, sig)
-	if err != nil {
-		panic(err.Error())
-	}
-	return postage.NewStamp(id, sig)
+	return sig
+}
+
+// MustNewStamp will generate a postage stamp with random data. Panics on
+// errors.
+func MustNewStamp() *postage.Stamp {
+	return postage.NewStamp(MustNewID(), MustNewSignature())
 }

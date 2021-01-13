@@ -16,6 +16,7 @@ var (
 	ErrBucketFull = errors.New("bucket full")
 )
 
+// Stamper can issue stamps from the given address.
 type Stamper interface {
 	Stamp(swarm.Address) (*Stamp, error)
 }
