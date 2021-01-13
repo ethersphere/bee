@@ -95,7 +95,19 @@ type retrieveChunkResult struct {
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	ctx, cancel := context.WithTimeout(ctx, maxPeers*retrieveChunkTimeout)
-	defer cancel()
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	defer func() {
+		wg.Done()
+	}()
+
+	go func() {
+		wg.Wait()
+		cancel()
+	}()
 
 	s.metrics.RequestCounter.Inc()
 
@@ -112,17 +124,18 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 			peerAttempt  int
 			peersResults int
 			resultC      = make(chan retrieveChunkResult)
-			wgChan       sync.WaitGroup
 		)
 
-		wgChan.Add(maxPeers)
+		wg.Add(maxPeers)
 
 		defer func() {
 			if peerAttempt != maxPeers {
-				wgChan.Add(peerAttempt - maxPeers)
+				wg.Add(peerAttempt - maxPeers)
 			}
-			wgChan.Wait()
+		}()
 
+		go func() {
+			wg.Wait()
 			close(resultC)
 		}()
 
@@ -133,7 +146,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				s.metrics.PeerRequestCounter.Inc()
 
 				go func() {
-					defer wgChan.Done()
+					defer wg.Done()
 
 					chunk, peer, err := s.retrieveChunk(ctx, addr, sps)
 					if err != nil {
