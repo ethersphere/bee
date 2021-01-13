@@ -10,108 +10,32 @@ import (
 )
 
 type metrics struct {
-	// all metrics fields must be exported
-	// to be able to return them by Metrics()
-	// using reflection
-
-	TotalChunksStoredInDB      prometheus.Counter
-	ChunksSentCounter          prometheus.Counter
-	ChunksReceivedCounter      prometheus.Counter
-	SendChunkErrorCounter      prometheus.Counter
-	ReceivedChunkErrorCounter  prometheus.Counter
-	ReceiptsReceivedCounter    prometheus.Counter
-	ReceiptsSentCounter        prometheus.Counter
-	SendReceiptErrorCounter    prometheus.Counter
-	ReceiveReceiptErrorCounter prometheus.Counter
-	RetriesExhaustedCounter    prometheus.Counter
-	InvalidReceiptReceived     prometheus.Counter
-	SendChunkTimer             prometheus.Histogram
-	ReceiptRTT                 prometheus.Histogram
+	TotalSent     prometheus.Counter
+	TotalReceived prometheus.Counter
+	TotalErrors   prometheus.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "pushsync"
 
 	return metrics{
-		TotalChunksStoredInDB: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalSent: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_chunk_stored_in_DB",
-			Help:      "Total chunks stored successfully in local store.",
-		}),
-		ChunksSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "sent_chunk",
+			Name:      "total_sent",
 			Help:      "Total chunks sent.",
 		}),
-		ChunksReceivedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalReceived: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "received_chunk",
+			Name:      "total_received",
 			Help:      "Total chunks received.",
 		}),
-		SendChunkErrorCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "send_chunk_error",
+			Name:      "total_errors",
 			Help:      "Total no of time error received while sending chunk.",
-		}),
-		ReceivedChunkErrorCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "received_chunk_error",
-			Help:      "Total no of time error received while receiving chunk.",
-		}),
-		ReceiptsReceivedCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "received_receipts",
-			Help:      "Total no of times receipts received.",
-		}),
-		ReceiptsSentCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "sent_receipts",
-			Help:      "Total no of times receipts are sent.",
-		}),
-		SendReceiptErrorCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "sent_receipts_error",
-			Help:      "Total no of times receipts were sent and error was encountered.",
-		}),
-		ReceiveReceiptErrorCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "receive_receipt_error",
-			Help:      "Total no of time error received while receiving receipt.",
-		}),
-		RetriesExhaustedCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "chunk_retries_exhausted",
-			Help:      "CHunk retries exhausted.",
-		}),
-		InvalidReceiptReceived: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "invalid_receipt_receipt",
-			Help:      "Invalid receipt received from peer.",
-		}),
-		SendChunkTimer: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "send_chunk_time_histogram",
-			Help:      "Histogram for Time taken to send a chunk.",
-			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
-		}),
-		ReceiptRTT: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "receipt_rtt_histogram",
-			Help:      "Histogram of RTT for receiving receipt for a pushed chunk.",
-			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
 	}
 }
