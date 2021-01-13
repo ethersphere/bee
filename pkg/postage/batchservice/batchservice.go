@@ -35,7 +35,8 @@ func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, er
 	return b, nil
 }
 
-// Create will create a new batch and store it in the BatchStore.
+// Create will create a new batch with the given ID, owner value and depth and
+// stores it in the BatchStore.
 func (svc *batchService) Create(id, owner []byte, value *big.Int, depth uint8) error {
 	b := &postage.Batch{
 		ID:    id,
@@ -55,7 +56,7 @@ func (svc *batchService) Create(id, owner []byte, value *big.Int, depth uint8) e
 }
 
 // TopUp implements the EventUpdater interface. It tops ups a batch with the
-// given ID with the given amount of BZZ.
+// given ID with the given amount.
 func (svc *batchService) TopUp(id []byte, amount *big.Int) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {

@@ -38,7 +38,7 @@ func New(opts ...Option) *BatchStore {
 	return bs
 }
 
-// WithChainState the initial ChainStore
+// WithChainState will set the initial chainstate in the ChainStore mock.
 func WithChainState(cs *postage.ChainState) Option {
 	return func(bs *BatchStore) {
 		bs.cs = cs
