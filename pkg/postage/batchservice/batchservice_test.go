@@ -61,6 +61,7 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
+			testBatch.NormalisedBalance,
 			testBatch.Depth,
 		); err == nil {
 			t.Fatalf("expected error")
@@ -77,6 +78,7 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
+			testBatch.NormalisedBalance,
 			testBatch.Depth,
 		); err != nil {
 			t.Fatalf("got error %v", err)
@@ -102,6 +104,9 @@ func TestBatchServiceCreate(t *testing.T) {
 		if got.Start != testChainState.Block {
 			t.Fatalf("batch start block different form chain state: want %v, got %v", got.Start, testChainState.Block)
 		}
+		if got.NormalisedBalance.Cmp(testBatch.NormalisedBalance) != 0 {
+			t.Fatalf("normalised batch value: want %v, got %v", testBatch.NormalisedBalance.String(), got.NormalisedBalance.String())
+		}
 
 	})
 
@@ -110,6 +115,7 @@ func TestBatchServiceCreate(t *testing.T) {
 func TestBatchServiceTopUp(t *testing.T) {
 	testBatch := postagetesting.MustNewBatch()
 	testTopUpAmount := big.NewInt(10000000000000)
+	testNormalisedBalance := big.NewInt(2000000000000)
 
 	t.Run("expect get error", func(t *testing.T) {
 		svc, _ := newTestStoreAndService(
@@ -118,7 +124,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 			mock.WithGetErr(testErr, 1),
 		)
 
-		if err := svc.TopUp(testBatch.ID, testTopUpAmount); err == nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -130,7 +136,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 		)
 		putBatch(t, batchStore, testBatch)
 
-		if err := svc.TopUp(testBatch.ID, testTopUpAmount); err == nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -142,7 +148,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 		want := testBatch.Value
 		want.Add(want, testTopUpAmount)
 
-		if err := svc.TopUp(testBatch.ID, testTopUpAmount); err != nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance); err != nil {
 			t.Fatalf("top up: %v", err)
 		}
 
@@ -155,11 +161,15 @@ func TestBatchServiceTopUp(t *testing.T) {
 			t.Fatalf("topped up amount: got %v, want %v", got.Value, want)
 		}
 
+		if got.NormalisedBalance.Cmp(testNormalisedBalance) != 0 {
+			t.Fatalf("normalised batch value: want %v, got %v", testNormalisedBalance.String(), got.NormalisedBalance.String())
+		}
 	})
 }
 
 func TestBatchServiceUpdateDepth(t *testing.T) {
 	const testNewDepth = 30
+	testNormalisedBalance := big.NewInt(2000000000000)
 	testBatch := postagetesting.MustNewBatch()
 
 	t.Run("expect get error", func(t *testing.T) {
@@ -168,7 +178,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 			mock.WithGetErr(testErr, 1),
 		)
 
-		if err := svc.UpdateDepth(testBatch.ID, testNewDepth); err == nil {
+		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance); err == nil {
 			t.Fatal("expected get error")
 		}
 	})
@@ -180,7 +190,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 		)
 		putBatch(t, batchStore, testBatch)
 
-		if err := svc.UpdateDepth(testBatch.ID, testNewDepth); err == nil {
+		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance); err == nil {
 			t.Fatal("expected put error")
 		}
 	})
@@ -189,7 +199,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(t)
 		putBatch(t, batchStore, testBatch)
 
-		if err := svc.UpdateDepth(testBatch.ID, testNewDepth); err != nil {
+		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance); err != nil {
 			t.Fatalf("update depth: %v", err)
 		}
 
@@ -200,6 +210,10 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 		if val.Depth != testNewDepth {
 			t.Fatalf("wrong batch depth set: want %v, got %v", testNewDepth, val.Depth)
+		}
+
+		if val.NormalisedBalance.Cmp(testNormalisedBalance) != 0 {
+			t.Fatalf("normalised batch value: want %v, got %v", testNormalisedBalance.String(), val.NormalisedBalance.String())
 		}
 	})
 }
