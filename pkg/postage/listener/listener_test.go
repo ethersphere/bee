@@ -297,7 +297,7 @@ func (m *mockFilterer) Close() {
 	close(m.sub.c)
 }
 
-func (m *mockFilterer) BlockHeight(context.Context) (uint64, error) {
+func (m *mockFilterer) BlockNumber(context.Context) (uint64, error) {
 	return 0, nil
 }
 

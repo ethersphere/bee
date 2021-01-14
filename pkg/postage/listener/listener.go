@@ -29,7 +29,7 @@ var (
 
 type BlockHeightContractFilterer interface {
 	bind.ContractFilterer
-	BlockHeight(context.Context) (uint64, error)
+	BlockNumber(context.Context) (uint64, error)
 }
 
 type listener struct {
@@ -182,7 +182,7 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 		case <-l.quit:
 			return nil
 		}
-		to, err := l.ev.BlockHeight(context.Background())
+		to, err := l.ev.BlockNumber(context.Background())
 		if err != nil {
 			return err
 		}
