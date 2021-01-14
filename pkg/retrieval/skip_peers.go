@@ -10,26 +10,23 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type skipPeersService struct {
+type skipPeers struct {
 	addresses []swarm.Address
-
-	mu sync.Mutex
+	mu        sync.Mutex
 }
 
-func newSkipPeersService() *skipPeersService {
-	return &skipPeersService{
-		addresses: make([]swarm.Address, 0),
-	}
+func newSkipPeers() *skipPeers {
+	return &skipPeers{}
 }
 
-func (s *skipPeersService) Addresses() []swarm.Address {
+func (s *skipPeers) All() []swarm.Address {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return append(s.addresses[:0:0], s.addresses...)
 }
 
-func (s *skipPeersService) AddAddressToSkip(address swarm.Address) {
+func (s *skipPeers) Add(address swarm.Address) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -115,7 +115,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 		defer span.Finish()
 
-		sps := newSkipPeersService()
+		sp := newSkipPeers()
 
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
 		defer ticker.Stop()
@@ -148,7 +148,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				go func() {
 					defer wg.Done()
 
-					chunk, peer, err := s.retrieveChunk(ctx, addr, sps)
+					chunk, peer, err := s.retrieveChunk(ctx, addr, sp)
 					if err != nil {
 						if !peer.IsZero() {
 							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
@@ -205,7 +205,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sps *skipPeersService) (chunk swarm.Chunk, peer swarm.Address, err error) {
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skipPeers) (chunk swarm.Chunk, peer swarm.Address, err error) {
 	startTimer := time.Now()
 
 	v := ctx.Value(requestSourceContextKey{})
@@ -217,7 +217,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sps *sk
 	if src, ok := v.(string); ok {
 		sourcePeerAddr, err = swarm.ParseHexAddress(src)
 		if err == nil {
-			sps.AddAddressToSkip(sourcePeerAddr)
+			sp.Add(sourcePeerAddr)
 		}
 		// do not allow upstream requests if the request was forwarded to this node
 		// to avoid the request loops
@@ -226,8 +226,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sps *sk
 
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
-
-	peer, err = s.closestPeer(addr, sps.Addresses(), allowUpstream)
+	peer, err = s.closestPeer(addr, sp.All(), allowUpstream)
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
 	}
@@ -246,7 +245,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sps *sk
 			Inc()
 	}
 
-	sps.AddAddressToSkip(peer)
+	sp.Add(peer)
 
 	// compute the price we pay for this chunk and reserve it for the rest of this function
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
