@@ -67,6 +67,9 @@ func New(
 		batchTopupTopic:         postageStampABI.Events["BatchTopUp"].ID,
 		batchDepthIncreaseTopic: postageStampABI.Events["BatchDepthIncrease"].ID,
 		priceUpdateTopic:        priceOracleABI.Events["PriceUpdate"].ID,
+
+		postageStampAddress: postageStampAddress,
+		priceOracleAddress:  priceOracleAddress,
 	}
 }
 
