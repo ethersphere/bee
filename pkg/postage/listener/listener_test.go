@@ -200,21 +200,19 @@ type updater struct {
 	eventC chan interface{}
 }
 
-func (u *updater) Create(id, owner []byte, amount, normalisedAmount *big.Int, depth uint8) error {
+func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth uint8) error {
 	u.eventC <- createArgs{
 		id:               id,
 		owner:            owner,
-		amount:           amount,
 		normalisedAmount: normalisedAmount,
 		depth:            depth,
 	}
 	return nil
 }
 
-func (u *updater) TopUp(id []byte, amount, normalisedBalance *big.Int) error {
+func (u *updater) TopUp(id []byte, normalisedBalance *big.Int) error {
 	u.eventC <- topupArgs{
 		id:                id,
-		amount:            amount,
 		normalisedBalance: normalisedBalance,
 	}
 	return nil
@@ -306,9 +304,6 @@ func (c createArgs) compare(t *testing.T, want createArgs) {
 	if !bytes.Equal(c.owner, want.owner) {
 		t.Fatalf("owner mismatch. got %v want %v", c.owner, want.owner)
 	}
-	if c.amount.Cmp(want.amount) != 0 {
-		t.Fatalf("amount mismatch. got %v want %v", c.amount.String(), want.amount.String())
-	}
 	if c.normalisedAmount.Cmp(want.normalisedAmount) != 0 {
 		t.Fatalf("normalised amount mismatch. got %v want %v", c.normalisedAmount.String(), want.normalisedAmount.String())
 	}
@@ -334,9 +329,6 @@ type topupArgs struct {
 func (ta topupArgs) compare(t *testing.T, want topupArgs) {
 	if !bytes.Equal(ta.id, want.id) {
 		t.Fatalf("id mismatch. got %v want %v", ta.id, want.id)
-	}
-	if ta.amount.Cmp(want.amount) != 0 {
-		t.Fatalf("amount mismatch. got %s want %s", ta.amount.String(), want.amount.String())
 	}
 	if ta.normalisedBalance.Cmp(want.normalisedBalance) != 0 {
 		t.Fatalf("normalised balance mismatch. got %v want %v", ta.normalisedBalance.String(), want.normalisedBalance.String())

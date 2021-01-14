@@ -123,7 +123,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		return updater.Create(
 			c.BatchId[:],
 			c.Owner.Bytes(),
-			c.TotalAmount,
 			c.NormalisedBalance,
 			c.Depth,
 		)
@@ -135,7 +134,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		}
 		return updater.TopUp(
 			c.BatchId[:],
-			c.TopupAmount,
 			c.NormalisedBalance,
 		)
 	case batchDepthIncreaseTopic:
