@@ -3,15 +3,12 @@ package listener_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io/ioutil"
 	"math/big"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -25,15 +22,15 @@ var postageStampAddress common.Address = common.HexToAddress("eeee")
 var priceOracleAddress common.Address = common.HexToAddress("eeef")
 
 var (
-	postageStampABI    = parseABI(listener.PostageStampABI)
-	priceOracleABI     = parseABI(listener.PriceOracleABI)
-	createdTopic       = postageStampABI.Events["BatchCreated"].ID
-	topupTopic         = postageStampABI.Events["BatchTopUp"].ID
-	depthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
-	priceUpdateTopic   = priceOracleABI.Events["PriceUpdate"].ID
+	createdTopic       = listener.PostageStampABI.Events["BatchCreated"].ID
+	topupTopic         = listener.PostageStampABI.Events["BatchTopUp"].ID
+	depthIncreaseTopic = listener.PostageStampABI.Events["BatchDepthIncrease"].ID
+	priceUpdateTopic   = listener.PriceOracleABI.Events["PriceUpdate"].ID
 )
 
 func TestListener(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	timeout := 5 * time.Second
 	// test that when the listener gets a certain event
 	// then we would like to assert the appropriate EventUpdater method was called
 	t.Run("create event", func(t *testing.T) {
@@ -51,16 +48,13 @@ func TestListener(t *testing.T) {
 				c.toLog(),
 			),
 		)
-		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
-		err := listener.Listen(0, ev)
-		if err != nil {
-			t.Fatal(err)
-		}
+		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress)
+		listener.Listen(0, ev)
 
 		select {
 		case e := <-evC:
 			e.(createArgs).compare(t, c) // event args should be equal
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 	})
@@ -78,16 +72,13 @@ func TestListener(t *testing.T) {
 				topup.toLog(),
 			),
 		)
-		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
-		err := listener.Listen(0, ev)
-		if err != nil {
-			t.Fatal(err)
-		}
+		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress)
+		listener.Listen(0, ev)
 
 		select {
 		case e := <-evC:
 			e.(topupArgs).compare(t, topup) // event args should be equal
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 	})
@@ -105,16 +96,13 @@ func TestListener(t *testing.T) {
 				depthIncrease.toLog(),
 			),
 		)
-		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
-		err := listener.Listen(0, ev)
-		if err != nil {
-			t.Fatal(err)
-		}
+		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress)
+		listener.Listen(0, ev)
 
 		select {
 		case e := <-evC:
 			e.(depthArgs).compare(t, depthIncrease) // event args should be equal
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 	})
@@ -130,16 +118,13 @@ func TestListener(t *testing.T) {
 				priceUpdate.toLog(),
 			),
 		)
-		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
-		err := listener.Listen(0, ev)
-		if err != nil {
-			t.Fatal(err)
-		}
+		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress)
+		listener.Listen(0, ev)
 
 		select {
 		case e := <-evC:
 			e.(priceArgs).compare(t, priceUpdate) // event args should be equal
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 	})
@@ -179,36 +164,33 @@ func TestListener(t *testing.T) {
 			),
 		)
 		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
-		err := listener.Listen(0, ev)
-		if err != nil {
-			t.Fatal(err)
-		}
+		listener.Listen(0, ev)
 
 		select {
 		case e := <-evC:
 			e.(createArgs).compare(t, c) // event args should be equal
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 
 		select {
 		case e := <-evC:
 			e.(topupArgs).compare(t, topup) // event args should be equal
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 
 		select {
 		case e := <-evC:
 			e.(depthArgs).compare(t, depthIncrease) // event args should be equal
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 
 		select {
 		case e := <-evC:
 			e.(priceArgs).compare(t, priceUpdate)
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 	})
@@ -301,14 +283,6 @@ func (m *mockFilterer) BlockNumber(context.Context) (uint64, error) {
 	return 0, nil
 }
 
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for postage contract: %v", err))
-	}
-	return cabi
-}
-
 type sub struct {
 	c chan error
 }
@@ -348,7 +322,7 @@ func (c createArgs) compare(t *testing.T, want createArgs) {
 }
 
 func (c createArgs) toLog() types.Log {
-	b, err := postageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.depth)
+	b, err := listener.PostageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.depth)
 	if err != nil {
 		panic(err)
 	}
@@ -377,7 +351,7 @@ func (ta topupArgs) compare(t *testing.T, want topupArgs) {
 }
 
 func (ta topupArgs) toLog() types.Log {
-	b, err := postageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(ta.amount, ta.normalisedBalance)
+	b, err := listener.PostageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(ta.amount, ta.normalisedBalance)
 	if err != nil {
 		panic(err)
 	}
@@ -406,7 +380,7 @@ func (d depthArgs) compare(t *testing.T, want depthArgs) {
 }
 
 func (d depthArgs) toLog() types.Log {
-	b, err := postageStampABI.Events["BatchDepthIncrease"].Inputs.NonIndexed().Pack(d.depth, d.normalisedBalance)
+	b, err := listener.PostageStampABI.Events["BatchDepthIncrease"].Inputs.NonIndexed().Pack(d.depth, d.normalisedBalance)
 	if err != nil {
 		panic(err)
 	}
@@ -427,7 +401,7 @@ func (p priceArgs) compare(t *testing.T, want priceArgs) {
 }
 
 func (p priceArgs) toLog() types.Log {
-	b, err := priceOracleABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(p.price)
+	b, err := listener.PriceOracleABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(p.price)
 	if err != nil {
 		panic(err)
 	}

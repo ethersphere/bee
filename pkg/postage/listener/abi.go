@@ -1,6 +1,6 @@
 package listener
 
-const PostageStampABI = `[
+const PostageStampABIJSON = `[
     {
       "inputs": [
         {
@@ -493,7 +493,7 @@ const PostageStampABI = `[
     }
   ]`
 
-const PriceOracleABI = `[
+const PriceOracleABIJSON = `[
     {
       "inputs": [
         {
