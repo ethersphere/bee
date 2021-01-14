@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -48,6 +49,7 @@ type Service struct {
 	logger        logging.Logger
 	accounting    accounting.Interface
 	pricer        accounting.Pricer
+	metrics       metrics
 	tracer        *tracing.Tracer
 }
 
@@ -60,6 +62,7 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		logger:        logger,
 		accounting:    accounting,
 		pricer:        pricer,
+		metrics:       newMetrics(),
 		tracer:        tracer,
 	}
 }
@@ -86,6 +89,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 	ctx, cancel := context.WithTimeout(ctx, maxPeers*retrieveChunkTimeout)
 	defer cancel()
 
+	s.metrics.RequestCounter.Inc()
+
 	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
 		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 		defer span.Finish()
@@ -99,6 +104,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				break LOOP
 			default:
 			}
+
+			s.metrics.PeerRequestCounter.Inc()
 
 			var peer swarm.Address
 
@@ -125,6 +132,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 }
 
 func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPeers []swarm.Address) (chunk swarm.Chunk, peer swarm.Address, err error) {
+	startTimer := time.Now()
+
 	v := ctx.Value(requestSourceContextKey{})
 	// allow upstream requests if this node is the source of the request
 	// i.e. the request was not forwarded, to improve retrieval
@@ -139,12 +148,21 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 		// to avoid the request loops
 		allowUpstream = false
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
+
 	peer, err = s.closestPeer(addr, skipPeers, allowUpstream)
 	if err != nil {
 		return nil, peer, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
 	}
+
+	peerPO := swarm.Proximity(s.addr.Bytes(), peer.Bytes())
+	addrPO := swarm.Proximity(peer.Bytes(), addr.Bytes())
+
+	s.metrics.RetrieveChunkAddrPOCounter.
+		WithLabelValues(strconv.Itoa(int(addrPO))).
+		Inc()
 
 	// compute the price we pay for this chunk and reserve it for the rest of this function
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
@@ -157,6 +175,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
+		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {
@@ -171,17 +190,25 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
 		Addr: addr.Bytes(),
 	}); err != nil {
+		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
 
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
+		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
+	s.metrics.RetrieveChunkPeerPOTimer.
+		WithLabelValues(strconv.Itoa(int(peerPO))).
+		Observe(time.Since(startTimer).Seconds())
+	s.metrics.TotalRetrieved.Inc()
 
 	chunk = swarm.NewChunk(addr, d.Data)
 	if !content.Valid(chunk) {
 		if !soc.Valid(chunk) {
+			s.metrics.InvalidChunkRetrieved.Inc()
+			s.metrics.TotalErrors.Inc()
 			return nil, peer, swarm.ErrInvalidChunk
 		}
 	}
@@ -191,6 +218,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	if err != nil {
 		return nil, peer, err
 	}
+	s.metrics.ChunkPrice.Observe(float64(chunkPrice))
 
 	return chunk, peer, err
 }
