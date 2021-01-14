@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 type passwordReader interface {
@@ -19,7 +19,7 @@ type passwordReader interface {
 type stdInPasswordReader struct{}
 
 func (stdInPasswordReader) ReadPassword() (password string, err error) {
-	v, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+	v, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		return "", err
 	}
