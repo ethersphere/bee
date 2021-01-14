@@ -50,11 +50,10 @@ func NewBigInt() *big.Int {
 // be filled with random data. Panics on errors.
 func MustNewBatch(opts ...BatchOption) *postage.Batch {
 	b := &postage.Batch{
-		ID:                MustNewID(),
-		Value:             NewBigInt(),
-		Start:             rand.Uint64(),
-		Depth:             defaultDepth,
-		NormalisedBalance: NewBigInt(),
+		ID:    MustNewID(),
+		Value: NewBigInt(),
+		Start: rand.Uint64(),
+		Depth: defaultDepth,
 	}
 
 	for _, opt := range opts {
@@ -95,8 +94,5 @@ func CompareBatches(t *testing.T, want, got *postage.Batch) {
 	}
 	if want.Depth != got.Depth {
 		t.Fatalf("depth: want %v, got %v", want.Depth, got.Depth)
-	}
-	if want.NormalisedBalance.Cmp(got.NormalisedBalance) != 0 {
-		t.Fatalf("normalised balance: want %v, got %v", want.NormalisedBalance, got.NormalisedBalance)
 	}
 }
