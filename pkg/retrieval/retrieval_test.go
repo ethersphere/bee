@@ -356,6 +356,92 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		}
 	})
 
+	t.Run("one peer is slower", func(t *testing.T) {
+		serverStorer1 := storemock.NewStorer()
+		serverStorer2 := storemock.NewStorer()
+
+		// both peers have required chunk
+		_, err := serverStorer1.Put(context.Background(), storage.ModePutUpload, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = serverStorer2.Put(context.Background(), storage.ModePutUpload, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		server1MockAccounting := accountingmock.NewAccounting()
+		server2MockAccounting := accountingmock.NewAccounting()
+
+		server1 := retrieval.New(serverAddress1, serverStorer1, nil, noPeerSuggester, logger, server1MockAccounting, pricerMock, nil)
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, server2MockAccounting, pricerMock, nil)
+
+		// NOTE: must be more than retry duration
+		// (here one second more)
+		server1ResponseDelayDuration := 6 * time.Second
+
+		recorder := streamtest.New(
+			streamtest.WithProtocols(
+				server1.Protocol(),
+				server2.Protocol(),
+			),
+			streamtest.WithMiddlewares(
+				func(h p2p.HandlerFunc) p2p.HandlerFunc {
+					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+						if serverAddress1.Equal(peer.Address) {
+							// NOTE: sleep time must be more than retry duration
+							time.Sleep(server1ResponseDelayDuration)
+							return server1.Handler(ctx, peer, stream)
+						}
+
+						if serverAddress2.Equal(peer.Address) {
+							return server2.Handler(ctx, peer, stream)
+						}
+
+						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+					}
+				},
+			),
+		)
+
+		clientMockAccounting := accountingmock.NewAccounting()
+
+		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, clientMockAccounting, pricerMock, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+
+		clientServer1Balance, _ := clientMockAccounting.Balance(serverAddress1)
+		if clientServer1Balance != 0 {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer1Balance)
+		}
+
+		clientServer2Balance, _ := clientMockAccounting.Balance(serverAddress2)
+		if clientServer2Balance != -int64(price) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer2Balance)
+		}
+
+		// wait and check balance again
+		// (yet one second more than before, minus original duration)
+		time.Sleep(2 * time.Second)
+
+		clientServer1Balance, _ = clientMockAccounting.Balance(serverAddress1)
+		if clientServer1Balance != -int64(price) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer1Balance)
+		}
+
+		clientServer2Balance, _ = clientMockAccounting.Balance(serverAddress2)
+		if clientServer2Balance != -int64(price) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer2Balance)
+		}
+	})
+
 	t.Run("peer forwards request", func(t *testing.T) {
 		// server 2 has the chunk
 		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
