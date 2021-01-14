@@ -21,13 +21,6 @@ var addr common.Address = common.HexToAddress("abcdef")
 var postageStampAddress common.Address = common.HexToAddress("eeee")
 var priceOracleAddress common.Address = common.HexToAddress("eeef")
 
-var (
-	createdTopic       = listener.PostageStampABI.Events["BatchCreated"].ID
-	topupTopic         = listener.PostageStampABI.Events["BatchTopUp"].ID
-	depthIncreaseTopic = listener.PostageStampABI.Events["BatchDepthIncrease"].ID
-	priceUpdateTopic   = listener.PriceOracleABI.Events["PriceUpdate"].ID
-)
-
 func TestListener(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	timeout := 5 * time.Second
@@ -328,7 +321,7 @@ func (c createArgs) toLog() types.Log {
 	}
 	return types.Log{
 		Data:   b,
-		Topics: []common.Hash{createdTopic, common.BytesToHash(c.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Topics: []common.Hash{listener.BatchCreatedTopic, common.BytesToHash(c.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -357,7 +350,7 @@ func (ta topupArgs) toLog() types.Log {
 	}
 	return types.Log{
 		Data:   b,
-		Topics: []common.Hash{topupTopic, common.BytesToHash(ta.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Topics: []common.Hash{listener.BatchTopupTopic, common.BytesToHash(ta.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -386,7 +379,7 @@ func (d depthArgs) toLog() types.Log {
 	}
 	return types.Log{
 		Data:   b,
-		Topics: []common.Hash{depthIncreaseTopic, common.BytesToHash(d.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Topics: []common.Hash{listener.BatchDepthIncreaseTopic, common.BytesToHash(d.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -407,7 +400,7 @@ func (p priceArgs) toLog() types.Log {
 	}
 	return types.Log{
 		Data:   b,
-		Topics: []common.Hash{priceUpdateTopic},
+		Topics: []common.Hash{listener.PriceUpdateTopic},
 	}
 }
 
