@@ -178,6 +178,16 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 			return err
 		}
 
+		if to < from {
+			// if the blockNumber is actually less than what we already, it might mean the backend is not synced or some reorg scenario
+			continue
+		}
+
+		if to < tailSize {
+			// in a test blockchain there might be not be enough blocks yet
+			continue
+		}
+
 		// consider to-tailSize as the "latest" block we need to sync to
 		to = to - tailSize
 
@@ -196,6 +206,11 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 			if err = l.processEvent(e, updater); err != nil {
 				return err
 			}
+		}
+
+		err = updater.UpdateBlockNumber(to)
+		if err != nil {
+			return err
 		}
 
 		from = to + 1

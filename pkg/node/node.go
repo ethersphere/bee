@@ -32,6 +32,9 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
@@ -77,6 +80,7 @@ type Bee struct {
 	pullerCloser          io.Closer
 	pullSyncCloser        io.Closer
 	pssCloser             io.Closer
+	listenerCloser        io.Closer
 	recoveryHandleCleanup func()
 }
 
@@ -107,6 +111,8 @@ type Options struct {
 	SwapFactoryAddress     string
 	SwapInitialDeposit     uint64
 	SwapEnable             bool
+	PostageStampAddress    string
+	PriceOracleAddress     string
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (*Bee, error) {
@@ -140,15 +146,16 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.stateStoreCloser = stateStore
 	addressbook := addressbook.New(stateStore)
 
+	swapBackend, err := ethclient.Dial(o.SwapEndpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	var chequebookService chequebook.Service
 	var chequeStore chequebook.ChequeStore
 	var cashoutService chequebook.CashoutService
 	var overlayEthAddress common.Address
 	if o.SwapEnable {
-		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
-		if err != nil {
-			return nil, err
-		}
 		transactionService, err := transaction.NewService(logger, swapBackend, signer)
 		if err != nil {
 			return nil, err
@@ -209,6 +216,19 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	batchStore := batchstore.New(stateStore)
+	eventListener := listener.New(logger, swapBackend, common.HexToAddress(o.PostageStampAddress), common.HexToAddress(o.PriceOracleAddress))
+	b.listenerCloser = eventListener
+
+	batchService, err := batchservice.New(batchStore, logger, eventListener)
+	if err != nil {
+		return nil, err
+	}
+	err = batchService.Start()
+	if err != nil {
+		return nil, err
 	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
@@ -567,6 +587,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		if err := b.resolverCloser.Close(); err != nil {
 			errs.add(fmt.Errorf("resolver service: %w", err))
 		}
+	}
+
+	if err := b.listenerCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("error listener: %w", err))
 	}
 
 	if errs.hasErrors() {

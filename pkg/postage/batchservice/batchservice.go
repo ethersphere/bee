@@ -14,16 +14,23 @@ import (
 )
 
 type batchService struct {
-	cs     *postage.ChainState
-	storer postage.Storer
-	logger logging.Logger
+	cs       *postage.ChainState
+	storer   postage.Storer
+	logger   logging.Logger
+	listener postage.Listener
+}
+
+type Interface interface {
+	postage.EventUpdater
+	Start() error
 }
 
 // New will create a new BatchService.
-func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, error) {
+func New(storer postage.Storer, logger logging.Logger, listener postage.Listener) (Interface, error) {
 	b := &batchService{
-		storer: storer,
-		logger: logger,
+		storer:   storer,
+		logger:   logger,
+		listener: listener,
 	}
 
 	cs, err := storer.GetChainState()
@@ -31,8 +38,16 @@ func New(storer postage.Storer, logger logging.Logger) (postage.EventUpdater, er
 		return nil, fmt.Errorf("get chain state: %w", err)
 	}
 	b.cs = cs
-
 	return b, nil
+}
+
+func (svc *batchService) Start() error {
+	cs, err := svc.storer.GetChainState()
+	if err != nil {
+		return fmt.Errorf("get chain state: %w", err)
+	}
+	svc.listener.Listen(cs.Block+1, svc)
+	return nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -104,5 +119,16 @@ func (svc *batchService) UpdatePrice(price *big.Int) error {
 	}
 
 	svc.logger.Debugf("updated chain price to %s", svc.cs.Price)
+	return nil
+}
+
+func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
+	svc.cs.Block = blockNumber
+
+	if err := svc.storer.PutChainState(svc.cs); err != nil {
+		return fmt.Errorf("put chain state: %w", err)
+	}
+
+	svc.logger.Debugf("updated block height to %d", svc.cs.Block)
 	return nil
 }

@@ -147,6 +147,8 @@ func TestListener(t *testing.T) {
 			price: big.NewInt(500),
 		}
 
+		blockNumber := uint64(500)
+
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
@@ -155,9 +157,10 @@ func TestListener(t *testing.T) {
 				depthIncrease.toLog(),
 				priceUpdate.toLog(),
 			),
+			WithBlockNumber(blockNumber),
 		)
-		listener := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
-		listener.Listen(0, ev)
+		l := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
+		l.Listen(0, ev)
 
 		select {
 		case e := <-evC:
@@ -185,6 +188,13 @@ func TestListener(t *testing.T) {
 			e.(priceArgs).compare(t, priceUpdate)
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case e := <-evC:
+			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize))
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for block number update")
 		}
 	})
 }
@@ -232,14 +242,22 @@ func (u *updater) UpdatePrice(price *big.Int) error {
 	return nil
 }
 
+func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
+	u.eventC <- blockNumberCall{blockNumber: blockNumber}
+	return nil
+}
+
 type mockFilterer struct {
 	filterLogEvents    []types.Log
 	subscriptionEvents []types.Log
 	sub                *sub
+	blockNumber        uint64
 }
 
 func newMockFilterer(opts ...Option) *mockFilterer {
-	mock := new(mockFilterer)
+	mock := &mockFilterer{
+		blockNumber: uint64(listener.TailSize), // use the tailSize as blockNumber by default to ensure at least block 0 is ready
+	}
 	for _, o := range opts {
 		o.apply(mock)
 	}
@@ -249,6 +267,12 @@ func newMockFilterer(opts ...Option) *mockFilterer {
 func WithFilterLogEvents(events ...types.Log) Option {
 	return optionFunc(func(s *mockFilterer) {
 		s.filterLogEvents = events
+	})
+}
+
+func WithBlockNumber(blockNumber uint64) Option {
+	return optionFunc(func(s *mockFilterer) {
+		s.blockNumber = blockNumber
 	})
 }
 
@@ -271,7 +295,7 @@ func (m *mockFilterer) Close() {
 }
 
 func (m *mockFilterer) BlockNumber(context.Context) (uint64, error) {
-	return 0, nil
+	return m.blockNumber, nil
 }
 
 type sub struct {
@@ -393,6 +417,16 @@ func (p priceArgs) toLog() types.Log {
 	return types.Log{
 		Data:   b,
 		Topics: []common.Hash{listener.PriceUpdateTopic},
+	}
+}
+
+type blockNumberCall struct {
+	blockNumber uint64
+}
+
+func (b blockNumberCall) compare(t *testing.T, want uint64) {
+	if b.blockNumber != want {
+		t.Fatalf("blockNumber mismatch. got %d want %d", b.blockNumber, want)
 	}
 }
 
