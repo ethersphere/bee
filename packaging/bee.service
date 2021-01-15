@@ -4,7 +4,7 @@ Documentation=https://docs.ethswarm.org
 After=network.target
 
 [Service]
-EnvironmentFile=/etc/default/bee
+EnvironmentFile=-/etc/default/bee
 NoNewPrivileges=true
 User=bee
 Group=bee
