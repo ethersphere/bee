@@ -28,5 +28,5 @@ type Storer interface {
 
 // Listener provides a blockchain event iterator.
 type Listener interface {
-	Listen(from uint64, updater EventUpdater) error
+	Listen(from uint64, updater EventUpdater)
 }
