@@ -107,7 +107,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
                    !                   `
 
 			fmt.Println(beeASCII)
-			logger.Debugf("version: %v", bee.Version)
+			logger.Infof("version: %v", bee.Version)
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
