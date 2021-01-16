@@ -4,7 +4,7 @@ if [ "$1" = "configure" ]; then
     if [ -z "$2" ]; then
         # initial installation
         if [ ! -f /var/lib/bee/keys/libp2p.key ]; then
-            /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null 2>&1
+            /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null
             chown -R bee:bee /var/lib/bee/keys
         fi
         echo "
