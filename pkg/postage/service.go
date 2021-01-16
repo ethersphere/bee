@@ -42,17 +42,10 @@ type service struct {
 
 // NewService constructs a new Service.
 func NewService(store storage.StateStorer, chainID int64) Service {
-	s := &service{
+	return &service{
 		store:   store,
 		chainID: chainID,
 	}
-
-	// this is needed until postage API gets wired in (since our actual API
-	// falls back to a 32 byte slice of zeros as batch id
-	fallbackBatch := make([]byte, 32)
-	s.Add(NewStampIssuer("empty batch", "", fallbackBatch, 32, 8))
-
-	return s
 }
 
 // Add adds a stamp issuer to the active issuers.
