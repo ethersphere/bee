@@ -151,6 +151,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, err
 	}
 
+	chainID, err := swapBackend.ChainID(p2pCtx)
+	if err != nil {
+		logger.Infof("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
+		return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
+	}
+
 	var chequebookService chequebook.Service
 	var chequeStore chequebook.ChequeStore
 	var cashoutService chequebook.CashoutService
@@ -163,12 +169,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		overlayEthAddress, err = signer.EthereumAddress()
 		if err != nil {
 			return nil, err
-		}
-
-		chainID, err := swapBackend.ChainID(p2pCtx)
-		if err != nil {
-			logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
-			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
 		}
 
 		var factoryAddress common.Address
@@ -219,7 +219,25 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 
 	batchStore := batchstore.New(stateStore)
-	eventListener := listener.New(logger, swapBackend, common.HexToAddress(o.PostageStampAddress), common.HexToAddress(o.PriceOracleAddress))
+
+	postageStampAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID.Int64())
+	if o.PostageStampAddress != "" {
+		if !common.IsHexAddress(o.PostageStampAddress) {
+			return nil, errors.New("malformed postage stamp address")
+		}
+		postageStampAddress = common.HexToAddress(o.PostageStampAddress)
+	}
+	if o.PriceOracleAddress != "" {
+		if !common.IsHexAddress(o.PriceOracleAddress) {
+			return nil, errors.New("malformed price oracle address")
+		}
+		priceOracleAddress = common.HexToAddress(o.PriceOracleAddress)
+	}
+	if (o.PostageStampAddress == "" || o.PriceOracleAddress == "") && !found {
+		return nil, errors.New("no known postage stamp addresses for this network")
+	}
+
+	eventListener := listener.New(logger, swapBackend, postageStampAddress, priceOracleAddress)
 	b.listenerCloser = eventListener
 
 	batchService, err := batchservice.New(batchStore, logger, eventListener)
@@ -230,6 +248,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if err != nil {
 		return nil, err
 	}
+
+	return b, nil
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
@@ -566,6 +586,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(fmt.Errorf("tag persistence: %w", err))
 	}
 
+	if err := b.listenerCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("error listener: %w", err))
+	}
+
 	if err := b.stateStoreCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("statestore: %w", err))
 	}
@@ -587,10 +611,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		if err := b.resolverCloser.Close(); err != nil {
 			errs.add(fmt.Errorf("resolver service: %w", err))
 		}
-	}
-
-	if err := b.listenerCloser.Close(); err != nil {
-		errs.add(fmt.Errorf("error listener: %w", err))
 	}
 
 	if errs.hasErrors() {
