@@ -159,7 +159,7 @@ func TestListener(t *testing.T) {
 			),
 			WithBlockNumber(blockNumber),
 		)
-		l := listener.New(logging.New(ioutil.Discard, 0), mf, postageStampAddress, priceOracleAddress)
+		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress)
 		l.Listen(0, ev)
 
 		select {
