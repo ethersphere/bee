@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	blockPage = 50000 // how many blocks to sync every time
-	tailSize  = 4     // how many blocks to tail from the tip of the chain
+	blockPage = 500 // how many blocks to sync every time
+	tailSize  = 4   // how many blocks to tail from the tip of the chain
 )
 
 var (
@@ -197,7 +197,6 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 			to = from + blockPage
 		}
 
-		//l.logger.Errorf("syncing from %d to %d", from, to)
 		events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 		if err != nil {
 			return err
