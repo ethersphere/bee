@@ -215,8 +215,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		delete(wantChunks, addr.String())
 		s.metrics.DbOpsCounter.Inc()
 		s.metrics.DeliveryCounter.Inc()
-
-		chunk := swarm.NewChunk(addr, delivery.Data)
+		chunk := swarm.NewChunk(addr, delivery.Data).WithStamp(delivery.Stamp)
 		if content.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
@@ -304,7 +303,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 	}
 
 	for _, v := range chs {
-		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data()}
+		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data(), Stamp: v.Stamp()}
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
 			return fmt.Errorf("write delivery: %w", err)
 		}

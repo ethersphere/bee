@@ -7,6 +7,7 @@ package pullsync_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	testingd "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -38,6 +40,7 @@ func init() {
 	addrs = make([]swarm.Address, n)
 	for i := 0; i < n; i++ {
 		chunks[i] = testingc.GenerateTestRandomChunk()
+		fmt.Println(chunks[i].Stamp())
 		addrs[i] = chunks[i].Address()
 	}
 }
@@ -141,7 +144,11 @@ func TestIncoming_WantAll(t *testing.T) {
 func TestIncoming_UnsolicitedChunk(t *testing.T) {
 	evilAddr := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000666")
 	evilData := []byte{0x66, 0x66, 0x66}
-	evil := swarm.NewChunk(evilAddr, evilData)
+	stamp, err := testingd.MustNewStamp().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	evil := swarm.NewChunk(evilAddr, evilData).WithStamp(stamp)
 
 	var (
 		mockTopmost = uint64(5)
@@ -150,7 +157,7 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 		psClient, _ = newPullSync(recorder)
 	)
 
-	_, _, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	_, _, err = psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
 		t.Fatalf("expected ErrUnsolicitedChunk but got %v", err)
 	}
