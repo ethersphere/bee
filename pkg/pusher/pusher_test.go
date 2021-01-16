@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/mock"
@@ -87,7 +88,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	chunk := createChunk().WithTagID(ta.Uid)
+	chunk := testingc.GenerateTestRandomChunk().WithTagID(ta.Uid)
 
 	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -118,7 +119,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 // TestSendChunkToPushSyncWithoutTag is similar to TestSendChunkToPushSync, excep that the tags are not
 // present to simulate bzz api withotu splitter condition
 func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
-	chunk := createChunk()
+	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
@@ -159,7 +160,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 // get a invalid receipt (not with the address of the chunk sent). The test makes sure that this error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
-	chunk := createChunk()
+	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
@@ -197,7 +198,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 // expects a timeout to get instead of getting a receipt. The test makes sure that timeout error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
-	chunk := createChunk()
+	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
@@ -259,7 +260,7 @@ func TestPusherClose(t *testing.T) {
 
 	_, p, storer := createPusher(t, triggerPeer, pushSyncService, mock.WithClosestPeer(closestPeer))
 
-	chunk := createChunk()
+	chunk := testingc.GenerateTestRandomChunk()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -333,13 +334,6 @@ func TestPusherClose(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("timed out waiting to close pusher")
 	}
-}
-
-func createChunk() swarm.Chunk {
-	// chunk data to upload
-	chunkAddress := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	chunkData := []byte("1234")
-	return swarm.NewChunk(chunkAddress, chunkData).WithTagID(666)
 }
 
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
