@@ -5,6 +5,8 @@
 package batchstore
 
 import (
+	"math/big"
+
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 )
@@ -47,6 +49,13 @@ func (s *store) PutChainState(state *postage.ChainState) error {
 func (s *store) GetChainState() (*postage.ChainState, error) {
 	cs := &postage.ChainState{}
 	err := s.store.Get(stateKey, cs)
+	if err == storage.ErrNotFound {
+		return &postage.ChainState{
+			Block: 0,
+			Total: big.NewInt(0),
+			Price: big.NewInt(0),
+		}, nil
+	}
 
 	return cs, err
 }

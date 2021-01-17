@@ -8,4 +8,6 @@ var (
 	BatchTopupTopic         = batchTopupTopic
 	BatchDepthIncreaseTopic = batchDepthIncreaseTopic
 	PriceUpdateTopic        = priceUpdateTopic
+
+	TailSize = tailSize
 )
