@@ -5,6 +5,7 @@
 package postage
 
 import (
+	"io"
 	"math/big"
 )
 
@@ -15,6 +16,7 @@ type EventUpdater interface {
 	TopUp(id []byte, normalisedBalance *big.Int) error
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error
 	UpdatePrice(price *big.Int) error
+	UpdateBlockNumber(blockNumber uint64) error
 }
 
 // Storer represents the persistence layer for batches on the current (highest
@@ -28,5 +30,6 @@ type Storer interface {
 
 // Listener provides a blockchain event iterator.
 type Listener interface {
+	io.Closer
 	Listen(from uint64, updater EventUpdater)
 }
