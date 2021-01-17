@@ -23,12 +23,22 @@ var (
 	testErr = errors.New("fails")
 )
 
+type mockListener struct {
+}
+
+func (*mockListener) Listen(from uint64, updater postage.EventUpdater) {}
+func (*mockListener) Close() error                                     { return nil }
+
+func newMockListener() *mockListener {
+	return &mockListener{}
+}
+
 func TestNewBatchService(t *testing.T) {
 	t.Run("expect get error", func(t *testing.T) {
 		store := mock.New(
 			mock.WithGetErr(testErr, 0),
 		)
-		_, err := batchservice.New(store, testLog)
+		_, err := batchservice.New(store, testLog, newMockListener())
 		if err == nil {
 			t.Fatal("expected get error")
 		}
@@ -39,7 +49,7 @@ func TestNewBatchService(t *testing.T) {
 		store := mock.New(
 			mock.WithChainState(testChainState),
 		)
-		_, err := batchservice.New(store, testLog)
+		_, err := batchservice.New(store, testLog, newMockListener())
 		if err != nil {
 			t.Fatalf("new batch service: %v", err)
 		}
@@ -245,7 +255,7 @@ func newTestStoreAndService(t *testing.T, opts ...mock.Option) (postage.EventUpd
 	t.Helper()
 
 	store := mock.New(opts...)
-	svc, err := batchservice.New(store, testLog)
+	svc, err := batchservice.New(store, testLog, newMockListener())
 	if err != nil {
 		t.Fatalf("new batch service: %v", err)
 	}

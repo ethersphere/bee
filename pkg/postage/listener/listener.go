@@ -20,7 +20,7 @@ import (
 
 const (
 	blockPage = 500 // how many blocks to sync every time
-	tailSize  = 20  // how many blocks to tail from the tip of the chain
+	tailSize  = 4   // how many blocks to tail from the tip of the chain
 )
 
 var (
@@ -178,6 +178,16 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 			return err
 		}
 
+		if to < from {
+			// if the blockNumber is actually less than what we already, it might mean the backend is not synced or some reorg scenario
+			continue
+		}
+
+		if to < tailSize {
+			// in a test blockchain there might be not be enough blocks yet
+			continue
+		}
+
 		// consider to-tailSize as the "latest" block we need to sync to
 		to = to - tailSize
 
@@ -196,6 +206,11 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 			if err = l.processEvent(e, updater); err != nil {
 				return err
 			}
+		}
+
+		err = updater.UpdateBlockNumber(to)
+		if err != nil {
+			return err
 		}
 
 		from = to + 1
@@ -249,4 +264,13 @@ type batchDepthIncreaseEvent struct {
 
 type priceUpdateEvent struct {
 	Price *big.Int
+}
+
+// DiscoverAddresses returns the canonical contracts for this chainID
+func DiscoverAddresses(chainID int64) (postageStamp common.Address, priceOracle common.Address, found bool) {
+	if chainID == 5 {
+		// goerli
+		return common.HexToAddress("0xf0870E3abb457026BE46d9b2CDf35e8FFcB27955"), common.HexToAddress("0xc1B598609A38D0A0F85f68eD0fFEFdeC9cD061C9"), true
+	}
+	return common.Address{}, common.Address{}, false
 }
