@@ -32,6 +32,9 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
@@ -77,6 +80,7 @@ type Bee struct {
 	pullerCloser          io.Closer
 	pullSyncCloser        io.Closer
 	pssCloser             io.Closer
+	listenerCloser        io.Closer
 	recoveryHandleCleanup func()
 }
 
@@ -107,6 +111,8 @@ type Options struct {
 	SwapFactoryAddress     string
 	SwapInitialDeposit     uint64
 	SwapEnable             bool
+	PostageStampAddress    string
+	PriceOracleAddress     string
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (*Bee, error) {
@@ -149,6 +155,13 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
+
+		chainID, err := swapBackend.ChainID(p2pCtx)
+		if err != nil {
+			logger.Infof("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
+			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
+		}
+
 		transactionService, err := transaction.NewService(logger, swapBackend, signer)
 		if err != nil {
 			return nil, err
@@ -156,12 +169,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		overlayEthAddress, err = signer.EthereumAddress()
 		if err != nil {
 			return nil, err
-		}
-
-		chainID, err := swapBackend.ChainID(p2pCtx)
-		if err != nil {
-			logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
-			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
 		}
 
 		var factoryAddress common.Address
@@ -206,6 +213,50 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		chequeStore = chequebook.NewChequeStore(stateStore, swapBackend, chequebookFactory, chainID.Int64(), overlayEthAddress, chequebook.NewSimpleSwapBindings, chequebook.RecoverCheque)
 
 		cashoutService, err = chequebook.NewCashoutService(stateStore, chequebook.NewSimpleSwapBindings, swapBackend, transactionService, chequeStore)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	batchStore := batchstore.New(stateStore)
+
+	if !o.Standalone {
+		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		chainID, err := swapBackend.ChainID(p2pCtx)
+		if err != nil {
+			logger.Infof("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
+			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
+		}
+
+		postageStampAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID.Int64())
+		if o.PostageStampAddress != "" {
+			if !common.IsHexAddress(o.PostageStampAddress) {
+				return nil, errors.New("malformed postage stamp address")
+			}
+			postageStampAddress = common.HexToAddress(o.PostageStampAddress)
+		}
+		if o.PriceOracleAddress != "" {
+			if !common.IsHexAddress(o.PriceOracleAddress) {
+				return nil, errors.New("malformed price oracle address")
+			}
+			priceOracleAddress = common.HexToAddress(o.PriceOracleAddress)
+		}
+		if (o.PostageStampAddress == "" || o.PriceOracleAddress == "") && !found {
+			return nil, errors.New("no known postage stamp addresses for this network")
+		}
+
+		eventListener := listener.New(logger, swapBackend, postageStampAddress, priceOracleAddress)
+		b.listenerCloser = eventListener
+
+		batchService, err := batchservice.New(batchStore, logger, eventListener)
+		if err != nil {
+			return nil, err
+		}
+		err = batchService.Start()
 		if err != nil {
 			return nil, err
 		}
@@ -544,6 +595,12 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if err := b.tagsCloser.Close(); err != nil {
 		errs.add(fmt.Errorf("tag persistence: %w", err))
+	}
+
+	if b.listenerCloser != nil {
+		if err := b.listenerCloser.Close(); err != nil {
+			errs.add(fmt.Errorf("error listener: %w", err))
+		}
 	}
 
 	if err := b.stateStoreCloser.Close(); err != nil {
