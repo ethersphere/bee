@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -72,7 +73,12 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	}
 	ref := hasher.Sum(nil)
 
-	return swarm.NewChunk(swarm.NewAddress(ref), data)
+	stamp := postagetesting.MustNewStamp()
+	b, err := stamp.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return swarm.NewChunk(swarm.NewAddress(ref), data).WithStamp(b)
 }
 
 // GenerateTestRandomInvalidChunk generates a random, however invalid, content
@@ -82,7 +88,12 @@ func GenerateTestRandomInvalidChunk() swarm.Chunk {
 	_, _ = rand.Read(data)
 	key := make([]byte, swarm.SectionSize)
 	_, _ = rand.Read(key)
-	return swarm.NewChunk(swarm.NewAddress(key), data)
+	stamp := postagetesting.MustNewStamp()
+	b, err := stamp.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return swarm.NewChunk(swarm.NewAddress(key), data).WithStamp(b)
 }
 
 // GenerateTestRandomChunks generates a slice of random

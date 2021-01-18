@@ -310,7 +310,11 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 		if err != nil {
 			return nil, err
 		}
-		chs[i] = c.WithStamp(stamp)
+		b, err := stamp.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		chs[i] = c.WithStamp(b)
 	}
 
 	return p.Storer.Put(ctx, mode, chs...)
