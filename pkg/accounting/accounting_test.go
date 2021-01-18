@@ -533,6 +533,13 @@ func (p *pricingMock) AnnouncePaymentThresholdAndPriceTable(ctx context.Context,
 	return nil
 }
 
+func (p *pricingMock) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error {
+	p.called = true
+	p.peer = peer
+	p.paymentThreshold = paymentThreshold
+	return nil
+}
+
 func TestAccountingConnected(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
