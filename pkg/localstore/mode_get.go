@@ -19,12 +19,10 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/syndtr/goleveldb/leveldb"
 
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -52,12 +50,7 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 		}
 		return nil, err
 	}
-	stamp := postage.NewStamp(out.BatchID, out.Sig)
-	b, err := stamp.MarshalBinary()
-	if err != nil {
-		return nil, fmt.Errorf("marshal stamp: %w", err)
-	}
-	return swarm.NewChunk(swarm.NewAddress(out.Address), out.Data).WithPinCounter(out.PinCounter).WithStamp(b), nil
+	return swarm.NewChunk(swarm.NewAddress(out.Address), out.Data).WithPinCounter(out.PinCounter).WithStamp(out.Stamp), nil
 }
 
 // get returns Item from the retrieval index

@@ -228,23 +228,14 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			b := make([]byte, headerSize)
 			binary.BigEndian.PutUint64(b[:8], fields.BinID)
 			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
-			stamp, err := postage.NewStamp(fields.BatchID, fields.Sig).MarshalBinary()
-			if err != nil {
-				return nil, err
-			}
-			copy(b[16:], stamp)
+			copy(b[16:], fields.Stamp)
 			value = append(b, fields.Data...)
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
 			e.BinID = binary.BigEndian.Uint64(value[:8])
-			stamp := &postage.Stamp{}
-			if err = stamp.UnmarshalBinary(value[16:headerSize]); err != nil {
-				return e, err
-			}
-			e.BatchID = stamp.BatchID()
-			e.Sig = stamp.Sig()
+			e.Stamp = value[16:headerSize]
 			e.Data = value[headerSize:]
 			return e, nil
 		},
@@ -488,8 +479,7 @@ func chunkToItem(ch swarm.Chunk) shed.Item {
 		Address: ch.Address().Bytes(),
 		Data:    ch.Data(),
 		Tag:     ch.TagID(),
-		BatchID: ch.Stamp()[:32],
-		Sig:     ch.Stamp()[32:],
+		Stamp:   ch.Stamp(),
 	}
 }
 

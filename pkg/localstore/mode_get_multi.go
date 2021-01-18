@@ -19,10 +19,8 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -52,12 +50,7 @@ func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm
 	}
 	chunks = make([]swarm.Chunk, len(out))
 	for i, ch := range out {
-		stamp := postage.NewStamp(ch.BatchID, ch.Sig)
-		b, err := stamp.MarshalBinary()
-		if err != nil {
-			return nil, fmt.Errorf("marshal stamp: %w", err)
-		}
-		chunks[i] = swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithPinCounter(ch.PinCounter).WithStamp(b)
+		chunks[i] = swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithPinCounter(ch.PinCounter).WithStamp(ch.Stamp)
 	}
 	return chunks, nil
 }

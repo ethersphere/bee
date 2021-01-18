@@ -251,7 +251,7 @@ func newRetrieveIndexesTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTim
 		if err != nil {
 			t.Fatal(err)
 		}
-		validateItem(t, item, chunk.Address().Bytes(), chunk.Data(), storeTimestamp, 0, chunk.Stamp().BatchID(), chunk.Stamp().Sig())
+		validateItem(t, item, chunk.Address().Bytes(), chunk.Data(), storeTimestamp, 0, chunk.Stamp())
 
 		// access index should not be set
 		wantErr := leveldb.ErrNotFound
@@ -272,14 +272,14 @@ func newRetrieveIndexesTestWithAccess(db *DB, ch swarm.Chunk, storeTimestamp, ac
 		if err != nil {
 			t.Fatal(err)
 		}
-		validateItem(t, item, ch.Address().Bytes(), ch.Data(), storeTimestamp, 0, ch.Stamp().BatchID(), ch.Stamp().Sig())
+		validateItem(t, item, ch.Address().Bytes(), ch.Data(), storeTimestamp, 0, ch.Stamp())
 
 		if accessTimestamp > 0 {
 			item, err = db.retrievalAccessIndex.Get(addressToItem(ch.Address()))
 			if err != nil {
 				t.Fatal(err)
 			}
-			validateItem(t, item, ch.Address().Bytes(), nil, 0, accessTimestamp, ch.Stamp().BatchID(), ch.Stamp().Sig())
+			validateItem(t, item, ch.Address().Bytes(), nil, 0, accessTimestamp, ch.Stamp())
 		}
 	}
 }
@@ -298,7 +298,7 @@ func newPullIndexTest(db *DB, ch swarm.Chunk, binID uint64, wantError error) fun
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, ch.Address().Bytes(), nil, 0, 0, ch.Stamp().BatchID(), ch.Stamp().Sig())
+			validateItem(t, item, ch.Address().Bytes(), nil, 0, 0, ch.Stamp())
 		}
 	}
 }
@@ -317,7 +317,7 @@ func newPushIndexTest(db *DB, ch swarm.Chunk, storeTimestamp int64, wantError er
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, ch.Address().Bytes(), nil, storeTimestamp, 0, ch.Stamp().BatchID(), ch.Stamp().Sig())
+			validateItem(t, item, ch.Address().Bytes(), nil, storeTimestamp, 0, ch.Stamp())
 		}
 	}
 }
@@ -337,7 +337,7 @@ func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp i
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, chunk.Address().Bytes(), nil, 0, accessTimestamp, chunk.Stamp().BatchID(), chunk.Stamp().Sig())
+			validateItem(t, item, chunk.Address().Bytes(), nil, 0, accessTimestamp, chunk.Stamp())
 		}
 	}
 }
@@ -355,7 +355,7 @@ func newPinIndexTest(db *DB, chunk swarm.Chunk, wantError error) func(t *testing
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, chunk.Address().Bytes(), nil, 0, 0, chunk.Stamp().BatchID(), chunk.Stamp().Sig())
+			validateItem(t, item, chunk.Address().Bytes(), nil, 0, 0, chunk.Stamp())
 		}
 	}
 }
@@ -438,7 +438,7 @@ func testItemsOrder(t *testing.T, i shed.Index, chunks []testIndexChunk, sortFun
 }
 
 // validateItem is a helper function that checks Item values.
-func validateItem(t *testing.T, item shed.Item, address, data []byte, storeTimestamp, accessTimestamp int64, batchId, sig []byte) {
+func validateItem(t *testing.T, item shed.Item, address, data []byte, storeTimestamp, accessTimestamp int64, stamp []byte) {
 	t.Helper()
 
 	if !bytes.Equal(item.Address, address) {
@@ -453,12 +453,8 @@ func validateItem(t *testing.T, item shed.Item, address, data []byte, storeTimes
 	if item.AccessTimestamp != accessTimestamp {
 		t.Errorf("got item access timestamp %v, want %v", item.AccessTimestamp, accessTimestamp)
 	}
-
-	if batchId != nil && item.BatchID != nil && !bytes.Equal(item.BatchID, batchId) {
-		t.Errorf("got batchID %v want %v", item.BatchID, batchId)
-	}
-	if sig != nil && item.Sig != nil && !bytes.Equal(item.Sig, sig) {
-		t.Errorf("got sig %v want %v", item.Sig, sig)
+	if stamp != nil && item.Stamp != nil && !bytes.Equal(item.Stamp, stamp) {
+		t.Errorf("got stamp %v want %v", item.Stamp, stamp)
 	}
 }
 
