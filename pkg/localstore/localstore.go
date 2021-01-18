@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -214,7 +215,8 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	}
 
 	// Index storing actual chunk address, data and bin id.
-	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|Data", shed.IndexFuncs{
+	headerSize := 16 + postage.StampSize
+	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|Stamp|Data", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.Address, nil
 		},
@@ -223,16 +225,18 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			b := make([]byte, 16)
+			b := make([]byte, headerSize)
 			binary.BigEndian.PutUint64(b[:8], fields.BinID)
 			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
+			copy(b[16:], fields.Stamp)
 			value = append(b, fields.Data...)
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
 			e.BinID = binary.BigEndian.Uint64(value[:8])
-			e.Data = value[16:]
+			e.Stamp = value[16:headerSize]
+			e.Data = value[headerSize:]
 			return e, nil
 		},
 	})
@@ -475,6 +479,7 @@ func chunkToItem(ch swarm.Chunk) shed.Item {
 		Address: ch.Address().Bytes(),
 		Data:    ch.Data(),
 		Tag:     ch.TagID(),
+		Stamp:   ch.Stamp(),
 	}
 }
 
