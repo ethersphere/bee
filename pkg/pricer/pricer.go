@@ -198,7 +198,7 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 
 	pricingPeer.lock.Lock()
 	defer pricingPeer.lock.Unlock()
-
+	s.logger.Debugf("Storing pricetable %v for peer %v", priceTable, peer)
 	err = s.store.Put(peerPriceTableKey(peer), priceTable)
 	if err != nil {
 		return fmt.Errorf("failed to persist pricetable for peer %v: %w", peer, err)
@@ -210,7 +210,6 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 func (s *Pricer) DefaultPriceTable() []uint64 {
 	neighborhoodDepth := s.topology.NeighborhoodDepth()
 	priceTable := make([]uint64, neighborhoodDepth+1)
-	s.logger.Debugf("kkkkk %v", neighborhoodDepth)
 	for i := uint8(0); i <= neighborhoodDepth; i++ {
 		priceTable[i] = uint64(neighborhoodDepth-i+1) * s.poPrice
 	}
