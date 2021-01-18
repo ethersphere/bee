@@ -343,7 +343,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			stream := newStream(streamlibp2p)
 
 			// exchange headers
-			if err := handleHeaders(ss.Headler, stream); err != nil {
+			if err := handleHeaders(ss.Headler, stream, overlay); err != nil {
 				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: handle headers: %v", p.Name, p.Version, ss.Name, overlay, err)
 				_ = stream.Reset()
 				return

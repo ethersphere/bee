@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/headers/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var sendHeadersTimeout = 10 * time.Second
@@ -36,7 +37,7 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 	return nil
 }
 
-func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
+func handleHeaders(headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	ctx, cancel := context.WithTimeout(context.Background(), sendHeadersTimeout)
@@ -51,7 +52,7 @@ func handleHeaders(headler p2p.HeadlerFunc, stream *stream) error {
 
 	var h p2p.Headers
 	if headler != nil {
-		h = headler(stream.headers)
+		h = headler(stream.headers, peerAddress)
 	}
 
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
