@@ -43,7 +43,6 @@ type PaymentThresholdObserver interface {
 }
 
 type Service struct {
-	overlay                  swarm.Address
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
 	paymentThreshold         *big.Int
@@ -112,7 +111,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
-	err := s.AnnouncePaymentThreshold(ctx, p.Address, s.paymentThreshold)
+	err := s.AnnouncePaymentThresholdAndPriceTable(ctx, p.Address, s.paymentThreshold)
 	if err != nil {
 		s.logger.Warningf("could not send payment threshold announcement to peer %v", p.Address)
 	}
