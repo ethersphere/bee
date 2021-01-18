@@ -74,7 +74,11 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	ref := hasher.Sum(nil)
 
 	stamp := postagetesting.MustNewStamp()
-	return swarm.NewChunk(swarm.NewAddress(ref), data).WithStamp(stamp)
+	b, err := stamp.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return swarm.NewChunk(swarm.NewAddress(ref), data).WithStamp(b)
 }
 
 // GenerateTestRandomInvalidChunk generates a random, however invalid, content
@@ -85,7 +89,11 @@ func GenerateTestRandomInvalidChunk() swarm.Chunk {
 	key := make([]byte, swarm.SectionSize)
 	_, _ = rand.Read(key)
 	stamp := postagetesting.MustNewStamp()
-	return swarm.NewChunk(swarm.NewAddress(key), data).WithStamp(stamp)
+	b, err := stamp.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return swarm.NewChunk(swarm.NewAddress(key), data).WithStamp(b)
 }
 
 // GenerateTestRandomChunks generates a slice of random
