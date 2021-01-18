@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
@@ -218,8 +219,7 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 
 	mockStorer := storemock.NewStorer()
 	serverMockAccounting := accountingmock.NewAccounting()
-	price := uint64(12345)
-	pricerMock := accountingmock.NewPricer(price, price)
+	pricerMock := pricermock.NewMockService()
 	peerID := swarm.MustParseHexAddress("deadbeef")
 	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 		_, _, _ = f(peerID, 0)

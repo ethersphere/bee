@@ -19,21 +19,22 @@ const (
 	priceTablePrefix string = "pricetable_"
 )
 
-var _ Pricer = (*Service)(nil)
+var _ Interface = (*Pricer)(nil)
 
 // Pricer returns pricing information for chunk hashes and proximity orders
-type Pricer interface {
+type Interface interface {
 	// PeerPrice is the price the peer charges for a given chunk hash.
 	PeerPrice(peer, chunk swarm.Address) uint64
 	// PriceForPeer is the price we charge for a given chunk hash.
 	PriceForPeer(peer, chunk swarm.Address) uint64
+	PriceTable() (priceTable []uint64)
 }
 
 type pricingPeer struct {
 	lock sync.Mutex
 }
 
-type Service struct {
+type Pricer struct {
 	pricingPeersMu sync.Mutex
 	pricingPeers   map[string]*pricingPeer
 	logger         logging.Logger
@@ -43,8 +44,8 @@ type Service struct {
 	poPrice        uint64
 }
 
-func New(logger logging.Logger, store storage.StateStorer, topology topology.Driver, overlay swarm.Address, poPrice uint64) *Service {
-	return &Service{
+func New(logger logging.Logger, store storage.StateStorer, topology topology.Driver, overlay swarm.Address, poPrice uint64) *Pricer {
+	return &Pricer{
 		logger:       logger,
 		pricingPeers: make(map[string]*pricingPeer),
 		store:        store,
@@ -55,7 +56,7 @@ func New(logger logging.Logger, store storage.StateStorer, topology topology.Dri
 }
 
 // PeerPrice returns the price for the PO of a chunk from the table stored for the node.
-func (s *Service) PriceTable() (priceTable []uint64) {
+func (s *Pricer) PriceTable() (priceTable []uint64) {
 	err := s.store.Get(priceTableKey(), &priceTable)
 	if err != nil {
 		priceTable = s.DefaultPriceTable()
@@ -65,7 +66,7 @@ func (s *Service) PriceTable() (priceTable []uint64) {
 
 // PeerPriceTable returns the price table stored for the given peer.
 // If we can't get price table from store, we return the default price table
-func (s *Service) PeerPriceTable(peer, chunk swarm.Address) (priceTable []uint64, err error) {
+func (s *Pricer) PeerPriceTable(peer, chunk swarm.Address) (priceTable []uint64, err error) {
 	err = s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
 		priceTable = s.DefaultPriceTable() // get default pricetable
@@ -76,7 +77,7 @@ func (s *Service) PeerPriceTable(peer, chunk swarm.Address) (priceTable []uint64
 // PriceForPeer returns the price for the PO of a chunk from the table stored for the node.
 // Taking into consideration that the peer might be an in-neighborhood peer,
 // if the chunk is at least neighborhood depth proximate to both the node and the peer, the price is 0
-func (s *Service) PriceForPeer(peer, chunk swarm.Address) uint64 {
+func (s *Pricer) PriceForPeer(peer, chunk swarm.Address) uint64 {
 	proximity := swarm.Proximity(s.overlay.Bytes(), chunk.Bytes())
 	neighborhoodDepth := s.topology.NeighborhoodDepth()
 
@@ -97,7 +98,7 @@ func (s *Service) PriceForPeer(peer, chunk swarm.Address) uint64 {
 }
 
 // PricePO returns the price for a PO from the table stored for the node.
-func (s *Service) PricePO(PO uint8) (uint64, error) {
+func (s *Pricer) PricePO(PO uint8) (uint64, error) {
 	var priceTable []uint64
 	err := s.store.Get(priceTableKey(), &priceTable)
 	if err != nil {
@@ -115,7 +116,7 @@ func (s *Service) PricePO(PO uint8) (uint64, error) {
 // PeerPrice returns the price for the PO of a chunk from the table stored for the given peer.
 // Taking into consideration that the peer might be an in-neighborhood peer,
 // if the chunk is at least neighborhood depth proximate to both the node and the peer, the price is 0
-func (s *Service) PeerPrice(peer, chunk swarm.Address) uint64 {
+func (s *Pricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 	proximity := swarm.Proximity(peer.Bytes(), chunk.Bytes())
 
 	// Determine neighborhood depth presumed by peer based on pricetable rows
@@ -146,7 +147,7 @@ func (s *Service) PeerPrice(peer, chunk swarm.Address) uint64 {
 }
 
 // PeerPricePO returns the price for a PO from the table stored for the given peer.
-func (s *Service) PeerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
+func (s *Pricer) PeerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
 	var priceTable []uint64
 	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
@@ -175,7 +176,7 @@ func priceTableKey() string {
 	return fmt.Sprintf("%s%s", priceTablePrefix, "self")
 }
 
-func (s *Service) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
+func (s *Pricer) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
 	s.pricingPeersMu.Lock()
 	defer s.pricingPeersMu.Unlock()
 
@@ -189,7 +190,7 @@ func (s *Service) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
 }
 
 // NotifyPriceTable should be called to notify pricer of changes in the peers pricetable
-func (s *Service) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
+func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
 	pricingPeer, err := s.getPricingPeer(peer)
 	if err != nil {
 		return err
@@ -206,7 +207,7 @@ func (s *Service) NotifyPriceTable(peer swarm.Address, priceTable []uint64) erro
 	return nil
 }
 
-func (s *Service) DefaultPriceTable() (priceTable []uint64) {
+func (s *Pricer) DefaultPriceTable() (priceTable []uint64) {
 	neighborhoodDepth := s.topology.NeighborhoodDepth()
 	for i := uint8(0); i <= neighborhoodDepth; i++ {
 		priceTable[i] = uint64(neighborhoodDepth-i+1) * s.poPrice
@@ -215,7 +216,7 @@ func (s *Service) DefaultPriceTable() (priceTable []uint64) {
 	return priceTable
 }
 
-func (s *Service) DefaultPrice(PO uint8) uint64 {
+func (s *Pricer) DefaultPrice(PO uint8) uint64 {
 	neighborhoodDepth := s.topology.NeighborhoodDepth()
 	if PO > neighborhoodDepth {
 		PO = neighborhoodDepth
