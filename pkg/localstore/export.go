@@ -149,14 +149,7 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 				case <-ctx.Done():
 				}
 			}
-			stamp := &postage.Stamp{}
-			err = stamp.UnmarshalBinary(rawdata[:postage.StampSize])
-			if err != nil {
-				select {
-				case errC <- err:
-				case <-ctx.Done():
-				}
-			}
+			stamp := rawdata[:postage.StampSize]
 			data := rawdata[postage.StampSize:]
 			key := swarm.NewAddress(keybytes)
 

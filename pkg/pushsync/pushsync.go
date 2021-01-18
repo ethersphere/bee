@@ -111,7 +111,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	fallbackBatchID := make([]byte, 32)
 	fallbackSig := make([]byte, 65)
 	stamp := postage.NewStamp(fallbackBatchID, fallbackSig)
-	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithStamp(stamp)
+	b, err := stamp.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithStamp(b)
 
 	if content.Valid(chunk) {
 		if ps.unwrap != nil {
