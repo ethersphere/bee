@@ -440,6 +440,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	post := postage.NewService(stateStore, 1) // do we have a config for this? which chain id are we using??
 
+	// this is needed until postage API gets wired in (since our actual API
+	// falls back to a 32 byte slice of zeros as batch id
+	fallbackBatch := make([]byte, 32)
+	post.Add(postage.NewStampIssuer("empty batch", "", fallbackBatch, 32, 8))
+
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
