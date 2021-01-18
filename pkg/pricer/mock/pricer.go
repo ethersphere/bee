@@ -89,6 +89,7 @@ func (pricer *Service) PriceTable() (priceTable []uint64) {
 	}
 	return nil
 }
+
 func (pricer *Service) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
 	if pricer.notifyPriceTableFunc != nil {
 		return pricer.notifyPriceTableFunc(peer, priceTable)
