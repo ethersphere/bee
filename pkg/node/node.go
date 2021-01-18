@@ -306,7 +306,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	var settlement settlement.Interface
 	var swapService *swap.Service
-	var kad *kademlia.Kad
 
 	if o.SwapEnable {
 		swapService, err = InitSwap(

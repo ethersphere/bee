@@ -207,8 +207,10 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 	return nil
 }
 
-func (s *Pricer) DefaultPriceTable() (priceTable []uint64) {
+func (s *Pricer) DefaultPriceTable() []uint64 {
 	neighborhoodDepth := s.topology.NeighborhoodDepth()
+	priceTable := make([]uint64, neighborhoodDepth+1)
+	s.logger.Debugf("kkkkk %v", neighborhoodDepth)
 	for i := uint8(0); i <= neighborhoodDepth; i++ {
 		priceTable[i] = uint64(neighborhoodDepth-i+1) * s.poPrice
 	}
