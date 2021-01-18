@@ -216,7 +216,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 
 	// Index storing actual chunk address, data and bin id.
 	headerSize := 16 + postage.StampSize
-	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|Sig|Data", shed.IndexFuncs{
+	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|Stamp|Data", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.Address, nil
 		},
