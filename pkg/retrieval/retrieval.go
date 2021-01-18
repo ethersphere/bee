@@ -80,6 +80,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
+				Headler: s.pricer.PriceHeadler,
 			},
 		},
 	}
@@ -210,12 +211,20 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 	defer s.accounting.Release(peer, chunkPrice)
 
+	headers, err := s.pricer.MakePriceHeaders(chunkPrice, addr)
+	if err != nil {
+		return nil, swarm.Address{}, err
+	}
+
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
-	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+	stream, err := s.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
 	if err != nil {
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
+
+	returnedHeaders := stream.Headers()
+
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -223,6 +232,21 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 			go stream.FullClose()
 		}
 	}()
+
+	returnedTarget, returnedPrice, err := s.pricer.ReadPriceHeaders(returnedHeaders)
+	if err != nil {
+		return nil, peer, fmt.Errorf("retrieval headers: read returned: %w", err)
+	}
+
+	s.logger.Debugf("retrieval headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
+	s.logger.Debugf("retrieval headers: original target %v with price as %v, from peer %s", addr, chunkPrice, peer)
+
+	// returned checker
+	if returnedPrice != chunkPrice {
+		// save priceHeaders["price"] corresponding row for peer
+
+		return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
+	}
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{

@@ -5,11 +5,13 @@
 package pricer
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -28,6 +30,9 @@ type Interface interface {
 	// PriceForPeer is the price we charge for a given chunk hash.
 	PriceForPeer(peer, chunk swarm.Address) uint64
 	PriceTable() (priceTable []uint64)
+	PriceHeadler(p2p.Headers, swarm.Address) p2p.Headers
+	MakePriceHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error)
+	ReadPriceHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error)
 }
 
 type pricingPeer struct {
@@ -225,4 +230,63 @@ func (s *Pricer) DefaultPrice(PO uint8) uint64 {
 		PO = neighborhoodDepth
 	}
 	return uint64(neighborhoodDepth-PO+1) * s.poPrice
+}
+
+func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
+
+	chunkAddress, receivedPrice, err := s.ReadPriceHeaders(receivedHeaders)
+	if err != nil {
+		return p2p.Headers{
+			"error": []byte("No target specified or error unmarshaling target streamheader of request"),
+		}
+	}
+
+	s.logger.Debugf("price headler: received target %v with price as %v, from peer %s", chunkAddress, receivedPrice, peerAddress)
+	checkPrice := s.PriceForPeer(peerAddress, chunkAddress)
+
+	returnHeaders, err = s.MakePriceHeaders(checkPrice, chunkAddress)
+	if err != nil {
+		return p2p.Headers{
+			"error": []byte("Error remarshaling target for response streamheader"),
+		}
+	}
+
+	return returnHeaders
+
+}
+
+func (s *Pricer) MakePriceHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
+
+	chunkPriceInBytes := make([]byte, 8)
+	chunkAddressInBytes := make([]byte, 8)
+
+	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
+	chunkAddressInBytes, err := addr.MarshalJSON()
+	if err != nil {
+		return p2p.Headers{}, err
+	}
+
+	headers := p2p.Headers{
+		"price":  chunkPriceInBytes,
+		"target": chunkAddressInBytes,
+	}
+
+	return headers, nil
+
+}
+
+func (s *Pricer) ReadPriceHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+
+	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
+	var receivedTarget swarm.Address
+	if receivedHeaders["target"] == nil {
+		return swarm.Address{}, 0, fmt.Errorf("")
+	}
+	err := receivedTarget.UnmarshalJSON(receivedHeaders["target"])
+	if err != nil {
+		s.logger.Errorf("price headers: parsing received header target field error: %w", err)
+		return swarm.Address{}, 0, err
+	}
+
+	return receivedTarget, receivedPrice, nil
 }
