@@ -35,6 +35,10 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	var (
+		readPriceFunc = func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+			return swarm.MustParseHexAddress("0034"), 10, nil
+		}
+
 		logger               = logging.New(ioutil.Discard, 0)
 		mockStorer           = storemock.NewStorer()
 		chunk                = testingc.FixtureChunk("0033")
@@ -44,7 +48,7 @@ func TestDelivery(t *testing.T) {
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
 		price      = uint64(10)
-		pricerMock = pricermock.NewMockService()
+		pricerMock = pricermock.NewMockService(pricermock.WithReadPriceHeadersFunc(readPriceFunc))
 	)
 
 	// put testdata in the mock store of the server
@@ -135,9 +139,14 @@ func TestDelivery(t *testing.T) {
 }
 
 func TestRetrieveChunk(t *testing.T) {
+
 	var (
+		readPriceFunc = func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+			return swarm.MustParseHexAddress("0034"), 10, nil
+		}
+
 		logger = logging.New(ioutil.Discard, 0)
-		pricer = pricermock.NewMockService()
+		pricer = pricermock.NewMockService(pricermock.WithReadPriceHeadersFunc(readPriceFunc))
 	)
 
 	// requesting a chunk from downstream peer is expected

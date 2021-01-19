@@ -250,6 +250,7 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 			"error": []byte("Error remarshaling target for response streamheader"),
 		}
 	}
+	s.logger.Debugf("price headler: response target %v with price as %v, for peer %s", chunkAddress, receivedPrice, peerAddress)
 
 	return returnHeaders
 
@@ -258,7 +259,6 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 func (s *Pricer) MakePriceHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
 
 	chunkPriceInBytes := make([]byte, 8)
-	chunkAddressInBytes := make([]byte, 8)
 
 	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
 	chunkAddressInBytes, err := addr.MarshalJSON()
