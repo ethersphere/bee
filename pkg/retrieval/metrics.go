@@ -70,7 +70,7 @@ func newMetrics() metrics {
 				Name:      "chunk_po_hop_distance_count",
 				Help:      "Counter of chunk retrieval requests per address PO hop distance.",
 			},
-			[]string{"po"},
+			[]string{"distance"},
 		),
 		ChunkPrice: prometheus.NewSummary(prometheus.SummaryOpts{
 			Namespace: m.Namespace,
