@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	mp "github.com/ethersphere/bee/pkg/pusher/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -46,7 +45,6 @@ func TestTags(t *testing.T) {
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 0)
 		tag            = tags.NewTags(mockStatestore, logger)
-		mockPusher     = mp.NewMockPusher(tag)
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tag,
@@ -83,7 +81,7 @@ func TestTags(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusInternalServerError,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "cannot get or create tag",
+				Message: "cannot get tag",
 				Code:    http.StatusInternalServerError,
 			}),
 			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, "invalid_id.jpg"), // the value should be uint32
@@ -108,18 +106,6 @@ func TestTags(t *testing.T) {
 		)
 	})
 
-	t.Run("tag id in chunk upload", func(t *testing.T) {
-		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusOK,
-			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
-		)
-
-		isTagFoundInResponse(t, rcvdHeaders, nil)
-	})
-
 	t.Run("create tag upload chunk", func(t *testing.T) {
 		// create a tag using the API
 		tr := api.TagResponse{}
@@ -134,7 +120,14 @@ func TestTags(t *testing.T) {
 			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
 		}
 
-		// now upload a chunk and see if we receive a tag with the same id
+		_ = jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
+
 		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -146,32 +139,6 @@ func TestTags(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeaders, &tr)
 		tagValueTest(t, tr.Uid, 1, 1, 1, 0, 0, 0, swarm.ZeroAddress, client)
-	})
-
-	t.Run("tag counters", func(t *testing.T) {
-		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusOK,
-			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
-		)
-		id := isTagFoundInResponse(t, rcvdHeaders, nil)
-
-		tag, err := tag.Get(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = mockPusher.SendChunk(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = mockPusher.RcvdReceipt(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		tagValueTest(t, id, tag.Split, tag.Stored, tag.Seen, tag.Sent, tag.Synced, tag.Total, swarm.ZeroAddress, client)
 	})
 
 	t.Run("delete tag error", func(t *testing.T) {
@@ -376,6 +343,8 @@ func TestTags(t *testing.T) {
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
 // if an API tag response is supplied, it also verifies that it contains an id which matches the headers
 func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {
+	t.Helper()
+
 	idStr := headers.Get(api.SwarmTagUidHeader)
 	if idStr == "" {
 		t.Fatalf("could not find tag id header in chunk upload response")

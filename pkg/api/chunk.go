@@ -35,11 +35,22 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, _ := s.getTag(r.Header.Get(SwarmTagUidHeader))
-	ctx := r.Context()
+	var (
+		tag *tags.Tag
+		ctx = r.Context()
+	)
 
-	// add the tag to the context if it exists
-	if tag != nil {
+	if h := r.Header.Get(SwarmTagUidHeader); h != "" {
+		tag, err = s.getTag(h)
+		if err != nil {
+			s.Logger.Debugf("chunk upload: get tag: %v", err)
+			s.Logger.Error("chunk upload: get tag")
+			jsonhttp.InternalServerError(w, "cannot get tag")
+			return
+
+		}
+
+		// add the tag to the context if it exists
 		ctx = sctx.SetTag(r.Context(), tag)
 
 		// increment the StateSplit here since we dont have a splitter for the file upload
