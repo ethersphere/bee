@@ -15,14 +15,14 @@ type metrics struct {
 	// to be able to return them by Metrics()
 	// using reflection
 
-	RequestCounter             prometheus.Counter
-	PeerRequestCounter         prometheus.Counter
-	TotalRetrieved             prometheus.Counter
-	InvalidChunkRetrieved      prometheus.Counter
-	RetrieveChunkPeerPOTimer   prometheus.HistogramVec
-	RetrieveChunkAddrPOCounter prometheus.CounterVec
-	ChunkPrice                 prometheus.Summary
-	TotalErrors                prometheus.Counter
+	RequestCounter                    prometheus.Counter
+	PeerRequestCounter                prometheus.Counter
+	TotalRetrieved                    prometheus.Counter
+	InvalidChunkRetrieved             prometheus.Counter
+	RetrieveChunkPeerPOTimer          prometheus.HistogramVec
+	RetrieveChunkPOHopDistanceCounter prometheus.CounterVec
+	ChunkPrice                        prometheus.Summary
+	TotalErrors                       prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -63,12 +63,12 @@ func newMetrics() metrics {
 			},
 			[]string{"po"},
 		),
-		RetrieveChunkAddrPOCounter: *prometheus.NewCounterVec(
+		RetrieveChunkPOHopDistanceCounter: *prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "chunk_po_count",
-				Help:      "Counter of chunk retrieval requests per address PO.",
+				Name:      "chunk_po_hop_distance_count",
+				Help:      "Counter of chunk retrieval requests per address PO hop distance.",
 			},
 			[]string{"po"},
 		),

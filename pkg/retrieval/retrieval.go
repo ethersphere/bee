@@ -135,14 +135,15 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	startTimer := time.Now()
 
 	v := ctx.Value(requestSourceContextKey{})
+	sourcePeerAddr := swarm.Address{}
 	// allow upstream requests if this node is the source of the request
 	// i.e. the request was not forwarded, to improve retrieval
 	// if this node is the closest to he chunk but still does not contain it
 	allowUpstream := true
 	if src, ok := v.(string); ok {
-		skipAddr, err := swarm.ParseHexAddress(src)
+		sourcePeerAddr, err = swarm.ParseHexAddress(src)
 		if err == nil {
-			skipPeers = append(skipPeers, skipAddr)
+			skipPeers = append(skipPeers, sourcePeerAddr)
 		}
 		// do not allow upstream requests if the request was forwarded to this node
 		// to avoid the request loops
@@ -158,11 +159,18 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 	}
 
 	peerPO := swarm.Proximity(s.addr.Bytes(), peer.Bytes())
-	addrPO := swarm.Proximity(peer.Bytes(), addr.Bytes())
 
-	s.metrics.RetrieveChunkAddrPOCounter.
-		WithLabelValues(strconv.Itoa(int(addrPO))).
-		Inc()
+	if !sourcePeerAddr.IsZero() {
+		// is forwarded request
+		sourceAddrPO := swarm.Proximity(sourcePeerAddr.Bytes(), addr.Bytes())
+		addrPO := swarm.Proximity(peer.Bytes(), addr.Bytes())
+
+		poHopDistance := sourceAddrPO - addrPO
+
+		s.metrics.RetrieveChunkPOHopDistanceCounter.
+			WithLabelValues(strconv.Itoa(int(poHopDistance))).
+			Inc()
+	}
 
 	// compute the price we pay for this chunk and reserve it for the rest of this function
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
