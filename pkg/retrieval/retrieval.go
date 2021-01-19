@@ -165,10 +165,10 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skipPee
 		sourceAddrPO := swarm.Proximity(sourcePeerAddr.Bytes(), addr.Bytes())
 		addrPO := swarm.Proximity(peer.Bytes(), addr.Bytes())
 
-		poHopDistance := sourceAddrPO - addrPO
+		poHopDistance := int(sourceAddrPO) - int(addrPO)
 
 		s.metrics.RetrieveChunkPOHopDistanceCounter.
-			WithLabelValues(strconv.Itoa(int(poHopDistance))).
+			WithLabelValues(strconv.Itoa(poHopDistance)).
 			Inc()
 	}
 
