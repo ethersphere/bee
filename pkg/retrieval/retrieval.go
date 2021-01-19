@@ -138,7 +138,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.
 				peersResults++
 			case <-ctx.Done():
 				logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
-				return nil, ctx.Err()
+				return nil, fmt.Errorf("retrieval: %w", ctx.Err())
 			}
 
 			// all results received
