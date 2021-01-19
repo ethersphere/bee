@@ -5,6 +5,7 @@
 package mock
 
 import (
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -20,6 +21,9 @@ type Service struct {
 	notifyPriceTableFunc  func(peer swarm.Address, priceTable []uint64) error
 	defaultPriceTableFunc func() (priceTable []uint64)
 	defaultPriceFunc      func(PO uint8) uint64
+	priceHeadlerFunc      func(p2p.Headers, swarm.Address) p2p.Headers
+	makePriceHeadersFunc  func(uint64, swarm.Address) (p2p.Headers, error)
+	readPriceHeadersFunc  func(p2p.Headers) (swarm.Address, uint64, error)
 }
 
 // WithReserveFunc sets the mock Reserve function
@@ -40,6 +44,18 @@ func WithPriceForPeerFunc(f func(peer, chunk swarm.Address) uint64) Option {
 func WithPriceTableFunc(f func() (priceTable []uint64)) Option {
 	return optionFunc(func(s *Service) {
 		s.priceTableFunc = f
+	})
+}
+
+func WithReadPriceHeadersFunc(f func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.readPriceHeadersFunc = f
+	})
+}
+
+func WithPriceHeadlerFunc(f func(headers p2p.Headers, addr swarm.Address) p2p.Headers) Option {
+	return optionFunc(func(s *Service) {
+		s.priceHeadlerFunc = f
 	})
 }
 
@@ -108,6 +124,27 @@ func (pricer *Service) DefaultPrice(PO uint8) uint64 {
 		return pricer.defaultPriceFunc(PO)
 	}
 	return 0
+}
+
+func (pricer *Service) PriceHeadler(headers p2p.Headers, addr swarm.Address) p2p.Headers {
+	if pricer.priceHeadlerFunc != nil {
+		return pricer.priceHeadlerFunc(headers, addr)
+	}
+	return p2p.Headers{}
+}
+
+func (pricer *Service) MakePriceHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
+	if pricer.makePriceHeadersFunc != nil {
+		return pricer.makePriceHeadersFunc(chunkPrice, addr)
+	}
+	return p2p.Headers{}, nil
+}
+
+func (pricer *Service) ReadPriceHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+	if pricer.readPriceHeadersFunc != nil {
+		return pricer.readPriceHeadersFunc(receivedHeaders)
+	}
+	return swarm.Address{}, 0, nil
 }
 
 // Option is the option passed to the mock accounting service
