@@ -252,6 +252,7 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 
 func TestRetrieveChunk(t *testing.T) {
 
+<<<<<<< HEAD
 	var (
 		headlerFunc = func(h p2p.Headers, a swarm.Address) p2p.Headers {
 			target, _ := headerutils.ParseTargetHeader(h)
@@ -262,6 +263,13 @@ func TestRetrieveChunk(t *testing.T) {
 		logger = logging.New(ioutil.Discard, 0)
 		pricer = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 	)
+=======
+	readPriceFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+		return swarm.MustParseHexAddress("0034"), 10, nil
+	}
+
+	pricer := pricermock.NewMockService(pricermock.WithReadPriceHeadersFunc(readPriceFunc))
+>>>>>>> d4c4768 (Lint and test fixes)
 
 	// requesting a chunk from downstream peer is expected
 	t.Run("downstream", func(t *testing.T) {

@@ -104,7 +104,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 
-	if big.Int(0).cmp(paymentThreshold) == 0 {
+	if paymentThreshold.Cmp(big.NewInt(0)) == 0 {
 		return err
 	}
 	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, paymentThreshold)

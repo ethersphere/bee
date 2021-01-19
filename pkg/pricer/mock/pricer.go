@@ -111,6 +111,27 @@ func (pricer *Service) NotifyPeerPrice(peer swarm.Address, price uint64, index u
 	return nil
 }
 
+func (pricer *Service) PriceHeadler(headers p2p.Headers, addr swarm.Address) p2p.Headers {
+	if pricer.priceHeadlerFunc != nil {
+		return pricer.priceHeadlerFunc(headers, addr)
+	}
+	return p2p.Headers{}
+}
+
+func (pricer *Service) MakePriceHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
+	if pricer.makePriceHeadersFunc != nil {
+		return pricer.makePriceHeadersFunc(chunkPrice, addr)
+	}
+	return p2p.Headers{}, nil
+}
+
+func (pricer *Service) ReadPriceHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+	if pricer.readPriceHeadersFunc != nil {
+		return pricer.readPriceHeadersFunc(receivedHeaders)
+	}
+	return swarm.Address{}, 0, nil
+}
+
 // Option is the option passed to the mock accounting service
 type Option interface {
 	apply(*Service)
