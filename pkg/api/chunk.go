@@ -106,7 +106,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.Logger.Debugf("chunk upload: increment tag", err)
 			s.Logger.Error("chunk upload: increment tag")
-			jsonhttp.BadRequest(w, "increment tag")
+			jsonhttp.InternalServerError(w, "increment tag")
 			return
 		}
 		w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
