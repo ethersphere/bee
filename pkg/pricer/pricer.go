@@ -336,3 +336,12 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 func (s *Pricer) SetTopology(top topology.Driver) {
 	s.topology = top
 }
+
+func (s *Pricer) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
+	if receivedHeaders["price"] == nil {
+		return 0, fmt.Errorf("No price header")
+	}
+
+	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
+	return receivedPrice, nil
+}
