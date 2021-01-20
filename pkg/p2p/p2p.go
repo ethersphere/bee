@@ -67,6 +67,7 @@ type StreamerDisconnecter interface {
 type Stream interface {
 	io.ReadWriter
 	io.Closer
+	ResponseHeaders() Headers
 	Headers() Headers
 	FullClose() error
 	Reset() error

@@ -7,7 +7,6 @@ package recovery_test
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/binary"
 	"errors"
 	"io/ioutil"
 	"testing"
@@ -16,7 +15,6 @@ import (
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -219,26 +217,16 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 	storer := mock.NewStorer()
 	logger := logging.New(ioutil.Discard, 5)
 
-	priceHeadlerFunc := func(headers p2p.Headers, addr swarm.Address) p2p.Headers {
-
-		var p []byte
-		binary.LittleEndian.PutUint64(p, uint64(10))
-
-		return p2p.Headers{
-			"target": []byte("deadbeef"),
-			"price":  p,
-		}
-	}
-
 	mockStorer := storemock.NewStorer()
 	serverMockAccounting := accountingmock.NewAccounting()
-	pricerMock := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(priceHeadlerFunc))
+
+	pricerMock := pricermock.NewMockService()
 	peerID := swarm.MustParseHexAddress("deadbeef")
 	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, nil, nil)
+	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
