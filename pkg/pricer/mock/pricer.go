@@ -118,18 +118,25 @@ func (pricer *Service) PriceHeadler(headers p2p.Headers, addr swarm.Address) p2p
 	return p2p.Headers{}
 }
 
-func (pricer *Service) MakePriceHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
-	if pricer.makePriceHeadersFunc != nil {
-		return pricer.makePriceHeadersFunc(chunkPrice, addr)
+func (pricer *Service) MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
+	if pricer.makePricingHeadersFunc != nil {
+		return pricer.makePricingHeadersFunc(chunkPrice, addr)
 	}
 	return p2p.Headers{}, nil
 }
 
-func (pricer *Service) ReadPriceHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
-	if pricer.readPriceHeadersFunc != nil {
-		return pricer.readPriceHeadersFunc(receivedHeaders)
+func (pricer *Service) ReadPricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+	if pricer.readPricingHeadersFunc != nil {
+		return pricer.readPricingHeadersFunc(receivedHeaders)
 	}
 	return swarm.Address{}, 0, nil
+}
+
+func (pricer *Service) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
+	if pricer.readPriceHeaderFunc != nil {
+		return pricer.readPriceHeaderFunc(receivedHeaders)
+	}
+	return 0, nil
 }
 
 // Option is the option passed to the mock accounting service

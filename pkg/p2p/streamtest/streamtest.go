@@ -97,7 +97,7 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 		handler = r.middlewares[i](handler)
 	}
 	if headler != nil {
-		streamOut.headers = headler(h, addr)
+		streamOut.headers = headler(h, swarm.ZeroAddress)
 	}
 	record := &Record{in: recordIn, out: recordOut, done: make(chan struct{})}
 	go func() {
