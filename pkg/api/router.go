@@ -111,18 +111,18 @@ func (s *server) setupRouting() {
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
-				web.FinalHandlerFunc(s.createTag),
+				web.FinalHandlerFunc(s.createTagHandler),
 			),
 		})),
 	)
 	handle(router, "/tags/{id}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.getTag),
-			"DELETE": http.HandlerFunc(s.deleteTag),
+			"GET":    http.HandlerFunc(s.getTagHandler),
+			"DELETE": http.HandlerFunc(s.deleteTagHandler),
 			"PATCH": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
-				web.FinalHandlerFunc(s.doneSplit),
+				web.FinalHandlerFunc(s.doneSplitHandler),
 			),
 		})),
 	)

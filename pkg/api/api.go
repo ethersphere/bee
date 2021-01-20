@@ -140,12 +140,16 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 		}
 		return tag, true, nil
 	}
+	t, err := s.getTag(tagUid)
+	return t, false, err
+}
+
+func (s *server) getTag(tagUid string) (*tags.Tag, error) {
 	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot parse taguid: %w", err)
+		return nil, fmt.Errorf("cannot parse taguid: %w", err)
 	}
-	t, err := s.Tags.Get(uint32(uid))
-	return t, false, err
+	return s.Tags.Get(uint32(uid))
 }
 
 func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
