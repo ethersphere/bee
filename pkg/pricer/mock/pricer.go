@@ -10,20 +10,21 @@ import (
 )
 
 type Service struct {
-	peerPrice             uint64
-	price                 uint64
-	peerPriceFunc         func(peer, chunk swarm.Address) uint64
-	priceForPeerFunc      func(peer, chunk swarm.Address) uint64
-	priceTableFunc        func() (priceTable []uint64)
-	peerPriceTableFunc    func(peer, chunk swarm.Address) (priceTable []uint64, err error)
-	pricePOFunc           func(PO uint8) (uint64, error)
-	peerPricePOFunc       func(peer swarm.Address, PO uint8) (uint64, error)
-	notifyPriceTableFunc  func(peer swarm.Address, priceTable []uint64) error
-	defaultPriceTableFunc func() (priceTable []uint64)
-	defaultPriceFunc      func(PO uint8) uint64
-	priceHeadlerFunc      func(p2p.Headers, swarm.Address) p2p.Headers
-	makePriceHeadersFunc  func(uint64, swarm.Address) (p2p.Headers, error)
-	readPriceHeadersFunc  func(p2p.Headers) (swarm.Address, uint64, error)
+	peerPrice              uint64
+	price                  uint64
+	peerPriceFunc          func(peer, chunk swarm.Address) uint64
+	priceForPeerFunc       func(peer, chunk swarm.Address) uint64
+	priceTableFunc         func() (priceTable []uint64)
+	peerPriceTableFunc     func(peer, chunk swarm.Address) (priceTable []uint64, err error)
+	pricePOFunc            func(PO uint8) (uint64, error)
+	peerPricePOFunc        func(peer swarm.Address, PO uint8) (uint64, error)
+	notifyPriceTableFunc   func(peer swarm.Address, priceTable []uint64) error
+	defaultPriceTableFunc  func() (priceTable []uint64)
+	defaultPriceFunc       func(PO uint8) uint64
+	priceHeadlerFunc       func(p2p.Headers, swarm.Address) p2p.Headers
+	makePricingHeadersFunc func(uint64, swarm.Address) (p2p.Headers, error)
+	readPricingHeadersFunc func(p2p.Headers) (swarm.Address, uint64, error)
+	readPriceHeaderFunc    func(p2p.Headers) (uint64, error)
 }
 
 // WithReserveFunc sets the mock Reserve function
@@ -47,9 +48,21 @@ func WithPriceTableFunc(f func() (priceTable []uint64)) Option {
 	})
 }
 
-func WithReadPriceHeadersFunc(f func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error)) Option {
+func WithMakePricingHeadersFunc(f func(uint64, swarm.Address) (p2p.Headers, error)) Option {
 	return optionFunc(func(s *Service) {
-		s.readPriceHeadersFunc = f
+		s.makePricingHeadersFunc = f
+	})
+}
+
+func WithReadPricingHeadersFunc(f func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.readPricingHeadersFunc = f
+	})
+}
+
+func WithReadPriceHeaderFunc(f func(receivedHeaders p2p.Headers) (uint64, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.readPriceHeaderFunc = f
 	})
 }
 
@@ -133,18 +146,25 @@ func (pricer *Service) PriceHeadler(headers p2p.Headers, addr swarm.Address) p2p
 	return p2p.Headers{}
 }
 
-func (pricer *Service) MakePriceHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
-	if pricer.makePriceHeadersFunc != nil {
-		return pricer.makePriceHeadersFunc(chunkPrice, addr)
+func (pricer *Service) MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
+	if pricer.makePricingHeadersFunc != nil {
+		return pricer.makePricingHeadersFunc(chunkPrice, addr)
 	}
 	return p2p.Headers{}, nil
 }
 
-func (pricer *Service) ReadPriceHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
-	if pricer.readPriceHeadersFunc != nil {
-		return pricer.readPriceHeadersFunc(receivedHeaders)
+func (pricer *Service) ReadPricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+	if pricer.readPricingHeadersFunc != nil {
+		return pricer.readPricingHeadersFunc(receivedHeaders)
 	}
 	return swarm.Address{}, 0, nil
+}
+
+func (pricer *Service) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
+	if pricer.readPriceHeaderFunc != nil {
+		return pricer.readPriceHeaderFunc(receivedHeaders)
+	}
+	return 0, nil
 }
 
 // Option is the option passed to the mock accounting service

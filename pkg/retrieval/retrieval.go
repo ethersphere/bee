@@ -211,7 +211,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 	defer s.accounting.Release(peer, chunkPrice)
 
-	headers, err := s.pricer.MakePriceHeaders(chunkPrice, addr)
+	headers, err := s.pricer.MakePricingHeaders(chunkPrice, addr)
 	if err != nil {
 		return nil, swarm.Address{}, err
 	}
@@ -233,19 +233,18 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		}
 	}()
 
-	returnedTarget, returnedPrice, err := s.pricer.ReadPriceHeaders(returnedHeaders)
+	returnedTarget, returnedPrice, err := s.pricer.ReadPricingHeaders(returnedHeaders)
 	if err != nil {
 		return nil, peer, fmt.Errorf("retrieval headers: read returned: %w", err)
 	}
 
 	s.logger.Debugf("retrieval headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
 	s.logger.Debugf("retrieval headers: original target %v with price as %v, from peer %s", addr, chunkPrice, peer)
-
 	// returned checker
 	if returnedPrice != chunkPrice {
 		// save priceHeaders["price"] corresponding row for peer
-
-		return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
+		chunkPrice = returnedPrice
+		//return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
 	}
 
 	w, r := protobuf.NewWriterAndReader(stream)
@@ -354,6 +353,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
+
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
 
@@ -380,8 +380,15 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
-	// compute the price we charge for this chunk and debit it from p's balance
-	chunkPrice := s.pricer.PriceForPeer(p.Address, chunk.Address())
+	// to get price Read in headler,
+	returnedHeaders := stream.ResponseHeaders()
+	chunkPrice, err := s.pricer.ReadPriceHeader(returnedHeaders)
+	if err != nil {
+		// if not found in returned header, compute the price we charge for this chunk and
+		s.logger.Warningf("")
+		chunkPrice = s.pricer.PriceForPeer(p.Address, chunk.Address())
+	}
+	// debit price from p's balance
 	err = s.accounting.Debit(p.Address, chunkPrice)
 	if err != nil {
 		return err

@@ -55,6 +55,8 @@ func handleHeaders(headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Ad
 		h = headler(stream.headers, peerAddress)
 	}
 
+	stream.responseHeaders = h
+
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
