@@ -35,24 +35,32 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, _, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
-	if err != nil {
-		s.Logger.Debugf("chunk upload: get or create tag: %v", err)
-		s.Logger.Error("chunk upload: get or create tag")
-		jsonhttp.InternalServerError(w, "cannot get or create tag")
-		return
-	}
+	var (
+		tag *tags.Tag
+		ctx = r.Context()
+	)
 
-	// Add the tag to the context
-	ctx := sctx.SetTag(r.Context(), tag)
+	if h := r.Header.Get(SwarmTagUidHeader); h != "" {
+		tag, err = s.getTag(h)
+		if err != nil {
+			s.Logger.Debugf("chunk upload: get tag: %v", err)
+			s.Logger.Error("chunk upload: get tag")
+			jsonhttp.BadRequest(w, "cannot get tag")
+			return
 
-	// Increment the StateSplit here since we dont have a splitter for the file upload
-	err = tag.Inc(tags.StateSplit)
-	if err != nil {
-		s.Logger.Debugf("chunk upload: increment tag: %v", err)
-		s.Logger.Error("chunk upload: increment tag")
-		jsonhttp.InternalServerError(w, "increment tag")
-		return
+		}
+
+		// add the tag to the context if it exists
+		ctx = sctx.SetTag(r.Context(), tag)
+
+		// increment the StateSplit here since we dont have a splitter for the file upload
+		err = tag.Inc(tags.StateSplit)
+		if err != nil {
+			s.Logger.Debugf("chunk upload: increment tag: %v", err)
+			s.Logger.Error("chunk upload: increment tag")
+			jsonhttp.InternalServerError(w, "increment tag")
+			return
+		}
 	}
 
 	data, err := ioutil.ReadAll(r.Body)
@@ -82,7 +90,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("chunk upload: chunk write error")
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
-	} else if len(seen) > 0 && seen[0] {
+	} else if len(seen) > 0 && seen[0] && tag != nil {
 		err := tag.Inc(tags.StateSeen)
 		if err != nil {
 			s.Logger.Debugf("chunk upload: increment tag", err)
@@ -92,16 +100,18 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Indicate that the chunk is stored
-	err = tag.Inc(tags.StateStored)
-	if err != nil {
-		s.Logger.Debugf("chunk upload: increment tag", err)
-		s.Logger.Error("chunk upload: increment tag")
-		jsonhttp.BadRequest(w, "increment tag")
-		return
+	if tag != nil {
+		// indicate that the chunk is stored
+		err = tag.Inc(tags.StateStored)
+		if err != nil {
+			s.Logger.Debugf("chunk upload: increment tag", err)
+			s.Logger.Error("chunk upload: increment tag")
+			jsonhttp.InternalServerError(w, "increment tag")
+			return
+		}
+		w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	}
 
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
 	jsonhttp.OK(w, nil)
 }
