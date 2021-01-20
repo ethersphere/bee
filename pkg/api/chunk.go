@@ -45,7 +45,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.Logger.Debugf("chunk upload: get tag: %v", err)
 			s.Logger.Error("chunk upload: get tag")
-			jsonhttp.InternalServerError(w, "cannot get tag")
+			jsonhttp.BadRequest(w, "cannot get tag")
 			return
 
 		}
