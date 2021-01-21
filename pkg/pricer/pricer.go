@@ -50,13 +50,12 @@ type Pricer struct {
 	poPrice        uint64
 }
 
-func New(logger logging.Logger, store storage.StateStorer, topology topology.Driver, overlay swarm.Address, poPrice uint64) *Pricer {
+func New(logger logging.Logger, store storage.StateStorer, overlay swarm.Address, poPrice uint64) *Pricer {
 	return &Pricer{
 		logger:       logger,
 		pricingPeers: make(map[string]*pricingPeer),
 		store:        store,
 		overlay:      overlay,
-		topology:     topology,
 		poPrice:      poPrice,
 	}
 }
@@ -216,7 +215,10 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 }
 
 func (s *Pricer) DefaultPriceTable() []uint64 {
-	neighborhoodDepth := s.topology.NeighborhoodDepth()
+	neighborhoodDepth := uint8(0)
+	if s.topology != nil {
+		neighborhoodDepth = s.topology.NeighborhoodDepth()
+	}
 	priceTable := make([]uint64, neighborhoodDepth+1)
 	for i := uint8(0); i <= neighborhoodDepth; i++ {
 		priceTable[i] = uint64(neighborhoodDepth-i+1) * s.poPrice
@@ -226,7 +228,10 @@ func (s *Pricer) DefaultPriceTable() []uint64 {
 }
 
 func (s *Pricer) DefaultPrice(PO uint8) uint64 {
-	neighborhoodDepth := s.topology.NeighborhoodDepth()
+	neighborhoodDepth := uint8(0)
+	if s.topology != nil {
+		neighborhoodDepth = s.topology.NeighborhoodDepth()
+	}
 	if PO > neighborhoodDepth {
 		PO = neighborhoodDepth
 	}
@@ -303,4 +308,8 @@ func (s *Pricer) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
 
 	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
 	return receivedPrice, nil
+}
+
+func (s *Pricer) SetKademlia(kad topology.Driver) {
+	s.topology = kad
 }
