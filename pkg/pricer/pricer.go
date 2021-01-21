@@ -336,3 +336,7 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 func (s *Pricer) SetTopology(top topology.Driver) {
 	s.topology = top
 }
+
+func (s *Pricer) SetKademlia(kad topology.Driver) {
+	s.topology = kad
+}

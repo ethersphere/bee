@@ -1,0 +1,1648 @@
+openapi: 3.0.3
+info:
+  description: A list of the currently provided Interfaces to interact with the swarm,
+    implementing file operations and sending messages
+  title: Swarm API
+  version: 0.5.0
+externalDocs:
+  description: Browse the documentation @ the Swarm Docs
+  url: https://docs.swarm.eth
+servers:
+- url: http://{apiRoot}:{port}/v1
+  variables:
+    apiRoot:
+      default: localhost
+      description: Base address of the local bee node main API
+    port:
+      default: "1633"
+      description: Service port provided in bee node config
+- url: http://{apiRoot}:{port}
+  variables:
+    apiRoot:
+      default: localhost
+      description: Base address of the local bee node main API
+    port:
+      default: "1633"
+      description: Service port provided in bee node config
+security:
+- {}
+paths:
+  /bytes:
+    post:
+      operationId: bytes_post
+      parameters:
+      - description: Associate upload with an existing Tag UID
+        explode: false
+        in: header
+        name: swarm-tag
+        required: false
+        schema:
+          $ref: '#/components/schemas/Uid'
+        style: simple
+      - description: Represents the pinning state of the bytes
+        explode: false
+        in: header
+        name: swarm-pin
+        required: false
+        schema:
+          type: boolean
+        style: simple
+      - description: Represents the encrypting state of the bytes
+        explode: false
+        in: header
+        name: swarm-encrypt
+        required: false
+        schema:
+          type: boolean
+        style: simple
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              format: binary
+              type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceResponse'
+          description: Ok
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Upload data
+      tags:
+      - Bytes
+      x-openapi-router-controller: openapi_server.controllers.bytes_controller
+  /bytes/{reference}:
+    get:
+      operationId: bytes_reference_get
+      parameters:
+      - description: Swarm address reference to content
+        explode: false
+        in: path
+        name: reference
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmReference'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Retrieved content specified by reference
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get referenced data
+      tags:
+      - Bytes
+      x-openapi-router-controller: openapi_server.controllers.bytes_controller
+  /bzz/{reference}:
+    get:
+      operationId: bzz_reference_get
+      parameters:
+      - description: Swarm address of content
+        explode: false
+        in: path
+        name: reference
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmReference'
+        style: simple
+      - description: Global pinning targets prefix
+        explode: true
+        in: query
+        name: targets
+        required: false
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Ok
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get index document from a collection of files
+      tags:
+      - Collection
+      x-openapi-router-controller: openapi_server.controllers.collection_controller
+  /bzz/{reference}/{path}:
+    get:
+      operationId: bzz_reference_path_get
+      parameters:
+      - description: Swarm address of content
+        explode: false
+        in: path
+        name: reference
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmReference'
+        style: simple
+      - description: Path to the file in the collection.
+        explode: false
+        in: path
+        name: path
+        required: true
+        schema:
+          type: string
+        style: simple
+      - description: Global pinning targets prefix
+        explode: true
+        in: query
+        name: targets
+        required: false
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Ok
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get referenced file from a collection of files
+      tags:
+      - Collection
+      x-openapi-router-controller: openapi_server.controllers.collection_controller
+  /chunks:
+    post:
+      operationId: chunks_post
+      parameters:
+      - description: Associate upload with an existing Tag UID
+        explode: false
+        in: header
+        name: swarm-tag
+        required: false
+        schema:
+          $ref: '#/components/schemas/Uid'
+        style: simple
+      - description: Represents the pinning state of the chunk
+        explode: false
+        in: header
+        name: swarm-pin
+        required: false
+        schema:
+          type: boolean
+        style: simple
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              format: binary
+              type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+          description: Ok
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Upload Chunk
+      tags:
+      - Chunk
+      x-openapi-router-controller: openapi_server.controllers.chunk_controller
+  /chunks/{reference}:
+    get:
+      operationId: chunks_reference_get
+      parameters:
+      - description: Swarm address of chunk
+        explode: false
+        in: path
+        name: reference
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmReference'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Retrieved chunk content
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get Chunk
+      tags:
+      - Chunk
+      x-openapi-router-controller: openapi_server.controllers.chunk_controller
+  /dirs:
+    post:
+      operationId: dirs_post
+      parameters:
+      - description: Associate upload with an existing Tag UID
+        explode: false
+        in: header
+        name: swarm-tag
+        required: false
+        schema:
+          $ref: '#/components/schemas/Uid'
+        style: simple
+      - description: Represents the pinning state of the collection
+        explode: false
+        in: header
+        name: swarm-pin
+        required: false
+        schema:
+          type: boolean
+        style: simple
+      - description: Represents the encrypting state of the collection
+        explode: false
+        in: header
+        name: swarm-encrypt
+        required: false
+        schema:
+          type: boolean
+        style: simple
+      - description: Default file to be referenced on path, if exists under that path
+        explode: false
+        in: header
+        name: swarm-index-document
+        required: false
+        schema:
+          example: index.html
+          type: string
+        style: simple
+      - description: Configure custom error document to be returned when a specified
+          path can not be found in collection
+        explode: false
+        in: header
+        name: swarm-error-document
+        required: false
+        schema:
+          example: error.html
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/x-tar:
+            schema:
+              format: binary
+              type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceResponse'
+          description: Ok
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Upload a collection
+      tags:
+      - Collection
+      x-openapi-router-controller: openapi_server.controllers.collection_controller
+  /feeds/{owner}/{topic}:
+    get:
+      operationId: feeds_owner_topic_get
+      parameters:
+      - description: Owner
+        explode: false
+        in: path
+        name: owner
+        required: true
+        schema:
+          $ref: '#/components/schemas/EthereumAddress'
+        style: simple
+      - description: Topic
+        explode: false
+        in: path
+        name: topic
+        required: true
+        schema:
+          $ref: '#/components/schemas/HexString'
+        style: simple
+      - description: Feed update index
+        explode: true
+        in: query
+        name: index
+        required: false
+        schema:
+          $ref: '#/components/schemas/HexString'
+        style: form
+      - description: 'Timestamp of the update (default: now)'
+        explode: true
+        in: query
+        name: at
+        required: false
+        schema:
+          type: integer
+        style: form
+      - description: 'Feed indexing scheme (default: sequence)'
+        explode: true
+        in: query
+        name: type
+        required: false
+        schema:
+          $ref: '#/components/schemas/FeedType'
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceResponse'
+          description: Latest feed update
+          headers:
+            swarm-feed-index:
+              $ref: '#/components/headers/SwarmFeedIndex'
+            swarm-feed-index-next:
+              $ref: '#/components/headers/SwarmFeedIndexNext'
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Unauthorized
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Find feed update
+      tags:
+      - Feed
+      x-openapi-router-controller: openapi_server.controllers.feed_controller
+    post:
+      operationId: feeds_owner_topic_post
+      parameters:
+      - description: Owner
+        explode: false
+        in: path
+        name: owner
+        required: true
+        schema:
+          $ref: '#/components/schemas/EthereumAddress'
+        style: simple
+      - description: Topic
+        explode: false
+        in: path
+        name: topic
+        required: true
+        schema:
+          $ref: '#/components/schemas/HexString'
+        style: simple
+      - description: 'Feed indexing scheme (default: sequence)'
+        explode: true
+        in: query
+        name: type
+        required: false
+        schema:
+          $ref: '#/components/schemas/FeedType'
+        style: form
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceResponse'
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Unauthorized
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Create an initial feed root manifest
+      tags:
+      - Feed
+      x-openapi-router-controller: openapi_server.controllers.feed_controller
+  /files:
+    post:
+      operationId: files_post
+      parameters:
+      - description: Filename
+        explode: true
+        in: query
+        name: name
+        required: false
+        schema:
+          $ref: '#/components/schemas/FileName'
+        style: form
+      - description: Associate upload with an existing Tag UID
+        explode: false
+        in: header
+        name: swarm-tag
+        required: false
+        schema:
+          $ref: '#/components/schemas/Uid'
+        style: simple
+      - description: Represents the pinning state of the file
+        explode: false
+        in: header
+        name: swarm-pin
+        required: false
+        schema:
+          type: boolean
+        style: simple
+      - description: Represents the encrypting state of the file
+        explode: false
+        in: header
+        name: swarm-encrypt
+        required: false
+        schema:
+          type: boolean
+        style: simple
+      - explode: false
+        in: header
+        name: Content-Type
+        required: false
+        schema:
+          description: The specified content-type is preserved for download of the
+            asset
+          type: string
+        style: simple
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                file:
+                  items:
+                    format: binary
+                    type: string
+                  type: array
+          application/octet-stream:
+            schema:
+              format: binary
+              type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceResponse'
+          description: Ok
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Upload file
+      tags:
+      - File
+      x-openapi-router-controller: openapi_server.controllers.file_controller
+  /files/{reference}:
+    get:
+      operationId: files_reference_get
+      parameters:
+      - description: Swarm address of content
+        explode: false
+        in: path
+        name: reference
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmReference'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Ok
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get referenced file
+      tags:
+      - File
+      x-openapi-router-controller: openapi_server.controllers.file_controller
+  /pin/bytes/{address}:
+    delete:
+      operationId: pin_bytes_address_delete
+      parameters:
+      - description: Swarm address of the bytes
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Unpinning chunk with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Unpin bytes chunks with given address
+      tags:
+      - Bytes pinning
+      x-openapi-router-controller: openapi_server.controllers.bytes_pinning_controller
+    post:
+      operationId: pin_bytes_address_post
+      parameters:
+      - description: Swarm address of the bytes
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Pinning bytes chunks with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Pin bytes with given address
+      tags:
+      - Bytes pinning
+      x-openapi-router-controller: openapi_server.controllers.bytes_pinning_controller
+  /pin/bzz/{address}:
+    delete:
+      operationId: pin_bzz_address_delete
+      parameters:
+      - description: Swarm address of the collection
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Unpinning collection chunks (and all referenced files) with
+            address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Unpin file chunks with given address
+      tags:
+      - Collection pinning
+      x-openapi-router-controller: openapi_server.controllers.collection_pinning_controller
+    post:
+      operationId: pin_bzz_address_post
+      parameters:
+      - description: Swarm address of the collection
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Pinning collection chunks (and all referenced files) with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Pin collection with given address
+      tags:
+      - Collection pinning
+      x-openapi-router-controller: openapi_server.controllers.collection_pinning_controller
+  /pin/chunks:
+    get:
+      operationId: pin_chunks_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BzzChunksPinned'
+          description: List of pinned chunks
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get list of pinned chunks
+      tags:
+      - Chunk pinning
+      x-openapi-router-controller: openapi_server.controllers.chunk_pinning_controller
+  /pin/chunks/{address}:
+    delete:
+      operationId: pin_chunks_address_delete
+      parameters:
+      - description: Swarm address of chunk
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Unpinning chunk with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Unpin chunk with given address
+      tags:
+      - Chunk pinning
+      x-openapi-router-controller: openapi_server.controllers.chunk_pinning_controller
+    get:
+      operationId: pin_chunks_address_get
+      parameters:
+      - description: Swarm address of chunk
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PinningState'
+          description: Pinning state of chunk with address
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get pinning status of chunk with given address
+      tags:
+      - Chunk pinning
+      x-openapi-router-controller: openapi_server.controllers.chunk_pinning_controller
+    post:
+      operationId: pin_chunks_address_post
+      parameters:
+      - description: Swarm address of chunk
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Pinning chunk with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Pin chunk with given address
+      tags:
+      - Chunk pinning
+      x-openapi-router-controller: openapi_server.controllers.chunk_pinning_controller
+    put:
+      operationId: pin_chunks_address_put
+      parameters:
+      - description: Swarm address of chunk
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PinningState'
+          description: Pinning state of chunk with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Update chunk pin counter
+      tags:
+      - Chunk pinning
+      x-openapi-router-controller: openapi_server.controllers.chunk_pinning_controller
+  /pin/files/{address}:
+    delete:
+      operationId: pin_files_address_delete
+      parameters:
+      - description: Swarm address of the file
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Unpinning file chunks with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Unpin file chunks with given address
+      tags:
+      - File pinning
+      x-openapi-router-controller: openapi_server.controllers.file_pinning_controller
+    post:
+      operationId: pin_files_address_post
+      parameters:
+      - description: Swarm address of the file
+        explode: false
+        in: path
+        name: address
+        required: true
+        schema:
+          $ref: '#/components/schemas/SwarmAddress'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+          description: Pinning file chunks with address
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        default:
+          description: Default response
+      summary: Pin file with given address
+      tags:
+      - File pinning
+      x-openapi-router-controller: openapi_server.controllers.file_pinning_controller
+  /pss/send/{topic}/{targets}:
+    post:
+      operationId: pss_send_topic_targets_post
+      parameters:
+      - description: Topic name
+        explode: false
+        in: path
+        name: topic
+        required: true
+        schema:
+          $ref: '#/components/schemas/PssTopic'
+        style: simple
+      - description: Target message address prefix. If multiple targets are specified,
+          only one would be matched.
+        explode: false
+        in: path
+        name: targets
+        required: true
+        schema:
+          $ref: '#/components/schemas/PssTargets'
+        style: simple
+      - description: Recipient publickey
+        explode: true
+        in: query
+        name: recipient
+        required: false
+        schema:
+          $ref: '#/components/schemas/PssRecipient'
+        style: form
+      responses:
+        "200":
+          description: Subscribed to topic
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Send to recipient or target with Postal Service for Swarm
+      tags:
+      - Postal Service for Swarm
+      x-openapi-router-controller: openapi_server.controllers.postal_service_for_swarm_controller
+  /pss/subscribe/{topic}:
+    get:
+      operationId: pss_subscribe_topic_get
+      parameters:
+      - description: Topic name
+        explode: false
+        in: path
+        name: topic
+        required: true
+        schema:
+          $ref: '#/components/schemas/PssTopic'
+        style: simple
+      responses:
+        "200":
+          description: Returns a WebSocket with a subscription for incoming message
+            data on the requested topic.
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Subscribe for messages on the given topic.
+      tags:
+      - Pss subscribe
+      x-openapi-router-controller: openapi_server.controllers.pss_subscribe_controller
+  /soc/{owner}/{id}:
+    post:
+      operationId: soc_owner_id_post
+      parameters:
+      - description: Owner
+        explode: false
+        in: path
+        name: owner
+        required: true
+        schema:
+          $ref: '#/components/schemas/EthereumAddress'
+        style: simple
+      - description: Id
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          $ref: '#/components/schemas/HexString'
+        style: simple
+      - description: Signature
+        explode: true
+        in: query
+        name: sig
+        required: true
+        schema:
+          $ref: '#/components/schemas/HexString'
+        style: form
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceResponse'
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Unauthorized
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Upload single owner chunk
+      tags:
+      - Single owner chunk
+      x-openapi-router-controller: openapi_server.controllers.single_owner_chunk_controller
+  /tags:
+    get:
+      operationId: tags_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsList'
+          description: List of tags
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get list of tags
+      tags:
+      - Tag
+      x-openapi-router-controller: openapi_server.controllers.tag_controller
+    post:
+      operationId: tags_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewTagRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewTagResponse'
+          description: New Tag Info
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Create Tag
+      tags:
+      - Tag
+      x-openapi-router-controller: openapi_server.controllers.tag_controller
+  /tags/{uid}:
+    delete:
+      operationId: tags_uid_delete
+      parameters:
+      - description: Uid
+        explode: false
+        in: path
+        name: uid
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uid'
+        style: simple
+      responses:
+        "204":
+          description: The resource was deleted successfully.
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Delete Tag information using Uid
+      tags:
+      - Tag
+      x-openapi-router-controller: openapi_server.controllers.tag_controller
+    get:
+      operationId: tags_uid_get
+      parameters:
+      - description: Uid
+        explode: false
+        in: path
+        name: uid
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uid'
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewTagResponse'
+          description: Tag info
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Bad request
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Get Tag information using Uid
+      tags:
+      - Tag
+      x-openapi-router-controller: openapi_server.controllers.tag_controller
+    patch:
+      operationId: tags_uid_patch
+      parameters:
+      - description: Uid
+        explode: false
+        in: path
+        name: uid
+        required: true
+        schema:
+          $ref: '#/components/schemas/Uid'
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Address'
+        description: Can contain swarm hash to use for the tag
+        required: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+          description: Ok
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Not Found
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+          description: Internal Server Error
+        default:
+          description: Default response
+      summary: Update Total Count and swarm hash for a tag of an input stream of unknown
+        size using Uid
+      tags:
+      - Tag
+      x-openapi-router-controller: openapi_server.controllers.tag_controller
+components:
+  headers:
+    SwarmFeedIndex:
+      description: The index of the found update
+      schema:
+        $ref: '#/components/schemas/HexString'
+    SwarmFeedIndexNext:
+      description: The index of the next possible update
+      schema:
+        $ref: '#/components/schemas/HexString'
+  schemas:
+    Uid:
+      type: integer
+    ReferenceResponse:
+      example: {}
+      properties:
+        reference:
+          $ref: '#/components/schemas/SwarmReference'
+      type: object
+    SwarmReference:
+      oneOf:
+      - $ref: '#/components/schemas/SwarmAddress'
+      - $ref: '#/components/schemas/SwarmEncryptedReference'
+      - $ref: '#/components/schemas/DomainName'
+    SwarmAddress:
+      example: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f
+      pattern: ^[A-Fa-f0-9]{64}$
+      type: string
+    SwarmEncryptedReference:
+      example: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f2d2810619d29b5dbefd5d74abce25d58b81b251baddb9c3871cf0d6967deaae2
+      pattern: ^[A-Fa-f0-9]{128}$
+      type: string
+    DomainName:
+      example: swarm.eth
+      pattern: ^[A-Za-z0-9]+\.[A-Za-z0-9]+$
+      type: string
+    ProblemDetails:
+      type: string
+    Status:
+      example:
+        status: status
+      properties:
+        status:
+          type: string
+      type: object
+    FileName:
+      type: string
+    TagsList:
+      example:
+        tags:
+        - uid: 0
+          processed: 1
+          total: 6
+          synced: 5
+          startedAt: 2020-06-11T11:26:42.6969797+02:00
+        - uid: 0
+          processed: 1
+          total: 6
+          synced: 5
+          startedAt: 2020-06-11T11:26:42.6969797+02:00
+      properties:
+        tags:
+          items:
+            $ref: '#/components/schemas/NewTagResponse'
+          type: array
+      type: object
+    NewTagResponse:
+      example:
+        uid: 0
+        processed: 1
+        total: 6
+        synced: 5
+        startedAt: 2020-06-11T11:26:42.6969797+02:00
+      properties:
+        uid:
+          type: integer
+        startedAt:
+          example: 2020-06-11T11:26:42.6969797+02:00
+          format: date-time
+          type: string
+        total:
+          type: integer
+        processed:
+          type: integer
+        synced:
+          type: integer
+      type: object
+    DateTime:
+      example: 2020-06-11T11:26:42.6969797+02:00
+      format: date-time
+      type: string
+    NewTagRequest:
+      example:
+        address: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f
+      properties:
+        address:
+          example: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f
+          pattern: ^[A-Fa-f0-9]{64}$
+          type: string
+      type: object
+    Address:
+      example:
+        address: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f
+      properties:
+        address:
+          example: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f
+          pattern: ^[A-Fa-f0-9]{64}$
+          type: string
+      type: object
+    PinningState:
+      example:
+        address: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f
+        pinCounter: 0
+      properties:
+        address:
+          example: 36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f
+          pattern: ^[A-Fa-f0-9]{64}$
+          type: string
+        pinCounter:
+          type: integer
+      type: object
+    Response:
+      example:
+        code: 0
+        message: message
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+      type: object
+    BzzChunksPinned:
+      example:
+        chunks:
+        - address: address
+          pinCounter: 0
+        - address: address
+          pinCounter: 0
+      properties:
+        chunks:
+          items:
+            $ref: '#/components/schemas/BzzChunksPinned_chunks'
+          type: array
+      type: object
+    PssTopic:
+      type: string
+    PssTargets:
+      type: string
+    PssRecipient:
+      type: string
+    EthereumAddress:
+      example: 36b7efd913ca4cf880b8eeac5093fa27b0825906
+      pattern: ^[A-Fa-f0-9]{40}$
+      type: string
+    HexString:
+      example: cf880b8eeac5093fa27b0825906c600685
+      pattern: ^([A-Fa-f0-9]+)$
+      type: string
+    FeedType:
+      pattern: ^(sequence|epoch)$
+      type: string
+    BzzChunksPinned_chunks:
+      example:
+        address: address
+        pinCounter: 0
+      properties:
+        address:
+          type: string
+        pinCounter:
+          type: integer
+      type: object
