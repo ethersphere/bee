@@ -346,6 +346,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 	pricing.SetPaymentThresholdObserver(acc)
+<<<<<<< HEAD
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
 	b.topologyCloser = kad
@@ -361,6 +362,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	for _, addr := range addrs {
 		logger.Debugf("p2p address: %s", addr)
 	}
+=======
+>>>>>>> f4c9767 (Set kademlia on pricer)
 
 	var path string
 
