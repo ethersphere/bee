@@ -59,7 +59,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.WsPingPeriod == 0 {
 		o.WsPingPeriod = 60 * time.Second
 	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, mockPostage, signer, o.Logger, nil, api.Options{
+	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, mockPostage, nil, signer, o.Logger, nil, api.Options{
 		GatewayMode:  o.GatewayMode,
 		WsPingPeriod: o.WsPingPeriod,
 	})
@@ -160,7 +160,7 @@ func TestParseName(t *testing.T) {
 		signer := crypto.NewDefaultSigner(pk)
 		mockPostage := mockpost.New()
 
-		s := api.New(nil, nil, tC.res, nil, nil, mockPostage, signer, log, nil, api.Options{}).(*api.Server)
+		s := api.New(nil, nil, tC.res, nil, nil, mockPostage, nil, signer, log, nil, api.Options{}).(*api.Server)
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)

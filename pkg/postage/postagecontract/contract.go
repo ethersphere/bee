@@ -120,7 +120,10 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 	}
 
 	nonce := make([]byte, 32)
-	rand.Read(nonce)
+	_, err = rand.Read(nonce)
+	if err != nil {
+		return nil, err
+	}
 
 	receipt, err := c.sendCreateBatchTransaction(ctx, c.owner, initialBalance, depth, common.BytesToHash(nonce))
 	if err != nil {
