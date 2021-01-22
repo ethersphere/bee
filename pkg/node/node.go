@@ -234,7 +234,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	batchStore := batchstore.New(stateStore)
 
-	post := postage.NewService(stateStore, chainID.Int64()) // do we have a config for this? which chain id are we using??
+	post := postage.NewService(stateStore, chainID.Int64())
+
+	// this is needed until postage API gets wired in (since our actual API
+	// falls back to a 32 byte slice of zeros as batch id
+	fallbackBatch := make([]byte, 32)
+	post.Add(postage.NewStampIssuer("empty batch", "", fallbackBatch, 32, 8))
 
 	var postageContractService postagecontract.Interface
 	if !o.Standalone {
