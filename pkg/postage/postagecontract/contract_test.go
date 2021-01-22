@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -30,6 +31,11 @@ func TestCreateBatch(t *testing.T) {
 
 	postageMock := postageMock.New()
 
+	expectedCallData, err := postagecontract.PostageStampABI.Pack("createBatch", owner, initialBalance, depth, common.Hash{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	contract := postagecontract.New(
 		owner,
 		postageStampAddress,
@@ -39,6 +45,9 @@ func TestCreateBatch(t *testing.T) {
 				if request.To == bzzTokenAddress {
 					return txHashApprove, nil
 				} else if request.To == postageStampAddress {
+					if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
+						return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+					}
 					return txHashCreate, nil
 				}
 				return common.Hash{}, errors.New("sent to wrong contract")
