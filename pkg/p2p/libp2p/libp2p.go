@@ -304,8 +304,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 
 		s.metrics.HandledStreamCount.Inc()
-		s.logger.Debugf("successfully connected to peer (inbound) %s", i.BzzAddress.ShortString())
-		s.logger.Infof("successfully connected to peer (inbound)")
+		s.logger.Infof("successfully connected to peer (inbound) %s", i.BzzAddress.ShortString())
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -532,8 +531,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	s.protocolsmu.RUnlock()
 
 	s.metrics.CreatedConnectionCount.Inc()
-	s.logger.Debugf("successfully connected to peer (outbound) %s", i.BzzAddress.ShortString())
-	s.logger.Infof("successfully connected to peer (outbound)")
+	s.logger.Infof("successfully connected to peer (outbound) %s", i.BzzAddress.ShortString())
 	return i.BzzAddress, nil
 }
 

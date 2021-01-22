@@ -177,8 +177,8 @@ func (k *Kad) manage() {
 							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 						}
 					}
-					k.logger.Debugf("known peer from kademlia not reachable %s: %v", bzzAddr.String(), err)
-					k.logger.Warningf("known peer not reachable, attempting next")
+					k.logger.Debugf("could not connect to peer from kademlia %s: %v", bzzAddr.String(), err)
+					k.logger.Warningf("could not connect to peer")
 					// continue to next
 					return false, false, nil
 				}
@@ -192,7 +192,7 @@ func (k *Kad) manage() {
 				k.depthMu.Lock()
 				k.depth = recalcDepth(k.connectedPeers)
 				k.depthMu.Unlock()
-				k.logger.Info("made new peer connection")
+
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
 
 				k.notifyPeerSig()
