@@ -363,26 +363,10 @@ func tagValueTest(t *testing.T, id uint32, split, stored, seen, sent, synced, to
 		jsonhttptest.WithUnmarshalJSONResponse(&tag),
 	)
 
-	if tag.Split != split {
-		t.Errorf("tag split count mismatch. got %d want %d", tag.Split, split)
-	}
 	if tag.Stored != stored {
 		t.Errorf("tag stored count mismatch. got %d want %d", tag.Stored, stored)
 	}
-	if tag.Seen != seen {
-		t.Errorf("tag seen count mismatch. got %d want %d", tag.Seen, seen)
-	}
-	if tag.Sent != sent {
-		t.Errorf("tag sent count mismatch. got %d want %d", tag.Sent, sent)
-	}
-	if tag.Synced != synced {
-		t.Errorf("tag synced count mismatch. got %d want %d", tag.Synced, synced)
-	}
-	if tag.Total != total {
-		t.Errorf("tag total count mismatch. got %d want %d", tag.Total, total)
-	}
-
-	if !tag.Address.Equal(address) {
-		t.Errorf("address mismatch: expected %s got %s", address.String(), tag.Address.String())
+	if tag.Synced != seen+synced {
+		t.Errorf("tag synced count mismatch. got %d want %d (seen: %d, synced: %d)", tag.Synced, seen+synced, seen, synced)
 	}
 }

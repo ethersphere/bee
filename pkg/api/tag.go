@@ -25,30 +25,20 @@ type tagRequest struct {
 }
 
 type tagResponse struct {
-	Total     int64         `json:"total"`
-	Split     int64         `json:"split"`
-	Seen      int64         `json:"seen"`
-	Stored    int64         `json:"stored"`
-	Sent      int64         `json:"sent"`
-	Synced    int64         `json:"synced"`
-	Uid       uint32        `json:"uid"`
-	Name      string        `json:"name"`
-	Address   swarm.Address `json:"address"`
-	StartedAt time.Time     `json:"startedAt"`
+	Uid       uint32    `json:"uid"`
+	Name      string    `json:"name"`
+	StartedAt time.Time `json:"startedAt"`
+	Stored    int64     `json:"stored"`
+	Synced    int64     `json:"synced"`
 }
 
 func newTagResponse(tag *tags.Tag) tagResponse {
 	return tagResponse{
-		Total:     tag.Total,
-		Split:     tag.Split,
-		Seen:      tag.Seen,
-		Stored:    tag.Stored,
-		Sent:      tag.Sent,
-		Synced:    tag.Synced,
 		Uid:       tag.Uid,
 		Name:      tag.Name,
-		Address:   tag.Address,
 		StartedAt: tag.StartedAt,
+		Stored:    tag.Stored,
+		Synced:    tag.Seen + tag.Synced,
 	}
 }
 
