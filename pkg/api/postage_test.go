@@ -6,19 +6,18 @@ package api_test
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 )
 
 func TestPostageCreateStamp(t *testing.T) {
-	batchId := []byte{1, 2, 3, 4}
+	batchID := []byte{1, 2, 3, 4}
 	initialBalance := int64(1000)
 	depth := uint8(1)
 
@@ -30,7 +29,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			if d != depth {
 				return nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
 			}
-			return batchId, nil
+			return batchID, nil
 		}),
 	)
 	createBatch := func(amount int64, depth uint8) string { return fmt.Sprintf("/stamps/%d/%d", amount, depth) }
@@ -39,8 +38,7 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth), http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: hex.EncodeToString(batchId),
-			Code:    http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
+			BatchID: batchID,
 		}))
 }
