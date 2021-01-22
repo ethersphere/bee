@@ -71,11 +71,21 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/chunks/{addr}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chunkGetHandler),
+	handle(router, "/chunks", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
+		),
+	})
+
+	handle(router, "/chunks/{addr}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chunkGetHandler),
+	})
+
+	handle(router, "/soc/{owner}/{id}/{sig}", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			web.FinalHandlerFunc(s.socSigUploadHandler),
 		),
 	})
 

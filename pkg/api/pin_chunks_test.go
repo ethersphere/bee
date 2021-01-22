@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
@@ -28,7 +27,7 @@ import (
 // it assumes some state of the DB before another case is run.
 func TestPinChunkHandler(t *testing.T) {
 	var (
-		resource       = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		chunksEndpoint = "/chunks"
 		chunk          = testingc.GenerateTestRandomChunk()
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()
@@ -74,12 +73,9 @@ func TestPinChunkHandler(t *testing.T) {
 	// unpin on a chunk which is not pinned
 	t.Run("unpin-while-not-pinned", func(t *testing.T) {
 		// Post a chunk
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
 		jsonhttptest.Request(t, client, http.MethodDelete, "/pin/chunks/"+chunk.Address().String(), http.StatusBadRequest,
@@ -93,12 +89,9 @@ func TestPinChunkHandler(t *testing.T) {
 	// pin a existing chunk first time
 	t.Run("pin-chunk-1", func(t *testing.T) {
 		// Post a chunk
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
 		jsonhttptest.Request(t, client, http.MethodPost, "/pin/chunks/"+chunk.Address().String(), http.StatusOK,
@@ -175,12 +168,9 @@ func TestPinChunkHandler(t *testing.T) {
 	// Add 2 chunks, pin it and check if they show up in the list
 	t.Run("list-chunks", func(t *testing.T) {
 		// Post a chunk
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
 		jsonhttptest.Request(t, client, http.MethodPost, "/pin/chunks/"+chunk.Address().String(), http.StatusOK,
@@ -192,12 +182,9 @@ func TestPinChunkHandler(t *testing.T) {
 
 		// post another chunk
 		chunk2 := testingc.GenerateTestRandomChunk()
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk2.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk2.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk2.Address()}),
 		)
 		jsonhttptest.Request(t, client, http.MethodPost, "/pin/chunks/"+chunk2.Address().String(), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{

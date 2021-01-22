@@ -1,0 +1,112 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package api
+
+import (
+	"encoding/hex"
+	"io/ioutil"
+	"net/http"
+
+	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/gorilla/mux"
+)
+
+type socPostResponse struct {
+	Reference swarm.Address `json:"reference"`
+}
+
+func (s *server) socSigUploadHandler(w http.ResponseWriter, r *http.Request) {
+	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
+	if err != nil {
+		s.Logger.Debugf("soc upload: bad owner: %v", err)
+		s.Logger.Error("soc upload: bad owner")
+		jsonhttp.BadRequest(w, "bad owner")
+		return
+	}
+	id, err := hex.DecodeString(mux.Vars(r)["id"])
+	if err != nil {
+		s.Logger.Debugf("soc upload: bad id: %v", err)
+		s.Logger.Error("soc upload: bad id")
+		jsonhttp.BadRequest(w, "bad id")
+		return
+	}
+	sig, err := hex.DecodeString(mux.Vars(r)["sig"])
+	if err != nil {
+		s.Logger.Debugf("soc upload: bad signature: %v", err)
+		s.Logger.Error("soc upload: bad signature")
+		jsonhttp.BadRequest(w, "bad signature")
+		return
+	}
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		if jsonhttp.HandleBodyReadError(err, w) {
+			return
+		}
+		s.Logger.Debugf("soc upload: read chunk data error: %v", err)
+		s.Logger.Error("soc upload: read chunk data error")
+		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		return
+	}
+	if len(data) < swarm.SpanSize {
+		s.Logger.Debugf("soc upload: chunk data too short")
+		s.Logger.Error("soc upload: chunk data")
+		jsonhttp.BadRequest(w, "short chunk data")
+		return
+	}
+
+	ch, err := chunk(data)
+	if err != nil {
+		s.Logger.Debugf("soc upload: create content addressed chunk: %v", err)
+		s.Logger.Error("soc upload: chunk data error")
+		jsonhttp.BadRequest(w, "chunk data error")
+		return
+	}
+
+	chunk, err := soc.NewSignedChunk(id, ch, owner, sig)
+	if err != nil {
+		s.Logger.Debugf("soc upload: read chunk data error: %v", err)
+		s.Logger.Error("soc upload: read chunk data error")
+		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		return
+	}
+
+	if !soc.Valid(chunk) {
+		s.Logger.Debugf("soc upload: invalid chunk: %v", err)
+		s.Logger.Error("soc upload: invalid chunk")
+		jsonhttp.BadRequest(w, "invalid chunk")
+		return
+
+	}
+	ctx := r.Context()
+
+	_, err = s.Storer.Put(ctx, requestModePut(r), chunk)
+	if err != nil {
+		s.Logger.Debugf("soc upload: chunk write error: %v", err)
+		s.Logger.Error("soc upload: chunk write error")
+		jsonhttp.BadRequest(w, "chunk write error")
+		return
+	}
+
+	jsonhttp.OK(w, chunkAddressResponse{Reference: chunk.Address()})
+}
+
+func chunk(data []byte) (swarm.Chunk, error) {
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
+	err := hasher.SetSpanBytes(data[:swarm.SpanSize])
+	if err != nil {
+		return nil, err
+	}
+	_, err = hasher.Write(data[swarm.SpanSize:])
+	if err != nil {
+		return nil, err
+	}
+
+	return swarm.NewChunk(swarm.NewAddress(hasher.Sum(nil)), data), nil
+}

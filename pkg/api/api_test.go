@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -86,6 +87,23 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	return httpClient, conn, ts.Listener.Addr().String()
+}
+
+func request(t *testing.T, client *http.Client, method, resource string, body io.Reader, responseCode int) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(method, resource, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != responseCode {
+		t.Fatalf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
+	}
+	return resp
 }
 
 func TestParseName(t *testing.T) {

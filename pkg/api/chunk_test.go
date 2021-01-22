@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -31,9 +30,9 @@ func TestChunkUploadDownload(t *testing.T) {
 
 	var (
 		targets         = "0x222"
-		resource        = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		chunksEndpoint  = "/chunks"
+		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
 		resourceTargets = func(addr swarm.Address) string { return "/chunks/" + addr.String() + "?targets=" + targets }
-		someHash        = swarm.MustParseHexAddress("aabbcc")
 		chunk           = testingc.GenerateTestRandomChunk()
 		mockStatestore  = statestore.NewStateStore()
 		logger          = logging.New(ioutil.Discard, 0)
@@ -45,42 +44,23 @@ func TestChunkUploadDownload(t *testing.T) {
 		})
 	)
 
-	t.Run("invalid chunk", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(someHash), http.StatusBadRequest,
-			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusBadRequest),
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
-		// make sure chunk is not retrievable
-		_ = request(t, client, http.MethodGet, resource(someHash), nil, http.StatusNotFound)
-	})
-
 	t.Run("empty chunk", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(someHash), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusBadRequest),
+				Message: "data length",
 				Code:    http.StatusBadRequest,
 			}),
 		)
-
-		// make sure chunk is not retrievable
-		_ = request(t, client, http.MethodGet, resource(someHash), nil, http.StatusNotFound)
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
 		// try to fetch the same chunk
-		resp := request(t, client, http.MethodGet, resource(chunk.Address()), nil, http.StatusOK)
+		resp := request(t, client, http.MethodGet, chunksResource(chunk.Address()), nil, http.StatusOK)
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -92,12 +72,9 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("pin-invalid-value", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "invalid-pin"),
 		)
 
@@ -107,12 +84,9 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
 		// Also check if the chunk is NOT pinned
@@ -121,12 +95,9 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "True"),
 		)
 
@@ -144,21 +115,4 @@ func TestChunkUploadDownload(t *testing.T) {
 			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get(api.TargetsRecoveryHeader), targets)
 		}
 	})
-}
-
-func request(t *testing.T, client *http.Client, method, resource string, body io.Reader, responseCode int) *http.Response {
-	t.Helper()
-
-	req, err := http.NewRequest(method, resource, body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != responseCode {
-		t.Fatalf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
-	}
-	return resp
 }

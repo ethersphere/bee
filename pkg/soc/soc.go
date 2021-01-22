@@ -59,6 +59,25 @@ func NewChunk(id Id, ch swarm.Chunk, signer crypto.Signer) (swarm.Chunk, error) 
 	return s.ToChunk()
 }
 
+// NewChunk is a convenience function to create a single-owner chunk ready to be sent
+// on the network.
+func NewSignedChunk(id Id, ch swarm.Chunk, owner, sig []byte) (swarm.Chunk, error) {
+	s := New(id, ch)
+	s.signature = sig
+	o, err := NewOwner(owner)
+	if err != nil {
+		return nil, err
+	}
+	s.owner = o
+
+	// create chunk
+	socAddress, err := s.Address()
+	if err != nil {
+		return nil, err
+	}
+	return swarm.NewChunk(socAddress, s.toBytes()), nil
+}
+
 // New creates a new Soc representation from arbitrary soc id and
 // a content-addressed chunk.
 //
@@ -108,6 +127,10 @@ func (s *Soc) OwnerAddress() []byte {
 // Address returns the soc Chunk address.
 func (s *Soc) Address() (swarm.Address, error) {
 	return CreateAddress(s.id, s.owner)
+}
+
+func (s *Soc) Signature() []byte {
+	return s.signature
 }
 
 // FromChunk recreates an Soc representation from swarm.Chunk data.
@@ -175,19 +198,22 @@ func (s *Soc) ToChunk() (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// prepare the payload
-	buf := bytes.NewBuffer(nil)
-	buf.Write(s.id)
-	buf.Write(signature)
-	buf.Write(s.Chunk.Data())
+	s.signature = signature
 
 	// create chunk
 	socAddress, err := s.Address()
 	if err != nil {
 		return nil, err
 	}
-	return swarm.NewChunk(socAddress, buf.Bytes()), nil
+	return swarm.NewChunk(socAddress, s.toBytes()), nil
+}
+
+func (s *Soc) toBytes() []byte {
+	buf := bytes.NewBuffer(nil)
+	buf.Write(s.id)
+	buf.Write(s.signature)
+	buf.Write(s.Chunk.Data())
+	return buf.Bytes()
 }
 
 // toSignDigest creates a digest suitable for signing to represent the soc.
