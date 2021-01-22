@@ -26,7 +26,7 @@ var (
 	erc20ABI          = parseABI(simpleswapfactory.ERC20ABI)
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 
-	ErrBatchCreationFailed = errors.New("batch creation failed")
+	ErrBatchCreate = errors.New("batch creation failed")
 )
 
 type Interface interface {
@@ -156,7 +156,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 		}
 	}
 
-	return nil, ErrBatchCreationFailed
+	return nil, ErrBatchCreate
 }
 
 type batchCreatedEvent struct {

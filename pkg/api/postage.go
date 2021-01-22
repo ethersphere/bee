@@ -26,7 +26,7 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	depth, err := strconv.ParseUint(depthStr, 10, 8)
 	if err != nil {
-		jsonhttp.InternalServerError(w, "invalid depth")
+		jsonhttp.BadRequest(w, "invalid depth")
 		s.Logger.Error("api: invalid depth")
 		return
 	}
