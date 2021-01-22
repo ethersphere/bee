@@ -177,8 +177,8 @@ func (k *Kad) manage() {
 							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 						}
 					}
-					k.logger.Debugf("known peer from  from kademlia not reachable %s: %v", bzzAddr.String(), err)
-					k.logger.Warningf("known peer not reachable, attempting next")
+					k.logger.Debugf("peer not reachable from kademlia not reachable %s: %v", bzzAddr.String(), err)
+					k.logger.Warningf("peer not reachable when attempting to connect")
 					// continue to next
 					return false, false, nil
 				}
@@ -193,7 +193,6 @@ func (k *Kad) manage() {
 				k.depth = recalcDepth(k.connectedPeers)
 				k.depthMu.Unlock()
 
-				k.logger.Info("made new peer connection")
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
 
 				k.notifyPeerSig()
@@ -341,6 +340,7 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
+	k.logger.Infof("attempting to connect to peer %s", peer)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	i, err := k.p2p.Connect(ctx, ma)
