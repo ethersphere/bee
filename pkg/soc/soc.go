@@ -17,7 +17,6 @@ import (
 const (
 	IdSize        = 32
 	SignatureSize = 65
-	AddressSize   = crypto.AddressSize
 	minChunkSize  = IdSize + SignatureSize + swarm.SpanSize
 )
 
@@ -31,7 +30,7 @@ type Owner struct {
 
 // NewOwner creates a new Owner.
 func NewOwner(address []byte) (*Owner, error) {
-	if len(address) != AddressSize {
+	if len(address) != crypto.AddressSize {
 		return nil, fmt.Errorf("invalid address %x", address)
 	}
 	return &Owner{
