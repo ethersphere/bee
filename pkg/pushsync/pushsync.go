@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -108,14 +107,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	ps.metrics.TotalReceived.Inc()
 
 	// these are needed until we wire up the protocol the pass the stamps
-	fallbackBatchID := make([]byte, 32)
-	fallbackSig := make([]byte, 65)
-	stamp := postage.NewStamp(fallbackBatchID, fallbackSig)
-	b, err := stamp.MarshalBinary()
-	if err != nil {
-		return err
-	}
-	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithStamp(b)
+	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithStamp(ch.Stamp)
 
 	if content.Valid(chunk) {
 		if ps.unwrap != nil {
@@ -202,6 +194,7 @@ func (ps *PushSync) sendChunkDelivery(ctx context.Context, w protobuf.Writer, ch
 	return w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Address: chunk.Address().Bytes(),
 		Data:    chunk.Data(),
+		Stamp:   chunk.Stamp(),
 	})
 }
 
