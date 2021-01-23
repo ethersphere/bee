@@ -549,6 +549,7 @@ func testIndexCounts(t *testing.T, pushIndex, pullIndex, gcIndex, gcExcludeIndex
 // index debug function
 func TestDBDebugIndexes(t *testing.T) {
 	db := newTestDB(t, nil)
+	ctx := context.Background()
 
 	uploadTimestamp := time.Now().UTC().UnixNano()
 	defer setNow(func() (t int64) {
@@ -557,7 +558,7 @@ func TestDBDebugIndexes(t *testing.T) {
 
 	ch := generateTestRandomChunk()
 
-	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+	_, err := db.Put(ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,11 +568,10 @@ func TestDBDebugIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// for reference: testIndexCounts(t *testing.T, pushIndex, pullIndex, gcIndex, gcExcludeIndex, pinIndex, retrievalDataIndex, retrievalAccessIndex int, indexInfo map[string]int)
 	testIndexCounts(t, 1, 1, 0, 0, 0, 1, 0, indexCounts)
 
 	// set the chunk for pinning and expect the index count to grow
-	err = db.Set(context.Background(), storage.ModeSetPin, ch.Address())
+	err = db.Set(ctx, storage.ModeSetPin, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,13 +583,4 @@ func TestDBDebugIndexes(t *testing.T) {
 
 	// assert that there's a pin and gc exclude entry now
 	testIndexCounts(t, 1, 1, 0, 1, 1, 1, 0, indexCounts)
-
-	indexCounts, err = db.DebugIndices()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// assert that there's a pin and gc exclude entry now
-	testIndexCounts(t, 1, 1, 0, 1, 1, 1, 1, indexCounts)
-
 }
