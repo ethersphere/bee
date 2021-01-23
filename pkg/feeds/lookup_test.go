@@ -3,7 +3,6 @@ package feeds_test
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -11,12 +10,31 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestFinder(t *testing.T) {
+	testf := func(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup) {
+		t.Run("basic", func(t *testing.T) {
+			testFinderBasic(t, finderf)
+		})
+		t.Run("fixed", func(t *testing.T) {
+			testFinderFixIntervals(t, finderf)
+		})
+		t.Run("random", func(t *testing.T) {
+			testFinderRandomIntervals(t, finderf)
+		})
+	}
+	t.Run("sync", func(t *testing.T) {
+		testf(t, feeds.NewFinder)
+	})
+	t.Run("async", func(t *testing.T) {
+		testf(t, feeds.NewAsyncFinder)
+	})
+}
+
+func testFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup) {
 	storer := mock.NewStorer()
 	topic := "testtopic"
 	pk, _ := crypto.GenerateSecp256k1Key()
@@ -27,9 +45,9 @@ func TestFinder(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	finder := feeds.NewFinder(storer, updater.Feed)
+	finder := finderf(storer, updater.Feed)
 	t.Run("no update", func(t *testing.T) {
-		ch, err := finder.Latest(ctx, 0)
+		ch, err := feeds.Latest(ctx, finder, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +62,7 @@ func TestFinder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ch, err := finder.Latest(ctx, 0)
+		ch, err := feeds.Latest(ctx, finder, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,16 +83,16 @@ func TestFinder(t *testing.T) {
 	})
 }
 
-func TestFinderEverySecond(t *testing.T) {
+func testFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup) {
 	for _, tc := range []struct {
 		count  int64
 		step   int64
 		offset int64
 	}{
 		{50, 1, 0},
-		{50, 1, 100000},
-		{50, 1000, 0},
-		{50, 1000, 1000000},
+		{50, 1, 10000},
+		{50, 100, 0},
+		{50, 100, 100000},
 	} {
 		t.Run(fmt.Sprintf("count=%d,step=%d,offset=%d", tc.count, tc.step, tc.offset), func(t *testing.T) {
 			storer := mock.NewStorer()
@@ -95,11 +113,14 @@ func TestFinderEverySecond(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			finder := feeds.NewFinder(storer, updater.Feed)
+			finder := finderf(storer, updater.Feed)
 			for at := tc.offset; at < tc.offset+tc.count*tc.step; at += tc.step {
 				for after := tc.offset; after < at; after += tc.step {
-					for now := at + 4; now < at+tc.step; now += tc.step / 4 {
-
+					step := int64(1)
+					if tc.step > 1 {
+						step = tc.step / 4
+					}
+					for now := at; now < at+tc.step; now += step {
 						ch, err := finder.At(ctx, now, after)
 						if err != nil {
 							t.Fatal(err)
@@ -125,7 +146,7 @@ func TestFinderEverySecond(t *testing.T) {
 	}
 }
 
-func TestFinderRandomIntervals(t *testing.T) {
+func testFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup) {
 	for i := 0; i < 10; i++ {
 		t.Run(fmt.Sprintf("random intervals %d", i), func(t *testing.T) {
 			storer := mock.NewStorer()
@@ -143,17 +164,17 @@ func TestFinderRandomIntervals(t *testing.T) {
 			var at int64
 			ats := make([]int64, 100)
 			for j := 0; j < 50; j++ {
-				at += int64(rand.Intn(1 << 10))
 				ats[j] = at
-				err = updater.Update(ctx, at, payload)
+				at += int64(rand.Intn(1<<10) + 1)
+				err = updater.Update(ctx, ats[j], payload)
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
-			finder := feeds.NewFinder(storer, updater.Feed)
-			for j := 0; j < 49; j++ {
+			finder := finderf(storer, updater.Feed)
+			for j := 1; j < 49; j++ {
 				diff := ats[j+1] - ats[j]
-				for at := ats[j]; at < ats[j+1]; at += int64(rand.Intn(int(diff))) {
+				for at := ats[j]; at < ats[j+1]; at += int64(rand.Intn(int(diff)) + 1) {
 					for after := int64(0); after < at; after += int64(rand.Intn(int(at))) {
 						ch, err := finder.At(ctx, at, after)
 						if err != nil {
@@ -177,23 +198,5 @@ func TestFinderRandomIntervals(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-var span = []byte{0, 0, 0, 0, 0, 0, 0, 8}
-
-func isUpdateAt(t *testing.T, ch swarm.Chunk, at int64) {
-	t.Helper()
-	s, err := soc.FromChunk(ch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cac := s.Chunk
-	ts := make([]byte, 8)
-	binary.BigEndian.PutUint64(ts, uint64(at))
-	content := append(ts, ts...)
-	exp := append(append([]byte{}, span...), content...)
-	if !bytes.Equal(cac.Data(), exp) {
-		t.Fatalf("feed update mismatch. want %24x... got %24x...", exp, cac.Data())
 	}
 }

@@ -41,7 +41,7 @@ func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
 	if err != nil {
 		return err
 	}
-	cac, err := ToChunk(uint64(at), payload)
+	cac, err := toChunk(uint64(at), payload)
 	if err != nil {
 		return err
 	}
@@ -50,10 +50,6 @@ func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
 		return err
 	}
 
-	// if u.epoch != nil {
-	// 	fmt.Printf("put chunk last epoch: start:%d, level:%d, last: %d\n", u.epoch.start, u.epoch.level, u.last)
-	// }
-	// fmt.Printf("put chunk epoch: start: %d, level: %d, at %d, addr %v\n", e.start, e.level, at, ch.Address())
 	_, err = u.Put(ctx, storage.ModePutUpload, ch)
 	if err != nil {
 		return err
@@ -63,8 +59,7 @@ func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
 	return nil
 }
 
-func ToChunk(at uint64, payload []byte) (swarm.Chunk, error) {
-
+func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
 	hasher := bmtpool.Get()
 	defer hasher.Reset()
 	defer bmtpool.Put(hasher)

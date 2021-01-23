@@ -34,7 +34,6 @@ func lca(at, after int64) *epoch {
 	for level < maxLevel && (length < diff || uint64(at)/length != uint64(after)/length) {
 		length <<= 1
 		level++
-		// fmt.Printf("level:%d, diff:%d, length:%d, at:%d, after:%d\n", level, diff, length, at, after)
 	}
 	start := (uint64(after) / length) * length
 	return &epoch{start, level}
