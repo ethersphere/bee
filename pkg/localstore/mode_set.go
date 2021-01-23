@@ -59,24 +59,6 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	triggerPullFeed := make(map[uint8]struct{}) // signal pull feed subscriptions to iterate
 
 	switch mode {
-	case storage.ModeSetAccess:
-		// A lazy populated map of bin ids to properly set
-		// BinID values for new chunks based on initial value from database
-		// and incrementing them.
-		binIDs := make(map[uint8]uint64)
-		for _, addr := range addrs {
-			po := db.po(addr)
-			c, err := db.setAccess(batch, binIDs, addr, po)
-			if err != nil {
-				return err
-			}
-			gcSizeChange += c
-			triggerPullFeed[po] = struct{}{}
-		}
-		for po, id := range binIDs {
-			db.binIDs.PutInBatch(batch, uint64(po), id)
-		}
-
 	case storage.ModeSetSync:
 		for _, addr := range addrs {
 			c, err := db.setSync(batch, addr, mode)

@@ -584,11 +584,6 @@ func TestDBDebugIndexes(t *testing.T) {
 	// assert that there's a pin and gc exclude entry now
 	testIndexCounts(t, 1, 1, 0, 1, 1, 1, 0, indexCounts)
 
-	// set the chunk as accessed and expect the access index to grow
-	err = db.Set(context.Background(), storage.ModeSetAccess, ch.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
 	indexCounts, err = db.DebugIndices()
 	if err != nil {
 		t.Fatal(err)
