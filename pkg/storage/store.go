@@ -86,8 +86,6 @@ type ModeSet int
 
 func (m ModeSet) String() string {
 	switch m {
-	case ModeSetAccess:
-		return "Access"
 	case ModeSetSync:
 		return "Sync"
 	case ModeSetRemove:
@@ -103,10 +101,8 @@ func (m ModeSet) String() string {
 
 // Setter modes.
 const (
-	// ModeSetAccess: when an update request is received for a chunk or chunk is retrieved for delivery
-	ModeSetAccess ModeSet = iota
 	// ModeSetSync: when a push sync receipt is received for a chunk
-	ModeSetSync
+	ModeSetSync ModeSet = iota
 	// ModeSetRemove: when a chunk is removed
 	ModeSetRemove
 	// ModeSetPin: when a chunk is pinned during upload or separately

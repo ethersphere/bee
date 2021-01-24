@@ -702,10 +702,6 @@ func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = db.Set(context.Background(), storage.ModeSetAccess, ch.Address())
-			if err != nil {
-				t.Fatal(err)
-			}
 			_, err = db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 			if err != nil {
 				t.Fatal(err)
@@ -714,7 +710,6 @@ func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
 			// Non pinned chunks could be GC'd by the time they reach here.
 			// so it is okay to ignore the error
 			_ = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
-			_ = db.Set(context.Background(), storage.ModeSetAccess, ch.Address())
 			_, _ = db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 		}
 		chunks = append(chunks, ch)
