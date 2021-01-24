@@ -26,3 +26,11 @@ func (tbs *MockBatchStore) WithGet(getf func(batchID []byte) (*postage.Batch, er
 func (tbs *MockBatchStore) Get(batchID []byte) (*postage.Batch, error) {
 	return tbs.getf(batchID)
 }
+
+func (tbs *MockBatchStore) SubscribeToDepth() (sub <-chan uint8, cancel func()) {
+	return nil, nil
+}
+
+func (tbs *MockBatchStore) SubscribeToExpiredBatches() (sub <-chan []byte, cancel func()) {
+	return nil, nil
+}

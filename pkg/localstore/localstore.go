@@ -105,6 +105,10 @@ type DB struct {
 
 	// postage batch
 	postage *postageBatches
+
+	// reserve to maintain area of resonsibility
+	reserve *reserve
+
 	// baseKey is the overlay address
 	baseKey []byte
 
@@ -276,7 +280,7 @@ func New(path string, baseKey []byte, o *Options, batchStore BatchStore, logger 
 		return nil, err
 	}
 	// pull index allows history and live syncing per po bin
-	db.pullIndex, err = db.shed.NewIndex("PO|BinID->Hash|Tag", shed.IndexFuncs{
+	db.pullIndex, err = db.shed.NewIndex("PO|BinID->Hash|BatchID", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 9)
 			key[0] = db.po(swarm.NewAddress(fields.Address))
@@ -288,20 +292,14 @@ func New(path string, baseKey []byte, o *Options, batchStore BatchStore, logger 
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			value = make([]byte, 36) // 32 bytes address, 4 bytes tag
+			value = make([]byte, 64) // 32 bytes address, 32 bytes batch id
 			copy(value, fields.Address)
-
-			if fields.Tag != 0 {
-				binary.BigEndian.PutUint32(value[32:], fields.Tag)
-			}
-
+			copy(value[32:], fields.BatchID)
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e.Address = value[:32]
-			if len(value) > 32 {
-				e.Tag = binary.BigEndian.Uint32(value[32:])
-			}
+			e.BatchID = value[32:64]
 			return e, nil
 		},
 	})
@@ -394,10 +392,12 @@ func New(path string, baseKey []byte, o *Options, batchStore BatchStore, logger 
 		return nil, err
 	}
 
-	db.postage, err = db.newPostageBatches(batchStore)
+	db.postage, err = newPostageBatches(db, batchStore)
 	if err != nil {
 		return nil, err
 	}
+	db.reserve = newReserve(db, batchStore)
+
 	// start garbage collection worker
 	go db.gcWorker()
 	return db, nil

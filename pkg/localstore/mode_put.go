@@ -93,7 +93,8 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				exist[i] = true
 				continue
 			}
-			exists, c, err := db.putUpload(batch, binIDs, chunkToItem(ch))
+			item := chunkToItem(ch)
+			exists, c, err := db.putUpload(batch, binIDs, item)
 			if err != nil {
 				return nil, err
 			}
@@ -106,7 +107,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			}
 			gcSizeChange += c
 			if mode == storage.ModePutUploadPin {
-				c, err = db.setPin(batch, ch.Address())
+				c, err = db.setPin(batch, item)
 				if err != nil {
 					return nil, err
 				}
@@ -266,9 +267,12 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	return false, gcSizeChange, nil
 }
 
-// preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache 
+// preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache
 // (the retrieval access index and the gc index)
 func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
+	if db.reserve.WithinRadius(item.Address) {
+		return db.setPin(batch, item)
+	}
 	if item.BinID == 0 {
 		i, err := db.retrievalDataIndex.Get(item)
 		if err != nil {

@@ -115,6 +115,7 @@ const (
 // is provided by subscribing to pull index.
 type Descriptor struct {
 	Address swarm.Address
+	BatchID []byte
 	BinID   uint64
 }
 

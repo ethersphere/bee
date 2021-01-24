@@ -79,7 +79,8 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 
 	case storage.ModeSetPin:
 		for _, addr := range addrs {
-			c, err := db.setPin(batch, addr)
+			item := addressToItem(addr)
+			c, err := db.setPin(batch, item)
 			if err != nil {
 				return err
 			}
@@ -237,9 +238,7 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSiz
 // setPin increments pin counter for the chunk by updating
 // pin index and sets the chunk to be excluded from garbage collection.
 // Provided batch is updated.
-func (db *DB) setPin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange int64, err error) {
-	item := addressToItem(addr)
-
+func (db *DB) setPin(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
 	// Get the existing pin counter of the chunk
 	i, err := db.pinIndex.Get(item)
 	item.PinCounter = i.PinCounter

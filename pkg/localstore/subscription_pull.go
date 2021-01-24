@@ -96,6 +96,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 					select {
 					case chunkDescriptors <- storage.Descriptor{
 						Address: swarm.NewAddress(item.Address),
+						BatchID: item.BatchID,
 						BinID:   item.BinID,
 					}:
 						if until > 0 && item.BinID == until {

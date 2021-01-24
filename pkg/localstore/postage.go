@@ -1,3 +1,7 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package localstore
 
 import (
@@ -13,12 +17,14 @@ var (
 	// ErrBatchOverissued is returned if number of chunks found in neighbourhood extrapolates to overissued stamp
 	// count(batch, po) > 1<< (depth(batch) - po)
 	ErrBatchOverissued = errors.New("postage batch overissued")
-	ErrBatchNotFound   = errors.New("postage batch not found or expired")
+	// ErrBatchNotFound is returned when the postage batch is not found or expired
+	ErrBatchNotFound = errors.New("postage batch not found or expired")
 )
 
-// BatchStore interface to
+// BatchStore interface should come from postage pkg
 type BatchStore interface {
 	Get(id []byte) (*postage.Batch, error)
+	Reserve
 }
 
 type postageBatches struct {
@@ -27,10 +33,10 @@ type postageBatches struct {
 	counts     shed.Index
 	po         func(itemAddr []byte) (bin int)
 	batchStore BatchStore
+	db         *DB
 }
 
-func (db *DB) newPostageBatches(batchStore BatchStore) (*postageBatches, error) {
-
+func newPostageBatches(db *DB, batchStore BatchStore) (*postageBatches, error) {
 	// po applied to the item address returns the proximity order (as int)
 	// of the chunk relative to the node base address
 	// return value is max swarm.MaxPO
@@ -42,7 +48,7 @@ func (db *DB) newPostageBatches(batchStore BatchStore) (*postageBatches, error) 
 		return int(po)
 	}
 
-	chunksIndex, err := db.shed.NewIndex("BatchID|Hash->nil", shed.IndexFuncs{
+	chunksIndex, err := db.shed.NewIndex("BatchID|PO|Hash->nil", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 65)
 			copy(key[:32], fields.BatchID)
@@ -66,7 +72,7 @@ func (db *DB) newPostageBatches(batchStore BatchStore) (*postageBatches, error) 
 		return nil, err
 	}
 
-	countsIndex, err := db.shed.NewIndex("BatchID->counts", shed.IndexFuncs{
+	countsIndex, err := db.shed.NewIndex("BatchID->reserveRadius|counts", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.BatchID, nil
 		},
@@ -75,10 +81,11 @@ func (db *DB) newPostageBatches(batchStore BatchStore) (*postageBatches, error) 
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			return fields.Counts.Counts, nil
+			return append([]byte{fields.Radius}, fields.Counts.Counts...), nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e.Counts = &shed.Counts{Counts: value}
+			e.Radius = value[0]
+			e.Counts = &shed.Counts{Counts: value[1:]}
 			return e, nil
 		},
 	})
@@ -91,6 +98,7 @@ func (db *DB) newPostageBatches(batchStore BatchStore) (*postageBatches, error) 
 		counts:     countsIndex,
 		po:         pof,
 		batchStore: batchStore,
+		db:         db,
 	}, nil
 }
 
@@ -166,4 +174,45 @@ func (p *postageBatches) deleteInBatch(batch *leveldb.Batch, item shed.Item) err
 		return p.counts.DeleteInBatch(batch, item)
 	}
 	return nil
+}
+
+// unreserveBatch atomically unpins  chunks of a batch in proximity order upto and including po
+// and marks the batch pinned within radius po
+// if batch is marked as pinned within radius r>po, then do nothing
+// unpinning will result in all chunks  with pincounter 0 to be put in the gc index
+// so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able
+func (p *postageBatches) unreserveBatch(id []byte, po uint8) error {
+	p.db.batchMu.Lock()
+	defer p.db.batchMu.Unlock()
+
+	batch := new(leveldb.Batch)
+	var gcSizeChange int64 // number to add or subtract from gcSize
+	item, err := p.counts.Get(shed.Item{BatchID: id})
+	if err != nil {
+		return err
+	}
+	unpin := func(item shed.Item) (stop bool, err error) {
+		c, err := p.db.setUnpin(batch, swarm.NewAddress(item.Address))
+		gcSizeChange += c
+		return false, err
+	}
+	// iterate over chunk in bins
+	for bin := item.Radius; bin < po; bin++ {
+		err = p.chunks.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
+		if err != nil {
+			return err
+		}
+	}
+	//  adjust gcSize
+	err = p.db.incGCSizeInBatch(batch, gcSizeChange)
+	if err != nil {
+		return err
+	}
+	// save batch with new reserve radius
+	item.Radius = po
+	err = p.counts.PutInBatch(batch, item)
+	if err != nil {
+		return err
+	}
+	return p.db.shed.WriteBatch(batch)
 }

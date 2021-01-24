@@ -48,6 +48,7 @@ type Item struct {
 	Tag             uint32
 	BatchID         []byte  // postage batch ID
 	Sig             []byte  // postage stamp
+	Radius          uint8   // postage batch reserve radius, po upto and excluding which chunks are unpinned
 	Counts          *Counts // postage batch counts
 }
 
@@ -111,6 +112,9 @@ func (i Item) Merge(i2 Item) Item {
 	}
 	if i.BatchID == nil {
 		i.BatchID = i2.BatchID
+	}
+	if i.Radius == 0 {
+		i.Radius = i2.Radius
 	}
 	if i.Counts == nil {
 		i.Counts = i2.Counts
