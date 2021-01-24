@@ -122,7 +122,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
-	price := ps.pricer.PriceForPeer(p.Address, chunk.Address())
+	// Get price we charge for upstream peer read at headler
+	responseHeaders := stream.ResponseHeaders()
+	price, err := ps.pricer.ReadPriceHeader(responseHeaders)
+
+	if err != nil {
+		// if not found in returned header, compute the price we charge for this chunk and
+		ps.logger.Warningf("No price in previously issued response headers")
+		price = ps.pricer.PriceForPeer(p.Address, chunk.Address())
+	}
 
 	receipt, err := ps.pushToClosest(ctx, chunk)
 	if err != nil {
@@ -139,66 +147,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-<<<<<<< HEAD
 			return ps.accounting.Debit(p.Address, price)
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
-=======
-	headers, err := ps.pricer.MakePricingHeaders(receiptPrice, chunk.Address())
-	if err != nil {
-		return err
-	}
 
-	// Forward chunk to closest peer
-	streamer, err := ps.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
-	if err != nil {
-		return fmt.Errorf("new stream peer %s: %w", peer.String(), err)
-	}
-	defer func() {
-		if err != nil {
-			_ = streamer.Reset()
-		} else {
-			go streamer.FullClose()
-		}
-	}()
-
-	returnedHeaders := streamer.Headers()
-
-	returnedTarget, returnedPrice, returnedIndex, err := ps.pricer.ReadPricingResponseHeaders(returnedHeaders)
-	if err != nil {
-		return fmt.Errorf("push price headers: read returned: %w", err)
-	}
-
-	ps.logger.Debugf("push price headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
-	ps.logger.Debugf("push price headers: original target %v with price as %v, from peer %s", chunk.Address(), receiptPrice, peer)
-	// returned checker
-	if returnedPrice != receiptPrice {
-		err := ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
-		if err != nil {
-			return err
-		}
-		receiptPrice = returnedPrice
-	}
-
-	wc, rc := protobuf.NewWriterAndReader(streamer)
-	if err := ps.sendChunkDelivery(ctx, wc, chunk); err != nil {
-		return fmt.Errorf("forward chunk to peer %s: %w", peer.String(), err)
-	}
-
-	receipt, err := ps.receiveReceipt(ctx, rc)
-	if err != nil {
-		return fmt.Errorf("receive receipt from peer %s: %w", peer.String(), err)
-	}
-
-	// Check if the receipt is valid
-	if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
-		return fmt.Errorf("invalid receipt from peer %s", peer.String())
-	}
-
-	err = ps.accounting.Credit(peer, receiptPrice)
-	if err != nil {
-		return err
->>>>>>> 08d5cde (Push sync pricing headers)
 	}
 
 	// pass back the received receipt in the previously received stream
