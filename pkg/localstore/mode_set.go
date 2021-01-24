@@ -59,24 +59,6 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	triggerPullFeed := make(map[uint8]struct{}) // signal pull feed subscriptions to iterate
 
 	switch mode {
-	case storage.ModeSetAccess:
-		// A lazy populated map of bin ids to properly set
-		// BinID values for new chunks based on initial value from database
-		// and incrementing them.
-		binIDs := make(map[uint8]uint64)
-		for _, addr := range addrs {
-			po := db.po(addr)
-			c, err := db.setAccess(batch, binIDs, addr, po)
-			if err != nil {
-				return err
-			}
-			gcSizeChange += c
-			triggerPullFeed[po] = struct{}{}
-		}
-		for po, id := range binIDs {
-			db.binIDs.PutInBatch(batch, uint64(po), id)
-		}
-
 	case storage.ModeSetSync:
 		for _, addr := range addrs {
 			c, err := db.setSync(batch, addr, mode)
@@ -135,74 +117,6 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 		db.triggerPullSubscriptions(po)
 	}
 	return nil
-}
-
-// setAccess sets the chunk access time by updating required indexes:
-//  - add to pull, insert to gc
-// Provided batch and binID map are updated.
-func (db *DB) setAccess(batch *leveldb.Batch, binIDs map[uint8]uint64, addr swarm.Address, po uint8) (gcSizeChange int64, err error) {
-
-	item := addressToItem(addr)
-
-	// need to get access timestamp here as it is not
-	// provided by the access function, and it is not
-	// a property of a chunk provided to Accessor.Put.
-	i, err := db.retrievalDataIndex.Get(item)
-	switch {
-	case err == nil:
-		item.StoreTimestamp = i.StoreTimestamp
-		item.BinID = i.BinID
-	case errors.Is(err, leveldb.ErrNotFound):
-		err = db.pushIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return 0, err
-		}
-		item.StoreTimestamp = now()
-		item.BinID, err = db.incBinID(binIDs, po)
-		if err != nil {
-			return 0, err
-		}
-	default:
-		return 0, err
-	}
-
-	i, err = db.retrievalAccessIndex.Get(item)
-	switch {
-	case err == nil:
-		item.AccessTimestamp = i.AccessTimestamp
-		err = db.gcIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return 0, err
-		}
-		gcSizeChange--
-	case errors.Is(err, leveldb.ErrNotFound):
-		// the chunk is not accessed before
-	default:
-		return 0, err
-	}
-	item.AccessTimestamp = now()
-	err = db.retrievalAccessIndex.PutInBatch(batch, item)
-	if err != nil {
-		return 0, err
-	}
-	err = db.pullIndex.PutInBatch(batch, item)
-	if err != nil {
-		return 0, err
-	}
-
-	ok, err := db.pinIndex.Has(item)
-	if err != nil {
-		return 0, err
-	}
-	if !ok {
-		err = db.gcIndex.PutInBatch(batch, item)
-		if err != nil {
-			return 0, err
-		}
-		gcSizeChange++
-	}
-
-	return gcSizeChange, nil
 }
 
 // setSync adds the chunk to the garbage collection after syncing by updating indexes
