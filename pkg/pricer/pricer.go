@@ -455,7 +455,7 @@ func (s *Pricer) ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
 		return 0, fmt.Errorf("no index header")
 	}
 
-	index := uint8(receivedHeaders["index"][0])
+	index := receivedHeaders["index"][0]
 	return index, nil
 }
 
