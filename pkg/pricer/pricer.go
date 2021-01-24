@@ -117,7 +117,6 @@ func (s *Pricer) priceWithIndexForPeer(peer, chunk swarm.Address) (price uint64,
 	neighborhoodDepth := s.neighborhoodDepth()
 
 	priceTable := s.PriceTable()
-
 	if int(proximity) >= len(priceTable) {
 		proximity = uint8(len(priceTable) - 1)
 	}
@@ -335,8 +334,4 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 
 func (s *Pricer) SetTopology(top topology.Driver) {
 	s.topology = top
-}
-
-func (s *Pricer) SetKademlia(kad topology.Driver) {
-	s.topology = kad
 }
