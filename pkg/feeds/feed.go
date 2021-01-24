@@ -1,6 +1,8 @@
 package feeds
 
 import (
+	"encoding"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -31,15 +33,24 @@ func New(topic string, owner common.Address) (*Feed, error) {
 	return &Feed{th, owner}, nil
 }
 
+type Index interface {
+	encoding.BinaryMarshaler
+}
+
 // update represents an update instance of a feed, i.e., pairing of a Feed with an Epoch
 type update struct {
 	*Feed
-	*epoch
+	index Index
 }
 
-// id calculates the identifier if a  feed update to be used in single owner chunks
-func (u *update) id() ([]byte, error) {
-	index, err := u.epoch.MarshalBinary()
+// Update
+func (f *Feed) Update(index Index) *update {
+	return &update{f, index}
+}
+
+// Id calculates the identifier if a  feed update to be used in single owner chunks
+func (u *update) Id() ([]byte, error) {
+	index, err := u.index.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -47,10 +58,10 @@ func (u *update) id() ([]byte, error) {
 	return i.MarshalBinary()
 }
 
-// address calculates the soc address of a feed update
-func (u *update) address() (addr swarm.Address, err error) {
+// Address calculates the soc address of a feed update
+func (u *update) Address() (addr swarm.Address, err error) {
 	var i []byte
-	i, err = u.id()
+	i, err = u.Id()
 	if err != nil {
 		return addr, err
 	}

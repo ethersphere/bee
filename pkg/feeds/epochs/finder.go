@@ -1,37 +1,23 @@
-package feeds
+package epochs
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
-	"fmt"
-	"time"
 
-	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type Lookup interface {
-	At(ctx context.Context, at, after int64) (swarm.Chunk, error)
-}
-
 // Finder encapsulates a chunk store getter and a feed and provides
 //  non-concurrent lookup methods
 type Finder struct {
-	storage.Getter
-	*Feed
+	getter *feeds.Getter
 }
 
-// NewFinder constructs a feed finderg
-func NewFinder(getter storage.Getter, feed *Feed) Lookup {
-	return &Finder{getter, feed}
-}
-
-// Latest looks up the latest update of the feed
-// after is a unix time hint of the latest known update
-func Latest(ctx context.Context, l Lookup, after int64) (swarm.Chunk, error) {
-	return l.At(ctx, time.Now().Unix(), after)
+// NewFinder constructs an AsyncFinder
+func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
+	return &Finder{feeds.NewGetter(getter, feed)}
 }
 
 // At looks up the version valid at time `at`
@@ -44,21 +30,10 @@ func (f *Finder) At(ctx context.Context, at, after int64) (swarm.Chunk, error) {
 	return f.at(ctx, uint64(at), e, ch)
 }
 
-// get creates an update of the underlying feed at the given epoch
-// and looks it up in the chunk store based on its address
-func (f *Finder) get(ctx context.Context, e *epoch) (swarm.Chunk, error) {
-	u := &update{f.Feed, e}
-	addr, err := u.address()
-	if err != nil {
-		return nil, err
-	}
-	return f.Get(ctx, storage.ModeGetRequest, addr)
-}
-
 // common returns the lowest common ancestor for which a feed update chunk is found in the chunk store
 func (f *Finder) common(ctx context.Context, at, after int64) (*epoch, swarm.Chunk, error) {
 	for e := lca(at, after); ; e = e.parent() {
-		ch, err := f.get(ctx, e)
+		ch, err := f.getter.Get(ctx, e)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				if e.level == maxLevel {
@@ -68,7 +43,7 @@ func (f *Finder) common(ctx context.Context, at, after int64) (*epoch, swarm.Chu
 			}
 			return e, nil, err
 		}
-		ts, err := updatedAt(ch)
+		ts, err := feeds.UpdatedAt(ch)
 		if err != nil {
 			return e, nil, err
 		}
@@ -80,7 +55,7 @@ func (f *Finder) common(ctx context.Context, at, after int64) (*epoch, swarm.Chu
 
 // at is a non-concurrent recursive Finder function to find the version update chunk at time `at`
 func (f *Finder) at(ctx context.Context, at uint64, e *epoch, ch swarm.Chunk) (swarm.Chunk, error) {
-	uch, err := f.get(ctx, e)
+	uch, err := f.getter.Get(ctx, e)
 	if err != nil {
 		// error retrieving
 		if !errors.Is(err, storage.ErrNotFound) {
@@ -95,7 +70,7 @@ func (f *Finder) at(ctx context.Context, at uint64, e *epoch, ch swarm.Chunk) (s
 	}
 	// epoch found
 	// check if timestamp is later then target
-	ts, err := updatedAt(uch)
+	ts, err := feeds.UpdatedAt(uch)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +96,7 @@ type result struct {
 // AsyncFinder encapsulates a chunk store getter and a feed and provides
 //  non-concurrent lookup methods
 type AsyncFinder struct {
-	finder *Finder
+	getter *feeds.Getter
 }
 
 type path struct {
@@ -136,10 +111,8 @@ func newPath(at int64) *path {
 }
 
 // NewAsyncFinder constructs an AsyncFinder
-func NewAsyncFinder(getter storage.Getter, feed *Feed) Lookup {
-	return &AsyncFinder{
-		finder: NewFinder(getter, feed).(*Finder),
-	}
+func NewAsyncFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
+	return &AsyncFinder{feeds.NewGetter(getter, feed)}
 }
 
 // at attempts to retrieve all epoch chunks on the path for `at` concurrently
@@ -151,7 +124,7 @@ func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c cha
 		default:
 		}
 		go func(e *epoch) {
-			uch, _ := f.finder.get(ctx, e)
+			uch, _ := f.getter.Get(ctx, e)
 			c <- &result{p, uch, e}
 		}(e)
 		if e.level == 0 {
@@ -183,7 +156,7 @@ LOOP:
 				continue LOOP
 			}
 			// check if timestamp is later than target time
-			ts, err := updatedAt(r.chunk)
+			ts, err := feeds.UpdatedAt(r.chunk)
 			if err != nil {
 				return nil, err
 			}
@@ -217,28 +190,4 @@ LOOP:
 		}
 	}
 	return nil, nil
-}
-
-// FromChunk unwraps the content address chunk from the feed update soc
-// it parses out the timestamp and the payload
-func FromChunk(ch swarm.Chunk) ([]byte, uint64, error) {
-	s, err := soc.FromChunk(ch)
-	if err != nil {
-		return nil, 0, err
-	}
-	cac := s.Chunk
-	if len(cac.Data()) < 16 {
-		return nil, 0, fmt.Errorf("feed update payload too short")
-	}
-	payload := cac.Data()[16:]
-	at := binary.BigEndian.Uint64(cac.Data()[8:16])
-	return payload, at, nil
-}
-
-func updatedAt(ch swarm.Chunk) (uint64, error) {
-	_, ts, err := FromChunk(ch)
-	if err != nil {
-		return 0, err
-	}
-	return ts, nil
 }

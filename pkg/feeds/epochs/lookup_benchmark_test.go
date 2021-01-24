@@ -1,4 +1,4 @@
-package feeds_test
+package epochs_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
+	"github.com/ethersphere/bee/pkg/feeds/epochs"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -44,7 +45,7 @@ func BenchmarkFinder(b *testing.B) {
 			pk, _ := crypto.GenerateSecp256k1Key()
 			signer := crypto.NewDefaultSigner(pk)
 
-			updater, err := feeds.NewUpdater(storer, signer, topic)
+			updater, err := epochs.NewUpdater(storer, signer, topic)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -67,8 +68,8 @@ func BenchmarkFinder(b *testing.B) {
 			for _, j := range []int64{0, 8, 30} {
 				now := latest + 1<<j
 				for k, finder := range []feeds.Lookup{
-					feeds.NewFinder(storer, updater.Feed),
-					feeds.NewAsyncFinder(storer, updater.Feed),
+					epochs.NewFinder(storer, updater.Feed),
+					epochs.NewAsyncFinder(storer, updater.Feed),
 				} {
 					names := []string{"sync", "async"}
 					b.Run(fmt.Sprintf("%s:prefill=%d, latest=%d, now=%d", names[k], prefill, latest, now), func(b *testing.B) {

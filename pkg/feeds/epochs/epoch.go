@@ -1,4 +1,4 @@
-package feeds
+package epochs
 
 import (
 	"encoding/binary"

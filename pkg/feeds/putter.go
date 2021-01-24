@@ -11,17 +11,15 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// Updater encapsulates a chunk store putter and a Feed to generate successive updates
-type Updater struct {
-	storage.Putter
+// Putter encapsulates a chunk store putter and a Feed to store feed updates
+type Putter struct {
+	putter storage.Putter
 	signer crypto.Signer
 	*Feed
-	last  int64
-	epoch *epoch
 }
 
-// NewUpdater constructs a feed updater
-func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (*Updater, error) {
+// NewPutter constructs a feed Putter
+func NewPutter(putter storage.Putter, signer crypto.Signer, topic string) (*Putter, error) {
 	owner, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
@@ -30,14 +28,12 @@ func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (*Upd
 	if err != nil {
 		return nil, err
 	}
-	return &Updater{putter, signer, feed, 0, nil}, nil
+	return &Putter{putter, signer, feed}, nil
 }
 
 // Update pushes an update to the feed through the chunk stores
-func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
-	e := next(u.epoch, u.last, uint64(at))
-	fu := &update{u.Feed, e}
-	id, err := fu.id()
+func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) error {
+	id, err := u.Feed.Update(i).Id()
 	if err != nil {
 		return err
 	}
@@ -49,14 +45,8 @@ func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
 	if err != nil {
 		return err
 	}
-
-	_, err = u.Put(ctx, storage.ModePutUpload, ch)
-	if err != nil {
-		return err
-	}
-	u.last = at
-	u.epoch = e
-	return nil
+	_, err = u.putter.Put(ctx, storage.ModePutUpload, ch)
+	return err
 }
 
 func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
