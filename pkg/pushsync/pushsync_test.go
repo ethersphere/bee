@@ -401,7 +401,16 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	mockStatestore := statestore.NewStateStore()
 	mtag := tags.NewTags(mockStatestore, logger)
 	mockAccounting := accountingmock.NewAccounting()
-	mockPricer := pricermock.NewMockService()
+
+	readPricingResponseFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
+		return swarm.MustParseHexAddress("0033153ac8cfb0c343db1795f578c15ed8ef827f3e68ed3c58329900bf0d7276"), 10, 0, nil
+	}
+
+	readPriceFunc := func(receivedHeaders p2p.Headers) (uint64, error) {
+		return 10, nil
+	}
+
+	mockPricer := pricermock.NewMockService(pricermock.WithReadPricingResponseHeadersFunc(readPricingResponseFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
 
 	recorderDisconnecter := streamtest.NewRecorderDisconnecter(recorder)
 	if unwrap == nil {
