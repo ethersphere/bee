@@ -47,8 +47,8 @@ func TestDelivery(t *testing.T) {
 
 	serverMockAccounting := accountingmock.NewAccounting()
 
-	readPricingFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
-		return swarm.MustParseHexAddress("0034"), 10, nil
+	readPricingResponseFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
+		return swarm.MustParseHexAddress("0033153ac8cfb0c343db1795f578c15ed8ef827f3e68ed3c58329900bf0d7276"), 10, 0, nil
 	}
 
 	readPriceFunc := func(receivedHeaders p2p.Headers) (uint64, error) {
@@ -56,7 +56,7 @@ func TestDelivery(t *testing.T) {
 	}
 
 	price := uint64(10)
-	pricerMock := pricermock.NewMockService(pricermock.WithReadPricingHeadersFunc(readPricingFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
+	pricerMock := pricermock.NewMockService(pricermock.WithReadPricingResponseHeadersFunc(readPricingResponseFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil)
