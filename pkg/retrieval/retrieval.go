@@ -242,7 +242,10 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	s.logger.Debugf("retrieval headers: original target %v with price as %v, from peer %s", addr, chunkPrice, peer)
 	// returned checker
 	if returnedPrice != chunkPrice {
-		s.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
+		err = s.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
+		if err != nil {
+			return nil, peer, err
+		}
 		chunkPrice = returnedPrice
 		//return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
 	}
