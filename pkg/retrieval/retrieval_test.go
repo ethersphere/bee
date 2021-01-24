@@ -35,8 +35,8 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	var (
-		readPricingFunc = func(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
-			return swarm.MustParseHexAddress("0034"), 10, nil
+		readPricingResponseFunc = func(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
+			return swarm.MustParseHexAddress("0033153ac8cfb0c343db1795f578c15ed8ef827f3e68ed3c58329900bf0d7276"), 10, 0, nil
 		}
 
 		readPriceFunc = func(receivedHeaders p2p.Headers) (uint64, error) {
@@ -52,7 +52,7 @@ func TestDelivery(t *testing.T) {
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
 		price      = uint64(10)
-		pricerMock = pricermock.NewMockService(pricermock.WithReadPricingHeadersFunc(readPricingFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
+		pricerMock = pricermock.NewMockService(pricermock.WithReadPricingResponseHeadersFunc(readPricingResponseFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
 	)
 
 	// put testdata in the mock store of the server
