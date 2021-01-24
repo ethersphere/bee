@@ -167,8 +167,6 @@ func (k *Kad) manage() {
 					return false, false, err
 				}
 
-				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 				if err != nil {
 					if errors.Is(err, errOverlayMismatch) {
