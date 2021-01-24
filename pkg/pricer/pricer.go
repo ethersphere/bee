@@ -258,10 +258,11 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	}
 
 	if index > currentIndexDepth {
-		// Complicated case 1, index is larger than depth of already known table
+
 		newPriceTable := make([]uint64, index+1)
 
-		// if there was no error when reading pricetable from store
+		// Complicated case 1, index is larger than depth of already known table
+		// If there was no error when reading pricetable from store, but index > currentIndexDepth
 		if err == nil {
 			for i := uint8(0); i <= currentIndexDepth; i++ {
 				newPriceTable[i] = priceTable[i]

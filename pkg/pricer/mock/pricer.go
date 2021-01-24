@@ -185,7 +185,7 @@ func (pricer *Service) NotifyPeerPrice(peer swarm.Address, price uint64, index u
 
 func (pricer *Service) MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uint8) (p2p.Headers, error) {
 	if pricer.makePricingResponseHeadersFunc != nil {
-		return pricer.makePricingResponseHeadersFunc(chunkprice, addr, index)
+		return pricer.makePricingResponseHeadersFunc(chunkPrice, addr, index)
 	}
 	return p2p.Headers{}, nil
 }
