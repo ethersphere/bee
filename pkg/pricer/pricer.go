@@ -316,11 +316,10 @@ func (s *Pricer) DefaultPrice(PO uint8) uint64 {
 }
 
 func (s *Pricer) neighborhoodDepth() uint8 {
-	neighborhoodDepth := uint8(0)
+	var neighborhoodDepth uint8
 	if s.topology != nil {
 		neighborhoodDepth = s.topology.NeighborhoodDepth()
 	}
-	return 7
 	return neighborhoodDepth
 }
 
@@ -452,17 +451,16 @@ func (s *Pricer) ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.
 
 func (s *Pricer) ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
 	if receivedHeaders["index"] == nil {
-		return 0, fmt.Errorf("No index header")
+		return 0, fmt.Errorf("no index header")
 	}
 
-	var index uint8
-	index = uint8(receivedHeaders["index"][0])
+	index := uint8(receivedHeaders["index"][0])
 	return index, nil
 }
 
 func (s *Pricer) ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 	if receivedHeaders["target"] == nil {
-		return swarm.ZeroAddress, fmt.Errorf("No target header")
+		return swarm.ZeroAddress, fmt.Errorf("no target header")
 	}
 
 	var target swarm.Address
@@ -476,7 +474,7 @@ func (s *Pricer) ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, e
 
 func (s *Pricer) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
 	if receivedHeaders["price"] == nil {
-		return 0, fmt.Errorf("No price header")
+		return 0, fmt.Errorf("no price header")
 	}
 
 	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
