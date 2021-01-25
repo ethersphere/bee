@@ -9,12 +9,15 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -218,6 +221,250 @@ func TestRetrieveChunk(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+	})
+}
+
+func TestRetrievePreemptiveRetry(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	chunk := testingc.FixtureChunk("0025")
+	someOtherChunk := testingc.FixtureChunk("0033")
+
+	price := uint64(1)
+	pricerMock := accountingmock.NewPricer(price, price)
+
+	clientAddress := swarm.MustParseHexAddress("1010")
+
+	serverAddress1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
+	serverAddress2 := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
+	peers := []swarm.Address{
+		serverAddress1,
+		serverAddress2,
+	}
+
+	serverStorer1 := storemock.NewStorer()
+	serverStorer2 := storemock.NewStorer()
+
+	// we put some other chunk on server 1
+	_, err := serverStorer1.Put(context.Background(), storage.ModePutUpload, someOtherChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// we put chunk we need on server 2
+	_, err = serverStorer2.Put(context.Background(), storage.ModePutUpload, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	noPeerSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+		_, _, _ = f(swarm.ZeroAddress, 0)
+		return nil
+	}}
+
+	peerSuggesterFn := func(peers ...swarm.Address) topology.EachPeerer {
+		if len(peers) == 0 {
+			return noPeerSuggester
+		}
+
+		peerID := 0
+		peerSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+			_, _, _ = f(peers[peerID], 0)
+			// circulate suggested peers
+			peerID++
+			if peerID >= len(peers) {
+				peerID = 0
+			}
+			return nil
+		}}
+		return peerSuggester
+	}
+
+	server1 := retrieval.New(serverAddress1, serverStorer1, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
+	server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+	t.Run("peer not reachable", func(t *testing.T) {
+		recorder := streamtest.New(
+			streamtest.WithProtocols(
+				server1.Protocol(),
+				server2.Protocol(),
+			),
+			streamtest.WithMiddlewares(
+				func(h p2p.HandlerFunc) p2p.HandlerFunc {
+					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+						// NOTE: return error for peer1
+						if serverAddress1.Equal(peer.Address) {
+							return fmt.Errorf("peer not reachable: %s", peer.Address.String())
+						}
+
+						if serverAddress2.Equal(peer.Address) {
+							return server2.Handler(ctx, peer, stream)
+						}
+
+						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+					}
+				},
+			),
+		)
+
+		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+	})
+
+	t.Run("peer does not have chunk", func(t *testing.T) {
+		recorder := streamtest.New(
+			streamtest.WithProtocols(
+				server1.Protocol(),
+				server2.Protocol(),
+			),
+			streamtest.WithMiddlewares(
+				func(h p2p.HandlerFunc) p2p.HandlerFunc {
+					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+						if serverAddress1.Equal(peer.Address) {
+							return server1.Handler(ctx, peer, stream)
+						}
+
+						if serverAddress2.Equal(peer.Address) {
+							return server2.Handler(ctx, peer, stream)
+						}
+
+						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+					}
+				},
+			),
+		)
+
+		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+	})
+
+	t.Run("one peer is slower", func(t *testing.T) {
+		serverStorer1 := storemock.NewStorer()
+		serverStorer2 := storemock.NewStorer()
+
+		// both peers have required chunk
+		_, err := serverStorer1.Put(context.Background(), storage.ModePutUpload, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = serverStorer2.Put(context.Background(), storage.ModePutUpload, chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		server1MockAccounting := accountingmock.NewAccounting()
+		server2MockAccounting := accountingmock.NewAccounting()
+
+		server1 := retrieval.New(serverAddress1, serverStorer1, nil, noPeerSuggester, logger, server1MockAccounting, pricerMock, nil)
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, server2MockAccounting, pricerMock, nil)
+
+		// NOTE: must be more than retry duration
+		// (here one second more)
+		server1ResponseDelayDuration := 6 * time.Second
+
+		recorder := streamtest.New(
+			streamtest.WithProtocols(
+				server1.Protocol(),
+				server2.Protocol(),
+			),
+			streamtest.WithMiddlewares(
+				func(h p2p.HandlerFunc) p2p.HandlerFunc {
+					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+						if serverAddress1.Equal(peer.Address) {
+							// NOTE: sleep time must be more than retry duration
+							time.Sleep(server1ResponseDelayDuration)
+							return server1.Handler(ctx, peer, stream)
+						}
+
+						if serverAddress2.Equal(peer.Address) {
+							return server2.Handler(ctx, peer, stream)
+						}
+
+						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+					}
+				},
+			),
+		)
+
+		clientMockAccounting := accountingmock.NewAccounting()
+
+		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, clientMockAccounting, pricerMock, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+
+		clientServer1Balance, _ := clientMockAccounting.Balance(serverAddress1)
+		if clientServer1Balance != 0 {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer1Balance)
+		}
+
+		clientServer2Balance, _ := clientMockAccounting.Balance(serverAddress2)
+		if clientServer2Balance != -int64(price) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer2Balance)
+		}
+
+		// wait and check balance again
+		// (yet one second more than before, minus original duration)
+		time.Sleep(2 * time.Second)
+
+		clientServer1Balance, _ = clientMockAccounting.Balance(serverAddress1)
+		if clientServer1Balance != -int64(price) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer1Balance)
+		}
+
+		clientServer2Balance, _ = clientMockAccounting.Balance(serverAddress2)
+		if clientServer2Balance != -int64(price) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer2Balance)
+		}
+	})
+
+	t.Run("peer forwards request", func(t *testing.T) {
+		// server 2 has the chunk
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		server1Recorder := streamtest.New(
+			streamtest.WithProtocols(server2.Protocol()),
+		)
+
+		// server 1 will forward request to server 2
+		server1 := retrieval.New(serverAddress1, serverStorer1, server1Recorder, peerSuggesterFn(serverAddress2), logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		clientRecorder := streamtest.New(
+			streamtest.WithProtocols(server1.Protocol()),
+		)
+
+		// client only knows about server 1
+		client := retrieval.New(clientAddress, nil, clientRecorder, peerSuggesterFn(serverAddress1), logger, accountingmock.NewAccounting(), pricerMock, nil)
+
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
