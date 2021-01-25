@@ -6,6 +6,8 @@ package transaction
 
 import (
 	"context"
+	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,4 +19,35 @@ type Backend interface {
 	bind.ContractBackend
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
+	BlockNumber(ctx context.Context) (uint64, error)
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+}
+
+func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (bool, error) {
+	number, err := backend.BlockNumber(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	header, err := backend.HeaderByNumber(ctx, big.NewInt(int64(number)))
+	if err != nil {
+		return false, err
+	}
+
+	blockTime := time.Unix(int64(header.Time), 0)
+
+	return blockTime.After(time.Now().UTC().Add(-maxDelay)), nil
+}
+
+func WaitSynced(ctx context.Context, backend Backend, maxDelay time.Duration) error {
+	for {
+		synced, err := IsSynced(ctx, backend, maxDelay)
+		if err != nil {
+			return err
+		}
+
+		if synced {
+			return nil
+		}
+	}
 }
