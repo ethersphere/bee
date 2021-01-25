@@ -31,7 +31,7 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	depth, err := strconv.ParseUint(depthStr, 10, 8)
 	if err != nil {
 		s.Logger.Debugf("create batch: invalid depth: %v", err)
-		s.Logger.Error("create batch: invalid amount")
+		s.Logger.Error("create batch: invalid depth")
 		jsonhttp.BadRequest(w, "invalid depth")
 		return
 	}

@@ -174,7 +174,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 		chainID, err = swapBackend.ChainID(p2pCtx)
 		if err != nil {
-			logger.Infof("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
+			logger.Errorf("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
 			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
 		}
 	}
