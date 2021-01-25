@@ -17,7 +17,7 @@ type Updater struct {
 }
 
 // NewUpdater constructs a feed updater
-func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (*Updater, error) {
+func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (feeds.Updater, error) {
 	p, err := feeds.NewPutter(putter, signer, topic)
 	if err != nil {
 		return nil, err
@@ -35,4 +35,8 @@ func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
 	u.last = at
 	u.epoch = e
 	return nil
+}
+
+func (u *Updater) Feed() *feeds.Feed {
+	return u.Putter.Feed
 }

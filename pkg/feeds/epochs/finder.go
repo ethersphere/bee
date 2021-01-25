@@ -3,6 +3,7 @@ package epochs
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -125,7 +126,10 @@ func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c cha
 		}
 		go func(e *epoch) {
 			uch, _ := f.getter.Get(ctx, e)
-			c <- &result{p, uch, e}
+			select {
+			case c <- &result{p, uch, e}:
+			case <-time.After(time.Minute):
+			}
 		}(e)
 		if e.level == 0 {
 			return

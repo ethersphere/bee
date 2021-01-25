@@ -68,8 +68,8 @@ func BenchmarkFinder(b *testing.B) {
 			for _, j := range []int64{0, 8, 30} {
 				now := latest + 1<<j
 				for k, finder := range []feeds.Lookup{
-					epochs.NewFinder(storer, updater.Feed),
-					epochs.NewAsyncFinder(storer, updater.Feed),
+					epochs.NewFinder(storer, updater.Feed()),
+					epochs.NewAsyncFinder(storer, updater.Feed()),
 				} {
 					names := []string{"sync", "async"}
 					b.Run(fmt.Sprintf("%s:prefill=%d, latest=%d, now=%d", names[k], prefill, latest, now), func(b *testing.B) {

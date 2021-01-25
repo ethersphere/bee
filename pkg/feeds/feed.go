@@ -38,18 +38,18 @@ type Index interface {
 }
 
 // update represents an update instance of a feed, i.e., pairing of a Feed with an Epoch
-type update struct {
+type Update struct {
 	*Feed
 	index Index
 }
 
 // Update
-func (f *Feed) Update(index Index) *update {
-	return &update{f, index}
+func (f *Feed) Update(index Index) *Update {
+	return &Update{f, index}
 }
 
 // Id calculates the identifier if a  feed update to be used in single owner chunks
-func (u *update) Id() ([]byte, error) {
+func (u *Update) Id() ([]byte, error) {
 	index, err := u.index.MarshalBinary()
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func (u *update) Id() ([]byte, error) {
 }
 
 // Address calculates the soc address of a feed update
-func (u *update) Address() (addr swarm.Address, err error) {
+func (u *Update) Address() (addr swarm.Address, err error) {
 	var i []byte
 	i, err = u.Id()
 	if err != nil {

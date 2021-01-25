@@ -11,6 +11,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type Updater interface {
+	Update(ctx context.Context, at int64, payload []byte) error
+	Feed() *Feed
+}
+
 // Putter encapsulates a chunk store putter and a Feed to store feed updates
 type Putter struct {
 	putter storage.Putter

@@ -1,11 +1,11 @@
-package epochs_test
+package sequence_test
 
 import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/feeds/epochs"
+	"github.com/ethersphere/bee/pkg/feeds/sequence"
 	feedstesting "github.com/ethersphere/bee/pkg/feeds/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 )
@@ -23,9 +23,9 @@ func TestFinder(t *testing.T) {
 		})
 	}
 	t.Run("sync", func(t *testing.T) {
-		testf(t, epochs.NewFinder, epochs.NewUpdater)
+		testf(t, sequence.NewFinder, sequence.NewUpdater)
 	})
 	t.Run("async", func(t *testing.T) {
-		testf(t, epochs.NewAsyncFinder, epochs.NewUpdater)
+		testf(t, sequence.NewAsyncFinder, sequence.NewUpdater)
 	})
 }
