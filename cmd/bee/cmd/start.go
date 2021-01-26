@@ -321,6 +321,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 
 		logger.Infof("using swarm network address through clef: %s", address)
 	} else {
+		logger.Warning("clef is not enabled; portability and security of your keys is sub optimal")
 		swarmPrivateKey, created, err := keystore.Key("swarm", password)
 		if err != nil {
 			return nil, fmt.Errorf("swarm key: %w", err)
