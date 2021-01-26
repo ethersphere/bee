@@ -161,7 +161,7 @@ func newTestServer(t *testing.T, storer storage.Storer) *url.URL {
 	signer := crypto.NewDefaultSigner(pk)
 	mockPostage := mockpost.New()
 
-	s := api.New(tags.NewTags(store, logger), storer, nil, nil, nil, mockPostage, signer, logger, nil, api.Options{})
+	s := api.New(tags.NewTags(store, logger), storer, nil, nil, nil, mockPostage, nil, signer, logger, nil, api.Options{})
 	ts := httptest.NewServer(s)
 	srvUrl, err := url.Parse(ts.URL)
 	if err != nil {
