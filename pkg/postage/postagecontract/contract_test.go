@@ -32,6 +32,7 @@ func TestCreateBatch(t *testing.T) {
 	txHashCreate := common.HexToHash("c3a7")
 
 	batchID := common.HexToHash("dddd")
+	label := "label"
 
 	postageMock := postageMock.New()
 
@@ -75,7 +76,7 @@ func TestCreateBatch(t *testing.T) {
 		postageMock,
 	)
 
-	returnedID, err := contract.CreateBatch(ctx, initialBalance, depth)
+	returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, label)
 	if err != nil {
 		t.Fatal(err)
 	}

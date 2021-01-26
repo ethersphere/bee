@@ -22,16 +22,22 @@ func TestPostageCreateStamp(t *testing.T) {
 	batchID := []byte{1, 2, 3, 4}
 	initialBalance := int64(1000)
 	depth := uint8(1)
-	createBatch := func(amount int64, depth uint8) string { return fmt.Sprintf("/stamps/%d/%d", amount, depth) }
+	label := "label"
+	createBatch := func(amount int64, depth uint8, label string) string {
+		return fmt.Sprintf("/stamps/%d/%d?label=%s", amount, depth, label)
+	}
 
 	t.Run("ok", func(t *testing.T) {
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
 					return nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
 				if d != depth {
 					return nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
+				}
+				if l != label {
+					return nil, fmt.Errorf("called with wrong label. wanted %s, got %s", label, l)
 				}
 				return batchID, nil
 			}),
@@ -40,7 +46,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 			}),
@@ -49,7 +55,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	t.Run("with-error", func(t *testing.T) {
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
 				return nil, errors.New("err")
 			}),
 		)
@@ -57,7 +63,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth), http.StatusInternalServerError,
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: "cannot create batch",

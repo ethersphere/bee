@@ -30,7 +30,7 @@ var (
 )
 
 type Interface interface {
-	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8) ([]byte, error)
+	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error)
 }
 
 type postageContract struct {
@@ -117,7 +117,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 	return receipt, nil
 }
 
-func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8) ([]byte, error) {
+func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error) {
 	_, err := c.sendApproveTransaction(ctx, big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth))))
 	if err != nil {
 		return nil, err
@@ -145,8 +145,8 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			batchID := createdEvent.BatchId[:]
 
 			c.postageService.Add(postage.NewStampIssuer(
-				"label",
-				"keyid",
+				label,
+				c.owner.Hex(),
 				batchID,
 				depth,
 				8,

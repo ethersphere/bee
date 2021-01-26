@@ -36,7 +36,9 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	batchID, err := s.postageContract.CreateBatch(r.Context(), amount, uint8(depth))
+	label := r.URL.Query().Get("label")
+
+	batchID, err := s.postageContract.CreateBatch(r.Context(), amount, uint8(depth), label)
 	if err != nil {
 		s.Logger.Debugf("create batch: failed to create: %v", err)
 		s.Logger.Error("create batch: failed to create")
