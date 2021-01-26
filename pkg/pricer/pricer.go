@@ -75,12 +75,12 @@ func (s *Pricer) PriceTable() (priceTable []uint64) {
 
 // PeerPriceTable returns the price table stored for the given peer.
 // If we can't get price table from store, we return the default price table
-func (s *Pricer) PeerPriceTable(peer swarm.Address) (priceTable []uint64, err error) {
-	err = s.store.Get(peerPriceTableKey(peer), &priceTable)
+func (s *Pricer) PeerPriceTable(peer swarm.Address) (priceTable []uint64) {
+	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
 		priceTable = s.DefaultPriceTable() // get default pricetable
 	}
-	return priceTable, nil
+	return priceTable
 }
 
 // PriceForPeer returns the price for the PO of a chunk from the table stored for the node.
@@ -107,16 +107,12 @@ func (s *Pricer) PriceForPeer(peer, chunk swarm.Address) uint64 {
 }
 
 // PriceWithIndexForPeer returns price for a chunk for a given peer,
-// and the
+// and the index of PO in pricetable which is used
 func (s *Pricer) PriceWithIndexForPeer(peer, chunk swarm.Address) (price uint64, index uint8) {
 	proximity := swarm.Proximity(s.overlay.Bytes(), chunk.Bytes())
 	neighborhoodDepth := s.neighborhoodDepth()
 
-	var priceTable []uint64
-	err := s.store.Get(priceTableKey(), &priceTable)
-	if err != nil {
-		priceTable = s.DefaultPriceTable()
-	}
+	priceTable := s.PriceTable()
 
 	if int(proximity) >= len(priceTable) {
 		proximity = uint8(len(priceTable) - 1)
@@ -136,11 +132,7 @@ func (s *Pricer) PriceWithIndexForPeer(peer, chunk swarm.Address) (price uint64,
 
 // PricePO returns the price for a PO from the table stored for the node.
 func (s *Pricer) PricePO(PO uint8) (uint64, error) {
-	var priceTable []uint64
-	err := s.store.Get(priceTableKey(), &priceTable)
-	if err != nil {
-		priceTable = s.DefaultPriceTable()
-	}
+	priceTable := s.PriceTable()
 
 	proximity := PO
 	if int(PO) >= len(priceTable) {
@@ -245,57 +237,57 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 }
 
 func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error {
-	currentIndexDepth := uint8(0)
 
-	priceTable, err := s.PeerPriceTable(peer)
-	if err == nil {
-		currentIndexDepth = uint8(len(priceTable)) - 1
-		if index <= currentIndexDepth {
-			// Simple case, already have stored pricetable, no new depth, single value change
-			priceTable[index] = price
-			return s.NotifyPriceTable(peer, priceTable)
-		}
+	if price == 0 {
+		return nil
 	}
 
-	if index > currentIndexDepth {
+	priceTable := s.PeerPriceTable(peer)
+	currentIndexDepth := uint8(len(priceTable)) - 1
 
-		newPriceTable := make([]uint64, index+1)
+	if index <= currentIndexDepth {
+		// Simple case, already have index depth, single value change
+		priceTable[index] = price
+		s.logger.Debugf("Storing updated pricetable %v for peer %v", priceTable, peer)
+		return s.NotifyPriceTable(peer, priceTable)
+	}
 
-		// Complicated case 1, index is larger than depth of already known table
-		// If there was no error when reading pricetable from store, but index > currentIndexDepth
-		if err == nil {
-			for i := uint8(0); i <= currentIndexDepth; i++ {
-				newPriceTable[i] = priceTable[i]
-			}
+	// Complicated case, index is larger than depth of already known table
+	newPriceTable := make([]uint64, index+1)
 
-			numberOfMissingRows := index - currentIndexDepth
-			// if we have multiple missing rows, we have to guess something for the gaps,
-			// since we only learned the price for index PO
-			// for now we will add some default increase
-			var currentrow uint8
-			for i := uint8(0); i < numberOfMissingRows; i++ {
-				currentrow = index - i
-				newPriceTable[currentrow] = price + uint64(i)*s.poPrice
-			}
-			return s.NotifyPriceTable(peer, newPriceTable)
+	// Copy previous content
+	copied := copy(newPriceTable, priceTable)
+
+	// sanity check copy was successful
+	if uint8(copied) != currentIndexDepth+1 {
+		s.logger.Warningf("Copy for extending pricetable mismatching lengths (%v,%v) for peer %v", copied, currentIndexDepth+1, peer)
+	}
+
+	// Check how many rows are missing
+	numberOfMissingRows := index - currentIndexDepth
+
+	if numberOfMissingRows > 1 {
+		// We have to add multiple values, most of which we are guessing for now
+		// Get last known price from table
+		maxPOPrice := priceTable[currentIndexDepth]
+		// Get difference of learned price for index and last known price for known length
+		priceDifference := max(price, maxPOPrice) - min(price, maxPOPrice)
+		// Get average difference for increase on each lower PO
+		averagePriceGap := priceDifference / uint64(numberOfMissingRows)
+
+		for i := uint8(1); i < numberOfMissingRows; i++ {
+			currentrow := index - i
+			newPriceTable[currentrow] = price + uint64(i)*averagePriceGap
+			s.logger.Debugf("Guessing price %v for extending pricetable %v for peer %v", newPriceTable[currentrow], newPriceTable, peer)
 		}
-
-		// Complicated case 2, no pricetable for peer existed yet
-		numberOfMissingRows := index - currentIndexDepth
-		// if we have multiple missing rows, we have to guess something for the gaps,
-		// since we only learned the price for index PO
-		// for now we will add some default increase
-		var currentrow uint8
-		for i := uint8(0); i < numberOfMissingRows; i++ {
-			currentrow = index - i
-			newPriceTable[currentrow] = price + uint64(i)*s.poPrice
-		}
-		return s.NotifyPriceTable(peer, newPriceTable)
 
 	}
 
-	s.logger.Debugf("Storing updated pricetable %v for peer %v", priceTable, peer)
-	return s.NotifyPriceTable(peer, priceTable)
+	// if there was only one missing row, fill it now
+	newPriceTable[index] = price
+
+	s.logger.Debugf("Storing extended pricetable %v for peer %v", newPriceTable, peer)
+	return s.NotifyPriceTable(peer, newPriceTable)
 }
 
 func (s *Pricer) DefaultPriceTable() []uint64 {
@@ -484,4 +476,18 @@ func (s *Pricer) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
 
 func (s *Pricer) SetKademlia(kad topology.Driver) {
 	s.topology = kad
+}
+
+func max(x, y uint64) uint64 {
+	if x < y {
+		return y
+	}
+	return x
+}
+
+func min(x, y uint64) uint64 {
+	if x >= y {
+		return y
+	}
+	return x
 }
