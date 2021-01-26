@@ -34,31 +34,31 @@ type Interface interface {
 }
 
 type postageContract struct {
-	owner               common.Address
-	postageStampAddress common.Address
-	bzzTokenAddress     common.Address
-	transactionService  transaction.Service
-	postageService      postage.Service
+	owner                  common.Address
+	postageContractAddress common.Address
+	bzzTokenAddress        common.Address
+	transactionService     transaction.Service
+	postageService         postage.Service
 }
 
 func New(
 	owner common.Address,
-	postageStampAddress common.Address,
+	postageContractAddress common.Address,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
 	postageService postage.Service,
 ) Interface {
 	return &postageContract{
-		owner:               owner,
-		postageStampAddress: postageStampAddress,
-		bzzTokenAddress:     bzzTokenAddress,
-		transactionService:  transactionService,
-		postageService:      postageService,
+		owner:                  owner,
+		postageContractAddress: postageContractAddress,
+		bzzTokenAddress:        bzzTokenAddress,
+		transactionService:     transactionService,
+		postageService:         postageService,
 	}
 }
 
 func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
-	callData, err := erc20ABI.Pack("approve", c.postageStampAddress, amount)
+	callData, err := erc20ABI.Pack("approve", c.postageContractAddress, amount)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 	}
 
 	request := &transaction.TxRequest{
-		To:       c.postageStampAddress,
+		To:       c.postageContractAddress,
 		Data:     callData,
 		GasPrice: nil,
 		GasLimit: 0,
@@ -135,7 +135,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 	}
 
 	for _, ev := range receipt.Logs {
-		if ev.Address == c.postageStampAddress && ev.Topics[0] == batchCreatedTopic {
+		if ev.Address == c.postageContractAddress && ev.Topics[0] == batchCreatedTopic {
 			var createdEvent batchCreatedEvent
 			err = parseEvent(&postageStampABI, "BatchCreated", &createdEvent, *ev)
 			if err != nil {

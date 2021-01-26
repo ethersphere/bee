@@ -113,7 +113,7 @@ type Options struct {
 	SwapFactoryAddress     string
 	SwapInitialDeposit     uint64
 	SwapEnable             bool
-	PostageStampAddress    string
+	PostageContractAddress string
 	PriceOracleAddress     string
 }
 
@@ -238,12 +238,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	var postageContractService postagecontract.Interface
 	if !o.Standalone {
-		postageStampAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID.Int64())
-		if o.PostageStampAddress != "" {
-			if !common.IsHexAddress(o.PostageStampAddress) {
+		postageContractAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID.Int64())
+		if o.PostageContractAddress != "" {
+			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
 			}
-			postageStampAddress = common.HexToAddress(o.PostageStampAddress)
+			postageContractAddress = common.HexToAddress(o.PostageContractAddress)
 		}
 		if o.PriceOracleAddress != "" {
 			if !common.IsHexAddress(o.PriceOracleAddress) {
@@ -251,11 +251,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			}
 			priceOracleAddress = common.HexToAddress(o.PriceOracleAddress)
 		}
-		if (o.PostageStampAddress == "" || o.PriceOracleAddress == "") && !found {
+		if (o.PostageContractAddress == "" || o.PriceOracleAddress == "") && !found {
 			return nil, errors.New("no known postage stamp addresses for this network")
 		}
 
-		eventListener := listener.New(logger, swapBackend, postageStampAddress, priceOracleAddress)
+		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress)
 		b.listenerCloser = eventListener
 
 		batchService, err := batchservice.New(batchStore, logger, eventListener)
@@ -269,7 +269,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 		postageContractService = postagecontract.New(
 			overlayEthAddress,
-			postageStampAddress,
+			postageContractAddress,
 			erc20Address,
 			transactionService,
 			post,
