@@ -235,8 +235,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")
 
-	price := uint64(1)
-	pricerMock := accountingmock.NewPricer(price, price)
+	price := uint64(10)
+	pricerMock := pricermock.NewMockService()
 
 	clientAddress := swarm.MustParseHexAddress("1010")
 
