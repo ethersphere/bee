@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -35,6 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/pkg/postage/listener"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
@@ -111,7 +113,7 @@ type Options struct {
 	SwapFactoryAddress     string
 	SwapInitialDeposit     uint64
 	SwapEnable             bool
-	PostageStampAddress    string
+	PostageContractAddress string
 	PriceOracleAddress     string
 }
 
@@ -150,19 +152,18 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var chequeStore chequebook.ChequeStore
 	var cashoutService chequebook.CashoutService
 	var overlayEthAddress common.Address
-	if o.SwapEnable {
-		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
+	var erc20Address common.Address
+	var transactionService transaction.Service
+	var swapBackend *ethclient.Client
+	var chainID *big.Int
+
+	if !o.Standalone {
+		swapBackend, err = ethclient.Dial(o.SwapEndpoint)
 		if err != nil {
 			return nil, err
 		}
 
-		chainID, err := swapBackend.ChainID(p2pCtx)
-		if err != nil {
-			logger.Infof("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
-			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
-		}
-
-		transactionService, err := transaction.NewService(logger, swapBackend, signer)
+		transactionService, err = transaction.NewService(logger, swapBackend, signer)
 		if err != nil {
 			return nil, err
 		}
@@ -171,6 +172,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, err
 		}
 
+		chainID, err = swapBackend.ChainID(p2pCtx)
+		if err != nil {
+			logger.Errorf("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
+			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
+		}
+	}
+
+	if !o.Standalone && o.SwapEnable {
 		var factoryAddress common.Address
 		if o.SwapFactoryAddress == "" {
 			var found bool
@@ -229,28 +238,25 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
+
+		erc20Address, err = chequebookFactory.ERC20Address(p2pCtx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	batchStore := batchstore.New(stateStore)
 
+	post := postage.NewService(stateStore, chainID.Int64())
+
+	var postageContractService postagecontract.Interface
 	if !o.Standalone {
-		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
-		if err != nil {
-			return nil, err
-		}
-
-		chainID, err := swapBackend.ChainID(p2pCtx)
-		if err != nil {
-			logger.Infof("could not connect to backend at %v. A working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
-			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
-		}
-
-		postageStampAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID.Int64())
-		if o.PostageStampAddress != "" {
-			if !common.IsHexAddress(o.PostageStampAddress) {
+		postageContractAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID.Int64())
+		if o.PostageContractAddress != "" {
+			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
 			}
-			postageStampAddress = common.HexToAddress(o.PostageStampAddress)
+			postageContractAddress = common.HexToAddress(o.PostageContractAddress)
 		}
 		if o.PriceOracleAddress != "" {
 			if !common.IsHexAddress(o.PriceOracleAddress) {
@@ -258,11 +264,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			}
 			priceOracleAddress = common.HexToAddress(o.PriceOracleAddress)
 		}
-		if (o.PostageStampAddress == "" || o.PriceOracleAddress == "") && !found {
+		if (o.PostageContractAddress == "" || o.PriceOracleAddress == "") && !found {
 			return nil, errors.New("no known postage stamp addresses for this network")
 		}
 
-		eventListener := listener.New(logger, swapBackend, postageStampAddress, priceOracleAddress)
+		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress)
 		b.listenerCloser = eventListener
 
 		batchService, err := batchservice.New(batchStore, logger, eventListener)
@@ -273,6 +279,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
+
+		postageContractService = postagecontract.New(
+			overlayEthAddress,
+			postageContractAddress,
+			erc20Address,
+			transactionService,
+			post,
+		)
 	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
@@ -451,17 +465,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	)
 	b.resolverCloser = multiResolver
 
-	post := postage.NewService(stateStore, 1) // do we have a config for this? which chain id are we using??
-
-	// this is needed until postage API gets wired in (since our actual API
-	// falls back to a 32 byte slice of zeros as batch id
-	fallbackBatch := make([]byte, 32)
-	post.Add(postage.NewStampIssuer("empty batch", "", fallbackBatch, 32, 8))
-
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, post, signer, logger, tracer, api.Options{
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, post, postageContractService, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,

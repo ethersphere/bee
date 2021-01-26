@@ -180,6 +180,13 @@ func (s *server) setupRouting() {
 		})),
 	)
 
+	handle(router, "/stamps/{amount}/{depth}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.postageCreateHandler),
+		})),
+	)
+
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "api access"),
 		handlers.CompressHandler,

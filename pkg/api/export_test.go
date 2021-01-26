@@ -18,6 +18,7 @@ type (
 	PinnedChunk              = pinnedChunk
 	ListPinnedChunksResponse = listPinnedChunksResponse
 	UpdatePinCounter         = updatePinCounter
+	PostageCreateResponse    = postageCreateResponse
 )
 
 var (
