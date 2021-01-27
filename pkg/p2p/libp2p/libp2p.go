@@ -371,14 +371,11 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 				var bpe *p2p.BlockPeerError
 				if errors.As(err, &bpe) {
-					if err := s.blocklist.Add(overlay, bpe.Duration()); err != nil {
-						s.logger.Debugf("blocklist: could blocklist peer %s: %v", peerID, err)
-						s.logger.Errorf("unable to blocklist peer %v", peerID)
-						_ = s.Disconnect(overlay)
+					if err := s.Blocklist(overlay, bpe.Duration()); err != nil {
+						logger.Debugf("blocklist: could not blocklist peer %s: %v", peerID, err)
+						logger.Errorf("unable to blocklist peer %v", peerID)
 					}
-
-					s.logger.Tracef("blocklisted a peer %s", peerID)
-					_ = s.Disconnect(overlay)
+					logger.Tracef("blocklisted a peer %s", peerID)
 				}
 
 				logger.Debugf("could not handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
@@ -419,10 +416,11 @@ func (s *Service) NATManager() basichost.NATManager {
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error {
 	if err := s.blocklist.Add(overlay, duration); err != nil {
-		s.logger.Debugf("blocklist: blocklist peer %s: %v", overlay, err)
+		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay)
-		return err
+		return fmt.Errorf("blocklist peer %s: %v", overlay, err)
 	}
+	s.metrics.BlocklistedPeerCount.Inc()
 
 	_ = s.Disconnect(overlay)
 	return nil
@@ -536,6 +534,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
+	s.metrics.DisconnectCount.Inc()
 	found, peerID := s.peers.remove(overlay)
 	if !found {
 		return p2p.ErrPeerNotFound
