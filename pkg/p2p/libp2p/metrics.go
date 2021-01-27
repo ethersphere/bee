@@ -13,10 +13,13 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	CreatedConnectionCount prometheus.Counter
-	HandledConnectionCount prometheus.Counter
-	CreatedStreamCount     prometheus.Counter
-	HandledStreamCount     prometheus.Counter
+	CreatedConnectionCount  prometheus.Counter
+	HandledConnectionCount  prometheus.Counter
+	CreatedStreamCount      prometheus.Counter
+	HandledStreamCount      prometheus.Counter
+	BlocklistedPeerCount    prometheus.Counter
+	BlocklistedPeerErrCount prometheus.Counter
+	DisconnectCount         prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -46,6 +49,24 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "handled_stream_count",
 			Help:      "Number of handled incoming libp2p streams.",
+		}),
+		BlocklistedPeerCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "blocklisted_peer_count",
+			Help:      "Number of peers we've blocklisted.",
+		}),
+		BlocklistedPeerErrCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "blocklisted_peer_err_count",
+			Help:      "Number of peers we've been unable to blocklist.",
+		}),
+		DisconnectCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "disconnect_count",
+			Help:      "Number of peers we've disconnected from (initiated locally).",
 		}),
 	}
 }
