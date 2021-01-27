@@ -185,6 +185,19 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 		chequeSigner := chequebook.NewChequeSigner(signer, chainID.Int64())
 
+		maxDelay := 1 * time.Minute
+		synced, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
+		if err != nil {
+			return nil, err
+		}
+		if !synced {
+			logger.Infof("waiting for ethereum backend to be synced.")
+			err = transaction.WaitSynced(p2pCtx, swapBackend, maxDelay)
+			if err != nil {
+				return nil, fmt.Errorf("could not wait for ethereum backend to sync: %w", err)
+			}
+		}
+
 		// initialize chequebook logic
 		chequebookService, err = chequebook.Init(p2pCtx,
 			chequebookFactory,
