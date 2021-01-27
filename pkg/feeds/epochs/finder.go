@@ -3,7 +3,6 @@ package epochs
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -116,6 +115,25 @@ func NewAsyncFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 	return &AsyncFinder{feeds.NewGetter(getter, feed)}
 }
 
+func (f *AsyncFinder) get(ctx context.Context, at int64, e *epoch) (swarm.Chunk, error) {
+	u, err := f.getter.Get(ctx, e)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, err
+		}
+		return nil, nil
+	}
+	ts, err := feeds.UpdatedAt(u)
+	if err != nil {
+		return nil, err
+	}
+	diff := at - int64(ts)
+	if diff < 0 {
+		return nil, nil
+	}
+	return u, nil
+}
+
 // at attempts to retrieve all epoch chunks on the path for `at` concurrently
 func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c chan *result) {
 	for ; ; e = e.childAt(uint64(at)) {
@@ -125,10 +143,13 @@ func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c cha
 		default:
 		}
 		go func(e *epoch) {
-			uch, _ := f.getter.Get(ctx, e)
+			uch, err := f.get(ctx, at, e)
+			if err != nil {
+				return
+			}
 			select {
 			case c <- &result{p, uch, e}:
-			case <-time.After(time.Minute):
+			case <-p.cancel:
 			}
 		}(e)
 		if e.level == 0 {
@@ -159,19 +180,11 @@ LOOP:
 			if p.top != nil && p.top.level < r.level {
 				continue LOOP
 			}
-			// check if timestamp is later than target time
-			ts, err := feeds.UpdatedAt(r.chunk)
-			if err != nil {
-				return nil, err
-			}
-			if ts <= uint64(p.at) { // valid for latest update before `at`
-				p.top = r
-			} else if p.bottom == nil || p.bottom.level < r.level {
-				p.bottom = r
-			}
+			p.top = r
 		} else { // update chunk for epoch not found
 			// if top level than return with no update found
 			if r.level == 32 {
+				close(p.cancel)
 				return nil, nil
 			}
 			// if topmost epoch not found, then set bottom

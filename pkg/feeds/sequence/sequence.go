@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -36,7 +35,7 @@ func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
 func (f *Finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
-	for i := uint64(1); ; i++ {
+	for i := uint64(0); ; i++ {
 		u, err := f.getter.Get(ctx, &index{i})
 		if err != nil {
 			if !errors.Is(err, storage.ErrNotFound) {
@@ -88,71 +87,83 @@ type result struct {
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
 func (f *AsyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
-	ch, diff, err := f.get(ctx, at, 1)
+	ch, diff, err := f.get(ctx, at, 0)
 	if err != nil {
 		return nil, err
 	}
 	if ch == nil {
 		return nil, nil
 	}
-	last := uint64(0)
+	if diff == 0 {
+		return ch, nil
+	}
 	c := make(chan result)
-	p := newPath(last)
+	p := newPath(0)
 	p.latest.chunk = ch
 	for p.level = 1; diff>>p.level > 0; p.level++ {
 	}
-	go f.at(ctx, at, p, c)
+	quit := make(chan struct{})
+	defer close(quit)
+	go f.at(ctx, at, p, c, quit)
 	for r := range c {
+		p = r.path
 		if r.chunk == nil {
 			if r.level == 0 {
-				return r.path.latest.chunk, nil
+				return p.latest.chunk, nil
 			}
-			if r.path.level < r.level {
+			if p.level < r.level {
 				continue
 			}
-			r.path.level = r.level - 1
+			p.level = r.level - 1
 		} else {
-			if r.path.cancel != nil {
-				close(r.path.cancel)
-				r.path.cancel = nil
+			if p.cancel != nil {
+				close(p.cancel)
+				p.cancel = nil
 			}
 			if r.diff == 0 {
 				return r.chunk, nil
 			}
-			if r.path.latest.level <= r.level {
-				r.path.latest = r
+			if p.latest.level > r.level {
+				continue
 			}
+			p.latest = r
 		}
-		// below applies even  if  r.path.latest==maxLevel
-		if r.path.latest.level == r.path.level {
-			if r.path.level == 0 {
-				return r.path.latest.chunk, nil
+		// below applies even  if  p.latest==maxLevel
+		if p.latest.level == p.level {
+			if p.level == 0 {
+				if p.cancel != nil {
+					close(p.cancel)
+					p.cancel = nil
+				}
+				return p.latest.chunk, nil
 			}
-			np := newPath(r.path.latest.seq - 1)
-			np.level = r.path.level
-			np.latest.chunk = r.path.latest.chunk
-			go f.at(ctx, at, np, c)
+			np := newPath(p.latest.seq)
+			np.level = p.level
+			np.latest.chunk = p.latest.chunk
+			go f.at(ctx, at, np, c, quit)
 		}
 	}
 	return nil, nil
 }
 
-func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, c chan result) {
+func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, c chan result, quit chan struct{}) {
 	for i := p.level; i > 0; i-- {
 		select {
 		case <-p.cancel:
 			return
+		case <-quit:
+			return
 		default:
 		}
 		go func(i int) {
-			seq := p.base + 1<<i
+			seq := p.base + (1 << i) - 1
 			ch, diff, err := f.get(ctx, at, seq)
 			if err != nil {
 				return
 			}
 			select {
 			case c <- result{ch, p, i, seq, diff}:
-			case <-time.After(time.Minute):
+			case <-quit:
 			}
 		}(i)
 	}
@@ -181,7 +192,7 @@ func (f *AsyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chun
 // it persists the last update
 type Updater struct {
 	*feeds.Putter
-	last uint64
+	next uint64
 }
 
 // NewUpdater constructs a feed updater
@@ -195,11 +206,11 @@ func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (feed
 
 // Update pushes an update to the feed through the chunk stores
 func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
-	err := u.Put(ctx, &index{u.last + 1}, at, payload)
+	err := u.Put(ctx, &index{u.next}, at, payload)
 	if err != nil {
 		return err
 	}
-	u.last++
+	u.next++
 	return nil
 }
 
