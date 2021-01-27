@@ -74,7 +74,7 @@ func New(logger logging.Logger, store storage.StateStorer, overlay swarm.Address
 	}
 }
 
-// PeerPrice returns the pricetable stored for the node
+// PriceTable returns the pricetable stored for the node
 // If not available, the default pricetable is provided
 func (s *Pricer) PriceTable() (priceTable []uint64) {
 	err := s.store.Get(priceTableKey(), &priceTable)
