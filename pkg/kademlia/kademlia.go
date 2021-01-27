@@ -175,7 +175,7 @@ func (k *Kad) manage() {
 							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 						}
 					}
-					k.logger.Debugf("peer not reachable from kademlia not reachable %s: %v", bzzAddr.String(), err)
+					k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
 					k.logger.Warningf("peer not reachable when attempting to connect")
 					// continue to next
 					return false, false, nil
