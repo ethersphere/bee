@@ -61,6 +61,12 @@ func WithWaitForReceiptFunc(f func(ctx context.Context, txHash common.Hash) (rec
 	})
 }
 
+func WitCallFunc(f func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.call = f
+	})
+}
+
 func New(opts ...Option) transaction.Service {
 	mock := new(transactionServiceMock)
 	for _, o := range opts {
