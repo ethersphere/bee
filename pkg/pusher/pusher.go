@@ -7,6 +7,7 @@ package pusher
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
+	"github.com/sirupsen/logrus"
 )
 
 type Service struct {
@@ -65,6 +67,7 @@ func (s *Service) chunksWorker() {
 		inflight      = make(map[string]struct{})
 		mtx           sync.Mutex
 		span          opentracing.Span
+		logger        *logrus.Entry
 	)
 	defer timer.Stop()
 	defer close(s.chunksWorkerQuitC)
@@ -90,7 +93,7 @@ LOOP:
 			}
 
 			if span == nil {
-				span, _, ctx = s.tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
+				span, logger, ctx = s.tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
 			}
 
 			// postpone a retry only after we've finished processing everything in index
@@ -130,7 +133,7 @@ LOOP:
 						s.metrics.TotalSynced.Inc()
 						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 						// only print this if there was no error while sending the chunk
-						s.logger.Tracef("pusher pushed chunk %s", ch.Address().String())
+						logger.Tracef("pusher pushed chunk %s", ch.Address().String())
 					} else {
 						s.metrics.TotalErrors.Inc()
 						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
@@ -145,13 +148,13 @@ LOOP:
 				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
 					if !errors.Is(err, topology.ErrNotFound) {
-						s.logger.Debugf("pusher: error while sending chunk or receiving receipt: %v", err)
+						logger.Debugf("pusher: error while sending chunk or receiving receipt: %v", err)
 					}
 					return
 				}
 				err = s.setChunkAsSynced(ctx, ch)
 				if err != nil {
-					s.logger.Debugf("pusher: error setting chunk as synced: %v", err)
+					logger.Debugf("pusher: error setting chunk as synced: %v", err)
 					return
 				}
 			}(ctx, ch)
@@ -208,7 +211,7 @@ LOOP:
 
 func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
 	if err := s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-		s.logger.Errorf("pusher: error setting chunk as synced: %v", err)
+		return fmt.Errorf("set synced: %w", err)
 	}
 
 	t, err := s.tagg.Get(ch.TagID())
