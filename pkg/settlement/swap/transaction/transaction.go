@@ -34,6 +34,8 @@ type TxRequest struct {
 type Service interface {
 	// Send creates a transaction based on the request and sends it.
 	Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error)
+	// Call simulate a transaction based on the request.
+	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
 	WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 }
@@ -77,6 +79,24 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 	}
 
 	return signedTx.Hash(), nil
+}
+
+func (t *transactionService) Call(ctx context.Context, request *TxRequest) ([]byte, error) {
+	msg := ethereum.CallMsg{
+		From:     t.sender,
+		To:       &request.To,
+		Data:     request.Data,
+		GasPrice: request.GasPrice,
+		Gas:      request.GasLimit,
+		Value:    request.Value,
+	}
+
+	data, err := t.backend.CallContract(ctx, msg, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
 
 // WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
