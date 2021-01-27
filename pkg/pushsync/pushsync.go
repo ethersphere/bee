@@ -217,8 +217,8 @@ func (ps *PushSync) receiveReceipt(ctx context.Context, r protobuf.Reader) (rece
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
-func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-push", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (r *Receipt, reterr error) {
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-push", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 
 	var (
@@ -289,7 +289,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		if err != nil {
 			ps.metrics.TotalErrors.Inc()
 			lastErr = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
-			ps.logger.Debugf("pushsync-push: %v", lastErr)
+			logger.Debugf("pushsync-push: %v", lastErr)
 			continue
 		}
 		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
@@ -299,7 +299,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			ps.metrics.TotalErrors.Inc()
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)
-			ps.logger.Debugf("pushsync-push: %v", lastErr)
+			logger.Debugf("pushsync-push: %v", lastErr)
 			continue
 		}
 
@@ -319,7 +319,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			ps.metrics.TotalErrors.Inc()
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
-			ps.logger.Debugf("pushsync-push: %v", lastErr)
+			logger.Debugf("pushsync-push: %v", lastErr)
 			continue
 		}
 
@@ -341,7 +341,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		return rec, nil
 	}
 
-	ps.logger.Tracef("pushsync-push: failed to push chunk %s: reached max peers of %v", ch.Address(), maxPeers)
+	logger.Tracef("pushsync-push: failed to push chunk %s: reached max peers of %v", ch.Address(), maxPeers)
 
 	if lastErr != nil {
 		return nil, lastErr
@@ -364,10 +364,5 @@ func (ps *PushSync) handleDeliveryResponse(ctx context.Context, w protobuf.Write
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
-	err = ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
 }
