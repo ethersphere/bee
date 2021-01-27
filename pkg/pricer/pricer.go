@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -25,18 +25,28 @@ var _ Interface = (*Pricer)(nil)
 
 // Pricer returns pricing information for chunk hashes and proximity orders
 type Interface interface {
+	// PriceTable returns pricetable stored for the node
+	PriceTable() []uint64
 	// PeerPrice is the price the peer charges for a given chunk hash.
 	PeerPrice(peer, chunk swarm.Address) uint64
-	// PriceForPeer is the price we charge for a given chunk hash.
+	// PriceForPeer is the price we charge a peer for a given chunk hash.
 	PriceForPeer(peer, chunk swarm.Address) uint64
-	PriceTable() (priceTable []uint64)
+	// NotifyPriceTable saves a provided pricetable for a peer to store
 	NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
+	// NotifyPeerPrice changes a value that belongs to an index in a peer pricetable
 	NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error
+	// PriceHeadler creates response headers with pricing information
 	PriceHeadler(p2p.Headers, swarm.Address) p2p.Headers
+	// MakePricingHeaders creates stream headers with presumed price and target address
 	MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error)
+	// MakePricingResponseHeaders creates stream response headers,
+	// with actual price, target address and index of price in self pricetable
 	MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uint8) (p2p.Headers, error)
+	// ReadPriceHeader reads the value of price field from provided stream headers
 	ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error)
+	// ReadPricingHeaders reads target and price from provided stream headers
 	ReadPricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error)
+	// ReadPricingResponseHeaders reads target, price and index from provided stream headers
 	ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error)
 }
 
@@ -64,7 +74,8 @@ func New(logger logging.Logger, store storage.StateStorer, overlay swarm.Address
 	}
 }
 
-// PeerPrice returns the price for the PO of a chunk from the table stored for the node.
+// PeerPrice returns the pricetable stored for the node
+// If not available, the default pricetable is provided
 func (s *Pricer) PriceTable() (priceTable []uint64) {
 	err := s.store.Get(priceTableKey(), &priceTable)
 	if err != nil {
@@ -127,7 +138,6 @@ func (s *Pricer) PriceWithIndexForPeer(peer, chunk swarm.Address) (price uint64,
 	}
 
 	return priceTable[proximity], proximity
-
 }
 
 // PricePO returns the price for a PO from the table stored for the node.
