@@ -67,7 +67,7 @@ func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
 		return nil, err
 	}
 	span := make([]byte, 8)
-	binary.BigEndian.PutUint64(span, uint64(len(content)))
+	binary.LittleEndian.PutUint64(span, uint64(len(content)))
 	err = hasher.SetSpanBytes(span)
 	if err != nil {
 		return nil, err
