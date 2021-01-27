@@ -167,8 +167,6 @@ func (k *Kad) manage() {
 					return false, false, err
 				}
 
-				k.logger.Debugf("kademlia dialing to peer %s", peer.String())
-
 				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 				if err != nil {
 					if errors.Is(err, errOverlayMismatch) {
@@ -177,8 +175,8 @@ func (k *Kad) manage() {
 							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
 						}
 					}
-					k.logger.Debugf("could not connect to peer from kademlia %s: %v", bzzAddr.String(), err)
-					k.logger.Warningf("could not connect to peer")
+					k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
+					k.logger.Warningf("peer not reachable when attempting to connect")
 					// continue to next
 					return false, false, nil
 				}
@@ -340,6 +338,7 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
+	k.logger.Infof("attempting to connect to peer %s", peer)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	i, err := k.p2p.Connect(ctx, ma)
