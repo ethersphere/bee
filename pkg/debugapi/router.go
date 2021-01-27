@@ -68,6 +68,10 @@ func (s *server) setupRouting() {
 	router.Handle("/peers", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
+	router.Handle("/peers/blocklisted", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
+	})
+
 	router.Handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})

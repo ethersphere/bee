@@ -21,6 +21,7 @@ type Service interface {
 	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	Disconnecter
 	Peers() []Peer
+	BlocklistedPeers() []Peer
 	Addresses() ([]ma.Multiaddr, error)
 	SetNotifier(Notifier)
 }
