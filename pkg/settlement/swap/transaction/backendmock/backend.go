@@ -23,6 +23,8 @@ type backendMock struct {
 	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	pendingNonceAt     func(ctx context.Context, account common.Address) (uint64, error)
 	transactionByHash  func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
+	blockNumber        func(ctx context.Context) (uint64, error)
+	headerByNumber     func(ctx context.Context, number *big.Int) (*types.Header, error)
 }
 
 func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
@@ -90,6 +92,20 @@ func (m *backendMock) TransactionByHash(ctx context.Context, hash common.Hash) (
 	return nil, false, errors.New("not implemented")
 }
 
+func (m *backendMock) BlockNumber(ctx context.Context) (uint64, error) {
+	if m.blockNumber != nil {
+		return m.blockNumber(ctx)
+	}
+	return 0, errors.New("not implemented")
+}
+
+func (m *backendMock) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	if m.headerByNumber != nil {
+		return m.headerByNumber(ctx, number)
+	}
+	return nil, errors.New("not implemented")
+}
+
 func New(opts ...Option) transaction.Backend {
 	mock := new(backendMock)
 	for _, o := range opts {
@@ -146,5 +162,17 @@ func WithTransactionByHashFunc(f func(ctx context.Context, txHash common.Hash) (
 func WithSendTransactionFunc(f func(ctx context.Context, tx *types.Transaction) error) Option {
 	return optionFunc(func(s *backendMock) {
 		s.sendTransaction = f
+	})
+}
+
+func WithBlockNumberFunc(f func(context.Context) (uint64, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.blockNumber = f
+	})
+}
+
+func WithHeaderbyNumberFunc(f func(ctx context.Context, number *big.Int) (*types.Header, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.headerByNumber = f
 	})
 }
