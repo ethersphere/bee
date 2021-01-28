@@ -92,7 +92,10 @@ func TestPeerPrice(t *testing.T) {
 	pricer.SetKademlia(kad)
 
 	peerTable := []uint64{55, 45, 35, 25, 15}
-	pricer.NotifyPriceTable(peer, peerTable)
+	err := pricer.NotifyPriceTable(peer, peerTable)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i, ch := range chunksByPOToPeer {
 
@@ -105,7 +108,10 @@ func TestPeerPrice(t *testing.T) {
 	neighborhoodPeer := swarm.MustParseHexAddress("00ef617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 	neighborhoodPeerTable := []uint64{36, 26, 16, 6}
 
-	pricer.NotifyPriceTable(neighborhoodPeer, neighborhoodPeerTable)
+	err = pricer.NotifyPriceTable(neighborhoodPeer, neighborhoodPeerTable)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	chunksByPOToNeighborhoodPeer := []swarm.Address{
 		swarm.MustParseHexAddress("95ef617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700"),
@@ -188,7 +194,10 @@ func TestNotifyPriceTable(t *testing.T) {
 	peer := swarm.MustParseHexAddress("ffff617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 	peerTable := []uint64{66, 55, 44, 33, 22, 11}
 
-	pricer.NotifyPriceTable(peer, peerTable)
+	err := pricer.NotifyPriceTable(peer, peerTable)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < len(peerTable); i++ {
 		getPrice, err := pricer.PeerPricePO(peer, uint8(i))
@@ -219,7 +228,10 @@ func TestNotifyPeerPrice(t *testing.T) {
 	peer := swarm.MustParseHexAddress("ffff617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 	peerTable := []uint64{33, 22, 11}
 
-	pricer.NotifyPriceTable(peer, peerTable)
+	err := pricer.NotifyPriceTable(peer, peerTable)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < len(peerTable); i++ {
 		getPrice, err := pricer.PeerPricePO(peer, uint8(i))
@@ -231,7 +243,7 @@ func TestNotifyPeerPrice(t *testing.T) {
 		}
 	}
 
-	err := pricer.NotifyPeerPrice(peer, 48, 8)
+	err = pricer.NotifyPeerPrice(peer, 48, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
