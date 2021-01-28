@@ -125,7 +125,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	}
 
 	// close the stream before processing in order to unblock the sending side
-	// fullclose is called async because there is no need to wait for conformation,
+	// fullclose is called async because there is no need to wait for confirmation,
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
 
