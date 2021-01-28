@@ -189,3 +189,25 @@ func parseEvent(a *abi.ABI, eventName string, c interface{}, e types.Log) error 
 	}
 	return abi.ParseTopics(c, indexed, e.Topics[1:])
 }
+
+func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageContractAddress common.Address) (common.Address, error) {
+	callData, err := postageStampABI.Pack("bzzToken")
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	request := &transaction.TxRequest{
+		To:       postageContractAddress,
+		Data:     callData,
+		GasPrice: nil,
+		GasLimit: 0,
+		Value:    big.NewInt(0),
+	}
+
+	data, err := transactionService.Call(ctx, request)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	return common.BytesToAddress(data), nil
+}

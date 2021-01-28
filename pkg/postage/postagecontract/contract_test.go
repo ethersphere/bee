@@ -111,3 +111,28 @@ func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) 
 		Topics:  []common.Hash{postagecontract.BatchCreatedTopic, batchId},
 	}
 }
+
+func TestLookupERC20Address(t *testing.T) {
+	postageStampAddress := common.HexToAddress("ffff")
+	erc20Address := common.HexToAddress("ffff")
+
+	addr, err := postagecontract.LookupERC20Address(
+		context.Background(),
+		transactionMock.New(
+			transactionMock.WitCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+				if request.To != postageStampAddress {
+					return nil, fmt.Errorf("called wrong contract. wanted %v, got %v", postageStampAddress, request.To)
+				}
+				return erc20Address.Hash().Bytes(), nil
+			}),
+		),
+		postageStampAddress,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if addr != postageStampAddress {
+		t.Fatalf("got wrong erc20 address. wanted %v, got %v", erc20Address, addr)
+	}
+}

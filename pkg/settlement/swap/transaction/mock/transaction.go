@@ -16,6 +16,7 @@ import (
 type transactionServiceMock struct {
 	send           func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error)
 	waitForReceipt func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
+	call           func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
@@ -28,6 +29,13 @@ func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.
 func (m *transactionServiceMock) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	if m.waitForReceipt != nil {
 		return m.waitForReceipt(ctx, txHash)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) Call(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+	if m.call != nil {
+		return m.call(ctx, request)
 	}
 	return nil, errors.New("not implemented")
 }
@@ -50,6 +58,12 @@ func WithSendFunc(f func(ctx context.Context, request *transaction.TxRequest) (t
 func WithWaitForReceiptFunc(f func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.waitForReceipt = f
+	})
+}
+
+func WitCallFunc(f func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.call = f
 	})
 }
 
