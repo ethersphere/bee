@@ -59,9 +59,9 @@ func FromChunk(ch swarm.Chunk) (uint64, []byte, error) {
 }
 
 func UpdatedAt(ch swarm.Chunk) (uint64, error) {
-	ts, _, err := FromChunk(ch)
-	if err != nil {
-		return 0, err
+	d := ch.Data()
+	if len(d) < 113 {
+		return 0, fmt.Errorf("too short: %d", len(d))
 	}
-	return ts, nil
+	return binary.BigEndian.Uint64(d[105:113]), nil
 }

@@ -56,7 +56,6 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 
 func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
 	hasher := bmtpool.Get()
-	defer hasher.Reset()
 	defer bmtpool.Put(hasher)
 
 	ts := make([]byte, 8)
