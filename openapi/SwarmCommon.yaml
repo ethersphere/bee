@@ -166,12 +166,22 @@ components:
     NewTagRequest:
       type: object
       properties:
-        name:
-          type: string
         address:
           $ref: '#/components/schemas/SwarmAddress'
 
     NewTagResponse:
+      type: object
+      properties:
+        uid:
+          $ref: '#/components/schemas/Uid'
+        startedAt:
+          $ref: '#/components/schemas/DateTime'
+        stored:
+          type: integer
+        synced:
+          type: integer
+
+    NewTagDebugResponse:
       type: object
       properties:
         total:
@@ -188,10 +198,6 @@ components:
           type: integer
         uid:
           $ref: '#/components/schemas/Uid'
-        anonymous:
-          type: boolean
-        name:
-          type: string
         address:
           $ref: '#/components/schemas/SwarmAddress'
         startedAt:
