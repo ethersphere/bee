@@ -85,7 +85,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	ip4Addr := "0.0.0.0"
-	ip6Addr := "::1"
+	ip6Addr := "::"
 
 	if host != "" {
 		ip := net.ParseIP(host)
