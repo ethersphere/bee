@@ -125,8 +125,8 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	if err != nil {
 		return err
 	}
-
-	s.metrics.AvailableBalance.Set(big.NewFloat(0).SetInt(balance).Float64())
+	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
+	s.metrics.AvailableBalance.Set(bal)
 	s.metrics.TotalSent.Add(float64(amount))
 	return nil
 }
