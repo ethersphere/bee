@@ -87,14 +87,18 @@ func (d *mock) Peers() []swarm.Address {
 
 func (d *mock) ClosestPeer(_ swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
 	if len(skipPeers) == 0 {
-		return d.closestPeer, d.closestPeerErr
+		if d.closestPeerErr != nil {
+			return d.closestPeer, d.closestPeerErr
+		}
+		if !d.closestPeer.Equal(swarm.ZeroAddress) {
+			return d.closestPeer, nil
+		}
 	}
 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
 	skipPeer := false
-
 	for _, p := range d.peers {
 		for _, a := range skipPeers {
 			if a.Equal(p) {
@@ -113,7 +117,6 @@ func (d *mock) ClosestPeer(_ swarm.Address, skipPeers ...swarm.Address) (peerAdd
 	if peerAddr.IsZero() {
 		return peerAddr, topology.ErrNotFound
 	}
-
 	return peerAddr, nil
 }
 

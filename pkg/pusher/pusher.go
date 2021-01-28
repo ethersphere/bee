@@ -7,7 +7,6 @@ package pusher
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -26,7 +25,7 @@ type Service struct {
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
 	logger            logging.Logger
-	tagg              *tags.Tags
+	tag               *tags.Tags
 	tracer            *tracing.Tracer
 	metrics           metrics
 	quit              chan struct{}
@@ -42,7 +41,7 @@ func New(storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer
 	service := &Service{
 		storer:            storer,
 		pushSyncer:        pushSyncer,
-		tagg:              tagger,
+		tag:               tagger,
 		logger:            logger,
 		tracer:            tracer,
 		metrics:           newMetrics(),
@@ -148,13 +147,13 @@ LOOP:
 				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
 					if !errors.Is(err, topology.ErrNotFound) {
-						logger.Debugf("pusher: error while sending chunk or receiving receipt: %v", err)
+						logger.Debugf("pusher: error push to closest: %v", err)
 					}
 					return
 				}
 				err = s.setChunkAsSynced(ctx, ch)
 				if err != nil {
-					logger.Debugf("pusher: error setting chunk as synced: %v", err)
+					logger.Debugf("pusher: error set sync: %v", err)
 					return
 				}
 			}(ctx, ch)
@@ -211,10 +210,10 @@ LOOP:
 
 func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
 	if err := s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-		return fmt.Errorf("set synced: %w", err)
+		return err
 	}
 
-	t, err := s.tagg.Get(ch.TagID())
+	t, err := s.tag.Get(ch.TagID())
 	if err == nil && t != nil {
 		err = t.Inc(tags.StateSynced)
 		if err != nil {
