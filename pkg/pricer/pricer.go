@@ -261,6 +261,7 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	if index <= currentIndexDepth {
 		// Simple case, already have index depth, single value change
 		priceTable[index] = price
+		s.logger.Debugf("Storing updated pricetable %v for peer %v", priceTable, peer)
 		return s.storePriceTable(peer, priceTable)
 	}
 
