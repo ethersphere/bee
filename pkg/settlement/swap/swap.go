@@ -126,7 +126,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		return err
 	}
 
-	balance, err := s.chequebook.AvailableBalance()
+	balance, err := s.chequebook.AvailableBalance(ctx)
 	if err != nil {
 		return err
 	}

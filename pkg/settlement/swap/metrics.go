@@ -38,7 +38,7 @@ func newMetrics() metrics {
 			Name:      "cheques_rejected",
 			Help:      "Number of cheques rejected",
 		}),
-		AvailableBalance: prometheus.NewGauge(prometheus.CounterOpts{
+		AvailableBalance: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "available_balance",
