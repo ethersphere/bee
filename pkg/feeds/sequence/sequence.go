@@ -66,10 +66,18 @@ func NewAsyncFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 }
 
 type path struct {
-	latest result
-	base   uint64
-	level  int
-	cancel chan struct{}
+	latest    result
+	base      uint64
+	level     int
+	cancel    chan struct{}
+	cancelled bool
+}
+
+func (p *path) close() {
+	if !p.cancelled {
+		close(p.cancel)
+		p.cancelled = true
+	}
 }
 
 func newPath(base uint64) *path {
@@ -116,27 +124,21 @@ func (f *AsyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			}
 			p.level = r.level - 1
 		} else {
-			if p.cancel != nil {
-				close(p.cancel)
-				p.cancel = nil
-			}
 			if r.diff == 0 {
 				return r.chunk, nil
 			}
 			if p.latest.level > r.level {
 				continue
 			}
+			p.close()
 			p.latest = r
 		}
 		// below applies even  if  p.latest==maxLevel
 		if p.latest.level == p.level {
 			if p.level == 0 {
-				if p.cancel != nil {
-					close(p.cancel)
-					p.cancel = nil
-				}
 				return p.latest.chunk, nil
 			}
+			p.close()
 			np := newPath(p.latest.seq)
 			np.level = p.level
 			np.latest.chunk = p.latest.chunk

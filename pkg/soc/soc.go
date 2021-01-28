@@ -246,7 +246,7 @@ func contentAddressedChunk(data, spanBytes []byte) (swarm.Chunk, error) {
 	}
 	s := hasher.Sum(nil)
 
-	payload := append(spanBytes, data...)
+	payload := append(append([]byte{}, spanBytes...), data...)
 	address := swarm.NewAddress(s)
 	return swarm.NewChunk(address, payload), nil
 }
