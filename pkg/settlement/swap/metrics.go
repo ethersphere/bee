@@ -10,12 +10,10 @@ import (
 )
 
 type metrics struct {
-	// all metrics fields must be exported
-	// to be able to return them by Metrics()
-	// using reflection
-	TotalReceived   prometheus.Counter
-	TotalSent       prometheus.Counter
-	ChequesRejected prometheus.Counter
+	TotalReceived    prometheus.Counter
+	TotalSent        prometheus.Counter
+	ChequesRejected  prometheus.Counter
+	AvailableBalance prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -39,6 +37,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "cheques_rejected",
 			Help:      "Number of cheques rejected",
+		}),
+		AvailableBalance: prometheus.NewGauge(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "available_balance",
+			Help:      "Currently availeble chequebook balance.",
 		}),
 	}
 }

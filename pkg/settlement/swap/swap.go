@@ -125,6 +125,12 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	if err != nil {
 		return err
 	}
+
+	balance, err := s.chequebook.AvailableBalance()
+	if err != nil {
+		return err
+	}
+	s.metrics.AvailableBalance.Set(float64(balance.Int64()))
 	s.metrics.TotalSent.Add(float64(amount))
 	return nil
 }
