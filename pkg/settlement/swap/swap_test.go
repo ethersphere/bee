@@ -285,7 +285,7 @@ func TestPay(t *testing.T) {
 	peer := swarm.MustParseHexAddress("abcd")
 	var chequebookCalled bool
 	chequebookService := mockchequebook.NewChequebook(
-		mockchequebook.WithChequebookIssueFunc(func(ctx context.Context, b common.Address, a *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
+		mockchequebook.WithChequebookIssueFunc(func(ctx context.Context, b common.Address, a *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
 			if b != beneficiary {
 				t.Fatalf("issuing cheque for wrong beneficiary. wanted %v, got %v", beneficiary, b)
 			}
@@ -293,7 +293,7 @@ func TestPay(t *testing.T) {
 				t.Fatalf("issuing cheque with wrong amount. wanted %d, got %d", amount, a)
 			}
 			chequebookCalled = true
-			return sendChequeFunc(&cheque)
+			return big.NewInt(0), sendChequeFunc(&cheque)
 		}),
 	)
 
@@ -355,8 +355,8 @@ func TestPayIssueError(t *testing.T) {
 	peer := swarm.MustParseHexAddress("abcd")
 	errReject := errors.New("reject")
 	chequebookService := mockchequebook.NewChequebook(
-		mockchequebook.WithChequebookIssueFunc(func(ctx context.Context, b common.Address, a *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
-			return errReject
+		mockchequebook.WithChequebookIssueFunc(func(ctx context.Context, b common.Address, a *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
+			return big.NewInt(0), errReject
 		}),
 	)
 

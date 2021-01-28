@@ -18,7 +18,7 @@ type Service struct {
 	chequebookBalanceFunc          func(context.Context) (*big.Int, error)
 	chequebookAvailableBalanceFunc func(context.Context) (*big.Int, error)
 	chequebookAddressFunc          func() common.Address
-	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error
+	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error)
 	chequebookWithdrawFunc         func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 	chequebookDepositFunc          func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 }
@@ -48,7 +48,7 @@ func WithChequebookDepositFunc(f func(ctx context.Context, amount *big.Int) (has
 	})
 }
 
-func WithChequebookIssueFunc(f func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error) Option {
+func WithChequebookIssueFunc(f func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookIssueFunc = f
 	})
@@ -105,11 +105,11 @@ func (s *Service) Address() common.Address {
 	return common.Address{}
 }
 
-func (s *Service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) error {
+func (s *Service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
 	if s.chequebookIssueFunc != nil {
 		return s.chequebookIssueFunc(ctx, beneficiary, amount, sendChequeFunc)
 	}
-	return nil
+	return big.NewInt(0), nil
 }
 
 func (s *Service) LastCheque(beneficiary common.Address) (*chequebook.SignedCheque, error) {

@@ -292,7 +292,7 @@ func TestChequebookIssue(t *testing.T) {
 		return sig, nil
 	}
 
-	err = chequebookService.Issue(context.Background(), beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
+	_, err = chequebookService.Issue(context.Background(), beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
 		if !cheque.Equal(expectedCheque) {
 			t.Fatalf("wrong cheque. wanted %v got %v", expectedCheque, cheque)
 		}
@@ -328,7 +328,7 @@ func TestChequebookIssue(t *testing.T) {
 		return sig, nil
 	}
 
-	err = chequebookService.Issue(context.Background(), beneficiary, amount2, func(cheque *chequebook.SignedCheque) error {
+	_, err = chequebookService.Issue(context.Background(), beneficiary, amount2, func(cheque *chequebook.SignedCheque) error {
 		if !cheque.Equal(expectedCheque) {
 			t.Fatalf("wrong cheque. wanted %v got %v", expectedCheque, cheque)
 		}
@@ -364,7 +364,7 @@ func TestChequebookIssue(t *testing.T) {
 		return sig, nil
 	}
 
-	err = chequebookService.Issue(context.Background(), ownerAdress, amount, func(cheque *chequebook.SignedCheque) error {
+	_, err = chequebookService.Issue(context.Background(), ownerAdress, amount, func(cheque *chequebook.SignedCheque) error {
 		if !cheque.Equal(expectedChequeOwner) {
 			t.Fatalf("wrong cheque. wanted %v got %v", expectedChequeOwner, cheque)
 		}
@@ -430,7 +430,7 @@ func TestChequebookIssueErrorSend(t *testing.T) {
 		return sig, nil
 	}
 
-	err = chequebookService.Issue(context.Background(), beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
+	_, err = chequebookService.Issue(context.Background(), beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
 		return errors.New("err")
 	})
 	if err == nil {
@@ -474,7 +474,7 @@ func TestChequebookIssueOutOfFunds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = chequebookService.Issue(context.Background(), beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
+	_, err = chequebookService.Issue(context.Background(), beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
 		return nil
 	})
 	if !errors.Is(err, chequebook.ErrOutOfFunds) {
