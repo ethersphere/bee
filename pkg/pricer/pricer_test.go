@@ -5,8 +5,6 @@
 package pricer_test
 
 import (
-	//"context"
-	//"errors"
 	"encoding/binary"
 	"io/ioutil"
 	"reflect"

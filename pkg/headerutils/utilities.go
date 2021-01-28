@@ -19,14 +19,10 @@ func MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, err
 	chunkPriceInBytes := make([]byte, 8)
 
 	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
-	chunkAddressInBytes, err := addr.MarshalJSON()
-	if err != nil {
-		return p2p.Headers{}, err
-	}
 
 	headers := p2p.Headers{
 		"price":  chunkPriceInBytes,
-		"target": chunkAddressInBytes,
+		"target": addr.Bytes(),
 	}
 
 	return headers, nil
@@ -40,15 +36,10 @@ func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uin
 
 	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
 	chunkIndexInBytes[0] = index
-	chunkAddressInBytes, err := addr.MarshalJSON()
-
-	if err != nil {
-		return p2p.Headers{}, err
-	}
 
 	headers := p2p.Headers{
 		"price":  chunkPriceInBytes,
-		"target": chunkAddressInBytes,
+		"target": addr.Bytes(),
 		"index":  chunkIndexInBytes,
 	}
 
@@ -106,10 +97,7 @@ func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 	}
 
 	var target swarm.Address
-	err := target.UnmarshalJSON(receivedHeaders["target"])
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
+	target = swarm.NewAddress(receivedHeaders["target"])
 
 	return target, nil
 }
