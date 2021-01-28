@@ -5,8 +5,10 @@
 package blocklist
 
 import (
+	"strings"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -69,6 +71,38 @@ func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration) (err erro
 	})
 }
 
+// Peers returns all currently blocklisted peers.
+func (b *Blocklist) Peers() ([]p2p.Peer, error) {
+	var peers []p2p.Peer
+	if err := b.store.Iterate(keyPrefix, func(k, v []byte) (bool, error) {
+		if !strings.HasPrefix(string(k), keyPrefix) {
+			return true, nil
+		}
+		addr, err := unmarshalKey(string(k))
+		if err != nil {
+			return true, err
+		}
+
+		t, d, err := b.get(string(k))
+		if err != nil {
+			return true, err
+		}
+
+		if timeNow().Sub(t) > d && d != 0 {
+			// skip to the next item
+			return false, nil
+		}
+
+		p := p2p.Peer{Address: addr}
+		peers = append(peers, p)
+		return false, nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return peers, nil
+}
+
 func (b *Blocklist) get(key string) (timestamp time.Time, duration time.Duration, err error) {
 	var e entry
 	if err := b.store.Get(key, &e); err != nil {
@@ -85,4 +119,9 @@ func (b *Blocklist) get(key string) (timestamp time.Time, duration time.Duration
 
 func generateKey(overlay swarm.Address) string {
 	return keyPrefix + overlay.String()
+}
+
+func unmarshalKey(s string) (swarm.Address, error) {
+	addr := strings.TrimLeft(s, keyPrefix)
+	return swarm.ParseHexAddress(addr)
 }

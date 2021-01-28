@@ -585,8 +585,8 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
-func (s *Service) BlocklistedPeers() []p2p.Peer {
-	return s.peers.peers()
+func (s *Service) BlocklistedPeers() ([]p2p.Peer, error) {
+	return s.blocklist.Peers()
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
