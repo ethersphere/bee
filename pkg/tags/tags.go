@@ -52,10 +52,10 @@ func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
 	}
 }
 
-// Create creates a new tag, stores it by the name and returns it
-// it returns an error if the tag with this name already exists
-func (ts *Tags) Create(s string, total int64) (*Tag, error) {
-	t := NewTag(context.Background(), TagUidFunc(), s, total, nil, ts.stateStore, ts.logger)
+// Create creates a new tag, stores it by the UID and returns it
+// it returns an error if the tag with this UID already exists
+func (ts *Tags) Create(total int64) (*Tag, error) {
+	t := NewTag(context.Background(), TagUidFunc(), total, nil, ts.stateStore, ts.logger)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
 		return nil, errExists

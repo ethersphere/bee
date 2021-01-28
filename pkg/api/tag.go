@@ -7,7 +7,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -20,13 +19,11 @@ import (
 )
 
 type tagRequest struct {
-	Name    string        `json:"name,omitempty"`
 	Address swarm.Address `json:"address,omitempty"`
 }
 
 type tagResponse struct {
 	Uid       uint32    `json:"uid"`
-	Name      string    `json:"name"`
 	StartedAt time.Time `json:"startedAt"`
 	Stored    int64     `json:"stored"`
 	Synced    int64     `json:"synced"`
@@ -35,7 +32,6 @@ type tagResponse struct {
 func newTagResponse(tag *tags.Tag) tagResponse {
 	return tagResponse{
 		Uid:       tag.Uid,
-		Name:      tag.Name,
 		StartedAt: tag.StartedAt,
 		Stored:    tag.Stored,
 		Synced:    tag.Seen + tag.Synced,
@@ -65,11 +61,7 @@ func (s *server) createTagHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if tagr.Name == "" {
-		tagr.Name = fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
-	}
-
-	tag, err := s.Tags.Create(tagr.Name, 0)
+	tag, err := s.Tags.Create(0)
 	if err != nil {
 		s.Logger.Debugf("create tag: tag create error: %v", err)
 		s.Logger.Error("create tag: tag create error")

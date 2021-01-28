@@ -111,7 +111,7 @@ func TestPushChunkToClosest(t *testing.T) {
 	psPivot, storerPivot, pivotTags, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, nil, mock.WithClosestPeer(closestPeer))
 	defer storerPivot.Close()
 
-	ta, err := pivotTags.Create("test", 1)
+	ta, err := pivotTags.Create(1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	)
 	defer storerPivot.Close()
 
-	ta, err := pivotTags.Create("test", 1)
+	ta, err := pivotTags.Create(1)
 	if err != nil {
 		t.Fatal(err)
 	}

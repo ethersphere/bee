@@ -60,7 +60,6 @@ type Tag struct {
 	Synced int64 // number of chunks synced with proof
 
 	Uid       uint32        // a unique identifier for this tag
-	Name      string        // a name tag for this tag
 	Address   swarm.Address // the associated swarm hash for this tag
 	StartedAt time.Time     // tag started to calculate ETA
 
@@ -73,10 +72,9 @@ type Tag struct {
 }
 
 // NewTag creates a new tag, and returns it
-func NewTag(ctx context.Context, uid uint32, s string, total int64, tracer *tracing.Tracer, stateStore storage.StateStorer, logger logging.Logger) *Tag {
+func NewTag(ctx context.Context, uid uint32, total int64, tracer *tracing.Tracer, stateStore storage.StateStorer, logger logging.Logger) *Tag {
 	t := &Tag{
 		Uid:        uid,
-		Name:       s,
 		StartedAt:  time.Now(),
 		Total:      total,
 		stateStore: stateStore,
@@ -259,7 +257,6 @@ func (tag *Tag) MarshalBinary() (data []byte, err error) {
 	n = binary.PutVarint(intBuffer, int64(len(tag.Address.Bytes())))
 	buffer = append(buffer, intBuffer[:n]...)
 	buffer = append(buffer, tag.Address.Bytes()...)
-	buffer = append(buffer, []byte(tag.Name)...)
 
 	return buffer, nil
 }
@@ -288,7 +285,6 @@ func (tag *Tag) UnmarshalBinary(buffer []byte) error {
 	if t > 0 {
 		tag.Address = swarm.NewAddress(buffer[:t])
 	}
-	tag.Name = string(buffer[t:])
 
 	return nil
 }

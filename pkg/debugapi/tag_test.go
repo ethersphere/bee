@@ -43,7 +43,7 @@ func TestTags(t *testing.T) {
 	}
 
 	t.Run("all", func(t *testing.T) {
-		tag, err := tagsStore.Create("", 0)
+		tag, err := tagsStore.Create(0)
 		if err != nil {
 			t.Fatal(err)
 		}

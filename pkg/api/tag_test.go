@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -41,7 +40,6 @@ func TestTags(t *testing.T) {
 		chunksResource = "/chunks"
 		tagsResource   = "/tags"
 		chunk          = testingc.GenerateTestRandomChunk()
-		someTagName    = "file.jpg"
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 0)
 		tag            = tags.NewTags(mockStatestore, logger)
@@ -51,30 +49,12 @@ func TestTags(t *testing.T) {
 		})
 	)
 
-	t.Run("create unnamed tag", func(t *testing.T) {
+	t.Run("create tag", func(t *testing.T) {
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
 			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
-
-		if !strings.Contains(tr.Name, "unnamed_tag_") {
-			t.Fatalf("expected tag name to contain %s but is %s instead", "unnamed_tag_", tr.Name)
-		}
-	})
-
-	t.Run("create tag with name", func(t *testing.T) {
-		tr := api.TagResponse{}
-		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
-			jsonhttptest.WithJSONRequestBody(api.TagRequest{
-				Name: someTagName,
-			}),
-			jsonhttptest.WithUnmarshalJSONResponse(&tr),
-		)
-
-		if tr.Name != someTagName {
-			t.Fatalf("expected tag name to be %s but is %s instead", someTagName, tr.Name)
-		}
 	})
 
 	t.Run("create tag with invalid id", func(t *testing.T) {
@@ -110,15 +90,9 @@ func TestTags(t *testing.T) {
 		// create a tag using the API
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
-			jsonhttptest.WithJSONRequestBody(api.TagResponse{
-				Name: someTagName,
-			}),
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
-
-		if tr.Name != someTagName {
-			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
-		}
 
 		_ = jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
@@ -157,9 +131,7 @@ func TestTags(t *testing.T) {
 		// create a tag through API
 		tRes := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
-			jsonhttptest.WithJSONRequestBody(api.TagResponse{
-				Name: someTagName,
-			}),
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 
@@ -201,9 +173,7 @@ func TestTags(t *testing.T) {
 		// create a tag through API
 		tRes := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
-			jsonhttptest.WithJSONRequestBody(api.TagResponse{
-				Name: someTagName,
-			}),
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
 		tagId := tRes.Uid
@@ -289,14 +259,9 @@ func TestTags(t *testing.T) {
 		// create a tag using the API
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
-			jsonhttptest.WithJSONRequestBody(api.TagResponse{
-				Name: someTagName,
-			}),
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
-		if tr.Name != someTagName {
-			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
-		}
 
 		sentHeaders := make(http.Header)
 		sentHeaders.Set(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10))

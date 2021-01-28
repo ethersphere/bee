@@ -24,7 +24,6 @@ type tagResponse struct {
 	Sent      int64         `json:"sent"`
 	Synced    int64         `json:"synced"`
 	Uid       uint32        `json:"uid"`
-	Name      string        `json:"name"`
 	Address   swarm.Address `json:"address"`
 	StartedAt time.Time     `json:"startedAt"`
 }
@@ -38,7 +37,6 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 		Sent:      tag.Sent,
 		Synced:    tag.Synced,
 		Uid:       tag.Uid,
-		Name:      tag.Name,
 		Address:   tag.Address,
 		StartedAt: tag.StartedAt,
 	}

@@ -29,10 +29,10 @@ func TestAll(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
 	logger := logging.New(ioutil.Discard, 0)
 	ts := NewTags(mockStatestore, logger)
-	if _, err := ts.Create("1", 1); err != nil {
+	if _, err := ts.Create(1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ts.Create("2", 1); err != nil {
+	if _, err := ts.Create(1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,7 +50,7 @@ func TestAll(t *testing.T) {
 		t.Fatalf("expected tag 1 Total to be 1 got %d", n)
 	}
 
-	if _, err := ts.Create("3", 1); err != nil {
+	if _, err := ts.Create(1); err != nil {
 		t.Fatal(err)
 	}
 	all = ts.All()
@@ -64,7 +64,7 @@ func TestPersistence(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
 	logger := logging.New(ioutil.Discard, 0)
 	ts := NewTags(mockStatestore, logger)
-	ta, err := ts.Create("one", 1)
+	ta, err := ts.Create(1)
 	if err != nil {
 		t.Fatal(err)
 	}
