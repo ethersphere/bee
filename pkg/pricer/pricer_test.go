@@ -159,20 +159,19 @@ func TestPriceForPeer(t *testing.T) {
 
 		getPrice := pricer.PriceForPeer(peer, ch)
 		if getPrice != defaultTable[i] {
-			t.Fatalf("unexpected PeerPrice, got %v expected %v", getPrice, defaultTable[i])
+			t.Fatalf("unexpected price for peer, got %v expected %v", getPrice, defaultTable[i])
 		}
 	}
 
-	neighborhoodPeer := swarm.MustParseHexAddress("e6ef617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
+	neighborhoodPeer := swarm.MustParseHexAddress("e7ef617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 	expectedPricesInNeighborhood := []uint64{50, 40, 30, 20, 0}
 
 	for i, ch := range chunksByPOToOverlay {
-		getPrice := pricer.PeerPrice(neighborhoodPeer, ch)
+		getPrice := pricer.PriceForPeer(neighborhoodPeer, ch)
 		if getPrice != expectedPricesInNeighborhood[i] {
-			t.Fatalf("unexpected PeerPrice, got %v expected %v", getPrice, expectedPricesInNeighborhood[i])
+			t.Fatalf("unexpected price for peer, got %v expected %v", getPrice, expectedPricesInNeighborhood[i])
 		}
 	}
-
 }
 
 func TestNotifyPriceTable(t *testing.T) {
@@ -206,7 +205,6 @@ func TestNotifyPriceTable(t *testing.T) {
 			t.Fatalf("unexpected PeerPricePO, got %v expected %v", getPrice, peerTable[i])
 		}
 	}
-
 }
 
 func TestNotifyPeerPrice(t *testing.T) {
@@ -333,7 +331,6 @@ func TestPricerHeadler(t *testing.T) {
 	if !reflect.DeepEqual(responseHeaders["price"], chunkPriceInResponse) {
 		t.Fatalf("targets don't match, got %v, want %v", responseHeaders["price"], chunkPriceInResponse)
 	}
-
 }
 
 func TestPricerHeadlerBadHeaders(t *testing.T) {

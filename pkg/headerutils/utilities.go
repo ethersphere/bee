@@ -26,7 +26,6 @@ func MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, err
 	}
 
 	return headers, nil
-
 }
 
 func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uint8) (p2p.Headers, error) {
@@ -44,7 +43,6 @@ func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uin
 	}
 
 	return headers, nil
-
 }
 
 // ReadPricingHeaders used by responder to read address and price from stream headers
@@ -60,7 +58,6 @@ func ReadPricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, err
 		return swarm.ZeroAddress, 0, err
 	}
 	return target, price, nil
-
 }
 
 // ReadPricingResponseHeaders used by requester to read address, price and index from response headers
