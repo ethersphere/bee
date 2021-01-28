@@ -17,6 +17,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/headerutils"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -211,7 +212,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 	defer s.accounting.Release(peer, chunkPrice)
 
-	headers, err := s.pricer.MakePricingHeaders(chunkPrice, addr)
+	headers, err := headerutils.MakePricingHeaders(chunkPrice, addr)
 	if err != nil {
 		return nil, swarm.Address{}, err
 	}
@@ -233,7 +234,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		}
 	}()
 
-	returnedTarget, returnedPrice, returnedIndex, err := s.pricer.ReadPricingResponseHeaders(returnedHeaders)
+	returnedTarget, returnedPrice, returnedIndex, err := headerutils.ReadPricingResponseHeaders(returnedHeaders)
 	if err != nil {
 		return nil, peer, fmt.Errorf("retrieval headers: read returned: %w", err)
 	}
@@ -385,7 +386,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	// to get price Read in headler,
 	returnedHeaders := stream.ResponseHeaders()
-	chunkPrice, err := s.pricer.ReadPriceHeader(returnedHeaders)
+	chunkPrice, err := headerutils.ReadPriceHeader(returnedHeaders)
 
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and

@@ -17,6 +17,7 @@ import (
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 
+	"github.com/ethersphere/bee/pkg/headerutils"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -47,16 +48,13 @@ func TestDelivery(t *testing.T) {
 
 	serverMockAccounting := accountingmock.NewAccounting()
 
-	readPricingResponseFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
-		return swarm.MustParseHexAddress("0033153ac8cfb0c343db1795f578c15ed8ef827f3e68ed3c58329900bf0d7276"), 10, 0, nil
-	}
-
-	readPriceFunc := func(receivedHeaders p2p.Headers) (uint64, error) {
-		return 10, nil
+	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
+		headers, _ := headerutils.MakePricingResponseHeaders(10, chunk.Address(), 0)
+		return headers
 	}
 
 	price := uint64(10)
-	pricerMock := pricermock.NewMockService(pricermock.WithReadPricingResponseHeadersFunc(readPricingResponseFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
+	pricerMock := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil)
@@ -143,15 +141,13 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 	logger := logging.New(os.Stdout, 5)
 
-	readPricingResponseFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
-		return swarm.MustParseHexAddress("0033153ac8cfb0c343db1795f578c15ed8ef827f3e68ed3c58329900bf0d7276"), 10, 0, nil
+	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
+		target, _ := headerutils.ReadTargetHeader(h)
+		headers, _ := headerutils.MakePricingResponseHeaders(10, target, 0)
+		return headers
 	}
 
-	readPriceFunc := func(receivedHeaders p2p.Headers) (uint64, error) {
-		return 10, nil
-	}
-
-	pricer := pricermock.NewMockService(pricermock.WithReadPricingResponseHeadersFunc(readPricingResponseFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
+	pricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 
 	// requesting a chunk from downstream peer is expected
 	t.Run("downstream", func(t *testing.T) {
@@ -251,16 +247,14 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")
 
-	readPricingResponseFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
-		return swarm.MustParseHexAddress("02c2bd0db71efb7d245eafcc1c126189c1f598feb80e8f14e7ecef913c6a2ef5"), 10, 0, nil
-	}
-
-	readPriceFunc := func(receivedHeaders p2p.Headers) (uint64, error) {
-		return 10, nil
+	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
+		target, _ := headerutils.ReadTargetHeader(h)
+		headers, _ := headerutils.MakePricingResponseHeaders(10, target, 0)
+		return headers
 	}
 
 	price := uint64(10)
-	pricerMock := pricermock.NewMockService(pricermock.WithReadPricingResponseHeadersFunc(readPricingResponseFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
+	pricerMock := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 
 	clientAddress := swarm.MustParseHexAddress("1010")
 

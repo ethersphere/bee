@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/headerutils"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -402,15 +403,13 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	mtag := tags.NewTags(mockStatestore, logger)
 	mockAccounting := accountingmock.NewAccounting()
 
-	readPricingResponseFunc := func(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
-		return swarm.MustParseHexAddress("70002115a015d40a1f5ef68c29d072f06fae58854934c1cb399fcb63cf336127"), 10, 0, nil
+	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
+		target, _ := headerutils.ReadTargetHeader(h)
+		headers, _ := headerutils.MakePricingResponseHeaders(10, target, 0)
+		return headers
 	}
 
-	readPriceFunc := func(receivedHeaders p2p.Headers) (uint64, error) {
-		return 10, nil
-	}
-
-	mockPricer := pricermock.NewMockService(pricermock.WithReadPricingResponseHeadersFunc(readPricingResponseFunc), pricermock.WithReadPriceHeaderFunc(readPriceFunc))
+	mockPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 
 	recorderDisconnecter := streamtest.NewRecorderDisconnecter(recorder)
 	if unwrap == nil {
