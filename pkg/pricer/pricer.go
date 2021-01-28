@@ -5,11 +5,11 @@
 package pricer
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/headerutils"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -37,17 +37,6 @@ type Interface interface {
 	NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error
 	// PriceHeadler creates response headers with pricing information
 	PriceHeadler(p2p.Headers, swarm.Address) p2p.Headers
-	// MakePricingHeaders creates stream headers with presumed price and target address
-	MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error)
-	// MakePricingResponseHeaders creates stream response headers,
-	// with actual price, target address and index of price in self pricetable
-	MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uint8) (p2p.Headers, error)
-	// ReadPriceHeader reads the value of price field from provided stream headers
-	ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error)
-	// ReadPricingHeaders reads target and price from provided stream headers
-	ReadPricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error)
-	// ReadPricingResponseHeaders reads target, price and index from provided stream headers
-	ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error)
 }
 
 type pricingPeer struct {
@@ -227,6 +216,15 @@ func (s *Pricer) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
 	return peerData, nil
 }
 
+func (s *Pricer) storePriceTable(peer swarm.Address, priceTable []uint64) error {
+	s.logger.Debugf("Storing pricetable %v for peer %v", priceTable, peer)
+	err := s.store.Put(peerPriceTableKey(peer), priceTable)
+	if err != nil {
+		return fmt.Errorf("failed to persist pricetable for peer %v: %w", peer, err)
+	}
+	return nil
+}
+
 // NotifyPriceTable should be called to notify pricer of changes in the peers pricetable
 func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
 	pricingPeer, err := s.getPricingPeer(peer)
@@ -236,14 +234,8 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 
 	pricingPeer.lock.Lock()
 	defer pricingPeer.lock.Unlock()
-	s.logger.Debugf("Storing pricetable %v for peer %v", priceTable, peer)
 
-	err = s.store.Put(peerPriceTableKey(peer), priceTable)
-	if err != nil {
-		return fmt.Errorf("failed to persist pricetable for peer %v: %w", peer, err)
-	}
-
-	return nil
+	return s.storePriceTable(peer, priceTable)
 }
 
 func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error {
@@ -252,6 +244,14 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 		return nil
 	}
 
+	pricingPeer, err := s.getPricingPeer(peer)
+	if err != nil {
+		return err
+	}
+
+	pricingPeer.lock.Lock()
+	defer pricingPeer.lock.Unlock()
+
 	priceTable := s.PeerPriceTable(peer)
 	currentIndexDepth := uint8(len(priceTable)) - 1
 
@@ -259,7 +259,7 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 		// Simple case, already have index depth, single value change
 		priceTable[index] = price
 		s.logger.Debugf("Storing updated pricetable %v for peer %v", priceTable, peer)
-		return s.NotifyPriceTable(peer, priceTable)
+		return s.storePriceTable(peer, priceTable)
 	}
 
 	// Complicated case, index is larger than depth of already known table
@@ -277,17 +277,10 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	numberOfMissingRows := index - currentIndexDepth
 
 	if numberOfMissingRows > 1 {
-		// We have to add multiple values, most of which we are guessing for now
-		// Get last known price from table
-		maxPOPrice := priceTable[currentIndexDepth]
-		// Get difference of learned price for index and last known price for known length
-		priceDifference := max(price, maxPOPrice) - min(price, maxPOPrice)
-		// Get average difference for increase on each lower PO
-		averagePriceGap := priceDifference / uint64(numberOfMissingRows)
 
 		for i := uint8(1); i < numberOfMissingRows; i++ {
 			currentrow := index - i
-			newPriceTable[currentrow] = price + uint64(i)*averagePriceGap
+			newPriceTable[currentrow] = price + uint64(i)*s.poPrice
 			s.logger.Debugf("Guessing price %v for extending pricetable %v for peer %v", newPriceTable[currentrow], newPriceTable, peer)
 		}
 
@@ -297,7 +290,7 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	newPriceTable[index] = price
 
 	s.logger.Debugf("Storing extended pricetable %v for peer %v", newPriceTable, peer)
-	return s.NotifyPriceTable(peer, newPriceTable)
+	return s.storePriceTable(peer, newPriceTable)
 }
 
 func (s *Pricer) DefaultPriceTable() []uint64 {
@@ -348,7 +341,7 @@ func (s *Pricer) neighborhoodDepth() uint8 {
 
 func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
 
-	chunkAddress, receivedPrice, err := s.ReadPricingHeaders(receivedHeaders)
+	chunkAddress, receivedPrice, err := headerutils.ReadPricingHeaders(receivedHeaders)
 	if err != nil {
 		return p2p.Headers{
 			"error": []byte("No target specified or error unmarshaling target streamheader of request"),
@@ -358,7 +351,7 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 	s.logger.Debugf("price headler: received target %v with price as %v, from peer %s", chunkAddress, receivedPrice, peerAddress)
 	checkPrice, index := s.PriceWithIndexForPeer(peerAddress, chunkAddress)
 
-	returnHeaders, err = s.MakePricingResponseHeaders(checkPrice, chunkAddress, index)
+	returnHeaders, err = headerutils.MakePricingResponseHeaders(checkPrice, chunkAddress, index)
 	if err != nil {
 		return p2p.Headers{
 			"error": []byte("Error remarshaling target for response streamheader"),
@@ -370,134 +363,6 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 
 }
 
-func (s *Pricer) MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
-
-	chunkPriceInBytes := make([]byte, 8)
-
-	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
-	chunkAddressInBytes, err := addr.MarshalJSON()
-	if err != nil {
-		return p2p.Headers{}, err
-	}
-
-	headers := p2p.Headers{
-		"price":  chunkPriceInBytes,
-		"target": chunkAddressInBytes,
-	}
-
-	return headers, nil
-
-}
-
-func (s *Pricer) MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uint8) (p2p.Headers, error) {
-
-	chunkPriceInBytes := make([]byte, 8)
-	chunkIndexInBytes := make([]byte, 1)
-
-	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
-	chunkIndexInBytes[0] = index
-	chunkAddressInBytes, err := addr.MarshalJSON()
-
-	if err != nil {
-		return p2p.Headers{}, err
-	}
-
-	headers := p2p.Headers{
-		"price":  chunkPriceInBytes,
-		"target": chunkAddressInBytes,
-		"index":  chunkIndexInBytes,
-	}
-
-	return headers, nil
-
-}
-
-// ReadPricingHeaders used by responder to read address and price from stream headers
-// Returns an error if no target field attached or the contents of it are not readable
-func (s *Pricer) ReadPricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
-
-	target, err := s.ReadTargetHeader(receivedHeaders)
-	if err != nil {
-		s.logger.Errorf("price headers: parsing received header target field error: %w", err)
-		return swarm.ZeroAddress, 0, err
-	}
-	price, err := s.ReadPriceHeader(receivedHeaders)
-	if err != nil {
-		s.logger.Errorf("price headers: parsing received header price field error: %w", err)
-		return swarm.ZeroAddress, 0, err
-	}
-	return target, price, nil
-
-}
-
-// ReadPricingResponseHeaders used by requester to read address, price and index from response headers
-// Returns an error if any fields are missing or target is unreadable
-func (s *Pricer) ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
-	target, err := s.ReadTargetHeader(receivedHeaders)
-	if err != nil {
-		s.logger.Errorf("price headers: parsing received header target field error: %w", err)
-		return swarm.ZeroAddress, 0, 0, err
-	}
-	price, err := s.ReadPriceHeader(receivedHeaders)
-	if err != nil {
-		s.logger.Errorf("price headers: parsing received header price field error: %w", err)
-		return swarm.ZeroAddress, 0, 0, err
-	}
-	index, err := s.ReadIndexHeader(receivedHeaders)
-	if err != nil {
-		s.logger.Errorf("price headers: parsing received header index field error: %w", err)
-		return swarm.ZeroAddress, 0, 0, err
-	}
-
-	return target, price, index, nil
-}
-
-func (s *Pricer) ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
-	if receivedHeaders["index"] == nil {
-		return 0, fmt.Errorf("no index header")
-	}
-
-	index := receivedHeaders["index"][0]
-	return index, nil
-}
-
-func (s *Pricer) ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
-	if receivedHeaders["target"] == nil {
-		return swarm.ZeroAddress, fmt.Errorf("no target header")
-	}
-
-	var target swarm.Address
-	err := target.UnmarshalJSON(receivedHeaders["target"])
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-
-	return target, nil
-}
-
-func (s *Pricer) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
-	if receivedHeaders["price"] == nil {
-		return 0, fmt.Errorf("no price header")
-	}
-
-	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
-	return receivedPrice, nil
-}
-
 func (s *Pricer) SetKademlia(kad topology.Driver) {
 	s.topology = kad
-}
-
-func max(x, y uint64) uint64 {
-	if x < y {
-		return y
-	}
-	return x
-}
-
-func min(x, y uint64) uint64 {
-	if x >= y {
-		return y
-	}
-	return x
 }
