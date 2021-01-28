@@ -319,26 +319,6 @@ func (s *Pricer) neighborhoodDepth() uint8 {
 	return neighborhoodDepth
 }
 
-//
-// S
-//
-// E
-//
-// P
-//
-// A
-//
-// R
-//
-// A
-//
-// T
-//
-// O
-//
-// R
-//
-
 func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
 
 	chunkAddress, receivedPrice, err := headerutils.ReadPricingHeaders(receivedHeaders)
