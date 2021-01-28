@@ -394,10 +394,5 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		chunkPrice = s.pricer.PriceForPeer(p.Address, chunk.Address())
 	}
 	// debit price from p's balance
-	err = s.accounting.Debit(p.Address, chunkPrice)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return s.accounting.Debit(p.Address, chunkPrice)
 }
