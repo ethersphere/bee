@@ -227,8 +227,10 @@ func (s *service) unreserveTotalIssued(amount *big.Int) {
 	s.totalIssuedReserved = s.totalIssuedReserved.Sub(s.totalIssuedReserved, amount)
 }
 
-// Issue issues a new cheque and passes it to sendChequeFunc
-// if sendChequeFunc succeeds the cheque is considered sent and saved
+// Issue issues a new cheque and passes it to sendChequeFunc.
+// The cheque is considered sent and saved when sendChequeFunc succeeds.
+// The available balance which is available after sending the cheque is passed
+// to the caller for it to be communicated over metrics.
 func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error) {
 	availableBalance, err := s.reserveTotalIssued(ctx, amount)
 	if err != nil {
