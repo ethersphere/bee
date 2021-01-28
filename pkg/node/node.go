@@ -153,7 +153,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var chequeStore chequebook.ChequeStore
 	var cashoutService chequebook.CashoutService
 	var overlayEthAddress common.Address
-	var erc20Address common.Address
 	var transactionService transaction.Service
 	var swapBackend *ethclient.Client
 	var chainID *big.Int
@@ -243,11 +242,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
-
-		erc20Address, err = chequebookFactory.ERC20Address(p2pCtx)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	batchStore := batchstore.New(stateStore)
@@ -281,6 +275,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, err
 		}
 		err = batchService.Start()
+		if err != nil {
+			return nil, err
+		}
+
+		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
 		if err != nil {
 			return nil, err
 		}
