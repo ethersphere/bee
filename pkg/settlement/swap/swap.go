@@ -119,17 +119,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		}
 		return ErrUnknownBeneficary
 	}
-	err = s.chequebook.Issue(ctx, beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
+	balance, err := s.chequebook.Issue(ctx, beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
 	if err != nil {
 		return err
 	}
 
-	balance, err := s.chequebook.AvailableBalance(ctx)
-	if err != nil {
-		return err
-	}
 	s.metrics.AvailableBalance.Set(float64(balance.Int64()))
 	s.metrics.TotalSent.Add(float64(amount))
 	return nil

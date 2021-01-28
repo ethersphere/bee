@@ -50,7 +50,7 @@ type Service interface {
 	// Address returns the address of the used chequebook contract.
 	Address() common.Address
 	// Issue a new cheque for the beneficiary with an cumulativePayout amount higher than the last.
-	Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error
+	Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error)
 	// LastCheque returns the last cheque we issued for the beneficiary.
 	LastCheque(beneficiary common.Address) (*SignedCheque, error)
 	// LastCheque returns the last cheques for all beneficiaries.
@@ -204,21 +204,21 @@ func lastIssuedChequeKey(beneficiary common.Address) string {
 	return fmt.Sprintf("chequebook_last_issued_cheque_%x", beneficiary)
 }
 
-func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) error {
+func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) (*big.Int, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	availableBalance, err := s.AvailableBalance(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if amount.Cmp(big.NewInt(0).Sub(availableBalance, s.totalIssuedReserved)) > 0 {
-		return ErrOutOfFunds
+		return nil, ErrOutOfFunds
 	}
 
 	s.totalIssuedReserved = s.totalIssuedReserved.Add(s.totalIssuedReserved, amount)
-	return nil
+	return big.NewInt(0).Sub(availableBalance, amount), nil
 }
 
 func (s *service) unreserveTotalIssued(amount *big.Int) {
@@ -229,10 +229,10 @@ func (s *service) unreserveTotalIssued(amount *big.Int) {
 
 // Issue issues a new cheque and passes it to sendChequeFunc
 // if sendChequeFunc succeeds the cheque is considered sent and saved
-func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) error {
-	err := s.reserveTotalIssued(ctx, amount)
+func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error) {
+	availableBalance, err := s.reserveTotalIssued(ctx, amount)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer s.unreserveTotalIssued(amount)
 
@@ -240,7 +240,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	lastCheque, err := s.LastCheque(beneficiary)
 	if err != nil {
 		if err != ErrNoCheque {
-			return err
+			return nil, err
 		}
 		cumulativePayout = big.NewInt(0)
 	} else {
@@ -263,7 +263,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		Beneficiary:      beneficiary,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// actually send the check before saving to avoid double payment
@@ -272,12 +272,12 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		Signature: sig,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	s.lock.Lock()
@@ -285,10 +285,10 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 
 	totalIssued, err := s.totalIssued()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	totalIssued = totalIssued.Add(totalIssued, amount)
-	return s.store.Put(totalIssuedKey, totalIssued)
+	return availableBalance, s.store.Put(totalIssuedKey, totalIssued)
 }
 
 // returns the total amount in cheques issued so far
