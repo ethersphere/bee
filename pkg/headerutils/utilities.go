@@ -96,8 +96,7 @@ func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 		return swarm.ZeroAddress, fmt.Errorf("no target header")
 	}
 
-	var target swarm.Address
-	target = swarm.NewAddress(receivedHeaders["target"])
+	target := swarm.NewAddress(receivedHeaders["target"])
 
 	return target, nil
 }
