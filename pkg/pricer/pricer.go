@@ -280,6 +280,8 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 		s.logger.Debugf("Guessing price %v for extending pricetable %v for peer %v", newPriceTable[currentrow], newPriceTable, peer)
 	}
 
+	s.logger.Debugf("Storing extended pricetable %v for peer %v", newPriceTable, peer)
+
 	return s.storePriceTable(peer, newPriceTable)
 }
 
@@ -335,13 +337,4 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 
 func (s *Pricer) SetTopology(top topology.Driver) {
 	s.topology = top
-}
-
-func (s *Pricer) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
-	if receivedHeaders["price"] == nil {
-		return 0, fmt.Errorf("No price header")
-	}
-
-	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
-	return receivedPrice, nil
 }

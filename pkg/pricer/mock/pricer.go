@@ -111,13 +111,6 @@ func (pricer *Service) NotifyPeerPrice(peer swarm.Address, price uint64, index u
 	return nil
 }
 
-func (pricer *Service) ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
-	if pricer.readPriceHeaderFunc != nil {
-		return pricer.readPriceHeaderFunc(receivedHeaders)
-	}
-	return 0, nil
-}
-
 // Option is the option passed to the mock accounting service
 type Option interface {
 	apply(*Service)
