@@ -68,7 +68,7 @@ func (s *server) setupRouting() {
 	router.Handle("/peers", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
-	router.Handle("/peers/blocklisted", jsonhttp.MethodHandler{
+	router.Handle("/blocklist", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
 	})
 

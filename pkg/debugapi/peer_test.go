@@ -190,7 +190,7 @@ func TestBlocklistedPeers(t *testing.T) {
 		})),
 	})
 
-	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/peers/blocklisted", http.StatusOK,
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/blocklist", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.PeersResponse{
 			Peers: []p2p.Peer{{Address: overlay}},
 		}),
@@ -205,7 +205,7 @@ func TestBlocklistedPeersErr(t *testing.T) {
 		})),
 	})
 
-	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/peers/blocklisted", http.StatusInternalServerError,
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/blocklist", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(
 			jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
