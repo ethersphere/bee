@@ -201,7 +201,7 @@ func TestBlocklistedPeersErr(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.Peer, error) {
-			return []p2p.Peer{{Address: overlay}}, errors.New("some error occured")
+			return []p2p.Peer{{Address: overlay}}, errors.New("some error")
 		})),
 	})
 
