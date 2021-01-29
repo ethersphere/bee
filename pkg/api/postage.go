@@ -12,11 +12,12 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
 type postageCreateResponse struct {
-	BatchID []byte `json:"batchID"`
+	BatchID swarm.Address `json:"batchID"`
 }
 
 func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +56,6 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, &postageCreateResponse{
-		BatchID: batchID,
+		BatchID: swarm.NewAddress(batchID),
 	})
 }
