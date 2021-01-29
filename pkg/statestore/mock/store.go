@@ -17,7 +17,7 @@ var _ storage.StateStorer = (*store)(nil)
 
 type store struct {
 	store map[string][]byte
-	mtx   sync.Mutex
+	mtx   sync.RWMutex
 }
 
 func NewStateStore() storage.StateStorer {
@@ -27,8 +27,8 @@ func NewStateStore() storage.StateStorer {
 }
 
 func (s *store) Get(key string, i interface{}) (err error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	data, ok := s.store[key]
 	if !ok {
@@ -68,8 +68,8 @@ func (s *store) Delete(key string) (err error) {
 }
 
 func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	for k, v := range s.store {
 		if !strings.HasPrefix(k, prefix) {

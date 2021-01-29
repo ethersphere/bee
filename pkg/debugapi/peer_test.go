@@ -181,3 +181,35 @@ func TestPeer(t *testing.T) {
 		)
 	})
 }
+
+func TestBlocklistedPeers(t *testing.T) {
+	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	testServer := newTestServer(t, testServerOptions{
+		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.Peer, error) {
+			return []p2p.Peer{{Address: overlay}}, nil
+		})),
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/blocklist", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.PeersResponse{
+			Peers: []p2p.Peer{{Address: overlay}},
+		}),
+	)
+}
+
+func TestBlocklistedPeersErr(t *testing.T) {
+	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	testServer := newTestServer(t, testServerOptions{
+		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.Peer, error) {
+			return []p2p.Peer{{Address: overlay}}, errors.New("some error")
+		})),
+	})
+
+	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/blocklist", http.StatusInternalServerError,
+		jsonhttptest.WithExpectedJSONResponse(
+			jsonhttp.StatusResponse{
+				Code:    http.StatusInternalServerError,
+				Message: http.StatusText(http.StatusInternalServerError),
+			}),
+	)
+}

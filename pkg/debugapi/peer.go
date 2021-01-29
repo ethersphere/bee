@@ -72,3 +72,16 @@ func (s *server) peersHandler(w http.ResponseWriter, r *http.Request) {
 		Peers: s.P2P.Peers(),
 	})
 }
+
+func (s *server) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request) {
+	peers, err := s.P2P.BlocklistedPeers()
+	if err != nil {
+		s.Logger.Debugf("debug api: blocklisted peers: %v", err)
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
+
+	jsonhttp.OK(w, peersResponse{
+		Peers: peers,
+	})
+}

@@ -21,6 +21,7 @@ type Service struct {
 	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	disconnectFunc        func(overlay swarm.Address) error
 	peersFunc             func() []p2p.Peer
+	blocklistedPeersFunc  func() ([]p2p.Peer, error)
 	addressesFunc         func() ([]ma.Multiaddr, error)
 	setNotifierFunc       func(p2p.Notifier)
 	setWelcomeMessageFunc func(string) error
@@ -61,6 +62,13 @@ func WithDisconnectFunc(f func(overlay swarm.Address) error) Option {
 func WithPeersFunc(f func() []p2p.Peer) Option {
 	return optionFunc(func(s *Service) {
 		s.peersFunc = f
+	})
+}
+
+// WithBlocklistedPeersFunc sets the mock implementation of the BlocklistedPeers function
+func WithBlocklistedPeersFunc(f func() ([]p2p.Peer, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.blocklistedPeersFunc = f
 	})
 }
 
@@ -133,6 +141,14 @@ func (s *Service) Peers() []p2p.Peer {
 		return nil
 	}
 	return s.peersFunc()
+}
+
+func (s *Service) BlocklistedPeers() ([]p2p.Peer, error) {
+	if s.blocklistedPeersFunc == nil {
+		return nil, nil
+	}
+
+	return s.blocklistedPeersFunc()
 }
 
 func (s *Service) SetWelcomeMessage(val string) error {
