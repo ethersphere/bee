@@ -203,6 +203,14 @@ components:
         startedAt:
           $ref: '#/components/schemas/DateTime'
 
+    TagsList:
+      type: object
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/NewTagResponse'
+
     P2PUnderlay:
       type: string
       example: "/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAmTm17toLDaPYzRyjKn27iCB76yjKnJ5DjQXneFmifFvaX"

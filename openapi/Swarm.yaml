@@ -412,6 +412,23 @@ paths:
           description: Default response
 
   '/tags':
+    get:
+      summary: Get list of tags
+      tags:
+        - Tag
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/TagsList'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
     post:
       summary: 'Create Tag'
       tags:
