@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 )
 
@@ -67,6 +68,24 @@ func TestPostageCreateStamp(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: "cannot create batch",
+			}),
+		)
+	})
+
+	t.Run("out-of-funds", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+				return nil, postagecontract.ErrInsufficientFunds
+			}),
+		)
+		client, _, _ := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "out of funds",
 			}),
 		)
 	})
