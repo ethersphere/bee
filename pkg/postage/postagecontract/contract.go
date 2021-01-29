@@ -26,7 +26,8 @@ var (
 	erc20ABI          = parseABI(simpleswapfactory.ERC20ABI)
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 
-	ErrBatchCreate = errors.New("batch creation failed")
+	ErrBatchCreate       = errors.New("batch creation failed")
+	ErrInsufficientFunds = errors.New("insufficient token balance")
 )
 
 type Interface interface {
@@ -117,8 +118,41 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 	return receipt, nil
 }
 
+func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
+	callData, err := erc20ABI.Pack("balanceOf", c.owner)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   c.bzzTokenAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var balance *big.Int
+	err = erc20ABI.Unpack(&balance, "balanceOf", result)
+	if err != nil {
+		return nil, err
+	}
+
+	return balance, nil
+}
+
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error) {
-	_, err := c.sendApproveTransaction(ctx, big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth))))
+	totalAmount := big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth)))
+	balance, err := c.getBalance(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if balance.Cmp(totalAmount) < 0 {
+		return nil, ErrInsufficientFunds
+	}
+
+	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
 		return nil, err
 	}
