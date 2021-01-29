@@ -40,7 +40,7 @@ paths:
         - Bytes
       parameters:
         - in: header
-          name: swarm-tag-uid
+          name: swarm-tag
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
           required: false
@@ -140,7 +140,7 @@ paths:
         - Chunk
       parameters:
         - in: header
-          name: swarm-tag-uid
+          name: swarm-tag
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
           required: false
@@ -192,7 +192,7 @@ paths:
           required: false
           description: Filename
         - in: header
-          name: swarm-tag-uid
+          name: swarm-tag
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
           required: false
@@ -280,7 +280,7 @@ paths:
         - Collection
       parameters:
         - in: header
-          name: swarm-tag-uid
+          name: swarm-tag
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
           required: false

@@ -24,7 +24,7 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 
-	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
 		logger.Debugf("bytes upload: get or create tag: %v", err)
 		logger.Error("bytes upload: get or create tag")
@@ -52,8 +52,8 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
+	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.OK(w, bytesPostResponse{
 		Reference: address,
 	})

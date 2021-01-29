@@ -60,7 +60,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
 		logger.Debugf("file upload: get or create tag: %v", err)
 		logger.Error("file upload: get or create tag")
@@ -210,8 +210,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
+	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})

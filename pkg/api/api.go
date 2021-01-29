@@ -30,7 +30,7 @@ import (
 
 const (
 	SwarmPinHeader           = "Swarm-Pin"
-	SwarmTagUidHeader        = "Swarm-Tag-Uid"
+	SwarmTagHeader           = "Swarm-Tag"
 	SwarmEncryptHeader       = "Swarm-Encrypt"
 	SwarmIndexDocumentHeader = "Swarm-Index-Document"
 	SwarmErrorDocumentHeader = "Swarm-Error-Document"
