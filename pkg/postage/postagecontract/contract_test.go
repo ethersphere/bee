@@ -27,10 +27,10 @@ func TestCreateBatch(t *testing.T) {
 	bzzTokenAddress := common.HexToAddress("eeee")
 	ctx := context.Background()
 	initialBalance := big.NewInt(100)
-	totalAmount := big.NewInt(1600000)
 
 	t.Run("ok", func(t *testing.T) {
-		depth := uint8(11)
+		depth := uint8(10)
+		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
 		txHashCreate := common.HexToHash("c3a7")
 		batchID := common.HexToHash("dddd")
@@ -102,7 +102,7 @@ func TestCreateBatch(t *testing.T) {
 	})
 
 	t.Run("invalid depth", func(t *testing.T) {
-		depth := uint8(10)
+		depth := uint8(9)
 
 		contract := postagecontract.New(
 			owner,
@@ -115,6 +115,31 @@ func TestCreateBatch(t *testing.T) {
 		_, err := contract.CreateBatch(ctx, initialBalance, depth, label)
 		if !errors.Is(err, postagecontract.ErrInvalidDepth) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInvalidDepth, err)
+		}
+	})
+
+	t.Run("insufficient funds", func(t *testing.T) {
+		depth := uint8(10)
+		totalAmount := big.NewInt(102399)
+
+		contract := postagecontract.New(
+			owner,
+			postageStampAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WitCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if request.To == bzzTokenAddress {
+						return big.NewInt(0).Sub(totalAmount, big.NewInt(1)).FillBytes(make([]byte, 32)), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			postageMock.New(),
+		)
+
+		_, err := contract.CreateBatch(ctx, initialBalance, depth, label)
+		if !errors.Is(err, postagecontract.ErrInsufficientFunds) {
+			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientFunds, err)
 		}
 	})
 }
@@ -158,36 +183,5 @@ func TestLookupERC20Address(t *testing.T) {
 
 	if addr != postageStampAddress {
 		t.Fatalf("got wrong erc20 address. wanted %v, got %v", erc20Address, addr)
-	}
-}
-
-func TestCreateBatchInsufficientFunds(t *testing.T) {
-	owner := common.HexToAddress("abcd")
-	postageStampAddress := common.HexToAddress("ffff")
-	bzzTokenAddress := common.HexToAddress("eeee")
-	ctx := context.Background()
-	initialBalance := big.NewInt(100)
-	depth := uint8(11)
-	totalAmount := big.NewInt(1600)
-	label := "label"
-
-	contract := postagecontract.New(
-		owner,
-		postageStampAddress,
-		bzzTokenAddress,
-		transactionMock.New(
-			transactionMock.WitCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
-				if request.To == bzzTokenAddress {
-					return big.NewInt(0).Sub(totalAmount, big.NewInt(1)).FillBytes(make([]byte, 32)), nil
-				}
-				return nil, errors.New("unexpected call")
-			}),
-		),
-		postageMock.New(),
-	)
-
-	_, err := contract.CreateBatch(ctx, initialBalance, depth, label)
-	if !errors.Is(err, postagecontract.ErrInsufficientFunds) {
-		t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientFunds, err)
 	}
 }
