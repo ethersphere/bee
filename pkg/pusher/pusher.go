@@ -146,10 +146,14 @@ LOOP:
 				// for now ignoring the receipt and checking only for error
 				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
-					if !errors.Is(err, topology.ErrNotFound) {
-						logger.Debugf("pusher: error push to closest: %v", err)
+					if errors.Is(err, topology.ErrWantSelf) {
+						// we are the closest ones - this is fine. set the chunk as synced
+					} else if errors.Is(err, topology.ErrNotFound) {
+						logger.Debugf("pusher: no peers found: %v", err)
+					} else {
+						// some other error occured - return
+						return
 					}
-					return
 				}
 				err = s.setChunkAsSynced(ctx, ch)
 				if err != nil {
