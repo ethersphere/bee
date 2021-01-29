@@ -31,6 +31,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const (
+	maxPage = 1000 // hard limit of page size
+)
+
 var (
 	TagUidFunc  = rand.Uint32
 	ErrNotFound = errors.New("tag not found")
@@ -155,6 +159,51 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 	}
 
 	return err
+}
+
+func (ts *Tags) List(ctx context.Context, offset, limit int) (t []*Tag, err error) {
+	if limit > maxPage {
+		limit = maxPage
+	}
+
+	err = ts.stateStore.Iterate("tags_", func(key, value []byte) (stop bool, err error) {
+		if offset > 0 {
+			offset--
+			return false, nil
+		}
+
+		var ta *Tag
+		ta, err = decodeTagValueFromStore(value)
+		if err != nil {
+			return true, err
+		}
+
+		t = append(t, ta)
+
+		limit--
+
+		if limit == 0 {
+			return true, nil
+		}
+
+		return false, nil
+	})
+
+	return t, err
+}
+
+func decodeTagValueFromStore(value []byte) (*Tag, error) {
+	var data []byte
+	err := json.Unmarshal(value, &data)
+	if err != nil {
+		return nil, err
+	}
+	var ta Tag
+	err = ta.UnmarshalBinary(data)
+	if err != nil {
+		return nil, err
+	}
+	return &ta, nil
 }
 
 // getTagFromStore get a given tag from the state store.

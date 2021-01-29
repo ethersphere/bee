@@ -29,6 +29,10 @@ type tagResponse struct {
 	Synced    int64     `json:"synced"`
 }
 
+type listTagsResponse struct {
+	Tags []tagResponse `json:"tags"`
+}
+
 func newTagResponse(tag *tags.Tag) tagResponse {
 	return tagResponse{
 		Uid:       tag.Uid,
@@ -185,4 +189,45 @@ func (s *server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonhttp.OK(w, "ok")
+}
+
+func (s *server) listTagsHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err           error
+		offset, limit = 0, 100 // default offset is 0, default limit 100
+	)
+
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offset, err = strconv.Atoi(v)
+		if err != nil {
+			s.Logger.Debugf("list tags: parse offset: %v", err)
+			s.Logger.Errorf("list tags: bad offset")
+			jsonhttp.BadRequest(w, "bad offset")
+		}
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limit, err = strconv.Atoi(v)
+		if err != nil {
+			s.Logger.Debugf("list tags: parse limit: %v", err)
+			s.Logger.Errorf("list tags: bad limit")
+			jsonhttp.BadRequest(w, "bad limit")
+		}
+	}
+
+	tagList, err := s.Tags.List(r.Context(), offset, limit)
+	if err != nil {
+		s.Logger.Debugf("list tags: listing: %v", err)
+		s.Logger.Errorf("list tags: listing")
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	tags := make([]tagResponse, len(tagList))
+	for i, t := range tagList {
+		tags[i] = newTagResponse(t)
+	}
+
+	jsonhttp.OK(w, listTagsResponse{
+		Tags: tags,
+	})
 }
