@@ -185,7 +185,7 @@ func (ts *Tags) ListAll(ctx context.Context, offset, limit int) (t []*Tag, err e
 		}
 	}
 
-	if len(t) > 0 {
+	if limit == 0 {
 		return
 	}
 

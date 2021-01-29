@@ -76,7 +76,7 @@ func TestListAll(t *testing.T) {
 	}
 
 	// tags are from sync.Map
-	tagList1, err := ts1.ListAll(context.Background(), 0, maxPage)
+	tagList1, err := ts1.ListAll(context.Background(), 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestListAll(t *testing.T) {
 	}
 
 	// first tags are from sync.Map
-	tagList2, err := ts2.ListAll(context.Background(), 0, maxPage)
+	tagList2, err := ts2.ListAll(context.Background(), 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
