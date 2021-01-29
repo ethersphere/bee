@@ -94,6 +94,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	defer func() {
 		if err != nil {
 			ps.metrics.TotalErrors.Inc()
+			ps.logger.Errorf("handler error; %v. resetting stream", err)
 			_ = stream.Reset()
 		} else {
 			_ = stream.FullClose()
@@ -169,10 +170,14 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	return &Receipt{Address: swarm.NewAddress(r.Address)}, nil
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (*pb.Receipt, error) {
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.Receipt, reterr error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-push", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
-
+	defer func() {
+		if reterr != nil {
+			ps.logger.Errorf("push to closest error: %v", reterr)
+		}
+	}()
 	var (
 		skipPeers []swarm.Address
 		lastErr   error
@@ -192,6 +197,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (*pb.Rece
 	for i := 0; i < maxPeers; i++ {
 		select {
 		case <-ctx.Done():
+			ps.logger.Error("context done")
 			return nil, ctx.Err()
 		default:
 		}
@@ -204,11 +210,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (*pb.Rece
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			if errors.Is(err, topology.ErrNotFound) {
+				ps.logger.Error("push to closest: topology not found")
 				return nil, err
 			}
 
 			// when ErrWantSelf is returned, it means we are the closest peer.
 			if errors.Is(err, topology.ErrWantSelf) {
+				ps.logger.Error("push to closest: topology want self")
 				return nil, err
 			}
 
@@ -230,7 +238,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (*pb.Rece
 		if err != nil {
 			ps.metrics.TotalErrors.Inc()
 			lastErr = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
-			logger.Debugf("pushsync-push: %v", lastErr)
+			logger.Errorf("pushsync-push: %v", lastErr)
 			continue
 		}
 		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
@@ -245,7 +253,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (*pb.Rece
 			ps.metrics.TotalErrors.Inc()
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)
-			logger.Debugf("pushsync-push: %v", lastErr)
+			logger.Errorf("pushsync-push: %v", lastErr)
 			continue
 		}
 
@@ -267,13 +275,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (*pb.Rece
 			ps.metrics.TotalErrors.Inc()
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
-			logger.Debugf("pushsync error: %v", lastErr)
+			logger.Errorf("pushsync error: %v", lastErr)
 			continue
 		}
 
 		// Check if the receipt is valid
 		if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 			_ = streamer.Reset()
+
+			ps.logger.Error("push to closest: receipt invalid")
 			return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
 		}
 
