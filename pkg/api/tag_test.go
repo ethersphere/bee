@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -48,6 +49,15 @@ func TestTags(t *testing.T) {
 			Tags:   tag,
 		})
 	)
+
+	// list tags without anything pinned
+	t.Run("list tags zero", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.ListTagsResponse{
+				Tags: []api.TagResponse{},
+			}),
+		)
+	})
 
 	t.Run("create tag", func(t *testing.T) {
 		tr := api.TagResponse{}
@@ -107,6 +117,42 @@ func TestTags(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeaders, &tr)
 		tagValueTest(t, tr.Uid, 1, 1, 1, 0, 0, 0, swarm.ZeroAddress, client)
+	})
+
+	t.Run("list tags", func(t *testing.T) {
+		// list all current tags
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource, http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+
+		// create 2 new tags
+		tRes1 := api.TagResponse{}
+		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes1),
+		)
+
+		tRes2 := api.TagResponse{}
+		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
+			jsonhttptest.WithUnmarshalJSONResponse(&tRes2),
+		)
+
+		expectedTags := []api.TagResponse{
+			tRes1,
+			tRes2,
+		}
+		expectedTags = append(expectedTags, resp.Tags...)
+
+		sort.Slice(expectedTags, func(i, j int) bool { return expectedTags[i].Uid < expectedTags[j].Uid })
+
+		// check if listing returns expected tags
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.ListTagsResponse{
+				Tags: expectedTags,
+			}),
+		)
 	})
 
 	t.Run("delete tag error", func(t *testing.T) {

@@ -15,6 +15,7 @@ type (
 	FileUploadResponse       = fileUploadResponse
 	TagResponse              = tagResponse
 	TagRequest               = tagRequest
+	ListTagsResponse         = listTagsResponse
 	PinnedChunk              = pinnedChunk
 	ListPinnedChunksResponse = listPinnedChunksResponse
 	UpdatePinCounter         = updatePinCounter
