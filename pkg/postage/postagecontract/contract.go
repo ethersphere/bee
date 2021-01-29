@@ -28,6 +28,7 @@ var (
 
 	ErrBatchCreate       = errors.New("batch creation failed")
 	ErrInsufficientFunds = errors.New("insufficient token balance")
+	ErrInvalidDepth      = errors.New("invalid depth")
 )
 
 type Interface interface {
@@ -142,6 +143,12 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error) {
+	bucketDepth := uint8(10)
+
+	if depth <= bucketDepth {
+		return nil, ErrInvalidDepth
+	}
+
 	totalAmount := big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth)))
 	balance, err := c.getBalance(ctx)
 	if err != nil {
@@ -183,7 +190,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 				c.owner.Hex(),
 				batchID,
 				depth,
-				8,
+				bucketDepth,
 			))
 
 			return createdEvent.BatchId[:], nil
