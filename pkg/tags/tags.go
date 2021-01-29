@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -166,6 +167,29 @@ func (ts *Tags) List(ctx context.Context, offset, limit int) (t []*Tag, err erro
 		limit = maxPage
 	}
 
+	// range sync.Map first
+	allTags := ts.All()
+	sort.Slice(allTags, func(i, j int) bool { return allTags[i].Uid < allTags[j].Uid })
+	for _, tag := range allTags {
+		if offset > 0 {
+			offset--
+			continue
+		}
+
+		t = append(t, tag)
+
+		limit--
+
+		if limit == 0 {
+			break
+		}
+	}
+
+	if len(t) > 0 {
+		return
+	}
+
+	// and then from statestore
 	err = ts.stateStore.Iterate("tags_", func(key, value []byte) (stop bool, err error) {
 		if offset > 0 {
 			offset--
@@ -176,6 +200,11 @@ func (ts *Tags) List(ctx context.Context, offset, limit int) (t []*Tag, err erro
 		ta, err = decodeTagValueFromStore(value)
 		if err != nil {
 			return true, err
+		}
+
+		if _, ok := ts.tags.Load(ta.Uid); ok {
+			// tag was already returned from sync.Map
+			return false, nil
 		}
 
 		t = append(t, ta)
