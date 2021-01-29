@@ -214,7 +214,7 @@ func (s *server) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tagList, err := s.Tags.List(r.Context(), offset, limit)
+	tagList, err := s.Tags.ListAll(r.Context(), offset, limit)
 	if err != nil {
 		s.Logger.Debugf("list tags: listing: %v", err)
 		s.Logger.Errorf("list tags: listing")
