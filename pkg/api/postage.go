@@ -41,13 +41,13 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	label := r.URL.Query().Get("label")
 
 	batchID, err := s.postageContract.CreateBatch(r.Context(), amount, uint8(depth), label)
-	if errors.Is(err, postagecontract.ErrInsufficientFunds) {
-		s.Logger.Debugf("create batch: out of funds: %v", err)
-		s.Logger.Error("create batch: out of funds")
-		jsonhttp.BadRequest(w, "out of funds")
-		return
-	}
 	if err != nil {
+		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
+			s.Logger.Debugf("create batch: out of funds: %v", err)
+			s.Logger.Error("create batch: out of funds")
+			jsonhttp.BadRequest(w, "out of funds")
+			return
+		}
 		s.Logger.Debugf("create batch: failed to create: %v", err)
 		s.Logger.Error("create batch: failed to create")
 		jsonhttp.InternalServerError(w, "cannot create batch")
