@@ -17,11 +17,11 @@ import (
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 
-	"github.com/ethersphere/bee/pkg/headerutils"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/pricer/headerutils"
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
