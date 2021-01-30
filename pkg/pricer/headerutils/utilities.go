@@ -7,6 +7,7 @@ package headerutils
 import (
 	"encoding/binary"
 	"errors"
+
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
