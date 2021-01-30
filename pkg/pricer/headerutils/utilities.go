@@ -84,6 +84,10 @@ func ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
 		return 0, fmt.Errorf("no index header")
 	}
 
+	if len(receivedHeaders["index"]) != 1 {
+		return 0, fmt.Errorf("field length error")
+	}
+
 	index := receivedHeaders["index"][0]
 	return index, nil
 }
@@ -101,6 +105,10 @@ func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 func ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
 	if receivedHeaders["price"] == nil {
 		return 0, fmt.Errorf("no price header")
+	}
+
+	if len(receivedHeaders["price"]) != 8 {
+		return 0, fmt.Errorf("field length error")
 	}
 
 	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
