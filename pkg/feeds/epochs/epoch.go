@@ -1,14 +1,23 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Package epochs implements time-based feeds using epochs as index
+// and provide sequential as well as concurrent lookup algorithms
 package epochs
 
 import (
 	"encoding/binary"
 
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/feeds"
 )
 
 const (
 	maxLevel = 32
 )
+
+var _ feeds.Index = (*epoch)(nil)
 
 // epoch is referencing a slot in the epoch grid
 type epoch struct {

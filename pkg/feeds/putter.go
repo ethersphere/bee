@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package feeds
 
 import (
@@ -11,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// Updater is the generic interface f
 type Updater interface {
 	Update(ctx context.Context, at int64, payload []byte) error
 	Feed() *Feed
@@ -36,7 +41,7 @@ func NewPutter(putter storage.Putter, signer crypto.Signer, topic string) (*Putt
 	return &Putter{putter, signer, feed}, nil
 }
 
-// Update pushes an update to the feed through the chunk stores
+// Put pushes an update to the feed through the chunk stores
 func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) error {
 	id, err := u.Feed.Update(i).Id()
 	if err != nil {

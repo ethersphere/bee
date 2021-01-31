@@ -1,3 +1,8 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// package testing provides tests for update  and resolution of time-based feeds
 package testing
 
 import (
@@ -70,9 +75,9 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 		offset int64
 	}{
 		{50, 1, 0},
-		// {50, 1, 10000},
-		// {50, 100, 0},
-		// {50, 100, 100000},
+		{50, 1, 10000},
+		{50, 100, 0},
+		{50, 100, 100000},
 	} {
 		t.Run(fmt.Sprintf("count=%d,step=%d,offset=%d", tc.count, tc.step, tc.offset), func(t *testing.T) {
 			storer := mock.NewStorer()

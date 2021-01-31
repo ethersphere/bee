@@ -1,3 +1,13 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Package sequence provides implementation of sequential indexing for
+// time-based feeds
+// this feed type is best suited for
+// - version updates
+// - followed updates
+// - frequent or regular-interval updates
 package sequence
 
 import (
@@ -11,6 +21,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+var _ feeds.Index = (*index)(nil)
+var _ feeds.Lookup = (*finder)(nil)
+var _ feeds.Lookup = (*asyncFinder)(nil)
+var _ feeds.Updater = (*updater)(nil)
+
 type index struct {
 	index uint64
 }
@@ -21,20 +36,20 @@ func (i *index) MarshalBinary() ([]byte, error) {
 	return indexBytes, nil
 }
 
-// Finder encapsulates a chunk store getter and a feed and provides
+// finder encapsulates a chunk store getter and a feed and provides
 //  non-concurrent lookup methods
-type Finder struct {
+type finder struct {
 	getter *feeds.Getter
 }
 
 // NewFinder constructs an Finder
 func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
-	return &Finder{feeds.NewGetter(getter, feed)}
+	return &finder{feeds.NewGetter(getter, feed)}
 }
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *Finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
+func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
 	for i := uint64(0); ; i++ {
 		u, err := f.getter.Get(ctx, &index{i})
 		if err != nil {
@@ -54,15 +69,15 @@ func (f *Finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err e
 	}
 }
 
-// Finder encapsulates a chunk store getter and a feed and provides
+// asyncFinder encapsulates a chunk store getter and a feed and provides
 //  non-concurrent lookup methods
-type AsyncFinder struct {
+type asyncFinder struct {
 	getter *feeds.Getter
 }
 
 // NewAsyncFinder constructs an AsyncFinder
 func NewAsyncFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
-	return &AsyncFinder{feeds.NewGetter(getter, feed)}
+	return &asyncFinder{feeds.NewGetter(getter, feed)}
 }
 
 type path struct {
@@ -94,7 +109,7 @@ type result struct {
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *AsyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
+func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
 	ch, diff, err := f.get(ctx, at, 0)
 	if err != nil {
 		return nil, err
@@ -148,7 +163,7 @@ func (f *AsyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 	return nil, nil
 }
 
-func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, c chan result, quit chan struct{}) {
+func (f *asyncFinder) at(ctx context.Context, at int64, p *path, c chan<- result, quit <-chan struct{}) {
 	for i := p.level; i > 0; i-- {
 		select {
 		case <-p.cancel:
@@ -171,12 +186,13 @@ func (f *AsyncFinder) at(ctx context.Context, at int64, p *path, c chan result, 
 	}
 }
 
-func (f *AsyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chunk, int64, error) {
+func (f *asyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chunk, int64, error) {
 	u, err := f.getter.Get(ctx, &index{seq})
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, 0, err
 		}
+		// if 'not-found' error, then just silence and return nil chunk
 		return nil, 0, nil
 	}
 	ts, err := feeds.UpdatedAt(u)
@@ -184,15 +200,17 @@ func (f *AsyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chun
 		return nil, 0, err
 	}
 	diff := at - int64(ts)
+	// this means the update timestamp is later than the pivot time we are looking for
+	// handled as if the update was missing but with no uncertainty due to timeout
 	if diff < 0 {
 		return nil, 0, nil
 	}
 	return u, diff, nil
 }
 
-// Updater encapsulates a feeds putter to generate successive updates for epoch based feeds
+// updater encapsulates a feeds putter to generate successive updates for epoch based feeds
 // it persists the last update
-type Updater struct {
+type updater struct {
 	*feeds.Putter
 	next uint64
 }
@@ -203,11 +221,11 @@ func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (feed
 	if err != nil {
 		return nil, err
 	}
-	return &Updater{Putter: p}, nil
+	return &updater{Putter: p}, nil
 }
 
 // Update pushes an update to the feed through the chunk stores
-func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
+func (u *updater) Update(ctx context.Context, at int64, payload []byte) error {
 	err := u.Put(ctx, &index{u.next}, at, payload)
 	if err != nil {
 		return err
@@ -216,6 +234,6 @@ func (u *Updater) Update(ctx context.Context, at int64, payload []byte) error {
 	return nil
 }
 
-func (u *Updater) Feed() *feeds.Feed {
+func (u *updater) Feed() *feeds.Feed {
 	return u.Putter.Feed
 }

@@ -1,3 +1,11 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Package feeds implements generic interfaces and methods for time-based feeds
+// indexing schemes are implemented in subpackages
+// - epochs
+// - sequence
 package feeds
 
 import (
@@ -13,6 +21,8 @@ type id struct {
 	topic []byte
 	index []byte
 }
+
+var _ encoding.BinaryMarshaler = (*id)(nil)
 
 func (i *id) MarshalBinary() ([]byte, error) {
 	return crypto.LegacyKeccak256(append(i.topic, i.index...))
@@ -33,17 +43,18 @@ func New(topic string, owner common.Address) (*Feed, error) {
 	return &Feed{th, owner}, nil
 }
 
+// Index is the interface for feed implementations
 type Index interface {
 	encoding.BinaryMarshaler
 }
 
-// update represents an update instance of a feed, i.e., pairing of a Feed with an Epoch
+// Update represents an update instance of a feed, i.e., pairing of a Feed with an Epoch
 type Update struct {
 	*Feed
 	index Index
 }
 
-// Update
+// Update called on a feed with an index and returns an Update
 func (f *Feed) Update(index Index) *Update {
 	return &Update{f, index}
 }
@@ -59,9 +70,9 @@ func (u *Update) Id() ([]byte, error) {
 }
 
 // Address calculates the soc address of a feed update
-func (u *Update) Address() (addr swarm.Address, err error) {
-	var i []byte
-	i, err = u.Id()
+func (u *Update) Address() (swarm.Address, error) {
+	var addr swarm.Address
+	i, err := u.Id()
 	if err != nil {
 		return addr, err
 	}
