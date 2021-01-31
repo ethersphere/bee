@@ -39,6 +39,10 @@ type Interface interface {
 	PriceHeadler(p2p.Headers, swarm.Address) p2p.Headers
 }
 
+var (
+	ErrPersistingBalancePeer = errors.New("failed to persist pricetable for peer")
+)
+
 type pricingPeer struct {
 	lock sync.Mutex
 }
@@ -220,7 +224,8 @@ func (s *Pricer) storePriceTable(peer swarm.Address, priceTable []uint64) error 
 	s.logger.Debugf("Storing pricetable %v for peer %v", priceTable, peer)
 	err := s.store.Put(peerPriceTableKey(peer), priceTable)
 	if err != nil {
-		return fmt.Errorf("failed to persist pricetable for peer %v: %w", peer, err)
+		s.logger.Warningf("failed to persist pricetable for peer %v: %w", peer, err)
+		return ErrPersistingBalancePeer
 	}
 	return nil
 }
@@ -324,7 +329,7 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 	chunkAddress, receivedPrice, err := headerutils.ReadPricingHeaders(receivedHeaders)
 	if err != nil {
 		return p2p.Headers{
-			"error": []byte("No target specified or error unmarshaling target streamheader of request"),
+			"error": []byte("Error reading pricing headers"),
 		}
 	}
 
@@ -334,7 +339,7 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 	returnHeaders, err = headerutils.MakePricingResponseHeaders(checkPrice, chunkAddress, index)
 	if err != nil {
 		return p2p.Headers{
-			"error": []byte("Error remarshaling target for response streamheader"),
+			"error": []byte("Error creating response pricing headers"),
 		}
 	}
 	s.logger.Debugf("price headler: response target %v with price as %v, for peer %s", chunkAddress, checkPrice, peerAddress)

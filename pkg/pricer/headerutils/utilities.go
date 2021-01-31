@@ -6,10 +6,20 @@ package headerutils
 
 import (
 	"encoding/binary"
-	"fmt"
-
+	"errors"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+var (
+	// ErrFieldLenth denotes p2p.Header having malformed field length in bytes
+	ErrFieldLenth = errors.New("field length error")
+	// ErrNoIndexHeader denotes p2p.Header lacking specified field
+	ErrNoIndexHeader = errors.New("no index header")
+	// ErrNoTargetHeader denotes p2p.Header lacking specified field
+	ErrNoTargetHeader = errors.New("no target header")
+	// ErrNoPriceHeader denotes p2p.Header lacking specified field
+	ErrNoPriceHeader = errors.New("no price header")
 )
 
 // Headers, utility functions
@@ -81,11 +91,11 @@ func ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uin
 
 func ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
 	if receivedHeaders["index"] == nil {
-		return 0, fmt.Errorf("no index header")
+		return 0, ErrNoIndexHeader
 	}
 
 	if len(receivedHeaders["index"]) != 1 {
-		return 0, fmt.Errorf("field length error")
+		return 0, ErrFieldLenth
 	}
 
 	index := receivedHeaders["index"][0]
@@ -94,7 +104,7 @@ func ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
 
 func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 	if receivedHeaders["target"] == nil {
-		return swarm.ZeroAddress, fmt.Errorf("no target header")
+		return swarm.ZeroAddress, ErrNoTargetHeader
 	}
 
 	target := swarm.NewAddress(receivedHeaders["target"])
@@ -104,11 +114,11 @@ func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 
 func ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
 	if receivedHeaders["price"] == nil {
-		return 0, fmt.Errorf("no price header")
+		return 0, ErrNoPriceHeader
 	}
 
 	if len(receivedHeaders["price"]) != 8 {
-		return 0, fmt.Errorf("field length error")
+		return 0, ErrFieldLenth
 	}
 
 	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
