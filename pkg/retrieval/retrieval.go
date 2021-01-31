@@ -204,13 +204,8 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 
 	sp.Add(peer)
 
-	// compute the price we pay for this chunk and reserve it for the rest of this function
+	// compute the price we presume to pay for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
-	err = s.accounting.Reserve(ctx, peer, chunkPrice)
-	if err != nil {
-		return nil, peer, err
-	}
-	defer s.accounting.Release(peer, chunkPrice)
 
 	headers, err := headerutils.MakePricingHeaders(chunkPrice, addr)
 	if err != nil {
@@ -250,6 +245,13 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		chunkPrice = returnedPrice
 		//return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
 	}
+
+	// Reserve to see whether we can request the chunk based on actual price
+	err = s.accounting.Reserve(ctx, peer, chunkPrice)
+	if err != nil {
+		return nil, peer, err
+	}
+	defer s.accounting.Release(peer, chunkPrice)
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
