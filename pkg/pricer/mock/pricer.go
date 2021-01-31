@@ -47,7 +47,7 @@ func WithPrice(p uint64) Option {
 
 func WithPeerPrice(p uint64) Option {
 	return optionFunc(func(s *Service) {
-		s.price = p
+		s.peerPrice = p
 	})
 }
 
