@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestPostageCreateStamp(t *testing.T) {
@@ -50,7 +49,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
-				BatchID: swarm.NewAddress(batchID),
+				BatchID: batchID,
 			}),
 		)
 	})

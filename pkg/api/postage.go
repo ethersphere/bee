@@ -5,6 +5,8 @@
 package api
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"net/http"
@@ -12,12 +14,22 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
+type batchID []byte
+
+func (b batchID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(hex.EncodeToString(b))
+}
+
+func (b batchID) UnmarshalJSON(d []byte) error {
+	b, err := hex.DecodeString(string(d))
+	return err
+}
+
 type postageCreateResponse struct {
-	BatchID swarm.Address `json:"batchID"`
+	BatchID batchID `json:"batchID"`
 }
 
 func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +68,6 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, &postageCreateResponse{
-		BatchID: swarm.NewAddress(batchID),
+		BatchID: batchID,
 	})
 }
