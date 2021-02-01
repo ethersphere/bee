@@ -82,10 +82,10 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.chunkGetHandler),
 	})
 
-	handle(router, "/soc/{owner}/{id}/{sig}", jsonhttp.MethodHandler{
+	handle(router, "/soc/{owner}/{id}", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
-			web.FinalHandlerFunc(s.socSigUploadHandler),
+			web.FinalHandlerFunc(s.socUploadHandler),
 		),
 	})
 

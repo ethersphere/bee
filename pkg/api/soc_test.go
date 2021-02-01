@@ -30,7 +30,7 @@ import (
 func TestSoc(t *testing.T) {
 
 	var (
-		socResource    = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s/%s", owner, id, sig) }
+		socResource    = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
 		_              = testingc.GenerateTestRandomChunk()
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 0)
@@ -71,7 +71,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("malformed signature", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "aa", "bad sig"), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "aa", "badsig"), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "bad signature",
 				Code:    http.StatusBadRequest,
@@ -88,11 +88,11 @@ func TestSoc(t *testing.T) {
 		sig[12] = 0x98
 		sig[10] = 0x12
 
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusUnauthorized,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "invalid chunk",
-				Code:    http.StatusBadRequest,
+				Code:    http.StatusUnauthorized,
 			}),
 		)
 	})
@@ -106,7 +106,7 @@ func TestSoc(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusCreated,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
 				Reference: addr,

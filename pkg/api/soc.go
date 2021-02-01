@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/hex"
+	"errors"
 	"io/ioutil"
 	"net/http"
 
@@ -16,11 +17,15 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var (
+	errBadRequestParams = errors.New("owner, id or span is not well formed")
+)
+
 type socPostResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-func (s *server) socSigUploadHandler(w http.ResponseWriter, r *http.Request) {
+func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
 	if err != nil {
 		s.Logger.Debugf("soc upload: bad owner: %v", err)
@@ -35,7 +40,16 @@ func (s *server) socSigUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "bad id")
 		return
 	}
-	sig, err := hex.DecodeString(mux.Vars(r)["sig"])
+
+	sigStr := r.URL.Query().Get("sig")
+	if sigStr == "" {
+		s.Logger.Debugf("soc upload: empty signature")
+		s.Logger.Error("soc upload: bad signature")
+		jsonhttp.BadRequest(w, "empty signature")
+		return
+	}
+
+	sig, err := hex.DecodeString(sigStr)
 	if err != nil {
 		s.Logger.Debugf("soc upload: bad signature: %v", err)
 		s.Logger.Error("soc upload: bad signature")
@@ -53,10 +67,18 @@ func (s *server) socSigUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 	}
+
 	if len(data) < swarm.SpanSize {
 		s.Logger.Debugf("soc upload: chunk data too short")
 		s.Logger.Error("soc upload: chunk data")
 		jsonhttp.BadRequest(w, "short chunk data")
+		return
+	}
+
+	if len(data) > swarm.ChunkSize {
+		s.Logger.Debugf("soc upload: chunk data exceeds 4096 bytes", err)
+		s.Logger.Error("soc upload: chunk data error")
+		jsonhttp.RequestEntityTooLarge(w, "payload too large")
 		return
 	}
 
@@ -79,7 +101,7 @@ func (s *server) socSigUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if !soc.Valid(chunk) {
 		s.Logger.Debugf("soc upload: invalid chunk: %v", err)
 		s.Logger.Error("soc upload: invalid chunk")
-		jsonhttp.BadRequest(w, "invalid chunk")
+		jsonhttp.Unauthorized(w, "invalid chunk")
 		return
 
 	}
@@ -93,7 +115,7 @@ func (s *server) socSigUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, chunkAddressResponse{Reference: chunk.Address()})
+	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
 }
 
 func chunk(data []byte) (swarm.Chunk, error) {
