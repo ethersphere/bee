@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -270,4 +271,27 @@ func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r, l)
 	}
+}
+
+// calculateNumberOfChunks calculates the number of chunks in an arbitrary
+// content length.
+func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
+	if contentLength < 4096 {
+		return 1
+	}
+	branchingFactor := 128
+	if isEncrypted {
+		branchingFactor = 64
+	}
+
+	dataChunks := math.Ceil(float64(contentLength) / float64(4096))
+	totalChunks := dataChunks
+	intermediate := dataChunks / float64(branchingFactor)
+
+	for intermediate > 1 {
+		totalChunks += math.Ceil(intermediate)
+		intermediate = intermediate / float64(branchingFactor)
+	}
+
+	return int64(totalChunks) + 1
 }
