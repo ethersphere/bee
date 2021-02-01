@@ -101,6 +101,24 @@ func TestPostageCreateStamp(t *testing.T) {
 		)
 	})
 
+	t.Run("depth less than bucket depth", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+				return nil, postagecontract.ErrInvalidDepth
+			}),
+		)
+		client, _, _ := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/1000/9", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid depth",
+			}),
+		)
+	})
+
 	t.Run("invalid balance", func(t *testing.T) {
 		client, _, _ := newTestServer(t, testServerOptions{})
 
