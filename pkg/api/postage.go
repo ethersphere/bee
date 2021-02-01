@@ -56,6 +56,12 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "out of funds")
 			return
 		}
+		if errors.Is(err, postagecontract.ErrInvalidDepth) {
+			s.Logger.Debugf("create batch: invalid depth: %v", err)
+			s.Logger.Error("create batch: invalid depth")
+			jsonhttp.BadRequest(w, "invalid depth")
+			return
+		}
 		s.Logger.Debugf("create batch: failed to create: %v", err)
 		s.Logger.Error("create batch: failed to create")
 		jsonhttp.InternalServerError(w, "cannot create batch")
