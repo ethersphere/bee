@@ -229,10 +229,6 @@ LOOP:
 	}
 }
 
-func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
-	return nil
-}
-
 func (s *Service) Close() error {
 	s.logger.Info("pusher shutting down")
 	close(s.quit)
