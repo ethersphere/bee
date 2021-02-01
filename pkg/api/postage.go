@@ -24,7 +24,7 @@ func (b batchID) MarshalJSON() ([]byte, error) {
 }
 
 func (b batchID) UnmarshalJSON(d []byte) error {
-	b, err := hex.DecodeString(string(d))
+	_, err := hex.DecodeString(string(d))
 	return err
 }
 
