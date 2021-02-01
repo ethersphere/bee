@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	blockPage = 500 // how many blocks to sync every time
-	tailSize  = 4   // how many blocks to tail from the tip of the chain
+	blockPage = 10000 // how many blocks to sync every time
+	tailSize  = 4     // how many blocks to tail from the tip of the chain
 )
 
 var (
