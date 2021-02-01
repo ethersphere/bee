@@ -127,6 +127,7 @@ LOOP:
 				var (
 					err       error
 					startTime = time.Now()
+					t         *tags.Tag
 				)
 				defer func() {
 					if err == nil {
@@ -152,7 +153,7 @@ LOOP:
 						// this is to make sure that the sent number does not diverge from the synced counter
 						// the edge case is on the uploader node, in the case where the uploader node is
 						// connected to other nodes, but is the closest one to the chunk.
-						t, err := s.tag.Get(ch.TagID())
+						t, err = s.tag.Get(ch.TagID())
 						if err == nil && t != nil {
 							err = t.Inc(tags.StateSent)
 							if err != nil {
@@ -170,7 +171,7 @@ LOOP:
 					return
 				}
 
-				t, err := s.tag.Get(ch.TagID())
+				t, err = s.tag.Get(ch.TagID())
 				if err == nil && t != nil {
 					err = t.Inc(tags.StateSynced)
 					if err != nil {
