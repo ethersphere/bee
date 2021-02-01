@@ -7,6 +7,7 @@ package pusher
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -148,17 +149,33 @@ LOOP:
 				if err != nil {
 					if errors.Is(err, topology.ErrWantSelf) {
 						// we are the closest ones - this is fine. set the chunk as synced
-					} else if errors.Is(err, topology.ErrNotFound) {
-						logger.Debugf("pusher: no peers found: %v", err)
+						// this is to make sure that the sent number does not diverge from the synced counter
+						// the edge case is on the uploader node, in the case where the uploader node is
+						// connected to other nodes, but is the closest one to the chunk.
+						t, err := s.tag.Get(ch.TagID())
+						if err == nil && t != nil {
+							err = t.Inc(tags.StateSent)
+							if err != nil {
+								err = fmt.Errorf("pusher: increment sent: %w", err)
+								return
+							}
+						}
+
 					} else {
-						// some other error occured - return
 						return
 					}
 				}
-				err = s.setChunkAsSynced(ctx, ch)
-				if err != nil {
-					logger.Debugf("pusher: error set sync: %v", err)
+				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
+					err = fmt.Errorf("pusher: set sync: %w", err)
 					return
+				}
+
+				t, err := s.tag.Get(ch.TagID())
+				if err == nil && t != nil {
+					err = t.Inc(tags.StateSynced)
+					if err != nil {
+						err = fmt.Errorf("pusher: error inc tag: %v", err)
+					}
 				}
 			}(ctx, ch)
 		case <-timer.C:
@@ -213,17 +230,6 @@ LOOP:
 }
 
 func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
-	if err := s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-		return err
-	}
-
-	t, err := s.tag.Get(ch.TagID())
-	if err == nil && t != nil {
-		err = t.Inc(tags.StateSynced)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

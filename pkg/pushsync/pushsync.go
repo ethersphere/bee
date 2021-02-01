@@ -122,16 +122,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	receipt, err := ps.pushToClosest(ctx, chunk)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
-			// this is to make sure that the sent number does not diverge from the synced counter
-			// the edge case is on the uploader node, in the case where the uploader node is
-			// connected to other nodes, but is the closest one to the chunk.
-			t, err := ps.tagger.Get(chunk.TagID())
-			if err == nil && t != nil {
-				err = t.Inc(tags.StateSent)
-				if err != nil {
-					return err
-				}
-			}
 
 			// store the chunk in the local store
 			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
@@ -209,17 +199,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
-			if errors.Is(err, topology.ErrNotFound) {
-				ps.logger.Error("push to closest: topology not found")
-				return nil, err
-			}
-
-			// when ErrWantSelf is returned, it means we are the closest peer.
-			if errors.Is(err, topology.ErrWantSelf) {
-				ps.logger.Error("push to closest: topology want self")
-				return nil, err
-			}
-
+			// if ErrWantSelf is returned, it means we are the closest peer.
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
 
@@ -283,7 +263,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 			_ = streamer.Reset()
 
-			ps.logger.Error("push to closest: receipt invalid")
+			logger.Error("push to closest: receipt invalid")
 			return nil, fmt.Errorf("invalid receipt. peer %s", peer.String())
 		}
 
