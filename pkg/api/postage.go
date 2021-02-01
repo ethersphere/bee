@@ -5,6 +5,8 @@
 package api
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"net/http"
@@ -15,8 +17,14 @@ import (
 	"github.com/gorilla/mux"
 )
 
+type batchID []byte
+
+func (b batchID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(hex.EncodeToString(b))
+}
+
 type postageCreateResponse struct {
-	BatchID []byte `json:"batchID"`
+	BatchID batchID `json:"batchID"`
 }
 
 func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
