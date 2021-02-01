@@ -25,7 +25,8 @@ type tagRequest struct {
 type tagResponse struct {
 	Uid       uint32    `json:"uid"`
 	StartedAt time.Time `json:"startedAt"`
-	Stored    int64     `json:"stored"`
+	Total     int64     `json:"total"`
+	Processed int64     `json:"processed"`
 	Synced    int64     `json:"synced"`
 }
 
@@ -37,7 +38,8 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 	return tagResponse{
 		Uid:       tag.Uid,
 		StartedAt: tag.StartedAt,
-		Stored:    tag.Stored,
+		Total:     tag.Total,
+		Processed: tag.Stored,
 		Synced:    tag.Seen + tag.Synced,
 	}
 }

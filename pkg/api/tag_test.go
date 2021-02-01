@@ -374,10 +374,13 @@ func tagValueTest(t *testing.T, id uint32, split, stored, seen, sent, synced, to
 		jsonhttptest.WithUnmarshalJSONResponse(&tag),
 	)
 
-	if tag.Stored != stored {
-		t.Errorf("tag stored count mismatch. got %d want %d", tag.Stored, stored)
+	if tag.Processed != stored {
+		t.Errorf("tag processed count mismatch. got %d want %d", tag.Processed, stored)
 	}
 	if tag.Synced != seen+synced {
 		t.Errorf("tag synced count mismatch. got %d want %d (seen: %d, synced: %d)", tag.Synced, seen+synced, seen, synced)
+	}
+	if tag.Total != total {
+		t.Errorf("tag total count mismatch. got %d want %d", tag.Total, total)
 	}
 }
