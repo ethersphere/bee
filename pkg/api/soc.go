@@ -29,14 +29,14 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
 	if err != nil {
 		s.Logger.Debugf("soc upload: bad owner: %v", err)
-		s.Logger.Error("soc upload: bad owner")
+		s.Logger.Error("soc upload: %v", errBadRequestParams)
 		jsonhttp.BadRequest(w, "bad owner")
 		return
 	}
 	id, err := hex.DecodeString(mux.Vars(r)["id"])
 	if err != nil {
 		s.Logger.Debugf("soc upload: bad id: %v", err)
-		s.Logger.Error("soc upload: bad id")
+		s.Logger.Error("soc upload: %v", errBadRequestParams)
 		jsonhttp.BadRequest(w, "bad id")
 		return
 	}
@@ -70,7 +70,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	if len(data) < swarm.SpanSize {
 		s.Logger.Debugf("soc upload: chunk data too short")
-		s.Logger.Error("soc upload: chunk data")
+		s.Logger.Error("soc upload: %v", errBadRequestParams)
 		jsonhttp.BadRequest(w, "short chunk data")
 		return
 	}
