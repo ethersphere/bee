@@ -23,11 +23,6 @@ func (b batchID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(hex.EncodeToString(b))
 }
 
-func (b batchID) UnmarshalJSON(d []byte) error {
-	_, err := hex.DecodeString(string(d))
-	return err
-}
-
 type postageCreateResponse struct {
 	BatchID batchID `json:"batchID"`
 }
