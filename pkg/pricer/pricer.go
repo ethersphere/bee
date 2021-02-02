@@ -273,11 +273,6 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	// Copy previous content
 	copied := copy(newPriceTable, priceTable)
 
-	// sanity check copy was successful
-	if uint8(copied) != currentIndexDepth+1 {
-		s.logger.Warningf("Copy for extending pricetable mismatching lengths (%v,%v) for peer %v", copied, currentIndexDepth+1, peer)
-	}
-
 	// Check how many rows are missing
 	numberOfMissingRows := index - currentIndexDepth
 
