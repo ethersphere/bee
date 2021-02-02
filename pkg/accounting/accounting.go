@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -295,7 +296,7 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
-	err = a.settlement.Pay(ctx, peer, paymentAmount)
+	err = a.settlement.Pay(ctx, peer, new(big.Int).SetUint64(paymentAmount))
 	if err != nil {
 		err = fmt.Errorf("settlement for amount %d failed: %w", paymentAmount, err)
 		// If the payment didn't succeed we should restore the old balance in

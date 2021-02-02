@@ -106,7 +106,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		}
 		return ErrUnknownBeneficary
 	}
-	balance, err := s.chequebook.Issue(ctx, beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
+	balance, err := s.chequebook.Issue(ctx, beneficiary, amount, func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
 	if err != nil {
@@ -127,7 +127,8 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	}
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
-	s.metrics.TotalSent.Add(float64(amount))
+	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
+	s.metrics.TotalSent.Add(amountFloat)
 	return nil
 }
 

@@ -278,7 +278,7 @@ func TestPay(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
 
-	amount := uint64(50)
+	amount := big.NewInt(50)
 	beneficiary := common.HexToAddress("0xcd")
 	var cheque chequebook.SignedCheque
 
@@ -289,7 +289,7 @@ func TestPay(t *testing.T) {
 			if b != beneficiary {
 				t.Fatalf("issuing cheque for wrong beneficiary. wanted %v, got %v", beneficiary, b)
 			}
-			if a.Uint64() != amount {
+			if a.Cmp(amount) != 0 {
 				t.Fatalf("issuing cheque with wrong amount. wanted %d, got %d", amount, a)
 			}
 			chequebookCalled = true
@@ -349,7 +349,7 @@ func TestPayIssueError(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
 
-	amount := uint64(50)
+	amount := big.NewInt(50)
 	beneficiary := common.HexToAddress("0xcd")
 
 	peer := swarm.MustParseHexAddress("abcd")
@@ -392,7 +392,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
 
-	amount := uint64(50)
+	amount := big.NewInt(50)
 	peer := swarm.MustParseHexAddress("abcd")
 	networkID := uint64(1)
 	addressbook := &addressbookMock{

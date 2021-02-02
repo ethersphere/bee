@@ -110,7 +110,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -129,7 +129,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	s.logger.Tracef("sending payment message to peer %v of %d", peer, amount)
 	w := protobuf.NewWriter(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
-		Amount: amount,
+		Amount: amount.Uint64(),
 	})
 	if err != nil {
 		return err
@@ -141,11 +141,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		}
 		totalSent = big.NewInt(0)
 	}
-	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent.Add(totalSent, big.NewInt(int64(amount))))
+	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent.Add(totalSent, amount))
 	if err != nil {
 		return err
 	}
-	s.metrics.TotalSentPseudoSettlements.Add(float64(amount))
+
+	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
+	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 	return nil
 }
 
