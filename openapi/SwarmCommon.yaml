@@ -132,7 +132,7 @@ components:
     ChequebookAddress:
       type: object
       properties:
-        address:
+        chequebookaddress:
           $ref: '#/components/schemas/EthereumAddress'
 
     DateTime:
