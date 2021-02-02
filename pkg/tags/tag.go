@@ -100,7 +100,7 @@ func (t *Tag) FinishRootSpan() {
 }
 
 // IncN increments the count for a state
-func (t *Tag) IncN(state State, n int) error {
+func (t *Tag) IncN(state State, n int64) error {
 	var v *int64
 	switch state {
 	case TotalChunks:
@@ -116,7 +116,7 @@ func (t *Tag) IncN(state State, n int) error {
 	case StateSynced:
 		v = &t.Synced
 	}
-	atomic.AddInt64(v, int64(n))
+	atomic.AddInt64(v, n)
 
 	// check if syncing is over and persist the tag
 	if state == StateSynced {
