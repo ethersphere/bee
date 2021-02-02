@@ -6,6 +6,7 @@ package mock
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 
@@ -16,11 +17,14 @@ import (
 )
 
 type Service struct {
-	settlementSentFunc func(swarm.Address) (uint64, error)
-	settlementRecvFunc func(swarm.Address) (uint64, error)
+	settlementsSent map[string]*big.Int
+	settlementsRecv map[string]*big.Int
 
-	settlementsSentFunc func() (map[string]uint64, error)
-	settlementsRecvFunc func() (map[string]uint64, error)
+	settlementSentFunc func(swarm.Address) (*big.Int, error)
+	settlementRecvFunc func(swarm.Address) (*big.Int, error)
+
+	settlementsSentFunc func() (map[string]*big.Int, error)
+	settlementsRecvFunc func() (map[string]*big.Int, error)
 
 	receiveChequeFunc    func(context.Context, swarm.Address, *chequebook.SignedCheque) error
 	payFunc              func(context.Context, swarm.Address, uint64) error
@@ -37,26 +41,26 @@ type Service struct {
 }
 
 // WithsettlementFunc sets the mock settlement function
-func WithSettlementSentFunc(f func(swarm.Address) (uint64, error)) Option {
+func WithSettlementSentFunc(f func(swarm.Address) (*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.settlementSentFunc = f
 	})
 }
 
-func WithSettlementRecvFunc(f func(swarm.Address) (uint64, error)) Option {
+func WithSettlementRecvFunc(f func(swarm.Address) (*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.settlementRecvFunc = f
 	})
 }
 
 // WithsettlementsFunc sets the mock settlements function
-func WithSettlementsSentFunc(f func() (map[string]uint64, error)) Option {
+func WithSettlementsSentFunc(f func() (map[string]*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.settlementsSentFunc = f
 	})
 }
 
-func WithSettlementsRecvFunc(f func() (map[string]uint64, error)) Option {
+func WithSettlementsRecvFunc(f func() (map[string]*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.settlementsRecvFunc = f
 	})
@@ -126,6 +130,8 @@ func WithCashoutStatusFunc(f func(ctx context.Context, peer swarm.Address) (*che
 // New creates the mock swap implementation
 func New(opts ...Option) settlement.Interface {
 	mock := new(Service)
+	mock.settlementsSent = make(map[string]*big.Int)
+	mock.settlementsRecv = make(map[string]*big.Int)
 	for _, o := range opts {
 		o.apply(mock)
 	}
@@ -153,6 +159,11 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	if s.payFunc != nil {
 		return s.payFunc(ctx, peer, amount)
 	}
+	if settlement, ok := s.settlementsSent[peer.String()]; ok {
+		s.settlementsSent[peer.String()] = big.NewInt(0).Add(settlement, big.NewInt(int64(amount)))
+	} else {
+		s.settlementsSent[peer.String()] = big.NewInt(int64(amount))
+	}
 	return nil
 }
 
@@ -163,37 +174,41 @@ func (s *Service) SetNotifyPaymentFunc(f settlement.NotifyPaymentFunc) {
 }
 
 // TotalSent is the mock TotalSent function of swap.
-func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
+func (s *Service) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) {
 	if s.settlementSentFunc != nil {
 		return s.settlementSentFunc(peer)
 	}
-	return 0, nil
+	if v, ok := s.settlementsSent[peer.String()]; ok {
+		return v, nil
+	}
+	return big.NewInt(0), nil
 }
 
 // TotalReceived is the mock TotalReceived function of swap.
-func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
+func (s *Service) TotalReceived(peer swarm.Address) (totalReceived *big.Int, err error) {
 	if s.settlementRecvFunc != nil {
 		return s.settlementRecvFunc(peer)
 	}
-	return 0, nil
+	if v, ok := s.settlementsRecv[peer.String()]; ok {
+		return v, nil
+	}
+	return big.NewInt(0), nil
 }
 
 // SettlementsSent is the mock SettlementsSent function of swap.
-func (s *Service) SettlementsSent() (map[string]uint64, error) {
+func (s *Service) SettlementsSent() (map[string]*big.Int, error) {
 	if s.settlementsSentFunc != nil {
 		return s.settlementsSentFunc()
 	}
-	result := make(map[string]uint64)
-	return result, nil
+	return s.settlementsSent, nil
 }
 
 // SettlementsReceived is the mock SettlementsReceived function of swap.
-func (s *Service) SettlementsReceived() (map[string]uint64, error) {
+func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
 	if s.settlementsRecvFunc != nil {
 		return s.settlementsRecvFunc()
 	}
-	result := make(map[string]uint64)
-	return result, nil
+	return s.settlementsRecv, nil
 }
 
 // Handshake is called by the swap protocol when a handshake is received.

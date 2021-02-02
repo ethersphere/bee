@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"math/big"
 	"testing"
 	"time"
 
@@ -117,7 +118,7 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if totalSent != sentAmount {
+	if totalSent.Cmp(big.NewInt(int64(sentAmount))) != 0 {
 		t.Fatalf("stored wrong totalSent. got %d, want %d", totalSent, sentAmount)
 	}
 
@@ -126,7 +127,7 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if totalReceived != sentAmount {
+	if totalReceived.Cmp(big.NewInt(int64(sentAmount))) != 0 {
 		t.Fatalf("stored wrong totalReceived. got %d, want %d", totalReceived, sentAmount)
 	}
 }
