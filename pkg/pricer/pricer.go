@@ -271,7 +271,7 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	newPriceTable := make([]uint64, index+1)
 
 	// Copy previous content
-	_ := copy(newPriceTable, priceTable)
+	_ = copy(newPriceTable, priceTable)
 
 	// Check how many rows are missing
 	numberOfMissingRows := index - currentIndexDepth
