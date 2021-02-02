@@ -118,7 +118,7 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if totalSent.Cmp(big.NewInt(int64(sentAmount))) != 0 {
+	if totalSent.Cmp(new(big.Int).SetUint64(sentAmount)) != 0 {
 		t.Fatalf("stored wrong totalSent. got %d, want %d", totalSent, sentAmount)
 	}
 
@@ -127,7 +127,7 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if totalReceived.Cmp(big.NewInt(int64(sentAmount))) != 0 {
+	if totalReceived.Cmp(new(big.Int).SetUint64(sentAmount)) != 0 {
 		t.Fatalf("stored wrong totalReceived. got %d, want %d", totalReceived, sentAmount)
 	}
 }

@@ -525,7 +525,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if totalSent.Cmp(big.NewInt(int64(expectedAmount+testPaymentThreshold))) != 0 {
+	if totalSent.Cmp(new(big.Int).SetUint64(expectedAmount+testPaymentThreshold)) != 0 {
 		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, expectedAmount+testPaymentThreshold)
 	}
 
@@ -571,7 +571,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if totalSent.Cmp(big.NewInt(int64(debt))) != 0 {
+	if totalSent.Cmp(new(big.Int).SetUint64(debt)) != 0 {
 		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, testPaymentThreshold)
 	}
 
@@ -821,7 +821,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if totalSent.Cmp(big.NewInt(int64(debt))) != 0 {
+	if totalSent.Cmp(new(big.Int).SetUint64(debt)) != 0 {
 		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, debt)
 	}
 }
