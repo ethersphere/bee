@@ -68,7 +68,7 @@ func NewStorer(opts ...Option) *MockStorer {
 	return s
 }
 
-func (m *MockStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
+func (m *MockStorer) Get(_ context.Context, _ storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

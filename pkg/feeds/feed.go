@@ -10,12 +10,53 @@ package feeds
 
 import (
 	"encoding"
+	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+var ErrFeedTypeNotFound = errors.New("no such feed type")
+
+// Factory creates feed lookups for different types of feeds.
+type Factory interface {
+	NewLookup(Type, *Feed) (Lookup, error)
+}
+
+type Type int
+
+const (
+	Sequence Type = iota
+	Epoch
+)
+
+func (t *Type) String() string {
+	switch *t {
+	case Sequence:
+		return "Sequence"
+	case Epoch:
+		return "Epoch"
+	default:
+		return ""
+	}
+}
+
+func (t *Type) FromString(s string) error {
+	switch s = strings.ToLower(s); s {
+	case "sequence":
+		*t = Sequence
+	case "epoch":
+		*t = Epoch
+	default:
+		return ErrFeedTypeNotFound
+	}
+	return nil
+}
 
 type id struct {
 	topic []byte
@@ -57,6 +98,26 @@ type Update struct {
 // Update called on a feed with an index and returns an Update
 func (f *Feed) Update(index Index) *Update {
 	return &Update{f, index}
+}
+
+func NewUpdate(f *Feed, idx Index, timestamp int64, payload []byte, sig []byte) (swarm.Chunk, error) {
+	id, err := f.Update(idx).Id()
+	if err != nil {
+		return nil, fmt.Errorf("update: %w", err)
+	}
+	cac, err := toChunk(uint64(timestamp), payload)
+	if err != nil {
+		return nil, fmt.Errorf("toChunk: %w", err)
+	}
+
+	ch, err := soc.NewSignedChunk(id, cac, f.Owner.Bytes(), sig)
+	if err != nil {
+		return nil, fmt.Errorf("new chunk: %w", err)
+	}
+	if !soc.Valid(ch) {
+		return nil, storage.ErrInvalidChunk
+	}
+	return ch, nil
 }
 
 // Id calculates the identifier if a  feed update to be used in single owner chunks

@@ -7,16 +7,21 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gorilla/mux"
 
 	"github.com/ethersphere/bee/pkg/collection/entry"
+	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
@@ -26,10 +31,14 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/manifest/mantaray"
 )
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	ls := loadsave.New(s.Storer, storage.ModePutRequest, false)
+	feedDereferenced := false
+
 	targets := r.URL.Query().Get("targets")
 	if targets != "" {
 		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
@@ -51,7 +60,21 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
+	var at int64
+	atStr := r.URL.Query().Get("at")
+	if atStr != "" {
+		at, err = strconv.ParseInt(atStr, 10, 64)
+		if err != nil {
+			logger.Debugf("bzz download: parse at: %v", err)
+			logger.Error("bzz download: parse at")
+			jsonhttp.BadRequest(w, nil)
+			return
+		}
+	} else {
+		at = time.Now().Unix()
+	}
 
+FETCH:
 	// read manifest entry
 	j, _, err := joiner.New(ctx, s.Storer, address)
 	if err != nil {
@@ -68,6 +91,34 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Errorf("bzz download: read entry %s", address)
 		jsonhttp.NotFound(w, nil)
 		return
+	}
+
+	// there's a possible ambiguity here, right now the data which was
+	// read can be an entry.Entry or a mantaray feed manifest. Try to
+	// unmarshal as mantaray first and possibly resolve the feed, otherwise
+	// go on normally.
+	if !feedDereferenced {
+		if l, err := s.manifestFeed(ctx, ls, buf.Bytes()); err == nil {
+			//we have a feed manifest here
+			ch, cur, next, err := l.At(ctx, at, 0)
+			fmt.Println(cur, next)
+			if err != nil {
+				logger.Debugf("bzz download: feed lookup: %v", err)
+				logger.Error("bzz download: feed lookup")
+				jsonhttp.NotFound(w, "a")
+				return
+			}
+			ref, _, err := parseFeedUpdate(ch)
+			if err != nil {
+				logger.Debugf("bzz download: parse feed update: %v", err)
+				logger.Error("bzz download: parse feed update")
+				jsonhttp.NotFound(w, "b")
+				return
+			}
+			address = ref
+			feedDereferenced = true
+			goto FETCH
+		}
 	}
 	e := &entry.Entry{}
 	err = e.UnmarshalBinary(buf.Bytes())
@@ -109,7 +160,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	m, err := manifest.NewManifestReference(
 		manifestMetadata.MimeType,
 		e.Reference(),
-		loadsave.New(s.Storer, storage.ModePutRequest, false), // mode and encryption values are fallback
+		ls,
 	)
 	if err != nil {
 		logger.Debugf("bzz download: not manifest %s: %v", address, err)
@@ -282,4 +333,45 @@ func manifestMetadataLoad(ctx context.Context, manifest manifest.Interface, path
 	}
 
 	return "", false
+}
+
+func (s *server) manifestFeed(ctx context.Context, ls file.LoadSaver, candidate []byte) (feeds.Lookup, error) {
+	node := new(mantaray.Node)
+	err := node.UnmarshalBinary(candidate)
+	if err != nil {
+		return nil, fmt.Errorf("node unmarshal: %w", err)
+	}
+
+	e, err := node.LookupNode(context.Background(), []byte("/"), ls)
+	if err != nil {
+		return nil, fmt.Errorf("node lookup: %w", err)
+	}
+	var (
+		owner, topic []byte
+		t            = new(feeds.Type)
+	)
+	meta := e.Metadata()
+	if e := meta[feedMetadataEntryOwner]; e != "" {
+		owner, err = hex.DecodeString(e)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if e := meta[feedMetadataEntryTopic]; e != "" {
+		topic, err = hex.DecodeString(e)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if e := meta[feedMetadataEntryType]; e != "" {
+		err := t.FromString(e)
+		if err != nil {
+			return nil, err
+		}
+	}
+	f, err := feeds.New(string(topic), common.BytesToAddress(owner))
+	if err != nil {
+		return nil, err
+	}
+	return s.feedFactory.NewLookup(*t, f)
 }
