@@ -305,21 +305,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
 
-	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
-	b.topologyCloser = kad
-	hive.SetAddPeersHandler(kad.AddPeers)
-	p2ps.SetNotifier(kad)
-	pricer.SetKademlia(kad)
-
-	addrs, err := p2ps.Addresses()
-	if err != nil {
-		return nil, fmt.Errorf("get server addresses: %w", err)
-	}
-
-	for _, addr := range addrs {
-		logger.Debugf("p2p address: %s", addr)
-	}
-
 	if o.SwapEnable {
 		swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
 		swapAddressBook := swap.NewAddressbook(stateStore)
@@ -361,6 +346,21 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 	pricing.SetPaymentThresholdObserver(acc)
+
+	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
+	b.topologyCloser = kad
+	hive.SetAddPeersHandler(kad.AddPeers)
+	p2ps.SetNotifier(kad)
+	pricer.SetKademlia(kad)
+
+	addrs, err := p2ps.Addresses()
+	if err != nil {
+		return nil, fmt.Errorf("get server addresses: %w", err)
+	}
+
+	for _, addr := range addrs {
+		logger.Debugf("p2p address: %s", addr)
+	}
 
 	var path string
 
