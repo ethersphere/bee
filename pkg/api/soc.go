@@ -44,7 +44,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	sigStr := r.URL.Query().Get("sig")
 	if sigStr == "" {
 		s.Logger.Debugf("soc upload: empty signature")
-		s.Logger.Error("soc upload: bad signature")
+		s.Logger.Error("soc upload: empty signature")
 		jsonhttp.BadRequest(w, "empty signature")
 		return
 	}
@@ -75,8 +75,8 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(data) > swarm.ChunkSize {
-		s.Logger.Debugf("soc upload: chunk data exceeds 4096 bytes", err)
+	if len(data) > swarm.ChunkSize+swarm.SpanSize {
+		s.Logger.Debugf("soc upload: chunk data exceeds %d bytes", swarm.ChunkSize+swarm.SpanSize)
 		s.Logger.Error("soc upload: chunk data error")
 		jsonhttp.RequestEntityTooLarge(w, "payload too large")
 		return
