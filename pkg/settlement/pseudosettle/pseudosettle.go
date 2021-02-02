@@ -101,7 +101,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		totalReceived = big.NewInt(0)
 	}
 
-	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), totalReceived.Add(totalReceived, big.NewInt(int64(req.Amount))))
+	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), totalReceived.Add(totalReceived, new(big.Int).SetUint64(req.Amount)))
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return err
 	}
 
-	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
+	amountFloat, _ := new(big.Float).SetInt(amount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 	return nil
 }
