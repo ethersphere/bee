@@ -176,7 +176,9 @@ components:
           $ref: '#/components/schemas/Uid'
         startedAt:
           $ref: '#/components/schemas/DateTime'
-        stored:
+        total:
+          type: integer
+        processed:
           type: integer
         synced:
           type: integer
