@@ -27,7 +27,7 @@ type Service struct {
 	settlementsRecvFunc func() (map[string]*big.Int, error)
 
 	receiveChequeFunc    func(context.Context, swarm.Address, *chequebook.SignedCheque) error
-	payFunc              func(context.Context, swarm.Address, uint64) error
+	payFunc              func(context.Context, swarm.Address, *big.Int) error
 	setNotifyPaymentFunc settlement.NotifyPaymentFunc
 	handshakeFunc        func(swarm.Address, common.Address) error
 	lastSentChequeFunc   func(swarm.Address) (*chequebook.SignedCheque, error)
@@ -72,7 +72,7 @@ func WithReceiveChequeFunc(f func(context.Context, swarm.Address, *chequebook.Si
 	})
 }
 
-func WithPayFunc(f func(context.Context, swarm.Address, uint64) error) Option {
+func WithPayFunc(f func(context.Context, swarm.Address, *big.Int) error) Option {
 	return optionFunc(func(s *Service) {
 		s.payFunc = f
 	})
@@ -155,14 +155,14 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 }
 
 // Pay is the mock Pay function of swap.
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
 	if s.payFunc != nil {
 		return s.payFunc(ctx, peer, amount)
 	}
 	if settlement, ok := s.settlementsSent[peer.String()]; ok {
-		s.settlementsSent[peer.String()] = big.NewInt(0).Add(settlement, big.NewInt(int64(amount)))
+		s.settlementsSent[peer.String()] = big.NewInt(0).Add(settlement, amount)
 	} else {
-		s.settlementsSent[peer.String()] = big.NewInt(int64(amount))
+		s.settlementsSent[peer.String()] = amount
 	}
 	return nil
 }
