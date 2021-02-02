@@ -102,7 +102,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 
 	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
 
-	return s.notifyPaymentFunc(peer, amount.Uint64())
+	return s.notifyPaymentFunc(peer, amount)
 }
 
 // Pay initiates a payment to the given peer

@@ -24,7 +24,7 @@ import (
 type testObserver struct {
 	called chan struct{}
 	peer   swarm.Address
-	amount uint64
+	amount *big.Int
 }
 
 func newTestObserver() *testObserver {
@@ -33,7 +33,7 @@ func newTestObserver() *testObserver {
 	}
 }
 
-func (t *testObserver) NotifyPayment(peer swarm.Address, amount uint64) error {
+func (t *testObserver) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 	close(t.called)
 	t.peer = peer
 	t.amount = amount
@@ -60,7 +60,7 @@ func TestPayment(t *testing.T) {
 	payer := pseudosettle.New(recorder, logger, storePayer)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
-	amount := uint64(10000)
+	amount := big.NewInt(10000)
 
 	err := payer.Pay(context.Background(), peerID, amount)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestPayment(t *testing.T) {
 	}
 
 	sentAmount := messages[0].(*pb.Payment).Amount
-	if sentAmount != amount {
+	if sentAmount != amount.Uint64() {
 		t.Fatalf("got message with amount %v, want %v", sentAmount, amount)
 	}
 
@@ -105,7 +105,7 @@ func TestPayment(t *testing.T) {
 		t.Fatal("expected observer to be called")
 	}
 
-	if observer.amount != amount {
+	if observer.amount.Cmp(amount) != 0 {
 		t.Fatalf("observer called with wrong amount. got %d, want %d", observer.amount, amount)
 	}
 

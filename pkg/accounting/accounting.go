@@ -606,7 +606,7 @@ func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
 }
 
 // NotifyPayment is called by Settlement when we receive a payment.
-func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
+func (a *Accounting) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err
@@ -628,7 +628,7 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 		if err != nil {
 			return fmt.Errorf("failed to get surplus balance: %w", err)
 		}
-		increasedSurplus, err := addI64pU64(surplus, amount)
+		increasedSurplus, err := addI64pU64(surplus, amount.Uint64())
 		if err != nil {
 			return err
 		}
@@ -644,7 +644,7 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	}
 
 	// if current balance is positive, let's make a partial credit to
-	newBalance, err := subtractI64mU64(currentBalance, amount)
+	newBalance, err := subtractI64mU64(currentBalance, amount.Uint64())
 	if err != nil {
 		return err
 	}
@@ -668,7 +668,7 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	// so as that an oversettlement attempt creates balance for future forwarding services
 	// charges to be deducted of
 	if newBalance < 0 {
-		surplusGrowth, err := subtractU64mI64(amount, currentBalance)
+		surplusGrowth, err := subtractU64mI64(amount.Uint64(), currentBalance)
 		if err != nil {
 			return err
 		}
@@ -695,7 +695,7 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 // AsyncNotifyPayment calls notify payment in a go routine.
 // This is needed when accounting needs to be notified but the accounting lock is already held.
-func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount uint64) error {
+func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount *big.Int) error {
 	go func() {
 		err := a.NotifyPayment(peer, amount)
 		if err != nil {
