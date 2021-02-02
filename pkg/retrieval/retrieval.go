@@ -17,7 +17,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/headerutils"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -394,6 +393,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and
 		s.logger.Warningf("No price in previously issued response headers")
+		fmt.Printf("\n\n\n, %v", err)
 		chunkPrice = s.pricer.PriceForPeer(p.Address, chunk.Address())
 	}
 	// debit price from p's balance

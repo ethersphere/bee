@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"testing"
 	"time"
 
@@ -142,28 +143,28 @@ func TestDelivery(t *testing.T) {
 
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDeliveryWithPriceUpdate(t *testing.T) {
-	logger := logging.New(os.Stdout, 5)
-	mockStorer := storemock.NewStorer()
-	chunk := testingc.FixtureChunk("0033")
+	var (
+		price       = uint64(10)
+		serverPrice = uint64(17)
+		chunk       = testingc.FixtureChunk("0033")
+
+		headlerFunc = func(h p2p.Headers, a swarm.Address) p2p.Headers {
+			headers, _ := headerutils.MakePricingResponseHeaders(serverPrice, chunk.Address(), 5)
+			return headers
+		}
+
+		logger               = logging.New(ioutil.Discard, 0)
+		mockStorer           = storemock.NewStorer()
+		serverMockAccounting = accountingmock.NewAccounting()
+		clientPricerMock     = pricermock.NewMockService(pricermock.WithPeerPrice(price))
+		serverPricerMock     = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithPrice(serverPrice))
+	)
 
 	// put testdata in the mock store of the server
 	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	serverMockAccounting := accountingmock.NewAccounting()
-
-	price := uint64(10)
-	serverPrice := uint64(17)
-
-	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
-		headers, _ := headerutils.MakePricingResponseHeaders(serverPrice, chunk.Address(), 5)
-		return headers
-	}
-
-	clientPricerMock := pricermock.NewMockService(pricermock.WithPeerPrice(price))
-	serverPricerMock := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithPrice(serverPrice))
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, serverPricerMock, nil)
@@ -237,12 +238,12 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	}
 
 	clientBalance, _ := clientMockAccounting.Balance(peerID)
-	if clientBalance != -int64(serverPrice) {
+	if clientBalance.Cmp(big.NewInt(-int64(serverPrice))) != 0 {
 		t.Fatalf("unexpected balance on client. want %d got %d", -serverPrice, clientBalance)
 	}
 
 	serverBalance, _ := serverMockAccounting.Balance(peerID)
-	if serverBalance != int64(serverPrice) {
+	if serverBalance.Cmp(big.NewInt(int64(serverPrice))) != 0 {
 		t.Fatalf("unexpected balance on server. want %d got %d", serverPrice, serverBalance)
 	}
 }

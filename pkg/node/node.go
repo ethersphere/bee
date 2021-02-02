@@ -381,8 +381,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
 
-	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 	pricing.SetPaymentThresholdObserver(acc)
+	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 
 	var path string
 
