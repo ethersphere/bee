@@ -168,8 +168,6 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -845,6 +843,10 @@ paths:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+        '400':
+           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '401':
+           $ref: 'SwarmCommon.yaml#/components/responses/401'
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
