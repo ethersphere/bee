@@ -295,3 +295,10 @@ func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 
 	return int64(totalChunks) + 1
 }
+
+func requestCalculateNumberOfChunks(r *http.Request) int64 {
+	if !strings.Contains(r.Header.Get(contentTypeHeader), "multipart") && r.ContentLength > 0 {
+		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
+	}
+	return 0
+}

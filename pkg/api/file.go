@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
@@ -66,6 +67,29 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error("file upload: get or create tag")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
+	}
+
+	if !created {
+		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
+			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
+			if err != nil {
+				s.Logger.Debugf("file upload: increment tag: %v", err)
+				s.Logger.Error("file upload: increment tag")
+				jsonhttp.InternalServerError(w, "increment tag")
+				return
+			}
+		}
+
+		// here we have 2 additional chunks:
+		// - for metadata
+		// - for collection entry
+		err = tag.IncN(tags.TotalChunks, 2)
+		if err != nil {
+			s.Logger.Debugf("file upload: increment tag: %v", err)
+			s.Logger.Error("file upload: increment tag")
+			jsonhttp.InternalServerError(w, "increment tag")
+			return
+		}
 	}
 
 	// Add the tag to the context

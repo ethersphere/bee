@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
 )
@@ -30,6 +31,18 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error("bytes upload: get or create tag")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
+	}
+
+	if !created {
+		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
+			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
+			if err != nil {
+				s.Logger.Debugf("bytes upload: increment tag: %v", err)
+				s.Logger.Error("bytes upload: increment tag")
+				jsonhttp.InternalServerError(w, "increment tag")
+				return
+			}
+		}
 	}
 
 	// Add the tag to the context

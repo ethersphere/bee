@@ -341,7 +341,7 @@ func TestTags(t *testing.T) {
 		if tagToVerify.Uid != tr.Uid {
 			t.Fatalf("expected tag id to be %d but is %d", tagToVerify.Uid, tr.Uid)
 		}
-		tagValueTest(t, id, 3, 3, 1, 0, 0, 0, swarm.ZeroAddress, client)
+		tagValueTest(t, id, 3, 3, 1, 0, 0, 3, swarm.ZeroAddress, client)
 	})
 }
 
