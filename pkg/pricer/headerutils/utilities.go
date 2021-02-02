@@ -28,7 +28,7 @@ func MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, err
 
 	chunkPriceInBytes := make([]byte, 8)
 
-	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
+	binary.BigEndian.PutUint64(chunkPriceInBytes, chunkPrice)
 
 	headers := p2p.Headers{
 		"price":  chunkPriceInBytes,
@@ -43,7 +43,7 @@ func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uin
 	chunkPriceInBytes := make([]byte, 8)
 	chunkIndexInBytes := make([]byte, 1)
 
-	binary.LittleEndian.PutUint64(chunkPriceInBytes, chunkPrice)
+	binary.BigEndian.PutUint64(chunkPriceInBytes, chunkPrice)
 	chunkIndexInBytes[0] = index
 
 	headers := p2p.Headers{
@@ -121,6 +121,6 @@ func ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
 		return 0, ErrFieldLenth
 	}
 
-	receivedPrice := binary.LittleEndian.Uint64(receivedHeaders["price"])
+	receivedPrice := binary.BigEndian.Uint64(receivedHeaders["price"])
 	return receivedPrice, nil
 }

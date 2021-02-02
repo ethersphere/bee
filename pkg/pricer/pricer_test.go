@@ -319,10 +319,10 @@ func TestPricerHeadler(t *testing.T) {
 	}
 
 	chunkPriceInRequest := make([]byte, 8)
-	binary.LittleEndian.PutUint64(chunkPriceInRequest, uint64(50))
+	binary.BigEndian.PutUint64(chunkPriceInRequest, uint64(50))
 
 	chunkPriceInResponse := make([]byte, 8)
-	binary.LittleEndian.PutUint64(chunkPriceInResponse, uint64(30))
+	binary.BigEndian.PutUint64(chunkPriceInResponse, uint64(30))
 
 	if !reflect.DeepEqual(requestHeaders["price"], chunkPriceInRequest) {
 		t.Fatalf("targets don't match, got %v, want %v", responseHeaders["price"], chunkPriceInRequest)

@@ -5,7 +5,6 @@
 package headerutils_test
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -25,7 +24,7 @@ func TestMakePricingHeaders(t *testing.T) {
 	}
 
 	expectedHeaders := p2p.Headers{
-		"price":  []byte{228, 20, 0, 0, 0, 0, 0, 0},
+		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
 		"target": []byte{1, 1, 1, 225, 1, 1, 1},
 	}
 
@@ -44,10 +43,8 @@ func TestMakePricingResponseHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("Why %v", addr.Bytes())
-
 	expectedHeaders := p2p.Headers{
-		"price":  []byte{228, 20, 0, 0, 0, 0, 0, 0},
+		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
 		"target": []byte{1, 1, 1, 225, 1, 1, 1},
 		"index":  []byte{11},
 	}
@@ -61,7 +58,7 @@ func TestMakePricingResponseHeaders(t *testing.T) {
 func TestReadPricingHeaders(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
-		"price":  []byte{228, 20, 0, 0, 0, 0, 0, 0},
+		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
 		"target": []byte{1, 1, 1, 225, 1, 1, 1},
 	}
 
@@ -73,18 +70,18 @@ func TestReadPricingHeaders(t *testing.T) {
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
 	if readPrice != uint64(5348) {
-		t.Fatalf("price mismatch, got %v, want %v", readPrice, 5348)
+		t.Fatalf("Price mismatch, got %v, want %v", readPrice, 5348)
 	}
 
 	if !reflect.DeepEqual(readTarget, addr) {
-		t.Fatalf("target mismatch, got %v, want %v", readTarget, addr)
+		t.Fatalf("Target mismatch, got %v, want %v", readTarget, addr)
 	}
 }
 
 func TestReadPricingResponseHeaders(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
-		"price":  []byte{228, 20, 0, 0, 0, 0, 0, 0},
+		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
 		"target": []byte{1, 1, 1, 225, 1, 1, 1},
 		"index":  []byte{11},
 	}
@@ -97,15 +94,15 @@ func TestReadPricingResponseHeaders(t *testing.T) {
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
 	if readPrice != uint64(5348) {
-		t.Fatalf("price mismatch, got %v, want %v", readPrice, 5348)
+		t.Fatalf("Price mismatch, got %v, want %v", readPrice, 5348)
 	}
 
 	if readIndex != uint8(11) {
-		t.Fatalf("price mismatch, got %v, want %v", readPrice, 5348)
+		t.Fatalf("Price mismatch, got %v, want %v", readPrice, 5348)
 	}
 
 	if !reflect.DeepEqual(readTarget, addr) {
-		t.Fatalf("target mismatch, got %v, want %v", readTarget, addr)
+		t.Fatalf("Target mismatch, got %v, want %v", readTarget, addr)
 	}
 }
 
@@ -120,7 +117,7 @@ func TestReadIndexHeader(t *testing.T) {
 	}
 
 	if readIndex != uint8(11) {
-		t.Fatalf("index mismatch, got %v, want %v", readIndex, 11)
+		t.Fatalf("Index mismatch, got %v, want %v", readIndex, 11)
 	}
 
 }
@@ -139,14 +136,14 @@ func TestReadTargetHeader(t *testing.T) {
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
 	if !reflect.DeepEqual(readTarget, addr) {
-		t.Fatalf("target mismatch, got %v, want %v", readTarget, addr)
+		t.Fatalf("Target mismatch, got %v, want %v", readTarget, addr)
 	}
 
 }
 
 func TestReadPriceHeader(t *testing.T) {
 	toReadHeaders := p2p.Headers{
-		"price": []byte{228, 20, 0, 0, 0, 0, 0, 0},
+		"price": []byte{0, 0, 0, 0, 0, 0, 20, 228},
 	}
 
 	readPrice, err := headerutils.ReadPriceHeader(toReadHeaders)
@@ -155,7 +152,7 @@ func TestReadPriceHeader(t *testing.T) {
 	}
 
 	if readPrice != uint64(5348) {
-		t.Fatalf("index mismatch, got %v, want %v", readPrice, 5348)
+		t.Fatalf("Index mismatch, got %v, want %v", readPrice, 5348)
 	}
 
 }
@@ -164,27 +161,27 @@ func TestReadMalformedHeaders(t *testing.T) {
 	toReadHeaders := p2p.Headers{
 		"index":  []byte{11, 0},
 		"target": []byte{1, 1, 1, 225, 1, 1, 1},
-		"price":  []byte{228, 20, 0, 0, 0, 0, 0, 0, 0},
+		"price":  []byte{0, 0, 0, 0, 0, 20, 228},
 	}
 
 	_, err := headerutils.ReadIndexHeader(toReadHeaders)
 	if err == nil {
-		t.Fatal("expected error from bad length of index bytes")
+		t.Fatal("Expected error from bad length of index bytes")
 	}
 
 	_, err = headerutils.ReadPriceHeader(toReadHeaders)
 	if err == nil {
-		t.Fatal("expected error from bad length of price bytes")
+		t.Fatal("Expected error from bad length of price bytes")
 	}
 
 	_, _, _, err = headerutils.ReadPricingResponseHeaders(toReadHeaders)
 	if err == nil {
-		t.Fatal("expected error caused by bad length of fields")
+		t.Fatal("Expected error caused by bad length of fields")
 	}
 
 	_, _, err = headerutils.ReadPricingHeaders(toReadHeaders)
 	if err == nil {
-		t.Fatal("expected error caused by bad length of fields")
+		t.Fatal("Expected error caused by bad length of fields")
 	}
 
 }
