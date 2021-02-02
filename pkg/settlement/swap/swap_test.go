@@ -37,10 +37,10 @@ func (m *swapProtocolMock) EmitCheque(ctx context.Context, peer swarm.Address, c
 type testObserver struct {
 	called bool
 	peer   swarm.Address
-	amount uint64
+	amount *big.Int
 }
 
-func (t *testObserver) NotifyPayment(peer swarm.Address, amount uint64) error {
+func (t *testObserver) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 	t.called = true
 	t.peer = peer
 	t.amount = amount
@@ -155,7 +155,7 @@ func TestReceiveCheque(t *testing.T) {
 		t.Fatal("expected observer to be called")
 	}
 
-	if observer.amount != amount.Uint64() {
+	if observer.amount.Cmp(amount) != 0 {
 		t.Fatalf("observer called with wrong amount. got %d, want %d", observer.amount, amount)
 	}
 

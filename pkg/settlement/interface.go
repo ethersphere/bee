@@ -34,4 +34,4 @@ type Interface interface {
 }
 
 // NotifyPaymentFunc is called when a payment from peer was successfully received
-type NotifyPaymentFunc func(peer swarm.Address, amount uint64) error
+type NotifyPaymentFunc func(peer swarm.Address, amount *big.Int) error

@@ -106,7 +106,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
-	return s.notifyPaymentFunc(p.Address, req.Amount)
+	return s.notifyPaymentFunc(p.Address, new(big.Int).SetUint64(req.Amount))
 }
 
 // Pay initiates a payment to the given peer
