@@ -65,7 +65,7 @@ func TestGatewayMode(t *testing.T) {
 		})
 
 		// should work without pinning
-		jsonhttptest.Request(t, client, http.MethodPost, "/chunks/"+chunk.Address().String(), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 		)
 

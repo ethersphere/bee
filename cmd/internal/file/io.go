@@ -137,9 +137,8 @@ func NewApiStore(host string, port int, ssl bool) PutGetter {
 // Put implements storage.Putter.
 func (a *ApiStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	for _, ch := range chs {
-		addr := ch.Address().String()
 		buf := bytes.NewReader(ch.Data())
-		url := strings.Join([]string{a.baseUrl, addr}, "/")
+		url := strings.Join([]string{a.baseUrl}, "/")
 		res, err := a.Client.Post(url, "application/octet-stream", buf)
 		if err != nil {
 			return nil, err

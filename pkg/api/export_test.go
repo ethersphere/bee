@@ -10,6 +10,8 @@ type Server = server
 
 type (
 	BytesPostResponse        = bytesPostResponse
+	ChunkAddressResponse     = chunkAddressResponse
+	SocPostResponse          = socPostResponse
 	FileUploadResponse       = fileUploadResponse
 	TagResponse              = tagResponse
 	TagRequest               = tagRequest

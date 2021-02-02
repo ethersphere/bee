@@ -12,9 +12,8 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/netstore"
-	"github.com/ethersphere/bee/pkg/soc"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -24,20 +23,15 @@ import (
 	"github.com/gorilla/mux"
 )
 
+type chunkAddressResponse struct {
+	Reference swarm.Address `json:"reference"`
+}
+
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
-	nameOrHex := mux.Vars(r)["addr"]
-
-	address, err := s.resolveNameOrAddress(nameOrHex)
-	if err != nil {
-		s.Logger.Debugf("chunk upload: parse chunk address %s: %v", nameOrHex, err)
-		s.Logger.Error("chunk upload: parse chunk address")
-		jsonhttp.BadRequest(w, "invalid chunk address")
-		return
-	}
-
 	var (
 		tag *tags.Tag
 		ctx = r.Context()
+		err error
 	)
 
 	if h := r.Header.Get(SwarmTagUidHeader); h != "" {
@@ -68,21 +62,37 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
-		s.Logger.Debugf("chunk upload: read chunk data error: %v, addr %s", err, address)
+		s.Logger.Debugf("chunk upload: read chunk data error: %v", err)
 		s.Logger.Error("chunk upload: read chunk data error")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 	}
 
-	chunk := swarm.NewChunk(address, data)
-	if !content.Valid(chunk) {
-		if !soc.Valid(chunk) {
-			s.Logger.Debugf("chunk upload: invalid chunk: %s", address)
-			s.Logger.Error("chunk upload: invalid chunk")
-			jsonhttp.BadRequest(w, nil)
-			return
-		}
+	if len(data) < swarm.SpanSize {
+		s.Logger.Debug("chunk upload: not enough data")
+		s.Logger.Error("chunk upload: data length")
+		jsonhttp.BadRequest(w, "data length")
+		return
 	}
+
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
+
+	err = hasher.SetSpanBytes(data[:swarm.SpanSize])
+	if err != nil {
+		s.Logger.Debugf("chunk upload: set span: %v", err)
+		s.Logger.Error("chunk upload: span error")
+		jsonhttp.InternalServerError(w, "span error")
+		return
+	}
+
+	_, err = hasher.Write(data[swarm.SpanSize:])
+	if err != nil {
+		return
+	}
+
+	address := swarm.NewAddress(hasher.Sum(nil))
+	chunk := swarm.NewChunk(address, data)
 
 	seen, err := s.Storer.Put(ctx, requestModePut(r), chunk)
 	if err != nil {
@@ -113,7 +123,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
-	jsonhttp.OK(w, nil)
+	jsonhttp.OK(w, chunkAddressResponse{Reference: address})
 }
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {

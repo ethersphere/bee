@@ -38,7 +38,7 @@ func TestTags(t *testing.T) {
 		filesResource  = "/files"
 		dirResource    = "/dirs"
 		bytesResource  = "/bytes"
-		chunksResource = func(addr swarm.Address) string { return "/chunks/" + addr.String() }
+		chunksResource = "/chunks"
 		tagsResource   = "/tags"
 		chunk          = testingc.GenerateTestRandomChunk()
 		someTagName    = "file.jpg"
@@ -78,7 +78,7 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("create tag with invalid id", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusBadRequest,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "cannot get tag",
@@ -120,20 +120,14 @@ func TestTags(t *testing.T) {
 			t.Fatalf("sent tag name %s does not match received tag name %s", someTagName, tr.Name)
 		}
 
-		_ = jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusOK,
+		_ = jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
-		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusOK,
+		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, strconv.FormatUint(uint64(tr.Uid), 10)),
 		)
 
@@ -218,7 +212,7 @@ func TestTags(t *testing.T) {
 		addr := test.RandomAddress()
 
 		// upload content with tag
-		jsonhttptest.Request(t, client, http.MethodPost, chunksResource(chunk.Address()), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithRequestHeader(api.SwarmTagUidHeader, fmt.Sprint(tagId)),
 		)
