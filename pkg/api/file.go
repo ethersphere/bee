@@ -80,17 +80,6 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-
-		// here we have 2 additional chunks:
-		// - for metadata
-		// - for collection entry
-		err = tag.IncN(tags.TotalChunks, 2)
-		if err != nil {
-			s.Logger.Debugf("file upload: increment tag: %v", err)
-			s.Logger.Error("file upload: increment tag")
-			jsonhttp.InternalServerError(w, "increment tag")
-			return
-		}
 	}
 
 	// Add the tag to the context
@@ -201,6 +190,23 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
+
+	if !created {
+		// only in the case when tag is sent via header (i.e. not created by this request)
+
+		// here we have additional chunks:
+		// - for metadata (1 or more) -> we use estimation function
+		// - for collection entry (1)
+		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), requestEncrypt(r))
+		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
+		if err != nil {
+			s.Logger.Debugf("file upload: increment tag: %v", err)
+			s.Logger.Error("file upload: increment tag")
+			jsonhttp.InternalServerError(w, "increment tag")
+			return
+		}
+	}
+
 	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)

@@ -170,17 +170,9 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 					return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
 				}
 			}
-
-			// and additional 2 chunks:
-			// - for each file metadata
-			// - for each file collection entry
-			err = tag.IncN(tags.TotalChunks, 2)
-			if err != nil {
-				return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
-			}
 		}
 
-		fileReference, err := storeFile(ctx, fileInfo, p)
+		fileReference, err := storeFile(ctx, fileInfo, p, encrypt, tag, tagCreated)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
@@ -229,14 +221,6 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 			}
 			return nil
 		})
-
-		// we have additional chunks:
-		// - for manifest file metadata
-		// - for manifest file collection entry
-		err = tag.IncN(tags.TotalChunks, 2)
-		if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
-		}
 	}
 
 	// save manifest
@@ -251,6 +235,17 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
+	}
+
+	if !tagCreated {
+		// we have additional chunks:
+		// - for manifest file metadata (1 or more) -> we use estimation function
+		// - for manifest file collection entry (1)
+		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), encrypt)
+		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
+		if err != nil {
+			return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
+		}
 	}
 
 	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
@@ -275,7 +270,7 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 
 // storeFile uploads the given file and returns its reference
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code
-func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc) (swarm.Address, error) {
+func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc, encrypt bool, tag *tags.Tag, tagCreated bool) (swarm.Address, error) {
 	// first store the file and get its reference
 	fr, err := p(ctx, fileInfo.reader, fileInfo.size)
 	if err != nil {
@@ -293,6 +288,17 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc) (s
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
+	}
+
+	if !tagCreated {
+		// here we have additional chunks:
+		// - for metadata (1 or more) -> we use estimation function
+		// - for collection entry (1)
+		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), encrypt)
+		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
+		if err != nil {
+			return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
+		}
 	}
 
 	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
