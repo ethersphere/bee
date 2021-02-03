@@ -16,15 +16,15 @@ import (
 // Service is the mock Accounting service.
 type Service struct {
 	lock                    sync.Mutex
-	balances                map[string]int64
+	balances                map[string]*big.Int
 	reserveFunc             func(ctx context.Context, peer swarm.Address, price uint64) error
 	releaseFunc             func(peer swarm.Address, price uint64)
 	creditFunc              func(peer swarm.Address, price uint64) error
 	debitFunc               func(peer swarm.Address, price uint64) error
 	balanceFunc             func(swarm.Address) (*big.Int, error)
-	balancesFunc            func() (map[string]int64, error)
-	compensatedBalanceFunc  func(swarm.Address) (int64, error)
-	compensatedBalancesFunc func() (map[string]int64, error)
+	balancesFunc            func() (map[string]*big.Int, error)
+	compensatedBalanceFunc  func(swarm.Address) (*big.Int, error)
+	compensatedBalancesFunc func() (map[string]*big.Int, error)
 
 	balanceSurplusFunc func(swarm.Address) (*big.Int, error)
 }
@@ -65,21 +65,21 @@ func WithBalanceFunc(f func(swarm.Address) (*big.Int, error)) Option {
 }
 
 // WithBalancesFunc sets the mock Balances function
-func WithBalancesFunc(f func() (map[string]int64, error)) Option {
+func WithBalancesFunc(f func() (map[string]*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.balancesFunc = f
 	})
 }
 
 // WithCompensatedBalanceFunc sets the mock Balance function
-func WithCompensatedBalanceFunc(f func(swarm.Address) (int64, error)) Option {
+func WithCompensatedBalanceFunc(f func(swarm.Address) (*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.compensatedBalanceFunc = f
 	})
 }
 
 // WithCompensatedBalancesFunc sets the mock Balances function
-func WithCompensatedBalancesFunc(f func() (map[string]int64, error)) Option {
+func WithCompensatedBalancesFunc(f func() (map[string]*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.compensatedBalancesFunc = f
 	})
@@ -95,7 +95,7 @@ func WithBalanceSurplusFunc(f func(swarm.Address) (*big.Int, error)) Option {
 // NewAccounting creates the mock accounting implementation
 func NewAccounting(opts ...Option) accounting.Interface {
 	mock := new(Service)
-	mock.balances = make(map[string]int64)
+	mock.balances = make(map[string]*big.Int)
 	for _, o := range opts {
 		o.apply(mock)
 	}
@@ -124,7 +124,12 @@ func (s *Service) Credit(peer swarm.Address, price uint64) error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.balances[peer.String()] -= int64(price)
+
+	if bal, ok := s.balances[peer.String()]; ok {
+		s.balances[peer.String()] = new(big.Int).Sub(bal, new(big.Int).SetUint64(price))
+	} else {
+		s.balances[peer.String()] = big.NewInt(-int64(price))
+	}
 	return nil
 }
 
@@ -135,7 +140,12 @@ func (s *Service) Debit(peer swarm.Address, price uint64) error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.balances[peer.String()] += int64(price)
+
+	if bal, ok := s.balances[peer.String()]; ok {
+		s.balances[peer.String()] = new(big.Int).Add(bal, new(big.Int).SetUint64(price))
+	} else {
+		s.balances[peer.String()] = new(big.Int).SetUint64(price)
+	}
 	return nil
 }
 
@@ -146,11 +156,15 @@ func (s *Service) Balance(peer swarm.Address) (*big.Int, error) {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	return big.NewInt(s.balances[peer.String()]), nil
+	if bal, ok := s.balances[peer.String()]; ok {
+		return bal, nil
+	} else {
+		return big.NewInt(0), nil
+	}
 }
 
 // Balances is the mock function wrapper that calls the set implementation
-func (s *Service) Balances() (map[string]int64, error) {
+func (s *Service) Balances() (map[string]*big.Int, error) {
 	if s.balancesFunc != nil {
 		return s.balancesFunc()
 	}
@@ -158,7 +172,7 @@ func (s *Service) Balances() (map[string]int64, error) {
 }
 
 // CompensatedBalance is the mock function wrapper that calls the set implementation
-func (s *Service) CompensatedBalance(peer swarm.Address) (int64, error) {
+func (s *Service) CompensatedBalance(peer swarm.Address) (*big.Int, error) {
 	if s.compensatedBalanceFunc != nil {
 		return s.compensatedBalanceFunc(peer)
 	}
@@ -168,7 +182,7 @@ func (s *Service) CompensatedBalance(peer swarm.Address) (int64, error) {
 }
 
 // CompensatedBalances is the mock function wrapper that calls the set implementation
-func (s *Service) CompensatedBalances() (map[string]int64, error) {
+func (s *Service) CompensatedBalances() (map[string]*big.Int, error) {
 	if s.compensatedBalancesFunc != nil {
 		return s.compensatedBalancesFunc()
 	}
