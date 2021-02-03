@@ -128,6 +128,7 @@ LOOP:
 					err       error
 					startTime = time.Now()
 					t         *tags.Tag
+					setSent   bool
 				)
 				defer func() {
 					if err == nil {
@@ -149,19 +150,11 @@ LOOP:
 				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
 					if errors.Is(err, topology.ErrWantSelf) {
-						// we are the closest ones - this is fine. set the chunk as synced
+						// we are the closest ones - this is fine
 						// this is to make sure that the sent number does not diverge from the synced counter
 						// the edge case is on the uploader node, in the case where the uploader node is
 						// connected to other nodes, but is the closest one to the chunk.
-						t, err = s.tag.Get(ch.TagID())
-						if err == nil && t != nil {
-							err = t.Inc(tags.StateSent)
-							if err != nil {
-								err = fmt.Errorf("pusher: increment sent: %w", err)
-								return
-							}
-						}
-
+						setSent = true
 					} else {
 						return
 					}
@@ -175,7 +168,13 @@ LOOP:
 				if err == nil && t != nil {
 					err = t.Inc(tags.StateSynced)
 					if err != nil {
-						err = fmt.Errorf("pusher: error inc tag: %v", err)
+						err = fmt.Errorf("pusher: increment synced: %v", err)
+					}
+					if setSent {
+						err = t.Inc(tags.StateSent)
+						if err != nil {
+							err = fmt.Errorf("pusher: increment sent: %w", err)
+						}
 					}
 				}
 			}(ctx, ch)
