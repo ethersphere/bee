@@ -101,7 +101,6 @@ func NewAccounting(
 	Settlement settlement.Interface,
 	Pricing pricing.Interface,
 ) (*Accounting, error) {
-
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
 		paymentThreshold: PaymentThreshold,
