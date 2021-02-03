@@ -85,7 +85,7 @@ func TestAccountingAddBalance(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if balance != booking.expectedBalance {
+		if balance.Int64() != booking.expectedBalance {
 			t.Fatalf("balance for peer %v not as expected after booking %d. got %d, wanted %d", booking.peer.String(), i, balance, booking.expectedBalance)
 		}
 	}
@@ -137,7 +137,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if peer1Balance != int64(peer1DebitAmount) {
+	if peer1Balance.Uint64() != peer1DebitAmount {
 		t.Fatalf("peer1Balance not loaded correctly. got %d, wanted %d", peer1Balance, peer1DebitAmount)
 	}
 
@@ -146,7 +146,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if peer2Balance != -int64(peer2CreditAmount) {
+	if peer2Balance.Int64() != -int64(peer2CreditAmount) {
 		t.Fatalf("peer2Balance not loaded correctly. got %d, wanted %d", peer2Balance, -int64(peer2CreditAmount))
 	}
 }
@@ -267,7 +267,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if balance != 0 {
+	if balance.Int64() != 0 {
 		t.Fatalf("expected balance to be reset. got %d", balance)
 	}
 
@@ -358,7 +358,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if balance != 0 {
+	if balance.Int64() != 0 {
 		t.Fatalf("expected balance to be reset. got %d", balance)
 	}
 }
@@ -394,7 +394,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
 	}
-	if val != 2 {
+	if val.Int64() != 2 {
 		t.Fatal("Not expected surplus balance")
 	}
 	//sanity check balance
@@ -402,7 +402,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Balance")
 	}
-	if val != 0 {
+	if val.Int64() != 0 {
 		t.Fatal("Not expected balance")
 	}
 	// Notify of incoming payment from same peer, so balance goes to 0 with surplusbalance 10002 (testpaymentthreshold+2)
@@ -415,7 +415,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
 	}
-	if val != testPaymentThreshold+2 {
+	if val.Int64() != testPaymentThreshold+2 {
 		t.Fatal("Unexpected surplus balance")
 	}
 	//sanity check balance
@@ -423,7 +423,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Balance")
 	}
-	if val != 0 {
+	if val.Int64() != 0 {
 		t.Fatal("Not expected balance, expected 0")
 	}
 	// Debit for same peer, so balance stays 0 with surplusbalance decreasing to 2
@@ -436,7 +436,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
 	}
-	if val != 2 {
+	if val.Int64() != 2 {
 		t.Fatal("Unexpected surplus balance")
 	}
 	//sanity check balance
@@ -444,7 +444,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Balance")
 	}
-	if val != 0 {
+	if val.Int64() != 0 {
 		t.Fatal("Not expected balance, expected 0")
 	}
 	// Debit for same peer, so balance goes to 9998 (testpaymentthreshold - 2) with surplusbalance decreasing to 0
@@ -457,7 +457,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
 	}
-	if val != 0 {
+	if val.Int64() != 0 {
 		t.Fatal("Unexpected surplus balance")
 	}
 	//sanity check balance
@@ -465,7 +465,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error checking Balance")
 	}
-	if val != testPaymentThreshold-2 {
+	if val.Int64() != testPaymentThreshold-2 {
 		t.Fatal("Not expected balance, expected 0")
 	}
 }
@@ -580,7 +580,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	debt := uint64(50)
 	lowerThreshold := uint64(100)
 
-	err = acc.NotifyPaymentThreshold(peer1Addr, lowerThreshold)
+	err = acc.NotifyPaymentThreshold(peer1Addr, new(big.Int).SetUint64(lowerThreshold))
 	if err != nil {
 		t.Fatal(err)
 	}
