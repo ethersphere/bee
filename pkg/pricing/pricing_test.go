@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"math/big"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -21,10 +22,10 @@ import (
 type testObserver struct {
 	called           bool
 	peer             swarm.Address
-	paymentThreshold uint64
+	paymentThreshold *big.Int
 }
 
-func (t *testObserver) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error {
+func (t *testObserver) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error {
 	t.called = true
 	t.peer = peer
 	t.paymentThreshold = paymentThreshold
@@ -85,7 +86,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 		t.Fatal("expected observer to be called")
 	}
 
-	if observer.paymentThreshold != paymentThreshold {
+	if observer.paymentThreshold.Uint64() != paymentThreshold {
 		t.Fatalf("observer called with wrong paymentThreshold. got %d, want %d", observer.paymentThreshold, paymentThreshold)
 	}
 

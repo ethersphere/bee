@@ -6,6 +6,7 @@ package debugapi_test
 
 import (
 	"errors"
+	"math/big"
 	"net/http"
 	"reflect"
 	"testing"
@@ -231,8 +232,8 @@ func TestConsumedError(t *testing.T) {
 
 func TestConsumedPeers(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
-	balanceFunc := func(swarm.Address) (int64, error) {
-		return 1000000000000000000, nil
+	balanceFunc := func(swarm.Address) (*big.Int, error) {
+		return big.NewInt(1000000000000000000), nil
 	}
 	testServer := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
@@ -249,8 +250,8 @@ func TestConsumedPeers(t *testing.T) {
 func TestConsumedPeersError(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	wantErr := errors.New("Error")
-	balanceFunc := func(swarm.Address) (int64, error) {
-		return 0, wantErr
+	balanceFunc := func(swarm.Address) (*big.Int, error) {
+		return nil, wantErr
 	}
 	testServer := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
@@ -266,8 +267,8 @@ func TestConsumedPeersError(t *testing.T) {
 
 func TestConsumedPeersNoBalance(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
-	balanceFunc := func(swarm.Address) (int64, error) {
-		return 0, accounting.ErrPeerNoBalance
+	balanceFunc := func(swarm.Address) (*big.Int, error) {
+		return nil, accounting.ErrPeerNoBalance
 	}
 	testServer := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},

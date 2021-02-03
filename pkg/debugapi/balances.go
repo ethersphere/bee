@@ -76,7 +76,7 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonhttp.OK(w, balanceResponse{
 		Peer:    peer.String(),
-		Balance: balance,
+		Balance: balance.Int64(),
 	})
 }
 

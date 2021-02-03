@@ -7,6 +7,7 @@ package pricing
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -31,7 +32,7 @@ type Interface interface {
 
 // PaymentThresholdObserver is used for being notified of payment threshold updates
 type PaymentThresholdObserver interface {
-	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error
+	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error
 }
 
 type Service struct {
@@ -81,7 +82,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, req.PaymentThreshold)
 
-	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, req.PaymentThreshold)
+	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, new(big.Int).SetUint64(req.PaymentThreshold))
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
