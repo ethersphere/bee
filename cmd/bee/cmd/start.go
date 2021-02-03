@@ -243,6 +243,22 @@ type signerConfig struct {
 	pssPrivateKey    *ecdsa.PrivateKey
 }
 
+func waitForClef(logger logging.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
+	for {
+		externalSigner, err = external.NewExternalSigner(endpoint)
+		if err == nil {
+			return externalSigner, nil
+		}
+		if maxRetries == 0 {
+			return nil, err
+		}
+		maxRetries--
+		logger.Errorf("cannot connect to clef signer: %v", err)
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (config *signerConfig, err error) {
 	var keystore keystore.Service
 	if c.config.GetString(optionNameDataDir) == "" {
@@ -294,7 +310,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 			}
 		}
 
-		externalSigner, err := external.NewExternalSigner(endpoint)
+		externalSigner, err := waitForClef(logger, 5, endpoint)
 		if err != nil {
 			return nil, err
 		}
