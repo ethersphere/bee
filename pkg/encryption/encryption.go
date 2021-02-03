@@ -21,17 +21,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
-
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
 	KeyLength     = 32
 	ReferenceSize = 64
-)
-
-const (
-	EncryptionBranches = swarm.Branches / 2
 )
 
 type Key []byte
