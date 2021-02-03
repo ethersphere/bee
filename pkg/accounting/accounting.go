@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"strings"
 	"sync"
@@ -96,21 +95,17 @@ var (
 func NewAccounting(
 	PaymentThreshold,
 	PaymentTolerance,
-	EarlyPayment uint64,
+	EarlyPayment *big.Int,
 	Logger logging.Logger,
 	Store storage.StateStorer,
 	Settlement settlement.Interface,
 	Pricing pricing.Interface,
 ) (*Accounting, error) {
-	if PaymentTolerance+PaymentThreshold > math.MaxInt64 {
-		return nil, fmt.Errorf("tolerance plus threshold too big: %w", ErrOverflow)
-	}
-
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
-		paymentThreshold: new(big.Int).SetUint64(PaymentThreshold),
-		paymentTolerance: new(big.Int).SetUint64(PaymentTolerance),
-		earlyPayment:     new(big.Int).SetUint64(EarlyPayment),
+		paymentThreshold: PaymentThreshold,
+		paymentTolerance: PaymentTolerance,
+		earlyPayment:     EarlyPayment,
 		logger:           Logger,
 		store:            Store,
 		settlement:       Settlement,
