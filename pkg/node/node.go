@@ -301,12 +301,20 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		settlement = pseudosettleService
 	}
 
-	pricing := pricing.New(p2ps, logger, big.NewInt(0).SetUint64(o.PaymentThreshold))
+	pricing := pricing.New(p2ps, logger, new(big.Int).SetUint64(o.PaymentThreshold))
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
 
-	acc, err := accounting.NewAccounting(big.NewInt(0).SetUint64(o.PaymentThreshold), big.NewInt(0).SetUint64(o.PaymentTolerance), big.NewInt(0).SetUint64(o.PaymentEarly), logger, stateStore, settlement, pricing)
+	acc, err := accounting.NewAccounting(
+		new(big.Int).SetUint64(o.PaymentThreshold),
+		new(big.Int).SetUint64(o.PaymentTolerance),
+		new(big.Int).SetUint64(o.PaymentEarly),
+		logger,
+		stateStore,
+		settlement,
+		pricing,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
