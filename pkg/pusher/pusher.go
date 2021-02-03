@@ -169,11 +169,13 @@ LOOP:
 					err = t.Inc(tags.StateSynced)
 					if err != nil {
 						err = fmt.Errorf("pusher: increment synced: %v", err)
+						return
 					}
 					if setSent {
 						err = t.Inc(tags.StateSent)
 						if err != nil {
 							err = fmt.Errorf("pusher: increment sent: %w", err)
+							return
 						}
 					}
 				}
