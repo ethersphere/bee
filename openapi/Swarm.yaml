@@ -821,7 +821,7 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
           required: true
           description: Owner
         - in: path
