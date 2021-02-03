@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -276,15 +277,15 @@ func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
 // calculateNumberOfChunks calculates the number of chunks in an arbitrary
 // content length.
 func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
-	if contentLength < 4096 {
+	if contentLength < swarm.ChunkSize {
 		return 1
 	}
-	branchingFactor := 128
+	branchingFactor := swarm.Branches
 	if isEncrypted {
-		branchingFactor = 64
+		branchingFactor = encryption.EncryptionBranches
 	}
 
-	dataChunks := math.Ceil(float64(contentLength) / float64(4096))
+	dataChunks := math.Ceil(float64(contentLength) / float64(swarm.ChunkSize))
 	totalChunks := dataChunks
 	intermediate := dataChunks / float64(branchingFactor)
 
