@@ -47,11 +47,11 @@ type Interface interface {
 	// SurplusBalance returns the current surplus balance for the given peer.
 	SurplusBalance(peer swarm.Address) (*big.Int, error)
 	// Balances returns balances for all known peers.
-	Balances() (map[string]int64, error)
+	Balances() (map[string]*big.Int, error)
 	// CompensatedBalance returns the current balance deducted by current surplus balance for the given peer.
-	CompensatedBalance(peer swarm.Address) (int64, error)
+	CompensatedBalance(peer swarm.Address) (*big.Int, error)
 	// CompensatedBalances returns the compensated balances for all known peers.
-	CompensatedBalances() (map[string]int64, error)
+	CompensatedBalances() (map[string]*big.Int, error)
 }
 
 // accountingPeer holds all in-memory accounting information for one peer.
@@ -265,12 +265,11 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 
 	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
 	paymentAmount := new(big.Int).Neg(oldBalance)
-	nextBalance := 0
 
 	// Try to save the next balance first.
 	// Otherwise we might pay and then not be able to save, forcing us to pay
 	// again after restart.
-	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	err = a.store.Put(peerBalanceKey(peer), big.NewInt(0))
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
@@ -309,7 +308,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
 
 		// get new surplus balance after deduct
-		newSurplusBalance := new(big.Int).Sub(surplusBalance, new(big.Int).SetUint64(price))
+		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
 
 		// if nothing left for debiting, store new surplus balance and return from debit
 		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
@@ -403,30 +402,30 @@ func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err e
 }
 
 // CompensatedBalance returns balance decreased by surplus balance
-func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated int64, err error) {
+func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated *big.Int, err error) {
 
 	surplus, err := a.SurplusBalance(peer)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	if surplus.Cmp(big.NewInt(0)) < 0 {
-		return 0, ErrInvalidValue
+		return nil, ErrInvalidValue
 	}
 
 	balance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
-			return 0, err
+			return nil, err
 		}
 	}
 
 	// if surplus is 0 and peer has no balance, propagate ErrPeerNoBalance
 	if surplus.Cmp(big.NewInt(0)) == 0 && errors.Is(err, ErrPeerNoBalance) {
-		return 0, err
+		return nil, err
 	}
 	// Compensated balance is balance decreased by surplus balance
-	compensated = new(big.Int).Sub(balance, surplus).Int64()
+	compensated = new(big.Int).Sub(balance, surplus)
 
 	return compensated, nil
 }
@@ -461,8 +460,8 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 }
 
 // Balances gets balances for all peers from store.
-func (a *Accounting) Balances() (map[string]int64, error) {
-	s := make(map[string]int64)
+func (a *Accounting) Balances() (map[string]*big.Int, error) {
+	s := make(map[string]*big.Int)
 
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
@@ -471,7 +470,7 @@ func (a *Accounting) Balances() (map[string]int64, error) {
 		}
 
 		if _, ok := s[addr.String()]; !ok {
-			var storevalue int64
+			var storevalue *big.Int
 			err = a.store.Get(peerBalanceKey(addr), &storevalue)
 			if err != nil {
 				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
@@ -491,8 +490,8 @@ func (a *Accounting) Balances() (map[string]int64, error) {
 }
 
 // Balances gets balances for all peers from store.
-func (a *Accounting) CompensatedBalances() (map[string]int64, error) {
-	s := make(map[string]int64)
+func (a *Accounting) CompensatedBalances() (map[string]*big.Int, error) {
+	s := make(map[string]*big.Int)
 
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
