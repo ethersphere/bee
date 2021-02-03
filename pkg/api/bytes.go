@@ -34,6 +34,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !created {
+		// only in the case when tag is sent via header (i.e. not created by this request)
 		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
 			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
 			if err != nil {

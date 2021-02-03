@@ -162,6 +162,7 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 		}
 
 		if !tagCreated {
+			// only in the case when tag is sent via header (i.e. not created by this request)
 			// for each file
 			if estimatedTotalChunks := calculateNumberOfChunks(fileInfo.size, encrypt); estimatedTotalChunks > 0 {
 				err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
@@ -217,6 +218,7 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 
 	storeSizeFn := []manifest.StoreSizeFunc{}
 	if !tagCreated {
+		// only in the case when tag is sent via header (i.e. not created by this request)
 		// each content that is saved for manifest
 		storeSizeFn = append(storeSizeFn, func(dataSize int64) error {
 			if estimatedTotalChunks := calculateNumberOfChunks(dataSize, encrypt); estimatedTotalChunks > 0 {
