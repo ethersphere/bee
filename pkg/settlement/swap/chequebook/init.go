@@ -50,7 +50,7 @@ func checkBalance(
 		if balance.Cmp(swapInitialDeposit) < 0 {
 			logger.Warningf("cannot continue until there is sufficient ETH and BZZ available on %x", overlayEthAddress)
 			if chainId == 5 {
-				logger.Warningf("on the test network you can get both Goerli ETH and Goerli BZZ from https://faucet.ethswarm.org?address=%x", overlayEthAddress)
+				logger.Warningf("get your Goerli ETH and Goerli BZZ now via the bonding curve portal at https://jovial-cori-c33116.netlify.app/?transaction=buy&amount=%d&slippage=30&receiver=%x", swapInitialDeposit, overlayEthAddress)
 			}
 			select {
 			case <-time.After(backoffDuration):
