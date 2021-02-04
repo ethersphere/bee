@@ -26,7 +26,7 @@ type Service struct {
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
 	logger            logging.Logger
-	tagg              *tags.Tags
+	tag               *tags.Tags
 	tracer            *tracing.Tracer
 	metrics           metrics
 	quit              chan struct{}
@@ -42,7 +42,7 @@ func New(storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer
 	service := &Service{
 		storer:            storer,
 		pushSyncer:        pushSyncer,
-		tagg:              tagger,
+		tag:               tagger,
 		logger:            logger,
 		tracer:            tracer,
 		metrics:           newMetrics(),
@@ -127,6 +127,8 @@ LOOP:
 				var (
 					err       error
 					startTime = time.Now()
+					t         *tags.Tag
+					setSent   bool
 				)
 				defer func() {
 					if err == nil {
@@ -147,15 +149,35 @@ LOOP:
 				// for now ignoring the receipt and checking only for error
 				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
-					if !errors.Is(err, topology.ErrNotFound) {
-						logger.Debugf("pusher: error while sending chunk or receiving receipt: %v", err)
+					if errors.Is(err, topology.ErrWantSelf) {
+						// we are the closest ones - this is fine
+						// this is to make sure that the sent number does not diverge from the synced counter
+						// the edge case is on the uploader node, in the case where the uploader node is
+						// connected to other nodes, but is the closest one to the chunk.
+						setSent = true
+					} else {
+						return
 					}
+				}
+				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
+					err = fmt.Errorf("pusher: set sync: %w", err)
 					return
 				}
-				err = s.setChunkAsSynced(ctx, ch)
-				if err != nil {
-					logger.Debugf("pusher: error setting chunk as synced: %v", err)
-					return
+
+				t, err = s.tag.Get(ch.TagID())
+				if err == nil && t != nil {
+					err = t.Inc(tags.StateSynced)
+					if err != nil {
+						err = fmt.Errorf("pusher: increment synced: %v", err)
+						return
+					}
+					if setSent {
+						err = t.Inc(tags.StateSent)
+						if err != nil {
+							err = fmt.Errorf("pusher: increment sent: %w", err)
+							return
+						}
+					}
 				}
 			}(ctx, ch)
 		case <-timer.C:
@@ -207,21 +229,6 @@ LOOP:
 	case <-time.After(5 * time.Second):
 		s.logger.Warning("pusher shutting down with pending operations")
 	}
-}
-
-func (s *Service) setChunkAsSynced(ctx context.Context, ch swarm.Chunk) error {
-	if err := s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-		return fmt.Errorf("set synced: %w", err)
-	}
-
-	t, err := s.tagg.Get(ch.TagID())
-	if err == nil && t != nil {
-		err = t.Inc(tags.StateSynced)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Service) Close() error {
