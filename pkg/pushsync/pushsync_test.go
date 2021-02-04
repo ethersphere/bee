@@ -470,19 +470,19 @@ func TestHandlerWithUpdate(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	// Create the closest peer
-	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, serverPrices, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	// Create the closest peer with default prices (10)
+	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
 	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()))
 
-	// creating the pivot peer
-	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, defaultPrices, closestRecorder, nil, mock.WithClosestPeer(closestPeer))
+	// creating the pivot peer who will act as a forwarder node with a higher price (17)
+	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, serverPrices, closestRecorder, nil, mock.WithClosestPeer(closestPeer))
 	defer storerPivotDB.Close()
 
 	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()))
 
-	// Creating the trigger peer
+	// Creating the trigger peer with default price (10)
 	psTriggerPeer, triggerStorerDB, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, pivotRecorder, nil, mock.WithClosestPeer(pivotPeer))
 	defer triggerStorerDB.Close()
 
@@ -513,36 +513,38 @@ func TestHandlerWithUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != -int64(fixedPrice) {
-		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(fixedPrice), balance)
+	// balance on triggering peer towards the forwarder should show negative serverPrice (17)
+	if balance != -int64(serverPrice) {
+		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(serverPrice), balance)
 	}
 
 	// we need to check here for pivotPeer instead of triggerPeer because during streamtest the peer in the handler is actually the receiver
+	// balance on forwarding peer for the triggering peer should show serverPrice (17)
 	balance, err = pivotAccounting.Balance(pivotPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if balance != int64(fixedPrice) {
-		t.Fatalf("unexpected balance on pivot. want %d got %d", int64(fixedPrice), balance)
+	if balance != int64(serverPrice) {
+		t.Fatalf("unexpected balance on pivot. want %d got %d", int64(serverPrice), balance)
 	}
 
 	balance, err = pivotAccounting.Balance(closestPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if balance != -int64(serverPrice) {
-		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(serverPrice), balance)
+	// balance of the forwarder peer for the closest peer should show negative default price (10)
+	if balance != -int64(fixedPrice) {
+		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
 	balance, err = closestAccounting.Balance(closestPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if balance != int64(serverPrice) {
-		t.Fatalf("unexpected balance on closest. want %d got %d", int64(serverPrice), balance)
+	// balance of the closest peer for the forwarder peer should show the default price (10)
+	if balance != int64(fixedPrice) {
+		t.Fatalf("unexpected balance on closest. want %d got %d", int64(fixedPrice), balance)
 	}
 }
 
