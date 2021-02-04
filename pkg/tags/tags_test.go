@@ -17,7 +17,9 @@
 package tags
 
 import (
+	"context"
 	"io/ioutil"
+	"sort"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -29,10 +31,10 @@ func TestAll(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
 	logger := logging.New(ioutil.Discard, 0)
 	ts := NewTags(mockStatestore, logger)
-	if _, err := ts.Create("1", 1); err != nil {
+	if _, err := ts.Create(1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ts.Create("2", 1); err != nil {
+	if _, err := ts.Create(1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,7 +52,7 @@ func TestAll(t *testing.T) {
 		t.Fatalf("expected tag 1 Total to be 1 got %d", n)
 	}
 
-	if _, err := ts.Create("3", 1); err != nil {
+	if _, err := ts.Create(1); err != nil {
 		t.Fatal(err)
 	}
 	all = ts.All()
@@ -60,11 +62,83 @@ func TestAll(t *testing.T) {
 	}
 }
 
+func TestListAll(t *testing.T) {
+	mockStatestore := statestore.NewStateStore()
+	logger := logging.New(ioutil.Discard, 0)
+
+	ts1 := NewTags(mockStatestore, logger)
+
+	// create few tags
+	for i := 0; i < 5; i++ {
+		if _, err := ts1.Create(1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// tags are from sync.Map
+	tagList1, err := ts1.ListAll(context.Background(), 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tagList1) != 5 {
+		t.Fatalf("want %d tags but got %d", 5, len(tagList1))
+	}
+
+	// save all returned tags to statestore
+	for _, tag := range tagList1 {
+		err = tag.saveTag()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// use new tags object
+	ts2 := NewTags(mockStatestore, logger)
+
+	// create few more tags in new tags object
+	for i := 0; i < 5; i++ {
+		if _, err := ts2.Create(1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// first tags are from sync.Map
+	tagList2, err := ts2.ListAll(context.Background(), 0, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tagList2) != 5 {
+		t.Fatalf("want %d tags but got %d", 5, len(tagList2))
+	}
+
+	// now tags are returned from statestore
+	tagList3, err := ts2.ListAll(context.Background(), 5, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tagList3) != 5 {
+		t.Fatalf("want %d tags but got %d", 5, len(tagList2))
+	}
+
+	// where they are not sorted
+	sort.Slice(tagList3, func(i, j int) bool { return tagList3[i].Uid < tagList3[j].Uid })
+
+	// and are the same as ones returned from first tags object
+	for i := range tagList3 {
+		if tagList1[i].Uid != tagList3[i].Uid {
+			t.Fatalf("expected tag %d, but got %d", tagList1[i].Uid, tagList3[i].Uid)
+		}
+	}
+}
+
 func TestPersistence(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
 	logger := logging.New(ioutil.Discard, 0)
 	ts := NewTags(mockStatestore, logger)
-	ta, err := ts.Create("one", 1)
+	ta, err := ts.Create(1)
 	if err != nil {
 		t.Fatal(err)
 	}

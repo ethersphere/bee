@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
@@ -60,12 +61,25 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
 		logger.Debugf("file upload: get or create tag: %v", err)
 		logger.Error("file upload: get or create tag")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
+	}
+
+	if !created {
+		// only in the case when tag is sent via header (i.e. not created by this request)
+		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
+			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
+			if err != nil {
+				s.Logger.Debugf("file upload: increment tag: %v", err)
+				s.Logger.Error("file upload: increment tag")
+				jsonhttp.InternalServerError(w, "increment tag")
+				return
+			}
+		}
 	}
 
 	// Add the tag to the context
@@ -176,6 +190,23 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "metadata marshal error")
 		return
 	}
+
+	if !created {
+		// only in the case when tag is sent via header (i.e. not created by this request)
+
+		// here we have additional chunks:
+		// - for metadata (1 or more) -> we use estimation function
+		// - for collection entry (1)
+		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), requestEncrypt(r))
+		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
+		if err != nil {
+			s.Logger.Debugf("file upload: increment tag: %v", err)
+			s.Logger.Error("file upload: increment tag")
+			jsonhttp.InternalServerError(w, "increment tag")
+			return
+		}
+	}
+
 	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
 	if err != nil {
 		logger.Debugf("file upload: metadata store, file %q: %v", fileName, err)
@@ -210,8 +241,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", reference.String()))
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagUidHeader)
+	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})

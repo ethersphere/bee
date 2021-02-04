@@ -7,7 +7,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -20,35 +19,28 @@ import (
 )
 
 type tagRequest struct {
-	Name    string        `json:"name,omitempty"`
 	Address swarm.Address `json:"address,omitempty"`
 }
 
 type tagResponse struct {
-	Total     int64         `json:"total"`
-	Split     int64         `json:"split"`
-	Seen      int64         `json:"seen"`
-	Stored    int64         `json:"stored"`
-	Sent      int64         `json:"sent"`
-	Synced    int64         `json:"synced"`
-	Uid       uint32        `json:"uid"`
-	Name      string        `json:"name"`
-	Address   swarm.Address `json:"address"`
-	StartedAt time.Time     `json:"startedAt"`
+	Uid       uint32    `json:"uid"`
+	StartedAt time.Time `json:"startedAt"`
+	Total     int64     `json:"total"`
+	Processed int64     `json:"processed"`
+	Synced    int64     `json:"synced"`
+}
+
+type listTagsResponse struct {
+	Tags []tagResponse `json:"tags"`
 }
 
 func newTagResponse(tag *tags.Tag) tagResponse {
 	return tagResponse{
-		Total:     tag.Total,
-		Split:     tag.Split,
-		Seen:      tag.Seen,
-		Stored:    tag.Stored,
-		Sent:      tag.Sent,
-		Synced:    tag.Synced,
 		Uid:       tag.Uid,
-		Name:      tag.Name,
-		Address:   tag.Address,
 		StartedAt: tag.StartedAt,
+		Total:     tag.Total,
+		Processed: tag.Stored,
+		Synced:    tag.Seen + tag.Synced,
 	}
 }
 
@@ -75,11 +67,7 @@ func (s *server) createTagHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if tagr.Name == "" {
-		tagr.Name = fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
-	}
-
-	tag, err := s.Tags.Create(tagr.Name, 0)
+	tag, err := s.Tags.Create(0)
 	if err != nil {
 		s.Logger.Debugf("create tag: tag create error: %v", err)
 		s.Logger.Error("create tag: tag create error")
@@ -203,4 +191,45 @@ func (s *server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonhttp.OK(w, "ok")
+}
+
+func (s *server) listTagsHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err           error
+		offset, limit = 0, 100 // default offset is 0, default limit 100
+	)
+
+	if v := r.URL.Query().Get("offset"); v != "" {
+		offset, err = strconv.Atoi(v)
+		if err != nil {
+			s.Logger.Debugf("list tags: parse offset: %v", err)
+			s.Logger.Errorf("list tags: bad offset")
+			jsonhttp.BadRequest(w, "bad offset")
+		}
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limit, err = strconv.Atoi(v)
+		if err != nil {
+			s.Logger.Debugf("list tags: parse limit: %v", err)
+			s.Logger.Errorf("list tags: bad limit")
+			jsonhttp.BadRequest(w, "bad limit")
+		}
+	}
+
+	tagList, err := s.Tags.ListAll(r.Context(), offset, limit)
+	if err != nil {
+		s.Logger.Debugf("list tags: listing: %v", err)
+		s.Logger.Errorf("list tags: listing")
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	tags := make([]tagResponse, len(tagList))
+	for i, t := range tagList {
+		tags[i] = newTagResponse(t)
+	}
+
+	jsonhttp.OK(w, listTagsResponse{
+		Tags: tags,
+	})
 }

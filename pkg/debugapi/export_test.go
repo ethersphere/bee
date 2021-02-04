@@ -25,6 +25,7 @@ type (
 	SwapCashoutResponse               = swapCashoutResponse
 	SwapCashoutStatusResponse         = swapCashoutStatusResponse
 	SwapCashoutStatusResult           = swapCashoutStatusResult
+	TagResponse                       = tagResponse
 )
 
 var (

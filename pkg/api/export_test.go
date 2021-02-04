@@ -15,6 +15,7 @@ type (
 	FileUploadResponse       = fileUploadResponse
 	TagResponse              = tagResponse
 	TagRequest               = tagRequest
+	ListTagsResponse         = listTagsResponse
 	PinnedChunk              = pinnedChunk
 	ListPinnedChunksResponse = listPinnedChunksResponse
 	UpdatePinCounter         = updatePinCounter
@@ -37,4 +38,8 @@ var (
 
 func (s *Server) ResolveNameOrAddress(str string) (swarm.Address, error) {
 	return s.resolveNameOrAddress(str)
+}
+
+func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
+	return calculateNumberOfChunks(contentLength, isEncrypted)
 }

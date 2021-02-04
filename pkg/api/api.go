@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,7 +31,7 @@ import (
 
 const (
 	SwarmPinHeader           = "Swarm-Pin"
-	SwarmTagUidHeader        = "Swarm-Tag-Uid"
+	SwarmTagHeader           = "Swarm-Tag"
 	SwarmEncryptHeader       = "Swarm-Encrypt"
 	SwarmIndexDocumentHeader = "Swarm-Index-Document"
 	SwarmErrorDocumentHeader = "Swarm-Error-Document"
@@ -132,9 +133,7 @@ func (s *server) Close() error {
 func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	// if tag ID is not supplied, create a new tag
 	if tagUid == "" {
-		tagName := fmt.Sprintf("unnamed_tag_%d", time.Now().Unix())
-		var err error
-		tag, err := s.Tags.Create(tagName, 0)
+		tag, err := s.Tags.Create(0)
 		if err != nil {
 			return nil, false, fmt.Errorf("cannot create tag: %w", err)
 		}
@@ -272,4 +271,34 @@ func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r, l)
 	}
+}
+
+// calculateNumberOfChunks calculates the number of chunks in an arbitrary
+// content length.
+func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
+	if contentLength <= swarm.ChunkSize {
+		return 1
+	}
+	branchingFactor := swarm.Branches
+	if isEncrypted {
+		branchingFactor = swarm.EncryptedBranches
+	}
+
+	dataChunks := math.Ceil(float64(contentLength) / float64(swarm.ChunkSize))
+	totalChunks := dataChunks
+	intermediate := dataChunks / float64(branchingFactor)
+
+	for intermediate > 1 {
+		totalChunks += math.Ceil(intermediate)
+		intermediate = intermediate / float64(branchingFactor)
+	}
+
+	return int64(totalChunks) + 1
+}
+
+func requestCalculateNumberOfChunks(r *http.Request) int64 {
+	if !strings.Contains(r.Header.Get(contentTypeHeader), "multipart") && r.ContentLength > 0 {
+		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
+	}
+	return 0
 }

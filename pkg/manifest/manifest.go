@@ -27,6 +27,10 @@ var (
 	ErrMissingReference = errors.New("manifest: missing reference")
 )
 
+// StoreSizeFunc is a callback on every content size that will be stored by
+// the Store function.
+type StoreSizeFunc func(int64) error
+
 // Interface for operations with manifest.
 type Interface interface {
 	// Type returns manifest implementation type information
@@ -40,7 +44,7 @@ type Interface interface {
 	// HasPrefix tests whether the specified prefix path exists.
 	HasPrefix(context.Context, string) (bool, error)
 	// Store stores the manifest, returning the resulting address.
-	Store(context.Context) (swarm.Address, error)
+	Store(context.Context, ...StoreSizeFunc) (swarm.Address, error)
 	// IterateAddresses is used to iterate over chunks addresses for
 	// the manifest.
 	IterateAddresses(context.Context, swarm.AddressIterFunc) error

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -29,6 +30,10 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+const (
+	maxPage = 1000 // hard limit of page size
 )
 
 var (
@@ -52,10 +57,10 @@ func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
 	}
 }
 
-// Create creates a new tag, stores it by the name and returns it
-// it returns an error if the tag with this name already exists
-func (ts *Tags) Create(s string, total int64) (*Tag, error) {
-	t := NewTag(context.Background(), TagUidFunc(), s, total, nil, ts.stateStore, ts.logger)
+// Create creates a new tag, stores it by the UID and returns it
+// it returns an error if the tag with this UID already exists
+func (ts *Tags) Create(total int64) (*Tag, error) {
+	t := NewTag(context.Background(), TagUidFunc(), total, nil, ts.stateStore, ts.logger)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
 		return nil, errExists
@@ -155,6 +160,79 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 	}
 
 	return err
+}
+
+func (ts *Tags) ListAll(ctx context.Context, offset, limit int) (t []*Tag, err error) {
+	if limit > maxPage {
+		limit = maxPage
+	}
+
+	// range sync.Map first
+	allTags := ts.All()
+	sort.Slice(allTags, func(i, j int) bool { return allTags[i].Uid < allTags[j].Uid })
+	for _, tag := range allTags {
+		if offset > 0 {
+			offset--
+			continue
+		}
+
+		t = append(t, tag)
+
+		limit--
+
+		if limit == 0 {
+			break
+		}
+	}
+
+	if limit == 0 {
+		return
+	}
+
+	// and then from statestore
+	err = ts.stateStore.Iterate("tags_", func(key, value []byte) (stop bool, err error) {
+		if offset > 0 {
+			offset--
+			return false, nil
+		}
+
+		var ta *Tag
+		ta, err = decodeTagValueFromStore(value)
+		if err != nil {
+			return true, err
+		}
+
+		if _, ok := ts.tags.Load(ta.Uid); ok {
+			// tag was already returned from sync.Map
+			return false, nil
+		}
+
+		t = append(t, ta)
+
+		limit--
+
+		if limit == 0 {
+			return true, nil
+		}
+
+		return false, nil
+	})
+
+	return t, err
+}
+
+func decodeTagValueFromStore(value []byte) (*Tag, error) {
+	var data []byte
+	err := json.Unmarshal(value, &data)
+	if err != nil {
+		return nil, err
+	}
+	var ta Tag
+	err = ta.UnmarshalBinary(data)
+	if err != nil {
+		return nil, err
+	}
+	return &ta, nil
 }
 
 // getTagFromStore get a given tag from the state store.

@@ -88,10 +88,20 @@ func (m *simpleManifest) HasPrefix(_ context.Context, prefix string) (bool, erro
 	return m.manifest.HasPrefix(prefix), nil
 }
 
-func (m *simpleManifest) Store(ctx context.Context) (swarm.Address, error) {
+func (m *simpleManifest) Store(ctx context.Context, storeSizeFn ...StoreSizeFunc) (swarm.Address, error) {
 	data, err := m.manifest.MarshalBinary()
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest marshal error: %w", err)
+	}
+
+	if len(storeSizeFn) > 0 {
+		dataLen := int64(len(data))
+		for i := range storeSizeFn {
+			err = storeSizeFn[i](dataLen)
+			if err != nil {
+				return swarm.ZeroAddress, fmt.Errorf("manifest store size func: %w", err)
+			}
+		}
 	}
 
 	ref, err := m.ls.Save(ctx, data)
