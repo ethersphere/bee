@@ -96,8 +96,8 @@ func TestPushChunkToClosest(t *testing.T) {
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 	// create a pivot node and a mocked closest node
-	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
+	pivotNode := swarm.MustParseHexAddress("0000")   // base is 0000
+	closestPeer := swarm.MustParseHexAddress("6000") // binary 0110 -> po 1
 	callbackC := make(chan struct{}, 1)
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
@@ -181,10 +181,10 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	chunk := testingc.FixtureChunk("7000")
 
 	// create a pivot node and a mocked closest node
-	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+	pivotNode := swarm.MustParseHexAddress("0000") // base is 0000
 
-	peer1 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	peer2 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	peer1 := swarm.MustParseHexAddress("6000")
+	peer2 := swarm.MustParseHexAddress("5000")
 	peers := []swarm.Address{
 		peer1,
 		peer2,
@@ -225,7 +225,6 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
 	psPivot, storerPivot, pivotTags, pivotAccounting := createPushSyncNode(t, pivotNode, recorder, nil,
-		mock.WithClosestPeerErr(topology.ErrNotFound),
 		mock.WithPeers(peers...),
 	)
 	defer storerPivot.Close()
