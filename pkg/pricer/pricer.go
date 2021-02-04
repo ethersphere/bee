@@ -72,17 +72,17 @@ func New(logger logging.Logger, store storage.StateStorer, overlay swarm.Address
 func (s *Pricer) PriceTable() (priceTable []uint64) {
 	err := s.store.Get(priceTableKey(), &priceTable)
 	if err != nil {
-		priceTable = s.DefaultPriceTable()
+		priceTable = s.defaultPriceTable()
 	}
 	return priceTable
 }
 
-// PeerPriceTable returns the price table stored for the given peer.
+// peerPriceTable returns the price table stored for the given peer.
 // If we can't get price table from store, we return the default price table
-func (s *Pricer) PeerPriceTable(peer swarm.Address) (priceTable []uint64) {
+func (s *Pricer) peerPriceTable(peer swarm.Address) (priceTable []uint64) {
 	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
-		priceTable = s.DefaultPriceTable() // get default pricetable
+		priceTable = s.defaultPriceTable() // get default pricetable
 	}
 	return priceTable
 }
@@ -101,18 +101,18 @@ func (s *Pricer) PriceForPeer(peer, chunk swarm.Address) uint64 {
 		}
 	}
 
-	price, err := s.PricePO(proximity)
+	price, err := s.pricePO(proximity)
 
 	if err != nil {
-		price = s.DefaultPrice(proximity)
+		price = s.defaultPrice(proximity)
 	}
 
 	return price
 }
 
-// PriceWithIndexForPeer returns price for a chunk for a given peer,
+// priceWithIndexForPeer returns price for a chunk for a given peer,
 // and the index of PO in pricetable which is used
-func (s *Pricer) PriceWithIndexForPeer(peer, chunk swarm.Address) (price uint64, index uint8) {
+func (s *Pricer) priceWithIndexForPeer(peer, chunk swarm.Address) (price uint64, index uint8) {
 	proximity := swarm.Proximity(s.overlay.Bytes(), chunk.Bytes())
 	neighborhoodDepth := s.neighborhoodDepth()
 
@@ -133,8 +133,8 @@ func (s *Pricer) PriceWithIndexForPeer(peer, chunk swarm.Address) (price uint64,
 	return priceTable[proximity], proximity
 }
 
-// PricePO returns the price for a PO from the table stored for the node.
-func (s *Pricer) PricePO(PO uint8) (uint64, error) {
+// pricePO returns the price for a PO from the table stored for the node.
+func (s *Pricer) pricePO(PO uint8) (uint64, error) {
 	priceTable := s.PriceTable()
 
 	proximity := PO
@@ -168,24 +168,24 @@ func (s *Pricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 		}
 	}
 
-	price, err := s.PeerPricePO(peer, proximity)
+	price, err := s.peerPricePO(peer, proximity)
 
 	if err != nil {
-		price = s.DefaultPrice(proximity)
+		price = s.defaultPrice(proximity)
 	}
 
 	return price
 }
 
-// PeerPricePO returns the price for a PO from the table stored for the given peer.
-func (s *Pricer) PeerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
+// peerPricePO returns the price for a PO from the table stored for the given peer.
+func (s *Pricer) peerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
 	var priceTable []uint64
 	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return 0, err
 		}
-		priceTable = s.DefaultPriceTable()
+		priceTable = s.defaultPriceTable()
 	}
 
 	proximity := PO
@@ -257,7 +257,7 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	pricingPeer.lock.Lock()
 	defer pricingPeer.lock.Unlock()
 
-	priceTable := s.PeerPriceTable(peer)
+	priceTable := s.peerPriceTable(peer)
 	currentIndexDepth := uint8(len(priceTable)) - 1
 
 	if index <= currentIndexDepth {
@@ -293,7 +293,7 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	return s.storePriceTable(peer, newPriceTable)
 }
 
-func (s *Pricer) DefaultPriceTable() []uint64 {
+func (s *Pricer) defaultPriceTable() []uint64 {
 	neighborhoodDepth := s.neighborhoodDepth()
 	priceTable := make([]uint64, neighborhoodDepth+1)
 	for i := uint8(0); i <= neighborhoodDepth; i++ {
@@ -303,7 +303,7 @@ func (s *Pricer) DefaultPriceTable() []uint64 {
 	return priceTable
 }
 
-func (s *Pricer) DefaultPrice(PO uint8) uint64 {
+func (s *Pricer) defaultPrice(PO uint8) uint64 {
 	neighborhoodDepth := s.neighborhoodDepth()
 	if PO > neighborhoodDepth {
 		PO = neighborhoodDepth
@@ -329,7 +329,7 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 	}
 
 	s.logger.Debugf("price headler: received target %v with price as %v, from peer %s", chunkAddress, receivedPrice, peerAddress)
-	checkPrice, index := s.PriceWithIndexForPeer(peerAddress, chunkAddress)
+	checkPrice, index := s.priceWithIndexForPeer(peerAddress, chunkAddress)
 
 	returnHeaders, err = headerutils.MakePricingResponseHeaders(checkPrice, chunkAddress, index)
 	if err != nil {
