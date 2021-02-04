@@ -17,7 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
-const chequebookKey = "chequebook"
+const chequebookKey = "swap_chequebook"
 
 func checkBalance(
 	ctx context.Context,
