@@ -189,6 +189,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		deferFuncs = append(deferFuncs, func() {
 			if lastErr != nil {
+				ps.metrics.TotalErrors.Inc()
 				logger.Errorf("pushsync: %v", lastErr)
 			}
 		})
@@ -215,7 +216,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 		if err != nil {
-			ps.metrics.TotalErrors.Inc()
 			lastErr = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 			continue
 		}
@@ -228,7 +228,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 			Address: ch.Address().Bytes(),
 			Data:    ch.Data(),
 		}); err != nil {
-			ps.metrics.TotalErrors.Inc()
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)
 			continue
@@ -241,6 +240,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		if err == nil && t != nil {
 			err = t.Inc(tags.StateSent)
 			if err != nil {
+				lastErr = fmt.Errorf("tag %d increment: %v", ch.TagID(), err)
+				err = lastErr
 				return nil, err
 			}
 		}
@@ -249,7 +250,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		cctx, cancel := context.WithTimeout(ctx, timeToWaitForReceipt)
 		defer cancel()
 		if err := r.ReadMsgWithContext(cctx, &receipt); err != nil {
-			ps.metrics.TotalErrors.Inc()
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
 			continue
@@ -257,7 +257,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 			// if the receipt is invalid, try to push to the next peer
-			ps.metrics.TotalErrors.Inc()
 			lastErr = fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address().String(), peer.String())
 			continue
 		}
