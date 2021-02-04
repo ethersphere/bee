@@ -119,6 +119,7 @@ func (s *server) setupRouting() {
 	handle(router, "/tags", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.listTagsHandler),
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
 				web.FinalHandlerFunc(s.createTagHandler),

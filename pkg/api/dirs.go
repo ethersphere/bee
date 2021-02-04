@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
@@ -51,7 +52,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagUidHeader))
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
 		logger.Debugf("dir upload: get or create tag: %v", err)
 		logger.Error("dir upload: get or create tag")
@@ -64,7 +65,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	p := requestPipelineFn(s.Storer, r)
 	encrypt := requestEncrypt(r)
 	l := loadsave.New(s.Storer, requestModePut(r), encrypt)
-	reference, err := storeDir(ctx, encrypt, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader))
+	reference, err := storeDir(ctx, encrypt, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader), tag, created)
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
 		logger.Errorf("dir upload: store dir")
@@ -80,7 +81,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.Header().Set(SwarmTagUidHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	jsonhttp.OK(w, fileUploadResponse{
 		Reference: reference,
 	})
@@ -104,7 +105,7 @@ func validateRequest(r *http.Request) error {
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string) (swarm.Address, error) {
+func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string, tag *tags.Tag, tagCreated bool) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
@@ -159,7 +160,19 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 			contentType: contentType,
 			reader:      tarReader,
 		}
-		fileReference, err := storeFile(ctx, fileInfo, p)
+
+		if !tagCreated {
+			// only in the case when tag is sent via header (i.e. not created by this request)
+			// for each file
+			if estimatedTotalChunks := calculateNumberOfChunks(fileInfo.size, encrypt); estimatedTotalChunks > 0 {
+				err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
+				if err != nil {
+					return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
+				}
+			}
+		}
+
+		fileReference, err := storeFile(ctx, fileInfo, p, encrypt, tag, tagCreated)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
@@ -195,8 +208,23 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 		}
 	}
 
+	storeSizeFn := []manifest.StoreSizeFunc{}
+	if !tagCreated {
+		// only in the case when tag is sent via header (i.e. not created by this request)
+		// each content that is saved for manifest
+		storeSizeFn = append(storeSizeFn, func(dataSize int64) error {
+			if estimatedTotalChunks := calculateNumberOfChunks(dataSize, encrypt); estimatedTotalChunks > 0 {
+				err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
+				if err != nil {
+					return fmt.Errorf("increment tag: %w", err)
+				}
+			}
+			return nil
+		})
+	}
+
 	// save manifest
-	manifestBytesReference, err := dirManifest.Store(ctx)
+	manifestBytesReference, err := dirManifest.Store(ctx, storeSizeFn...)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}
@@ -207,6 +235,17 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
+	}
+
+	if !tagCreated {
+		// we have additional chunks:
+		// - for manifest file metadata (1 or more) -> we use estimation function
+		// - for manifest file collection entry (1)
+		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), encrypt)
+		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
+		if err != nil {
+			return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
+		}
 	}
 
 	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
@@ -231,7 +270,7 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 
 // storeFile uploads the given file and returns its reference
 // this function was extracted from `fileUploadHandler` and should eventually replace its current code
-func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc) (swarm.Address, error) {
+func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc, encrypt bool, tag *tags.Tag, tagCreated bool) (swarm.Address, error) {
 	// first store the file and get its reference
 	fr, err := p(ctx, fileInfo.reader, fileInfo.size)
 	if err != nil {
@@ -249,6 +288,17 @@ func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc) (s
 	metadataBytes, err := json.Marshal(m)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
+	}
+
+	if !tagCreated {
+		// here we have additional chunks:
+		// - for metadata (1 or more) -> we use estimation function
+		// - for collection entry (1)
+		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), encrypt)
+		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
+		if err != nil {
+			return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
+		}
 	}
 
 	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))

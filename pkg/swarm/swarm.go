@@ -19,6 +19,7 @@ const (
 	SpanSize                = 8
 	SectionSize             = 32
 	Branches                = 128
+	EncryptedBranches       = Branches / 2
 	BmtBranches             = 128
 	ChunkSize               = SectionSize * Branches
 	HashSize                = 32

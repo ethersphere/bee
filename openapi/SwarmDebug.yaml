@@ -572,4 +572,32 @@ paths:
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
-          description: Default response 
+          description: Default response
+
+  '/tags/{uid}':
+    get:
+      summary: 'Get Tag information using Uid'
+      tags:
+        - Tag
+      parameters:
+        - in: path
+          name: uid
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+          required: true
+          description: Uid
+      responses:
+        '200':
+          description: Tag info
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagDebugResponse'
+        '400':
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '403':
+          $ref: 'SwarmCommon.yaml#/components/responses/403'
+        '500':
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response

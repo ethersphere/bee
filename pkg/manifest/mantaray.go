@@ -107,8 +107,18 @@ func (m *mantarayManifest) HasPrefix(ctx context.Context, prefix string) (bool, 
 	return m.trie.HasPrefix(ctx, p, m.ls)
 }
 
-func (m *mantarayManifest) Store(ctx context.Context) (swarm.Address, error) {
-	err := m.trie.Save(ctx, m.ls)
+func (m *mantarayManifest) Store(ctx context.Context, storeSizeFn ...StoreSizeFunc) (swarm.Address, error) {
+	var ls mantaray.LoadSaver
+	if len(storeSizeFn) > 0 {
+		ls = &mantarayLoadSaver{
+			ls:          m.ls,
+			storeSizeFn: storeSizeFn,
+		}
+	} else {
+		ls = m.ls
+	}
+
+	err := m.trie.Save(ctx, ls)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("manifest save error: %w", err)
 	}
@@ -158,4 +168,25 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 	}
 
 	return nil
+}
+
+type mantarayLoadSaver struct {
+	ls          file.LoadSaver
+	storeSizeFn []StoreSizeFunc
+}
+
+func (ls *mantarayLoadSaver) Load(ctx context.Context, ref []byte) ([]byte, error) {
+	return ls.ls.Load(ctx, ref)
+}
+
+func (ls *mantarayLoadSaver) Save(ctx context.Context, data []byte) ([]byte, error) {
+	dataLen := int64(len(data))
+	for i := range ls.storeSizeFn {
+		err := ls.storeSizeFn[i](dataLen)
+		if err != nil {
+			return nil, fmt.Errorf("manifest store size func: %w", err)
+		}
+	}
+
+	return ls.ls.Save(ctx, data)
 }

@@ -40,7 +40,7 @@ func TestModeSetSyncNormalTag(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	db := newTestDB(t, &Options{Tags: tags.NewTags(mockStatestore, logger)})
 
-	tag, err := db.tags.Create("test", 1)
+	tag, err := db.tags.Create(1)
 	if err != nil {
 		t.Fatal(err)
 	}
