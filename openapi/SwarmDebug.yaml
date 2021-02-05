@@ -1,6 +1,6 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
-  version: 0.4.0
+  version: 0.5.0
   title: Bee Debug API
   description: 'A list of the currently provided debug interfaces to interact with the bee node'
 
@@ -83,6 +83,23 @@ paths:
         default:
           description: Default response
  
+  '/blocklist':
+    get:
+      summary: Get a list of blocklisted peers
+      tags:
+        - Connectivity
+      responses:
+        '200':
+          description: Returns overlay addresses of blocklisted peers
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/Peers'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+  
   '/consumed':
     get:
       summary: Get the past due consumption balances with all known peers
