@@ -23,7 +23,7 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type AnnouncePaymentThreshold struct {
-	PaymentThreshold uint64 `protobuf:"varint,1,opt,name=PaymentThreshold,proto3" json:"PaymentThreshold,omitempty"`
+	PaymentThreshold []byte `protobuf:"bytes,1,opt,name=PaymentThreshold,proto3" json:"PaymentThreshold,omitempty"`
 }
 
 func (m *AnnouncePaymentThreshold) Reset()         { *m = AnnouncePaymentThreshold{} }
@@ -59,11 +59,11 @@ func (m *AnnouncePaymentThreshold) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_AnnouncePaymentThreshold proto.InternalMessageInfo
 
-func (m *AnnouncePaymentThreshold) GetPaymentThreshold() uint64 {
+func (m *AnnouncePaymentThreshold) GetPaymentThreshold() []byte {
 	if m != nil {
 		return m.PaymentThreshold
 	}
-	return 0
+	return nil
 }
 
 func init() {
@@ -78,10 +78,10 @@ var fileDescriptor_ec4cc93d045d43d0 = []byte{
 	0xce, 0xcc, 0x4b, 0xd7, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x87, 0x72, 0x95, 0xdc, 0xb8,
 	0x24, 0x1c, 0xf3, 0xf2, 0xf2, 0x4b, 0xf3, 0x92, 0x53, 0x03, 0x12, 0x2b, 0x73, 0x53, 0xf3, 0x4a,
 	0x42, 0x32, 0x8a, 0x52, 0x8b, 0x33, 0xf2, 0x73, 0x52, 0x84, 0xb4, 0xb8, 0x04, 0xd0, 0xc5, 0x24,
-	0x18, 0x15, 0x18, 0x35, 0x58, 0x82, 0x30, 0xc4, 0x9d, 0x64, 0x4e, 0x3c, 0x92, 0x63, 0xbc, 0xf0,
+	0x18, 0x15, 0x18, 0x35, 0x78, 0x82, 0x30, 0xc4, 0x9d, 0x64, 0x4e, 0x3c, 0x92, 0x63, 0xbc, 0xf0,
 	0x48, 0x8e, 0xf1, 0xc1, 0x23, 0x39, 0xc6, 0x09, 0x8f, 0xe5, 0x18, 0x2e, 0x3c, 0x96, 0x63, 0xb8,
 	0xf1, 0x58, 0x8e, 0x21, 0x8a, 0xa9, 0x20, 0x29, 0x89, 0x0d, 0x6c, 0xab, 0x31, 0x20, 0x00, 0x00,
-	0xff, 0xff, 0x70, 0x59, 0x58, 0xcf, 0x86, 0x00, 0x00, 0x00,
+	0xff, 0xff, 0x50, 0xca, 0x0e, 0x0a, 0x86, 0x00, 0x00, 0x00,
 }
 
 func (m *AnnouncePaymentThreshold) Marshal() (dAtA []byte, err error) {
@@ -104,10 +104,12 @@ func (m *AnnouncePaymentThreshold) MarshalToSizedBuffer(dAtA []byte) (int, error
 	_ = i
 	var l int
 	_ = l
-	if m.PaymentThreshold != 0 {
-		i = encodeVarintPricing(dAtA, i, uint64(m.PaymentThreshold))
+	if len(m.PaymentThreshold) > 0 {
+		i -= len(m.PaymentThreshold)
+		copy(dAtA[i:], m.PaymentThreshold)
+		i = encodeVarintPricing(dAtA, i, uint64(len(m.PaymentThreshold)))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -129,8 +131,9 @@ func (m *AnnouncePaymentThreshold) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.PaymentThreshold != 0 {
-		n += 1 + sovPricing(uint64(m.PaymentThreshold))
+	l = len(m.PaymentThreshold)
+	if l > 0 {
+		n += 1 + l + sovPricing(uint64(l))
 	}
 	return n
 }
@@ -171,10 +174,10 @@ func (m *AnnouncePaymentThreshold) Unmarshal(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PaymentThreshold", wireType)
 			}
-			m.PaymentThreshold = 0
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowPricing
@@ -184,11 +187,26 @@ func (m *AnnouncePaymentThreshold) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.PaymentThreshold |= uint64(b&0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			if byteLen < 0 {
+				return ErrInvalidLengthPricing
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPricing
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.PaymentThreshold = append(m.PaymentThreshold[:0], dAtA[iNdEx:postIndex]...)
+			if m.PaymentThreshold == nil {
+				m.PaymentThreshold = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPricing(dAtA[iNdEx:])

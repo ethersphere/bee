@@ -7,6 +7,7 @@ package settlement
 import (
 	"context"
 	"errors"
+	"math/big"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -19,18 +20,18 @@ var (
 type Interface interface {
 	// Pay initiates a payment to the given peer
 	// It should return without error it is likely that the payment worked
-	Pay(ctx context.Context, peer swarm.Address, amount uint64) error
+	Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error
 	// TotalSent returns the total amount sent to a peer
-	TotalSent(peer swarm.Address) (totalSent uint64, err error)
+	TotalSent(peer swarm.Address) (totalSent *big.Int, err error)
 	// TotalReceived returns the total amount received from a peer
-	TotalReceived(peer swarm.Address) (totalSent uint64, err error)
+	TotalReceived(peer swarm.Address) (totalSent *big.Int, err error)
 	// SettlementsSent returns sent settlements for each individual known peer
-	SettlementsSent() (map[string]uint64, error)
+	SettlementsSent() (map[string]*big.Int, error)
 	// SettlementsReceived returns received settlements for each individual known peer
-	SettlementsReceived() (map[string]uint64, error)
+	SettlementsReceived() (map[string]*big.Int, error)
 	// SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify
 	SetNotifyPaymentFunc(notifyPaymentFunc NotifyPaymentFunc)
 }
 
 // NotifyPaymentFunc is called when a payment from peer was successfully received
-type NotifyPaymentFunc func(peer swarm.Address, amount uint64) error
+type NotifyPaymentFunc func(peer swarm.Address, amount *big.Int) error

@@ -6,6 +6,7 @@ package debugapi
 
 import (
 	"errors"
+	"math/big"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -22,8 +23,8 @@ var (
 )
 
 type balanceResponse struct {
-	Peer    string `json:"peer"`
-	Balance int64  `json:"balance"`
+	Peer    string   `json:"peer"`
+	Balance *big.Int `json:"balance"`
 }
 
 type balancesResponse struct {

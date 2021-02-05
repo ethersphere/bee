@@ -76,7 +76,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != -int64(fixedPrice) {
+	if balance.Int64() != -int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -85,7 +85,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != int64(fixedPrice) {
+	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on peer. want %d got %d", int64(fixedPrice), balance)
 	}
 }
@@ -155,7 +155,7 @@ func TestPushChunkToClosest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != -int64(fixedPrice) {
+	if balance.Int64() != -int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -164,7 +164,7 @@ func TestPushChunkToClosest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != int64(fixedPrice) {
+	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on peer. want %d got %d", int64(fixedPrice), balance)
 	}
 
@@ -273,7 +273,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != -int64(fixedPrice) {
+	if balance.Int64() != -int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -282,7 +282,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance2 != int64(fixedPrice) {
+	if balance2.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on peer2. want %d got %d", int64(fixedPrice), balance2)
 	}
 
@@ -291,7 +291,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance1 != 0 {
+	if balance1.Int64() != 0 {
 		t.Fatalf("unexpected balance on peer1. want %d got %d", 0, balance1)
 	}
 }
@@ -354,7 +354,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != -int64(fixedPrice) {
+	if balance.Int64() != -int64(fixedPrice) {
 		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -364,7 +364,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != int64(fixedPrice) {
+	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", int64(fixedPrice), balance)
 	}
 
@@ -373,7 +373,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != -int64(fixedPrice) {
+	if balance.Int64() != -int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -382,7 +382,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != int64(fixedPrice) {
+	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on closest. want %d got %d", int64(fixedPrice), balance)
 	}
 }

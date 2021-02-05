@@ -14,23 +14,23 @@ import (
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/settlement/pseudosettle/mock"
+	"github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestSettlements(t *testing.T) {
-	settlementsSentFunc := func() (ret map[string]uint64, err error) {
-		ret = make(map[string]uint64)
-		ret["DEAD"] = 10000
-		ret["BEEF"] = 20000
-		ret["FFFF"] = 50000
+	settlementsSentFunc := func() (ret map[string]*big.Int, err error) {
+		ret = make(map[string]*big.Int)
+		ret["DEAD"] = big.NewInt(10000)
+		ret["BEEF"] = big.NewInt(20000)
+		ret["FFFF"] = big.NewInt(50000)
 		return ret, err
 	}
 
-	settlementsRecvFunc := func() (ret map[string]uint64, err error) {
-		ret = make(map[string]uint64)
-		ret["BEEF"] = 10000
-		ret["EEEE"] = 5000
+	settlementsRecvFunc := func() (ret map[string]*big.Int, err error) {
+		ret = make(map[string]*big.Int)
+		ret["BEEF"] = big.NewInt(10000)
+		ret["EEEE"] = big.NewInt(5000)
 		return ret, err
 	}
 
@@ -44,23 +44,23 @@ func TestSettlements(t *testing.T) {
 		Settlements: []debugapi.SettlementResponse{
 			{
 				Peer:               "DEAD",
-				SettlementReceived: 0,
-				SettlementSent:     10000,
+				SettlementReceived: big.NewInt(0),
+				SettlementSent:     big.NewInt(10000),
 			},
 			{
 				Peer:               "BEEF",
-				SettlementReceived: 10000,
-				SettlementSent:     20000,
+				SettlementReceived: big.NewInt(10000),
+				SettlementSent:     big.NewInt(20000),
 			},
 			{
 				Peer:               "FFFF",
-				SettlementReceived: 0,
-				SettlementSent:     50000,
+				SettlementReceived: big.NewInt(0),
+				SettlementSent:     big.NewInt(50000),
 			},
 			{
 				Peer:               "EEEE",
-				SettlementReceived: 5000,
-				SettlementSent:     0,
+				SettlementReceived: big.NewInt(5000),
+				SettlementSent:     big.NewInt(0),
 			},
 		},
 	}
@@ -79,7 +79,7 @@ func TestSettlements(t *testing.T) {
 
 func TestSettlementsError(t *testing.T) {
 	wantErr := errors.New("New errors")
-	settlementsSentFunc := func() (map[string]uint64, error) {
+	settlementsSentFunc := func() (map[string]*big.Int, error) {
 		return nil, wantErr
 	}
 	testServer := newTestServer(t, testServerOptions{
@@ -96,8 +96,8 @@ func TestSettlementsError(t *testing.T) {
 
 func TestSettlementsPeers(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
-	settlementSentFunc := func(swarm.Address) (uint64, error) {
-		return 1000000000000000000, nil
+	settlementSentFunc := func(swarm.Address) (*big.Int, error) {
+		return big.NewInt(1000000000000000000), nil
 	}
 	testServer := newTestServer(t, testServerOptions{
 		SettlementOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
@@ -106,8 +106,8 @@ func TestSettlementsPeers(t *testing.T) {
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.SettlementResponse{
 			Peer:               peer,
-			SettlementSent:     1000000000000000000,
-			SettlementReceived: 0,
+			SettlementSent:     big.NewInt(1000000000000000000),
+			SettlementReceived: big.NewInt(0),
 		}),
 	)
 }
@@ -115,8 +115,8 @@ func TestSettlementsPeers(t *testing.T) {
 func TestSettlementsPeersError(t *testing.T) {
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	wantErr := errors.New("Error")
-	settlementSentFunc := func(swarm.Address) (uint64, error) {
-		return 0, wantErr
+	settlementSentFunc := func(swarm.Address) (*big.Int, error) {
+		return nil, wantErr
 	}
 	testServer := newTestServer(t, testServerOptions{
 		SettlementOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},

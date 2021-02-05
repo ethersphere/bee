@@ -37,10 +37,10 @@ func (m *swapProtocolMock) EmitCheque(ctx context.Context, peer swarm.Address, c
 type testObserver struct {
 	called bool
 	peer   swarm.Address
-	amount uint64
+	amount *big.Int
 }
 
-func (t *testObserver) NotifyPayment(peer swarm.Address, amount uint64) error {
+func (t *testObserver) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 	t.called = true
 	t.peer = peer
 	t.amount = amount
@@ -155,7 +155,7 @@ func TestReceiveCheque(t *testing.T) {
 		t.Fatal("expected observer to be called")
 	}
 
-	if observer.amount != amount.Uint64() {
+	if observer.amount.Cmp(amount) != 0 {
 		t.Fatalf("observer called with wrong amount. got %d, want %d", observer.amount, amount)
 	}
 
@@ -278,7 +278,7 @@ func TestPay(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
 
-	amount := uint64(50)
+	amount := big.NewInt(50)
 	beneficiary := common.HexToAddress("0xcd")
 	var cheque chequebook.SignedCheque
 
@@ -289,7 +289,7 @@ func TestPay(t *testing.T) {
 			if b != beneficiary {
 				t.Fatalf("issuing cheque for wrong beneficiary. wanted %v, got %v", beneficiary, b)
 			}
-			if a.Uint64() != amount {
+			if a.Cmp(amount) != 0 {
 				t.Fatalf("issuing cheque with wrong amount. wanted %d, got %d", amount, a)
 			}
 			chequebookCalled = true
@@ -349,7 +349,7 @@ func TestPayIssueError(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
 
-	amount := uint64(50)
+	amount := big.NewInt(50)
 	beneficiary := common.HexToAddress("0xcd")
 
 	peer := swarm.MustParseHexAddress("abcd")
@@ -392,7 +392,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
 
-	amount := uint64(50)
+	amount := big.NewInt(50)
 	peer := swarm.MustParseHexAddress("abcd")
 	networkID := uint64(1)
 	addressbook := &addressbookMock{

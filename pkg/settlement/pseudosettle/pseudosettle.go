@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -97,19 +98,19 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
 			return err
 		}
-		totalReceived = 0
+		totalReceived = big.NewInt(0)
 	}
 
-	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), totalReceived+req.Amount)
+	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), totalReceived.Add(totalReceived, new(big.Int).SetUint64(req.Amount)))
 	if err != nil {
 		return err
 	}
 
-	return s.notifyPaymentFunc(p.Address, req.Amount)
+	return s.notifyPaymentFunc(p.Address, new(big.Int).SetUint64(req.Amount))
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -128,7 +129,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	s.logger.Tracef("sending payment message to peer %v of %d", peer, amount)
 	w := protobuf.NewWriter(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
-		Amount: amount,
+		Amount: amount.Uint64(),
 	})
 	if err != nil {
 		return err
@@ -138,13 +139,15 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
 			return err
 		}
-		totalSent = 0
+		totalSent = big.NewInt(0)
 	}
-	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent+amount)
+	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent.Add(totalSent, amount))
 	if err != nil {
 		return err
 	}
-	s.metrics.TotalSentPseudoSettlements.Add(float64(amount))
+
+	amountFloat, _ := new(big.Float).SetInt(amount).Float64()
+	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 	return nil
 }
 
@@ -154,41 +157,41 @@ func (s *Service) SetNotifyPaymentFunc(notifyPaymentFunc settlement.NotifyPaymen
 }
 
 // TotalSent returns the total amount sent to a peer
-func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
+func (s *Service) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) {
 	key := totalKey(peer, SettlementSentPrefix)
 	err = s.store.Get(key, &totalSent)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, settlement.ErrPeerNoSettlements
+			return nil, settlement.ErrPeerNoSettlements
 		}
-		return 0, err
+		return nil, err
 	}
 	return totalSent, nil
 }
 
 // TotalReceived returns the total amount received from a peer
-func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
+func (s *Service) TotalReceived(peer swarm.Address) (totalReceived *big.Int, err error) {
 	key := totalKey(peer, SettlementReceivedPrefix)
 	err = s.store.Get(key, &totalReceived)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, settlement.ErrPeerNoSettlements
+			return nil, settlement.ErrPeerNoSettlements
 		}
-		return 0, err
+		return nil, err
 	}
 	return totalReceived, nil
 }
 
-// AllSettlements returns all stored settlement values for a given type of prefix (sent or received)
-func (s *Service) SettlementsSent() (map[string]uint64, error) {
-	sent := make(map[string]uint64)
+// SettlementsSent returns all stored sent settlement values for a given type of prefix
+func (s *Service) SettlementsSent() (map[string]*big.Int, error) {
+	sent := make(map[string]*big.Int)
 	err := s.store.Iterate(SettlementSentPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := totalKeyPeer(key, SettlementSentPrefix)
 		if err != nil {
 			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
 		}
 		if _, ok := sent[addr.String()]; !ok {
-			var storevalue uint64
+			var storevalue *big.Int
 			err = s.store.Get(totalKey(addr, SettlementSentPrefix), &storevalue)
 			if err != nil {
 				return false, fmt.Errorf("get peer %s settlement balance: %w", addr.String(), err)
@@ -204,15 +207,16 @@ func (s *Service) SettlementsSent() (map[string]uint64, error) {
 	return sent, nil
 }
 
-func (s *Service) SettlementsReceived() (map[string]uint64, error) {
-	received := make(map[string]uint64)
+// SettlementsReceived returns all stored received settlement values for a given type of prefix
+func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
+	received := make(map[string]*big.Int)
 	err := s.store.Iterate(SettlementReceivedPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := totalKeyPeer(key, SettlementReceivedPrefix)
 		if err != nil {
 			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
 		}
 		if _, ok := received[addr.String()]; !ok {
-			var storevalue uint64
+			var storevalue *big.Int
 			err = s.store.Get(totalKey(addr, SettlementReceivedPrefix), &storevalue)
 			if err != nil {
 				return false, fmt.Errorf("get peer %s settlement balance: %w", addr.String(), err)

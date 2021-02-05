@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -97,14 +98,14 @@ type Options struct {
 	TracingEndpoint        string
 	TracingServiceName     string
 	GlobalPinningEnabled   bool
-	PaymentThreshold       uint64
-	PaymentTolerance       uint64
-	PaymentEarly           uint64
+	PaymentThreshold       string
+	PaymentTolerance       string
+	PaymentEarly           string
 	ResolverConnectionCfgs []multiresolver.ConnectionConfig
 	GatewayMode            bool
 	SwapEndpoint           string
 	SwapFactoryAddress     string
-	SwapInitialDeposit     uint64
+	SwapInitialDeposit     string
 	SwapEnable             bool
 }
 
@@ -198,12 +199,16 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			}
 		}
 
+		swapInitialDeposit, ok := new(big.Int).SetString(o.SwapInitialDeposit, 10)
+		if !ok {
+			return nil, fmt.Errorf("invalid initial deposit: %s", swapInitialDeposit)
+		}
 		// initialize chequebook logic
 		chequebookService, err = chequebook.Init(p2pCtx,
 			chequebookFactory,
 			stateStore,
 			logger,
-			o.SwapInitialDeposit,
+			swapInitialDeposit,
 			transactionService,
 			swapBackend,
 			chainID.Int64(),
@@ -300,12 +305,32 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		settlement = pseudosettleService
 	}
 
-	pricing := pricing.New(p2ps, logger, o.PaymentThreshold)
+	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
+	}
+	pricing := pricing.New(p2ps, logger, paymentThreshold)
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
 
-	acc, err := accounting.NewAccounting(o.PaymentThreshold, o.PaymentTolerance, o.PaymentEarly, logger, stateStore, settlement, pricing)
+	paymentTolerance, ok := new(big.Int).SetString(o.PaymentTolerance, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment tolerance: %s", paymentTolerance)
+	}
+	paymentEarly, ok := new(big.Int).SetString(o.PaymentEarly, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment early: %s", paymentEarly)
+	}
+	acc, err := accounting.NewAccounting(
+		paymentThreshold,
+		paymentTolerance,
+		paymentEarly,
+		logger,
+		stateStore,
+		settlement,
+		pricing,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
