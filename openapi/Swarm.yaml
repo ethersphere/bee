@@ -1,7 +1,7 @@
-openapi: 3.0.0
+openapi: 3.0.3
 
 info:
-  version: 0.4.0
+  version: 0.5.0
   title: Swarm API
   description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages'
 
@@ -134,6 +134,8 @@ paths:
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
+
+  '/chunks':
     post:
       summary: 'Upload Chunk'
       tags:
@@ -151,12 +153,6 @@ paths:
             type: boolean
           required: false
           description: Represents the pinning state of the chunk
-        - in: path
-          name: reference
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
-          required: true
-          description: Swarm address of chunk
       requestBody:
         content:
           application/octet-stream:
@@ -172,8 +168,6 @@ paths:
                 $ref: 'SwarmCommon.yaml#/components/schemas/Status'
         '400':
           $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
         '500':
           $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -830,6 +824,46 @@ paths:
       responses:
         '200':
           description: Returns a WebSocket with a subscription for incoming message data on the requested topic.
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+  '/soc/{owner}/{id}':
+    post:
+      summary: Upload single owner chunk
+      tags:
+        - Single owner chunk
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
+          required: true
+          description: Owner
+        - in: path
+          name: id
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: true
+          description: Id
+        - in: query
+          name: sig
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: true
+          description: Signature
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+        '400':
+           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '401':
+           $ref: 'SwarmCommon.yaml#/components/responses/401'
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
