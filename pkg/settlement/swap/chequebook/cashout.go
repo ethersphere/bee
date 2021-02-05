@@ -91,7 +91,7 @@ func NewCashoutService(
 
 // cashoutActionKey computes the store key for the last cashout action for the chequebook
 func cashoutActionKey(chequebook common.Address) string {
-	return fmt.Sprintf("cashout_%x", chequebook)
+	return fmt.Sprintf("swap_cashout_%x", chequebook)
 }
 
 // CashCheque sends a cashout transaction for the last cheque of the chequebook

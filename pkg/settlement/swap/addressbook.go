@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	peerPrefix            = "chequebook_peer_"
-	peerChequebookPrefix  = "peer_chequebook_"
-	beneficiaryPeerPrefix = "beneficiary_peer_"
-	peerBeneficiaryPrefix = "peer_beneficiary_"
+	peerPrefix            = "swap_chequebook_peer_"
+	peerChequebookPrefix  = "swap_peer_chequebook_"
+	beneficiaryPeerPrefix = "swap_beneficiary_peer_"
+	peerBeneficiaryPrefix = "swap_peer_beneficiary_"
 )
 
 // Addressbook maps peers to beneficaries, chequebooks and in reverse.
