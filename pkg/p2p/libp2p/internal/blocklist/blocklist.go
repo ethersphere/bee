@@ -122,6 +122,6 @@ func generateKey(overlay swarm.Address) string {
 }
 
 func unmarshalKey(s string) (swarm.Address, error) {
-	addr := strings.TrimLeft(s, keyPrefix)
+	addr := strings.TrimPrefix(s, keyPrefix)
 	return swarm.ParseHexAddress(addr)
 }
