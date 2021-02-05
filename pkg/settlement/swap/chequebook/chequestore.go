@@ -30,7 +30,7 @@ var (
 	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrBouncingCheque is the error returned if the chequebook is demonstrably illiquid.
 	ErrBouncingCheque        = errors.New("bouncing cheque")
-	lastReceivedChequePrefix = "chequebook_last_received_cheque_"
+	lastReceivedChequePrefix = "swap_chequebook_last_received_cheque_"
 )
 
 // ChequeStore handles the verification and storage of received cheques
@@ -78,7 +78,7 @@ func NewChequeStore(
 
 // lastReceivedChequeKey computes the key where to store the last cheque received from a chequebook.
 func lastReceivedChequeKey(chequebook common.Address) string {
-	return fmt.Sprintf("chequebook_last_received_cheque_%x", chequebook)
+	return fmt.Sprintf("%s_%x", lastReceivedChequePrefix, chequebook)
 }
 
 // LastCheque returns the last cheque we received from a specific chequebook.

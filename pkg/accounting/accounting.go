@@ -23,8 +23,8 @@ import (
 
 var (
 	_                     Interface = (*Accounting)(nil)
-	balancesPrefix        string    = "balance_"
-	balancesSurplusPrefix string    = "surplusbalance_"
+	balancesPrefix        string    = "accounting_balance_"
+	balancesSurplusPrefix string    = "accounting_surplusbalance_"
 )
 
 // Interface is the Accounting interface.
