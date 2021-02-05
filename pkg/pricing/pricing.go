@@ -7,6 +7,7 @@ package pricing
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -26,22 +27,22 @@ var _ Interface = (*Service)(nil)
 
 // Interface is the main interface of the pricing protocol
 type Interface interface {
-	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error
+	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
 }
 
 // PaymentThresholdObserver is used for being notified of payment threshold updates
 type PaymentThresholdObserver interface {
-	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error
+	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error
 }
 
 type Service struct {
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
-	paymentThreshold         uint64
+	paymentThreshold         *big.Int
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold uint64) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int) *Service {
 	return &Service{
 		streamer:         streamer,
 		logger:           logger,
@@ -81,7 +82,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, req.PaymentThreshold)
 
-	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, req.PaymentThreshold)
+	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, big.NewInt(0).SetBytes(req.PaymentThreshold))
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
@@ -93,7 +94,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 }
 
 // AnnouncePaymentThreshold announces the payment threshold to per
-func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error {
+func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -112,7 +113,7 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 	s.logger.Tracef("sending payment threshold announcement to peer %v of %d", peer, paymentThreshold)
 	w := protobuf.NewWriter(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.AnnouncePaymentThreshold{
-		PaymentThreshold: paymentThreshold,
+		PaymentThreshold: paymentThreshold.Bytes(),
 	})
 
 	return err

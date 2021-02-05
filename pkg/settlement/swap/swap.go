@@ -102,11 +102,11 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 
 	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
 
-	return s.notifyPaymentFunc(peer, amount.Uint64())
+	return s.notifyPaymentFunc(peer, amount)
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 		}
 		return ErrUnknownBeneficary
 	}
-	balance, err := s.chequebook.Issue(ctx, beneficiary, big.NewInt(int64(amount)), func(signedCheque *chequebook.SignedCheque) error {
+	balance, err := s.chequebook.Issue(ctx, beneficiary, amount, func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
 	if err != nil {
@@ -127,7 +127,8 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount uint64) er
 	}
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
-	s.metrics.TotalSent.Add(float64(amount))
+	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
+	s.metrics.TotalSent.Add(amountFloat)
 	return nil
 }
 
@@ -137,47 +138,47 @@ func (s *Service) SetNotifyPaymentFunc(notifyPaymentFunc settlement.NotifyPaymen
 }
 
 // TotalSent returns the total amount sent to a peer
-func (s *Service) TotalSent(peer swarm.Address) (totalSent uint64, err error) {
+func (s *Service) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) {
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if !known {
-		return 0, settlement.ErrPeerNoSettlements
+		return nil, settlement.ErrPeerNoSettlements
 	}
 	cheque, err := s.chequebook.LastCheque(beneficiary)
 	if err != nil {
 		if err == chequebook.ErrNoCheque {
-			return 0, settlement.ErrPeerNoSettlements
+			return nil, settlement.ErrPeerNoSettlements
 		}
-		return 0, err
+		return nil, err
 	}
-	return cheque.CumulativePayout.Uint64(), nil
+	return cheque.CumulativePayout, nil
 }
 
 // TotalReceived returns the total amount received from a peer
-func (s *Service) TotalReceived(peer swarm.Address) (totalReceived uint64, err error) {
+func (s *Service) TotalReceived(peer swarm.Address) (totalReceived *big.Int, err error) {
 	chequebookAddress, known, err := s.addressbook.Chequebook(peer)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if !known {
-		return 0, settlement.ErrPeerNoSettlements
+		return nil, settlement.ErrPeerNoSettlements
 	}
 
 	cheque, err := s.chequeStore.LastCheque(chequebookAddress)
 	if err != nil {
 		if err == chequebook.ErrNoCheque {
-			return 0, settlement.ErrPeerNoSettlements
+			return nil, settlement.ErrPeerNoSettlements
 		}
-		return 0, err
+		return nil, err
 	}
-	return cheque.CumulativePayout.Uint64(), nil
+	return cheque.CumulativePayout, nil
 }
 
 // SettlementsSent returns sent settlements for each individual known peer
-func (s *Service) SettlementsSent() (map[string]uint64, error) {
-	result := make(map[string]uint64)
+func (s *Service) SettlementsSent() (map[string]*big.Int, error) {
+	result := make(map[string]*big.Int)
 	cheques, err := s.chequebook.LastCheques()
 	if err != nil {
 		return nil, err
@@ -191,15 +192,15 @@ func (s *Service) SettlementsSent() (map[string]uint64, error) {
 		if !known {
 			continue
 		}
-		result[peer.String()] = cheque.CumulativePayout.Uint64()
+		result[peer.String()] = cheque.CumulativePayout
 	}
 
 	return result, nil
 }
 
 // SettlementsReceived returns received settlements for each individual known peer.
-func (s *Service) SettlementsReceived() (map[string]uint64, error) {
-	result := make(map[string]uint64)
+func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
+	result := make(map[string]*big.Int)
 	cheques, err := s.chequeStore.LastCheques()
 	if err != nil {
 		return nil, err
@@ -213,7 +214,7 @@ func (s *Service) SettlementsReceived() (map[string]uint64, error) {
 		if !known {
 			continue
 		}
-		result[peer.String()] = cheque.CumulativePayout.Uint64()
+		result[peer.String()] = cheque.CumulativePayout
 	}
 	return result, err
 }

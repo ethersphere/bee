@@ -22,7 +22,7 @@ const chequebookKey = "chequebook"
 func checkBalance(
 	ctx context.Context,
 	logger logging.Logger,
-	swapInitialDeposit uint64,
+	swapInitialDeposit *big.Int,
 	swapBackend transaction.Backend,
 	chainId int64,
 	overlayEthAddress common.Address,
@@ -47,7 +47,7 @@ func checkBalance(
 			return err
 		}
 
-		if balance.Cmp(big.NewInt(int64(swapInitialDeposit))) < 0 {
+		if balance.Cmp(swapInitialDeposit) < 0 {
 			logger.Warningf("cannot continue until there is sufficient ETH and BZZ available on %x", overlayEthAddress)
 			if chainId == 5 {
 				logger.Warningf("on the test network you can get both Goerli ETH and Goerli BZZ from https://faucet.ethswarm.org?address=%x", overlayEthAddress)
@@ -70,7 +70,7 @@ func Init(
 	chequebookFactory Factory,
 	stateStore storage.StateStorer,
 	logger logging.Logger,
-	swapInitialDeposit uint64,
+	swapInitialDeposit *big.Int,
 	transactionService transaction.Service,
 	swapBackend transaction.Backend,
 	chainId int64,
@@ -97,7 +97,7 @@ func Init(
 		}
 
 		logger.Info("no chequebook found, deploying new one.")
-		if swapInitialDeposit != 0 {
+		if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
 			err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20BindingFunc, erc20Address, 20*time.Second, 10)
 			if err != nil {
 				return nil, err
@@ -130,9 +130,9 @@ func Init(
 			return nil, err
 		}
 
-		if swapInitialDeposit != 0 {
+		if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
 			logger.Infof("depositing %d token into new chequebook", swapInitialDeposit)
-			depositHash, err := chequebookService.Deposit(ctx, big.NewInt(int64(swapInitialDeposit)))
+			depositHash, err := chequebookService.Deposit(ctx, swapInitialDeposit)
 			if err != nil {
 				return nil, err
 			}

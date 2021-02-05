@@ -137,14 +137,14 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				TracingServiceName:     c.config.GetString(optionNameTracingServiceName),
 				Logger:                 logger,
 				GlobalPinningEnabled:   c.config.GetBool(optionNameGlobalPinningEnabled),
-				PaymentThreshold:       c.config.GetUint64(optionNamePaymentThreshold),
-				PaymentTolerance:       c.config.GetUint64(optionNamePaymentTolerance),
-				PaymentEarly:           c.config.GetUint64(optionNamePaymentEarly),
+				PaymentThreshold:       c.config.GetString(optionNamePaymentThreshold),
+				PaymentTolerance:       c.config.GetString(optionNamePaymentTolerance),
+				PaymentEarly:           c.config.GetString(optionNamePaymentEarly),
 				ResolverConnectionCfgs: resolverCfgs,
 				GatewayMode:            c.config.GetBool(optionNameGatewayMode),
 				SwapEndpoint:           c.config.GetString(optionNameSwapEndpoint),
 				SwapFactoryAddress:     c.config.GetString(optionNameSwapFactoryAddress),
-				SwapInitialDeposit:     c.config.GetUint64(optionNameSwapInitialDeposit),
+				SwapInitialDeposit:     c.config.GetString(optionNameSwapInitialDeposit),
 				SwapEnable:             c.config.GetBool(optionNameSwapEnable),
 			})
 			if err != nil {

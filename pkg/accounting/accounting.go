@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -42,22 +42,22 @@ type Interface interface {
 	// Debit increases the balance we have with the peer (we get "paid" back).
 	Debit(peer swarm.Address, price uint64) error
 	// Balance returns the current balance for the given peer.
-	Balance(peer swarm.Address) (int64, error)
+	Balance(peer swarm.Address) (*big.Int, error)
 	// SurplusBalance returns the current surplus balance for the given peer.
-	SurplusBalance(peer swarm.Address) (int64, error)
+	SurplusBalance(peer swarm.Address) (*big.Int, error)
 	// Balances returns balances for all known peers.
-	Balances() (map[string]int64, error)
+	Balances() (map[string]*big.Int, error)
 	// CompensatedBalance returns the current balance deducted by current surplus balance for the given peer.
-	CompensatedBalance(peer swarm.Address) (int64, error)
+	CompensatedBalance(peer swarm.Address) (*big.Int, error)
 	// CompensatedBalances returns the compensated balances for all known peers.
-	CompensatedBalances() (map[string]int64, error)
+	CompensatedBalances() (map[string]*big.Int, error)
 }
 
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
 	lock             sync.Mutex // lock to be held during any accounting action for this peer
-	reservedBalance  uint64     // amount currently reserved for active peer interaction
-	paymentThreshold uint64     // the threshold at which the peer expects us to pay
+	reservedBalance  *big.Int   // amount currently reserved for active peer interaction
+	paymentThreshold *big.Int   // the threshold at which the peer expects us to pay
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -68,11 +68,11 @@ type Accounting struct {
 	logger            logging.Logger
 	store             storage.StateStorer
 	// The payment threshold in BZZ we communicate to our peers.
-	paymentThreshold uint64
+	paymentThreshold *big.Int
 	// The amount in BZZ we let peers exceed the payment threshold before we
 	// disconnect them.
-	paymentTolerance uint64
-	earlyPayment     uint64
+	paymentTolerance *big.Int
+	earlyPayment     *big.Int
 	settlement       settlement.Interface
 	pricing          pricing.Interface
 	metrics          metrics
@@ -95,16 +95,12 @@ var (
 func NewAccounting(
 	PaymentThreshold,
 	PaymentTolerance,
-	EarlyPayment uint64,
+	EarlyPayment *big.Int,
 	Logger logging.Logger,
 	Store storage.StateStorer,
 	Settlement settlement.Interface,
 	Pricing pricing.Interface,
 ) (*Accounting, error) {
-	if PaymentTolerance+PaymentThreshold > math.MaxInt64 {
-		return nil, fmt.Errorf("tolerance plus threshold too big: %w", ErrOverflow)
-	}
-
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
 		paymentThreshold: PaymentThreshold,
@@ -135,31 +131,22 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		}
 	}
 
-	// Check for safety of increase of reservedBalance by price
-	if accountingPeer.reservedBalance+price < accountingPeer.reservedBalance {
-		return ErrOverflow
-	}
+	bigPrice := new(big.Int).SetUint64(price)
+	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
 
-	nextReserved := accountingPeer.reservedBalance + price
-
-	// Subtract already reserved amount from actual balance, to get expected balance
-	expectedBalance, err := subtractI64mU64(currentBalance, nextReserved)
-	if err != nil {
-		return err
-	}
+	expectedBalance := new(big.Int).Sub(currentBalance, nextReserved)
 
 	// Determine if we will owe anything to the peer, if we owe less than 0, we conclude we owe nothing
-	// This conversion is made safe by previous subtractI64mU64 not allowing MinInt64
-	expectedDebt := -expectedBalance
-	if expectedDebt < 0 {
-		expectedDebt = 0
+	expectedDebt := new(big.Int).Neg(expectedBalance)
+	if expectedDebt.Cmp(big.NewInt(0)) < 0 {
+		expectedDebt.SetInt64(0)
 	}
 
-	threshold := accountingPeer.paymentThreshold
-	if threshold > a.earlyPayment {
-		threshold -= a.earlyPayment
+	threshold := new(big.Int).Set(accountingPeer.paymentThreshold)
+	if threshold.Cmp(a.earlyPayment) > 0 {
+		threshold.Sub(threshold, a.earlyPayment)
 	} else {
-		threshold = 0
+		threshold.SetInt64(0)
 	}
 
 	additionalDebt, err := a.SurplusBalance(peer)
@@ -168,35 +155,29 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	}
 
 	// uint64 conversion of surplusbalance is safe because surplusbalance is always positive
-	if additionalDebt < 0 {
+	if additionalDebt.Cmp(big.NewInt(0)) < 0 {
 		return ErrInvalidValue
 	}
 
-	increasedExpectedDebt, err := addI64pU64(expectedDebt, uint64(additionalDebt))
-	if err != nil {
-		return err
-	}
+	increasedExpectedDebt := new(big.Int).Add(expectedDebt, additionalDebt)
 
 	// If our expected debt is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
-	if increasedExpectedDebt >= int64(threshold) && currentBalance < 0 {
+	if increasedExpectedDebt.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(ctx, peer, accountingPeer)
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
 		}
 		// if we settled successfully our balance is back at 0
 		// and the expected debt therefore equals next reserved amount
-		expectedDebt = int64(nextReserved)
-		increasedExpectedDebt, err = addI64pU64(expectedDebt, uint64(additionalDebt))
-		if err != nil {
-			return err
-		}
+		expectedDebt = nextReserved
+		increasedExpectedDebt = new(big.Int).Add(expectedDebt, additionalDebt)
 	}
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
 	// this can happen if there is a large number of concurrent requests to the same peer
-	if increasedExpectedDebt > int64(accountingPeer.paymentThreshold) {
+	if increasedExpectedDebt.Cmp(accountingPeer.paymentThreshold) > 0 {
 		a.metrics.AccountingBlocksCount.Inc()
 		return ErrOverdraft
 	}
@@ -216,12 +197,14 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	bigPrice := new(big.Int).SetUint64(price)
+
 	// NOTE: this should never happen if Reserve and Release calls are paired.
-	if price > accountingPeer.reservedBalance {
+	if bigPrice.Cmp(accountingPeer.reservedBalance) > 0 {
 		a.logger.Error("attempting to release more balance than was reserved for peer")
-		accountingPeer.reservedBalance = 0
+		accountingPeer.reservedBalance.SetUint64(0)
 	} else {
-		accountingPeer.reservedBalance -= price
+		accountingPeer.reservedBalance.Sub(accountingPeer.reservedBalance, bigPrice)
 	}
 }
 
@@ -244,10 +227,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 	}
 
 	// Calculate next balance by safely decreasing current balance with the price we credit
-	nextBalance, err := subtractI64mU64(currentBalance, price)
-	if err != nil {
-		return err
-	}
+	nextBalance := new(big.Int).Sub(currentBalance, new(big.Int).SetUint64(price))
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
@@ -274,23 +254,17 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 	// Don't do anything if there is no actual debt.
 	// This might be the case if the peer owes us and the total reserve for a
 	// peer exceeds the payment treshold.
-	if oldBalance >= 0 {
+	if oldBalance.Cmp(big.NewInt(0)) >= 0 {
 		return nil
 	}
 
-	// check safety of the following -1 * int64 conversion, all negative int64 have positive int64 equals except MinInt64
-	if oldBalance == math.MinInt64 {
-		return ErrOverflow
-	}
-
 	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
-	paymentAmount := uint64(-oldBalance)
-	nextBalance := 0
+	paymentAmount := new(big.Int).Neg(oldBalance)
 
 	// Try to save the next balance first.
 	// Otherwise we might pay and then not be able to save, forcing us to pay
 	// again after restart.
-	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	err = a.store.Put(peerBalanceKey(peer), big.NewInt(0))
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
@@ -320,22 +294,19 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	cost := price
+	cost := new(big.Int).SetUint64(price)
 	// see if peer has surplus balance to deduct this transaction of
 	surplusBalance, err := a.SurplusBalance(peer)
 	if err != nil {
 		return fmt.Errorf("failed to get surplus balance: %w", err)
 	}
-	if surplusBalance > 0 {
+	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
 
 		// get new surplus balance after deduct
-		newSurplusBalance, err := subtractI64mU64(surplusBalance, price)
-		if err != nil {
-			return err
-		}
+		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
 
 		// if nothing left for debiting, store new surplus balance and return from debit
-		if newSurplusBalance >= 0 {
+		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
 			a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is %d", peer, price, newSurplusBalance)
 
 			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
@@ -349,22 +320,19 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 		}
 
 		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
-		debitIncrease, err := subtractU64mI64(price, surplusBalance)
-		if err != nil {
-			return err
-		}
+		debitIncrease := new(big.Int).Sub(new(big.Int).SetUint64(price), surplusBalance)
 
 		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
-		if debitIncrease <= 0 {
+		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
 			return fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
 		}
-		cost = uint64(debitIncrease)
+		cost.Set(debitIncrease)
 
 		// if we still have something to debit, than have run out of surplus balance,
 		// let's store 0 as surplus balance
 		a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is 0", peer, debitIncrease)
 
-		err = a.store.Put(peerSurplusBalanceKey(peer), 0)
+		err = a.store.Put(peerSurplusBalanceKey(peer), big.NewInt(0))
 		if err != nil {
 			return fmt.Errorf("failed to persist surplus balance: %w", err)
 		}
@@ -379,10 +347,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	}
 
 	// Get nextBalance by safely increasing current balance with price
-	nextBalance, err := addI64pU64(currentBalance, cost)
-	if err != nil {
-		return err
-	}
+	nextBalance := new(big.Int).Add(currentBalance, cost)
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
 
@@ -394,7 +359,7 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 	a.metrics.TotalDebitedAmount.Add(float64(price))
 	a.metrics.DebitEventsCount.Inc()
 
-	if nextBalance >= int64(a.paymentThreshold+a.paymentTolerance) {
+	if nextBalance.Cmp(new(big.Int).Add(a.paymentThreshold, a.paymentTolerance)) >= 0 {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
 		return p2p.NewBlockPeerError(10000*time.Hour, ErrDisconnectThresholdExceeded)
@@ -404,61 +369,58 @@ func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
 }
 
 // Balance returns the current balance for the given peer.
-func (a *Accounting) Balance(peer swarm.Address) (balance int64, err error) {
+func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 	err = a.store.Get(peerBalanceKey(peer), &balance)
 
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, ErrPeerNoBalance
+			return big.NewInt(0), ErrPeerNoBalance
 		}
-		return 0, err
+		return nil, err
 	}
 
 	return balance, nil
 }
 
 // SurplusBalance returns the current balance for the given peer.
-func (a *Accounting) SurplusBalance(peer swarm.Address) (balance int64, err error) {
+func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err error) {
 	err = a.store.Get(peerSurplusBalanceKey(peer), &balance)
 
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, nil
+			return big.NewInt(0), nil
 		}
-		return 0, err
+		return nil, err
 	}
 
 	return balance, nil
 }
 
 // CompensatedBalance returns balance decreased by surplus balance
-func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated int64, err error) {
+func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated *big.Int, err error) {
 
 	surplus, err := a.SurplusBalance(peer)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	if surplus < 0 {
-		return 0, ErrInvalidValue
+	if surplus.Cmp(big.NewInt(0)) < 0 {
+		return nil, ErrInvalidValue
 	}
 
 	balance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
-			return 0, err
+			return nil, err
 		}
 	}
 
 	// if surplus is 0 and peer has no balance, propagate ErrPeerNoBalance
-	if surplus == 0 && errors.Is(err, ErrPeerNoBalance) {
-		return 0, err
+	if surplus.Cmp(big.NewInt(0)) == 0 && errors.Is(err, ErrPeerNoBalance) {
+		return nil, err
 	}
 	// Compensated balance is balance decreased by surplus balance
-	compensated, err = subtractI64mU64(balance, uint64(surplus))
-	if err != nil {
-		return 0, err
-	}
+	compensated = new(big.Int).Sub(balance, surplus)
 
 	return compensated, nil
 }
@@ -482,7 +444,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
-			reservedBalance: 0,
+			reservedBalance: big.NewInt(0),
 			// initially assume the peer has the same threshold as us
 			paymentThreshold: a.paymentThreshold,
 		}
@@ -493,8 +455,8 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 }
 
 // Balances gets balances for all peers from store.
-func (a *Accounting) Balances() (map[string]int64, error) {
-	s := make(map[string]int64)
+func (a *Accounting) Balances() (map[string]*big.Int, error) {
+	s := make(map[string]*big.Int)
 
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
@@ -503,7 +465,7 @@ func (a *Accounting) Balances() (map[string]int64, error) {
 		}
 
 		if _, ok := s[addr.String()]; !ok {
-			var storevalue int64
+			var storevalue *big.Int
 			err = a.store.Get(peerBalanceKey(addr), &storevalue)
 			if err != nil {
 				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
@@ -523,8 +485,8 @@ func (a *Accounting) Balances() (map[string]int64, error) {
 }
 
 // Balances gets balances for all peers from store.
-func (a *Accounting) CompensatedBalances() (map[string]int64, error) {
-	s := make(map[string]int64)
+func (a *Accounting) CompensatedBalances() (map[string]*big.Int, error) {
+	s := make(map[string]*big.Int)
 
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
@@ -605,7 +567,7 @@ func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
 }
 
 // NotifyPayment is called by Settlement when we receive a payment.
-func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
+func (a *Accounting) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err
@@ -622,15 +584,12 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 	}
 	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
-	if currentBalance <= 0 {
+	if currentBalance.Cmp(big.NewInt(0)) <= 0 {
 		surplus, err := a.SurplusBalance(peer)
 		if err != nil {
 			return fmt.Errorf("failed to get surplus balance: %w", err)
 		}
-		increasedSurplus, err := addI64pU64(surplus, amount)
-		if err != nil {
-			return err
-		}
+		increasedSurplus := new(big.Int).Add(surplus, amount)
 
 		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, amount, increasedSurplus)
 
@@ -643,17 +602,14 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	}
 
 	// if current balance is positive, let's make a partial credit to
-	newBalance, err := subtractI64mU64(currentBalance, amount)
-	if err != nil {
-		return err
-	}
+	newBalance := new(big.Int).Sub(currentBalance, amount)
 
 	// Don't allow a payment to put us into debt
 	// This is to prevent another node tricking us into settling by settling
 	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
 	nextBalance := newBalance
-	if newBalance < 0 {
-		nextBalance = 0
+	if newBalance.Cmp(big.NewInt(0)) < 0 {
+		nextBalance = big.NewInt(0)
 	}
 
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
@@ -666,20 +622,14 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 	// If payment would have put us into debt, rather, let's add to surplusBalance,
 	// so as that an oversettlement attempt creates balance for future forwarding services
 	// charges to be deducted of
-	if newBalance < 0 {
-		surplusGrowth, err := subtractU64mI64(amount, currentBalance)
-		if err != nil {
-			return err
-		}
+	if newBalance.Cmp(big.NewInt(0)) < 0 {
+		surplusGrowth := new(big.Int).Sub(amount, currentBalance)
 
 		surplus, err := a.SurplusBalance(peer)
 		if err != nil {
 			return fmt.Errorf("failed to get surplus balance: %w", err)
 		}
-		increasedSurplus := surplus + surplusGrowth
-		if increasedSurplus < surplus {
-			return ErrOverflow
-		}
+		increasedSurplus := new(big.Int).Add(surplus, surplusGrowth)
 
 		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, surplusGrowth, increasedSurplus)
 
@@ -694,7 +644,7 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount uint64) error {
 
 // AsyncNotifyPayment calls notify payment in a go routine.
 // This is needed when accounting needs to be notified but the accounting lock is already held.
-func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount uint64) error {
+func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount *big.Int) error {
 	go func() {
 		err := a.NotifyPayment(peer, amount)
 		if err != nil {
@@ -704,67 +654,8 @@ func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount uint64) error
 	return nil
 }
 
-// subtractI64mU64 is a helper function for safe subtraction of Int64 - Uint64
-// It checks for
-//   - overflow safety in conversion of uint64 to int64
-//   - safety of the arithmetic
-//   - whether ( -1 * result ) is still Int64, as MinInt64 in absolute sense is 1 larger than MaxInt64
-// If result is MinInt64, we also return overflow error, for two reasons:
-//   - in some cases we are going to use -1 * result in the following operations, which is secured by this check
-//   - we also do not want to possibly store this value as balance, even if ( -1 * result ) is not used immediately afterwards, because it could
-//		disable settleing for this amount as the value would create overflow
-func subtractI64mU64(base int64, subtracted uint64) (result int64, err error) {
-	if subtracted > math.MaxInt64 {
-		return 0, ErrOverflow
-	}
-
-	result = base - int64(subtracted)
-	if result > base {
-		return 0, ErrOverflow
-	}
-
-	if result == math.MinInt64 {
-		return 0, ErrOverflow
-	}
-
-	return result, nil
-}
-
-func subtractU64mI64(base uint64, subtracted int64) (result int64, err error) {
-	if base > math.MaxInt64 {
-		return 0, ErrOverflow
-	}
-
-	// base is positive, overflow can happen by subtracting negative number
-	result = int64(base) - subtracted
-	if subtracted < 0 {
-		if result < int64(base) {
-			return 0, ErrOverflow
-		}
-	}
-
-	return result, nil
-}
-
-// addI64pU64 is a helper function for safe addition of Int64 + Uint64
-// It checks for
-//   - overflow safety in conversion of uint64 to int64
-//   - safety of the arithmetic
-func addI64pU64(a int64, b uint64) (result int64, err error) {
-	if b > math.MaxInt64 {
-		return 0, ErrOverflow
-	}
-
-	result = a + int64(b)
-	if result < a {
-		return 0, ErrOverflow
-	}
-
-	return result, nil
-}
-
 // NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
-func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold uint64) error {
+func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error {
 	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err
@@ -773,6 +664,6 @@ func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	accountingPeer.paymentThreshold = paymentThreshold
+	accountingPeer.paymentThreshold.Set(paymentThreshold)
 	return nil
 }
