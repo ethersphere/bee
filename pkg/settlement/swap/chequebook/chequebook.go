@@ -201,7 +201,7 @@ func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error 
 
 // lastIssuedChequeKey computes the key where to store the last cheque for a beneficiary.
 func lastIssuedChequeKey(beneficiary common.Address) string {
-	return fmt.Sprintf("%x_%x", lastIssuedChequeKeyPrefix, beneficiary)
+	return fmt.Sprintf("%s_%x", lastIssuedChequeKeyPrefix, beneficiary)
 }
 
 func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) (*big.Int, error) {
