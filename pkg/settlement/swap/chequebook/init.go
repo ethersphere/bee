@@ -50,7 +50,7 @@ func checkBalance(
 		if balance.Cmp(swapInitialDeposit) < 0 {
 			logger.Warningf("cannot continue until there is sufficient ETH and BZZ available on %x", overlayEthAddress)
 			if chainId == 5 {
-				logger.Warningf("get your Goerli ETH and Goerli BZZ now via the bzzaar at https://bzz.ethswarm.org/?transaction=buy&amount=%d&slippage=30&receiver=%x", new(big.Int).Div(swapInitialDeposit, big.NewInt(10000000000000000)), overlayEthAddress)
+				logger.Warningf("get your Goerli ETH and Goerli BZZ now via the bzzaar at https://bzz.ethswarm.org/?transaction=buy&amount=%d&slippage=30&receiver=0x%x", new(big.Int).Div(swapInitialDeposit, big.NewInt(10000000000000000)), overlayEthAddress)
 			}
 			select {
 			case <-time.After(backoffDuration):
