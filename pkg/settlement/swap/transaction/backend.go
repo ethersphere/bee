@@ -21,6 +21,7 @@ type Backend interface {
 	TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
 	BlockNumber(ctx context.Context) (uint64, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 }
 
 func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (bool, error) {
