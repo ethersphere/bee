@@ -222,7 +222,7 @@ func keyChequebook(key []byte, prefix string) (chequebook common.Address, err er
 func (s *chequeStore) LastCheques() (map[common.Address]*SignedCheque, error) {
 	result := make(map[common.Address]*SignedCheque)
 	err := s.store.Iterate(lastReceivedChequePrefix, func(key, val []byte) (stop bool, err error) {
-		addr, err := keyChequebook(key, lastReceivedChequePrefix)
+		addr, err := keyChequebook(key, lastReceivedChequePrefix+"_")
 		if err != nil {
 			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
 		}
