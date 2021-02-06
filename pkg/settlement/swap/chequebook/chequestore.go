@@ -78,7 +78,7 @@ func NewChequeStore(
 
 // lastReceivedChequeKey computes the key where to store the last cheque received from a chequebook.
 func lastReceivedChequeKey(chequebook common.Address) string {
-	return fmt.Sprintf("%s%x", lastReceivedChequePrefix, chequebook)
+	return fmt.Sprintf("%s_%x", lastReceivedChequePrefix, chequebook)
 }
 
 // LastCheque returns the last cheque we received from a specific chequebook.
@@ -222,7 +222,7 @@ func keyChequebook(key []byte, prefix string) (chequebook common.Address, err er
 func (s *chequeStore) LastCheques() (map[common.Address]*SignedCheque, error) {
 	result := make(map[common.Address]*SignedCheque)
 	err := s.store.Iterate(lastReceivedChequePrefix, func(key, val []byte) (stop bool, err error) {
-		addr, err := keyChequebook(key, lastReceivedChequePrefix)
+		addr, err := keyChequebook(key, lastReceivedChequePrefix+"_")
 		if err != nil {
 			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
 		}
