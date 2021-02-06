@@ -78,7 +78,7 @@ func NewChequeStore(
 
 // lastReceivedChequeKey computes the key where to store the last cheque received from a chequebook.
 func lastReceivedChequeKey(chequebook common.Address) string {
-	return fmt.Sprintf("%s_%x", lastReceivedChequePrefix, chequebook)
+	return fmt.Sprintf("%s%x", lastReceivedChequePrefix, chequebook)
 }
 
 // LastCheque returns the last cheque we received from a specific chequebook.
