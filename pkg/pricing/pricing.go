@@ -46,12 +46,12 @@ type Service struct {
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
 	paymentThreshold         *big.Int
-	pricer                   *pricer.Service
+	pricer                   pricer.Interface
 	paymentThresholdObserver PaymentThresholdObserver
 	priceTableObserver       PriceTableObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int, pricer *pricer.Service) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int, pricer pricer.Interface) *Service {
 	return &Service{
 		streamer:         streamer,
 		logger:           logger,
@@ -104,7 +104,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 
-	if big.Int(0).cmp(paymentThreshold) == 0 {
+	if paymentThreshold.Cmp(big.NewInt(0)) == 0 {
 		return err
 	}
 	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, paymentThreshold)

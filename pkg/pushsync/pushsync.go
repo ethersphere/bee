@@ -122,6 +122,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
+	price := ps.pricer.PriceForPeer(p.Address, chunk.Address())
+
 	receipt, err := ps.pushToClosest(ctx, chunk)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
@@ -137,7 +139,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-			return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
+			return ps.accounting.Debit(p.Address, price)
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
 	}
@@ -149,7 +151,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
-	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
+	return ps.accounting.Debit(p.Address, price)
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for

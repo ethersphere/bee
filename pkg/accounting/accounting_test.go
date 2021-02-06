@@ -526,7 +526,7 @@ func (p *pricingMock) AnnouncePaymentThreshold(ctx context.Context, peer swarm.A
 	return nil
 }
 
-func (p *pricingMock) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold uint64) error {
+func (p *pricingMock) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
 	p.called = true
 	p.peer = peer
 	p.paymentThreshold = paymentThreshold
