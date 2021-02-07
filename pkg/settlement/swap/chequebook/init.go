@@ -83,7 +83,7 @@ func checkBalance(
 			case <-time.After(backoffDuration):
 			case <-timeoutCtx.Done():
 				if insufficientERC20 {
-					return fmt.Errorf("insufficient token for initial deposit")
+					return fmt.Errorf("insufficient BZZ for initial deposit")
 				} else {
 					return fmt.Errorf("insufficient eth for initial deposit")
 				}
