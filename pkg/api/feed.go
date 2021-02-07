@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -164,6 +165,14 @@ func (s *server) feedPutHandler(w http.ResponseWriter, r *http.Request) {
 		at = time.Now().Unix()
 	}
 
+	index, err := hex.DecodeString(r.URL.Query().Get("index"))
+	if err != nil {
+		s.Logger.Debugf("feed put: decode index: %v", err)
+		s.Logger.Error("feed put: bad index")
+		jsonhttp.BadRequest(w, "bad index")
+		return
+	}
+
 	sig, err := hex.DecodeString(r.URL.Query().Get("sig"))
 	if err != nil {
 		s.Logger.Debugf("feed put: decode sig: %v", err)
@@ -177,21 +186,21 @@ func (s *server) feedPutHandler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	// we need to know where to put the update, do a lookup then create the index
-	lookup, err := s.feedFactory.NewLookup(*feedType, f)
-	if err != nil {
-		panic(err)
-	}
-
-	ch, _, next, err := lookup.At(r.Context(), int64(at), 0)
-	if err != nil {
-		panic(err)
-	}
+	//lookup, err := s.feedFactory.NewLookup(*feedType, f)
+	//if err != nil {
+	//panic(err)
+	//}
+	next := &id{topic: topic, index: index}
+	//ch, _, next, err := lookup.At(r.Context(), int64(at), 0)
+	//if err != nil {
+	//panic(err)
+	//}
 
 	//	we have the ref, we need to make the content addressed chunk out of it, with the timestamp
 	//	then we need to create the soc with that owner and with that cac, then PUT that chunk
 	// and do a recovery on the signature, to see that it matches the owner
 	mode := requestModePut(r)
-	ch, err = feeds.NewUpdate(f, next, at, ref.Bytes(), sig)
+	ch, err := feeds.NewUpdate(f, next, at, ref.Bytes(), sig)
 	if err != nil {
 		panic(err)
 	}
@@ -305,4 +314,13 @@ func parseFeedUpdate(ch swarm.Chunk) (swarm.Address, int64, error) {
 	ts := binary.BigEndian.Uint64(update[8:16])
 	ref := swarm.NewAddress(update[16:])
 	return ref, int64(ts), nil
+}
+
+type id struct {
+	topic []byte
+	index []byte
+}
+
+func (i *id) MarshalBinary() ([]byte, error) {
+	return crypto.LegacyKeccak256(append(i.topic, i.index...))
 }
