@@ -32,6 +32,8 @@ import (
 
 const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
 
+var expReference = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
+
 func TestFeed_Get(t *testing.T) {
 	var (
 		feedResource = func(owner, topic, at string) string {
@@ -80,7 +82,6 @@ func TestFeed_Get(t *testing.T) {
 	t.Run("with at", func(t *testing.T) {
 		var (
 			timestamp    = int64(12121212)
-			expReference = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
 			ch, _        = toChunk(uint64(timestamp), expReference.Bytes())
 			look         = newMockLookup(12, 0, ch, nil, &id{}, &id{})
 			factory      = newMockFactory(look)
@@ -96,27 +97,26 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{Reference: expReference}),
 		)
 
-		if h := respHeaders[api.SwarmFeedIndexHeader]; len(h) > 0 {
-			b, err := hex.DecodeString(h[0])
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(b, idBytes) {
-				t.Fatalf("feed index header mismatch. got %v want %v", b, idBytes)
-			}
-		} else {
+		h := respHeaders[api.SwarmFeedIndexHeader]
+		if len(h) == 0 {
 			t.Fatal("expected swarm feed index header to be set")
+		}
+		b, err := hex.DecodeString(h[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(b, idBytes) {
+			t.Fatalf("feed index header mismatch. got %v want %v", b, idBytes)
 		}
 	})
 
 	t.Run("latest", func(t *testing.T) {
 		var (
-			timestamp    = int64(12121212)
-			expReference = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
-			ch, _        = toChunk(uint64(timestamp), expReference.Bytes())
-			look         = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
-			factory      = newMockFactory(look)
-			idBytes, _   = (&id{}).MarshalBinary()
+			timestamp  = int64(12121212)
+			ch, _      = toChunk(uint64(timestamp), expReference.Bytes())
+			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
+			factory    = newMockFactory(look)
+			idBytes, _ = (&id{}).MarshalBinary()
 
 			client, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
@@ -152,7 +152,6 @@ func TestFeed_Post(t *testing.T) {
 		logger         = logging.New(ioutil.Discard, 0)
 		tag            = tags.NewTags(mockStatestore, logger)
 		topic          = "aabbcc"
-		expRef         = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
 		mockStorer     = mock.NewStorer()
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
@@ -165,12 +164,12 @@ func TestFeed_Post(t *testing.T) {
 		url := fmt.Sprintf("/feeds/%s/%s?type=%s", ownerString, topic, "sequence")
 		jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusCreated,
 			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{
-				Reference: expRef,
+				Reference: expReference,
 			}),
 		)
 
 		ls := loadsave.New(mockStorer, storage.ModePutUpload, false)
-		i, err := manifest.NewMantarayManifestReference(expRef, ls)
+		i, err := manifest.NewMantarayManifestReference(expReference, ls)
 		if err != nil {
 			t.Fatal(err)
 		}
