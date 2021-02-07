@@ -35,8 +35,8 @@ const (
 	Epoch
 )
 
-func (t *Type) String() string {
-	switch *t {
+func (t Type) String() string {
+	switch t {
 	case Sequence:
 		return "Sequence"
 	case Epoch:

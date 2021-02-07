@@ -191,7 +191,7 @@ func TestFeedIndirection(t *testing.T) {
 	// tar all the test case files
 	tarReader := tarFiles(t, []f{
 		{
-			data:     []byte(updateData),
+			data:     updateData,
 			name:     "index.html",
 			dir:      "",
 			filePath: "./index.html",

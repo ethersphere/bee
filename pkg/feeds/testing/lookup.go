@@ -106,7 +106,7 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 						step = tc.step / 4
 					}
 					for now := at; now < at+tc.step; now += step {
-						ch, err := finder.At(ctx, now, after)
+						ch, _, _, err := finder.At(ctx, now, after)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -161,7 +161,7 @@ func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds
 				diff := ats[j+1] - ats[j]
 				for at := ats[j]; at < ats[j+1]; at += int64(rand.Intn(int(diff)) + 1) {
 					for after := int64(0); after < at; after += int64(rand.Intn(int(at))) {
-						ch, err := finder.At(ctx, at, after)
+						ch, _, _, err := finder.At(ctx, at, after)
 						if err != nil {
 							t.Fatal(err)
 						}

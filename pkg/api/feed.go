@@ -32,7 +32,7 @@ var (
 )
 
 type feedReferenceResponse struct {
-	Reference swarm.Address `json: "reference"`
+	Reference swarm.Address `json:"reference"`
 }
 
 func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +81,7 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, cur, next, err := lookup.At(r.Context(), int64(at), 0)
+	ch, cur, next, err := lookup.At(r.Context(), at, 0)
 	if err != nil {
 		s.Logger.Debugf("feed get: lookup: %v", err)
 		s.Logger.Error("feed get: lookup error")
@@ -136,32 +136,22 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "bad topic")
 		return
 	}
-	feedType := new(feeds.Type)
-	typeStr := r.URL.Query().Get("type")
-	if typeStr != "" {
-		if err := feedType.FromString(typeStr); err != nil {
-			s.Logger.Debugf("feed put: unknown type: %v", err)
-			s.Logger.Error("feed put: unknown type")
-			jsonhttp.BadRequest(w, "unknown type")
-			return
-		}
-		if *feedType == feeds.Epoch {
-			// throw some error for now
-			s.Logger.Debugf("feed put: unsupported")
-			s.Logger.Error("feed put: unsupported")
-			jsonhttp.BadRequest(w, "unsupported")
-			return
-		}
-	}
 	l := loadsave.New(s.Storer, requestModePut(r), false)
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
+	if err != nil {
+		s.Logger.Debugf("feed put: new manifest: %v", err)
+		s.Logger.Error("feed put: new manifest")
+		jsonhttp.InternalServerError(w, "create manifest")
+		return
+	}
+
 	meta := map[string]string{
 		feedMetadataEntryOwner: hex.EncodeToString(owner),
 		feedMetadataEntryTopic: hex.EncodeToString(topic),
-		feedMetadataEntryType:  feedType.String(),
+		feedMetadataEntryType:  feeds.Sequence.String(), // only sequence allowed for now
 	}
 
-	emptyAddr := make([]byte, 32, 32)
+	emptyAddr := make([]byte, 32)
 	err = feedManifest.Add(r.Context(), "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), meta))
 	if err != nil {
 		s.Logger.Debugf("feed post: add manifest entry: %v", err)
