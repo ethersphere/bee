@@ -103,8 +103,8 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.Logger.Error("soc upload: invalid chunk")
 		jsonhttp.Unauthorized(w, "invalid chunk")
 		return
-	}
 
+	}
 	ctx := r.Context()
 
 	_, err = s.Storer.Put(ctx, requestModePut(r), chunk)
