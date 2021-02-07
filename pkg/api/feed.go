@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/bmtpool"
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -53,30 +51,16 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "bad topic")
 		return
 	}
-	feedType := new(feeds.Type)
-	typeStr := r.URL.Query().Get("type")
-	if typeStr != "" {
-		if err := feedType.FromString(typeStr); err != nil {
-			s.Logger.Debugf("feed get: unknown type: %v", err)
-			s.Logger.Error("feed get: unknown type")
-			jsonhttp.BadRequest(w, "unknown type")
-			return
-		}
-		if *feedType == feeds.Epoch {
-			// throw some error for now
-			s.Logger.Debugf("feed put: unsupported")
-			s.Logger.Error("feed put: unsupported")
-			jsonhttp.BadRequest(w, "unsupported")
-			return
-		}
-	}
 
 	var at int64
 	atStr := r.URL.Query().Get("at")
 	if atStr != "" {
 		at, err = strconv.ParseInt(atStr, 10, 64)
 		if err != nil {
-			panic(err)
+			s.Logger.Debugf("feed get: decode at: %v", err)
+			s.Logger.Error("feed get: bad at")
+			jsonhttp.BadRequest(w, "bad at")
+			return
 		}
 	} else {
 		at = time.Now().Unix()
@@ -84,136 +68,53 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	f, err := feeds.New(string(topic), common.BytesToAddress(owner))
 	if err != nil {
-		panic(err)
+		s.Logger.Debugf("feed get: new feed: %v", err)
+		s.Logger.Error("feed get: new feed")
+		jsonhttp.InternalServerError(w, "create feed")
+		return
 	}
-	lookup, err := s.feedFactory.NewLookup(*feedType, f)
+	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
-		panic(err)
-	}
-
-	ch, _, _, err := lookup.At(r.Context(), int64(at), 0)
-	if err != nil {
-		panic(err)
-	}
-
-	ref, ts, err := parseFeedUpdate(ch)
-	if err != nil {
-		panic(err)
-	}
-
-	tsB := make([]byte, 8)
-	binary.BigEndian.PutUint64(tsB, uint64(ts))
-	id := hex.EncodeToString(tsB)
-	w.Header().Set(SwarmFeedIndexHeader, id)
-	w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
-
-	jsonhttp.OK(w, feedReferenceResponse{Reference: ref})
-}
-
-func (s *server) feedPutHandler(w http.ResponseWriter, r *http.Request) {
-	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
-	if err != nil {
-		s.Logger.Debugf("feed put: decode owner: %v", err)
-		s.Logger.Error("feed put: bad owner")
-		jsonhttp.BadRequest(w, "bad owner")
+		s.Logger.Debugf("feed get: new lookup: %v", err)
+		s.Logger.Error("feed get: new lookup")
+		jsonhttp.InternalServerError(w, "new lookup")
 		return
 	}
 
-	topic, err := hex.DecodeString(mux.Vars(r)["topic"])
+	ch, cur, next, err := lookup.At(r.Context(), int64(at), 0)
 	if err != nil {
-		s.Logger.Debugf("feed put: decode topic: %v", err)
-		s.Logger.Error("feed put: bad topic")
-		jsonhttp.BadRequest(w, "bad topic")
+		s.Logger.Debugf("feed get: lookup: %v", err)
+		s.Logger.Error("feed get: lookup error")
+		jsonhttp.NotFound(w, "lookup failed")
 		return
 	}
 
-	feedType := new(feeds.Type)
-	typeStr := r.URL.Query().Get("type")
-	if typeStr != "" {
-		if err := feedType.FromString(typeStr); err != nil {
-			s.Logger.Debugf("feed put: unknown type: %v", err)
-			s.Logger.Error("feed put: unknown type")
-			jsonhttp.BadRequest(w, "unknown type")
-			return
-		}
-		if *feedType == feeds.Epoch {
-			// throw some error for now
-			s.Logger.Debugf("feed put: unsupported")
-			s.Logger.Error("feed put: unsupported")
-			jsonhttp.BadRequest(w, "unsupported")
-			return
-		}
-	}
-	var ref swarm.Address
-	refStr := mux.Vars(r)["reference"]
-	ref, err = swarm.ParseHexAddress(refStr)
+	ref, _, err := parseFeedUpdate(ch)
 	if err != nil {
-		s.Logger.Debugf("feed put: parse reference: %v", err)
-		s.Logger.Error("feed put: bad reference")
-		jsonhttp.BadRequest(w, "bad reference")
+		s.Logger.Debugf("feed get: parse update: %v", err)
+		s.Logger.Error("feed get: parse update")
+		jsonhttp.InternalServerError(w, "parse update")
 		return
 	}
 
-	var at int64
-	atStr := r.URL.Query().Get("at")
-	if atStr != "" {
-		at, err = strconv.ParseInt(atStr, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-	} else {
-		at = time.Now().Unix()
-	}
-
-	index, err := hex.DecodeString(r.URL.Query().Get("index"))
+	curBytes, err := cur.MarshalBinary()
 	if err != nil {
-		s.Logger.Debugf("feed put: decode index: %v", err)
-		s.Logger.Error("feed put: bad index")
-		jsonhttp.BadRequest(w, "bad index")
+		s.Logger.Debugf("feed get: marshal current index: %v", err)
+		s.Logger.Error("feed get: marshal index")
+		jsonhttp.InternalServerError(w, "marshal index")
 		return
 	}
 
-	sig, err := hex.DecodeString(r.URL.Query().Get("sig"))
+	nextBytes, err := next.MarshalBinary()
 	if err != nil {
-		s.Logger.Debugf("feed put: decode sig: %v", err)
-		s.Logger.Error("feed put: bad signature")
-		jsonhttp.BadRequest(w, "bad signature")
+		s.Logger.Debugf("feed get: marshal next index: %v", err)
+		s.Logger.Error("feed get: marshal index")
+		jsonhttp.InternalServerError(w, "marshal index")
 		return
 	}
 
-	f, err := feeds.New(string(topic), common.BytesToAddress(owner))
-	if err != nil {
-		panic(err)
-	}
-	// we need to know where to put the update, do a lookup then create the index
-	//lookup, err := s.feedFactory.NewLookup(*feedType, f)
-	//if err != nil {
-	//panic(err)
-	//}
-	next := &id{topic: topic, index: index}
-	//ch, _, next, err := lookup.At(r.Context(), int64(at), 0)
-	//if err != nil {
-	//panic(err)
-	//}
-
-	//	we have the ref, we need to make the content addressed chunk out of it, with the timestamp
-	//	then we need to create the soc with that owner and with that cac, then PUT that chunk
-	// and do a recovery on the signature, to see that it matches the owner
-	mode := requestModePut(r)
-	ch, err := feeds.NewUpdate(f, next, at, ref.Bytes(), sig)
-	if err != nil {
-		panic(err)
-	}
-	_, err = s.Storer.Put(r.Context(), mode, ch)
-	if err != nil {
-		panic(err)
-	}
-	b, err := next.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-
-	w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(b))
+	w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
+	w.Header().Set(SwarmFeedIndexNextHeader, hex.EncodeToString(nextBytes))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
 
 	jsonhttp.OK(w, feedReferenceResponse{Reference: ref})
@@ -278,30 +179,6 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.Created(w, feedReferenceResponse{Reference: ref})
 }
 
-func generateUpdate(ref swarm.Address, ts uint64) swarm.Chunk {
-	hasher := bmtpool.Get()
-	defer bmtpool.Put(hasher)
-
-	tb := make([]byte, swarm.SpanSize)
-	binary.BigEndian.PutUint64(tb, ts)
-	tb = append(tb, ref.Bytes()...)
-	span := uint64(len(tb))
-
-	b := make([]byte, swarm.SpanSize)
-	binary.LittleEndian.PutUint64(b, span)
-	err := hasher.SetSpanBytes(b)
-	if err != nil {
-		panic(err)
-	}
-	_, err = hasher.Write(b)
-	if err != nil {
-		panic(err)
-	}
-	s := swarm.NewAddress(hasher.Sum(nil))
-	return swarm.NewChunk(s, append(b, tb...))
-
-}
-
 func parseFeedUpdate(ch swarm.Chunk) (swarm.Address, int64, error) {
 	update := ch.Data()
 	// split the timestamp and reference
@@ -314,13 +191,4 @@ func parseFeedUpdate(ch swarm.Chunk) (swarm.Address, int64, error) {
 	ts := binary.BigEndian.Uint64(update[8:16])
 	ref := swarm.NewAddress(update[16:])
 	return ref, int64(ts), nil
-}
-
-type id struct {
-	topic []byte
-	index []byte
-}
-
-func (i *id) MarshalBinary() ([]byte, error) {
-	return crypto.LegacyKeccak256(append(i.topic, i.index...))
 }

@@ -97,10 +97,6 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle(router, "/feeds/{owner}/{topic}/{reference}", jsonhttp.MethodHandler{
-		"PUT": http.HandlerFunc(s.feedPutHandler),
-	})
-
 	handle(router, "/bzz/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL
 		u.Path += "/"

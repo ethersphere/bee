@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -60,19 +59,6 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
-	var at int64
-	atStr := r.URL.Query().Get("at")
-	if atStr != "" {
-		at, err = strconv.ParseInt(atStr, 10, 64)
-		if err != nil {
-			logger.Debugf("bzz download: parse at: %v", err)
-			logger.Error("bzz download: parse at")
-			jsonhttp.BadRequest(w, nil)
-			return
-		}
-	} else {
-		at = time.Now().Unix()
-	}
 
 FETCH:
 	// read manifest entry
@@ -100,7 +86,7 @@ FETCH:
 	if !feedDereferenced {
 		if l, err := s.manifestFeed(ctx, ls, buf.Bytes()); err == nil {
 			//we have a feed manifest here
-			ch, cur, next, err := l.At(ctx, at, 0)
+			ch, cur, next, err := l.At(ctx, time.Now().Unix(), 0)
 			fmt.Println(cur, next)
 			if err != nil {
 				logger.Debugf("bzz download: feed lookup: %v", err)
