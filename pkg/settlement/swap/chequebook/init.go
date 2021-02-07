@@ -82,7 +82,11 @@ func checkBalance(
 			select {
 			case <-time.After(backoffDuration):
 			case <-timeoutCtx.Done():
-				return fmt.Errorf("insufficient token for initial deposit")
+				if insufficientERC20 {
+					return fmt.Errorf("insufficient token for initial deposit")
+				} else {
+					return fmt.Errorf("insufficient eth for initial deposit")
+				}
 			}
 			continue
 		}
