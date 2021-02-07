@@ -202,6 +202,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
 	cmd.Flags().String(optionNameSwapEndpoint, "http://localhost:8545", "swap ethereum blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory address")
-	cmd.Flags().String(optionNameSwapInitialDeposit, "10000000000000000", "initial deposit if deploying a new chequebook")
+	cmd.Flags().String(optionNameSwapInitialDeposit, "100000000000000000", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
 }
