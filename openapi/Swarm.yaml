@@ -869,3 +869,162 @@ paths:
         default:
           description: Default response
 
+  '/feed/{owner}/{topic}':
+    post:
+      summary: Create an initial feed root manifest
+      tags:
+        - Feed
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
+          required: true
+          description: Owner
+        - in: path
+          name: topic
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: true
+          description: Topic
+        - in: query
+          name: type
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/FeedType'
+          required: false
+          description: Feed indexing scheme (default: sequence)
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+        '400':
+           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '401':
+           $ref: 'SwarmCommon.yaml#/components/responses/401'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+    get:
+      summary: Find feed update
+      tags:
+        - Feed
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
+          required: true
+          description: Owner
+        - in: path
+          name: topic
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: true
+          description: Topic
+        - in: query
+          name: index
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: false
+          description: Feed update index
+        - in: query
+          name: at
+          schema:
+            type: integer
+          required: false
+          description: Timestamp of the update (default: now)
+        - in: query
+          name: type
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/FeedType'
+          required: false
+          description: Feed indexing scheme (default: sequence)
+      responses:
+        '200':
+          headers:
+            'swarm-feed-index':
+              $ref: 'SwarmCommon.yaml#/components/headers/SwarmFeedIndex'
+            'swarm-feed-index-next':
+              $ref: 'SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext'
+           content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+        '400':
+           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '401':
+           $ref: 'SwarmCommon.yaml#/components/responses/401'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
+
+  '/feed/{owner}/{topic}/{reference}':
+    put:
+      summary: Upload a feed update
+      tags:
+        - Feed
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
+          required: true
+          description: Owner
+        - in: path
+          name: topic
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: true
+          description: Topic
+        - in: path
+          name: reference
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmOnlyReference'
+          required: true
+          description: The content-addressed reference for this update
+        - in: query
+          name: index
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: false
+          description: Feed update index
+        - in: query
+          name: at
+          schema:
+            type: integer
+          required: false
+          description: Timestamp of the update (default: now)
+        - in: query
+          name: type
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/FeedType'
+          required: false
+          description: Feed indexing scheme (default: sequence)
+        - in: query
+          name: sig
+          schema:
+            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+          required: true
+          description: Update signature
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
+        '400':
+           $ref: 'SwarmCommon.yaml#/components/responses/400'
+        '401':
+           $ref: 'SwarmCommon.yaml#/components/responses/401'
+        '500':
+           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        default:
+          description: Default response
+
