@@ -35,5 +35,5 @@ docker-compose up -d
 
 From logs find URL line with `on goerli you can get both goerli eth and goerli bzz from` and prefund your node
 ```
-docker-compose logs -f bee
+docker-compose logs -f bee-1
 ```
