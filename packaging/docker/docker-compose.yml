@@ -1,17 +1,17 @@
 version: "3"
 
 services:
-  clef:
-    image: ethersphere/clef:0.4.4
+  clef-1:
+    image: ethersphere/clef:0.4.7
     restart: unless-stopped
     environment:
       - CLEF_CHAINID
     volumes:
-      - clef:/app/data
+      - clef-1:/app/data
     command: full
 
-  bee:
-    image: ethersphere/bee:0.4.1
+  bee-1:
+    image: ethersphere/bee:0.4.2
     restart: unless-stopped
     environment:
       - BEE_API_ADDR
@@ -52,10 +52,10 @@ services:
       - "${P2P_ADDR:-1634}${BEE_P2P_ADDR:-:1634}"
       - "${DEBUG_API_ADDR:-127.0.0.1:1635}${BEE_DEBUG_API_ADDR:-:1635}"
     volumes:
-      - bee:/home/bee/.bee
+      - bee-1:/home/bee/.bee
     command: start
     depends_on:
-      - clef
+      - clef-1
 volumes:
-  clef:
-  bee:
+  clef-1:
+  bee-1:
