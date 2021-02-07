@@ -60,7 +60,7 @@ func checkBalance(
 		minimumEth := gasPrice.Mul(gasPrice, big.NewInt(2000000))
 
 		insufficientERC20 := erc20Balance.Cmp(swapInitialDeposit) < 0
-		insufficientETH := ethBalance.Cmp(minimumEth) == 0
+		insufficientETH := ethBalance.Cmp(minimumEth) < 0
 
 		if insufficientERC20 || insufficientETH {
 			neededERC20, mod := new(big.Int).DivMod(swapInitialDeposit, big.NewInt(10000000000000000), new(big.Int))
