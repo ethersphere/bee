@@ -85,7 +85,7 @@ func checkBalance(
 				if insufficientERC20 {
 					return fmt.Errorf("insufficient BZZ for initial deposit")
 				} else {
-					return fmt.Errorf("insufficient eth for initial deposit")
+					return fmt.Errorf("insufficient ETH for initial deposit")
 				}
 			}
 			continue
