@@ -40,22 +40,53 @@ func checkBalance(
 	}
 
 	for {
-		balance, err := erc20Token.BalanceOf(&bind.CallOpts{
+		erc20Balance, err := erc20Token.BalanceOf(&bind.CallOpts{
 			Context: timeoutCtx,
 		}, overlayEthAddress)
 		if err != nil {
 			return err
 		}
 
-		if balance.Cmp(swapInitialDeposit) < 0 {
-			logger.Warningf("cannot continue until there is sufficient ETH and BZZ available on %x", overlayEthAddress)
+		ethBalance, err := swapBackend.BalanceAt(timeoutCtx, overlayEthAddress, nil)
+		if err != nil {
+			return err
+		}
+
+		gasPrice, err := swapBackend.SuggestGasPrice(timeoutCtx)
+		if err != nil {
+			return err
+		}
+
+		minimumEth := gasPrice.Mul(gasPrice, big.NewInt(2000000))
+
+		insufficientERC20 := erc20Balance.Cmp(swapInitialDeposit) < 0
+		insufficientETH := ethBalance.Cmp(minimumEth) < 0
+
+		if insufficientERC20 || insufficientETH {
+			neededERC20, mod := new(big.Int).DivMod(swapInitialDeposit, big.NewInt(10000000000000000), new(big.Int))
+			if mod.Cmp(big.NewInt(0)) > 0 {
+				// always round up the division as the bzzaar cannot handle decimals
+				neededERC20.Add(neededERC20, big.NewInt(1))
+			}
+
+			if insufficientETH && insufficientERC20 {
+				logger.Warningf("cannot continue until there is sufficient ETH (for Gas) and at least %d BZZ available on %x", neededERC20, overlayEthAddress)
+			} else if insufficientETH {
+				logger.Warningf("cannot continue until there is sufficient ETH (for Gas) available on %x", overlayEthAddress)
+			} else {
+				logger.Warningf("cannot continue until there is at least %d BZZ available on %x", neededERC20, overlayEthAddress)
+			}
 			if chainId == 5 {
-				logger.Warningf("get your Goerli ETH and Goerli BZZ now via the bzzaar at https://bzz.ethswarm.org/?transaction=buy&amount=%d&slippage=30&receiver=0x%x", new(big.Int).Div(swapInitialDeposit, big.NewInt(10000000000000000)), overlayEthAddress)
+				logger.Warningf("get your Goerli ETH and Goerli BZZ now via the bzzaar at https://bzz.ethswarm.org/?transaction=buy&amount=%d&slippage=30&receiver=0x%x", neededERC20, overlayEthAddress)
 			}
 			select {
 			case <-time.After(backoffDuration):
 			case <-timeoutCtx.Done():
-				return fmt.Errorf("insufficient token for initial deposit")
+				if insufficientERC20 {
+					return fmt.Errorf("insufficient BZZ for initial deposit")
+				} else {
+					return fmt.Errorf("insufficient ETH for initial deposit")
+				}
 			}
 			continue
 		}

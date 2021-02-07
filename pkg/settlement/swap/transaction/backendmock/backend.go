@@ -25,6 +25,7 @@ type backendMock struct {
 	transactionByHash  func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
 	blockNumber        func(ctx context.Context) (uint64, error)
 	headerByNumber     func(ctx context.Context, number *big.Int) (*types.Header, error)
+	balanceAt          func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 }
 
 func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
@@ -102,6 +103,13 @@ func (m *backendMock) BlockNumber(ctx context.Context) (uint64, error) {
 func (m *backendMock) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
 	if m.headerByNumber != nil {
 		return m.headerByNumber(ctx, number)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *backendMock) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+	if m.balanceAt != nil {
+		return m.balanceAt(ctx, address, block)
 	}
 	return nil, errors.New("not implemented")
 }
