@@ -7,7 +7,7 @@ mkdir -p bee && cd bee
 wget -q https://raw.githubusercontent.com/ethersphere/bee/master/packaging/docker/docker-compose.yml
 wget -q https://raw.githubusercontent.com/ethersphere/bee/master/packaging/docker/env -O .env
 ```
-Set all inside `.env`
+Set all configuration variables inside `.env`
 
 To configure `clef` set:
 - `CLEF_CHAINID=5` for goerli
@@ -35,5 +35,20 @@ docker-compose up -d
 
 From logs find URL line with `on goerli you can get both goerli eth and goerli bzz from` and prefund your node
 ```
-docker-compose logs -f bee
+docker-compose logs -f bee-1
 ```
+
+## Running multiple Bee nodes
+It is easy to run multiple bee nodes with docker compose by adding more services to `docker-compose.yaml`
+To do so, open `docker-compose.yaml`, copy lines 3-58 and past this after line 58.
+In the copied lines, replace all occurences of `bee-1` with `bee-2`, `clef-1` with `clef-2` and adjust the `API_ADDR` and `P2P_ADDR` and `DEBUG_API_ADDR` to respectively `1733`, `1734` and `127.0.0.1:1735`
+Lastly, add your newly configured services under `volumes` (last lines), such that it looks like:
+```yaml
+volumes:
+  clef-1:
+  bee-1:
+  bee-2:
+  clef-2:
+```
+
+If you want to create more than two nodes, simply repeat the process above, ensuring that you keep unique name for your bee and clef services and update the ports
