@@ -90,5 +90,5 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		"Content-Type": {"application/octet-stream"},
 	}
 
-	s.downloadHandler(w, r, address, additionalHeaders)
+	s.downloadHandler(w, r, address, additionalHeaders, true)
 }

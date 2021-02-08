@@ -178,7 +178,7 @@ FETCH:
 				// index document exists
 				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-				s.serveManifestEntry(w, r, address, indexDocumentManifestEntry.Reference())
+				s.serveManifestEntry(w, r, address, indexDocumentManifestEntry.Reference(), !feedDereferenced)
 				return
 			}
 		}
@@ -218,7 +218,7 @@ FETCH:
 						// index document exists
 						logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-						s.serveManifestEntry(w, r, address, indexDocumentManifestEntry.Reference())
+						s.serveManifestEntry(w, r, address, indexDocumentManifestEntry.Reference(), !feedDereferenced)
 						return
 					}
 				}
@@ -232,7 +232,7 @@ FETCH:
 						// error document exists
 						logger.Debugf("bzz download: serving path: %s", errorDocumentPath)
 
-						s.serveManifestEntry(w, r, address, errorDocumentManifestEntry.Reference())
+						s.serveManifestEntry(w, r, address, errorDocumentManifestEntry.Reference(), !feedDereferenced)
 						return
 					}
 				}
@@ -246,10 +246,10 @@ FETCH:
 	}
 
 	// serve requested path
-	s.serveManifestEntry(w, r, address, me.Reference())
+	s.serveManifestEntry(w, r, address, me.Reference(), !feedDereferenced)
 }
 
-func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, address, manifestEntryAddress swarm.Address) {
+func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, address, manifestEntryAddress swarm.Address, etag bool) {
 	var (
 		logger = tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 		ctx    = r.Context()
@@ -314,7 +314,7 @@ func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, addr
 
 	fileEntryAddress := fe.Reference()
 
-	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders)
+	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders, etag)
 }
 
 // manifestMetadataLoad returns the value for a key stored in the metadata of
