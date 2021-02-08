@@ -17,7 +17,7 @@ import (
 
 // Lookup is the interface for time based feed lookup
 type Lookup interface {
-	At(ctx context.Context, at, after int64) (swarm.Chunk, error)
+	At(ctx context.Context, at, after int64) (chunk swarm.Chunk, currentIndex, nextIndex Index, err error)
 }
 
 // Getter encapsulates a chunk Getter getter and a feed and provides
@@ -35,7 +35,8 @@ func NewGetter(getter storage.Getter, feed *Feed) *Getter {
 // Latest looks up the latest update of the feed
 // after is a unix time hint of the latest known update
 func Latest(ctx context.Context, l Lookup, after int64) (swarm.Chunk, error) {
-	return l.At(ctx, time.Now().Unix(), after)
+	c, _, _, err := l.At(ctx, time.Now().Unix(), after)
+	return c, err
 }
 
 // Get creates an update of the underlying feed at the given epoch

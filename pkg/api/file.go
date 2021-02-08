@@ -341,11 +341,11 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		"Content-Type":        {metaData.MimeType},
 	}
 
-	s.downloadHandler(w, r, e.Reference(), additionalHeaders)
+	s.downloadHandler(w, r, e.Reference(), additionalHeaders, true)
 }
 
 // downloadHandler contains common logic for dowloading Swarm file from API
-func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header) {
+func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
 	targets := r.URL.Query().Get("targets")
 	if targets != "" {
@@ -377,8 +377,9 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		}
 		w.Header().Set(name, v)
 	}
-
-	w.Header().Set("ETag", fmt.Sprintf("%q", reference))
+	if etag {
+		w.Header().Set("ETag", fmt.Sprintf("%q", reference))
+	}
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
 	if targets != "" {

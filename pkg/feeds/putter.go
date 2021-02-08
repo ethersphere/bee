@@ -29,15 +29,12 @@ type Putter struct {
 }
 
 // NewPutter constructs a feed Putter
-func NewPutter(putter storage.Putter, signer crypto.Signer, topic string) (*Putter, error) {
+func NewPutter(putter storage.Putter, signer crypto.Signer, topic []byte) (*Putter, error) {
 	owner, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
-	feed, err := New(topic, owner)
-	if err != nil {
-		return nil, err
-	}
+	feed := New(topic, owner)
 	return &Putter{putter, signer, feed}, nil
 }
 

@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -35,6 +36,8 @@ const (
 	SwarmEncryptHeader       = "Swarm-Encrypt"
 	SwarmIndexDocumentHeader = "Swarm-Index-Document"
 	SwarmErrorDocumentHeader = "Swarm-Error-Document"
+	SwarmFeedIndexHeader     = "Swarm-Feed-Index"
+	SwarmFeedIndexNextHeader = "Swarm-Feed-Index-Next"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -62,13 +65,14 @@ type Service interface {
 }
 
 type server struct {
-	Tags      *tags.Tags
-	Storer    storage.Storer
-	Resolver  resolver.Interface
-	Pss       pss.Interface
-	Traversal traversal.Service
-	Logger    logging.Logger
-	Tracer    *tracing.Tracer
+	Tags        *tags.Tags
+	Storer      storage.Storer
+	Resolver    resolver.Interface
+	Pss         pss.Interface
+	Traversal   traversal.Service
+	Logger      logging.Logger
+	Tracer      *tracing.Tracer
+	feedFactory feeds.Factory
 	Options
 	http.Handler
 	metrics metrics
@@ -89,18 +93,19 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, feedFactory feeds.Factory, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
-		Tags:      tags,
-		Storer:    storer,
-		Resolver:  resolver,
-		Pss:       pss,
-		Traversal: traversalService,
-		Options:   o,
-		Logger:    logger,
-		Tracer:    tracer,
-		metrics:   newMetrics(),
-		quit:      make(chan struct{}),
+		Tags:        tags,
+		Storer:      storer,
+		Resolver:    resolver,
+		Pss:         pss,
+		Traversal:   traversalService,
+		feedFactory: feedFactory,
+		Options:     o,
+		Logger:      logger,
+		Tracer:      tracer,
+		metrics:     newMetrics(),
+		quit:        make(chan struct{}),
 	}
 
 	s.setupRouting()

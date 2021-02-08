@@ -29,12 +29,13 @@ func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *finder) At(ctx context.Context, at, after int64) (swarm.Chunk, error) {
+func (f *finder) At(ctx context.Context, at, after int64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
 	e, ch, err := f.common(ctx, at, after)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	return f.at(ctx, uint64(at), e, ch)
+	ch, err = f.at(ctx, uint64(at), e, ch)
+	return ch, nil, nil, err
 }
 
 // common returns the lowest common ancestor for which a feed update chunk is found in the chunk store
@@ -164,10 +165,15 @@ func (f *asyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c cha
 		}
 	}
 }
+func (f *asyncFinder) At(ctx context.Context, at, after int64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
+	// TODO: current and next index return values need to be implemented
+	ch, err := f.asyncAt(ctx, at, after)
+	return ch, nil, nil, err
+}
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *asyncFinder) At(ctx context.Context, at, after int64) (swarm.Chunk, error) {
+func (f *asyncFinder) asyncAt(ctx context.Context, at, after int64) (swarm.Chunk, error) {
 	c := make(chan *result)
 	go f.at(ctx, at, newPath(at), &epoch{0, maxLevel}, c)
 LOOP:

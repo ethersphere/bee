@@ -23,7 +23,7 @@ type updater struct {
 }
 
 // NewUpdater constructs a feed updater
-func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (feeds.Updater, error) {
+func NewUpdater(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error) {
 	p, err := feeds.NewPutter(putter, signer, topic)
 	if err != nil {
 		return nil, err
