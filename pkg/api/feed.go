@@ -90,6 +90,14 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// KLUDGE: if a feed was never updated, the chunk will be nil
+	if ch == nil {
+		s.Logger.Debugf("feed get: no update found: %v", err)
+		s.Logger.Error("feed get: no update found")
+		jsonhttp.NotFound(w, "lookup failed")
+		return
+	}
+
 	ref, _, err := parseFeedUpdate(ch)
 	if err != nil {
 		s.Logger.Debugf("feed get: parse update: %v", err)
