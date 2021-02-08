@@ -318,6 +318,11 @@ components:
       pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
       example: "swarm.eth"
 
+    SwarmOnlyReference:
+      oneOf:
+        - $ref: '#/components/schemas/SwarmAddress'
+        - $ref: '#/components/schemas/SwarmEncryptedReference'
+
     SwarmReference:
       oneOf:
         - $ref: '#/components/schemas/SwarmAddress'
@@ -372,6 +377,21 @@ components:
       properties:
         welcome_message:
           type: string
+
+    FeedType:
+      type: string
+      pattern: '^(sequence|epoch)$'
+
+  headers:
+    SwarmFeedIndex:
+      description: 'The index of the found update'
+      schema:
+        $ref: '#/components/schemas/HexString'
+    SwarmFeedIndexNext:
+      description: 'The index of the next possible update'
+      schema:
+        $ref: '#/components/schemas/HexString'
+
 
   responses:
 

@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/kademlia"
 	"github.com/ethersphere/bee/pkg/localstore"
@@ -427,7 +428,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, logger, tracer, api.Options{
+		feedFactory := factory.New(ns)
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, feedFactory, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,

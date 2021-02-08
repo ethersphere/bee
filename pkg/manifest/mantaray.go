@@ -95,7 +95,6 @@ func (m *mantarayManifest) Lookup(ctx context.Context, path string) (Entry, erro
 	}
 
 	address := swarm.NewAddress(node.Entry())
-
 	entry := NewEntry(address, node.Metadata())
 
 	return entry, nil

@@ -49,21 +49,21 @@ func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
+func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, current, next feeds.Index, err error) {
 	for i := uint64(0); ; i++ {
 		u, err := f.getter.Get(ctx, &index{i})
 		if err != nil {
 			if !errors.Is(err, storage.ErrNotFound) {
-				return nil, err
+				return nil, nil, nil, err
 			}
-			return ch, nil
+			return ch, &index{i - 1}, &index{i}, nil
 		}
 		ts, err := feeds.UpdatedAt(u)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 		if ts > uint64(at) {
-			return ch, nil
+			return ch, &index{i}, nil, nil
 		}
 		ch = u
 	}
@@ -109,16 +109,16 @@ type result struct {
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, err error) {
+func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, cur, next feeds.Index, err error) {
 	ch, diff, err := f.get(ctx, at, 0)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	if ch == nil {
-		return nil, nil
+		return nil, nil, nil, nil
 	}
 	if diff == 0 {
-		return ch, nil
+		return ch, &index{0}, &index{1}, nil
 	}
 	c := make(chan result)
 	p := newPath(0)
@@ -132,7 +132,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		p = r.path
 		if r.chunk == nil {
 			if r.level == 0 {
-				return p.latest.chunk, nil
+				return p.latest.chunk, &index{p.latest.seq}, &index{p.latest.seq + 1}, nil
 			}
 			if p.level < r.level {
 				continue
@@ -140,7 +140,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			p.level = r.level - 1
 		} else {
 			if r.diff == 0 {
-				return r.chunk, nil
+				return r.chunk, &index{r.seq}, &index{r.seq + 1}, nil
 			}
 			if p.latest.level > r.level {
 				continue
@@ -151,7 +151,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		// below applies even  if  p.latest==maxLevel
 		if p.latest.level == p.level {
 			if p.level == 0 {
-				return p.latest.chunk, nil
+				return p.latest.chunk, &index{p.latest.seq}, &index{p.latest.seq + 1}, nil
 			}
 			p.close()
 			np := newPath(p.latest.seq)
@@ -160,7 +160,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			go f.at(ctx, at, np, c, quit)
 		}
 	}
-	return nil, nil
+	return nil, nil, nil, nil
 }
 
 func (f *asyncFinder) at(ctx context.Context, at int64, p *path, c chan<- result, quit <-chan struct{}) {
@@ -216,7 +216,7 @@ type updater struct {
 }
 
 // NewUpdater constructs a feed updater
-func NewUpdater(putter storage.Putter, signer crypto.Signer, topic string) (feeds.Updater, error) {
+func NewUpdater(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error) {
 	p, err := feeds.NewPutter(putter, signer, topic)
 	if err != nil {
 		return nil, err

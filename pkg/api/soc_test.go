@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -22,20 +21,16 @@ import (
 	"github.com/ethersphere/bee/pkg/soc"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
 func TestSoc(t *testing.T) {
-
 	var (
 		socResource    = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
-		_              = testingc.GenerateTestRandomChunk()
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 0)
 		tag            = tags.NewTags(mockStatestore, logger)
-		_              = common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 		mockStorer     = mock.NewStorer()
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,

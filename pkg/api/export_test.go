@@ -12,6 +12,7 @@ type (
 	BytesPostResponse        = bytesPostResponse
 	ChunkAddressResponse     = chunkAddressResponse
 	SocPostResponse          = socPostResponse
+	FeedReferenceResponse    = feedReferenceResponse
 	FileUploadResponse       = fileUploadResponse
 	TagResponse              = tagResponse
 	TagRequest               = tagRequest
@@ -34,6 +35,12 @@ var (
 var (
 	ErrNoResolver           = errNoResolver
 	ErrInvalidNameOrAddress = errInvalidNameOrAddress
+)
+
+var (
+	FeedMetadataEntryOwner = feedMetadataEntryOwner
+	FeedMetadataEntryTopic = feedMetadataEntryTopic
+	FeedMetadataEntryType  = feedMetadataEntryType
 )
 
 func (s *Server) ResolveNameOrAddress(str string) (swarm.Address, error) {
