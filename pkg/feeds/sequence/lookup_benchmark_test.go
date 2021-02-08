@@ -42,7 +42,11 @@ func (t *timeout) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addr
 func BenchmarkFinder(b *testing.B) {
 	for _, prefill := range []int64{1, 100, 1000, 5000} {
 		storer := &timeout{mock.NewStorer()}
-		topic := "testtopic"
+		topicStr := "testtopic"
+		topic, err := crypto.LegacyKeccak256([]byte(topicStr))
+		if err != nil {
+			b.Fatal(err)
+		}
 
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)

@@ -368,9 +368,6 @@ func (s *server) manifestFeed(ctx context.Context, ls file.LoadSaver, candidate 
 			return nil, err
 		}
 	}
-	f, err := feeds.New(string(topic), common.BytesToAddress(owner))
-	if err != nil {
-		return nil, err
-	}
+	f := feeds.New(topic, common.BytesToAddress(owner))
 	return s.feedFactory.NewLookup(*t, f)
 }

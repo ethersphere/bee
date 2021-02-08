@@ -19,9 +19,14 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 )
 
-func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic string) (feeds.Updater, error)) {
+func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 	storer := mock.NewStorer()
-	topic := "testtopic"
+	topicStr := "testtopic"
+	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pk, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(pk)
 
@@ -68,7 +73,7 @@ func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) fee
 	})
 }
 
-func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic string) (feeds.Updater, error)) {
+func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 	for _, tc := range []struct {
 		count  int64
 		step   int64
@@ -81,7 +86,11 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 	} {
 		t.Run(fmt.Sprintf("count=%d,step=%d,offset=%d", tc.count, tc.step, tc.offset), func(t *testing.T) {
 			storer := mock.NewStorer()
-			topic := "testtopic"
+			topicStr := "testtopic"
+			topic, err := crypto.LegacyKeccak256([]byte(topicStr))
+			if err != nil {
+				t.Fatal(err)
+			}
 			pk, _ := crypto.GenerateSecp256k1Key()
 			signer := crypto.NewDefaultSigner(pk)
 
@@ -131,11 +140,15 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 	}
 }
 
-func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic string) (feeds.Updater, error)) {
+func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 	for i := 0; i < 5; i++ {
 		t.Run(fmt.Sprintf("random intervals %d", i), func(t *testing.T) {
 			storer := mock.NewStorer()
-			topic := "testtopic"
+			topicStr := "testtopic"
+			topic, err := crypto.LegacyKeccak256([]byte(topicStr))
+			if err != nil {
+				t.Fatal(err)
+			}
 			pk, _ := crypto.GenerateSecp256k1Key()
 			signer := crypto.NewDefaultSigner(pk)
 

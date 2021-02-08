@@ -75,16 +75,13 @@ type Feed struct {
 	Owner common.Address
 }
 
-// New constructs an epoch based feed from a human readable topic and an ether address
-func New(topic string, owner common.Address) (*Feed, error) {
-	th, err := crypto.LegacyKeccak256([]byte(topic))
-	if err != nil {
-		return nil, err
-	}
-	return &Feed{th, owner}, nil
+// New constructs an epoch based feed from a keccak256 digest of a plaintext
+// topic and an ether address.
+func New(topic []byte, owner common.Address) *Feed {
+	return &Feed{topic, owner}
 }
 
-// Index is the interface for feed implementations
+// Index is the interface for feed implementations.
 type Index interface {
 	encoding.BinaryMarshaler
 }

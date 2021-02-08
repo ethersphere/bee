@@ -68,13 +68,7 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		at = time.Now().Unix()
 	}
 
-	f, err := feeds.New(string(topic), common.BytesToAddress(owner))
-	if err != nil {
-		s.Logger.Debugf("feed get: new feed: %v", err)
-		s.Logger.Error("feed get: new feed")
-		jsonhttp.InternalServerError(w, "create feed")
-		return
-	}
+	f := feeds.New(topic, common.BytesToAddress(owner))
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
 		s.Logger.Debugf("feed get: new lookup: %v", err)

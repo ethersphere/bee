@@ -44,7 +44,11 @@ func BenchmarkFinder(b *testing.B) {
 		for _, prefill := range []int64{1, 50} {
 			after := int64(50)
 			storer := &timeout{mock.NewStorer()}
-			topic := "testtopic"
+			topicStr := "testtopic"
+			topic, err := crypto.LegacyKeccak256([]byte(topicStr))
+			if err != nil {
+				b.Fatal(err)
+			}
 
 			pk, _ := crypto.GenerateSecp256k1Key()
 			signer := crypto.NewDefaultSigner(pk)
