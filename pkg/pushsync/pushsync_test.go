@@ -145,7 +145,7 @@ func TestSendChunkAfterPriceUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != -int64(serverPrice) {
+	if balance.Int64() != -int64(serverPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(serverPrice), balance)
 	}
 
@@ -154,7 +154,7 @@ func TestSendChunkAfterPriceUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != int64(serverPrice) {
+	if balance.Int64() != int64(serverPrice) {
 		t.Fatalf("unexpected balance on peer. want %d got %d", int64(serverPrice), balance)
 	}
 }
@@ -512,7 +512,7 @@ func TestHandlerWithUpdate(t *testing.T) {
 	}
 
 	// balance on triggering peer towards the forwarder should show negative serverPrice (17)
-	if balance != -int64(serverPrice) {
+	if balance.Int64() != -int64(serverPrice) {
 		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(serverPrice), balance)
 	}
 
@@ -523,7 +523,7 @@ func TestHandlerWithUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance != int64(serverPrice) {
+	if balance.Int64() != int64(serverPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", int64(serverPrice), balance)
 	}
 
@@ -532,7 +532,7 @@ func TestHandlerWithUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// balance of the forwarder peer for the closest peer should show negative default price (10)
-	if balance != -int64(fixedPrice) {
+	if balance.Int64() != -int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -541,7 +541,7 @@ func TestHandlerWithUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// balance of the closest peer for the forwarder peer should show the default price (10)
-	if balance != int64(fixedPrice) {
+	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on closest. want %d got %d", int64(fixedPrice), balance)
 	}
 }

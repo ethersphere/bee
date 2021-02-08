@@ -116,7 +116,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 
 func TestAnnouncePaymentThresholdAndPriceTable(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
-	testThreshold := uint64(100000)
+	testThreshold := big.NewInt(100000)
 	observer1 := &testThresholdObserver{}
 	observer2 := &testPriceTableObserver{}
 
@@ -138,7 +138,7 @@ func TestAnnouncePaymentThresholdAndPriceTable(t *testing.T) {
 	payer := pricing.New(recorder, logger, testThreshold, pricerMockService)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
-	paymentThreshold := uint64(10000)
+	paymentThreshold := big.NewInt(10000)
 
 	err := payer.AnnouncePaymentThresholdAndPriceTable(context.Background(), peerID, paymentThreshold)
 	if err != nil {
@@ -168,8 +168,8 @@ func TestAnnouncePaymentThresholdAndPriceTable(t *testing.T) {
 		t.Fatalf("got %v messages, want %v", len(messages), 1)
 	}
 
-	sentPaymentThreshold := messages[0].(*pb.AnnouncePaymentThreshold).PaymentThreshold
-	if sentPaymentThreshold != paymentThreshold {
+	sentPaymentThreshold := big.NewInt(0).SetBytes(messages[0].(*pb.AnnouncePaymentThreshold).PaymentThreshold)
+	if sentPaymentThreshold.Cmp(paymentThreshold) != 0 {
 		t.Fatalf("got message with amount %v, want %v", sentPaymentThreshold, paymentThreshold)
 	}
 
@@ -182,8 +182,8 @@ func TestAnnouncePaymentThresholdAndPriceTable(t *testing.T) {
 		t.Fatal("expected threshold observer to be called")
 	}
 
-	if observer1.paymentThreshold != paymentThreshold {
-		t.Fatalf("threshold observer called with wrong paymentThreshold. got %d, want %d", observer1.paymentThreshold, paymentThreshold)
+	if observer1.paymentThreshold.Cmp(paymentThreshold) != 0 {
+		t.Fatalf("observer called with wrong paymentThreshold. got %d, want %d", observer1.paymentThreshold, paymentThreshold)
 	}
 
 	if !observer1.peer.Equal(peerID) {

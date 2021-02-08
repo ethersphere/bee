@@ -238,6 +238,7 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	}
 
 	clientBalance, _ := clientMockAccounting.Balance(peerID)
+
 	if clientBalance.Cmp(big.NewInt(-int64(serverPrice))) != 0 {
 		t.Fatalf("unexpected balance on client. want %d got %d", -serverPrice, clientBalance)
 	}
