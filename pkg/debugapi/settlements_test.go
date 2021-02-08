@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -110,6 +111,50 @@ func TestSettlementsPeers(t *testing.T) {
 			SettlementReceived: big.NewInt(0),
 		}),
 	)
+}
+
+func TestSettlementsPeersNoSettlements(t *testing.T) {
+	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
+	noErrFunc := func(swarm.Address) (*big.Int, error) {
+		return big.NewInt(1000000000000000000), nil
+	}
+	errFunc := func(swarm.Address) (*big.Int, error) {
+		return nil, settlement.ErrPeerNoSettlements
+	}
+
+	t.Run("no sent", func(t *testing.T) {
+		testServer := newTestServer(t, testServerOptions{
+			SettlementOpts: []mock.Option{
+				mock.WithSettlementSentFunc(errFunc),
+				mock.WithSettlementRecvFunc(noErrFunc),
+			},
+		})
+
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.SettlementResponse{
+				Peer:               peer,
+				SettlementSent:     big.NewInt(0),
+				SettlementReceived: big.NewInt(1000000000000000000),
+			}),
+		)
+	})
+
+	t.Run("no received", func(t *testing.T) {
+		testServer := newTestServer(t, testServerOptions{
+			SettlementOpts: []mock.Option{
+				mock.WithSettlementSentFunc(noErrFunc),
+				mock.WithSettlementRecvFunc(errFunc),
+			},
+		})
+
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.SettlementResponse{
+				Peer:               peer,
+				SettlementSent:     big.NewInt(1000000000000000000),
+				SettlementReceived: big.NewInt(0),
+			}),
+		)
+	})
 }
 
 func TestSettlementsPeersError(t *testing.T) {
