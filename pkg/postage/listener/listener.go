@@ -270,7 +270,7 @@ type priceUpdateEvent struct {
 func DiscoverAddresses(chainID int64) (postageStamp common.Address, priceOracle common.Address, found bool) {
 	if chainID == 5 {
 		// goerli
-		return common.HexToAddress("0xf0870E3abb457026BE46d9b2CDf35e8FFcB27955"), common.HexToAddress("0xc1B598609A38D0A0F85f68eD0fFEFdeC9cD061C9"), true
+		return common.HexToAddress("0xF7a041E7e2B79ccA1975852Eb6D4c6cE52986b4a"), common.HexToAddress("0x1044534090de6f4014ece6d036C699130Bd5Df43"), true
 	}
 	return common.Address{}, common.Address{}, false
 }
