@@ -264,11 +264,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, networkID, logger)
-	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
-		return nil, fmt.Errorf("hive service: %w", err)
-	}
-
 	var bootnodes []ma.Multiaddr
 	if o.Standalone {
 		logger.Info("Starting node in standalone mode, no p2p connections will be made or accepted")
@@ -337,6 +332,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 	pricing.SetPaymentThresholdObserver(acc)
+
+	hive := hive.New(p2ps, addressbook, networkID, logger)
+	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
+		return nil, fmt.Errorf("hive service: %w", err)
+	}
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
 	b.topologyCloser = kad
