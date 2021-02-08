@@ -861,9 +861,9 @@ paths:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '400':
-           $ref: 'SwarmCommon.yaml#/components/responses/400'
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
         '401':
-           $ref: 'SwarmCommon.yaml#/components/responses/401'
+          $ref: 'SwarmCommon.yaml#/components/responses/401'
         '500':
            $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
@@ -892,7 +892,7 @@ paths:
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/FeedType'
           required: false
-          description: Feed indexing scheme (default: sequence)
+          description: "Feed indexing scheme (default: sequence)"
       responses:
         '201':
           description: Created
@@ -901,11 +901,11 @@ paths:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '400':
-           $ref: 'SwarmCommon.yaml#/components/responses/400'
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
         '401':
-           $ref: 'SwarmCommon.yaml#/components/responses/401'
+          $ref: 'SwarmCommon.yaml#/components/responses/401'
         '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
     get:
@@ -936,30 +936,31 @@ paths:
           schema:
             type: integer
           required: false
-          description: Timestamp of the update (default: now)
+          description: "Timestamp of the update (default: now)"
         - in: query
           name: type
           schema:
             $ref: 'SwarmCommon.yaml#/components/schemas/FeedType'
           required: false
-          description: Feed indexing scheme (default: sequence)
+          description: "Feed indexing scheme (default: sequence)"
       responses:
         '200':
+          description: Latest feed update
           headers:
             'swarm-feed-index':
               $ref: 'SwarmCommon.yaml#/components/headers/SwarmFeedIndex'
             'swarm-feed-index-next':
               $ref: 'SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext'
-           content:
+          content:
             application/json:
               schema:
                 $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
         '400':
-           $ref: 'SwarmCommon.yaml#/components/responses/400'
+          $ref: 'SwarmCommon.yaml#/components/responses/400'
         '401':
-           $ref: 'SwarmCommon.yaml#/components/responses/401'
+          $ref: 'SwarmCommon.yaml#/components/responses/401'
         '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+          $ref: 'SwarmCommon.yaml#/components/responses/500'
         default:
           description: Default response
 
