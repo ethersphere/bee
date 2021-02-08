@@ -17,12 +17,14 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/soc"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -239,7 +241,28 @@ func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
 	content := append(ts, payload...)
-	return cac.New(content)
+	ch, err := cac.New(content)
+	if err != nil {
+		return nil, err
+	}
+
+	id := make([]byte, soc.IdSize)
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		return nil, err
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+
+	sch := soc.New(id, ch)
+	if err != nil {
+		return nil, err
+	}
+	err = sch.AddSigner(signer)
+	if err != nil {
+		return nil, err
+	}
+
+	return sch.ToChunk()
 }
 
 type id struct {

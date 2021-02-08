@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -181,7 +182,12 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func parseFeedUpdate(ch swarm.Chunk) (swarm.Address, int64, error) {
-	update := ch.Data()
+	sch, err := soc.FromChunk(ch)
+	if err != nil {
+		return swarm.ZeroAddress, 0, fmt.Errorf("soc unmarshal: %w", err)
+	}
+
+	update := sch.Chunk.Data()
 	// split the timestamp and reference
 	// possible values right now:
 	// unencrypted ref: span+timestamp+ref => 8+8+32=48
