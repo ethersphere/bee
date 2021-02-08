@@ -3,46 +3,45 @@ openapi: 3.0.3
 info:
   version: 0.5.0
   title: Swarm API
-  description: 'A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages'
+  description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
 security:
   - {}
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
-  url: 'https://docs.swarm.eth'
+  url: "https://docs.swarm.eth"
 
 servers:
-
-  - url: 'http://{apiRoot}:{port}/v1'
+  - url: "http://{apiRoot}:{port}/v1"
     variables:
       apiRoot:
-        default: 'localhost'
+        default: "localhost"
         description: Base address of the local bee node main API
       port:
         default: 1633
         description: Service port provided in bee node config
 
-  - url: 'http://{apiRoot}:{port}'
+  - url: "http://{apiRoot}:{port}"
     variables:
       apiRoot:
-        default: 'localhost'
+        default: "localhost"
         description: Base address of the local bee node main API
       port:
         default: 1633
         description: Service port provided in bee node config
 
 paths:
-  '/bytes':
+  "/bytes":
     post:
-      summary: 'Upload data'
+      summary: "Upload data"
       tags:
         - Bytes
       parameters:
         - in: header
           name: swarm-tag
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: false
           description: Associate upload with an existing Tag UID
         - in: header
@@ -64,87 +63,87 @@ paths:
               type: string
               format: binary
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/bytes/{reference}':
+  "/bytes/{reference}":
     get:
-      summary: 'Get referenced data'
+      summary: "Get referenced data"
       tags:
         - Bytes
       parameters:
         - in: path
           name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address reference to content
       responses:
-        '200':
+        "200":
           description: Retrieved content specified by reference
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chunks/{reference}':
+  "/chunks/{reference}":
     get:
-      summary: 'Get Chunk'
+      summary: "Get Chunk"
       tags:
         - Chunk
       parameters:
         - in: path
           name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of chunk
       responses:
-        '200':
+        "200":
           description: Retrieved chunk content
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chunks':
+  "/chunks":
     post:
-      summary: 'Upload Chunk'
+      summary: "Upload Chunk"
       tags:
         - Chunk
       parameters:
         - in: header
           name: swarm-tag
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: false
           description: Associate upload with an existing Tag UID
         - in: header
@@ -160,35 +159,35 @@ paths:
               type: string
               format: binary
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/files':
+  "/files":
     post:
-      summary: 'Upload file'
+      summary: "Upload file"
       tags:
         - File
       parameters:
         - in: query
           name: name
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/FileName'
+            $ref: "SwarmCommon.yaml#/components/schemas/FileName"
           required: false
           description: Filename
         - in: header
           name: swarm-tag
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: false
           description: Associate upload with an existing Tag UID
         - in: header
@@ -223,60 +222,60 @@ paths:
               type: string
               format: binary
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/files/{reference}':
+  "/files/{reference}":
     get:
-      summary: 'Get referenced file'
+      summary: "Get referenced file"
       tags:
         - File
       parameters:
         - in: path
           name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/dirs':
+  "/dirs":
     post:
-      summary: 'Upload a collection'
+      summary: "Upload a collection"
       tags:
         - Collection
       parameters:
         - in: header
           name: swarm-tag
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: false
           description: Associate upload with an existing Tag UID
         - in: header
@@ -312,31 +311,31 @@ paths:
               type: string
               format: binary
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/bzz/{reference}':
+  "/bzz/{reference}":
     get:
-      summary: 'Get index document from a collection of files'
+      summary: "Get index document from a collection of files"
       tags:
         - Collection
       parameters:
         - in: path
           name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
         - in: query
@@ -346,7 +345,7 @@ paths:
           required: false
           description: Global pinning targets prefix
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/octet-stream:
@@ -354,25 +353,25 @@ paths:
                 type: string
                 format: binary
 
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/bzz/{reference}/{path}':
+  "/bzz/{reference}/{path}":
     get:
-      summary: 'Get referenced file from a collection of files'
+      summary: "Get referenced file from a collection of files"
       tags:
         - Collection
       parameters:
         - in: path
           name: reference
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmReference'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
         - in: path
@@ -388,7 +387,7 @@ paths:
           required: false
           description: Global pinning targets prefix
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/octet-stream:
@@ -396,35 +395,35 @@ paths:
                 type: string
                 format: binary
 
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/tags':
+  "/tags":
     get:
       summary: Get list of tags
       tags:
         - Tag
       responses:
-        '200':
+        "200":
           description: List of tags
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/TagsList'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/TagsList"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     post:
-      summary: 'Create Tag'
+      summary: "Create Tag"
       tags:
         - Tag
       requestBody:
@@ -432,81 +431,81 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'SwarmCommon.yaml#/components/schemas/NewTagRequest'
+              $ref: "SwarmCommon.yaml#/components/schemas/NewTagRequest"
       responses:
-        '201':
+        "201":
           description: New Tag Info
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/NewTagResponse"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/tags/{uid}':
+  "/tags/{uid}":
     get:
-      summary: 'Get Tag information using Uid'
+      summary: "Get Tag information using Uid"
       tags:
         - Tag
       parameters:
         - in: path
           name: uid
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: true
           description: Uid
       responses:
-        '200':
+        "200":
           description: Tag info
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/NewTagResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     delete:
-      summary: 'Delete Tag information using Uid'
+      summary: "Delete Tag information using Uid"
       tags:
         - Tag
       parameters:
         - in: path
           name: uid
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: true
           description: Uid
       responses:
-        '204':
-          $ref: 'SwarmCommon.yaml#/components/responses/204'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "204":
+          $ref: "SwarmCommon.yaml#/components/responses/204"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     patch:
-      summary: 'Update Total Count and swarm hash for a tag of an input stream of unknown size using Uid'
+      summary: "Update Total Count and swarm hash for a tag of an input stream of unknown size using Uid"
       tags:
         - Tag
       parameters:
         - in: path
           name: uid
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: true
           description: Uid
       requestBody:
@@ -515,48 +514,48 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'SwarmCommon.yaml#/components/schemas/Address'
+              $ref: "SwarmCommon.yaml#/components/schemas/Address"
       responses:
-        '200':
+        "200":
           description: Ok
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/pin/chunks/{address}':
+  "/pin/chunks/{address}":
     parameters:
-        - in: path
-          name: address
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
-          required: true
-          description: Swarm address of chunk
+      - in: path
+        name: address
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+        required: true
+        description: Swarm address of chunk
     post:
       summary: Pin chunk with given address
       tags:
         - Chunk pinning
       responses:
-        '200':
+        "200":
           description: Pinning chunk with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     delete:
@@ -564,18 +563,18 @@ paths:
       tags:
         - Chunk pinning
       responses:
-        '200':
+        "200":
           description: Unpinning chunk with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     get:
@@ -583,16 +582,16 @@ paths:
       tags:
         - Chunk pinning
       responses:
-        '200':
+        "200":
           description: Pinning state of chunk with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/PinningState'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/PinningState"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     put:
@@ -600,65 +599,65 @@ paths:
       tags:
         - Chunk pinning
       responses:
-        '200':
+        "200":
           description: Pinning state of chunk with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/PinningState'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/PinningState"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 
-  '/pin/chunks':
+  "/pin/chunks":
     get:
       summary: Get list of pinned chunks
       tags:
         - Chunk pinning
       responses:
-        '200':
+        "200":
           description: List of pinned chunks
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/BzzChunksPinned'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/BzzChunksPinned"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/pin/bytes/{address}':
+  "/pin/bytes/{address}":
     parameters:
-        - in: path
-          name: address
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
-          required: true
-          description: Swarm address of the bytes
+      - in: path
+        name: address
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+        required: true
+        description: Swarm address of the bytes
     post:
       summary: Pin bytes with given address
       tags:
         - Bytes pinning
       responses:
-        '200':
+        "200":
           description: Pinning bytes chunks with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     delete:
@@ -666,46 +665,46 @@ paths:
       tags:
         - Bytes pinning
       responses:
-        '200':
+        "200":
           description: Unpinning chunk with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 
-  '/pin/files/{address}':
+  "/pin/files/{address}":
     parameters:
-        - in: path
-          name: address
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
-          required: true
-          description: Swarm address of the file
+      - in: path
+        name: address
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+        required: true
+        description: Swarm address of the file
     post:
       summary: Pin file with given address
       tags:
         - File pinning
       responses:
-        '200':
+        "200":
           description: Pinning file chunks with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     delete:
@@ -713,46 +712,46 @@ paths:
       tags:
         - File pinning
       responses:
-        '200':
+        "200":
           description: Unpinning file chunks with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 
-  '/pin/bzz/{address}':
+  "/pin/bzz/{address}":
     parameters:
-        - in: path
-          name: address
-          schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
-          required: true
-          description: Swarm address of the collection
+      - in: path
+        name: address
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+        required: true
+        description: Swarm address of the collection
     post:
       summary: Pin collection with given address
       tags:
         - Collection pinning
       responses:
-        '200':
+        "200":
           description: Pinning collection chunks (and all referenced files) with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     delete:
@@ -760,22 +759,22 @@ paths:
       tags:
         - Collection pinning
       responses:
-        '200':
+        "200":
           description: Unpinning collection chunks (and all referenced files) with address
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 
-  '/pss/send/{topic}/{targets}':
+  "/pss/send/{topic}/{targets}":
     post:
       summary: Send to recipient or target with Postal Service for Swarm
       tags:
@@ -784,32 +783,32 @@ paths:
         - in: path
           name: topic
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/PssTopic'
+            $ref: "SwarmCommon.yaml#/components/schemas/PssTopic"
           required: true
           description: Topic name
         - in: path
           name: targets
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/PssTargets'
+            $ref: "SwarmCommon.yaml#/components/schemas/PssTargets"
           required: true
           description: Target message address prefix. If multiple targets are specified, only one would be matched.
         - in: query
           name: recipient
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/PssRecipient'
+            $ref: "SwarmCommon.yaml#/components/schemas/PssRecipient"
           required: false
           description: Recipient publickey
       responses:
-        '200':
+        "200":
           description: Subscribed to topic
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/pss/subscribe/{topic}':
+  "/pss/subscribe/{topic}":
     get:
       summary: Subscribe for messages on the given topic.
       tags:
@@ -818,18 +817,18 @@ paths:
         - in: path
           name: topic
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/PssTopic'
+            $ref: "SwarmCommon.yaml#/components/schemas/PssTopic"
           required: true
           description: Topic name
       responses:
-        '200':
+        "200":
           description: Returns a WebSocket with a subscription for incoming message data on the requested topic.
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/soc/{owner}/{id}':
+  "/soc/{owner}/{id}":
     post:
       summary: Upload single owner chunk
       tags:
@@ -838,38 +837,38 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: true
           description: Owner
         - in: path
           name: id
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Id
         - in: query
           name: sig
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Signature
       responses:
-        '201':
+        "201":
           description: Created
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '401':
-          $ref: 'SwarmCommon.yaml#/components/responses/401'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "401":
+          $ref: "SwarmCommon.yaml#/components/responses/401"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/feeds/{owner}/{topic}':
+  "/feeds/{owner}/{topic}":
     post:
       summary: Create an initial feed root manifest
       tags:
@@ -878,34 +877,34 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: true
           description: Owner
         - in: path
           name: topic
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Topic
         - in: query
           name: type
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/FeedType'
+            $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
       responses:
-        '201':
+        "201":
           description: Created
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '401':
-          $ref: 'SwarmCommon.yaml#/components/responses/401'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "401":
+          $ref: "SwarmCommon.yaml#/components/responses/401"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     get:
@@ -916,19 +915,19 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/EthereumAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: true
           description: Owner
         - in: path
           name: topic
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Topic
         - in: query
           name: index
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/HexString'
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: false
           description: Feed update index
         - in: query
@@ -940,28 +939,26 @@ paths:
         - in: query
           name: type
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/FeedType'
+            $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
       responses:
-        '200':
+        "200":
           description: Latest feed update
           headers:
-            'swarm-feed-index':
-              $ref: 'SwarmCommon.yaml#/components/headers/SwarmFeedIndex'
-            'swarm-feed-index-next':
-              $ref: 'SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext'
+            "swarm-feed-index":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndex"
+            "swarm-feed-index-next":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext"
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ReferenceResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '401':
-          $ref: 'SwarmCommon.yaml#/components/responses/401'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "401":
+          $ref: "SwarmCommon.yaml#/components/responses/401"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
-
-

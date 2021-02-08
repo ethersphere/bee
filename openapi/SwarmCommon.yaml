@@ -7,39 +7,38 @@ info:
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
-  url: 'https://docs.swarm.eth'
+  url: "https://docs.swarm.eth"
 
 paths: {}
 components:
   schemas:
-
     Address:
       type: object
       properties:
         address:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
 
     Addresses:
       type: object
       properties:
         overlay:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         underlay:
           type: array
           items:
-            $ref: '#/components/schemas/P2PUnderlay'
+            $ref: "#/components/schemas/P2PUnderlay"
         ethereum:
-          $ref: '#/components/schemas/EthereumAddress'
+          $ref: "#/components/schemas/EthereumAddress"
         public_key:
-          $ref: '#/components/schemas/PublicKey'
+          $ref: "#/components/schemas/PublicKey"
         pss_public_key:
-          $ref: '#/components/schemas/PublicKey'
+          $ref: "#/components/schemas/PublicKey"
 
     Balance:
       type: object
       properties:
         peer:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         balance:
           type: integer
 
@@ -49,7 +48,7 @@ components:
         balances:
           type: array
           items:
-            $ref: '#/components/schemas/Balance'
+            $ref: "#/components/schemas/Balance"
 
     BzzChunksPinned:
       type: object
@@ -68,7 +67,7 @@ components:
       type: object
       properties:
         baseAddr:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         population:
           type: integer
         connected:
@@ -97,9 +96,9 @@ components:
       type: object
       properties:
         beneficiary:
-          $ref: '#/components/schemas/EthereumAddress'
+          $ref: "#/components/schemas/EthereumAddress"
         chequebook:
-          $ref: '#/components/schemas/EthereumAddress'
+          $ref: "#/components/schemas/EthereumAddress"
         payout:
           type: integer
 
@@ -109,17 +108,17 @@ components:
         lastcheques:
           type: array
           items:
-            $ref: '#/components/schemas/ChequePeerResponse'
+            $ref: "#/components/schemas/ChequePeerResponse"
 
     ChequePeerResponse:
       type: object
       properties:
         peer:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         lastreceived:
-          $ref: '#/components/schemas/Cheque'
+          $ref: "#/components/schemas/Cheque"
         lastsent:
-          $ref: '#/components/schemas/Cheque'
+          $ref: "#/components/schemas/Cheque"
 
     ChequebookBalance:
       type: object
@@ -133,7 +132,7 @@ components:
       type: object
       properties:
         chequebookaddress:
-          $ref: '#/components/schemas/EthereumAddress'
+          $ref: "#/components/schemas/EthereumAddress"
 
     DateTime:
       type: string
@@ -148,7 +147,7 @@ components:
 
     EthereumAddress:
       type: string
-      pattern: '^[A-Fa-f0-9]{40}$'
+      pattern: "^[A-Fa-f0-9]{40}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
 
     FileName:
@@ -158,11 +157,11 @@ components:
       type: object
       properties:
         hash:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
 
     HexString:
       type: string
-      pattern: '^([A-Fa-f0-9]+)$'
+      pattern: "^([A-Fa-f0-9]+)$"
       example: "cf880b8eeac5093fa27b0825906c600685"
 
     MultiAddress:
@@ -172,15 +171,15 @@ components:
       type: object
       properties:
         address:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
 
     NewTagResponse:
       type: object
       properties:
         uid:
-          $ref: '#/components/schemas/Uid'
+          $ref: "#/components/schemas/Uid"
         startedAt:
-          $ref: '#/components/schemas/DateTime'
+          $ref: "#/components/schemas/DateTime"
         total:
           type: integer
         processed:
@@ -204,11 +203,11 @@ components:
         synced:
           type: integer
         uid:
-          $ref: '#/components/schemas/Uid'
+          $ref: "#/components/schemas/Uid"
         address:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         startedAt:
-          $ref: '#/components/schemas/DateTime'
+          $ref: "#/components/schemas/DateTime"
 
     TagsList:
       type: object
@@ -216,7 +215,7 @@ components:
         tags:
           type: array
           items:
-            $ref: '#/components/schemas/NewTagResponse'
+            $ref: "#/components/schemas/NewTagResponse"
 
     P2PUnderlay:
       type: string
@@ -228,13 +227,13 @@ components:
         peers:
           type: array
           items:
-            $ref: '#/components/schemas/Address'
+            $ref: "#/components/schemas/Address"
 
     PinningState:
       type: object
       properties:
         address:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         pinCounter:
           type: integer
 
@@ -254,7 +253,7 @@ components:
       type: object
       properties:
         reference:
-          $ref: '#/components/schemas/SwarmReference'
+          $ref: "#/components/schemas/SwarmReference"
 
     Response:
       type: object
@@ -268,7 +267,7 @@ components:
       type: object
       properties:
         rtt:
-          $ref: '#/components/schemas/Duration'
+          $ref: "#/components/schemas/Duration"
 
     Status:
       type: object
@@ -296,21 +295,21 @@ components:
         settlements:
           type: array
           items:
-            $ref: '#/components/schemas/Settlement'
+            $ref: "#/components/schemas/Settlement"
 
     SwarmAddress:
       type: string
-      pattern: '^[A-Fa-f0-9]{64}$'
+      pattern: "^[A-Fa-f0-9]{64}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
 
     PublicKey:
       type: string
-      pattern: '^[A-Fa-f0-9]{66}$'
+      pattern: "^[A-Fa-f0-9]{66}$"
       example: "02ab7473879005929d10ce7d4f626412dad9fe56b0a6622038931d26bd79abf0a4"
 
     SwarmEncryptedReference:
       type: string
-      pattern: '^[A-Fa-f0-9]{128}$'
+      pattern: "^[A-Fa-f0-9]{128}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f2d2810619d29b5dbefd5d74abce25d58b81b251baddb9c3871cf0d6967deaae2"
 
     DomainName:
@@ -320,20 +319,20 @@ components:
 
     SwarmOnlyReference:
       oneOf:
-        - $ref: '#/components/schemas/SwarmAddress'
-        - $ref: '#/components/schemas/SwarmEncryptedReference'
+        - $ref: "#/components/schemas/SwarmAddress"
+        - $ref: "#/components/schemas/SwarmEncryptedReference"
 
     SwarmReference:
       oneOf:
-        - $ref: '#/components/schemas/SwarmAddress'
-        - $ref: '#/components/schemas/SwarmEncryptedReference'
-        - $ref: '#/components/schemas/DomainName'
+        - $ref: "#/components/schemas/SwarmAddress"
+        - $ref: "#/components/schemas/SwarmEncryptedReference"
+        - $ref: "#/components/schemas/DomainName"
 
     SwapCashoutResult:
       type: object
       properties:
         recipient:
-          $ref: '#/components/schemas/EthereumAddress'
+          $ref: "#/components/schemas/EthereumAddress"
         lastPayout:
           type: integer
         bounced:
@@ -343,31 +342,31 @@ components:
       type: object
       properties:
         peer:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         chequebook:
-          $ref: '#/components/schemas/EthereumAddress'
+          $ref: "#/components/schemas/EthereumAddress"
         cumulativePayout:
           type: integer
         beneficiary:
-          $ref: '#/components/schemas/EthereumAddress'
+          $ref: "#/components/schemas/EthereumAddress"
         transactionHash:
-          $ref: '#/components/schemas/TransactionHash'
+          $ref: "#/components/schemas/TransactionHash"
         result:
-          $ref: '#/components/schemas/SwapCashoutResult'
+          $ref: "#/components/schemas/SwapCashoutResult"
 
     TagName:
       type: string
 
     TransactionHash:
       type: string
-      pattern: '^[A-Fa-f0-9]{64}$'
+      pattern: "^[A-Fa-f0-9]{64}$"
       example: "e28a34ffe7b1710c1baf97ca6d71d81b7f159a9920910876856c8d94dd7be4ae"
 
     TransactionResponse:
       type: object
       properties:
         transactionHash:
-          $ref: '#/components/schemas/TransactionHash'
+          $ref: "#/components/schemas/TransactionHash"
 
     Uid:
       type: integer
@@ -380,52 +379,48 @@ components:
 
     FeedType:
       type: string
-      pattern: '^(sequence|epoch)$'
+      pattern: "^(sequence|epoch)$"
 
   headers:
     SwarmFeedIndex:
-      description: 'The index of the found update'
+      description: "The index of the found update"
       schema:
-        $ref: '#/components/schemas/HexString'
+        $ref: "#/components/schemas/HexString"
     SwarmFeedIndexNext:
-      description: 'The index of the next possible update'
+      description: "The index of the next possible update"
       schema:
-        $ref: '#/components/schemas/HexString'
-
+        $ref: "#/components/schemas/HexString"
 
   responses:
-
-    '204':
+    "204":
       description: The resource was deleted successfully.
-    '400':
+    "400":
       description: Bad request
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetails'
-    '401':
+            $ref: "#/components/schemas/ProblemDetails"
+    "401":
       description: Unauthorized
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetails'
-    '403':
+            $ref: "#/components/schemas/ProblemDetails"
+    "403":
       description: Forbidden
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetails'
-    '404':
+            $ref: "#/components/schemas/ProblemDetails"
+    "404":
       description: Not Found
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetails'
-    '500':
+            $ref: "#/components/schemas/ProblemDetails"
+    "500":
       description: Internal Server Error
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetails'
-
-
+            $ref: "#/components/schemas/ProblemDetails"
