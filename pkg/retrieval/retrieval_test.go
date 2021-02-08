@@ -235,12 +235,12 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	}
 
 	clientBalance, _ := clientMockAccounting.Balance(peerID)
-	if clientBalance != -int64(serverPrice) {
+	if clientBalance.Int64() != -int64(serverPrice) {
 		t.Fatalf("unexpected balance on client. want %d got %d", -serverPrice, clientBalance)
 	}
 
 	serverBalance, _ := serverMockAccounting.Balance(peerID)
-	if serverBalance != int64(serverPrice) {
+	if serverBalance.Int64() != int64(serverPrice) {
 		t.Fatalf("unexpected balance on server. want %d got %d", serverPrice, serverBalance)
 	}
 }
