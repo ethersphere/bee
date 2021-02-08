@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -115,7 +116,7 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
 	w.Header().Set(SwarmFeedIndexNextHeader, hex.EncodeToString(nextBytes))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader, SwarmFeedIndexNextHeader)
+	w.Header().Set("Access-Control-Expose-Headers", fmt.Sprintf("%s, %s", SwarmFeedIndexHeader, SwarmFeedIndexNextHeader))
 
 	jsonhttp.OK(w, feedReferenceResponse{Reference: ref})
 }
