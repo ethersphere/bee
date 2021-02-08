@@ -107,6 +107,8 @@ func (s *server) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) 
 			s.Logger.Errorf("debug api: settlements peer: can't get peer %s received settlement", peer.String())
 			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
 			return
+		} else {
+			received = big.NewInt(0)
 		}
 	}
 
@@ -121,6 +123,8 @@ func (s *server) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) 
 			s.Logger.Errorf("debug api: settlements peer: can't get peer %s sent settlement", peer.String())
 			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
 			return
+		} else {
+			sent = big.NewInt(0)
 		}
 	}
 
