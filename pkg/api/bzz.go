@@ -86,23 +86,36 @@ FETCH:
 	if !feedDereferenced {
 		if l, err := s.manifestFeed(ctx, ls, buf.Bytes()); err == nil {
 			//we have a feed manifest here
-			ch, cur, next, err := l.At(ctx, time.Now().Unix(), 0)
-			fmt.Println(cur, next)
+			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
 				logger.Debugf("bzz download: feed lookup: %v", err)
 				logger.Error("bzz download: feed lookup")
-				jsonhttp.NotFound(w, "a")
+				jsonhttp.NotFound(w, "feed not found")
 				return
 			}
 			ref, _, err := parseFeedUpdate(ch)
 			if err != nil {
 				logger.Debugf("bzz download: parse feed update: %v", err)
 				logger.Error("bzz download: parse feed update")
-				jsonhttp.NotFound(w, "b")
+				jsonhttp.InternalServerError(w, "parse feed update")
 				return
 			}
 			address = ref
 			feedDereferenced = true
+			curBytes, err := cur.MarshalBinary()
+			if err != nil {
+				s.Logger.Debugf("bzz download: marshal feed index: %v", err)
+				s.Logger.Error("bzz download: marshal index")
+				jsonhttp.InternalServerError(w, "marshal index")
+				return
+			}
+
+			w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
+			// this header might be overriding others. handle with care. in the future
+			// we should implement an append functionality for this specific header,
+			// since different parts of handlers might be overriding others' values
+			// resulting in inconsistent headers in the response.
+			w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
 			goto FETCH
 		}
 	}

@@ -166,6 +166,7 @@ func (f *asyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c cha
 	}
 }
 func (f *asyncFinder) At(ctx context.Context, at, after int64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
+	// TODO: current and next index return values need to be implemented
 	ch, err := f.asyncAt(ctx, at, after)
 	return ch, nil, nil, err
 }

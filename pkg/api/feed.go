@@ -115,7 +115,7 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
 	w.Header().Set(SwarmFeedIndexNextHeader, hex.EncodeToString(nextBytes))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
+	w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader, SwarmFeedIndexNextHeader)
 
 	jsonhttp.OK(w, feedReferenceResponse{Reference: ref})
 }
@@ -152,6 +152,8 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	emptyAddr := make([]byte, 32)
+
+	// a feed manifest stores the metadata at the root "/" path
 	err = feedManifest.Add(r.Context(), "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), meta))
 	if err != nil {
 		s.Logger.Debugf("feed post: add manifest entry: %v", err)
