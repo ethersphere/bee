@@ -409,6 +409,24 @@ paths:
       summary: Get list of tags
       tags:
         - Tag
+      parameters:
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          required: false
+          description: The number of items to skip before starting to collect the result set.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          required: false
+          description: The numbers of items to return.
       responses:
         "200":
           description: List of tags
@@ -619,6 +637,24 @@ paths:
       summary: Get list of pinned chunks
       tags:
         - Chunk pinning
+      parameters:
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          required: false
+          description: The number of items to skip before starting to collect the result set.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          required: false
+          description: The numbers of items to return.
       responses:
         "200":
           description: List of pinned chunks
