@@ -5,7 +5,7 @@
 package bee
 
 var (
-	version = "0.5.0" // manually set semantic version number
+	version = "0.5.1" // manually set semantic version number
 	commit  string    // automatically set git commit hash
 
 	Version = func() string {
