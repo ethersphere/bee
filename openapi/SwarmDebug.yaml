@@ -2,62 +2,61 @@ openapi: 3.0.3
 info:
   version: 0.5.0
   title: Bee Debug API
-  description: 'A list of the currently provided debug interfaces to interact with the bee node'
+  description: "A list of the currently provided debug interfaces to interact with the bee node"
 
 security:
   - {}
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
-  url: 'https://docs.swarm.eth'
+  url: "https://docs.swarm.eth"
 
 servers:
-
-  - url: 'http://{apiRoot}:{port}'
+  - url: "http://{apiRoot}:{port}"
     variables:
       apiRoot:
-        default: 'localhost'
+        default: "localhost"
         description: Base address of the local bee node debug API
       port:
         default: 1635
         description: Service port provided in bee node config
 
 paths:
-  '/addresses':
+  "/addresses":
     get:
       summary: Get overlay and underlay addresses of the node
       tags:
         - Connectivity
       responses:
-        '200':
+        "200":
           description: Own node underlay and overlay addresses
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Addresses'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Addresses"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/balances':
+  "/balances":
     get:
       summary: Get the balances with all known peers including prepaid services
       tags:
         - Balance
       responses:
-        '200':
+        "200":
           description: Own balances with all known peers
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Balances'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Balances"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/balances/{address}':
+  "/balances/{address}":
     get:
       summary: Get the balances with a specific peer including prepaid services
       tags:
@@ -66,58 +65,58 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       responses:
-        '200':
+        "200":
           description: Balance with the specific peer
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Balance'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Balance"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
- 
-  '/blocklist':
+
+  "/blocklist":
     get:
       summary: Get a list of blocklisted peers
       tags:
         - Connectivity
       responses:
-        '200':
+        "200":
           description: Returns overlay addresses of blocklisted peers
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Peers'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Peers"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
-  
-  '/consumed':
+
+  "/consumed":
     get:
       summary: Get the past due consumption balances with all known peers
       tags:
         - Balance
       responses:
-        '200':
+        "200":
           description: Own past due consumption balances with all known peers
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Balances'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Balances"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/consumed/{address}':
+  "/consumed/{address}":
     get:
       summary: Get the past due consumption balance with a specific peer
       tags:
@@ -126,54 +125,54 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       responses:
-        '200':
+        "200":
           description: Past-due consumption balance with the specific peer
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Balance'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Balance"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chequebook/address':
+  "/chequebook/address":
     get:
       summary: Get the address of the chequebook contract used
       tags:
         - Chequebook
       responses:
-        '200':
+        "200":
           description: Ethereum address of chequebook contract
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookAddress'
+                $ref: "SwarmCommon.yaml#/components/schemas/ChequebookAddress"
 
-  '/chequebook/balance':
+  "/chequebook/balance":
     get:
       summary: Get the balance of the chequebook
       tags:
         - Chequebook
       responses:
-        '200':
+        "200":
           description: Balance of the chequebook
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ChequebookBalance'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ChequebookBalance"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chunks/{address}':
+  "/chunks/{address}":
     get:
       summary: Check if chunk at address exists locally
       tags:
@@ -182,20 +181,20 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
       responses:
-        '200':
+        "200":
           description: Chunk exists
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     delete:
@@ -206,24 +205,24 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
       responses:
-        '200':
+        "200":
           description: Chunk exists
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 
-  '/connect/{multiAddress}':
+  "/connect/{multiAddress}":
     post:
       summary: Connect to address
       tags:
@@ -233,54 +232,54 @@ paths:
           allowReserved: true
           name: multiAddress
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/MultiAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/MultiAddress"
           required: true
           description: Underlay address of peer
       responses:
-        '200':
+        "200":
           description: Returns overlay address of connected peer
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Address'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Address"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/health':
+  "/health":
     get:
       summary: Get health of node
       tags:
         - Status
       responses:
-        '200':
+        "200":
           description: Health State of node
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
         default:
           description: Default response
 
-  '/peers':
+  "/peers":
     get:
       summary: Get a list of peers
       tags:
         - Connectivity
       responses:
-        '200':
+        "200":
           description: Returns overlay addresses of connected peers
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Peers'
+                $ref: "SwarmCommon.yaml#/components/schemas/Peers"
         default:
           description: Default response
 
-  '/peers/{address}':
+  "/peers/{address}":
     delete:
       summary: Remove peer
       tags:
@@ -289,24 +288,24 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       responses:
-        '200':
+        "200":
           description: Disconnected peer
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Response'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/pingpong/{peer-id}':
+  "/pingpong/{peer-id}":
     post:
       summary: Try connection to node
       tags:
@@ -315,41 +314,41 @@ paths:
         - in: path
           name: peer-id
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       responses:
-        '200':
+        "200":
           description: Returns round trip time for given peer
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/RttMs'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/RttMs"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/readiness':
+  "/readiness":
     get:
       summary: Get readiness state of node
       tags:
         - Status
       responses:
-        '200':
+        "200":
           description: Health State of node
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
         default:
           description: Default response
 
-  '/settlements/{address}':
+  "/settlements/{address}":
     get:
       summary: Get amount of sent and received from settlements with a peer
       tags:
@@ -358,67 +357,67 @@ paths:
         - in: path
           name: address
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       responses:
-        '200':
+        "200":
           description: Amount of sent or received from settlements with a peer
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Settlement'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Settlement"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/settlements':
+  "/settlements":
     get:
       summary: Get settlements with all known peers and total amount sent or received
       tags:
         - Settlements
       responses:
-        '200':
+        "200":
           description: Settlements with all known peers and total amount sent or received
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Settlements'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Settlements"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/topology':
+  "/topology":
     get:
       description: Get topology of known network
       tags:
         - Connectivity
       responses:
-        '200':
+        "200":
           description: Swarm topology of the bee node
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/BzzTopology'
+                $ref: "SwarmCommon.yaml#/components/schemas/BzzTopology"
 
-  '/welcome-message':
+  "/welcome-message":
     get:
       summary: Get configured P2P welcome message
       tags:
         - Connectivity
       responses:
-        '200':
+        "200":
           description: Welcome message
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/WelcomeMessage'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/WelcomeMessage"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     post:
@@ -429,44 +428,44 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'SwarmCommon.yaml#/components/schemas/WelcomeMessage'
+              $ref: "SwarmCommon.yaml#/components/schemas/WelcomeMessage"
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/Status'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chequebook/cashout/{peer-id}':
+  "/chequebook/cashout/{peer-id}":
     get:
       summary: Get last cashout action for the peer
       parameters:
         - in: path
           name: peer-id
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       tags:
         - Chequebook
       responses:
-        '200':
+        "200":
           description: Cashout status
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/SwapCashoutStatus'
-        '404':
-           $ref: 'SwarmCommon.yaml#/components/responses/404'                
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/SwapCashoutStatus"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     post:
@@ -475,71 +474,71 @@ paths:
         - in: path
           name: peer-id
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       tags:
-        - Chequebook      
+        - Chequebook
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/TransactionResponse'
-        '404':
-          $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chequebook/cheque/{peer-id}':
+  "/chequebook/cheque/{peer-id}":
     get:
       summary: Get last cheques for the peer
       parameters:
         - in: path
           name: peer-id
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/SwarmAddress'
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
       tags:
         - Chequebook
       responses:
-        '200':
+        "200":
           description: Last cheques
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ChequePeerResponse'
-        '404':
-           $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ChequePeerResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chequebook/cheque':
+  "/chequebook/cheque":
     get:
       summary: Get last cheques for all peers
       tags:
         - Chequebook
       responses:
-        '200':
+        "200":
           description: Last cheques
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/ChequeAllPeersResponse'
-        '404':
-           $ref: 'SwarmCommon.yaml#/components/responses/404'
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/ChequeAllPeersResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chequebook/deposit':
+  "/chequebook/deposit":
     post:
       summary: Deposit tokens from overlay address into chequebook
       parameters:
@@ -552,20 +551,20 @@ paths:
       tags:
         - Chequebook
       responses:
-        '200':
+        "200":
           description: Transaction hash of the deposit transaction
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/TransactionResponse'
-        '400':
-           $ref: 'SwarmCommon.yaml#/components/responses/404'                
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/chequebook/withdraw':
+  "/chequebook/withdraw":
     post:
       summary: Withdraw tokens from the chequebook to the overlay address
       parameters:
@@ -578,43 +577,43 @@ paths:
       tags:
         - Chequebook
       responses:
-        '200':
+        "200":
           description: Transaction hash of the withdraw transaction
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/TransactionResponse'
-        '400':
-           $ref: 'SwarmCommon.yaml#/components/responses/404'                
-        '500':
-           $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
-  '/tags/{uid}':
+  "/tags/{uid}":
     get:
-      summary: 'Get Tag information using Uid'
+      summary: "Get Tag information using Uid"
       tags:
         - Tag
       parameters:
         - in: path
           name: uid
           schema:
-            $ref: 'SwarmCommon.yaml#/components/schemas/Uid'
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: true
           description: Uid
       responses:
-        '200':
+        "200":
           description: Tag info
           content:
             application/json:
               schema:
-                $ref: 'SwarmCommon.yaml#/components/schemas/NewTagDebugResponse'
-        '400':
-          $ref: 'SwarmCommon.yaml#/components/responses/400'
-        '403':
-          $ref: 'SwarmCommon.yaml#/components/responses/403'
-        '500':
-          $ref: 'SwarmCommon.yaml#/components/responses/500'
+                $ref: "SwarmCommon.yaml#/components/schemas/NewTagDebugResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
