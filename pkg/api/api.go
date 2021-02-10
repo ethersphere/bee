@@ -65,13 +65,13 @@ type Service interface {
 }
 
 type server struct {
-	Tags        *tags.Tags
-	Storer      storage.Storer
-	Resolver    resolver.Interface
-	Pss         pss.Interface
-	Traversal   traversal.Service
-	Logger      logging.Logger
-	Tracer      *tracing.Tracer
+	tags        *tags.Tags
+	storer      storage.Storer
+	resolver    resolver.Interface
+	pss         pss.Interface
+	traversal   traversal.Service
+	logger      logging.Logger
+	tracer      *tracing.Tracer
 	feedFactory feeds.Factory
 	Options
 	http.Handler
@@ -95,15 +95,15 @@ const (
 // New will create a and initialize a new API service.
 func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, feedFactory feeds.Factory, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
-		Tags:        tags,
-		Storer:      storer,
-		Resolver:    resolver,
-		Pss:         pss,
-		Traversal:   traversalService,
+		tags:        tags,
+		storer:      storer,
+		resolver:    resolver,
+		pss:         pss,
+		traversal:   traversalService,
 		feedFactory: feedFactory,
 		Options:     o,
-		Logger:      logger,
-		Tracer:      tracer,
+		logger:      logger,
+		tracer:      tracer,
 		metrics:     newMetrics(),
 		quit:        make(chan struct{}),
 	}
@@ -115,7 +115,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 
 // Close hangs up running websockets on shutdown.
 func (s *server) Close() error {
-	s.Logger.Info("api shutting down")
+	s.logger.Info("api shutting down")
 	close(s.quit)
 
 	done := make(chan struct{})
@@ -138,7 +138,7 @@ func (s *server) Close() error {
 func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	// if tag ID is not supplied, create a new tag
 	if tagUid == "" {
-		tag, err := s.Tags.Create(0)
+		tag, err := s.tags.Create(0)
 		if err != nil {
 			return nil, false, fmt.Errorf("cannot create tag: %w", err)
 		}
@@ -153,11 +153,11 @@ func (s *server) getTag(tagUid string) (*tags.Tag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse taguid: %w", err)
 	}
-	return s.Tags.Get(uint32(uid))
+	return s.tags.Get(uint32(uid))
 }
 
 func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
-	log := s.Logger
+	log := s.logger
 
 	// Try and parse the name as a bzz address.
 	addr, err := swarm.ParseHexAddress(str)
@@ -167,13 +167,13 @@ func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	}
 
 	// If no resolver is not available, return an error.
-	if s.Resolver == nil {
+	if s.resolver == nil {
 		return swarm.ZeroAddress, errNoResolver
 	}
 
 	// Try and resolve the name using the provided resolver.
 	log.Debugf("name resolve: attempting to resolve %s to bzz address", str)
-	addr, err = s.Resolver.Resolve(str)
+	addr, err = s.resolver.Resolve(str)
 	if err == nil {
 		log.Tracef("name resolve: resolved name %s to %s", str, addr)
 		return addr, nil
@@ -197,18 +197,18 @@ func requestEncrypt(r *http.Request) bool {
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx, err := s.Tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
+			ctx, err := s.tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
 			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
-				s.Logger.Debugf("span '%s': extract tracing context: %v", spanName, err)
+				s.logger.Debugf("span '%s': extract tracing context: %v", spanName, err)
 				// ignore
 			}
 
-			span, _, ctx := s.Tracer.StartSpanFromContext(ctx, spanName, s.Logger)
+			span, _, ctx := s.tracer.StartSpanFromContext(ctx, spanName, s.logger)
 			defer span.Finish()
 
-			err = s.Tracer.AddContextHTTPHeader(ctx, r.Header)
+			err = s.tracer.AddContextHTTPHeader(ctx, r.Header)
 			if err != nil {
-				s.Logger.Debugf("span '%s': inject tracing context: %v", spanName, err)
+				s.logger.Debugf("span '%s': inject tracing context: %v", spanName, err)
 				// ignore
 			}
 

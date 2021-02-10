@@ -19,25 +19,25 @@ import (
 func (s *server) pinBytes(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.Logger.Debugf("pin bytes: parse address: %v", err)
-		s.Logger.Error("pin bytes: parse address")
+		s.logger.Debugf("pin bytes: parse address: %v", err)
+		s.logger.Error("pin bytes: parse address")
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
-	has, err := s.Storer.Has(r.Context(), addr)
+	has, err := s.storer.Has(r.Context(), addr)
 	if err != nil {
-		s.Logger.Debugf("pin bytes: localstore has: %v", err)
-		s.Logger.Error("pin bytes: store")
+		s.logger.Debugf("pin bytes: localstore has: %v", err)
+		s.logger.Error("pin bytes: store")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
 
 	if !has {
-		_, err := s.Storer.Get(r.Context(), storage.ModeGetRequest, addr)
+		_, err := s.storer.Get(r.Context(), storage.ModeGetRequest, addr)
 		if err != nil {
-			s.Logger.Debugf("pin chunk: netstore get: %v", err)
-			s.Logger.Error("pin chunk: netstore")
+			s.logger.Debugf("pin chunk: netstore get: %v", err)
+			s.logger.Error("pin chunk: netstore")
 
 			jsonhttp.NotFound(w, nil)
 			return
@@ -48,17 +48,17 @@ func (s *server) pinBytes(w http.ResponseWriter, r *http.Request) {
 
 	chunkAddressFn := s.pinChunkAddressFn(ctx, addr)
 
-	err = s.Traversal.TraverseBytesAddresses(ctx, addr, chunkAddressFn)
+	err = s.traversal.TraverseBytesAddresses(ctx, addr, chunkAddressFn)
 	if err != nil {
-		s.Logger.Debugf("pin bytes: traverse chunks: %v, addr %s", err, addr)
+		s.logger.Debugf("pin bytes: traverse chunks: %v, addr %s", err, addr)
 
 		if errors.Is(err, traversal.ErrInvalidType) {
-			s.Logger.Error("pin bytes: invalid type")
+			s.logger.Error("pin bytes: invalid type")
 			jsonhttp.BadRequest(w, "invalid type")
 			return
 		}
 
-		s.Logger.Error("pin bytes: cannot pin")
+		s.logger.Error("pin bytes: cannot pin")
 		jsonhttp.InternalServerError(w, "cannot pin")
 		return
 	}
@@ -70,16 +70,16 @@ func (s *server) pinBytes(w http.ResponseWriter, r *http.Request) {
 func (s *server) unpinBytes(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.Logger.Debugf("pin bytes: parse address: %v", err)
-		s.Logger.Error("pin bytes: parse address")
+		s.logger.Debugf("pin bytes: parse address: %v", err)
+		s.logger.Error("pin bytes: parse address")
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
-	has, err := s.Storer.Has(r.Context(), addr)
+	has, err := s.storer.Has(r.Context(), addr)
 	if err != nil {
-		s.Logger.Debugf("pin bytes: localstore has: %v", err)
-		s.Logger.Error("pin bytes: store")
+		s.logger.Debugf("pin bytes: localstore has: %v", err)
+		s.logger.Error("pin bytes: store")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
@@ -93,17 +93,17 @@ func (s *server) unpinBytes(w http.ResponseWriter, r *http.Request) {
 
 	chunkAddressFn := s.unpinChunkAddressFn(ctx, addr)
 
-	err = s.Traversal.TraverseBytesAddresses(ctx, addr, chunkAddressFn)
+	err = s.traversal.TraverseBytesAddresses(ctx, addr, chunkAddressFn)
 	if err != nil {
-		s.Logger.Debugf("pin bytes: traverse chunks: %v, addr %s", err, addr)
+		s.logger.Debugf("pin bytes: traverse chunks: %v, addr %s", err, addr)
 
 		if errors.Is(err, traversal.ErrInvalidType) {
-			s.Logger.Error("pin bytes: invalid type")
+			s.logger.Error("pin bytes: invalid type")
 			jsonhttp.BadRequest(w, "invalid type")
 			return
 		}
 
-		s.Logger.Error("pin bytes: cannot unpin")
+		s.logger.Error("pin bytes: cannot unpin")
 		jsonhttp.InternalServerError(w, "cannot unpin")
 		return
 	}
