@@ -80,9 +80,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		s.logger.Debugf("could not receive payment threshold announcement from peer %v", p.Address)
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
-	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, req.PaymentThreshold)
+	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
+	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, paymentThreshold)
 
-	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, big.NewInt(0).SetBytes(req.PaymentThreshold))
+	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, paymentThreshold)
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
