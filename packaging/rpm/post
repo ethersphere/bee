@@ -10,7 +10,7 @@ if [ $1 -eq 1 ] ; then
 Logs:   journalctl -f -u bee.service
 Config: /etc/bee/bee.yaml
 
-Bee has SWAP enabled by default and it needs ethereum endpoint to operate.
+Bee has SWAP enabled and by default is using slock.it goerli ethereum endpoint.
 It is recommended to use external signer with bee.
 Check documentation for more info:
 - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives
