@@ -190,7 +190,7 @@ func (s *server) setupRouting() {
 	)
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
 		// todo: add recovery handler
 		s.pageviewMetricsHandler,
@@ -214,7 +214,7 @@ func (s *server) setupRouting() {
 func (s *server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
-			s.Logger.Tracef("gateway mode: forbidden %s", r.URL.String())
+			s.logger.Tracef("gateway mode: forbidden %s", r.URL.String())
 			jsonhttp.Forbidden(w, nil)
 			return
 		}
@@ -226,12 +226,12 @@ func (s *server) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
-				s.Logger.Tracef("gateway mode: forbidden pinning %s", r.URL.String())
+				s.logger.Tracef("gateway mode: forbidden pinning %s", r.URL.String())
 				jsonhttp.Forbidden(w, "pinning is disabled")
 				return
 			}
 			if strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true" {
-				s.Logger.Tracef("gateway mode: forbidden encryption %s", r.URL.String())
+				s.logger.Tracef("gateway mode: forbidden encryption %s", r.URL.String())
 				jsonhttp.Forbidden(w, "encryption is disabled")
 				return
 			}

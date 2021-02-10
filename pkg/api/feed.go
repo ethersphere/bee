@@ -40,16 +40,16 @@ type feedReferenceResponse struct {
 func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
 	if err != nil {
-		s.Logger.Debugf("feed get: decode owner: %v", err)
-		s.Logger.Error("feed get: bad owner")
+		s.logger.Debugf("feed get: decode owner: %v", err)
+		s.logger.Error("feed get: bad owner")
 		jsonhttp.BadRequest(w, "bad owner")
 		return
 	}
 
 	topic, err := hex.DecodeString(mux.Vars(r)["topic"])
 	if err != nil {
-		s.Logger.Debugf("feed get: decode topic: %v", err)
-		s.Logger.Error("feed get: bad topic")
+		s.logger.Debugf("feed get: decode topic: %v", err)
+		s.logger.Error("feed get: bad topic")
 		jsonhttp.BadRequest(w, "bad topic")
 		return
 	}
@@ -59,8 +59,8 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	if atStr != "" {
 		at, err = strconv.ParseInt(atStr, 10, 64)
 		if err != nil {
-			s.Logger.Debugf("feed get: decode at: %v", err)
-			s.Logger.Error("feed get: bad at")
+			s.logger.Debugf("feed get: decode at: %v", err)
+			s.logger.Error("feed get: bad at")
 			jsonhttp.BadRequest(w, "bad at")
 			return
 		}
@@ -71,48 +71,48 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	f := feeds.New(topic, common.BytesToAddress(owner))
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
-		s.Logger.Debugf("feed get: new lookup: %v", err)
-		s.Logger.Error("feed get: new lookup")
+		s.logger.Debugf("feed get: new lookup: %v", err)
+		s.logger.Error("feed get: new lookup")
 		jsonhttp.InternalServerError(w, "new lookup")
 		return
 	}
 
 	ch, cur, next, err := lookup.At(r.Context(), at, 0)
 	if err != nil {
-		s.Logger.Debugf("feed get: lookup: %v", err)
-		s.Logger.Error("feed get: lookup error")
+		s.logger.Debugf("feed get: lookup: %v", err)
+		s.logger.Error("feed get: lookup error")
 		jsonhttp.NotFound(w, "lookup failed")
 		return
 	}
 
 	// KLUDGE: if a feed was never updated, the chunk will be nil
 	if ch == nil {
-		s.Logger.Debugf("feed get: no update found: %v", err)
-		s.Logger.Error("feed get: no update found")
+		s.logger.Debugf("feed get: no update found: %v", err)
+		s.logger.Error("feed get: no update found")
 		jsonhttp.NotFound(w, "lookup failed")
 		return
 	}
 
 	ref, _, err := parseFeedUpdate(ch)
 	if err != nil {
-		s.Logger.Debugf("feed get: parse update: %v", err)
-		s.Logger.Error("feed get: parse update")
+		s.logger.Debugf("feed get: parse update: %v", err)
+		s.logger.Error("feed get: parse update")
 		jsonhttp.InternalServerError(w, "parse update")
 		return
 	}
 
 	curBytes, err := cur.MarshalBinary()
 	if err != nil {
-		s.Logger.Debugf("feed get: marshal current index: %v", err)
-		s.Logger.Error("feed get: marshal index")
+		s.logger.Debugf("feed get: marshal current index: %v", err)
+		s.logger.Error("feed get: marshal index")
 		jsonhttp.InternalServerError(w, "marshal index")
 		return
 	}
 
 	nextBytes, err := next.MarshalBinary()
 	if err != nil {
-		s.Logger.Debugf("feed get: marshal next index: %v", err)
-		s.Logger.Error("feed get: marshal index")
+		s.logger.Debugf("feed get: marshal next index: %v", err)
+		s.logger.Error("feed get: marshal index")
 		jsonhttp.InternalServerError(w, "marshal index")
 		return
 	}
@@ -127,24 +127,24 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
 	if err != nil {
-		s.Logger.Debugf("feed put: decode owner: %v", err)
-		s.Logger.Error("feed put: bad owner")
+		s.logger.Debugf("feed put: decode owner: %v", err)
+		s.logger.Error("feed put: bad owner")
 		jsonhttp.BadRequest(w, "bad owner")
 		return
 	}
 
 	topic, err := hex.DecodeString(mux.Vars(r)["topic"])
 	if err != nil {
-		s.Logger.Debugf("feed put: decode topic: %v", err)
-		s.Logger.Error("feed put: bad topic")
+		s.logger.Debugf("feed put: decode topic: %v", err)
+		s.logger.Error("feed put: bad topic")
 		jsonhttp.BadRequest(w, "bad topic")
 		return
 	}
-	l := loadsave.New(s.Storer, requestModePut(r), false)
+	l := loadsave.New(s.storer, requestModePut(r), false)
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
-		s.Logger.Debugf("feed put: new manifest: %v", err)
-		s.Logger.Error("feed put: new manifest")
+		s.logger.Debugf("feed put: new manifest: %v", err)
+		s.logger.Error("feed put: new manifest")
 		jsonhttp.InternalServerError(w, "create manifest")
 		return
 	}
@@ -160,15 +160,15 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	// a feed manifest stores the metadata at the root "/" path
 	err = feedManifest.Add(r.Context(), "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), meta))
 	if err != nil {
-		s.Logger.Debugf("feed post: add manifest entry: %v", err)
-		s.Logger.Error("feed post: add manifest entry")
+		s.logger.Debugf("feed post: add manifest entry: %v", err)
+		s.logger.Error("feed post: add manifest entry")
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 	ref, err := feedManifest.Store(r.Context())
 	if err != nil {
-		s.Logger.Debugf("feed post: store manifest: %v", err)
-		s.Logger.Error("feed post: store manifest")
+		s.logger.Debugf("feed post: store manifest: %v", err)
+		s.logger.Error("feed post: store manifest")
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}

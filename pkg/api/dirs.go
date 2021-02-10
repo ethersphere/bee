@@ -43,7 +43,7 @@ const (
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	err := validateRequest(r)
 	if err != nil {
 		logger.Errorf("dir upload, validate request")
@@ -62,10 +62,10 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
-	p := requestPipelineFn(s.Storer, r)
+	p := requestPipelineFn(s.storer, r)
 	encrypt := requestEncrypt(r)
-	l := loadsave.New(s.Storer, requestModePut(r), encrypt)
-	reference, err := storeDir(ctx, encrypt, r.Body, s.Logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader), tag, created)
+	l := loadsave.New(s.storer, requestModePut(r), encrypt)
+	reference, err := storeDir(ctx, encrypt, r.Body, s.logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader), tag, created)
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
 		logger.Errorf("dir upload: store dir")

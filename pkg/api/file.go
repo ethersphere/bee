@@ -47,7 +47,7 @@ type fileUploadResponse struct {
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		reader                  io.Reader
-		logger                  = tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+		logger                  = tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 		fileName, contentLength string
 		fileSize                uint64
 		contentType             = r.Header.Get("Content-Type")
@@ -74,8 +74,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
 			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
 			if err != nil {
-				s.Logger.Debugf("file upload: increment tag: %v", err)
-				s.Logger.Error("file upload: increment tag")
+				s.logger.Debugf("file upload: increment tag: %v", err)
+				s.logger.Error("file upload: increment tag")
 				jsonhttp.InternalServerError(w, "increment tag")
 				return
 			}
@@ -164,7 +164,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		reader = tmp
 	}
 
-	p := requestPipelineFn(s.Storer, r)
+	p := requestPipelineFn(s.storer, r)
 
 	// first store the file and get its reference
 	fr, err := p(ctx, reader, int64(fileSize))
@@ -200,8 +200,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), requestEncrypt(r))
 		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
 		if err != nil {
-			s.Logger.Debugf("file upload: increment tag: %v", err)
-			s.Logger.Error("file upload: increment tag")
+			s.logger.Debugf("file upload: increment tag: %v", err)
+			s.logger.Error("file upload: increment tag")
 			jsonhttp.InternalServerError(w, "increment tag")
 			return
 		}
@@ -258,7 +258,7 @@ type fileUploadInfo struct {
 
 // fileDownloadHandler downloads the file given the entry's reference.
 func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	nameOrHex := mux.Vars(r)["addr"]
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
@@ -275,7 +275,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// read entry
-	j, _, err := joiner.New(r.Context(), s.Storer, address)
+	j, _, err := joiner.New(r.Context(), s.storer, address)
 	if err != nil {
 		logger.Debugf("file download: joiner %s: %v", address, err)
 		logger.Errorf("file download: joiner %s", address)
@@ -311,7 +311,7 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// read metadata
-	j, _, err = joiner.New(r.Context(), s.Storer, e.Metadata())
+	j, _, err = joiner.New(r.Context(), s.storer, e.Metadata())
 	if err != nil {
 		logger.Debugf("file download: joiner %s: %v", address, err)
 		logger.Errorf("file download: joiner %s", address)
@@ -346,13 +346,13 @@ func (s *server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	targets := r.URL.Query().Get("targets")
 	if targets != "" {
 		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 	}
 
-	reader, l, err := joiner.New(r.Context(), s.Storer, reference)
+	reader, l, err := joiner.New(r.Context(), s.storer, reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debugf("api download: not found %s: %v", reference, err)

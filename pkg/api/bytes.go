@@ -23,7 +23,7 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
@@ -38,8 +38,8 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
 			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
 			if err != nil {
-				s.Logger.Debugf("bytes upload: increment tag: %v", err)
-				s.Logger.Error("bytes upload: increment tag")
+				s.logger.Debugf("bytes upload: increment tag: %v", err)
+				s.logger.Error("bytes upload: increment tag")
 				jsonhttp.InternalServerError(w, "increment tag")
 				return
 			}
@@ -49,7 +49,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	pipe := builder.NewPipelineBuilder(ctx, s.Storer, requestModePut(r), requestEncrypt(r))
+	pipe := builder.NewPipelineBuilder(ctx, s.storer, requestModePut(r), requestEncrypt(r))
 	address, err := builder.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)
@@ -75,7 +75,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger).Logger
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger).Logger
 	nameOrHex := mux.Vars(r)["address"]
 
 	address, err := s.resolveNameOrAddress(nameOrHex)

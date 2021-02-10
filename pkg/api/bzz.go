@@ -34,8 +34,8 @@ import (
 )
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
-	ls := loadsave.New(s.Storer, storage.ModePutRequest, false)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+	ls := loadsave.New(s.storer, storage.ModePutRequest, false)
 	feedDereferenced := false
 
 	targets := r.URL.Query().Get("targets")
@@ -62,7 +62,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 FETCH:
 	// read manifest entry
-	j, _, err := joiner.New(ctx, s.Storer, address)
+	j, _, err := joiner.New(ctx, s.storer, address)
 	if err != nil {
 		logger.Debugf("bzz download: joiner manifest entry %s: %v", address, err)
 		logger.Errorf("bzz download: joiner %s", address)
@@ -104,8 +104,8 @@ FETCH:
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
-				s.Logger.Debugf("bzz download: marshal feed index: %v", err)
-				s.Logger.Error("bzz download: marshal index")
+				s.logger.Debugf("bzz download: marshal feed index: %v", err)
+				s.logger.Error("bzz download: marshal index")
 				jsonhttp.InternalServerError(w, "marshal index")
 				return
 			}
@@ -129,7 +129,7 @@ FETCH:
 	}
 
 	// read metadata
-	j, _, err = joiner.New(ctx, s.Storer, e.Metadata())
+	j, _, err = joiner.New(ctx, s.storer, e.Metadata())
 	if err != nil {
 		logger.Debugf("bzz download: joiner metadata %s: %v", address, err)
 		logger.Errorf("bzz download: joiner %s", address)
@@ -251,13 +251,13 @@ FETCH:
 
 func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, address, manifestEntryAddress swarm.Address, etag bool) {
 	var (
-		logger = tracing.NewLoggerWithTraceID(r.Context(), s.Logger)
+		logger = tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 		ctx    = r.Context()
 		buf    = bytes.NewBuffer(nil)
 	)
 
 	// read file entry
-	j, _, err := joiner.New(ctx, s.Storer, manifestEntryAddress)
+	j, _, err := joiner.New(ctx, s.storer, manifestEntryAddress)
 	if err != nil {
 		logger.Debugf("bzz download: joiner read file entry %s: %v", address, err)
 		logger.Errorf("bzz download: joiner read file entry %s", address)
@@ -282,7 +282,7 @@ func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, addr
 	}
 
 	// read file metadata
-	j, _, err = joiner.New(ctx, s.Storer, fe.Metadata())
+	j, _, err = joiner.New(ctx, s.storer, fe.Metadata())
 	if err != nil {
 		logger.Debugf("bzz download: joiner read file entry %s: %v", address, err)
 		logger.Errorf("bzz download: joiner read file entry %s", address)
