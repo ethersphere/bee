@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/bits"
 	"sync"
 	"time"
 
@@ -40,33 +42,36 @@ type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
 
 // Options for injecting services to Kademlia.
 type Options struct {
-	SaturationFunc binSaturationFunc
-	Bootnodes      []ma.Multiaddr
-	Standalone     bool
+	SaturationFunc  binSaturationFunc
+	Bootnodes       []ma.Multiaddr
+	Standalone      bool
+	BitSuffixLength int
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
 type Kad struct {
-	base           swarm.Address         // this node's overlay address
-	discovery      discovery.Driver      // the discovery driver
-	addressBook    addressbook.Interface // address book to get underlays
-	p2p            p2p.Service           // p2p service to connect to nodes with
-	saturationFunc binSaturationFunc     // pluggable saturation function
-	connectedPeers *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
-	knownPeers     *pslice.PSlice        // both are po aware slice of addresses
-	bootnodes      []ma.Multiaddr
-	depth          uint8                // current neighborhood depth
-	depthMu        sync.RWMutex         // protect depth changes
-	manageC        chan struct{}        // trigger the manage forever loop to connect to new peers
-	waitNext       map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
-	waitNextMu     sync.Mutex           // synchronize map
-	peerSig        []chan struct{}
-	peerSigMtx     sync.Mutex
-	logger         logging.Logger // logger
-	standalone     bool
-	quit           chan struct{} // quit channel
-	done           chan struct{} // signal that `manage` has quit
-	wg             sync.WaitGroup
+	base              swarm.Address         // this node's overlay address
+	discovery         discovery.Driver      // the discovery driver
+	addressBook       addressbook.Interface // address book to get underlays
+	p2p               p2p.Service           // p2p service to connect to nodes with
+	saturationFunc    binSaturationFunc     // pluggable saturation function
+	bitSuffixLength   int                   // additional depth of common prefix for bin
+	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
+	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
+	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
+	bootnodes         []ma.Multiaddr
+	depth             uint8                // current neighborhood depth
+	depthMu           sync.RWMutex         // protect depth changes
+	manageC           chan struct{}        // trigger the manage forever loop to connect to new peers
+	waitNext          map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
+	waitNextMu        sync.Mutex           // synchronize map
+	peerSig           []chan struct{}
+	peerSigMtx        sync.Mutex
+	logger            logging.Logger // logger
+	standalone        bool
+	quit              chan struct{} // quit channel
+	done              chan struct{} // signal that `manage` has quit
+	wg                sync.WaitGroup
 }
 
 type retryInfo struct {
@@ -79,26 +84,111 @@ func New(base swarm.Address, addressbook addressbook.Interface, discovery discov
 	if o.SaturationFunc == nil {
 		o.SaturationFunc = binSaturated
 	}
-
-	k := &Kad{
-		base:           base,
-		discovery:      discovery,
-		addressBook:    addressbook,
-		p2p:            p2p,
-		saturationFunc: o.SaturationFunc,
-		connectedPeers: pslice.New(int(swarm.MaxBins)),
-		knownPeers:     pslice.New(int(swarm.MaxBins)),
-		bootnodes:      o.Bootnodes,
-		manageC:        make(chan struct{}, 1),
-		waitNext:       make(map[string]retryInfo),
-		logger:         logger,
-		standalone:     o.Standalone,
-		quit:           make(chan struct{}),
-		done:           make(chan struct{}),
-		wg:             sync.WaitGroup{},
+	if o.BitSuffixLength <= 0 {
+		o.BitSuffixLength = nnLowWatermark
 	}
 
+	k := &Kad{
+		base:              base,
+		discovery:         discovery,
+		addressBook:       addressbook,
+		p2p:               p2p,
+		saturationFunc:    o.SaturationFunc,
+		bitSuffixLength:   o.BitSuffixLength,
+		commonBinPrefixes: make([][]swarm.Address, int(swarm.MaxBins)),
+		connectedPeers:    pslice.New(int(swarm.MaxBins)),
+		knownPeers:        pslice.New(int(swarm.MaxBins)),
+		bootnodes:         o.Bootnodes,
+		manageC:           make(chan struct{}, 1),
+		waitNext:          make(map[string]retryInfo),
+		logger:            logger,
+		standalone:        o.Standalone,
+		quit:              make(chan struct{}),
+		done:              make(chan struct{}),
+		wg:                sync.WaitGroup{},
+	}
+
+	k.generateCommonBinPrefixes()
+
 	return k
+}
+
+func (k *Kad) generateCommonBinPrefixes() {
+	bitCombinationsCount := int(math.Pow(2, float64(k.bitSuffixLength)))
+	bitSufixes := make([]uint8, bitCombinationsCount)
+
+	for i := 0; i < bitCombinationsCount; i++ {
+		bitSufixes[i] = uint8(i)
+	}
+
+	addr := swarm.MustParseHexAddress(k.base.String())
+	addrBytes := addr.Bytes()
+	_ = addrBytes
+
+	binPrefixes := k.commonBinPrefixes
+
+	// copy base address
+	for i := range binPrefixes {
+		binPrefixes[i] = make([]swarm.Address, bitCombinationsCount)
+	}
+
+	for i := range binPrefixes {
+		for j := range binPrefixes[i] {
+			pseudoAddrBytes := make([]byte, len(k.base.Bytes()))
+			copy(pseudoAddrBytes, k.base.Bytes())
+			binPrefixes[i][j] = swarm.NewAddress(pseudoAddrBytes)
+		}
+	}
+
+	// set pseudo suffix
+	for i := range binPrefixes {
+		for j := range binPrefixes[i] {
+			pseudoAddrBytes := binPrefixes[i][j].Bytes()
+
+			bitSuffixPos := k.bitSuffixLength - 1
+			for l := i; l < i+k.bitSuffixLength; l++ {
+				index, pos := l/8, l%8
+
+				if hasBit(bitSufixes[j], uint8(bitSuffixPos)) {
+					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+				} else {
+					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+				}
+
+				bitSuffixPos--
+			}
+		}
+	}
+
+	for i := range binPrefixes {
+		for j := range binPrefixes[i] {
+			pseudoAddrBytes := binPrefixes[i][j].Bytes()
+			// clear rest of the bits
+			for l := i + k.bitSuffixLength; l < len(pseudoAddrBytes)*8; l++ {
+				index, pos := l/8, l%8
+				pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+			}
+		}
+	}
+
+}
+
+// Clears the bit at pos in n.
+func clearBit(n uint8, pos uint8) uint8 {
+	mask := ^(uint8(1) << pos)
+	n &= mask
+	return n
+}
+
+// Sets the bit at pos in the integer n.
+func setBit(n uint8, pos uint8) uint8 {
+	n |= (1 << pos)
+	return n
+}
+
+func hasBit(n uint8, pos uint8) bool {
+	val := n & (1 << pos)
+	return (val > 0)
 }
 
 // manage is a forever loop that manages the connection to new peers
