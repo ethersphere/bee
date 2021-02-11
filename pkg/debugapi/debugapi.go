@@ -3,8 +3,8 @@
 // license that can be found in the LICENSE file.
 
 // Package debugapi exposes the debug API used to
-// control and analyze low-level features and functionalities
-// of Bee.
+// control and analyze low-level and runtime
+// features and functionalities of Bee.
 package debugapi
 
 import (
