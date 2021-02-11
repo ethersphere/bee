@@ -890,7 +890,7 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 		return false
 	}
 
-	binCheckBitLen := int(bin) + k.bitSuffixLength + 1
+	binCheckBitLen := int(bin) + k.bitSuffixLength
 
 	connectedBalancedPeers := 0
 
