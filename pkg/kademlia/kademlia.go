@@ -4,7 +4,7 @@
 
 // Package kademlia provides the implementation for the
 // Swarm forwarding-kademlia. Kademlia makes sure you're
-// connected to the right peers at any point of time.
+// connected to the right peers at any point in time.
 package kademlia
 
 import (
