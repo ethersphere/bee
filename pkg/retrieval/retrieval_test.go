@@ -253,7 +253,7 @@ func TestRetrieveChunk(t *testing.T) {
 
 	var (
 		headlerFunc = func(h p2p.Headers, a swarm.Address) p2p.Headers {
-			target, _ := headerutils.ReadTargetHeader(h)
+			target, _ := headerutils.ParseTargetHeader(h)
 			headers, _ := headerutils.MakePricingResponseHeaders(10, target, 0)
 			return headers
 		}
@@ -362,7 +362,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	someOtherChunk := testingc.FixtureChunk("0033")
 
 	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
-		target, _ := headerutils.ReadTargetHeader(h)
+		target, _ := headerutils.ParseTargetHeader(h)
 		headers, _ := headerutils.MakePricingResponseHeaders(10, target, 0)
 		return headers
 	}
