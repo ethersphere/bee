@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	nnLowWatermark      = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
-	maxConnAttempts     = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
-	maxBootnodeAttempts = 3 // how many attempts to dial to bootnodes before giving up
+	nnLowWatermark         = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	maxConnAttempts        = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	maxBootnodeAttempts    = 3 // how many attempts to dial to bootnodes before giving up
+	defaultBitSuffixLength = 2 // the number of bits used to create pseudo addresses for balancing
 )
 
 var (
@@ -83,6 +84,9 @@ type retryInfo struct {
 func New(base swarm.Address, addressbook addressbook.Interface, discovery discovery.Driver, p2p p2p.Service, logger logging.Logger, o Options) *Kad {
 	if o.SaturationFunc == nil {
 		o.SaturationFunc = binSaturated
+	}
+	if o.BitSuffixLength == 0 {
+		o.BitSuffixLength = defaultBitSuffixLength
 	}
 
 	k := &Kad{
