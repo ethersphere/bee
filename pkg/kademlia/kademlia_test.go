@@ -201,6 +201,51 @@ func TestManage(t *testing.T) {
 	waitCounter(t, &conns, 0)
 }
 
+func TestManageWithBalancing(t *testing.T) {
+	// use "fixed" seed for this
+	rand.Seed(2)
+
+	var (
+		conns int32 // how many connect calls were made to the p2p mock
+
+		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice) bool
+		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice) bool {
+			f := *saturationFuncImpl
+			return f(bin, peers, connected)
+		}
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc, nil, 2)
+	)
+
+	// implement satiration function (while having access to Kademlia instance)
+	sfImpl := func(bin uint8, peers, connected *pslice.PSlice) bool {
+		return kad.IsBalanced(bin)
+	}
+	saturationFuncImpl = &sfImpl
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	// add peers for bin '0', enough to have balanced connections
+	for i := 0; i < 20; i++ {
+		addr := test.RandomAddressAt(base, 0)
+		addOne(t, signer, kad, ab, addr)
+	}
+
+	waitBalanced(t, kad, 0)
+
+	// add peers for other bins, enough to have balanced connections
+	for i := 0; i < 100; i++ {
+		prox := i % int(swarm.MaxBins)
+		addr := test.RandomAddressAt(base, prox)
+		addOne(t, signer, kad, ab, addr)
+	}
+
+	waitBalanced(t, kad, 1)
+	waitBalanced(t, kad, 2)
+}
+
 // TestBinSaturation tests the builtin binSaturated function.
 // the test must have two phases of adding peers so that the section
 // beyond the first flow control statement gets hit (if po >= depth),
@@ -921,4 +966,24 @@ func isIn(addr swarm.Address, addrs []swarm.Address) bool {
 		}
 	}
 	return false
+}
+
+// waitBalanced waits for kademlia to be balanced for specified bin.
+func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
+	t.Helper()
+
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			t.Fatalf("timed out waiting to be balanced for bin: %d", int(bin))
+		default:
+		}
+
+		if balanced := k.IsBalanced(bin); balanced {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
 }

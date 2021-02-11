@@ -147,17 +147,6 @@ func (k *Kad) generateCommonBinPrefixes() {
 		for j := range binPrefixes[i] {
 			pseudoAddrBytes := binPrefixes[i][j].Bytes()
 
-			// flip bits before
-			for l := 0; l < i+1; l++ {
-				index, pos := l/8, l%8
-
-				if hasBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)) {
-					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
-				} else {
-					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
-				}
-			}
-
 			// set pseudo suffix
 			bitSuffixPos := k.bitSuffixLength - 1
 			for l := i + 1; l < i+k.bitSuffixLength+1; l++ {
@@ -865,6 +854,53 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 
 func (k *Kad) neighborhoodDepth() uint8 {
 	return k.depth
+}
+
+// IsBalanced returns if Kademlia is balanced to bin.
+func (k *Kad) IsBalanced(bin uint8) bool {
+	k.depthMu.RLock()
+	defer k.depthMu.RUnlock()
+
+	if int(bin) > len(k.commonBinPrefixes) {
+		return false
+	}
+
+	binCheckBitLen := int(bin) + k.bitSuffixLength + 1
+
+	connectedBalancedPeers := 0
+
+	// for each pseudo address
+	for i := range k.commonBinPrefixes[bin] {
+		pseudoAddr := k.commonBinPrefixes[bin][i]
+
+		err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+
+			pseudoAddrBytes := pseudoAddr.Bytes()
+			peerBytes := peer.Bytes()
+
+			for j := 1; j < binCheckBitLen; j++ {
+				index, pos := j/8, j%8
+
+				pahb := hasBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos))
+				phb := hasBit(bits.Reverse8(peerBytes[index]), uint8(pos))
+
+				if pahb != phb {
+					// starting bits do not match, go to next peer
+					return false, false, nil
+				}
+			}
+
+			connectedBalancedPeers++
+
+			// we have found peer for pseudo address
+			return true, false, nil
+		})
+		if err != nil {
+			return false
+		}
+	}
+
+	return connectedBalancedPeers >= len(k.commonBinPrefixes[bin])
 }
 
 // MarshalJSON returns a JSON representation of Kademlia.
