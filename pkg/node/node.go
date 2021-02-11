@@ -318,7 +318,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 
 	pricer := pricer.New(logger, stateStore, swarmAddress, 1000000000)
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, pricer)
 	pricing.SetPriceTableObserver(pricer)
