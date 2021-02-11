@@ -143,16 +143,19 @@ func (k *Kad) generateCommonBinPrefixes() {
 		}
 	}
 
-	// flip first bit
-	baseHasBitFirst := hasBit(k.base.Bytes()[0], 0)
+	// flip bits before
 	for i := range binPrefixes {
 		for j := range binPrefixes[i] {
 			pseudoAddrBytes := binPrefixes[i][j].Bytes()
 
-			if baseHasBitFirst {
-				pseudoAddrBytes[0] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[0]), 0))
-			} else {
-				pseudoAddrBytes[0] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[0]), 0))
+			for l := 0; l < i+1; l++ {
+				index, pos := l/8, l%8
+
+				if hasBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)) {
+					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+				} else {
+					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+				}
 			}
 		}
 	}
