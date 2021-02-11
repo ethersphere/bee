@@ -31,7 +31,7 @@ func TestPriceTableDefaultTables(t *testing.T) {
 	pricer := pricer.New(logger, store, overlay, 10)
 
 	kad := mockkad.NewMockKademlia(mockkad.WithDepthCalls(0, 0, 2, 3, 5, 9))
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	table0 := []uint64{10}
 	table1 := []uint64{30, 20, 10}
@@ -87,7 +87,7 @@ func TestPeerPrice(t *testing.T) {
 	pricer := pricer.New(logger, store, overlay, 10)
 
 	kad := mockkad.NewMockKademlia(mockkad.WithDepth(3))
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	peerTable := []uint64{55, 45, 35, 25, 15}
 	err := pricer.NotifyPriceTable(peer, peerTable)
@@ -151,7 +151,7 @@ func TestPriceForPeer(t *testing.T) {
 	pricer := pricer.New(logger, store, overlay, 10)
 
 	kad := mockkad.NewMockKademlia(mockkad.WithDepth(4))
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	defaultTable := []uint64{50, 40, 30, 20, 10}
 
@@ -186,7 +186,7 @@ func TestNotifyPriceTable(t *testing.T) {
 	pricer := pricer.New(logger, store, overlay, 10)
 
 	kad := mockkad.NewMockKademlia(mockkad.WithDepth(0))
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	peer := swarm.MustParseHexAddress("ffff617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 	peerTable := []uint64{66, 55, 44, 33, 22, 11}
@@ -219,7 +219,7 @@ func TestNotifyPeerPrice(t *testing.T) {
 	pricer := pricer.New(logger, store, overlay, 10)
 
 	kad := mockkad.NewMockKademlia(mockkad.WithDepth(0))
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	peer := swarm.MustParseHexAddress("ffff617cadab2af7fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 	peerTable := []uint64{33, 22, 11}
@@ -303,7 +303,7 @@ func TestPricerHeadler(t *testing.T) {
 	pricer := pricer.New(logger, store, overlay, 10)
 
 	kad := mockkad.NewMockKademlia(mockkad.WithDepth(2))
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	peer := swarm.MustParseHexAddress("07e0d4ba628ad700fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 
@@ -345,7 +345,7 @@ func TestPricerHeadlerBadHeaders(t *testing.T) {
 	pricer := pricer.New(logger, store, overlay, 10)
 
 	kad := mockkad.NewMockKademlia(mockkad.WithDepth(2))
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	peer := swarm.MustParseHexAddress("07e0d4ba628ad700fff48b16b52953487a22589362e34efdd7e0d4ba628ad700")
 

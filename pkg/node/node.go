@@ -351,7 +351,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetNotifier(kad)
-	pricer.SetKademlia(kad)
+	pricer.SetTopology(kad)
 
 	addrs, err := p2ps.Addresses()
 	if err != nil {
