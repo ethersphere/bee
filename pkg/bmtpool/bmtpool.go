@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package bmtpool provides easy access to BMT
-// hashers managed in as a resource pool.
+// Package bmtpool provides easy access to binary
+// merkle tree hashers managed in as a resource pool.
 package bmtpool
 
 import (

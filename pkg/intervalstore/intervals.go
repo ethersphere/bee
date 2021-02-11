@@ -15,8 +15,7 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 // Package intervalstore provides a persistence layer
-// for intervals relating to a peer. Intervals are
-// assumed to be integers of type uint64. The store
+// for intervals relating to a peer. The store
 // provides basic operation such as adding intervals to
 // existing ones and persisting the results, as well as
 // getting next interval for a peer.

@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package pingpong exposes the simple ping-pong protocol
-// which measures RTT with other peers.
+// which measures round-trip-time with other peers.
 package pingpong
 
 import (

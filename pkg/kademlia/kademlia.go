@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package kademlia provides the implementation for the
-// Swarm forwarding-kademlia. Kademlia makes sure you're
-// connected to the right peers at any point of time.
 package kademlia
 
 import (
