@@ -255,9 +255,9 @@ func (k *Kad) manage() {
 						skipConnectedPeers = append(skipConnectedPeers, closestConnectedPeer)
 
 						// check proximity
-						po := swarm.Proximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
+						closestConnectedPO := swarm.Proximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
 
-						if int(po) < i+k.bitSuffixLength {
+						if int(closestConnectedPO) < i+k.bitSuffixLength {
 							// connect to closest known peer
 
 							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, skipKnownPeers...)
@@ -289,6 +289,8 @@ func (k *Kad) manage() {
 								// should be removed, or that some severe I/O problem is at hand
 								return err
 							}
+
+							po := swarm.Proximity(k.base.Bytes(), peer.Bytes())
 
 							err = k.connect(ctx, peer, bzzAddr.Underlay, po)
 							if err != nil {
