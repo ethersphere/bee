@@ -24,8 +24,8 @@ func TestMakePricingHeaders(t *testing.T) {
 	}
 
 	expectedHeaders := p2p.Headers{
-		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
-		"target": []byte{1, 1, 1, 225, 1, 1, 1},
+		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
 	}
 
 	if !reflect.DeepEqual(makeHeaders, expectedHeaders) {
@@ -44,9 +44,9 @@ func TestMakePricingResponseHeaders(t *testing.T) {
 	}
 
 	expectedHeaders := p2p.Headers{
-		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
-		"target": []byte{1, 1, 1, 225, 1, 1, 1},
-		"index":  []byte{11},
+		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
+		headerutils.IndexFieldName:  []byte{11},
 	}
 
 	if !reflect.DeepEqual(makeHeaders, expectedHeaders) {
@@ -58,8 +58,8 @@ func TestMakePricingResponseHeaders(t *testing.T) {
 func TestParsePricingHeaders(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
-		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
-		"target": []byte{1, 1, 1, 225, 1, 1, 1},
+		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
 	}
 
 	parsedTarget, parsedPrice, err := headerutils.ParsePricingHeaders(toReadHeaders)
@@ -73,7 +73,7 @@ func TestParsePricingHeaders(t *testing.T) {
 		t.Fatalf("Price mismatch, got %v, want %v", parsedPrice, 5348)
 	}
 
-	if !reflect.DeepEqual(parsedTarget, addr) {
+	if !parsedTarget.Equal(addr) {
 		t.Fatalf("Target mismatch, got %v, want %v", parsedTarget, addr)
 	}
 }
@@ -81,9 +81,9 @@ func TestParsePricingHeaders(t *testing.T) {
 func TestParsePricingResponseHeaders(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
-		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
-		"target": []byte{1, 1, 1, 225, 1, 1, 1},
-		"index":  []byte{11},
+		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
+		headerutils.IndexFieldName:  []byte{11},
 	}
 
 	parsedTarget, parsedPrice, parsedIndex, err := headerutils.ParsePricingResponseHeaders(toReadHeaders)
@@ -101,14 +101,14 @@ func TestParsePricingResponseHeaders(t *testing.T) {
 		t.Fatalf("Price mismatch, got %v, want %v", parsedPrice, 5348)
 	}
 
-	if !reflect.DeepEqual(parsedTarget, addr) {
+	if !parsedTarget.Equal(addr) {
 		t.Fatalf("Target mismatch, got %v, want %v", parsedTarget, addr)
 	}
 }
 
 func TestParseIndexHeader(t *testing.T) {
 	toReadHeaders := p2p.Headers{
-		"index": []byte{11},
+		headerutils.IndexFieldName: []byte{11},
 	}
 
 	parsedIndex, err := headerutils.ParseIndexHeader(toReadHeaders)
@@ -125,7 +125,7 @@ func TestParseIndexHeader(t *testing.T) {
 func TestParseTargetHeader(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
-		"target": []byte{1, 1, 1, 225, 1, 1, 1},
+		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
 	}
 
 	parsedTarget, err := headerutils.ParseTargetHeader(toReadHeaders)
@@ -135,7 +135,7 @@ func TestParseTargetHeader(t *testing.T) {
 
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
-	if !reflect.DeepEqual(parsedTarget, addr) {
+	if !parsedTarget.Equal(addr) {
 		t.Fatalf("Target mismatch, got %v, want %v", parsedTarget, addr)
 	}
 
@@ -143,7 +143,7 @@ func TestParseTargetHeader(t *testing.T) {
 
 func TestParsePriceHeader(t *testing.T) {
 	toReadHeaders := p2p.Headers{
-		"price": []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		headerutils.PriceFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
 	}
 
 	parsedPrice, err := headerutils.ParsePriceHeader(toReadHeaders)
@@ -159,9 +159,9 @@ func TestParsePriceHeader(t *testing.T) {
 
 func TestReadMalformedHeaders(t *testing.T) {
 	toReadHeaders := p2p.Headers{
-		"index":  []byte{11, 0},
-		"target": []byte{1, 1, 1, 225, 1, 1, 1},
-		"price":  []byte{0, 0, 0, 0, 0, 20, 228},
+		headerutils.IndexFieldName:  []byte{11, 0},
+		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
+		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 20, 228},
 	}
 
 	_, err := headerutils.ParseIndexHeader(toReadHeaders)

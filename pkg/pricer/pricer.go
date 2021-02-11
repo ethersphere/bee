@@ -1,4 +1,4 @@
-// Copyright 2021 The Swarm Authors. All rights reserved.
+// Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -221,11 +221,10 @@ func (s *Pricer) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
 }
 
 func (s *Pricer) storePriceTable(peer swarm.Address, priceTable []uint64) error {
-	s.logger.Debugf("Storing pricetable %v for peer %v", priceTable, peer)
+	s.logger.Tracef("Storing pricetable %v for peer %v", priceTable, peer)
 	err := s.store.Put(peerPriceTableKey(peer), priceTable)
 	if err != nil {
-		s.logger.Warningf("failed to persist pricetable for peer %v: %w", peer, err)
-		return ErrPersistingBalancePeer
+		return err
 	}
 	return nil
 }
@@ -263,7 +262,6 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	if index <= currentIndexDepth {
 		// Simple case, already have index depth, single value change
 		priceTable[index] = price
-		s.logger.Debugf("Storing updated pricetable %v for peer %v", priceTable, peer)
 		return s.storePriceTable(peer, priceTable)
 	}
 
@@ -276,20 +274,12 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	// Check how many rows are missing
 	numberOfMissingRows := index - currentIndexDepth
 
-	if numberOfMissingRows > 1 {
-
-		for i := uint8(1); i < numberOfMissingRows; i++ {
-			currentrow := index - i
-			newPriceTable[currentrow] = price + uint64(i)*s.poPrice
-			s.logger.Debugf("Guessing price %v for extending pricetable %v for peer %v", newPriceTable[currentrow], newPriceTable, peer)
-		}
-
+	for i := uint8(0); i < numberOfMissingRows; i++ {
+		currentrow := index - i
+		newPriceTable[currentrow] = price + uint64(i)*s.poPrice
+		s.logger.Debugf("Guessing price %v for extending pricetable %v for peer %v", newPriceTable[currentrow], newPriceTable, peer)
 	}
 
-	// if there was only one missing row, fill it now
-	newPriceTable[index] = price
-
-	s.logger.Debugf("Storing extended pricetable %v for peer %v", newPriceTable, peer)
 	return s.storePriceTable(peer, newPriceTable)
 }
 
