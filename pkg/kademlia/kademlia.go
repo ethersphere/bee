@@ -166,7 +166,7 @@ func (k *Kad) generateCommonBinPrefixes() {
 			for l := i + 1; l < i+k.bitSuffixLength+1; l++ {
 				index, pos := l/8, l%8
 
-				if hasBit(bitSufixes[j], 0) {
+				if hasBit(bitSufixes[j], uint8(bitSuffixPos)) {
 					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 				} else {
 					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
