@@ -563,7 +563,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameter
 	mockAccounting := accountingmock.NewAccounting()
 
 	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
-		target, _ := headerutils.ReadTargetHeader(h)
+		target, _ := headerutils.ParseTargetHeader(h)
 		headers, _ := headerutils.MakePricingResponseHeaders(prices.price, target, 0)
 		return headers
 	}

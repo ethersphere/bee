@@ -61,33 +61,33 @@ func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uin
 	return headers, nil
 }
 
-// ReadPricingHeaders used by responder to read address and price from stream headers
+// ParsePricingHeaders used by responder to read address and price from stream headers
 // Returns an error if no target field attached or the contents of it are not readable
-func ReadPricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
+func ParsePricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
 
-	target, err := ReadTargetHeader(receivedHeaders)
+	target, err := ParseTargetHeader(receivedHeaders)
 	if err != nil {
 		return swarm.ZeroAddress, 0, err
 	}
-	price, err := ReadPriceHeader(receivedHeaders)
+	price, err := ParsePriceHeader(receivedHeaders)
 	if err != nil {
 		return swarm.ZeroAddress, 0, err
 	}
 	return target, price, nil
 }
 
-// ReadPricingResponseHeaders used by requester to read address, price and index from response headers
+// ParsePricingResponseHeaders used by requester to read address, price and index from response headers
 // Returns an error if any fields are missing or target is unreadable
-func ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
-	target, err := ReadTargetHeader(receivedHeaders)
+func ParsePricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, uint8, error) {
+	target, err := ParseTargetHeader(receivedHeaders)
 	if err != nil {
 		return swarm.ZeroAddress, 0, 0, err
 	}
-	price, err := ReadPriceHeader(receivedHeaders)
+	price, err := ParsePriceHeader(receivedHeaders)
 	if err != nil {
 		return swarm.ZeroAddress, 0, 0, err
 	}
-	index, err := ReadIndexHeader(receivedHeaders)
+	index, err := ParseIndexHeader(receivedHeaders)
 	if err != nil {
 		return swarm.ZeroAddress, 0, 0, err
 	}
@@ -95,7 +95,7 @@ func ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uin
 	return target, price, index, nil
 }
 
-func ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
+func ParseIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
 	if receivedHeaders[indexFieldName] == nil {
 		return 0, ErrNoIndexHeader
 	}
@@ -108,7 +108,7 @@ func ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
 	return index, nil
 }
 
-func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
+func ParseTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 	if receivedHeaders[targetFieldName] == nil {
 		return swarm.ZeroAddress, ErrNoTargetHeader
 	}
@@ -118,7 +118,7 @@ func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
 	return target, nil
 }
 
-func ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
+func ParsePriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
 	if receivedHeaders[priceFieldName] == nil {
 		return 0, ErrNoPriceHeader
 	}

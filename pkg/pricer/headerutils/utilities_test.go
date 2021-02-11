@@ -55,30 +55,30 @@ func TestMakePricingResponseHeaders(t *testing.T) {
 
 }
 
-func TestReadPricingHeaders(t *testing.T) {
+func TestParsePricingHeaders(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
 		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
 		"target": []byte{1, 1, 1, 225, 1, 1, 1},
 	}
 
-	readTarget, readPrice, err := headerutils.ReadPricingHeaders(toReadHeaders)
+	parsedTarget, parsedPrice, err := headerutils.ParsePricingHeaders(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
-	if readPrice != uint64(5348) {
-		t.Fatalf("Price mismatch, got %v, want %v", readPrice, 5348)
+	if parsedPrice != uint64(5348) {
+		t.Fatalf("Price mismatch, got %v, want %v", parsedPrice, 5348)
 	}
 
-	if !reflect.DeepEqual(readTarget, addr) {
-		t.Fatalf("Target mismatch, got %v, want %v", readTarget, addr)
+	if !reflect.DeepEqual(parsedTarget, addr) {
+		t.Fatalf("Target mismatch, got %v, want %v", parsedTarget, addr)
 	}
 }
 
-func TestReadPricingResponseHeaders(t *testing.T) {
+func TestParsePricingResponseHeaders(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
 		"price":  []byte{0, 0, 0, 0, 0, 0, 20, 228},
@@ -86,73 +86,73 @@ func TestReadPricingResponseHeaders(t *testing.T) {
 		"index":  []byte{11},
 	}
 
-	readTarget, readPrice, readIndex, err := headerutils.ReadPricingResponseHeaders(toReadHeaders)
+	parsedTarget, parsedPrice, parsedIndex, err := headerutils.ParsePricingResponseHeaders(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
-	if readPrice != uint64(5348) {
-		t.Fatalf("Price mismatch, got %v, want %v", readPrice, 5348)
+	if parsedPrice != uint64(5348) {
+		t.Fatalf("Price mismatch, got %v, want %v", parsedPrice, 5348)
 	}
 
-	if readIndex != uint8(11) {
-		t.Fatalf("Price mismatch, got %v, want %v", readPrice, 5348)
+	if parsedIndex != uint8(11) {
+		t.Fatalf("Price mismatch, got %v, want %v", parsedPrice, 5348)
 	}
 
-	if !reflect.DeepEqual(readTarget, addr) {
-		t.Fatalf("Target mismatch, got %v, want %v", readTarget, addr)
+	if !reflect.DeepEqual(parsedTarget, addr) {
+		t.Fatalf("Target mismatch, got %v, want %v", parsedTarget, addr)
 	}
 }
 
-func TestReadIndexHeader(t *testing.T) {
+func TestParseIndexHeader(t *testing.T) {
 	toReadHeaders := p2p.Headers{
 		"index": []byte{11},
 	}
 
-	readIndex, err := headerutils.ReadIndexHeader(toReadHeaders)
+	parsedIndex, err := headerutils.ParseIndexHeader(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if readIndex != uint8(11) {
-		t.Fatalf("Index mismatch, got %v, want %v", readIndex, 11)
+	if parsedIndex != uint8(11) {
+		t.Fatalf("Index mismatch, got %v, want %v", parsedIndex, 11)
 	}
 
 }
 
-func TestReadTargetHeader(t *testing.T) {
+func TestParseTargetHeader(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
 		"target": []byte{1, 1, 1, 225, 1, 1, 1},
 	}
 
-	readTarget, err := headerutils.ReadTargetHeader(toReadHeaders)
+	parsedTarget, err := headerutils.ParseTargetHeader(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
-	if !reflect.DeepEqual(readTarget, addr) {
-		t.Fatalf("Target mismatch, got %v, want %v", readTarget, addr)
+	if !reflect.DeepEqual(parsedTarget, addr) {
+		t.Fatalf("Target mismatch, got %v, want %v", parsedTarget, addr)
 	}
 
 }
 
-func TestReadPriceHeader(t *testing.T) {
+func TestParsePriceHeader(t *testing.T) {
 	toReadHeaders := p2p.Headers{
 		"price": []byte{0, 0, 0, 0, 0, 0, 20, 228},
 	}
 
-	readPrice, err := headerutils.ReadPriceHeader(toReadHeaders)
+	parsedPrice, err := headerutils.ParsePriceHeader(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if readPrice != uint64(5348) {
-		t.Fatalf("Index mismatch, got %v, want %v", readPrice, 5348)
+	if parsedPrice != uint64(5348) {
+		t.Fatalf("Index mismatch, got %v, want %v", parsedPrice, 5348)
 	}
 
 }
@@ -164,22 +164,22 @@ func TestReadMalformedHeaders(t *testing.T) {
 		"price":  []byte{0, 0, 0, 0, 0, 20, 228},
 	}
 
-	_, err := headerutils.ReadIndexHeader(toReadHeaders)
+	_, err := headerutils.ParseIndexHeader(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error from bad length of index bytes")
 	}
 
-	_, err = headerutils.ReadPriceHeader(toReadHeaders)
+	_, err = headerutils.ParsePriceHeader(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error from bad length of price bytes")
 	}
 
-	_, _, _, err = headerutils.ReadPricingResponseHeaders(toReadHeaders)
+	_, _, _, err = headerutils.ParsePricingResponseHeaders(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error caused by bad length of fields")
 	}
 
-	_, _, err = headerutils.ReadPricingHeaders(toReadHeaders)
+	_, _, err = headerutils.ParsePricingHeaders(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error caused by bad length of fields")
 	}

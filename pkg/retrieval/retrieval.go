@@ -229,7 +229,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		}
 	}()
 
-	returnedTarget, returnedPrice, returnedIndex, err := headerutils.ReadPricingResponseHeaders(returnedHeaders)
+	returnedTarget, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
 	if err != nil {
 		return nil, peer, fmt.Errorf("retrieval headers: read returned: %w", err)
 	}
@@ -388,7 +388,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	// to get price Read in headler,
 	returnedHeaders := stream.ResponseHeaders()
-	chunkPrice, err := headerutils.ReadPriceHeader(returnedHeaders)
+	chunkPrice, err := headerutils.ParsePriceHeader(returnedHeaders)
 
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and

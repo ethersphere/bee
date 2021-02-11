@@ -126,7 +126,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// Get price we charge for upstream peer read at headler
 	responseHeaders := stream.ResponseHeaders()
-	price, err := headerutils.ReadPriceHeader(responseHeaders)
+	price, err := headerutils.ParsePriceHeader(responseHeaders)
 
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and
@@ -239,7 +239,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
 
 		returnedHeaders := streamer.Headers()
-		returnedTarget, returnedPrice, returnedIndex, err := headerutils.ReadPricingResponseHeaders(returnedHeaders)
+		returnedTarget, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
 		if err != nil {
 			return nil, fmt.Errorf("push price headers: read returned: %w", err)
 		}
