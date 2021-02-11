@@ -244,6 +244,12 @@ func TestManageWithBalancing(t *testing.T) {
 
 	waitBalanced(t, kad, 1)
 	waitBalanced(t, kad, 2)
+	waitBalanced(t, kad, 3)
+	waitBalanced(t, kad, 4)
+	waitBalanced(t, kad, 5)
+	waitBalanced(t, kad, 6)
+	waitBalanced(t, kad, 7)
+	waitBalanced(t, kad, 8)
 }
 
 // TestBinSaturation tests the builtin binSaturated function.
