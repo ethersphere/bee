@@ -143,16 +143,30 @@ func (k *Kad) generateCommonBinPrefixes() {
 		}
 	}
 
+	// flip first bit
+	baseHasBitFirst := hasBit(k.base.Bytes()[0], 0)
+	for i := range binPrefixes {
+		for j := range binPrefixes[i] {
+			pseudoAddrBytes := binPrefixes[i][j].Bytes()
+
+			if baseHasBitFirst {
+				pseudoAddrBytes[0] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[0]), 0))
+			} else {
+				pseudoAddrBytes[0] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[0]), 0))
+			}
+		}
+	}
+
 	// set pseudo suffix
 	for i := range binPrefixes {
 		for j := range binPrefixes[i] {
 			pseudoAddrBytes := binPrefixes[i][j].Bytes()
 
 			bitSuffixPos := k.bitSuffixLength - 1
-			for l := i; l < i+k.bitSuffixLength; l++ {
+			for l := i + 1; l < i+k.bitSuffixLength+1; l++ {
 				index, pos := l/8, l%8
 
-				if hasBit(bitSufixes[j], uint8(bitSuffixPos)) {
+				if hasBit(bitSufixes[j], 0) {
 					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 				} else {
 					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
@@ -167,7 +181,7 @@ func (k *Kad) generateCommonBinPrefixes() {
 		for j := range binPrefixes[i] {
 			pseudoAddrBytes := binPrefixes[i][j].Bytes()
 			// clear rest of the bits
-			for l := i + k.bitSuffixLength; l < len(pseudoAddrBytes)*8; l++ {
+			for l := i + k.bitSuffixLength + 1; l < len(pseudoAddrBytes)*8; l++ {
 				index, pos := l/8, l%8
 				pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 			}
