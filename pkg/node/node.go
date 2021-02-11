@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package node provides the glue-code needed in order
+// to start a Bee node.
 package node
 
 import (

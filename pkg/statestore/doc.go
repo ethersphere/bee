@@ -2,6 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package main provides the bee binary viper-cobra
-// command definitions.
-package main
+// Package statestore provides statestore leveldb implementation
+// and mock.
+package statestore
