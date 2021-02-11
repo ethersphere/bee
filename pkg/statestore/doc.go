@@ -2,6 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package statestore provides statestore leveldb implementation
-// and mock.
+// Package statestore provides statestore implementation
+// and mock. It uses leveldb under the hood.
 package statestore

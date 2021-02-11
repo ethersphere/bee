@@ -4,8 +4,8 @@
 
 // Package netstore provides an abstraction layer over the
 // Swarm local storage layer that leverages connectivity
-// with other peers in order to retrieve chunks that cannot
-// be found locally from the network.
+// with other peers in order to retrieve chunks from the network that cannot
+// be found locally.
 package netstore
 
 import (
