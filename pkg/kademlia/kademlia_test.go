@@ -167,7 +167,7 @@ func TestManage(t *testing.T) {
 		saturationFunc    = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 			return saturationVal, overSaturationVal
 		}
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{SaturationFunc: saturationFunc})
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BitSuffixLength: -1, SaturationFunc: saturationFunc})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -216,7 +216,7 @@ func TestBinSaturation(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BitSuffixLength: -1})
 		peers                    []swarm.Address
 	)
 
