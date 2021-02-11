@@ -130,7 +130,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and
-		ps.logger.Warningf("No price in previously issued response headers")
+		ps.logger.Warningf("push sync: peer %v no price in previously issued response headers: %v", p.Address, err)
 		price = ps.pricer.PriceForPeer(p.Address, chunk.Address())
 	}
 

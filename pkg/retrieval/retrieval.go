@@ -392,7 +392,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and
-		s.logger.Warningf("No price in previously issued response headers")
+		s.logger.Warningf("retrieval: peer %v no price in previously issued response headers: %v", p.Address, err)
 		chunkPrice = s.pricer.PriceForPeer(p.Address, chunk.Address())
 	}
 	// debit price from p's balance
