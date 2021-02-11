@@ -11,9 +11,15 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const (
+	priceFieldName  = "price"
+	targetFieldName = "target"
+	indexFieldName  = "index"
+)
+
 var (
-	// ErrFieldLenth denotes p2p.Header having malformed field length in bytes
-	ErrFieldLenth = errors.New("field length error")
+	// ErrFieldLength denotes p2p.Header having malformed field length in bytes
+	ErrFieldLength = errors.New("field length error")
 	// ErrNoIndexHeader denotes p2p.Header lacking specified field
 	ErrNoIndexHeader = errors.New("no index header")
 	// ErrNoTargetHeader denotes p2p.Header lacking specified field
@@ -31,8 +37,8 @@ func MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, err
 	binary.BigEndian.PutUint64(chunkPriceInBytes, chunkPrice)
 
 	headers := p2p.Headers{
-		"price":  chunkPriceInBytes,
-		"target": addr.Bytes(),
+		priceFieldName:  chunkPriceInBytes,
+		targetFieldName: addr.Bytes(),
 	}
 
 	return headers, nil
@@ -47,9 +53,9 @@ func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uin
 	chunkIndexInBytes[0] = index
 
 	headers := p2p.Headers{
-		"price":  chunkPriceInBytes,
-		"target": addr.Bytes(),
-		"index":  chunkIndexInBytes,
+		priceFieldName:  chunkPriceInBytes,
+		targetFieldName: addr.Bytes(),
+		indexFieldName:  chunkIndexInBytes,
 	}
 
 	return headers, nil
@@ -90,37 +96,37 @@ func ReadPricingResponseHeaders(receivedHeaders p2p.Headers) (swarm.Address, uin
 }
 
 func ReadIndexHeader(receivedHeaders p2p.Headers) (uint8, error) {
-	if receivedHeaders["index"] == nil {
+	if receivedHeaders[indexFieldName] == nil {
 		return 0, ErrNoIndexHeader
 	}
 
-	if len(receivedHeaders["index"]) != 1 {
-		return 0, ErrFieldLenth
+	if len(receivedHeaders[indexFieldName]) != 1 {
+		return 0, ErrFieldLength
 	}
 
-	index := receivedHeaders["index"][0]
+	index := receivedHeaders[indexFieldName][0]
 	return index, nil
 }
 
 func ReadTargetHeader(receivedHeaders p2p.Headers) (swarm.Address, error) {
-	if receivedHeaders["target"] == nil {
+	if receivedHeaders[targetFieldName] == nil {
 		return swarm.ZeroAddress, ErrNoTargetHeader
 	}
 
-	target := swarm.NewAddress(receivedHeaders["target"])
+	target := swarm.NewAddress(receivedHeaders[targetFieldName])
 
 	return target, nil
 }
 
 func ReadPriceHeader(receivedHeaders p2p.Headers) (uint64, error) {
-	if receivedHeaders["price"] == nil {
+	if receivedHeaders[priceFieldName] == nil {
 		return 0, ErrNoPriceHeader
 	}
 
-	if len(receivedHeaders["price"]) != 8 {
-		return 0, ErrFieldLenth
+	if len(receivedHeaders[priceFieldName]) != 8 {
+		return 0, ErrFieldLength
 	}
 
-	receivedPrice := binary.BigEndian.Uint64(receivedHeaders["price"])
+	receivedPrice := binary.BigEndian.Uint64(receivedHeaders[priceFieldName])
 	return receivedPrice, nil
 }
