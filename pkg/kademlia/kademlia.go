@@ -271,6 +271,12 @@ func (k *Kad) manage() {
 								continue
 							}
 
+							closestKnownPeerPO := swarm.Proximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
+
+							if int(closestKnownPeerPO) != i+k.bitSuffixLength {
+								continue
+							}
+
 							peer := closestKnownPeer
 
 							bzzAddr, err := k.addressBook.Get(peer)
