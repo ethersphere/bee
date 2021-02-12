@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package node defines the concept of a Bee node
+// by bootstrapping and injecting all necessary
+// dependencies.
 package node
 
 import (

@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package bzz exposes the data structure and operations
+// necessary on the bzz.Address type which used in the handshake
+// protocol, address-book and hive protocol.
 package bzz
 
 import (

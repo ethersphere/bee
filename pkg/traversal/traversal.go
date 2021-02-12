@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package traversal provides abstraction and implementation
+// needed to traverse all chunks below a given root hash.
+// It tries to parse all manifests and collections in its
+// attempt to log all chunk addresses on the way.
 package traversal
 
 import (

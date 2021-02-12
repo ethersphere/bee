@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package api provides the functionality of the Bee
+// client-facing HTTP API.
 package api
 
 import (

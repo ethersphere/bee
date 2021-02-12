@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package netstore provides an abstraction layer over the
+// Swarm local storage layer that leverages connectivity
+// with other peers in order to retrieve chunks from the network that cannot
+// be found locally.
 package netstore
 
 import (

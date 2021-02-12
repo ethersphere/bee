@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package pingpong exposes the simple ping-pong protocol
+// which measures round-trip-time with other peers.
 package pingpong
 
 import (

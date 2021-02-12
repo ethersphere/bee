@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package puller provides protocol-orchestrating functionality
+// over the pullsync protocol. It pulls chunks from other nodes
+// and reacts to changes in network configuration.
 package puller
 
 import (

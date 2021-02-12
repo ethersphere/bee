@@ -4,6 +4,8 @@
 
 // Most of the code is copied from package resenje.org/jsonresponse.
 
+// Package jsonhttp provides convenience methods to
+// provide better JSON HTTP APIs.
 package jsonhttp
 
 import (
