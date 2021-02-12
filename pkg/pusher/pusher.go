@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package pusher provides protocol-orchestrating functionality
+// over the pushsync protocol. It makes sure that chunks meant
+// to be distributed over the network are sent used using the
+// pushsync protocol.
 package pusher
 
 import (
