@@ -241,6 +241,7 @@ type signerConfig struct {
 	publicKey        *ecdsa.PublicKey
 	libp2pPrivateKey *ecdsa.PrivateKey
 	pssPrivateKey    *ecdsa.PrivateKey
+	swarmPrivateKey  *ecdsa.PrivateKey
 }
 
 func waitForClef(logger logging.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
@@ -272,6 +273,8 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	var address swarm.Address
 	var password string
 	var publicKey *ecdsa.PublicKey
+	var swarmPrivateKey *ecdsa.PrivateKey
+
 	if p := c.config.GetString(optionNamePassword); p != "" {
 		password = p
 	} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
@@ -338,12 +341,13 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		logger.Infof("using swarm network address through clef: %s", address)
 	} else {
 		logger.Warning("clef is not enabled; portability and security of your keys is sub optimal")
-		swarmPrivateKey, created, err := keystore.Key("swarm", password)
+		sk, created, err := keystore.Key("swarm", password)
 		if err != nil {
 			return nil, fmt.Errorf("swarm key: %w", err)
 		}
-		signer = crypto.NewDefaultSigner(swarmPrivateKey)
-		publicKey = &swarmPrivateKey.PublicKey
+		signer = crypto.NewDefaultSigner(sk)
+		publicKey = &sk.PublicKey
+		swarmPrivateKey = sk
 
 		address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
 		if err != nil {
@@ -394,5 +398,6 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		publicKey:        publicKey,
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,
+		swarmPrivateKey:  swarmPrivateKey,
 	}, nil
 }
