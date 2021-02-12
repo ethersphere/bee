@@ -148,8 +148,7 @@ func (k *Kad) generateCommonBinPrefixes() {
 			pseudoAddrBytes := binPrefixes[i][j].Bytes()
 
 			// flip first bit for bin
-			binFirstBitPos := uint8(i)
-			indexByte, posBit := binFirstBitPos/8, binFirstBitPos%8
+			indexByte, posBit := i/8, i%8
 			if hasBit(bits.Reverse8(pseudoAddrBytes[indexByte]), uint8(posBit)) {
 				pseudoAddrBytes[indexByte] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[indexByte]), uint8(posBit)))
 			} else {
