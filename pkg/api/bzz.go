@@ -93,6 +93,12 @@ FETCH:
 				jsonhttp.NotFound(w, "feed not found")
 				return
 			}
+			if ch == nil {
+				logger.Debugf("bzz download: feed lookup: no updates")
+				logger.Error("bzz download: feed lookup")
+				jsonhttp.NotFound(w, "no update found")
+				return
+			}
 			ref, _, err := parseFeedUpdate(ch)
 			if err != nil {
 				logger.Debugf("bzz download: parse feed update: %v", err)
