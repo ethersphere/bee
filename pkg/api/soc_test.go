@@ -124,6 +124,32 @@ func TestSoc(t *testing.T) {
 			t.Fatal("data retrieved doesnt match uploaded content")
 		}
 	})
+
+	t.Run("already exists", func(t *testing.T) {
+		s, owner, payload := mockSoc(t)
+		id := make([]byte, soc.IdSize)
+
+		sig := s.Signature()
+		addr, err := s.Address()
+		if err != nil {
+			t.Fatal(err)
+		}
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusCreated,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
+				Reference: addr,
+			}),
+		)
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusConflict,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(
+				jsonhttp.StatusResponse{
+					Message: "chunk already exists",
+					Code:    http.StatusConflict,
+				}),
+		)
+	})
+
 }
 
 // returns a valid, mocked SOC

@@ -105,7 +105,21 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
+
 	ctx := r.Context()
+
+	has, err := s.storer.Has(ctx, chunk.Address())
+	if err != nil {
+		s.logger.Debugf("soc upload: store has: %v", err)
+		s.logger.Error("soc upload: store has")
+		jsonhttp.InternalServerError(w, "storage error")
+		return
+	}
+	if has {
+		s.logger.Error("soc upload: chunk already exists")
+		jsonhttp.Conflict(w, "chunk already exists")
+		return
+	}
 
 	_, err = s.storer.Put(ctx, requestModePut(r), chunk)
 	if err != nil {
