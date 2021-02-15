@@ -83,15 +83,15 @@ func TestAllVectors(t *testing.T) {
 }
 
 func TestFindBug(t *testing.T) {
-	for i := 8192; i <= 8192; i++ {
+	m := mock.NewStorer()
+	ctx := context.Background()
+	for i := 50000; i <= 819200; i++ {
 		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 		data, err := g.SequentialBytes(i)
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
-			m := mock.NewStorer()
-			ctx := context.Background()
 			p := builder.NewPipelineBuilder(ctx, m, storage.ModePutUpload, false)
 
 			_, err := p.Write(data)
@@ -103,7 +103,7 @@ func TestFindBug(t *testing.T) {
 				t.Fatal(err)
 			}
 			a := swarm.NewAddress(sum)
-			fmt.Println("sum address", sum)
+			//fmt.Println("sum address", sum)
 			j, l, err := joiner.New(ctx, m, a)
 			if err != nil {
 				t.Fatal(err)
@@ -121,6 +121,9 @@ func TestFindBug(t *testing.T) {
 				//t.Fatalf("retrieved data '%x' not like original data '%x'", joinData, data)
 			}
 		})
+		if t.Failed() {
+			return
+		}
 	}
 }
 

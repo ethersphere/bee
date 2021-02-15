@@ -7,7 +7,6 @@ package hashtrie
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -40,7 +39,7 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipeline.Pip
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
-	fmt.Println("chain write", p.Ref)
+	//fmt.Println("chain write", p.Ref)
 	if len(p.Ref) == 0 {
 		panic(0)
 	}
@@ -53,14 +52,14 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
-	fmt.Println("span", span, "ref", ref, "cur", h.cursors[level])
+	//fmt.Println("span", span, "ref", ref, "cur", h.cursors[level])
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span)
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
 	h.cursors[level] += len(ref)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
 	h.cursors[level] += len(key)
-	fmt.Println("cur", h.cursors[level])
+	//fmt.Println("cur", h.cursors[level])
 	howLong := (h.refSize + swarm.SpanSize) * h.branching
 
 	if h.levelSize(level) == howLong {
@@ -81,7 +80,7 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 
 // assumes that the function has been called when refsize+span*branching has been reached
 func (h *hashTrieWriter) wrapFullLevel(level int) error {
-	fmt.Println("wrap full level")
+	//fmt.Println("wrap full level")
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	sp := uint64(0)
 	var hashes []byte
@@ -117,11 +116,11 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 
 // pulls and potentially wraps all levels up to target
 func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
-	fmt.Println("hoist", target)
+	//fmt.Println("hoist", target)
 	oneRef := h.refSize + swarm.SpanSize
 	for i := 1; i < target; i++ {
 		l := h.levelSize(i)
-		fmt.Println("level size", i, l)
+		//fmt.Println("level size", i, l)
 		if l%oneRef != 0 {
 			return nil, errInconsistentRefs
 		}
@@ -155,7 +154,7 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	if tlen == oneRef {
 		return data[8:], nil
 	}
-	fmt.Println(data)
+	//fmt.Println(data)
 
 	// here we are still with possible length of more than one ref in the highest+1 level
 	sp := uint64(0)
@@ -163,13 +162,13 @@ func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
 	for i := 0; i < len(data); i += h.refSize + 8 {
 		// sum up the spans of the level, then we need to bmt them and store it as a chunk
 		// then write the chunk address to the next level up
-		fmt.Println("sp", sp)
+		//fmt.Println("sp", sp)
 		sp += binary.LittleEndian.Uint64(data[i : i+8])
 		hash := data[i+8 : i+h.refSize+8]
-		fmt.Println("hash", hash)
+		//fmt.Println("hash", hash)
 		hashes = append(hashes, hash...)
 	}
-	fmt.Println("sp", sp)
+	//fmt.Println("sp", sp)
 
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)

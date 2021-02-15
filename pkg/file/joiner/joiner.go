@@ -135,7 +135,7 @@ func (j *joiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffse
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
 			eg.Go(func() error {
-				fmt.Println("get addr", address.Bytes())
+				//fmt.Println("get addr", address.Bytes())
 				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 				if err != nil {
 					return err
