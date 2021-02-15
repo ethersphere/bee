@@ -21,6 +21,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const DefaultLevels = 8
+
 var _ feeds.Index = (*index)(nil)
 var _ feeds.Lookup = (*finder)(nil)
 var _ feeds.Lookup = (*asyncFinder)(nil)
@@ -96,7 +98,7 @@ func (p *path) close() {
 }
 
 func newPath(base uint64) *path {
-	return &path{base: base, cancel: make(chan struct{})}
+	return &path{base: base, cancel: make(chan struct{}), level: DefaultLevels}
 }
 
 type result struct {
@@ -115,7 +117,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		return nil, nil, nil, err
 	}
 	if ch == nil {
-		return nil, nil, nil, nil
+		return nil, nil, &index{0}, nil
 	}
 	if diff == 0 {
 		return ch, &index{0}, &index{1}, nil
@@ -123,8 +125,8 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 	c := make(chan result)
 	p := newPath(0)
 	p.latest.chunk = ch
-	for p.level = 1; diff>>p.level > 0; p.level++ {
-	}
+	// for p.level = 1; diff>>p.level > 0; p.level++ {
+	// }
 	quit := make(chan struct{})
 	defer close(quit)
 	go f.at(ctx, at, p, c, quit)
@@ -205,7 +207,7 @@ func (f *asyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chun
 	if diff < 0 {
 		return nil, 0, nil
 	}
-	return u, diff, nil
+	return u, 1, nil
 }
 
 // updater encapsulates a feeds putter to generate successive updates for epoch based feeds

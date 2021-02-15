@@ -102,7 +102,7 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 
 			payload := []byte("payload")
 			for at := tc.offset; at < tc.offset+tc.count*tc.step; at += tc.step {
-				err = updater.Update(ctx, at, payload)
+				err = updater.Update(ctx, tc.offset, payload)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -130,8 +130,8 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 						if !bytes.Equal(payload, exp) {
 							t.Fatalf("payload mismatch: expected %x, got %x", exp, payload)
 						}
-						if ts != uint64(at) {
-							t.Fatalf("timestamp mismatch: expected %v, got %v", at, ts)
+						if ts != uint64(tc.offset) {
+							t.Fatalf("timestamp mismatch: expected %v, got %v", tc.offset, ts)
 						}
 					}
 				}
