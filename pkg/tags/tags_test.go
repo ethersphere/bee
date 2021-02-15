@@ -18,6 +18,7 @@ package tags
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 	"sort"
 	"testing"
@@ -224,7 +225,7 @@ func TestPersistence(t *testing.T) {
 
 	// get the tag after the node boot up
 	_, err = ts.Get(ta.Uid)
-	if err == nil {
-		t.Fatal("expected error but got none")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
 	}
 }
