@@ -39,7 +39,7 @@ func TestDBStore(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	store, err := leveldb.NewStateStore(dir)
+	store, err := leveldb.NewStateStore(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
