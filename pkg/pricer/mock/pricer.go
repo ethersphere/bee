@@ -118,3 +118,13 @@ type Option interface {
 type optionFunc func(*Service)
 
 func (f optionFunc) apply(r *Service) { f(r) }
+
+// GRACE PERIOD
+
+func (pricer *Service) OldPeerPrice(peer, chunk swarm.Address) uint64 {
+	return pricer.peerPrice
+}
+
+func (pricer *Service) OldPriceForPeer(chunk swarm.Address) uint64 {
+	return pricer.price
+}
