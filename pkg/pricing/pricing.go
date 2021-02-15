@@ -117,7 +117,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 	return err
 }
 
-// AnnouncePaymentThreshold announces the payment threshold to per
+// AnnouncePaymentThreshold announces the payment threshold to peer
 func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
