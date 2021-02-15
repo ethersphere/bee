@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package pricing exposes the functionality to send and receive protocol messages to communicate with peers on bandwidth-accounting related variables: the payment threshold and price tables.
 package pricing
 
 import (
@@ -26,18 +27,18 @@ const (
 
 var _ Interface = (*Service)(nil)
 
-// Interface is the main interface of the pricing protocol
+// Interface is the main interface of the pricing protocol.
 type Interface interface {
 	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
 	AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
 }
 
-// PriceTableObserver is used for being notified of price table updates
+// PriceTableObserver is used for being notified of price table updates.
 type PriceTableObserver interface {
-	NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
+	NotifyPriceTable(peer swarm.Address, priceTable pricer.PriceTable) error
 }
 
-// PaymentThresholdObserver is used for being notified of payment threshold updates
+// PaymentThresholdObserver is used for being notified of payment threshold updates.
 type PaymentThresholdObserver interface {
 	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error
 }
@@ -117,7 +118,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 	return err
 }
 
-// AnnouncePaymentThreshold announces the payment threshold to peer
+// AnnouncePaymentThreshold announces the payment threshold to peer.
 func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -143,7 +144,7 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 	return err
 }
 
-// AnnouncePaymentThresholdAndPriceTable announces own payment threshold and pricetable to peer
+// AnnouncePaymentThresholdAndPriceTable announces own payment threshold and pricetable to peer.
 func (s *Service) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -170,12 +171,12 @@ func (s *Service) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, pee
 	return err
 }
 
-// SetPaymentThresholdObserver sets the PaymentThresholdObserver to be used when receiving a new payment threshold
+// SetPaymentThresholdObserver sets the PaymentThresholdObserver to be used when receiving a new payment threshold.
 func (s *Service) SetPaymentThresholdObserver(observer PaymentThresholdObserver) {
 	s.paymentThresholdObserver = observer
 }
 
-// SetPriceTableObserver sets the PriceTableObserver to be used when receiving a new pricetable
+// SetPriceTableObserver sets the PriceTableObserver to be used when receiving a new pricetable.
 func (s *Service) SetPriceTableObserver(observer PriceTableObserver) {
 	s.priceTableObserver = observer
 }
