@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -43,6 +44,7 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 	var chunkData = rootChunk.Data()
 
 	span := int64(binary.LittleEndian.Uint64(chunkData[:swarm.SpanSize]))
+	fmt.Println("root chunk", address.Bytes(), span)
 
 	j := &joiner{
 		addr:      rootChunk.Address(),
@@ -133,12 +135,14 @@ func (j *joiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffse
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64) {
 			eg.Go(func() error {
+				fmt.Println("get addr", address.Bytes())
 				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
 				if err != nil {
 					return err
 				}
 
 				chunkData := ch.Data()[8:]
+				//fmt.Println("address", address.Bytes(), "data", chunkData)
 				subtrieSpan := int64(chunkToSpan(ch.Data()))
 				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, eg)
 				return nil

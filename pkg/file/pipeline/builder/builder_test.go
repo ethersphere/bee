@@ -10,14 +10,17 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"strconv"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 
 func TestPartialWrites(t *testing.T) {
@@ -74,6 +77,48 @@ func TestAllVectors(t *testing.T) {
 			a := swarm.NewAddress(sum)
 			if !a.Equal(expect) {
 				t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
+			}
+		})
+	}
+}
+
+func TestFindBug(t *testing.T) {
+	for i := 8192; i <= 8192; i++ {
+		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+		data, err := g.SequentialBytes(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
+			m := mock.NewStorer()
+			ctx := context.Background()
+			p := builder.NewPipelineBuilder(ctx, m, storage.ModePutUpload, false)
+
+			_, err := p.Write(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum, err := p.Sum()
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := swarm.NewAddress(sum)
+			fmt.Println("sum address", sum)
+			j, l, err := joiner.New(ctx, m, a)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if l != int64(i) {
+				t.Fatalf("expected join data length %d, got %d", i, l)
+			}
+			joinData, err := ioutil.ReadAll(j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(joinData, data) {
+				t.Fatal("data mismatch")
+				//t.Fatalf("retrieved data '%x' not like original data '%x'", joinData, data)
 			}
 		})
 	}

@@ -93,7 +93,9 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 			po := swarm.Proximity(ch.Address().Bytes(), m.baseAddress)
 			m.bins[po]++
 		}
-		m.store[ch.Address().String()] = ch.Data()
+		b := make([]byte, len(ch.Data()))
+		copy(b, ch.Data())
+		m.store[ch.Address().String()] = b
 		m.modePut[ch.Address().String()] = mode
 
 		// pin chunks if needed
