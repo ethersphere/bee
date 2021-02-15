@@ -6,6 +6,7 @@ package sequence_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -19,8 +20,13 @@ func TestFinder(t *testing.T) {
 		t.Run("basic", func(t *testing.T) {
 			feedstesting.TestFinderBasic(t, finderf, updaterf)
 		})
+		i := 0
+		nextf := func() (bool, int64) {
+			defer func() { i++ }()
+			return i == 50, time.Now().UnixNano()
+		}
 		t.Run("fixed", func(t *testing.T) {
-			feedstesting.TestFinderFixIntervals(t, finderf, updaterf)
+			feedstesting.TestFinderFixIntervals(t, nextf, finderf, updaterf)
 		})
 		t.Run("random", func(t *testing.T) {
 			feedstesting.TestFinderRandomIntervals(t, finderf, updaterf)

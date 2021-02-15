@@ -48,10 +48,14 @@ func lca(at, after int64) *epoch {
 	return &epoch{start, level}
 }
 
-func next(e *epoch, last int64, at uint64) *epoch {
+func next(e feeds.Index, last int64, at uint64) feeds.Index {
 	if e == nil {
 		return &epoch{0, maxLevel}
 	}
+	return e.Next(last, at)
+}
+
+func (e *epoch) Next(last int64, at uint64) feeds.Index {
 	if e.start+e.length() > at {
 		return e.childAt(at)
 	}

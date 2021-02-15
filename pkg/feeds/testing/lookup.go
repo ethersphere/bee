@@ -8,6 +8,7 @@ package testing
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -73,70 +74,89 @@ func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) fee
 	})
 }
 
-func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
-	for _, tc := range []struct {
-		count  int64
-		step   int64
-		offset int64
-	}{
-		{50, 1, 0},
-		{50, 1, 10000},
-		{50, 100, 0},
-		{50, 100, 100000},
-	} {
-		t.Run(fmt.Sprintf("count=%d,step=%d,offset=%d", tc.count, tc.step, tc.offset), func(t *testing.T) {
-			storer := mock.NewStorer()
-			topicStr := "testtopic"
-			topic, err := crypto.LegacyKeccak256([]byte(topicStr))
+func TestFinderFixIntervals(t *testing.T, nextf func() (bool, int64), finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
+
+	storer := mock.NewStorer()
+	topicStr := "testtopic"
+	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(pk)
+
+	updater, err := updaterf(storer, signer, topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	payload := make([]byte, 8)
+	var timesNow []int64
+	for stop, timeNow := nextf(); !stop; stop, timeNow = nextf() {
+		timesNow = append(timesNow, timeNow)
+		binary.BigEndian.PutUint64(payload, uint64(timeNow))
+		err = updater.Update(ctx, timeNow, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	finder := finderf(storer, updater.Feed())
+	for i, timeNow := range timesNow {
+		d := int64(3)
+		if i < len(timesNow)-1 {
+			d = timesNow[i+1] - timeNow
+		}
+		step := d / 3
+		if step == 0 {
+			step = 1
+		}
+		for now := timeNow; now < timeNow+d; now += step {
+			ch, current, next, err := finder.At(ctx, now, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
-			pk, _ := crypto.GenerateSecp256k1Key()
-			signer := crypto.NewDefaultSigner(pk)
-
-			updater, err := updaterf(storer, signer, topic)
+			if ch == nil {
+				t.Fatalf("expected to find update, got none")
+			}
+			ts, payload, err := feeds.FromChunk(ch)
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx := context.Background()
+			content := binary.BigEndian.Uint64(payload)
+			if content != uint64(timeNow) {
+				t.Fatalf("payload mismatch: expected %v, got %v", timeNow, content)
+			}
 
-			payload := []byte("payload")
-			for at := tc.offset; at < tc.offset+tc.count*tc.step; at += tc.step {
-				err = updater.Update(ctx, at, payload)
+			if ts != uint64(timeNow) {
+				t.Fatalf("timestamp mismatch: expected %v, got %v", timeNow, ts)
+			}
+
+			if current != nil {
+				expectedId := ch.Data()[:32]
+				id, err := feeds.Id(topic, current)
 				if err != nil {
 					t.Fatal(err)
 				}
-			}
-			finder := finderf(storer, updater.Feed())
-			for at := tc.offset; at < tc.offset+tc.count*tc.step; at += tc.step {
-				for after := tc.offset; after < at; after += tc.step {
-					step := int64(1)
-					if tc.step > 1 {
-						step = tc.step / 4
-					}
-					for now := at; now < at+tc.step; now += step {
-						ch, _, _, err := finder.At(ctx, now, after)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if ch == nil {
-							t.Fatalf("expected to find update, got none")
-						}
-						exp := payload
-						ts, payload, err := feeds.FromChunk(ch)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if !bytes.Equal(payload, exp) {
-							t.Fatalf("payload mismatch: expected %x, got %x", exp, payload)
-						}
-						if ts != uint64(at) {
-							t.Fatalf("timestamp mismatch: expected %v, got %v", at, ts)
-						}
-					}
+				if !bytes.Equal(id, expectedId) {
+					t.Fatalf("current mismatch: expected %x, got %x", expectedId, id)
 				}
 			}
-		})
+			if next != nil {
+				expectedNext := current.Next(timeNow, uint64(timeNow))
+				expectedIdx, err := expectedNext.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				idx, err := next.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(idx, expectedIdx) {
+					t.Fatalf("next mismatch: expected %x, got %x", expectedIdx, idx)
+				}
+			}
+		}
 	}
 }
 
