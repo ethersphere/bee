@@ -210,4 +210,21 @@ func TestPersistence(t *testing.T) {
 	if ta.Synced != rcvd2.Synced {
 		t.Fatalf("invalid synced: expected %d got %d", ta.Synced, rcvd2.Synced)
 	}
+
+	// regression test case: make sure that a persisted tag
+	// is flushed from statestore on Delete
+	ts.Delete(ta.Uid)
+
+	// simulate node closing down and booting up
+	err = ts.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts = NewTags(mockStatestore, logger)
+
+	// get the tag after the node boot up
+	_, err = ts.Get(ta.Uid)
+	if err == nil {
+		t.Fatal("expected error but got none")
+	}
 }
