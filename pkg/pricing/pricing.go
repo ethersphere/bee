@@ -94,9 +94,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, paymentThreshold)
 
-	s.logger.Tracef("received payment threshold and/or price table announcement from peer %v of %d", p.Address, req.PaymentThreshold)
-
 	if req.ProximityPrice != nil {
+		s.logger.Tracef("received pricetable announcement from peer %v of %v", p.Address, req.ProximityPrice)
 		err = s.priceTableObserver.NotifyPriceTable(p.Address, req.ProximityPrice)
 		if err != nil {
 			s.logger.Debugf("error receiving pricetable from peer %v: %w", p.Address, err)
