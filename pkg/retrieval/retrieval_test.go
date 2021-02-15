@@ -44,18 +44,14 @@ func TestDelivery(t *testing.T) {
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
 		price      = uint64(10)
-		pricerMock = accountingmock.NewPricer(price, price)
+		pricerMock = pricermock.NewMockService()
 	)
+
 	// put testdata in the mock store of the server
 	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	serverMockAccounting := accountingmock.NewAccounting()
-
-	price := uint64(10)
-	pricerMock := pricermock.NewMockService()
 
 	// create the server that will handle the request and will serve the response
 	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil)
