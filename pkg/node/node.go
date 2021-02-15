@@ -329,6 +329,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	pricer := pricer.New(logger, stateStore, kad, swarmAddress, 1000000000)
 	pricing := pricing.New(p2ps, logger, paymentThreshold, pricer)
+	pricing.SetPriceTableObserver(pricer)
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
