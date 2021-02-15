@@ -230,20 +230,29 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}()
 
 	returnedTarget, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
+
 	if err != nil {
-		return nil, peer, fmt.Errorf("retrieval headers: read returned: %w", err)
+		// GRACE PERIOD
+		s.logger.Debugf("retrieval price headers: invalid pricing headers, using static pricer for peer %s", peer)
+		chunkPrice = s.pricer.OldPeerPrice(peer, addr)
+
+		// End of grace period:
+		// return nil, peer, fmt.Errorf("retrieval headers: read returned: %w", err)
 	}
 
-	s.logger.Debugf("retrieval headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
-	s.logger.Debugf("retrieval headers: original target %v with price as %v, from peer %s", addr, chunkPrice, peer)
 	// returned checker
-	if returnedPrice != chunkPrice {
-		err = s.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
-		if err != nil {
-			return nil, peer, err
+	if err == nil {
+		s.logger.Debugf("retrieval headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
+		s.logger.Debugf("retrieval headers: original target %v with price as %v, from peer %s", addr, chunkPrice, peer)
+
+		if returnedPrice != chunkPrice {
+			err = s.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
+			if err != nil {
+				return nil, peer, err
+			}
+			chunkPrice = returnedPrice
+			//return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
 		}
-		chunkPrice = returnedPrice
-		//return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
 	}
 
 	// Reserve to see whether we can request the chunk based on actual price
@@ -393,7 +402,12 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and
 		s.logger.Warningf("retrieval: peer %v no price in previously issued response headers: %v", p.Address, err)
-		chunkPrice = s.pricer.PriceForPeer(p.Address, chunk.Address())
+
+		// GRACE PERIOD
+		chunkPrice = s.pricer.OldPriceForPeer(chunk.Address())
+
+		// End of grace period:
+		// chunkPrice = s.pricer.PriceForPeer(p.Address, chunk.Address())
 	}
 	// debit price from p's balance
 	return s.accounting.Debit(p.Address, chunkPrice)

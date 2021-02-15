@@ -37,6 +37,10 @@ type Interface interface {
 	NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error
 	// PriceHeadler creates response headers with pricing information
 	PriceHeadler(p2p.Headers, swarm.Address) p2p.Headers
+
+	// GRACE PERIOD
+	OldPeerPrice(peer, chunk swarm.Address) uint64
+	OldPriceForPeer(chunk swarm.Address) uint64
 }
 
 var (
@@ -337,6 +341,13 @@ func (s *Pricer) SetTopology(top topology.Driver) {
 	s.topology = top
 }
 
-func (s *Pricer) SetKademlia(kad topology.Driver) {
-	s.topology = kad
+// GRACE PERIOD
+// OldPeerPrice implements Pricer.
+func (pricer *Pricer) OldPeerPrice(peer, chunk swarm.Address) uint64 {
+	return uint64(swarm.MaxPO-swarm.Proximity(peer.Bytes(), chunk.Bytes())+1) * pricer.poPrice
+}
+
+// OldPriceForPeer implements Pricer.
+func (pricer *Pricer) OldPriceForPeer(chunk swarm.Address) uint64 {
+	return pricer.PeerPrice(pricer.overlay, chunk)
 }

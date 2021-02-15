@@ -131,7 +131,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if err != nil {
 		// if not found in returned header, compute the price we charge for this chunk and
 		ps.logger.Warningf("push sync: peer %v no price in previously issued response headers: %v", p.Address, err)
-		price = ps.pricer.PriceForPeer(p.Address, chunk.Address())
+		// GRACE PERIOD
+		price = ps.pricer.OldPriceForPeer(chunk.Address())
+
+		// End of grace period:
+		// price = ps.pricer.PriceForPeer(p.Address, chunk.Address())
 	}
 
 	receipt, err := ps.pushToClosest(ctx, chunk)
@@ -241,21 +245,29 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		returnedHeaders := streamer.Headers()
 		returnedTarget, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
 		if err != nil {
-			return nil, fmt.Errorf("push price headers: read returned: %w", err)
+
+			// GRACE PERIOD
+			ps.logger.Debugf("push price headers: invalid pricing headers, using static pricer for peer %s", peer)
+			receiptPrice = ps.pricer.OldPeerPrice(peer, ch.Address())
+
+			// End of grace period:
+			// return nil, fmt.Errorf("push price headers: read returned: %w", err)
 		}
 
-		ps.logger.Debugf("push price headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
-		ps.logger.Debugf("push price headers: original target %v with price as %v, from peer %s", ch.Address(), receiptPrice, peer)
 		// returned checker
-		if returnedPrice != receiptPrice {
-			err = ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
-			if err != nil {
-				return nil, err
-			}
-			receiptPrice = returnedPrice
-			//return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
-		}
+		if err == nil {
+			ps.logger.Debugf("push price headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
+			ps.logger.Debugf("push price headers: original target %v with price as %v, from peer %s", ch.Address(), receiptPrice, peer)
 
+			if returnedPrice != receiptPrice {
+				err = ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
+				if err != nil {
+					return nil, err
+				}
+				receiptPrice = returnedPrice
+				//return nil, fmt.Errorf("price mismatch: %w", err)
+			}
+		}
 		// Reserve to see whether we can make the request based on actual price
 		err = ps.accounting.Reserve(ctx, peer, receiptPrice)
 		if err != nil {
