@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package pricer exposes the main types and functions which tells the node the price it charges for certain chunks and
-// the price it is charged by it's peers for chunks.
 package pricer
 
 import (
@@ -28,13 +26,13 @@ var _ Interface = (*Pricer)(nil)
 // Pricer returns pricing information for chunk hashes and proximity orders
 type Interface interface {
 	// PriceTable returns pricetable stored for the node.
-	PriceTable() PriceTable
+	PriceTable() []uint64
 	// PeerPrice is the price which the peer charges for a given chunk hash.
 	PeerPrice(peer, chunk swarm.Address) uint64
 	// PriceForPeer is the price we charge a peer for a given chunk hash.
 	PriceForPeer(peer, chunk swarm.Address) uint64
 	// NotifyPriceTable saves a provided pricetable for a peer to store.
-	NotifyPriceTable(peer swarm.Address, priceTable PriceTable) error
+	NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 	// NotifyPeerPrice updates the price which belongs to a proximity order index in a peer pricetable.
 	NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error
 	// PriceHeadler creates response headers with pricing information.
@@ -48,11 +46,6 @@ type Interface interface {
 var (
 	ErrPersistingBalancePeer = errors.New("failed to persist pricetable for peer")
 )
-
-// PriceTable defines the prices for al chunks by setting a price at each index,
-// where the index corresponds to a proximityOrder distance between the node and the chunk,
-// up to the neighborhood depth of the node.
-type PriceTable = []uint64
 
 type pricingPeer struct {
 	lock sync.Mutex
@@ -80,7 +73,7 @@ func New(logger logging.Logger, store storage.StateStorer, overlay swarm.Address
 
 // PriceTable returns the pricetable stored for the node.
 // If not available, the default pricetable is provided.
-func (s *Pricer) PriceTable() (priceTable PriceTable) {
+func (s *Pricer) PriceTable() (priceTable []uint64) {
 	err := s.store.Get(priceTableKey(), &priceTable)
 	if err != nil {
 		priceTable = s.defaultPriceTable()
@@ -90,7 +83,7 @@ func (s *Pricer) PriceTable() (priceTable PriceTable) {
 
 // peerPriceTable returns the price table stored for the given peer.
 // If we can't get price table from store, we return the default price table
-func (s *Pricer) peerPriceTable(peer swarm.Address) (priceTable PriceTable) {
+func (s *Pricer) peerPriceTable(peer swarm.Address) (priceTable []uint64) {
 	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
 		priceTable = s.defaultPriceTable() // get default pricetable
@@ -163,7 +156,7 @@ func (s *Pricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 	proximity := swarm.Proximity(peer.Bytes(), chunk.Bytes())
 
 	// Determine neighborhood depth presumed by peer based on pricetable rows
-	var priceTable PriceTable
+	var priceTable []uint64
 	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	peerNeighborhoodDepth := uint8(len(priceTable) - 1)
 	if err != nil {
@@ -190,7 +183,7 @@ func (s *Pricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 
 // peerPricePO returns the price for a PO from the table stored for the given peer.
 func (s *Pricer) peerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
-	var priceTable PriceTable
+	var priceTable []uint64
 	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
@@ -231,7 +224,7 @@ func (s *Pricer) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
 	return peerData, nil
 }
 
-func (s *Pricer) storePriceTable(peer swarm.Address, priceTable PriceTable) error {
+func (s *Pricer) storePriceTable(peer swarm.Address, priceTable []uint64) error {
 	s.logger.Tracef("Storing pricetable %v for peer %v", priceTable, peer)
 	err := s.store.Put(peerPriceTableKey(peer), priceTable)
 	if err != nil {
@@ -242,7 +235,7 @@ func (s *Pricer) storePriceTable(peer swarm.Address, priceTable PriceTable) erro
 
 // NotifyPriceTable implements the PriceTableObserver by saving the provided priceTable for a peer.
 // NotifyPriceTable should be called when we learn about a new priceTable for a peer.
-func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable PriceTable) error {
+func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
 	pricingPeer, err := s.getPricingPeer(peer)
 	if err != nil {
 		return err
@@ -299,7 +292,7 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	return s.storePriceTable(peer, newPriceTable)
 }
 
-func (s *Pricer) defaultPriceTable() PriceTable {
+func (s *Pricer) defaultPriceTable() []uint64 {
 	neighborhoodDepth := s.neighborhoodDepth()
 	priceTable := make([]uint64, neighborhoodDepth+1)
 	for i := uint8(0); i <= neighborhoodDepth; i++ {

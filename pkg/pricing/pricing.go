@@ -35,7 +35,7 @@ type Interface interface {
 
 // PriceTableObserver is used for being notified of price table updates.
 type PriceTableObserver interface {
-	NotifyPriceTable(peer swarm.Address, priceTable pricer.PriceTable) error
+	NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 }
 
 // PaymentThresholdObserver is used for being notified of payment threshold updates.
