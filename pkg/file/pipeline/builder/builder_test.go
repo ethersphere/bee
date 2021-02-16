@@ -134,7 +134,7 @@ func TestFindBug(t *testing.T) {
 func TestE2E(t *testing.T) {
 	m := mock.NewStorer()
 	ctx := context.Background()
-	size := 128 * 128 * 128 * 4096
+	size := 100000000000                 // 100 gigs    // 128 * 128 * 128 * 4096
 	buffer := make([]byte, 1024*1024*10) // ten megs buffer
 	p := builder.NewPipelineBuilder(ctx, m, storage.ModePutUpload, false)
 	r := mrand.New(mrand.NewSource(99))
