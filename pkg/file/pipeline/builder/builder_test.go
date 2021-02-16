@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	mockbytes "gitlab.com/nolash/go-mockbytes"
+	"golang.org/x/crypto/sha3"
 )
 
 func TestPartialWrites(t *testing.T) {
@@ -125,6 +126,68 @@ func TestFindBug(t *testing.T) {
 		if t.Failed() {
 			return
 		}
+	}
+}
+
+func TestE2E(t *testing.T) {
+	m := mock.NewStorer()
+	ctx := context.Background()
+	size := 128 * 128 * 128 * 4096
+	buffer := make([]byte, 1024*1024*10) // ten megs buffer
+	p := builder.NewPipelineBuilder(ctx, m, storage.ModePutUpload, false)
+	hasher := sha3.NewLegacyKeccak256()
+	for written := 0; written < size; {
+		n, err := rand.Read(buffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n > size-written {
+			n = size - written
+		}
+		_, err = p.Write(buffer[:n])
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = hasher.Write(buffer[:n])
+		if err != nil {
+			t.Fatal(err)
+		}
+		written += n
+	}
+	sh3sum := hasher.Sum(nil) // sha3 sum
+	fmt.Println(hex.EncodeToString(sh3sum))
+
+	sum, err := p.Sum() // hashtrie sum
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := swarm.NewAddress(sum)
+	j, l, err := joiner.New(ctx, m, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l != int64(size) {
+		t.Fatalf("expected join data length %d, got %d", size, l)
+	}
+
+	read := 0
+	readHasher := sha3.NewLegacyKeccak256()
+
+	for read < size {
+		n, err := j.Read(buffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = readHasher.Write(buffer[:n])
+		if err != nil {
+			t.Fatal(err)
+		}
+		read += n
+	}
+
+	refSum := readHasher.Sum(nil)
+	if !bytes.Equal(refSum, sh3sum) {
+		t.Fatal("sums unequal!")
 	}
 }
 

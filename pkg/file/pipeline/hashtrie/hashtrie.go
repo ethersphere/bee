@@ -7,7 +7,6 @@ package hashtrie
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -52,7 +51,7 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
-	fmt.Println("write to level", level, "span", span, "ref", ref, "cur", h.cursors[level])
+	//fmt.Println("write to level", level, "span", span, "ref", ref, "cur", h.cursors[level])
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span)
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
@@ -63,11 +62,11 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 	//fmt.Println(h.cursors)
 	//panic("overwrite")
 	//}
-	fmt.Println("cur", h.cursors[level])
+	//fmt.Println("cur", h.cursors[level])
 	howLong := (h.refSize + swarm.SpanSize) * h.branching
 
 	if h.levelSize(level) == howLong {
-		fmt.Println("wrap full level", level, howLong)
+		//fmt.Println("wrap full level", level, howLong)
 		return h.wrapFullLevel(level)
 	}
 	return nil
@@ -84,7 +83,7 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 //	 - remove already hashed data from buffer
 // assumes that the function has been called when refsize+span*branching has been reached
 func (h *hashTrieWriter) wrapFullLevel(level int) error {
-	fmt.Println("wrap full, level", level)
+	//fmt.Println("wrap full, level", level)
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	sp := uint64(0)
 	var hashes []byte
@@ -137,19 +136,19 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 	//		the hash to the next level, potentially resulting in a level wrap
 	//	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
 	//		the next level.
-	fmt.Println("sum")
+	//fmt.Println("sum")
 	for i := 1; i < maxLevel; i++ {
 		l := h.levelSize(i)
-		fmt.Println("level size", i, l, "cursors", h.cursors)
+		//fmt.Println("level size", i, l, "cursors", h.cursors)
 		if l%oneRef != 0 {
 			return nil, errInconsistentRefs
 		}
 		switch {
 		case l == 0:
-			fmt.Println("hoist, empty level")
+			//fmt.Println("hoist, empty level")
 			continue
 		case l == h.fullChunk:
-			fmt.Println("hoist, full chunk")
+			//fmt.Println("hoist, full chunk")
 			err := h.wrapFullLevel(i)
 			if err != nil {
 				return nil, err
@@ -160,10 +159,9 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			// take the hash|span|key from this level, and append it to
 			// the data of the next level.
 			h.cursors[i+1] = h.cursors[i]
-			//h.cursors[i] = h.cursors[i-1]
-			fmt.Println("hoist, one ref", h.cursors)
+			//fmt.Println("hoist, one ref", h.cursors)
 		default:
-			fmt.Println("hoist, some stuff")
+			//fmt.Println("hoist, some stuff")
 			// more than 0 but smaller than chunk size - wrap the level to the one above it
 			err := h.wrapFullLevel(i)
 			if err != nil {
@@ -172,15 +170,15 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		}
 	}
 	tlen := h.levelSize(8)
-	fmt.Println(h.cursors, tlen)
+	//fmt.Println(h.cursors, tlen)
 	// take the hash in the highest level, that's all we need
 	data := h.buffer[0:h.cursors[8]]
-	fmt.Println(data)
+	//fmt.Println(data)
 	if tlen%oneRef != 0 {
 		return nil, errInconsistentRefs
 	}
 	if tlen == oneRef {
 		return data[8:], nil
 	}
-	panic(tlen)
+	return nil, errors.New("weird data size")
 }
