@@ -11,8 +11,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	mrand "math/rand"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
@@ -135,12 +137,15 @@ func TestE2E(t *testing.T) {
 	size := 128 * 128 * 128 * 4096
 	buffer := make([]byte, 1024*1024*10) // ten megs buffer
 	p := builder.NewPipelineBuilder(ctx, m, storage.ModePutUpload, false)
+	r := mrand.New(mrand.NewSource(99))
 	hasher := sha3.NewLegacyKeccak256()
 	for written := 0; written < size; {
-		n, err := rand.Read(buffer)
+		ttt := time.Now()
+		n, err := r.Read(buffer)
 		if err != nil {
 			t.Fatal(err)
 		}
+		fmt.Println("read took", time.Since(ttt))
 		if n > size-written {
 			n = size - written
 		}
