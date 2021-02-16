@@ -349,5 +349,5 @@ func (pricer *Pricer) OldPeerPrice(peer, chunk swarm.Address) uint64 {
 
 // OldPriceForPeer implements Pricer.
 func (pricer *Pricer) OldPriceForPeer(chunk swarm.Address) uint64 {
-	return pricer.PeerPrice(pricer.overlay, chunk)
+	return pricer.OldPeerPrice(pricer.overlay, chunk)
 }
