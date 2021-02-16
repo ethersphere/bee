@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -10,7 +10,6 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -50,10 +49,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	mockinmem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -131,103 +127,74 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		tracerCloser:   tracerCloser,
 	}
 
-	var stateStore storage.StateStorer
-	if o.DataDir == "" {
-		stateStore = mockinmem.NewStateStore()
-		logger.Warning("using in-mem state store. no node state will be persisted")
-	} else {
-		stateStore, err = leveldb.NewStateStore(filepath.Join(o.DataDir, "statestore"), logger)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: %w", err)
-		}
+	stateStore, err := InitStateStore(logger, o.DataDir)
+	if err != nil {
+		return nil, err
 	}
 	b.stateStoreCloser = stateStore
+
 	addressbook := addressbook.New(stateStore)
 
+	var swapBackend *ethclient.Client
+	var overlayEthAddress common.Address
+	var chainID int64
+	var transactionService transaction.Service
+	var chequebookFactory chequebook.Factory
 	var chequebookService chequebook.Service
 	var chequeStore chequebook.ChequeStore
 	var cashoutService chequebook.CashoutService
-	var overlayEthAddress common.Address
+
 	if o.SwapEnable {
-		swapBackend, err := ethclient.Dial(o.SwapEndpoint)
-		if err != nil {
-			return nil, err
-		}
-
-		chainID, err := swapBackend.ChainID(p2pCtx)
-		if err != nil {
-			logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", o.SwapEndpoint)
-			return nil, fmt.Errorf("could not get chain id from ethereum backend: %w", err)
-		}
-
-		transactionService, err := transaction.NewService(logger, swapBackend, signer, stateStore, chainID)
-		if err != nil {
-			return nil, err
-		}
-		overlayEthAddress, err = signer.EthereumAddress()
-		if err != nil {
-			return nil, err
-		}
-
-		var factoryAddress common.Address
-		if o.SwapFactoryAddress == "" {
-			var found bool
-			factoryAddress, found = chequebook.DiscoverFactoryAddress(chainID.Int64())
-			if !found {
-				return nil, errors.New("no known factory address for this network")
-			}
-			logger.Infof("using default factory address for chain id %d: %x", chainID, factoryAddress)
-		} else if !common.IsHexAddress(o.SwapFactoryAddress) {
-			return nil, errors.New("malformed factory address")
-		} else {
-			factoryAddress = common.HexToAddress(o.SwapFactoryAddress)
-			logger.Infof("using custom factory address: %x", factoryAddress)
-		}
-
-		chequebookFactory, err := chequebook.NewFactory(swapBackend, transactionService, factoryAddress, chequebook.NewSimpleSwapFactoryBindingFunc)
-		if err != nil {
-			return nil, err
-		}
-
-		chequeSigner := chequebook.NewChequeSigner(signer, chainID.Int64())
-
-		maxDelay := 1 * time.Minute
-		synced, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
-		if err != nil {
-			return nil, err
-		}
-		if !synced {
-			logger.Infof("waiting for ethereum backend to be synced.")
-			err = transaction.WaitSynced(p2pCtx, swapBackend, maxDelay)
-			if err != nil {
-				return nil, fmt.Errorf("could not wait for ethereum backend to sync: %w", err)
-			}
-		}
-
-		swapInitialDeposit, ok := new(big.Int).SetString(o.SwapInitialDeposit, 10)
-		if !ok {
-			return nil, fmt.Errorf("invalid initial deposit: %s", swapInitialDeposit)
-		}
-		// initialize chequebook logic
-		chequebookService, err = chequebook.Init(p2pCtx,
-			chequebookFactory,
-			stateStore,
+		swapBackend, overlayEthAddress, chainID, transactionService, err = InitChain(
+			p2pCtx,
 			logger,
-			swapInitialDeposit,
-			transactionService,
-			swapBackend,
-			chainID.Int64(),
-			overlayEthAddress,
-			chequeSigner,
-			chequebook.NewSimpleSwapBindings,
-			chequebook.NewERC20Bindings)
+			stateStore,
+			o.SwapEndpoint,
+			signer,
+		)
 		if err != nil {
 			return nil, err
 		}
 
-		chequeStore = chequebook.NewChequeStore(stateStore, swapBackend, chequebookFactory, chainID.Int64(), overlayEthAddress, chequebook.NewSimpleSwapBindings, chequebook.RecoverCheque)
+		chequebookFactory, err = InitChequebookFactory(
+			logger,
+			swapBackend,
+			chainID,
+			transactionService,
+			o.SwapFactoryAddress,
+		)
+		if err != nil {
+			return nil, err
+		}
 
-		cashoutService, err = chequebook.NewCashoutService(stateStore, chequebook.NewSimpleSwapBindings, swapBackend, transactionService, chequeStore)
+		if err = chequebookFactory.VerifyBytecode(p2pCtx); err != nil {
+			return nil, fmt.Errorf("factory fail: %w", err)
+		}
+
+		chequebookService, err = InitChequebookService(
+			p2pCtx,
+			logger,
+			stateStore,
+			signer,
+			chainID,
+			swapBackend,
+			overlayEthAddress,
+			transactionService,
+			chequebookFactory,
+			o.SwapInitialDeposit,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		chequeStore, cashoutService, err = initChequeStoreCashout(
+			stateStore,
+			swapBackend,
+			chequebookFactory,
+			chainID,
+			overlayEthAddress,
+			transactionService,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -294,12 +261,18 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var swapService *swap.Service
 
 	if o.SwapEnable {
-		swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
-		swapAddressBook := swap.NewAddressbook(stateStore)
-		swapService = swap.New(swapProtocol, logger, stateStore, chequebookService, chequeStore, swapAddressBook, networkID, cashoutService, p2ps)
-		swapProtocol.SetSwap(swapService)
-		if err = p2ps.AddProtocol(swapProtocol.Protocol()); err != nil {
-			return nil, fmt.Errorf("swap protocol: %w", err)
+		swapService, err = InitSwap(
+			p2ps,
+			logger,
+			stateStore,
+			networkID,
+			overlayEthAddress,
+			chequebookService,
+			chequeStore,
+			cashoutService,
+		)
+		if err != nil {
+			return nil, err
 		}
 		settlement = swapService
 	} else {
