@@ -136,7 +136,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		stateStore = mockinmem.NewStateStore()
 		logger.Warning("using in-mem state store. no node state will be persisted")
 	} else {
-		stateStore, err = leveldb.NewStateStore(filepath.Join(o.DataDir, "statestore"))
+		stateStore, err = leveldb.NewStateStore(filepath.Join(o.DataDir, "statestore"), logger)
 		if err != nil {
 			return nil, fmt.Errorf("statestore: %w", err)
 		}

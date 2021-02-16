@@ -8,9 +8,12 @@ import (
 	"encoding"
 	"encoding/json"
 	"errors"
+	"fmt"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
+	ldberr "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
@@ -18,17 +21,28 @@ var _ storage.StateStorer = (*store)(nil)
 
 // Store uses LevelDB to store values.
 type store struct {
-	db *leveldb.DB
+	db     *leveldb.DB
+	logger logging.Logger
 }
 
 // New creates a new persistent state storage.
-func NewStateStore(path string) (storage.StateStorer, error) {
+func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
-		return nil, err
+		if !ldberr.IsCorrupted(err) {
+			return nil, err
+		}
+
+		l.Warningf("statestore open failed: %v. attempting recovery", err)
+		db, err = leveldb.RecoverFile(path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("statestore recovery: %w", err)
+		}
+		l.Warning("statestore recovery ok! you are kindly request to inform us about the steps that preceded the last Bee shutdown.")
 	}
 	return &store{
-		db: db,
+		db:     db,
+		logger: l,
 	}, nil
 }
 
