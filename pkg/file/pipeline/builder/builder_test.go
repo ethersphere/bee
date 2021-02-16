@@ -85,7 +85,8 @@ func TestAllVectors(t *testing.T) {
 func TestFindBug(t *testing.T) {
 	m := mock.NewStorer()
 	ctx := context.Background()
-	for i := 50000; i <= 819200; i++ {
+	for i := 128 * 128 * 4096; i <= 128*128*4096; i++ {
+		//for i := 67100000; i <= 67100000; i++ {
 		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 		data, err := g.SequentialBytes(i)
 		if err != nil {

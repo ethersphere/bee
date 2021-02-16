@@ -7,6 +7,7 @@ package hashtrie
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -39,7 +40,6 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipeline.Pip
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
-	//fmt.Println("chain write", p.Ref)
 	if len(p.Ref) == 0 {
 		panic(0)
 	}
@@ -52,17 +52,22 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
-	//fmt.Println("span", span, "ref", ref, "cur", h.cursors[level])
+	fmt.Println("write to level", level, "span", span, "ref", ref, "cur", h.cursors[level])
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span)
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
 	h.cursors[level] += len(ref)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
 	h.cursors[level] += len(key)
-	//fmt.Println("cur", h.cursors[level])
+	//if h.cursors[level+1] != 0 && h.cursors[level] > h.cursors[level+1] {
+	//fmt.Println(h.cursors)
+	//panic("overwrite")
+	//}
+	fmt.Println("cur", h.cursors[level])
 	howLong := (h.refSize + swarm.SpanSize) * h.branching
 
 	if h.levelSize(level) == howLong {
+		fmt.Println("wrap full level", level, howLong)
 		return h.wrapFullLevel(level)
 	}
 	return nil
@@ -77,10 +82,9 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 //	 - call the short pipeline with the span and the buffer
 //	 - get the hash that was created, append it one level above, and if necessary, wrap that level too
 //	 - remove already hashed data from buffer
-
 // assumes that the function has been called when refsize+span*branching has been reached
 func (h *hashTrieWriter) wrapFullLevel(level int) error {
-	//fmt.Println("wrap full level")
+	fmt.Println("wrap full, level", level)
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	sp := uint64(0)
 	var hashes []byte
@@ -114,75 +118,6 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	return nil
 }
 
-// pulls and potentially wraps all levels up to target
-func (h *hashTrieWriter) hoistLevels(target int) ([]byte, error) {
-	//fmt.Println("hoist", target)
-	oneRef := h.refSize + swarm.SpanSize
-	for i := 1; i < target; i++ {
-		l := h.levelSize(i)
-		//fmt.Println("level size", i, l)
-		if l%oneRef != 0 {
-			return nil, errInconsistentRefs
-		}
-		switch {
-		case l == 0:
-			continue
-		case l == h.fullChunk:
-			err := h.wrapFullLevel(i)
-			if err != nil {
-				return nil, err
-			}
-		case l == oneRef:
-			h.cursors[i+1] = h.cursors[i]
-		default:
-			// more than 0 but smaller than chunk size - wrap the level to the one above it
-			err := h.wrapFullLevel(i)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	level := target
-	tlen := h.levelSize(target)
-	//if tlen == 0 {
-	//return h.hoistLevels(level + 1)
-	//}
-	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
-	if tlen%oneRef != 0 {
-		return nil, errInconsistentRefs
-	}
-	if tlen == oneRef {
-		return data[8:], nil
-	}
-	//fmt.Println(data)
-
-	// here we are still with possible length of more than one ref in the highest+1 level
-	sp := uint64(0)
-	var hashes []byte
-	for i := 0; i < len(data); i += h.refSize + 8 {
-		// sum up the spans of the level, then we need to bmt them and store it as a chunk
-		// then write the chunk address to the next level up
-		//fmt.Println("sp", sp)
-		sp += binary.LittleEndian.Uint64(data[i : i+8])
-		hash := data[i+8 : i+h.refSize+8]
-		//fmt.Println("hash", hash)
-		hashes = append(hashes, hash...)
-	}
-	//fmt.Println("sp", sp)
-
-	spb := make([]byte, 8)
-	binary.LittleEndian.PutUint64(spb, sp)
-	hashes = append(spb, hashes...)
-	writer := h.pipelineFn()
-	args := pipeline.PipeWriteArgs{
-		Data: hashes,
-		Span: spb,
-	}
-	err := writer.ChainWrite(&args)
-	ref := append(args.Ref, args.Key...)
-	return ref, err
-}
-
 func (h *hashTrieWriter) levelSize(level int) int {
 	if level == 8 {
 		return h.cursors[level]
@@ -191,15 +126,61 @@ func (h *hashTrieWriter) levelSize(level int) int {
 }
 
 func (h *hashTrieWriter) Sum() ([]byte, error) {
+	oneRef := h.refSize + swarm.SpanSize
+	maxLevel := 8
 	// look from the top down, to look for the highest hash of a balanced tree
 	// then, whatever is in the levels below that is necessarily unbalanced,
 	// so, we'd like to reduce those levels to one hash, then wrap it together
-	// with the balanced tree hash, to produce the root chunk
-	highest := 1
-	for i := 8; i > 0; i-- {
-		if h.levelSize(i) > 0 && i > highest {
-			highest = i
+	// with the balanced tree hash, to produce the root chunk.
+	// the cases are as follows:
+	//	- one hash in a given level, in which case we _do not_ perform a hashing operation, but just move
+	//		the hash to the next level, potentially resulting in a level wrap
+	//	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
+	//		the next level.
+	fmt.Println("sum")
+	for i := 1; i < maxLevel; i++ {
+		l := h.levelSize(i)
+		fmt.Println("level size", i, l, "cursors", h.cursors)
+		if l%oneRef != 0 {
+			return nil, errInconsistentRefs
+		}
+		switch {
+		case l == 0:
+			fmt.Println("hoist, empty level")
+			continue
+		case l == h.fullChunk:
+			fmt.Println("hoist, full chunk")
+			err := h.wrapFullLevel(i)
+			if err != nil {
+				return nil, err
+			}
+			h.cursors[i] = h.cursors[i-1]
+		case l == oneRef:
+			// this cursor assignment basically means:
+			// take the hash|span|key from this level, and append it to
+			// the data of the next level.
+			h.cursors[i+1] = h.cursors[i]
+			//h.cursors[i] = h.cursors[i-1]
+			fmt.Println("hoist, one ref", h.cursors)
+		default:
+			fmt.Println("hoist, some stuff")
+			// more than 0 but smaller than chunk size - wrap the level to the one above it
+			err := h.wrapFullLevel(i)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
-	return h.hoistLevels(highest)
+	tlen := h.levelSize(8)
+	fmt.Println(h.cursors, tlen)
+	// take the hash in the highest level, that's all we need
+	data := h.buffer[0:h.cursors[8]]
+	fmt.Println(data)
+	if tlen%oneRef != 0 {
+		return nil, errInconsistentRefs
+	}
+	if tlen == oneRef {
+		return data[8:], nil
+	}
+	panic(tlen)
 }
