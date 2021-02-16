@@ -139,7 +139,7 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 	}
 
 	request := &transaction.TxRequest{
-		To:       s.erc20Address,
+		To:       &s.erc20Address,
 		Data:     callData,
 		GasPrice: nil,
 		GasLimit: 0,
@@ -371,7 +371,7 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 	}
 
 	request := &transaction.TxRequest{
-		To:       s.address,
+		To:       &s.address,
 		Data:     callData,
 		GasPrice: nil,
 		GasLimit: 0,
