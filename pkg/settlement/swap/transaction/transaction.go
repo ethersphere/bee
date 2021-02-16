@@ -23,11 +23,11 @@ var (
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
-	To       common.Address // recipient of the transaction
-	Data     []byte         // transaction data
-	GasPrice *big.Int       // gas price or nil if suggested gas price should be used
-	GasLimit uint64         // gas limit or 0 if it should be estimated
-	Value    *big.Int       // amount of wei to send
+	To       *common.Address // recipient of the transaction
+	Data     []byte          // transaction data
+	GasPrice *big.Int        // gas price or nil if suggested gas price should be used
+	GasLimit uint64          // gas limit or 0 if it should be estimated
+	Value    *big.Int        // amount of wei to send
 }
 
 // Service is the service to send transactions. It takes care of gas price, gas limit and nonce management.
@@ -107,7 +107,7 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 	if request.GasLimit == 0 {
 		gasLimit, err = backend.EstimateGas(ctx, ethereum.CallMsg{
 			From: from,
-			To:   &request.To,
+			To:   request.To,
 			Data: request.Data,
 		})
 		if err != nil {
@@ -132,12 +132,22 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 		return nil, err
 	}
 
-	return types.NewTransaction(
-		nonce,
-		request.To,
-		request.Value,
-		gasLimit,
-		gasPrice,
-		request.Data,
-	), nil
+	if request.To != nil {
+		return types.NewTransaction(
+			nonce,
+			*request.To,
+			request.Value,
+			gasLimit,
+			gasPrice,
+			request.Data,
+		), nil
+	} else {
+		return types.NewContractCreation(
+			nonce,
+			request.Value,
+			gasLimit,
+			gasPrice,
+			request.Data,
+		), nil
+	}
 }

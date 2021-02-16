@@ -107,7 +107,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 	}
 
 	request := &transaction.TxRequest{
-		To:       chequebook,
+		To:       &chequebook,
 		Data:     callData,
 		GasPrice: nil,
 		GasLimit: 0,
