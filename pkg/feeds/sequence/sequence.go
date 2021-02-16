@@ -106,13 +106,12 @@ type result struct {
 	path  *path
 	level int
 	seq   uint64
-	diff  int64
 }
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
 func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, cur, next feeds.Index, err error) {
-	ch, _, err = f.get(ctx, at, 0)
+	ch, err = f.get(ctx, at, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -173,38 +172,38 @@ func (f *asyncFinder) at(ctx context.Context, at int64, p *path, c chan<- result
 		}
 		go func(i int) {
 			seq := p.base + (1 << i) - 1
-			ch, diff, err := f.get(ctx, at, seq)
+			ch, err := f.get(ctx, at, seq)
 			if err != nil {
 				return
 			}
 			select {
-			case c <- result{ch, p, i, seq, diff}:
+			case c <- result{ch, p, i, seq}:
 			case <-quit:
 			}
 		}(i)
 	}
 }
 
-func (f *asyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chunk, int64, error) {
+func (f *asyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chunk, error) {
 	u, err := f.getter.Get(ctx, &index{seq})
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, 0, err
+			return nil, err
 		}
 		// if 'not-found' error, then just silence and return nil chunk
-		return nil, 0, nil
+		return nil, nil
 	}
 	ts, err := feeds.UpdatedAt(u)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	diff := at - int64(ts)
 	// this means the update timestamp is later than the pivot time we are looking for
 	// handled as if the update was missing but with no uncertainty due to timeout
 	if diff < 0 {
-		return nil, 0, nil
+		return nil, nil
 	}
-	return u, 1, nil
+	return u, nil
 }
 
 // updater encapsulates a feeds putter to generate successive updates for epoch based feeds

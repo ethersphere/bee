@@ -15,7 +15,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/feeds/sequence"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 )
@@ -119,7 +118,7 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 				step := int64(1)
 
 				for now := at; now < at+tc.step; now += step {
-					ch, current, next, err := finder.At(ctx, timesNow[i], 0)
+					ch, current, _, err := finder.At(ctx, timesNow[i], 0)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -138,17 +137,26 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 					if ts != uint64(timesNow[i]) {
 						t.Fatalf("timestamp mismatch: expected %v, got %v", tc.offset, ts)
 					}
-					var j int
-					for j = i; j < len(timesNow) && (j == 0 || timesNow[j] == timesNow[j-1]); j++ {
-					}
 
-					if sequence.Index(current) != j-1 {
-						t.Fatalf("current mismatch: expected %v, got %v", j-1, sequence.Index(current))
-					}
+					// serialize payload, check if i matches payload...
 
-					if sequence.Index(next) != j {
-						t.Fatalf("next mismatch: expected %v, got %v", j, sequence.Index(next))
+					expectedId := ch.Data()[0:32]
+					if current != nil {
+						id, err := feeds.Id(topic, current)
+						if err != nil {
+							t.Fatalf("current %v", err)
+						}
+						if !bytes.Equal(id, expectedId) {
+							t.Fatalf("current mismatch: expected %x, got %x", expectedId, id)
+						}
 					}
+					//					if sequence.Index(current) != j-1 {
+					//						t.Fatalf("current mismatch: expected %v, got %v", j-1, sequence.Index(current))
+					//					}
+					//
+					//					if sequence.Index(next) != j {
+					//						t.Fatalf("next mismatch: expected %v, got %v", j, sequence.Index(next))
+					//					}
 
 				}
 				i++
