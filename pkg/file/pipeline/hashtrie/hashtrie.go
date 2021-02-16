@@ -113,36 +113,42 @@ func (h *hashTrieWriter) levelSize(level int) int {
 	return h.cursors[level] - h.cursors[level+1]
 }
 
+// Sum returns the Swarm merkle-root content-addressed hash
+// of an arbitrary-length binary data.
+// The algorithm it uses is as follows:
+//	- From level 1 till maxLevel 8, iterate:
+//		- If level data length equals 0 then continue to next level
+//		- If level data length equals 1 reference then carry over level data to next
+//		- If level data length is bigger than 1 reference then sum the level and
+//			write the result to the next level
+//	- Return the hash in level 8
+// the cases are as follows:
+//	- one hash in a given level, in which case we _do not_ perform a hashing operation, but just move
+//		the hash to the next level, potentially resulting in a level wrap
+//	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
+//		the next level.
+
 func (h *hashTrieWriter) Sum() ([]byte, error) {
 	oneRef := h.refSize + swarm.SpanSize
 	maxLevel := 8
-	// look from the top down, to look for the highest hash of a balanced tree
-	// then, whatever is in the levels below that is necessarily unbalanced,
-	// so, we'd like to reduce those levels to one hash, then wrap it together
-	// with the balanced tree hash, to produce the root chunk.
-	// the cases are as follows:
-	//	- one hash in a given level, in which case we _do not_ perform a hashing operation, but just move
-	//		the hash to the next level, potentially resulting in a level wrap
-	//	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
-	//		the next level.
-
 	for i := 1; i < maxLevel; i++ {
 		l := h.levelSize(i)
-		//fmt.Println("level size", i, l, "cursors", h.cursors)
 		if l%oneRef != 0 {
 			return nil, errInconsistentRefs
 		}
 		switch {
 		case l == 0:
-			//fmt.Println("hoist, empty level")
+			// level empty, continue to the next.
 			continue
 		case l == h.fullChunk:
-			//fmt.Println("hoist, full chunk")
+			// this case is possible and necessary due to the carry over
+			// in the next switch case statement. normal writes done
+			// through writeToLevel will automatically wrap a full level.
 			err := h.wrapFullLevel(i)
 			if err != nil {
 				return nil, err
 			}
-			h.cursors[i] = h.cursors[i-1]
+			//h.cursors[i] = h.cursors[i-1]
 		case l == oneRef:
 			// this cursor assignment basically means:
 			// take the hash|span|key from this level, and append it to
@@ -160,7 +166,6 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			h.cursors[i+1] = h.cursors[i]
 			//fmt.Println("hoist, one ref", h.cursors)
 		default:
-			//fmt.Println("hoist, some stuff")
 			// more than 0 but smaller than chunk size - wrap the level to the one above it
 			err := h.wrapFullLevel(i)
 			if err != nil {
