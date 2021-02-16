@@ -86,6 +86,7 @@ func TestAllVectors(t *testing.T) {
 }
 
 func TestFindBug(t *testing.T) {
+	t.Skip("ci")
 	m := mock.NewStorer()
 	ctx := context.Background()
 	for i := 128 * 128 * 4096; i <= 128*128*4096; i++ {
@@ -132,6 +133,7 @@ func TestFindBug(t *testing.T) {
 }
 
 func TestE2E(t *testing.T) {
+	t.Skip("ci")
 	m := mock.NewStorer()
 	ctx := context.Background()
 	size := 100000000000                 // 100 gigs    // 128 * 128 * 128 * 4096
