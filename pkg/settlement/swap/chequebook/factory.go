@@ -76,7 +76,7 @@ func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHard
 	}
 
 	request := &transaction.TxRequest{
-		To:       c.address,
+		To:       &c.address,
 		Data:     callData,
 		GasPrice: nil,
 		GasLimit: 0,

@@ -188,7 +188,7 @@ func TestFactoryDeploy(t *testing.T) {
 		backendmock.New(),
 		transactionmock.New(
 			transactionmock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
-				if request.To != factoryAddress {
+				if request.To != nil && *request.To != factoryAddress {
 					t.Fatalf("sending to wrong address. wanted %x, got %x", factoryAddress, request.To)
 				}
 				if request.Value.Cmp(big.NewInt(0)) != 0 {
