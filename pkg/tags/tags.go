@@ -35,7 +35,8 @@ import (
 )
 
 const (
-	maxPage = 1000 // hard limit of page size
+	maxPage      = 1000 // hard limit of page size
+	tagKeyPrefix = "tags_"
 )
 
 var (
@@ -125,6 +126,13 @@ func (ts *Tags) Range(fn func(k, v interface{}) bool) {
 
 func (ts *Tags) Delete(k interface{}) {
 	ts.tags.Delete(k)
+
+	// k is a uint32, try to create the tag key and remove
+	// from statestore
+	if uid, ok := k.(uint32); ok && uid != 0 {
+		key := tagKey(uid)
+		_ = ts.stateStore.Delete(key)
+	}
 }
 
 func (ts *Tags) MarshalJSON() (out []byte, err error) {
@@ -192,7 +200,7 @@ func (ts *Tags) ListAll(ctx context.Context, offset, limit int) (t []*Tag, err e
 	}
 
 	// and then from statestore
-	err = ts.stateStore.Iterate("tags_", func(key, value []byte) (stop bool, err error) {
+	err = ts.stateStore.Iterate(tagKeyPrefix, func(key, value []byte) (stop bool, err error) {
 		if offset > 0 {
 			offset--
 			return false, nil
@@ -239,7 +247,7 @@ func decodeTagValueFromStore(value []byte) (*Tag, error) {
 
 // getTagFromStore get a given tag from the state store.
 func (ts *Tags) getTagFromStore(uid uint32) (*Tag, error) {
-	key := "tags_" + strconv.Itoa(int(uid))
+	key := tagKey(uid)
 	var data []byte
 	err := ts.stateStore.Get(key, &data)
 	if err != nil {
@@ -265,4 +273,8 @@ func (ts *Tags) Close() (err error) {
 		}
 	}
 	return nil
+}
+
+func tagKey(uid uint32) string {
+	return tagKeyPrefix + strconv.Itoa(int(uid))
 }
