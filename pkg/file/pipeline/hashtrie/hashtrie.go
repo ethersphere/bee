@@ -19,7 +19,7 @@ type hashTrieWriter struct {
 	chunkSize  int
 	refSize    int
 	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
-	cursors    []int  // level cursors, key is level. level 0 is data level
+	cursors    []int  // level cursors, key is level. level 0 is data level and is not represented in this package. writes always start at level 1. higher levels will always have LOWER cursor values.
 	buffer     []byte // keeps all level data
 	pipelineFn pipeline.PipelineFunc
 }
@@ -39,9 +39,6 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipeline.Pip
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
 // are on level 1
 func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
-	if len(p.Ref) == 0 {
-		panic(0)
-	}
 	oneRef := h.refSize + swarm.SpanSize
 	l := len(p.Span) + len(p.Ref) + len(p.Key)
 	if l%oneRef != 0 {
@@ -51,22 +48,15 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
-	//fmt.Println("write to level", level, "span", span, "ref", ref, "cur", h.cursors[level])
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span)
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
 	h.cursors[level] += len(ref)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
 	h.cursors[level] += len(key)
-	//if h.cursors[level+1] != 0 && h.cursors[level] > h.cursors[level+1] {
-	//fmt.Println(h.cursors)
-	//panic("overwrite")
-	//}
-	//fmt.Println("cur", h.cursors[level])
 	howLong := (h.refSize + swarm.SpanSize) * h.branching
 
 	if h.levelSize(level) == howLong {
-		//fmt.Println("wrap full level", level, howLong)
 		return h.wrapFullLevel(level)
 	}
 	return nil
@@ -83,7 +73,6 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 //	 - remove already hashed data from buffer
 // assumes that the function has been called when refsize+span*branching has been reached
 func (h *hashTrieWriter) wrapFullLevel(level int) error {
-	//fmt.Println("wrap full, level", level)
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	sp := uint64(0)
 	var hashes []byte
@@ -136,7 +125,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 	//		the hash to the next level, potentially resulting in a level wrap
 	//	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
 	//		the next level.
-	//fmt.Println("sum")
+
 	for i := 1; i < maxLevel; i++ {
 		l := h.levelSize(i)
 		//fmt.Println("level size", i, l, "cursors", h.cursors)
@@ -157,7 +146,17 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		case l == oneRef:
 			// this cursor assignment basically means:
 			// take the hash|span|key from this level, and append it to
-			// the data of the next level.
+			// the data of the next level. you may wonder how this works:
+			// every time we sum a level, the sum gets written into the next level
+			// and the level cursor gets set to the next level's cursor (see the
+			// truncating at the end of wrapFullLevel). there might (or not) be
+			// a hash at the next level, and the cursor of the next level is
+			// necessarily _smaller_ than the cursor of this level, so in fact what
+			// happens is that due to the shifting of the cursors, the data of this
+			// level will appear to be concatenated with the data of the next level.
+			// we therefore get a "carry-over" behavior between intermediate levels
+			// that might or might not have data. the eventual result is that the last
+			// hash generated will always be carried over to the last level (8), then returned.
 			h.cursors[i+1] = h.cursors[i]
 			//fmt.Println("hoist, one ref", h.cursors)
 		default:
