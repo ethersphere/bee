@@ -128,11 +128,10 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 	defer close(quit)
 	go f.at(ctx, at, p, c, quit)
 	for r := range c {
+		// r.path ~ tagged which path it comes from
+		//
 		p = r.path
 		if r.chunk == nil {
-			if r.level == 0 {
-				return p.latest.chunk, &index{p.latest.seq}, &index{p.latest.seq + 1}, nil
-			}
 			if p.level < r.level {
 				continue
 			}
@@ -141,10 +140,10 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			// if r.diff == 0 {
 			// 	return r.chunk, &index{r.seq}, &index{r.seq + 1}, nil
 			// }
-			if p.latest.level > r.level {
+			if p.latest.level > r.level { // ignore lower than
 				continue
 			}
-			p.close()
+			// p.close()
 			p.latest = r
 		}
 		// below applies even  if  p.latest==maxLevel
@@ -154,6 +153,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			}
 			p.close()
 			np := newPath(p.latest.seq)
+			np.latest.seq = p.latest.seq
 			np.level = p.level
 			np.latest.chunk = p.latest.chunk
 			go f.at(ctx, at, np, c, quit)
