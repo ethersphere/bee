@@ -112,15 +112,12 @@ type result struct {
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
 func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, cur, next feeds.Index, err error) {
-	ch, diff, err := f.get(ctx, at, 0)
+	ch, _, err = f.get(ctx, at, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if ch == nil {
 		return nil, nil, &index{0}, nil
-	}
-	if diff == 0 {
-		return ch, &index{0}, &index{1}, nil
 	}
 	c := make(chan result)
 	p := newPath(0)
@@ -141,9 +138,9 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			}
 			p.level = r.level - 1
 		} else {
-			if r.diff == 0 {
-				return r.chunk, &index{r.seq}, &index{r.seq + 1}, nil
-			}
+			// if r.diff == 0 {
+			// 	return r.chunk, &index{r.seq}, &index{r.seq + 1}, nil
+			// }
 			if p.latest.level > r.level {
 				continue
 			}

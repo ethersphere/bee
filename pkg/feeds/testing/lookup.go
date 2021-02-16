@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
+	"github.com/ethersphere/bee/pkg/feeds/sequence"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 )
@@ -101,40 +102,56 @@ func TestFinderFixIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Fe
 			ctx := context.Background()
 
 			payload := []byte("payload")
+
+			var timesNow []int64
+
 			for at := tc.offset; at < tc.offset+tc.count*tc.step; at += tc.step {
-				err = updater.Update(ctx, tc.offset, payload)
+				timeNow := time.Now().Unix()
+				timesNow = append(timesNow, timeNow)
+				err = updater.Update(ctx, timeNow, payload)
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
 			finder := finderf(storer, updater.Feed())
-			for at := tc.offset; at < tc.offset+tc.count*tc.step; at += tc.step {
-				for after := tc.offset; after < at; after += tc.step {
-					step := int64(1)
-					if tc.step > 1 {
-						step = tc.step / 4
+			i := 0
+			for at := tc.offset; at < tc.offset+tc.count*tc.step; at += tc.step { // look for update 'at'
+				step := int64(1)
+
+				for now := at; now < at+tc.step; now += step {
+					ch, current, next, err := finder.At(ctx, timesNow[i], 0)
+					if err != nil {
+						t.Fatal(err)
 					}
-					for now := at; now < at+tc.step; now += step {
-						ch, _, _, err := finder.At(ctx, now, after)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if ch == nil {
-							t.Fatalf("expected to find update, got none")
-						}
-						exp := payload
-						ts, payload, err := feeds.FromChunk(ch)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if !bytes.Equal(payload, exp) {
-							t.Fatalf("payload mismatch: expected %x, got %x", exp, payload)
-						}
-						if ts != uint64(tc.offset) {
-							t.Fatalf("timestamp mismatch: expected %v, got %v", tc.offset, ts)
-						}
+					if ch == nil {
+						t.Fatalf("expected to find update, got none")
 					}
+					exp := payload
+					ts, payload, err := feeds.FromChunk(ch)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(payload, exp) {
+						t.Fatalf("payload mismatch: expected %x, got %x", exp, payload)
+					}
+
+					if ts != uint64(timesNow[i]) {
+						t.Fatalf("timestamp mismatch: expected %v, got %v", tc.offset, ts)
+					}
+					var j int
+					for j = i; j < len(timesNow) && (j == 0 || timesNow[j] == timesNow[j-1]); j++ {
+					}
+
+					if sequence.Index(current) != j-1 {
+						t.Fatalf("current mismatch: expected %v, got %v", j-1, sequence.Index(current))
+					}
+
+					if sequence.Index(next) != j {
+						t.Fatalf("next mismatch: expected %v, got %v", j, sequence.Index(next))
+					}
+
 				}
+				i++
 			}
 		})
 	}
