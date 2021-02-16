@@ -25,6 +25,8 @@ const (
 )
 
 var (
+	// ErrTransactionReverted denotes that the sent transaction has been
+	// reverted.
 	ErrTransactionReverted = errors.New("transaction reverted")
 )
 
@@ -37,7 +39,8 @@ type TxRequest struct {
 	Value    *big.Int        // amount of wei to send
 }
 
-// Service is the service to send transactions. It takes care of gas price, gas limit and nonce management.
+// Service is the service to send transactions. It takes care of gas price, gas
+// limit and nonce management.
 type Service interface {
 	// Send creates a transaction based on the request and sends it.
 	Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error)
@@ -103,7 +106,8 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 	return signedTx.Hash(), nil
 }
 
-// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
+// WaitForReceipt waits until either the transaction with the given hash has
+// been mined or the context is cancelled.
 func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	for {
 		receipt, err := t.backend.TransactionReceipt(ctx, txHash)
@@ -160,15 +164,15 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 			gasPrice,
 			request.Data,
 		), nil
-	} else {
-		return types.NewContractCreation(
-			nonce,
-			request.Value,
-			gasLimit,
-			gasPrice,
-			request.Data,
-		), nil
 	}
+
+	return types.NewContractCreation(
+		nonce,
+		request.Value,
+		gasLimit,
+		gasPrice,
+		request.Data,
+	), nil
 }
 
 func (t *transactionService) nonceKey() string {
@@ -184,14 +188,15 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 	var nonce uint64
 	err = t.store.Get(t.nonceKey(), &nonce)
 	if err != nil {
-		// if no nonce was found locally used whatever we get from the backend
+		// If no nonce was found locally used whatever we get from the backend.
 		if errors.Is(err, storage.ErrNotFound) {
 			return onchainNonce, nil
 		}
 		return 0, err
 	}
 
-	// if the nonce onchain is larger than what we have there were external transactions and we need to update our nonce
+	// If the nonce onchain is larger than what we have there were external
+	// transactions and we need to update our nonce.
 	if onchainNonce > nonce {
 		return onchainNonce, nil
 	}

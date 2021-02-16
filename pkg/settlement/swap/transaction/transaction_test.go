@@ -133,7 +133,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 		if storedNonce != nonce+1 {
-			t.Fatalf("did not store nonce correctly. wanted %d, got %d", nonce+1, storedNonce)
+			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
 		}
 	})
 
