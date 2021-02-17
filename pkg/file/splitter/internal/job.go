@@ -138,7 +138,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	var chunkData []byte
 	var addr swarm.Address
 
-	head := make([]byte, 8)
+	head := make([]byte, swarm.SpanSize)
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
@@ -159,12 +159,12 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 
 	hasher := bmtpool.Get()
 
-	err = hasher.SetSpanBytes(c[:8])
+	err = hasher.SetSpanBytes(c[:swarm.SpanSize])
 	if err != nil {
 		bmtpool.Put(hasher)
 		return nil, err
 	}
-	_, err = hasher.Write(c[8:])
+	_, err = hasher.Write(c[swarm.SpanSize:])
 	if err != nil {
 		bmtpool.Put(hasher)
 		return nil, err
