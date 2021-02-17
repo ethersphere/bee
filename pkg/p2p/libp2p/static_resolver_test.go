@@ -5,13 +5,29 @@
 package libp2p_test
 
 import (
+	"net"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	mockdns "github.com/foxcpp/go-mockdns"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 func TestStaticAddressResolver(t *testing.T) {
+	srv, _ := mockdns.NewServer(map[string]mockdns.Zone{
+		"ipv4.com.": {
+			A: []string{"192.168.1.34"},
+		},
+		"ipv4and6.com.": {
+			A:    []string{"192.168.1.34"},
+			AAAA: []string{"2001:db8::8a2e:370:1111"},
+		},
+	}, false)
+	defer srv.Close()
+
+	srv.PatchNet(net.DefaultResolver)
+	defer mockdns.UnpatchNet(net.DefaultResolver)
+
 	for _, tc := range []struct {
 		name              string
 		natAddr           string
@@ -68,15 +84,15 @@ func TestStaticAddressResolver(t *testing.T) {
 		},
 		{
 			name:              "replace ip v6 and port with dns v4",
-			natAddr:           "ethswarm.org:30777",
+			natAddr:           "ipv4.com:30777",
 			observableAddress: "/ip6/2001:db8::8a2e:370:7334/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
-			want:              "/dns4/ethswarm.org/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+			want:              "/dns4/ipv4.com/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 		{
 			name:              "replace ip v4 and port with dns",
-			natAddr:           "ethereum.org:30777",
+			natAddr:           "ipv4and6.com:30777",
 			observableAddress: "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
-			want:              "/dns/ethereum.org/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+			want:              "/dns/ipv4and6.com/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
