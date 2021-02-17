@@ -166,8 +166,6 @@ func TestLevels_TrieFull(t *testing.T) {
 
 func TestOneAddr(t *testing.T) {
 	s := mock.NewStorer()
-	ctx := context.Background()
-	mode := storage.ModePutUpload
 	pf := func() pipeline.ChainWriter {
 		lsw := store.NewStoreWriter(ctx, s, mode, nil)
 		return bmt.NewBmtWriter(lsw)

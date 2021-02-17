@@ -75,7 +75,6 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 
 		binary.LittleEndian.PutUint64(d[:span], uint64(sp))
 		args := &pipeline.PipeWriteArgs{Data: d[:span+sp], Span: d[:span]}
-		//fmt.Println("write", args.Data)
 		err := f.next.ChainWrite(args)
 		if err != nil {
 			return 0, err

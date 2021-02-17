@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	errInconsistentRefs = errors.New("inconsistent reference lengths in level")
+	errInconsistentRefs = errors.New("inconsistent references")
 	errTrieFull         = errors.New("trie full")
 )
 
@@ -129,16 +129,16 @@ func (h *hashTrieWriter) levelSize(level int) int {
 // of an arbitrary-length binary data.
 // The algorithm it uses is as follows:
 //	- From level 1 till maxLevel 8, iterate:
-//		- If level data length equals 0 then continue to next level
-//		- If level data length equals 1 reference then carry over level data to next
-//		- If level data length is bigger than 1 reference then sum the level and
+//		-	If level data length equals 0 then continue to next level
+//		-	If level data length equals 1 reference then carry over level data to next
+//		-	If level data length is bigger than 1 reference then sum the level and
 //			write the result to the next level
 //	- Return the hash in level 8
 // the cases are as follows:
 //	- one hash in a given level, in which case we _do not_ perform a hashing operation, but just move
 //		the hash to the next level, potentially resulting in a level wrap
 //	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
-//		the next level.
+//		the next level
 func (h *hashTrieWriter) Sum() ([]byte, error) {
 	oneRef := h.refSize + swarm.SpanSize
 	for i := 1; i < maxLevel; i++ {
@@ -158,7 +158,6 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			//h.cursors[i] = h.cursors[i-1]
 		case l == oneRef:
 			// this cursor assignment basically means:
 			// take the hash|span|key from this level, and append it to
