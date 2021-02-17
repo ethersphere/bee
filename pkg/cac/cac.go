@@ -17,7 +17,7 @@ var (
 func New(data []byte) (swarm.Chunk, error) {
 	span := make([]byte, swarm.SpanSize)
 	binary.LittleEndian.PutUint64(span, uint64(len(data)))
-	return newWithSpan(data, span)
+	return NewWithSpan(data, span)
 }
 
 // NewWithDataSpan creates a new chunk assuming that the span precedes the actual data.
@@ -30,11 +30,11 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 		return nil, errTooShortChunkData
 	}
 
-	return newWithSpan(data[swarm.SpanSize:], data[:swarm.SpanSize])
+	return NewWithSpan(data[swarm.SpanSize:], data[:swarm.SpanSize])
 }
 
-// newWithSpan creates a new chunk prepending the given span to the data.
-func newWithSpan(data []byte, span []byte) (swarm.Chunk, error) {
+// NewWithSpan creates a new chunk prepending the given span to the data.
+func NewWithSpan(data []byte, span []byte) (swarm.Chunk, error) {
 	h := hasher(data)
 	hash, err := h(span)
 	if err != nil {

@@ -1,6 +1,7 @@
 package cac_test
 
 import (
+	"encoding/binary"
 	"strings"
 	"testing"
 
@@ -29,6 +30,24 @@ func TestNewWithDataSpan(t *testing.T) {
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
 
 	c, err := cac.NewWithDataSpan([]byte(foo))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !c.Address().Equal(address) {
+		t.Fatalf("address mismatch. got %s want %s", c.Address().String(), address.String())
+	}
+}
+
+func TestNewWithSpan(t *testing.T) {
+	foo := "greaterthanspan"
+	bmtHashOfFoo := "27913f1bdb6e8e52cbd5a5fd4ab577c857287edf6969b41efe926b51de0f4f23"
+	address := swarm.MustParseHexAddress(bmtHashOfFoo)
+
+	span := make([]byte, swarm.SpanSize)
+	binary.LittleEndian.PutUint64(span, uint64(len(foo)))
+
+	c, err := cac.NewWithSpan([]byte(foo), span)
 	if err != nil {
 		t.Fatal(err)
 	}
