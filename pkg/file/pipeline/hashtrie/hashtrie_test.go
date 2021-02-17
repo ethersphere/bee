@@ -188,7 +188,9 @@ func TestOneLevel(t *testing.T) {
 	}
 }
 
-func TestRegressions(t *testing.T) {
+// TestRegression is a regression test for the bug
+// described in https://github.com/ethersphere/bee/issues/1175
+func TestRegression(t *testing.T) {
 	var (
 		branching = 128
 		chunkSize = 4096
