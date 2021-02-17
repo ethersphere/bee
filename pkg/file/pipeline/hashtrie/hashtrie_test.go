@@ -187,3 +187,43 @@ func TestOneLevel(t *testing.T) {
 		t.Fatalf("expected hash %s but got %s", exphash, a)
 	}
 }
+
+func TestRegressions(t *testing.T) {
+	var (
+		branching = 128
+		chunkSize = 4096
+		hashSize  = 32
+		writes    = 67100000 / 4096
+		span      = make([]byte, 8)
+		s         = mock.NewStorer()
+		pf        = func() pipeline.ChainWriter {
+			lsw := store.NewStoreWriter(ctx, s, mode, nil)
+			return bmt.NewBmtWriter(lsw)
+		}
+		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, pf)
+	)
+	binary.LittleEndian.PutUint64(span, 4096)
+
+	for i := 0; i < writes; i++ {
+		a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
+		err := ht.ChainWrite(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ref, err := ht.Sum()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootch, err := s.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(ref))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sp := binary.LittleEndian.Uint64(rootch.Data()[:swarm.SpanSize])
+	if sp != uint64(writes*4096) {
+		t.Fatalf("want span %d got %d", writes*4096, sp)
+	}
+}
