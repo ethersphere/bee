@@ -66,6 +66,18 @@ func TestStaticAddressResolver(t *testing.T) {
 			observableAddress: "/ip6/2001:db8::8a2e:370:7334/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 			want:              "/ip4/192.168.1.34/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
+		{
+			name:              "replace ip v6 and port with dns v4",
+			natAddr:           "ethswarm.org:30777",
+			observableAddress: "/ip6/2001:db8::8a2e:370:7334/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+			want:              "/dns4/ethswarm.org/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+		},
+		{
+			name:              "replace ip v4 and port with dns",
+			natAddr:           "ethereum.org:30777",
+			observableAddress: "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+			want:              "/dns/ethereum.org/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 
