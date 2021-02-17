@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package hashtrie_test
 
 import (
@@ -160,7 +164,7 @@ func TestLevels_TrieFull(t *testing.T) {
 	}
 }
 
-func TestOneLevel(t *testing.T) {
+func TestOneAddr(t *testing.T) {
 	s := mock.NewStorer()
 	ctx := context.Background()
 	mode := storage.ModePutUpload
@@ -175,7 +179,9 @@ func TestOneLevel(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: spb}
-		ht.ChainWrite(a)
+		if err := ht.ChainWrite(a); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	ref, err := ht.Sum()
