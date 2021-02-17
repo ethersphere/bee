@@ -7,7 +7,6 @@ package hashtrie
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -17,6 +16,8 @@ var (
 	errInconsistentRefs = errors.New("inconsistent reference lengths in level")
 	errTrieFull         = errors.New("trie full")
 )
+
+const maxLevel = 8
 
 type hashTrieWriter struct {
 	branching  int
@@ -138,11 +139,8 @@ func (h *hashTrieWriter) levelSize(level int) int {
 //		the hash to the next level, potentially resulting in a level wrap
 //	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
 //		the next level.
-
 func (h *hashTrieWriter) Sum() ([]byte, error) {
-	fmt.Println("sum", h.cursors, h.levelSize(1))
 	oneRef := h.refSize + swarm.SpanSize
-	maxLevel := 8
 	for i := 1; i < maxLevel; i++ {
 		l := h.levelSize(i)
 		if l%oneRef != 0 {
@@ -176,9 +174,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			// that might or might not have data. the eventual result is that the last
 			// hash generated will always be carried over to the last level (8), then returned.
 			h.cursors[i+1] = h.cursors[i]
-			fmt.Println("hoist, one ref", h.cursors)
 		default:
-			fmt.Println("some")
 			// more than 0 but smaller than chunk size - wrap the level to the one above it
 			err := h.wrapFullLevel(i)
 			if err != nil {
@@ -186,16 +182,12 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			}
 		}
 	}
-	tlen := h.levelSize(8)
-	fmt.Println(h.cursors, tlen)
-	// take the hash in the highest level, that's all we need
-	data := h.buffer[0:h.cursors[8]]
-	//fmt.Println(data)
-	if tlen%oneRef != 0 {
+	levelLen := h.levelSize(8)
+	if levelLen != oneRef {
 		return nil, errInconsistentRefs
 	}
-	if tlen == oneRef {
-		return data[8:], nil
-	}
-	return nil, errors.New("weird data size")
+
+	// return the hash in the highest level, that's all we need
+	data := h.buffer[0:h.cursors[8]]
+	return data[8:], nil
 }
