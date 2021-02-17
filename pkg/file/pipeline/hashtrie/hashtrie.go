@@ -7,6 +7,7 @@ package hashtrie
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -21,6 +22,7 @@ type hashTrieWriter struct {
 	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
 	cursors    []int  // level cursors, key is level. level 0 is data level and is not represented in this package. writes always start at level 1. higher levels will always have LOWER cursor values.
 	buffer     []byte // keeps all level data
+	full       bool   // indicates whether the trie is full
 	pipelineFn pipeline.PipelineFunc
 }
 
@@ -129,6 +131,7 @@ func (h *hashTrieWriter) levelSize(level int) int {
 //		the next level.
 
 func (h *hashTrieWriter) Sum() ([]byte, error) {
+	fmt.Println("sum", h.cursors, h.levelSize(1))
 	oneRef := h.refSize + swarm.SpanSize
 	maxLevel := 8
 	for i := 1; i < maxLevel; i++ {
@@ -164,8 +167,9 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			// that might or might not have data. the eventual result is that the last
 			// hash generated will always be carried over to the last level (8), then returned.
 			h.cursors[i+1] = h.cursors[i]
-			//fmt.Println("hoist, one ref", h.cursors)
+			fmt.Println("hoist, one ref", h.cursors)
 		default:
+			fmt.Println("some")
 			// more than 0 but smaller than chunk size - wrap the level to the one above it
 			err := h.wrapFullLevel(i)
 			if err != nil {
@@ -174,7 +178,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		}
 	}
 	tlen := h.levelSize(8)
-	//fmt.Println(h.cursors, tlen)
+	fmt.Println(h.cursors, tlen)
 	// take the hash in the highest level, that's all we need
 	data := h.buffer[0:h.cursors[8]]
 	//fmt.Println(data)
