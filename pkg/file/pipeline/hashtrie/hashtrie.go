@@ -25,7 +25,7 @@ type hashTrieWriter struct {
 	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
 	cursors    []int  // level cursors, key is level. level 0 is data level and is not represented in this package. writes always start at level 1. higher levels will always have LOWER cursor values.
 	buffer     []byte // keeps all level data
-	full       bool   // indicates whether the trie is full
+	full       bool   // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
 	pipelineFn pipeline.PipelineFunc
 }
 
