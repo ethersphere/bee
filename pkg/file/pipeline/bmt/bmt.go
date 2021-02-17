@@ -48,8 +48,6 @@ func (w *bmtWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	p.Ref = hasher.Sum(nil)
 	bmtpool.Put(hasher)
 
-	//fmt.Println("bmt writer", "ref", p.Ref, "data", p.Data)
-
 	return w.next.ChainWrite(p)
 }
 

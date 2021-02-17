@@ -10,20 +10,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
-	mrand "math/rand"
 	"strconv"
 	"testing"
-	"time"
 
-	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	test "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	mockbytes "gitlab.com/nolash/go-mockbytes"
-	"golang.org/x/crypto/sha3"
 )
 
 func TestPartialWrites(t *testing.T) {
@@ -82,119 +76,6 @@ func TestAllVectors(t *testing.T) {
 				t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
 			}
 		})
-	}
-}
-
-func TestFindBug(t *testing.T) {
-	t.Skip("ci")
-	m := mock.NewStorer()
-	ctx := context.Background()
-	for i := 128 * 128 * 4096; i <= 128*128*4096; i++ {
-		//for i := 67100000; i <= 67100000; i++ {
-		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
-		data, err := g.SequentialBytes(i)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
-			p := builder.NewPipelineBuilder(ctx, m, storage.ModePutUpload, false)
-
-			_, err := p.Write(data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			sum, err := p.Sum()
-			if err != nil {
-				t.Fatal(err)
-			}
-			a := swarm.NewAddress(sum)
-			//fmt.Println("sum address", sum)
-			j, l, err := joiner.New(ctx, m, a)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if l != int64(i) {
-				t.Fatalf("expected join data length %d, got %d", i, l)
-			}
-			joinData, err := ioutil.ReadAll(j)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(joinData, data) {
-				t.Fatal("data mismatch")
-				//t.Fatalf("retrieved data '%x' not like original data '%x'", joinData, data)
-			}
-		})
-		if t.Failed() {
-			return
-		}
-	}
-}
-
-func TestE2E(t *testing.T) {
-	t.Skip("ci")
-	m := mock.NewStorer()
-	ctx := context.Background()
-	size := 100000000000                 // 100 gigs    // 128 * 128 * 128 * 4096
-	buffer := make([]byte, 1024*1024*10) // ten megs buffer
-	p := builder.NewPipelineBuilder(ctx, m, storage.ModePutUpload, false)
-	r := mrand.New(mrand.NewSource(99))
-	hasher := sha3.NewLegacyKeccak256()
-	for written := 0; written < size; {
-		ttt := time.Now()
-		n, err := r.Read(buffer)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fmt.Println("read took", time.Since(ttt))
-		if n > size-written {
-			n = size - written
-		}
-		_, err = p.Write(buffer[:n])
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = hasher.Write(buffer[:n])
-		if err != nil {
-			t.Fatal(err)
-		}
-		written += n
-	}
-	sh3sum := hasher.Sum(nil) // sha3 sum
-	fmt.Println(hex.EncodeToString(sh3sum))
-
-	sum, err := p.Sum() // hashtrie sum
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := swarm.NewAddress(sum)
-	j, l, err := joiner.New(ctx, m, a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if l != int64(size) {
-		t.Fatalf("expected join data length %d, got %d", size, l)
-	}
-
-	read := 0
-	readHasher := sha3.NewLegacyKeccak256()
-
-	for read < size {
-		n, err := j.Read(buffer)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = readHasher.Write(buffer[:n])
-		if err != nil {
-			t.Fatal(err)
-		}
-		read += n
-	}
-
-	refSum := readHasher.Sum(nil)
-	if !bytes.Equal(refSum, sh3sum) {
-		t.Fatal("sums unequal!")
 	}
 }
 
