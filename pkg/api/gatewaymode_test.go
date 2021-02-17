@@ -6,8 +6,8 @@ package api_test
 
 import (
 	"bytes"
+	"io/ioutil"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -21,7 +21,7 @@ import (
 )
 
 func TestGatewayMode(t *testing.T) {
-	logger := logging.New(os.Stdout, 5)
+	logger := logging.New(ioutil.Discard, 0)
 	chunk := testingc.GenerateTestRandomChunk()
 	client, _, _ := newTestServer(t, testServerOptions{
 		Storer:      mock.NewStorer(),
