@@ -24,37 +24,15 @@ func newStaticAddressResolver(addr string) (*staticAddressResolver, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var multiProto string
 	if host != "" {
-		ip := net.ParseIP(host)
-		if ip == nil {
-			ipv4 := false
-			ipv6 := false
-			ips, err := net.LookupIP(host)
-			if err != nil {
-				return nil, fmt.Errorf("invalid IP or Domain Name %q", host)
-			}
-			for _, ip := range ips {
-				if ip.To4() != nil {
-					ipv4 = true
-				} else {
-					ipv6 = true
-				}
-			}
-			if ipv4 {
-				multiProto = "/dns4/" + host
-				if ipv6 {
-					multiProto = "/dns/" + host
-				}
-			} else {
-				multiProto = "/dns6/" + host
-			}
-		} else if ip.To4() != nil {
-			multiProto = "/ip4/" + ip.String()
-		} else {
-			multiProto = "/ip6/" + ip.String()
+		multiProto, err = getMultiProto(host)
+		if err != nil {
+			return nil, err
 		}
 	}
+
 	return &staticAddressResolver{
 		multiProto: multiProto,
 		port:       port,
@@ -97,4 +75,43 @@ func (r *staticAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multia
 	}
 
 	return buildUnderlayAddress(a, observableAddrInfo.ID)
+}
+
+func getMultiProto(host string) (string, error) {
+	if host == "" {
+		return "", nil
+	}
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if ip.To4() == nil {
+			return "/ip6/" + ip.String(), nil
+		}
+		return "/ip4/" + ip.String(), nil
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return "", fmt.Errorf("invalid IP or Domain Name %q", host)
+	}
+	ipv4, ipv6 := ipsClassifier(ips)
+	if ipv4 {
+		if ipv6 {
+			return "/dns/" + host, nil
+		}
+		return "/dns4/" + host, nil
+	}
+	return "/dns6/" + host, nil
+}
+
+func ipsClassifier(ips []net.IP) (ipv4, ipv6 bool) {
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			ipv4 = true
+		} else {
+			ipv6 = true
+		}
+		if ipv4 && ipv6 {
+			return
+		}
+	}
+	return
 }
