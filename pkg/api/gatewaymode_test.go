@@ -6,8 +6,8 @@ package api_test
 
 import (
 	"bytes"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -21,7 +21,7 @@ import (
 )
 
 func TestGatewayMode(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(os.Stdout, 5)
 	chunk := testingc.GenerateTestRandomChunk()
 	client, _, _ := newTestServer(t, testServerOptions{
 		Storer:      mock.NewStorer(),
@@ -71,7 +71,9 @@ func TestGatewayMode(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost, "/chunks/0773a91efd6547c754fc1d95fb1c62c7d1b47f959c2caa685dfec8736da95c1c", http.StatusForbidden, forbiddenResponseOption, headerOption)
 
-		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusOK) // should work without pinning
+		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+		) // should work without pinning
 		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusForbidden, forbiddenResponseOption, headerOption)
 		jsonhttptest.Request(t, client, http.MethodPost, "/files", http.StatusForbidden, forbiddenResponseOption, headerOption)
 		jsonhttptest.Request(t, client, http.MethodPost, "/dirs", http.StatusForbidden, forbiddenResponseOption, headerOption)
@@ -85,7 +87,9 @@ func TestGatewayMode(t *testing.T) {
 			Code:    http.StatusForbidden,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusOK) // should work without pinning
+		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+		) // should work without pinning
 		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusForbidden, forbiddenResponseOption, headerOption)
 		jsonhttptest.Request(t, client, http.MethodPost, "/files", http.StatusForbidden, forbiddenResponseOption, headerOption)
 		jsonhttptest.Request(t, client, http.MethodPost, "/dirs", http.StatusForbidden, forbiddenResponseOption, headerOption)
