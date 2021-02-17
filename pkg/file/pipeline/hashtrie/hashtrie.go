@@ -13,7 +13,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var errInconsistentRefs = errors.New("inconsistent reference lengths in level")
+var (
+	errInconsistentRefs = errors.New("inconsistent reference lengths in level")
+	errTrieFull         = errors.New("trie full")
+)
 
 type hashTrieWriter struct {
 	branching  int
@@ -45,6 +48,9 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	l := len(p.Span) + len(p.Ref) + len(p.Key)
 	if l%oneRef != 0 {
 		return errInconsistentRefs
+	}
+	if h.full {
+		return errTrieFull
 	}
 	return h.writeToLevel(1, p.Span, p.Ref, p.Key)
 }
@@ -105,6 +111,9 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	// this "truncates" the current level that was wrapped
 	// by setting the cursors to the cursors of one level above
 	h.cursors[level] = h.cursors[level+1]
+	if level+1 == 8 {
+		h.full = true
+	}
 	return nil
 }
 
