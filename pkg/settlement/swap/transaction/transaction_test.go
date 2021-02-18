@@ -7,6 +7,7 @@ package transaction_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"math/big"
 	"testing"
@@ -14,168 +15,299 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/crypto"
 	signermock "github.com/ethersphere/bee/pkg/crypto/mock"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
+	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
 )
 
-func TestTransactionSend(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
-	recipient := common.HexToAddress("0xabcd")
-	signedTx := types.NewTransaction(0, recipient, big.NewInt(0), 0, nil, nil)
-	txData := common.Hex2Bytes("0xabcdee")
-	value := big.NewInt(1)
-	suggestedGasPrice := big.NewInt(2)
-	estimatedGasLimit := uint64(3)
-	nonce := uint64(2)
-
-	request := &transaction.TxRequest{
-		To:    &recipient,
-		Data:  txData,
-		Value: value,
-	}
-
-	transactionService, err := transaction.NewService(logger,
-		backendmock.New(
-			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-				if tx != signedTx {
-					t.Fatal("not sending signed transaction")
-				}
-				return nil
-			}),
-			backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-				if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
-					t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
-				}
-				if !bytes.Equal(call.Data, txData) {
-					t.Fatal("estimating with wrong data")
-				}
-				return estimatedGasLimit, nil
-			}),
-			backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
-				return suggestedGasPrice, nil
-			}),
-			backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
-				return nonce, nil
-			}),
-		),
-		signermock.New(
-			signermock.WithSignTxFunc(func(transaction *types.Transaction) (*types.Transaction, error) {
-				if !bytes.Equal(transaction.To().Bytes(), recipient.Bytes()) {
-					t.Fatalf("signing transaction with wrong recipient. wanted %x, got %x", recipient, transaction.To())
-				}
-				if !bytes.Equal(transaction.Data(), txData) {
-					t.Fatalf("signing transaction with wrong data. wanted %x, got %x", txData, transaction.Data())
-				}
-				if transaction.Value().Cmp(value) != 0 {
-					t.Fatalf("signing transaction with wrong value. wanted %d, got %d", value, transaction.Value())
-				}
-				if transaction.Gas() != estimatedGasLimit {
-					t.Fatalf("signing transaction with wrong gas. wanted %d, got %d", estimatedGasLimit, transaction.Gas())
-				}
-				if transaction.GasPrice().Cmp(suggestedGasPrice) != 0 {
-					t.Fatalf("signing transaction with wrong gasprice. wanted %d, got %d", suggestedGasPrice, transaction.GasPrice())
-				}
-
-				if transaction.Nonce() != nonce {
-					t.Fatalf("signing transaction with wrong nonce. wanted %d, got %d", nonce, transaction.Nonce())
-				}
-
-				return signedTx, nil
-			}),
-		),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	txHash, err := transactionService.Send(context.Background(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
-		t.Fatal("returning wrong transaction hash")
-	}
+func nonceKey(sender common.Address) string {
+	return fmt.Sprintf("transaction_nonce_%x", sender)
 }
 
-func TestTransactionDeploy(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
-	signedTx := types.NewContractCreation(0, big.NewInt(0), 0, nil, nil)
-	txData := common.Hex2Bytes("0xabcdee")
-	value := big.NewInt(1)
-	suggestedGasPrice := big.NewInt(2)
-	estimatedGasLimit := uint64(3)
-	nonce := uint64(2)
-
-	request := &transaction.TxRequest{
-		To:    nil,
-		Data:  txData,
-		Value: value,
-	}
-
-	transactionService, err := transaction.NewService(logger,
-		backendmock.New(
-			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-				if tx != signedTx {
-					t.Fatal("not sending signed transaction")
-				}
-				return nil
-			}),
-			backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-				if call.To != nil {
-					t.Fatalf("estimating with recipient. wanted nil, got %x", call.To)
-				}
-				if !bytes.Equal(call.Data, txData) {
-					t.Fatal("estimating with wrong data")
-				}
-				return estimatedGasLimit, nil
-			}),
-			backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
-				return suggestedGasPrice, nil
-			}),
-			backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
-				return nonce, nil
-			}),
-		),
-		signermock.New(
-			signermock.WithSignTxFunc(func(transaction *types.Transaction) (*types.Transaction, error) {
+func signerMockForTransaction(signedTx *types.Transaction, sender common.Address, t *testing.T) crypto.Signer {
+	return signermock.New(
+		signermock.WithSignTxFunc(func(transaction *types.Transaction) (*types.Transaction, error) {
+			if signedTx.To() == nil {
 				if transaction.To() != nil {
 					t.Fatalf("signing transaction with recipient. wanted nil, got %x", transaction.To())
 				}
-				if !bytes.Equal(transaction.Data(), txData) {
-					t.Fatalf("signing transaction with wrong data. wanted %x, got %x", txData, transaction.Data())
+			} else {
+				if transaction.To() == nil || *transaction.To() != *signedTx.To() {
+					t.Fatalf("signing transactiono with wrong recipient. wanted %x, got %x", signedTx.To(), transaction.To())
 				}
-				if transaction.Value().Cmp(value) != 0 {
-					t.Fatalf("signing transaction with wrong value. wanted %d, got %d", value, transaction.Value())
-				}
-				if transaction.Gas() != estimatedGasLimit {
-					t.Fatalf("signing transaction with wrong gas. wanted %d, got %d", estimatedGasLimit, transaction.Gas())
-				}
-				if transaction.GasPrice().Cmp(suggestedGasPrice) != 0 {
-					t.Fatalf("signing transaction with wrong gasprice. wanted %d, got %d", suggestedGasPrice, transaction.GasPrice())
-				}
-				if transaction.Nonce() != nonce {
-					t.Fatalf("signing transaction with wrong nonce. wanted %d, got %d", nonce, transaction.Nonce())
-				}
+			}
+			if !bytes.Equal(transaction.Data(), signedTx.Data()) {
+				t.Fatalf("signing transaction with wrong data. wanted %x, got %x", signedTx.Data(), transaction.Data())
+			}
+			if transaction.Value().Cmp(signedTx.Value()) != 0 {
+				t.Fatalf("signing transaction with wrong value. wanted %d, got %d", signedTx.Value(), transaction.Value())
+			}
+			if transaction.Gas() != signedTx.Gas() {
+				t.Fatalf("signing transaction with wrong gas. wanted %d, got %d", signedTx.Gas(), transaction.Gas())
+			}
+			if transaction.GasPrice().Cmp(signedTx.GasPrice()) != 0 {
+				t.Fatalf("signing transaction with wrong gasprice. wanted %d, got %d", signedTx.GasPrice(), transaction.GasPrice())
+			}
 
-				return signedTx, nil
-			}),
-		),
+			if transaction.Nonce() != signedTx.Nonce() {
+				t.Fatalf("signing transaction with wrong nonce. wanted %d, got %d", signedTx.Nonce(), transaction.Nonce())
+			}
+
+			return signedTx, nil
+		}),
+		signermock.WithEthereumAddressFunc(func() (common.Address, error) {
+			return sender, nil
+		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+}
 
-	txHash, err := transactionService.Send(context.Background(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestTransactionSend(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	sender := common.HexToAddress("0xddff")
+	recipient := common.HexToAddress("0xabcd")
+	txData := common.Hex2Bytes("0xabcdee")
+	value := big.NewInt(1)
+	suggestedGasPrice := big.NewInt(2)
+	estimatedGasLimit := uint64(3)
+	nonce := uint64(2)
 
-	if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
-		t.Fatal("returning wrong transaction hash")
-	}
+	t.Run("send", func(t *testing.T) {
+		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
+		request := &transaction.TxRequest{
+			To:    &recipient,
+			Data:  txData,
+			Value: value,
+		}
+		store := storemock.NewStateStore()
+		err := store.Put(nonceKey(sender), nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+					}
+					if !bytes.Equal(call.Data, txData) {
+						t.Fatal("estimating with wrong data")
+					}
+					return estimatedGasLimit, nil
+				}),
+				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasPrice, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce - 1, nil
+				}),
+			),
+			signerMockForTransaction(signedTx, sender, t),
+			store,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		txHash, err := transactionService.Send(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		var storedNonce uint64
+		err = store.Get(nonceKey(sender), &storedNonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storedNonce != nonce+1 {
+			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
+		}
+	})
+
+	t.Run("send_no_nonce", func(t *testing.T) {
+		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
+		request := &transaction.TxRequest{
+			To:    &recipient,
+			Data:  txData,
+			Value: value,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+					}
+					if !bytes.Equal(call.Data, txData) {
+						t.Fatal("estimating with wrong data")
+					}
+					return estimatedGasLimit, nil
+				}),
+				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasPrice, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+			),
+			signerMockForTransaction(signedTx, sender, t),
+			store,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		txHash, err := transactionService.Send(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		var storedNonce uint64
+		err = store.Get(nonceKey(sender), &storedNonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storedNonce != nonce+1 {
+			t.Fatalf("did not store nonce correctly. wanted %d, got %d", nonce+1, storedNonce)
+		}
+	})
+
+	t.Run("send_skipped_nonce", func(t *testing.T) {
+		nextNonce := nonce + 5
+		signedTx := types.NewTransaction(nextNonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
+		request := &transaction.TxRequest{
+			To:    &recipient,
+			Data:  txData,
+			Value: value,
+		}
+		store := storemock.NewStateStore()
+		err := store.Put(nonceKey(sender), nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+					}
+					if !bytes.Equal(call.Data, txData) {
+						t.Fatal("estimating with wrong data")
+					}
+					return estimatedGasLimit, nil
+				}),
+				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasPrice, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nextNonce, nil
+				}),
+			),
+			signerMockForTransaction(signedTx, sender, t),
+			store,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		txHash, err := transactionService.Send(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		var storedNonce uint64
+		err = store.Get(nonceKey(sender), &storedNonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storedNonce != nextNonce+1 {
+			t.Fatalf("did not store nonce correctly. wanted %d, got %d", nextNonce+1, storedNonce)
+		}
+	})
+
+	t.Run("deploy", func(t *testing.T) {
+		signedTx := types.NewContractCreation(nonce, value, estimatedGasLimit, suggestedGasPrice, txData)
+		request := &transaction.TxRequest{
+			To:    nil,
+			Data:  txData,
+			Value: value,
+		}
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+					if call.To != nil {
+						t.Fatalf("estimating with recipient. wanted nil, got %x", call.To)
+					}
+					if !bytes.Equal(call.Data, txData) {
+						t.Fatal("estimating with wrong data")
+					}
+					return estimatedGasLimit, nil
+				}),
+				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasPrice, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+			),
+			signerMockForTransaction(signedTx, sender, t),
+			storemock.NewStateStore(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		txHash, err := transactionService.Send(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+	})
 }
 
 func TestTransactionWaitForReceipt(t *testing.T) {
@@ -191,6 +323,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 			}),
 		),
 		signermock.New(),
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)

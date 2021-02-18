@@ -24,6 +24,10 @@ type Backend interface {
 	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 }
 
+// IsSynced will check if we are synced with the given blockchain backend. This
+// is true if the current wall clock is after the block time of last block
+// with the given maxDelay as the maximum duration we can be behind the block
+// time.
 func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (bool, error) {
 	number, err := backend.BlockNumber(ctx)
 	if err != nil {
@@ -40,6 +44,9 @@ func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (boo
 	return blockTime.After(time.Now().UTC().Add(-maxDelay)), nil
 }
 
+// WaitSynced will wait until we are synced with the given blockchain backend,
+// with the given maxDelay duration as the maximum time we can be behind the
+// last block.
 func WaitSynced(ctx context.Context, backend Backend, maxDelay time.Duration) error {
 	for {
 		synced, err := IsSynced(ctx, backend, maxDelay)
