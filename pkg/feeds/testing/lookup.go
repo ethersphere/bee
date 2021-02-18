@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -18,10 +19,30 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type Timeout struct {
+	storage.Storer
+}
+
+var searchTimeout = 30 * time.Millisecond
+
+// Get overrides the mock storer and introduces latency
+func (t *Timeout) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (swarm.Chunk, error) {
+	ch, err := t.Storer.Get(ctx, mode, addr)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			time.Sleep(searchTimeout)
+		}
+		return ch, err
+	}
+	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+	return ch, nil
+}
+
 func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
-	storer := mock.NewStorer()
+	storer := &Timeout{mock.NewStorer()}
 	topicStr := "testtopic"
 	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
 	if err != nil {
@@ -76,7 +97,7 @@ func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) fee
 
 func TestFinderFixIntervals(t *testing.T, nextf func() (bool, int64), finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 
-	storer := mock.NewStorer()
+	storer := &Timeout{mock.NewStorer()}
 	topicStr := "testtopic"
 	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
 	if err != nil {
@@ -89,71 +110,72 @@ func TestFinderFixIntervals(t *testing.T, nextf func() (bool, int64), finderf fu
 	if err != nil {
 		t.Fatal(err)
 	}
+	finder := finderf(storer, updater.Feed())
 
 	ctx := context.Background()
-	payload := make([]byte, 8)
 	var timesNow []int64
 	for stop, timeNow := nextf(); !stop; stop, timeNow = nextf() {
 		timesNow = append(timesNow, timeNow)
+		payload := make([]byte, 8)
 		binary.BigEndian.PutUint64(payload, uint64(timeNow))
 		err = updater.Update(ctx, timeNow, payload)
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-	finder := finderf(storer, updater.Feed())
-	for i, timeNow := range timesNow {
-		d := int64(3)
-		if i < len(timesNow)-1 {
-			d = timesNow[i+1] - timeNow
-		}
-		step := d / 3
-		if step == 0 {
-			step = 1
-		}
-		for now := timeNow; now < timeNow+d; now += step {
-			ch, current, next, err := finder.At(ctx, now, 0)
-			if err != nil {
-				t.Fatal(err)
+		for i, timeNow := range timesNow {
+			d := int64(3)
+			if i < len(timesNow)-1 {
+				d = timesNow[i+1] - timeNow
 			}
-			if ch == nil {
-				t.Fatalf("expected to find update, got none")
+			step := d / 3
+			if step == 0 {
+				step = 1
 			}
-			ts, payload, err := feeds.FromChunk(ch)
-			if err != nil {
-				t.Fatal(err)
-			}
-			content := binary.BigEndian.Uint64(payload)
-			if content != uint64(timeNow) {
-				t.Fatalf("payload mismatch: expected %v, got %v", timeNow, content)
-			}
+			for now := timeNow; now < timeNow+d; now += step {
+				// now := time.Now().UnixNano()
+				ch, current, next, err := finder.At(ctx, now, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if ch == nil {
+					t.Fatalf("expected to find update, got none")
+				}
+				ts, payload, err := feeds.FromChunk(ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				content := binary.BigEndian.Uint64(payload)
+				if content != uint64(timeNow) {
+					t.Fatalf("payload mismatch: expected %v, got %v", timeNow, content)
+				}
 
-			if ts != uint64(timeNow) {
-				t.Fatalf("timestamp mismatch: expected %v, got %v", timeNow, ts)
-			}
+				if ts != uint64(timeNow) {
+					t.Fatalf("timestamp mismatch: expected %v, got %v", timeNow, ts)
+				}
 
-			if current != nil {
-				expectedId := ch.Data()[:32]
-				id, err := feeds.Id(topic, current)
-				if err != nil {
-					t.Fatal(err)
+				if current != nil {
+					expectedId := ch.Data()[:32]
+					id, err := feeds.Id(topic, current)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(id, expectedId) {
+						t.Fatalf("current mismatch: expected %x, got %x", expectedId, id)
+					}
 				}
-				if !bytes.Equal(id, expectedId) {
-					t.Fatalf("current mismatch: expected %x, got %x", expectedId, id)
-				}
-			}
-			if next != nil {
-				expectedNext := current.Next(timeNow, uint64(timeNow))
-				expectedIdx, err := expectedNext.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				idx, err := next.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.Equal(idx, expectedIdx) {
-					t.Fatalf("next mismatch: expected %x, got %x", expectedIdx, idx)
+				if next != nil {
+					expectedNext := current.Next(timeNow, uint64(timeNow))
+					expectedIdx, err := expectedNext.MarshalBinary()
+					if err != nil {
+						t.Fatal(err)
+					}
+					idx, err := next.MarshalBinary()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(idx, expectedIdx) {
+						t.Fatalf("next mismatch: expected %x, got %x", expectedIdx, idx)
+					}
 				}
 			}
 		}
@@ -164,6 +186,7 @@ func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds
 	for i := 0; i < 5; i++ {
 		t.Run(fmt.Sprintf("random intervals %d", i), func(t *testing.T) {
 			storer := mock.NewStorer()
+			// storer := &Timeout{mock.NewStorer()}
 			topicStr := "testtopic"
 			topic, err := crypto.LegacyKeccak256([]byte(topicStr))
 			if err != nil {

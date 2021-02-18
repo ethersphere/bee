@@ -23,7 +23,7 @@ func TestFinder(t *testing.T) {
 		i := 0
 		nextf := func() (bool, int64) {
 			defer func() { i++ }()
-			return i == 50, time.Now().UnixNano()
+			return i == 50, time.Now().Unix()
 		}
 		t.Run("fixed", func(t *testing.T) {
 			feedstesting.TestFinderFixIntervals(t, nextf, finderf, updaterf)
