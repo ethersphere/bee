@@ -6,6 +6,8 @@ package libp2p_test
 
 import (
 	"net"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
@@ -95,6 +97,14 @@ func TestStaticAddressResolver(t *testing.T) {
 			want:              "/dns/ipv4and6.com/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 	} {
+		if strings.Contains(tc.name, "dns") {
+			// The windows and plan9 implementation of the resolver does not use
+			// the Dial function.
+			switch runtime.GOOS {
+			case "windows", "plan9":
+				t.Skipf("skip %v on %v", tc.name, runtime.GOOS)
+			}
+		}
 		t.Run(tc.name, func(t *testing.T) {
 
 			r, err := libp2p.NewStaticAddressResolver(tc.natAddr)
