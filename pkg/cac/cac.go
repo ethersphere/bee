@@ -37,9 +37,7 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 	if len(data) < swarm.SpanSize {
 		return nil, errTooShortChunkData
 	}
-	span := data[:swarm.SpanSize]
-	content := data[swarm.SpanSize:]
-	return NewWithSpan(content, span)
+	return NewWithSpan(data[swarm.SpanSize:], data[:swarm.SpanSize])
 }
 
 // NewWithSpan creates a new chunk prepending the given span to the data.
@@ -49,7 +47,11 @@ func NewWithSpan(data []byte, span []byte) (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swarm.NewChunk(swarm.NewAddress(hash), append(span, data...)), nil
+
+	cdata := make([]byte, len(data)+len(span))
+	copy(cdata[:swarm.SpanSize], span)
+	copy(cdata[swarm.SpanSize:], data)
+	return swarm.NewChunk(swarm.NewAddress(hash), cdata), nil
 }
 
 // hasher is a helper function to hash a given data based on the given span.
