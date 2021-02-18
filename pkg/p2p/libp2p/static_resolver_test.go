@@ -102,7 +102,7 @@ func TestStaticAddressResolver(t *testing.T) {
 			// the Dial function.
 			switch runtime.GOOS {
 			case "windows", "plan9":
-				t.Skipf("skip %v on %v", tc.name, runtime.GOOS)
+				t.Skipf("skipped all dns resolver tests on %v", runtime.GOOS)
 			}
 		}
 		t.Run(tc.name, func(t *testing.T) {
