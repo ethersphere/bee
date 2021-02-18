@@ -15,6 +15,14 @@ var (
 
 // New creates a new content address chunk by initializing a span and appending the data to it.
 func New(data []byte) (swarm.Chunk, error) {
+	if len(data) > swarm.ChunkSize+swarm.SpanSize {
+		return nil, errTooLargeChunkData
+	}
+
+	if len(data) < swarm.SpanSize {
+		return nil, errTooShortChunkData
+	}
+
 	span := make([]byte, swarm.SpanSize)
 	binary.LittleEndian.PutUint64(span, uint64(len(data)))
 	return NewWithSpan(data, span)
@@ -29,8 +37,9 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 	if len(data) < swarm.SpanSize {
 		return nil, errTooShortChunkData
 	}
-
-	return NewWithSpan(data[swarm.SpanSize:], data[:swarm.SpanSize])
+	span := data[:swarm.SpanSize]
+	content := data[swarm.SpanSize:]
+	return NewWithSpan(content, span)
 }
 
 // NewWithSpan creates a new chunk prepending the given span to the data.
