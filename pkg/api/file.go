@@ -382,6 +382,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	}
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
 	if targets != "" {
 		w.Header().Set(TargetsRecoveryHeader, targets)
 	}
