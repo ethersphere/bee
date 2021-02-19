@@ -13,6 +13,7 @@ require (
 	github.com/ethersphere/langos v1.0.0
 	github.com/ethersphere/manifest v0.3.6
 	github.com/ethersphere/sw3-bindings/v2 v2.1.0
+	github.com/foxcpp/go-mockdns v0.0.0-20201212160233-ede2f9158d15
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect

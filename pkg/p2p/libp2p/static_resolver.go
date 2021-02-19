@@ -15,8 +15,8 @@ import (
 )
 
 type staticAddressResolver struct {
-	ipProto string
-	port    string
+	multiProto string
+	port       string
 }
 
 func newStaticAddressResolver(addr string) (*staticAddressResolver, error) {
@@ -24,21 +24,18 @@ func newStaticAddressResolver(addr string) (*staticAddressResolver, error) {
 	if err != nil {
 		return nil, err
 	}
-	var ipProto string
+
+	var multiProto string
 	if host != "" {
-		ip := net.ParseIP(host)
-		if ip == nil {
-			return nil, fmt.Errorf("invalid IP %q", host)
-		}
-		if ip.To4() != nil {
-			ipProto = "/ip4/" + ip.String()
-		} else {
-			ipProto = "/ip6/" + ip.String()
+		multiProto, err = getMultiProto(host)
+		if err != nil {
+			return nil, err
 		}
 	}
+
 	return &staticAddressResolver{
-		ipProto: ipProto,
-		port:    port,
+		multiProto: multiProto,
+		port:       port,
 	}, nil
 }
 
@@ -59,11 +56,11 @@ func (r *staticAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multia
 		return observedAddress, nil
 	}
 
-	var ipProto string
-	if r.ipProto != "" {
-		ipProto = r.ipProto
+	var multiProto string
+	if r.multiProto != "" {
+		multiProto = r.multiProto
 	} else {
-		ipProto = strings.Join(observedAddrSplit[:3], "/")
+		multiProto = strings.Join(observedAddrSplit[:3], "/")
 	}
 
 	var port string
@@ -72,10 +69,49 @@ func (r *staticAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multia
 	} else {
 		port = observedAddrSplit[4]
 	}
-	a, err := ma.NewMultiaddr(ipProto + "/" + observedAddrSplit[3] + "/" + port)
+	a, err := ma.NewMultiaddr(multiProto + "/" + observedAddrSplit[3] + "/" + port)
 	if err != nil {
 		return nil, err
 	}
 
 	return buildUnderlayAddress(a, observableAddrInfo.ID)
+}
+
+func getMultiProto(host string) (string, error) {
+	if host == "" {
+		return "", nil
+	}
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if ip.To4() == nil {
+			return "/ip6/" + ip.String(), nil
+		}
+		return "/ip4/" + ip.String(), nil
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return "", fmt.Errorf("invalid IP or Domain Name %q", host)
+	}
+	ipv4, ipv6 := ipsClassifier(ips)
+	if ipv4 {
+		if ipv6 {
+			return "/dns/" + host, nil
+		}
+		return "/dns4/" + host, nil
+	}
+	return "/dns6/" + host, nil
+}
+
+func ipsClassifier(ips []net.IP) (ipv4, ipv6 bool) {
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			ipv4 = true
+		} else {
+			ipv6 = true
+		}
+		if ipv4 && ipv6 {
+			return
+		}
+	}
+	return
 }
