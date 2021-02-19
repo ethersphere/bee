@@ -119,7 +119,7 @@ func (p *path) next() *path {
 	return &path{
 		base:   p.index,
 		index:  p.index,
-		max:    p.level,
+		max:    p.max,
 		level:  p.level,
 		chunk:  p.chunk,
 		cancel: make(chan struct{}),
@@ -186,11 +186,9 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			go f.at(ctx, at, np, c, quit)
 		}
 		if p.max < p.min {
-			np := newPath(p.base)
-			np.level = p.max
+			np := p.next()
+			np.level = p.level
 			np.max = p.level
-			np.index = p.base
-			np.chunk = p.chunk
 			go f.at(ctx, at, np, c, quit)
 		}
 	}

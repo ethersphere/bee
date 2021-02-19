@@ -46,12 +46,7 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	// return f.getter.Get(ctx, storage.ModeGetRequest, addr)
-	ch, err := f.getter.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil {
-		return nil, err
-	}
-	return ch, err
+	return f.getter.Get(ctx, storage.ModeGetRequest, addr)
 }
 
 // FromChunk parses out the timestamp and the payload

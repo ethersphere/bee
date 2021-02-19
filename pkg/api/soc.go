@@ -7,7 +7,6 @@ package api
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -115,7 +114,6 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
 	}
-	fmt.Printf("SOC STORE addr=%v, err=%v\n", chunk.Address(), err)
 	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
 }
 

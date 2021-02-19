@@ -186,7 +186,6 @@ func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds
 	for i := 0; i < 5; i++ {
 		t.Run(fmt.Sprintf("random intervals %d", i), func(t *testing.T) {
 			storer := mock.NewStorer()
-			// storer := &Timeout{mock.NewStorer()}
 			topicStr := "testtopic"
 			topic, err := crypto.LegacyKeccak256([]byte(topicStr))
 			if err != nil {
