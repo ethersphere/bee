@@ -45,7 +45,16 @@ func (c *command) initKeysCmd() (err error) {
 
 			signerConfig, err := c.configureSigner(cmd, logger)
 			fmt.Printf("swarm public key: 0x%x\n", crypto.EncodeSecp256k1PublicKey(signerConfig.publicKey))
-			fmt.Printf("swarm private key: 0x%x\n", crypto.EncodeSecp256k1PrivateKey(signerConfig.swarmPrivateKey))
+
+			fmt.Printf("pss public key: 0x%x\n", crypto.EncodeSecp256k1PublicKey(&signerConfig.pssPrivateKey.PublicKey))
+			fmt.Printf("pss private key: 0x%x\n", crypto.EncodeSecp256k1PrivateKey(signerConfig.pssPrivateKey))
+
+			fmt.Printf("p2p public key: 0x%x\n", crypto.EncodeSecp256k1PublicKey(&signerConfig.libp2pPrivateKey.PublicKey))
+			fmt.Printf("p2p private key: 0x%x\n", crypto.EncodeSecp256k1PrivateKey(signerConfig.libp2pPrivateKey))
+
+			var ethAddr,_ = signerConfig.signer.EthereumAddress()
+			fmt.Printf("eth address: 0x%x\n", ethAddr)
+			fmt.Printf("eth address private key: 0x%x\n", crypto.EncodeSecp256k1PrivateKey(signerConfig.swarmPrivateKey))
 
 			return err
 		},
@@ -54,7 +63,7 @@ func (c *command) initKeysCmd() (err error) {
 		},
 	}
 
-	// c.setAllFlags(cmd)
+	c.setAllFlags(cmd)
 	c.root.AddCommand(cmd)
 	return nil
 }
