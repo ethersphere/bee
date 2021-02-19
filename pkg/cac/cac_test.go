@@ -3,6 +3,7 @@ package cac_test
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -52,58 +53,53 @@ func TestNewWithDataSpan(t *testing.T) {
 	}
 }
 
-func TestNewWithSpan(t *testing.T) {
-	data := []byte("greaterthanspan")
-	bmtHashOfData := "27913f1bdb6e8e52cbd5a5fd4ab577c857287edf6969b41efe926b51de0f4f23"
-	address := swarm.MustParseHexAddress(bmtHashOfData)
-
-	span := make([]byte, swarm.SpanSize)
-	binary.LittleEndian.PutUint64(span, uint64(len(data)))
-
-	expectedContent := append(span, data...)
-
-	c, err := cac.NewWithSpan(data, span)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !c.Address().Equal(address) {
-		t.Fatalf("address mismatch. got %s want %s", c.Address().String(), address.String())
-	}
-
-	if !bytes.Equal(c.Data(), expectedContent) {
-		t.Fatalf("chunk data mismatch. got %x want %x", c.Data(), expectedContent)
-	}
-}
-
-var testChunkData = []struct {
-	name string
-	data []byte
-	err  error
-}{
-	{
-		name: "too short data chunk",
-		data: []byte(strings.Repeat("a", swarm.SpanSize-1)),
-		err:  cac.ErrTooShortChunkData,
-	},
-	{
-		name: "too large data chunk",
-		data: []byte(strings.Repeat("a", swarm.ChunkSize+swarm.SpanSize+1)),
-		err:  cac.ErrTooLargeChunkData,
-	},
-}
-
 func TestChunkInvariants(t *testing.T) {
-	for _, cc := range testChunkData {
-		t.Run(cc.name, func(t *testing.T) {
-			_, err := cac.NewWithDataSpan(cc.data)
-			if err != nil {
-				if err != cc.err {
-					t.Fatalf("got %v want %v", err, cc.err)
+	chunkerFunc := []struct {
+		name    string
+		chunker func(data []byte) (swarm.Chunk, error)
+	}{
+		{
+			name: "new cac",
+			chunker: func(data []byte) (swarm.Chunk, error) {
+				return cac.New(data)
+			},
+		},
+		{
+			name: "new chunk with data span",
+			chunker: func(data []byte) (swarm.Chunk, error) {
+				return cac.NewWithDataSpan(data)
+			},
+		},
+	}
+
+	for _, f := range chunkerFunc {
+		for _, cc := range []struct {
+			name    string
+			data    []byte
+			wantErr error
+		}{
+			{
+				name:    "too short data chunk",
+				data:    []byte(strings.Repeat("a", swarm.SpanSize-1)),
+				wantErr: cac.ErrTooShortChunkData,
+			},
+			{
+				name:    "too large data chunk",
+				data:    []byte(strings.Repeat("a", swarm.ChunkSize+swarm.SpanSize+1)),
+				wantErr: cac.ErrTooLargeChunkData,
+			},
+		} {
+			testName := fmt.Sprintf("%s-%s", f.name, cc.name)
+			t.Run(testName, func(t *testing.T) {
+				_, err := f.chunker(cc.data)
+				if err != nil {
+					if err != cc.wantErr {
+						t.Fatalf("got %v want %v", err, cc.wantErr)
+					}
+				} else {
+					t.Fatalf("got %v want %v", err, cc.wantErr)
 				}
-			} else {
-				t.Fatalf("got %v want %v", err, cc.err)
-			}
-		})
+			})
+		}
 	}
 }
