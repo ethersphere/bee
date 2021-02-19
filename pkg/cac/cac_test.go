@@ -80,7 +80,7 @@ func TestChunkInvariants(t *testing.T) {
 		}{
 			{
 				name:    "too short data chunk",
-				data:    []byte(strings.Repeat("a", swarm.SpanSize-1)),
+				data:    []byte("a"),
 				wantErr: cac.ErrTooShortChunkData,
 			},
 			{
