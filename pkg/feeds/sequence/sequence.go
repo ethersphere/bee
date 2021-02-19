@@ -170,7 +170,6 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			// if there is a chunk for this path, then the  latest chunk has surely beed sent
 			// since `at` starts from log interval
 			if p.level == r.level && r.level < DefaultLevels {
-
 				return r.chunk, &index{r.index}, &index{r.index + 1}, nil
 			}
 			p.min = r.level
@@ -184,7 +183,6 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 				return p.chunk, &index{p.index}, &index{p.index + 1}, nil
 			}
 			np := p.next()
-
 			go f.at(ctx, at, np, c, quit)
 		}
 		if p.max < p.min {
