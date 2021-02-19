@@ -43,7 +43,7 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 }
 
 // newWithSpan creates a new chunk prepending the given span to the data.
-func newWithSpan(data []byte, span []byte) (swarm.Chunk, error) {
+func newWithSpan(data, span []byte) (swarm.Chunk, error) {
 	h := hasher(data)
 	hash, err := h(span)
 	if err != nil {

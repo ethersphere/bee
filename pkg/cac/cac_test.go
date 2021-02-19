@@ -59,16 +59,12 @@ func TestChunkInvariants(t *testing.T) {
 		chunker func(data []byte) (swarm.Chunk, error)
 	}{
 		{
-			name: "new cac",
-			chunker: func(data []byte) (swarm.Chunk, error) {
-				return cac.New(data)
-			},
+			name:    "new cac",
+			chunker: cac.New,
 		},
 		{
-			name: "new chunk with data span",
-			chunker: func(data []byte) (swarm.Chunk, error) {
-				return cac.NewWithDataSpan(data)
-			},
+			name:    "new chunk with data span",
+			chunker: cac.NewWithDataSpan,
 		},
 	}
 
