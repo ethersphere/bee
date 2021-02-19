@@ -3,6 +3,7 @@ package cac_test
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -75,8 +76,13 @@ func TestChunkInvariants(t *testing.T) {
 			wantErr error
 		}{
 			{
-				name:    "too short data chunk",
-				data:    []byte("a"),
+				name:    "zero data",
+				data:    []byte{},
+				wantErr: cac.ErrTooShortChunkData,
+			},
+			{
+				name:    "nil",
+				data:    nil,
 				wantErr: cac.ErrTooShortChunkData,
 			},
 			{
@@ -88,11 +94,7 @@ func TestChunkInvariants(t *testing.T) {
 			testName := fmt.Sprintf("%s-%s", f.name, cc.name)
 			t.Run(testName, func(t *testing.T) {
 				_, err := f.chunker(cc.data)
-				if err != nil {
-					if err != cc.wantErr {
-						t.Fatalf("got %v want %v", err, cc.wantErr)
-					}
-				} else {
+				if !errors.Is(err, cc.wantErr) {
 					t.Fatalf("got %v want %v", err, cc.wantErr)
 				}
 			})

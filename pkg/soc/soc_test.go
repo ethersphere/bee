@@ -26,7 +26,7 @@ func TestToChunk(t *testing.T) {
 
 	id := make([]byte, 32)
 
-	payload := []byte("greaterthanspan")
+	payload := []byte("foo")
 	ch, err := cac.New(payload)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestFromChunk(t *testing.T) {
 
 	id := make([]byte, 32)
 
-	payload := []byte("greaterthanspan")
+	payload := []byte("foo")
 	ch, err := cac.New(payload)
 	if err != nil {
 		t.Fatal(err)

@@ -20,7 +20,7 @@ func New(data []byte) (swarm.Chunk, error) {
 		return nil, errTooLargeChunkData
 	}
 
-	if dataLength < swarm.SpanSize {
+	if dataLength == 0 {
 		return nil, errTooShortChunkData
 	}
 
