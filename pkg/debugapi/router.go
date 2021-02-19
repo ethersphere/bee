@@ -152,6 +152,18 @@ func (s *server) setupRouting() {
 	baseRouter.Handle("/", web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "debug api access"),
 		handlers.CompressHandler,
+		func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if o := r.Header.Get("Origin"); o != "" && (len(s.CORSAllowedOrigins) == 0 || s.checkOrigin(r)) {
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Allow-Origin", o)
+					w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method")
+					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+					w.Header().Set("Access-Control-Max-Age", "3600")
+					h.ServeHTTP(w, r)
+				}
+			})
+		},
 		// todo: add recovery handler
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(router),
