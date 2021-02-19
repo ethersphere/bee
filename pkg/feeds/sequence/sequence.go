@@ -120,7 +120,7 @@ func (p *path) next() *path {
 		base:   p.index,
 		index:  p.index,
 		max:    p.max,
-		level:  p.level,
+		level:  p.max,
 		chunk:  p.chunk,
 		cancel: make(chan struct{}),
 	}
