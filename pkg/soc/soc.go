@@ -151,10 +151,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	s.signature = chunkData[cursor : cursor+SignatureSize]
 	cursor += SignatureSize
 
-	spanBytes := chunkData[cursor : cursor+swarm.SpanSize]
-	cursor += swarm.SpanSize
-
-	ch, err := cac.NewWithSpan(chunkData[cursor:], spanBytes)
+	ch, err := cac.NewWithDataSpan(chunkData[cursor:])
 	if err != nil {
 		return nil, err
 	}

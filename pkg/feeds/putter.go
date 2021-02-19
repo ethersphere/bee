@@ -57,7 +57,7 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 }
 
 func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
-	ts := make([]byte, swarm.SpanSize)
+	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
 	return cac.New(append(ts, payload...))
 }
