@@ -157,7 +157,6 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		// r.path ~ tagged which path it comes from
 		// collect the results into the path
 		p := r.path
-		fmt.Printf("<== %+v -  %+v\n", r, p)
 		if r.chunk == nil {
 			if p.max < r.level {
 				continue
@@ -171,7 +170,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 			// if there is a chunk for this path, then the  latest chunk has surely beed sent
 			// since `at` starts from log interval
 			if p.level == r.level && r.level < DefaultLevels {
-				fmt.Printf("%d==%d %+v\n", p.level, r.level, p)
+
 				return r.chunk, &index{r.index}, &index{r.index + 1}, nil
 			}
 			p.min = r.level
@@ -181,23 +180,19 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		// below applies even  if  p.latest==maxLevel in which case we just continue with
 		// DefaultLevel lookaheads
 		if p.min == p.max {
-			//p.close()
 			if p.min == 0 {
-				fmt.Printf("min=0: %+v\n", p)
 				return p.chunk, &index{p.index}, &index{p.index + 1}, nil
 			}
 			np := p.next()
-			fmt.Printf("min=0: %+v\n=> %+v\n", p, np)
+
 			go f.at(ctx, at, np, c, quit)
 		}
 		if p.max < p.min {
-			fmt.Printf("inconsistent state %d not found, but %d found. retrying...\n", p.max, p.min)
 			np := newPath(p.base)
-			np.level = p.max		
+			np.level = p.max
 			np.max = p.level
 			np.index = p.base
 			np.chunk = p.chunk
-			fmt.Printf("retry: %+v\n=> %+v\n", p, np)
 			go f.at(ctx, at, np, c, quit)
 		}
 	}
@@ -245,7 +240,6 @@ func (f *asyncFinder) get(ctx context.Context, at int64, idx uint64) (swarm.Chun
 	// this means the update timestamp is later than the pivot time we are looking for
 	// handled as if the update was missing but with no uncertainty due to timeout
 	if at < int64(ts) {
-		fmt.Printf("index %d is in future: %d <  %d\n", idx, at, ts)
 		return nil, nil
 	}
 	return u, nil

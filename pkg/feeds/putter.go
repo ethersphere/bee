@@ -7,7 +7,6 @@ package feeds
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -54,7 +53,6 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 		return err
 	}
 	_, err = u.putter.Put(ctx, storage.ModePutUpload, ch)
-	fmt.Printf("STORE index %v - addr=%v, err=%v\n", i, ch.Address(), err)
 	return err
 }
 

@@ -66,7 +66,7 @@ type id struct {
 var _ encoding.BinaryMarshaler = (*id)(nil)
 
 func (i *id) MarshalBinary() ([]byte, error) {
-	return crypto.LegacyKeccak256(append(i.topic, i.index...))
+	return crypto.LegacyKeccak256(append(append([]byte{}, i.topic...), i.index...))
 }
 
 // Feed is representing an epoch based feed

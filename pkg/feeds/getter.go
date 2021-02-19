@@ -48,7 +48,9 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	}
 	// return f.getter.Get(ctx, storage.ModeGetRequest, addr)
 	ch, err := f.getter.Get(ctx, storage.ModeGetRequest, addr)
-	fmt.Printf("LOOKUP index %v ? addr=%v, err=%v\n", i, addr, err)
+	if err != nil {
+		return nil, err
+	}
 	return ch, err
 }
 

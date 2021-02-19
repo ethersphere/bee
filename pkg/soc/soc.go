@@ -243,6 +243,7 @@ func CreateAddress(id Id, owner *Owner) (swarm.Address, error) {
 		return swarm.ZeroAddress, err
 	}
 	sum := h.Sum(nil)
+
 	return swarm.NewAddress(sum), nil
 }
 
