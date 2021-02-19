@@ -250,12 +250,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if err != nil {
 			s.logger.Debugf("blocklisting: exists %s: %v", peerID, err)
 			s.logger.Errorf("internal error while connecting with peer %s", peerID)
+			_ = handshakeStream.Reset()
 			_ = s.host.Network().ClosePeer(peerID)
 			return
 		}
 
 		if blocked {
 			s.logger.Errorf("blocked connection from blocklisted peer %s", peerID)
+			_ = handshakeStream.Reset()
 			_ = s.host.Network().ClosePeer(peerID)
 			return
 		}
@@ -336,6 +338,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
 				_ = s.Disconnect(overlay)
+				_ = streamlibp2p.Reset()
 				s.logger.Debugf("overlay address for peer %q not found", peerID)
 				return
 			}
@@ -359,6 +362,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			ctx, err := s.tracer.WithContextFromHeaders(ctx, stream.Headers())
 			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
 				s.logger.Debugf("handle protocol %s/%s: stream %s: peer %s: get tracing context: %v", p.Name, p.Version, ss.Name, overlay, err)
+				_ = stream.Reset()
 				return
 			}
 
