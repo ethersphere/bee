@@ -46,7 +46,10 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.getter.Get(ctx, storage.ModeGetRequest, addr)
+	// return f.getter.Get(ctx, storage.ModeGetRequest, addr)
+	ch, err := f.getter.Get(ctx, storage.ModeGetRequest, addr)
+	fmt.Printf("LOOKUP index %v ? addr=%v, err=%v\n", i, addr, err)
+	return ch, err
 }
 
 // FromChunk parses out the timestamp and the payload

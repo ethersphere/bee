@@ -8,6 +8,7 @@ package epochs
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -23,6 +24,10 @@ var _ feeds.Index = (*epoch)(nil)
 type epoch struct {
 	start uint64
 	level uint8
+}
+
+func (e *epoch) String() string {
+	return fmt.Sprintf("%d/%d", e.start, e.level)
 }
 
 // MarshalBinary implements the BinaryMarshaler interface

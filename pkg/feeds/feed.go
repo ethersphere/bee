@@ -85,6 +85,7 @@ func New(topic []byte, owner common.Address) *Feed {
 type Index interface {
 	encoding.BinaryMarshaler
 	Next(last int64, at uint64) Index
+	fmt.Stringer
 }
 
 // Update represents an update instance of a feed, i.e., pairing of a Feed with an Epoch
