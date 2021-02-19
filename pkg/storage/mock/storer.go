@@ -93,6 +93,10 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 			po := swarm.Proximity(ch.Address().Bytes(), m.baseAddress)
 			m.bins[po]++
 		}
+		// this is needed since the chunk feeder shares memory across calls
+		// to the pipeline. this is in order to avoid multiple allocations.
+		// this change mimics the behavior of shed and localstore
+		// and copies the data from the call into the in-memory store
 		b := make([]byte, len(ch.Data()))
 		copy(b, ch.Data())
 		m.store[ch.Address().String()] = b
