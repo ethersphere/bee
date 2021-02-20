@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -136,9 +136,8 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	span := (s.length-1)%spanSize + 1
 
 	var chunkData []byte
-	var addr swarm.Address
 
-	head := make([]byte, 8)
+	head := make([]byte, swarm.SpanSize)
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
@@ -157,29 +156,14 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 		}
 	}
 
-	hasher := bmtpool.Get()
-
-	err = hasher.SetSpanBytes(c[:8])
+	ch, err := cac.NewWithDataSpan(c)
 	if err != nil {
-		bmtpool.Put(hasher)
 		return nil, err
 	}
-	_, err = hasher.Write(c[8:])
-	if err != nil {
-		bmtpool.Put(hasher)
-		return nil, err
-	}
-	ref := hasher.Sum(nil)
-	bmtpool.Put(hasher)
-
-	addr = swarm.NewAddress(ref)
 
 	// Add tag to the chunk if tag is valid
-	var ch swarm.Chunk
 	if s.tag != nil {
-		ch = swarm.NewChunk(addr, c).WithTagID(s.tag.Uid)
-	} else {
-		ch = swarm.NewChunk(addr, c)
+		ch = ch.WithTagID(s.tag.Uid)
 	}
 
 	seen, err := s.putter.Put(s.ctx, ch)
