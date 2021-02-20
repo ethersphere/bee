@@ -20,7 +20,8 @@ const (
 
 var _ feeds.Index = (*epoch)(nil)
 
-// epoch is referencing a slot in the epoch grid
+// epoch is referencing a slot in the epoch grid and represents an update
+// it  implements the feeds.Index interface
 type epoch struct {
 	start uint64
 	level uint8
@@ -37,6 +38,21 @@ func (e *epoch) MarshalBinary() ([]byte, error) {
 	return crypto.LegacyKeccak256(append(epochBytes, e.level))
 }
 
+func next(e feeds.Index, last int64, at uint64) feeds.Index {
+	if e == nil {
+		return &epoch{0, maxLevel}
+	}
+	return e.Next(last, at)
+}
+
+// Next implements feeds.Index advancement
+func (e *epoch) Next(last int64, at uint64) feeds.Index {
+	if e.start+e.length() > at {
+		return e.childAt(at)
+	}
+	return lca(int64(at), last).childAt(at)
+}
+
 // lca calculates the lowest common ancestor epoch given two unix times
 func lca(at, after int64) *epoch {
 	if after == 0 {
@@ -51,20 +67,6 @@ func lca(at, after int64) *epoch {
 	}
 	start := (uint64(after) / length) * length
 	return &epoch{start, level}
-}
-
-func next(e feeds.Index, last int64, at uint64) feeds.Index {
-	if e == nil {
-		return &epoch{0, maxLevel}
-	}
-	return e.Next(last, at)
-}
-
-func (e *epoch) Next(last int64, at uint64) feeds.Index {
-	if e.start+e.length() > at {
-		return e.childAt(at)
-	}
-	return lca(int64(at), last).childAt(at)
 }
 
 // parent returns the ancestor of an epoch

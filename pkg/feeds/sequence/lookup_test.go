@@ -6,7 +6,6 @@ package sequence_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -22,8 +21,8 @@ func TestFinder(t *testing.T) {
 		})
 		i := 0
 		nextf := func() (bool, int64) {
-			defer func() { i++ }()
-			return i == 50, time.Now().Unix()
+			i++
+			return i == 40, int64(i)
 		}
 		t.Run("fixed", func(t *testing.T) {
 			feedstesting.TestFinderFixIntervals(t, nextf, finderf, updaterf)

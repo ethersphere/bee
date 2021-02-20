@@ -114,6 +114,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
 	}
+
 	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
 }
 

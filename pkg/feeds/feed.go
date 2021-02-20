@@ -28,6 +28,7 @@ type Factory interface {
 	NewLookup(Type, *Feed) (Lookup, error)
 }
 
+// Type enumerates the time-based feed types
 type Type int
 
 const (
@@ -46,6 +47,7 @@ func (t Type) String() string {
 	}
 }
 
+// FromString constructs the type from a string
 func (t *Type) FromString(s string) error {
 	switch s = strings.ToLower(s); s {
 	case "sequence":
@@ -99,6 +101,7 @@ func (f *Feed) Update(index Index) *Update {
 	return &Update{f, index}
 }
 
+// NewUpdate creates an update from an index, timestamp, payload and signature
 func NewUpdate(f *Feed, idx Index, timestamp int64, payload []byte, sig []byte) (swarm.Chunk, error) {
 	id, err := f.Update(idx).Id()
 	if err != nil {
@@ -124,6 +127,7 @@ func (u *Update) Id() ([]byte, error) {
 	return Id(u.Topic, u.index)
 }
 
+// Id calculates the feed id from a topic and an index
 func Id(topic []byte, index Index) ([]byte, error) {
 	indexBytes, err := index.MarshalBinary()
 	if err != nil {
