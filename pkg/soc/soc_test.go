@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -26,7 +27,7 @@ func TestToChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := chunk(payload)
+	ch, err := cac.New(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +94,7 @@ func TestFromChunk(t *testing.T) {
 	id := make([]byte, 32)
 
 	payload := []byte("foo")
-	ch, err := chunk(payload)
+	ch, err := cac.New(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +121,4 @@ func TestFromChunk(t *testing.T) {
 	if !bytes.Equal(ownerEthereumAddress, u2.OwnerAddress()) {
 		t.Fatalf("owner address mismatch %x %x", ownerEthereumAddress, u2.OwnerAddress())
 	}
-}
-
-func chunk(data []byte) (swarm.Chunk, error) {
-	span := make([]byte, swarm.SpanSize)
-	binary.LittleEndian.PutUint64(span, uint64(len(data)))
-	return soc.ContentAddressedChunk(data, span)
 }

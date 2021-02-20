@@ -10,16 +10,14 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
-var (
-	errBadRequestParams = errors.New("owner, id or span is not well formed")
-)
+var errBadRequestParams = errors.New("owner, id or span is not well formed")
 
 type socPostResponse struct {
 	Reference swarm.Address `json:"reference"`
@@ -82,7 +80,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, err := chunk(data)
+	ch, err := cac.NewWithDataSpan(data)
 	if err != nil {
 		s.logger.Debugf("soc upload: create content addressed chunk: %v", err)
 		s.logger.Error("soc upload: chunk data error")
@@ -116,19 +114,4 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
-}
-
-func chunk(data []byte) (swarm.Chunk, error) {
-	hasher := bmtpool.Get()
-	defer bmtpool.Put(hasher)
-	err := hasher.SetSpanBytes(data[:swarm.SpanSize])
-	if err != nil {
-		return nil, err
-	}
-	_, err = hasher.Write(data[swarm.SpanSize:])
-	if err != nil {
-		return nil, err
-	}
-
-	return swarm.NewChunk(swarm.NewAddress(hasher.Sum(nil)), data), nil
 }

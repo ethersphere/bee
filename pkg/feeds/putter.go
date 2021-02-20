@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 
-	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -57,21 +57,7 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 }
 
 func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
-	hasher := bmtpool.Get()
-	defer bmtpool.Put(hasher)
-
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
-	content := append(ts, payload...)
-	_, err := hasher.Write(content)
-	if err != nil {
-		return nil, err
-	}
-	span := make([]byte, 8)
-	binary.LittleEndian.PutUint64(span, uint64(len(content)))
-	err = hasher.SetSpanBytes(span)
-	if err != nil {
-		return nil, err
-	}
-	return swarm.NewChunk(swarm.NewAddress(hasher.Sum(nil)), append(append([]byte{}, span...), content...)), nil
+	return cac.New(append(ts, payload...))
 }
