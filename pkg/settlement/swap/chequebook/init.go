@@ -17,7 +17,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
-const chequebookKey = "swap_chequebook"
+const (
+	chequebookKey           = "swap_chequebook"
+	chequebookDeploymentKey = "swap_chequebook_transaction_deployment"
+)
 
 func checkBalance(
 	ctx context.Context,
@@ -127,21 +130,35 @@ func Init(
 			return nil, err
 		}
 
-		logger.Info("no chequebook found, deploying new one.")
-		if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
-			err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20BindingFunc, erc20Address, 20*time.Second, 10)
+		var txHash common.Hash
+		err = stateStore.Get(chequebookDeploymentKey, &txHash)
+		if err != nil && err != storage.ErrNotFound {
+			return nil, err
+		}
+		if err == storage.ErrNotFound {
+			logger.Info("no chequebook found, deploying new one.")
+			if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
+				err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20BindingFunc, erc20Address, 20*time.Second, 10)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			// if we don't yet have a chequebook, deploy a new one
+			txHash, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
 			if err != nil {
 				return nil, err
 			}
-		}
 
-		// if we don't yet have a chequebook, deploy a new one
-		txHash, err := chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
-		if err != nil {
-			return nil, err
-		}
+			logger.Infof("deploying new chequebook in transaction %x", txHash)
 
-		logger.Infof("deploying new chequebook in transaction %x", txHash)
+			err = stateStore.Put(chequebookDeploymentKey, txHash)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			logger.Infof("waiting for chequebook deployment in transaction %x", txHash)
+		}
 
 		chequebookAddress, err = chequebookFactory.WaitDeployed(ctx, txHash)
 		if err != nil {
