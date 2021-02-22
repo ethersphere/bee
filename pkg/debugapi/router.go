@@ -160,8 +160,8 @@ func (s *server) setupRouting() {
 					w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method")
 					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
 					w.Header().Set("Access-Control-Max-Age", "3600")
-					h.ServeHTTP(w, r)
 				}
+				h.ServeHTTP(w, r)
 			})
 		},
 		// todo: add recovery handler
