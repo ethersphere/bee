@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/external"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -320,7 +321,14 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 			return nil, err
 		}
 
-		signer, err = clef.NewSigner(externalSigner, clefRPC, crypto.Recover)
+		wantedAddress := c.config.GetString(optionNameClefSignerAddress)
+		var overlayEthAddress *common.Address = nil
+		if wantedAddress != "" {
+			ethAddress := common.HexToAddress(wantedAddress)
+			overlayEthAddress = &ethAddress
+		}
+
+		signer, err = clef.NewSigner(externalSigner, clefRPC, crypto.Recover, overlayEthAddress)
 		if err != nil {
 			return nil, err
 		}

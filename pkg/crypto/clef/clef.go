@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	ErrNoAccounts       = errors.New("no accounts found in clef")
-	clefRecoveryMessage = []byte("public key recovery message")
+	ErrNoAccounts          = errors.New("no accounts found in clef")
+	ErrAccountNotAvailable = errors.New("account not available in clef")
+	clefRecoveryMessage    = []byte("public key recovery message")
 )
 
 // ExternalSignerInterface is the interface for the clef client from go-ethereum.
@@ -66,17 +67,39 @@ func DefaultIpcPath() (string, error) {
 	return filepath.Join(home, ".clef", socket), nil
 }
 
+func selectAccount(clef ExternalSignerInterface, ethAddress *common.Address) (accounts.Account, error) {
+	// get the list of available ethereum accounts
+	clefAccounts := clef.Accounts()
+	if len(clefAccounts) == 0 {
+		return accounts.Account{}, ErrNoAccounts
+	}
+
+	if ethAddress == nil {
+		// pick the first account as the one we use
+		return clefAccounts[0], nil
+	}
+
+	for _, availableAccount := range clefAccounts {
+		if availableAccount.Address == *ethAddress {
+			return availableAccount, nil
+		}
+	}
+	return accounts.Account{}, ErrAccountNotAvailable
+}
+
 // NewSigner creates a new connection to the signer at endpoint.
 // As clef does not expose public keys it signs a test message to recover the public key.
-func NewSigner(clef ExternalSignerInterface, client Client, recoverFunc crypto.RecoverFunc) (signer crypto.Signer, err error) {
+func NewSigner(clef ExternalSignerInterface, client Client, recoverFunc crypto.RecoverFunc, ethAddress *common.Address) (signer crypto.Signer, err error) {
 	// get the list of available ethereum accounts
 	clefAccounts := clef.Accounts()
 	if len(clefAccounts) == 0 {
 		return nil, ErrNoAccounts
 	}
 
-	// pick the first account as the one we use
-	account := clefAccounts[0]
+	account, err := selectAccount(clef, ethAddress)
+	if err != nil {
+		return nil, err
+	}
 
 	// clef currently does not expose the public key
 	// sign some data so we can recover it

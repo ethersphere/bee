@@ -45,6 +45,7 @@ const (
 	optionNameGatewayMode          = "gateway-mode"
 	optionNameClefSignerEnable     = "clef-signer-enable"
 	optionNameClefSignerEndpoint   = "clef-signer-endpoint"
+	optionNameClefSignerAddress    = "clef-signer-address"
 	optionNameSwapEndpoint         = "swap-endpoint"
 	optionNameSwapFactoryAddress   = "swap-factory-address"
 	optionNameSwapInitialDeposit   = "swap-initial-deposit"
@@ -204,6 +205,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameGatewayMode, false, "disable a set of sensitive features in the api")
 	cmd.Flags().Bool(optionNameClefSignerEnable, false, "enable clef signer")
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
+	cmd.Flags().String(optionNameClefSignerAddress, "", "ethereum address to usee from clef signer")
 	cmd.Flags().String(optionNameSwapEndpoint, "http://localhost:8545", "swap ethereum blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "100000000000000000", "initial deposit if deploying a new chequebook")
