@@ -140,7 +140,7 @@ brews:
       bin.install ["bee", "packaging/homebrew/bee-get-addr"]
       etc.install "packaging/homebrew/bee.yaml" => "swarm-bee/bee.yaml" unless File.exists? etc/"swarm-bee/bee.yaml"
     post_install: |
-      system("openssl", "rand", "-base64", "32", "-out", var/"lib/swarm-bee/password")
+      system("if", "[", "!", "-f", var/"lib/swarm-bee/password", "];", "then", "openssl", "rand", "-base64", "32", ">", var/"lib/swarm-bee/password;", "fi")
       system(bin/"bee", "init", "--config", etc/"swarm-bee/bee.yaml", ">/dev/null", "2>&1")
     plist: |
       <?xml version="1.0" encoding="UTF-8"?>
