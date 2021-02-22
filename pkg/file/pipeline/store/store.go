@@ -45,7 +45,6 @@ func (w *storeWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	} else {
 		c = swarm.NewChunk(swarm.NewAddress(p.Ref), p.Data)
 	}
-
 	seen, err := w.l.Put(w.ctx, w.mode, c)
 	if err != nil {
 		return err
