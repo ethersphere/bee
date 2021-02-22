@@ -57,5 +57,11 @@ func WaitSynced(ctx context.Context, backend Backend, maxDelay time.Duration) er
 		if synced {
 			return nil
 		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
 	}
 }
