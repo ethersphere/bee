@@ -28,6 +28,7 @@ type Factory interface {
 	NewLookup(Type, *Feed) (Lookup, error)
 }
 
+// Type enumerates the time-based feed types
 type Type int
 
 const (
@@ -46,6 +47,7 @@ func (t Type) String() string {
 	}
 }
 
+// FromString constructs the type from a string
 func (t *Type) FromString(s string) error {
 	switch s = strings.ToLower(s); s {
 	case "sequence":
@@ -66,7 +68,7 @@ type id struct {
 var _ encoding.BinaryMarshaler = (*id)(nil)
 
 func (i *id) MarshalBinary() ([]byte, error) {
-	return crypto.LegacyKeccak256(append(i.topic, i.index...))
+	return crypto.LegacyKeccak256(append(append([]byte{}, i.topic...), i.index...))
 }
 
 // Feed is representing an epoch based feed
@@ -84,6 +86,8 @@ func New(topic []byte, owner common.Address) *Feed {
 // Index is the interface for feed implementations.
 type Index interface {
 	encoding.BinaryMarshaler
+	Next(last int64, at uint64) Index
+	fmt.Stringer
 }
 
 // Update represents an update instance of a feed, i.e., pairing of a Feed with an Epoch
@@ -97,6 +101,7 @@ func (f *Feed) Update(index Index) *Update {
 	return &Update{f, index}
 }
 
+// NewUpdate creates an update from an index, timestamp, payload and signature
 func NewUpdate(f *Feed, idx Index, timestamp int64, payload []byte, sig []byte) (swarm.Chunk, error) {
 	id, err := f.Update(idx).Id()
 	if err != nil {
@@ -119,12 +124,18 @@ func NewUpdate(f *Feed, idx Index, timestamp int64, payload []byte, sig []byte) 
 
 // Id calculates the identifier if a  feed update to be used in single owner chunks
 func (u *Update) Id() ([]byte, error) {
-	index, err := u.index.MarshalBinary()
+	return Id(u.Topic, u.index)
+}
+
+// Id calculates the feed id from a topic and an index
+func Id(topic []byte, index Index) ([]byte, error) {
+	indexBytes, err := index.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	i := &id{u.Topic, index}
+	i := &id{topic, indexBytes}
 	return i.MarshalBinary()
+
 }
 
 // Address calculates the soc address of a feed update

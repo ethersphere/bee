@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -21,13 +22,22 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// DefaultLevels is the number of concurrent lookaheads
+// 8 spans 2^8 updates
+const DefaultLevels = 8
+
 var _ feeds.Index = (*index)(nil)
 var _ feeds.Lookup = (*finder)(nil)
 var _ feeds.Lookup = (*asyncFinder)(nil)
 var _ feeds.Updater = (*updater)(nil)
 
+// index just wraps a uint64. implements the feeds.Index interface
 type index struct {
 	index uint64
+}
+
+func (i *index) String() string {
+	return fmt.Sprintf("%d", i.index)
 }
 
 func (i *index) MarshalBinary() ([]byte, error) {
@@ -36,13 +46,18 @@ func (i *index) MarshalBinary() ([]byte, error) {
 	return indexBytes, nil
 }
 
+// Next requires
+func (i *index) Next(last int64, at uint64) feeds.Index {
+	return &index{i.index + 1}
+}
+
 // finder encapsulates a chunk store getter and a feed and provides
-//  non-concurrent lookup methods
+// non-concurrent lookup
 type finder struct {
 	getter *feeds.Getter
 }
 
-// NewFinder constructs an Finder
+// NewFinder constructs an finder (feeds.Lookup interface)
 func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 	return &finder{feeds.NewGetter(getter, feed)}
 }
@@ -56,21 +71,25 @@ func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, curre
 			if !errors.Is(err, storage.ErrNotFound) {
 				return nil, nil, nil, err
 			}
-			return ch, &index{i - 1}, &index{i}, nil
+			if i > 0 {
+				current = &index{i - 1}
+			}
+			return ch, current, &index{i}, nil
 		}
 		ts, err := feeds.UpdatedAt(u)
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		// if timestamp is later than the `at` target datetime, then return previous chunk  and index
 		if ts > uint64(at) {
-			return ch, &index{i}, nil, nil
+			return ch, &index{i - 1}, &index{i}, nil
 		}
 		ch = u
 	}
 }
 
 // asyncFinder encapsulates a chunk store getter and a feed and provides
-//  non-concurrent lookup methods
+//  non-concurrent lookup
 type asyncFinder struct {
 	getter *feeds.Getter
 }
@@ -80,132 +99,157 @@ func NewAsyncFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 	return &asyncFinder{feeds.NewGetter(getter, feed)}
 }
 
-type path struct {
-	latest    result
-	base      uint64
-	level     int
-	cancel    chan struct{}
-	cancelled bool
+// interval represents a batch of concurrent retreieve requests
+// that probe the interval (base,b+2^level) at offsets 2^k-1 for k=1,...,max
+// recording  the level of the latest found update chunk and the earliest not found update
+// the actual latest update is guessed to be within a subinterval
+type interval struct {
+	base     uint64  // beginning of the interval, guaranteed to have an  update
+	level    int     // maximum level to check
+	found    *result // the result with the latest chunk found
+	notFound int     // the earliest level where no update is found
 }
 
-func (p *path) close() {
-	if !p.cancelled {
-		close(p.cancel)
-		p.cancelled = true
+// when a subinterval is identified to contain the latest update
+// next returns an interval matching it
+func (i *interval) next() *interval {
+	found := i.found.level
+	i.found.level = 0
+	return &interval{
+		base:     i.found.index, // set base to index of latest chunk found
+		level:    found,         // set max level to the latest update level
+		notFound: found,         // set notFound to the latest update level
+		found:    i.found,       // inherit latest found  result
 	}
 }
 
-func newPath(base uint64) *path {
-	return &path{base: base, cancel: make(chan struct{})}
+func (i *interval) retry() *interval {
+	r := i.next()
+	r.level = i.level    // reset to max
+	r.notFound = i.level //  reset to max
+	return r
 }
 
+func newInterval(base uint64) *interval {
+	return &interval{base: base, level: DefaultLevels, notFound: DefaultLevels}
+}
+
+// results capture a chunk lookup on a interval
 type result struct {
-	chunk swarm.Chunk
-	path  *path
-	level int
-	seq   uint64
-	diff  int64
+	chunk    swarm.Chunk // the chunk found
+	interval *interval   // the interval it belongs to
+	level    int         // the level within the interval
+	index    uint64      // the actual seqeuence index of the update
 }
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
 func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, cur, next feeds.Index, err error) {
-	ch, diff, err := f.get(ctx, at, 0)
+	// first lookup update at the 0 index
+	ch, err = f.get(ctx, at, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if ch == nil {
-		return nil, nil, nil, nil
+		return nil, nil, &index{0}, nil
 	}
-	if diff == 0 {
-		return ch, &index{0}, &index{1}, nil
-	}
-	c := make(chan result)
-	p := newPath(0)
-	p.latest.chunk = ch
-	for p.level = 1; diff>>p.level > 0; p.level++ {
-	}
+	// if chunk exists construct an initial interval with base=0
+	c := make(chan *result)
+	i := newInterval(0)
+	i.found = &result{ch, nil, 0, 0}
+
 	quit := make(chan struct{})
 	defer close(quit)
-	go f.at(ctx, at, p, c, quit)
+
+	// launch concurrent request at  doubling intervals
+	go f.at(ctx, at, 0, i, c, quit)
 	for r := range c {
-		p = r.path
+		// collect the results into the interval
+		i = r.interval
 		if r.chunk == nil {
-			if r.level == 0 {
-				return p.latest.chunk, &index{p.latest.seq}, &index{p.latest.seq + 1}, nil
-			}
-			if p.level < r.level {
+			if i.notFound < r.level {
 				continue
 			}
-			p.level = r.level - 1
+			i.notFound = r.level - 1
 		} else {
-			if r.diff == 0 {
-				return r.chunk, &index{r.seq}, &index{r.seq + 1}, nil
-			}
-			if p.latest.level > r.level {
+			if i.found.level > r.level {
 				continue
 			}
-			p.close()
-			p.latest = r
-		}
-		// below applies even  if  p.latest==maxLevel
-		if p.latest.level == p.level {
-			if p.level == 0 {
-				return p.latest.chunk, &index{p.latest.seq}, &index{p.latest.seq + 1}, nil
+			// if a chunk is found on the max level, and this is already a subinterval
+			// then found.index+1 is already known to be not found
+			if i.level == r.level && r.level < DefaultLevels {
+				return r.chunk, &index{r.index}, &index{r.index + 1}, nil
 			}
-			p.close()
-			np := newPath(p.latest.seq)
-			np.level = p.level
-			np.latest.chunk = p.latest.chunk
-			go f.at(ctx, at, np, c, quit)
+			i.found = r
+		}
+		// below applies even  if  i.latest==ceilingLevel in which case we just continue with
+		// DefaultLevel lookaheads
+		if i.found.level == i.notFound {
+			if i.found.level == 0 {
+				return i.found.chunk, &index{i.found.index}, &index{i.found.index + 1}, nil
+			}
+			go f.at(ctx, at, 0, i.next(), c, quit)
+		}
+		// inconsistent feed, retry
+		if i.notFound < i.found.level {
+			go f.at(ctx, at, i.found.level, i.retry(), c, quit)
 		}
 	}
 	return nil, nil, nil, nil
 }
 
-func (f *asyncFinder) at(ctx context.Context, at int64, p *path, c chan<- result, quit <-chan struct{}) {
-	for i := p.level; i > 0; i-- {
+// at launches concurrent lookups at exponential intervals after th c starting from further
+func (f *asyncFinder) at(ctx context.Context, at int64, min int, i *interval, c chan<- *result, quit <-chan struct{}) {
+	stop := make(chan struct{}, 1)
+	for l := i.level; l > min; l-- {
 		select {
-		case <-p.cancel:
+		case <-stop: // if a chunk is found
 			return
-		case <-quit:
+		case <-quit: // if the parent process quit
 			return
 		default:
 		}
-		go func(i int) {
-			seq := p.base + (1 << i) - 1
-			ch, diff, err := f.get(ctx, at, seq)
+		go func(l int) {
+			index := i.base + (1 << l) - 1
+			ch, err := f.get(ctx, at, index)
 			if err != nil {
 				return
 			}
+			// if a chunk is found, stop the iterationq
+			if ch != nil {
+				select {
+				case stop <- struct{}{}:
+				default:
+				}
+			}
 			select {
-			case c <- result{ch, p, i, seq, diff}:
+			case c <- &result{ch, i, l, index}:
 			case <-quit:
 			}
-		}(i)
+		}(l)
 	}
 }
 
-func (f *asyncFinder) get(ctx context.Context, at int64, seq uint64) (swarm.Chunk, int64, error) {
-	u, err := f.getter.Get(ctx, &index{seq})
+// get performs a lookup of an update chunk, returns nil (not error) if not found
+func (f *asyncFinder) get(ctx context.Context, at int64, idx uint64) (swarm.Chunk, error) {
+	u, err := f.getter.Get(ctx, &index{idx})
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, 0, err
+			return nil, err
 		}
 		// if 'not-found' error, then just silence and return nil chunk
-		return nil, 0, nil
+		return nil, nil
 	}
 	ts, err := feeds.UpdatedAt(u)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	diff := at - int64(ts)
 	// this means the update timestamp is later than the pivot time we are looking for
 	// handled as if the update was missing but with no uncertainty due to timeout
-	if diff < 0 {
-		return nil, 0, nil
+	if at < int64(ts) {
+		return nil, nil
 	}
-	return u, diff, nil
+	return u, nil
 }
 
 // updater encapsulates a feeds putter to generate successive updates for epoch based feeds

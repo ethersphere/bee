@@ -271,3 +271,11 @@ type id struct {
 func (i *id) MarshalBinary() ([]byte, error) {
 	return []byte("accd"), nil
 }
+
+func (i *id) String() string {
+	return "44237"
+}
+
+func (*id) Next(last int64, at uint64) feeds.Index {
+	return &id{}
+}
