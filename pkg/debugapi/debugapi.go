@@ -14,6 +14,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -127,4 +129,14 @@ func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereu
 	s.setupRouting()
 
 	return s
+}
+
+func (s *server) getIndicesHandler(w http.ResponseWriter, r *http.Request) {
+	db := s.Storer.(*localstore.DB)
+	i, err := db.DebugIndices()
+	if err != nil {
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+	jsonhttp.OK(w, i)
 }

@@ -148,6 +148,9 @@ func (s *server) setupRouting() {
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getTagHandler),
 	})
+	router.Handle("/indices", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.getIndicesHandler),
+	})
 
 	baseRouter.Handle("/", web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "debug api access"),
