@@ -1,7 +1,8 @@
 project_name: bee
 
 builds:
-  - main: ./cmd/bee
+  - id: linux
+    main: ./cmd/bee
     binary: bee
     flags:
       - -v
@@ -12,7 +13,6 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      - windows
     goarch:
       - amd64
       - 386
@@ -20,11 +20,21 @@ builds:
       - arm
     goarm:
       - 7
-    ignore:
-      - goos: windows
-        goarch: arm64
-      - goos: windows
-        goarch: arm
+  - id: windows
+    main: ./cmd/bee
+    binary: bee
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - 386
   - id: darwin
     main: ./cmd/bee
     binary: bee
@@ -168,3 +178,74 @@ brews:
         <string>#{var}/log/swarm-bee/bee.log</string>
       </dict>
       </plist>
+
+dockers:
+- image_templates:
+  - "ethersphere/bee:{{ .Version }}-amd64"
+  use_buildx: true
+  ids:
+    - linux
+  goarch: amd64
+  dockerfile: Dockerfile.goreleaser
+  build_flag_templates:
+  - "--platform=linux/amd64"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+- image_templates:
+  - "ethersphere/bee:{{ .Version }}-armv7"
+  use_buildx: true
+  ids:
+    - linux
+  goarch: arm
+  goarm: 7
+  dockerfile: Dockerfile.goreleaser
+  build_flag_templates:
+  - "--platform=linux/arm/v7"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+- image_templates:
+  - "ethersphere/bee:{{ .Version }}-arm64v8"
+  use_buildx: true
+  ids:
+    - linux
+  goarch: arm64
+  dockerfile: Dockerfile.goreleaser
+  build_flag_templates:
+  - "--platform=linux/arm64/v8"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+docker_manifests:
+- name_template: ethersphere/bee:{{ .Major }}
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:latest
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:beta
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
