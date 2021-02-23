@@ -8,6 +8,7 @@ package epochs
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -19,10 +20,15 @@ const (
 
 var _ feeds.Index = (*epoch)(nil)
 
-// epoch is referencing a slot in the epoch grid
+// epoch is referencing a slot in the epoch grid and represents an update
+// it  implements the feeds.Index interface
 type epoch struct {
 	start uint64
 	level uint8
+}
+
+func (e *epoch) String() string {
+	return fmt.Sprintf("%d/%d", e.start, e.level)
 }
 
 // MarshalBinary implements the BinaryMarshaler interface
@@ -30,6 +36,21 @@ func (e *epoch) MarshalBinary() ([]byte, error) {
 	epochBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(epochBytes, e.start)
 	return crypto.LegacyKeccak256(append(epochBytes, e.level))
+}
+
+func next(e feeds.Index, last int64, at uint64) feeds.Index {
+	if e == nil {
+		return &epoch{0, maxLevel}
+	}
+	return e.Next(last, at)
+}
+
+// Next implements feeds.Index advancement
+func (e *epoch) Next(last int64, at uint64) feeds.Index {
+	if e.start+e.length() > at {
+		return e.childAt(at)
+	}
+	return lca(int64(at), last).childAt(at)
 }
 
 // lca calculates the lowest common ancestor epoch given two unix times
@@ -46,16 +67,6 @@ func lca(at, after int64) *epoch {
 	}
 	start := (uint64(after) / length) * length
 	return &epoch{start, level}
-}
-
-func next(e *epoch, last int64, at uint64) *epoch {
-	if e == nil {
-		return &epoch{0, maxLevel}
-	}
-	if e.start+e.length() > at {
-		return e.childAt(at)
-	}
-	return lca(int64(at), last).childAt(at)
 }
 
 // parent returns the ancestor of an epoch

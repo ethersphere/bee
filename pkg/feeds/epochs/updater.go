@@ -19,7 +19,7 @@ var _ feeds.Updater = (*updater)(nil)
 type updater struct {
 	*feeds.Putter
 	last  int64
-	epoch *epoch
+	epoch feeds.Index
 }
 
 // NewUpdater constructs a feed updater
