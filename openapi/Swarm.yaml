@@ -961,12 +961,6 @@ paths:
           required: true
           description: Topic
         - in: query
-          name: index
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
-          required: false
-          description: Feed update index
-        - in: query
           name: at
           schema:
             type: integer
