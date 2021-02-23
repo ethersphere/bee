@@ -189,6 +189,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 
 	gcSizeChange, err = db.setGC(batch, item)
 	if err != nil {
+		db.logger.Errorf("put req set gc err %v", err)
 		return false, 0, err
 	}
 
@@ -262,9 +263,10 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	}
 	gcSizeChange, err = db.setGC(batch, item)
 	if err != nil {
+		db.logger.Errorf("put sync set gc err %v", err)
 		return false, 0, err
 	}
-
+	db.logger.Errorf("put sync gc size change %d", gcSizeChange)
 	return false, gcSizeChange, nil
 }
 
@@ -298,6 +300,7 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 		db.logger.Errorf("setSync not in access index err")
 		// the chunk is not accessed before
 	default:
+		db.logger.Errorf("setsync access index err %v", err)
 		return 0, err
 	}
 	item.AccessTimestamp = now()
