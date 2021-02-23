@@ -128,6 +128,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			}
 			exists, c, err := db.putSync(batch, binIDs, chunkToItem(ch))
 			if err != nil {
+				db.logger.Errorf("putsync err: %v", err)
 				return nil, err
 			}
 			exist[i] = exists
@@ -277,6 +278,7 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 	if item.BinID == 0 {
 		i, err := db.retrievalDataIndex.Get(item)
 		if err != nil {
+			db.logger.Errorf("setSync retrieval data index err")
 			return 0, err
 		}
 		item.BinID = i.BinID
@@ -290,7 +292,10 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 			return 0, err
 		}
 		gcSizeChange--
+		db.logger.Errorf("setSync chunk in access index err")
+
 	case errors.Is(err, leveldb.ErrNotFound):
+		db.logger.Errorf("setSync not in access index err")
 		// the chunk is not accessed before
 	default:
 		return 0, err
@@ -298,21 +303,25 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
+		db.logger.Errorf("setSync put in access index err %v", err)
 		return 0, err
 	}
 
 	// add new entry to gc index ONLY if it is not present in pinIndex
 	ok, err := db.pinIndex.Has(item)
 	if err != nil {
+		db.logger.Errorf("setSync has err %v", err)
 		return 0, err
 	}
 	if !ok {
+		db.logger.Errorf("setSync not ok")
 		err = db.gcIndex.PutInBatch(batch, item)
 		if err != nil {
 			return 0, err
 		}
 		gcSizeChange++
 	}
+	db.logger.Errorf("setSync gc size change %d", gcSizeChange)
 
 	return gcSizeChange, nil
 }
