@@ -224,28 +224,28 @@ dockers:
   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
   - "--label=org.opencontainers.image.version={{.Version}}"
 docker_manifests:
-- name_template: vandot/bee:{{ .Major }}
+- name_template: ethersphere/bee:{{ .Major }}
   image_templates:
-  - vandot/bee:{{ .Version }}-amd64
-  - vandot/bee:{{ .Version }}-armv7
-  - vandot/bee:{{ .Version }}-arm64v8
-- name_template: vandot/bee:{{ .Major }}.{{ .Minor }}
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}
   image_templates:
-  - vandot/bee:{{ .Version }}-amd64
-  - vandot/bee:{{ .Version }}-armv7
-  - vandot/bee:{{ .Version }}-arm64v8
-- name_template: vandot/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}
   image_templates:
-  - vandot/bee:{{ .Version }}-amd64
-  - vandot/bee:{{ .Version }}-armv7
-  - vandot/bee:{{ .Version }}-arm64v8
-- name_template: vandot/bee:latest
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:latest
   image_templates:
-  - vandot/bee:{{ .Version }}-amd64
-  - vandot/bee:{{ .Version }}-armv7
-  - vandot/bee:{{ .Version }}-arm64v8
-- name_template: vandot/bee:beta
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:beta
   image_templates:
-  - vandot/bee:{{ .Version }}-amd64
-  - vandot/bee:{{ .Version }}-armv7
-  - vandot/bee:{{ .Version }}-arm64v8
+  - ethersphere/bee:{{ .Version }}-amd64
+  - ethersphere/bee:{{ .Version }}-armv7
+  - ethersphere/bee:{{ .Version }}-arm64v8
