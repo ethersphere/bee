@@ -518,9 +518,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.debugAPIServer = debugAPIServer
 	}
 
-	if err := kad.Start(p2pCtx); err != nil {
-		return nil, err
-	}
+	//if err := kad.Start(p2pCtx); err != nil {
+	//return nil, err
+	//}
+	ind, _ := storer.DebugIndices()
+	fmt.Println("node debug indices:", ind)
 
 	return b, nil
 }
