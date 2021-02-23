@@ -19,6 +19,7 @@ package localstore
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"runtime/pprof"
 	"sync"
@@ -400,7 +401,8 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	if err != nil {
 		return nil, err
 	}
-
+	ind, err := db.DebugIndices()
+	fmt.Println("node debug indices:", ind)
 	// start garbage collection worker
 	go db.collectGarbageWorker()
 	return db, nil
