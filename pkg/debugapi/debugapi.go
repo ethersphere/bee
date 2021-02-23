@@ -10,6 +10,7 @@ package debugapi
 import (
 	"crypto/ecdsa"
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -50,10 +51,59 @@ type server struct {
 	Chequebook        chequebook.Service
 	Swap              swap.ApiInterface
 	metricsRegistry   *prometheus.Registry
+	Options
 	http.Handler
 }
 
-func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service) Service {
+type Options struct {
+	CORSAllowedOrigins []string
+}
+
+// checkOrigin returns true if the origin is not set or is equal to the request host.
+func (s *server) checkOrigin(r *http.Request) bool {
+	origin := r.Header["Origin"]
+	if len(origin) == 0 {
+		return true
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	hosts := append(s.CORSAllowedOrigins, scheme+"://"+r.Host)
+	for _, v := range hosts {
+		if equalASCIIFold(origin[0], v) || v == "*" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// equalASCIIFold returns true if s is equal to t with ASCII case folding as
+// defined in RFC 4790.
+func equalASCIIFold(s, t string) bool {
+	for s != "" && t != "" {
+		sr, size := utf8.DecodeRuneInString(s)
+		s = s[size:]
+		tr, size := utf8.DecodeRuneInString(t)
+		t = t[size:]
+		if sr == tr {
+			continue
+		}
+		if 'A' <= sr && sr <= 'Z' {
+			sr = sr + 'a' - 'A'
+		}
+		if 'A' <= tr && tr <= 'Z' {
+			tr = tr + 'a' - 'A'
+		}
+		if sr != tr {
+			return false
+		}
+	}
+	return s == t
+}
+
+func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service, o Options) Service {
 	s := &server{
 		Overlay:           overlay,
 		PublicKey:         publicKey,
