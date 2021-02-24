@@ -3,7 +3,7 @@
 ### CLEF
 
 ## chain id to use for signing (1=mainnet, 3=ropsten, 4=rinkeby, 5=goerli) (default: 12345)
-# CLEF_CHAINID=12345
+CLEF_CHAINID=5
 
 ### BEE
 
@@ -12,7 +12,7 @@
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
 # BEE_BOOTNODE=[/dnsaddr/bootnode.ethswarm.org]
 ## enable clef signer
-# BEE_CLEF_SIGNER_ENABLE=false
+BEE_CLEF_SIGNER_ENABLE=true
 ## clef signer endpoint
 # BEE_CLEF_SIGNER_ENDPOINT=
 ## config file (default is /home/<user>/.bee.yaml)
