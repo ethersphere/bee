@@ -836,6 +836,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Signature
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
       responses:
         "201":
           description: Created
@@ -876,6 +877,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
       responses:
         "201":
           description: Created
