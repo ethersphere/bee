@@ -9,12 +9,9 @@ wget -q https://raw.githubusercontent.com/ethersphere/bee/master/packaging/docke
 ```
 Set all configuration variables inside `.env`
 
-To configure `clef` set:
-- `CLEF_CHAINID=5` for goerli
+`clef` is configured with `CLEF_CHAINID=5` for goerli
 
 To configure `bee` set:
-- `BEE_CLEF_SIGNER_ENABLE=true` to enable clef support
-- `BEE_CLEF_SIGNER_ENDPOINT=http://clef:8550`
 - `BEE_SWAP_ENDPOINT=https://rpc.slock.it/goerli`
 
 Set bee password by either setting `BEE_PASSWORD` or `BEE_PASSWORD_FILE`
