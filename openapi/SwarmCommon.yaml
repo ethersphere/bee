@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.5.0
+  version: 0.5.1
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -382,14 +382,94 @@ components:
       pattern: "^(sequence|epoch)$"
 
   headers:
+    SwarmTag:
+      description: "Tag UID"
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/Uid"
+
     SwarmFeedIndex:
       description: "The index of the found update"
       schema:
         $ref: "#/components/schemas/HexString"
+
     SwarmFeedIndexNext:
       description: "The index of the next possible update"
       schema:
         $ref: "#/components/schemas/HexString"
+
+    SwarmRecoveryTargets:
+      description: "The targets provided for recovery"
+      schema:
+        type: string
+
+    ETag:
+      description: |
+        The RFC7232 ETag header field in a response provides the current entity-
+        tag for the selected resource. An entity-tag is an opaque identifier for
+        different versions of a resource over time, regardless whether multiple
+        versions are valid at the same time. An entity-tag consists of an opaque
+        quoted string, possibly prefixed by a weakness indicator.
+      schema:
+        type: string
+
+  parameters:
+
+    SwarmRecoveryTargetsParameter:
+      in: query
+      name: targets
+      schema:
+        type: string
+      required: false
+      description: Global pinning targets prefix
+
+    SwarmTagParameter:
+      in: header
+      name: swarm-tag
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/Uid"
+      required: false
+      description: Associate upload with an existing Tag UID
+
+    SwarmPinParameter:
+      in: header
+      name: swarm-pin
+      schema:
+        type: boolean
+      required: false
+      description: Represents the pinning state of the chunk
+
+    SwarmEncryptParameter:
+      in: header
+      name: swarm-encrypt
+      schema:
+        type: boolean
+      required: false
+      description: Represents the encrypting state of the file
+
+    ContentTypePreserved:
+      in: header
+      name: Content-Type
+      schema:
+        type: string
+      description: The specified content-type is preserved for download of the asset
+
+    SwarmIndexDocumentParameter:
+      in: header
+      name: swarm-index-document
+      schema:
+        type: string
+        example: index.html
+      required: false
+      description: Default file to be referenced on path, if exists under that path
+
+    SwarmErrorDocumentParameter:
+      in: header
+      name: swarm-error-document
+      schema:
+        type: string
+        example: error.html
+      required: false
+      description: Configure custom error document to be returned when a specified path can not be found in collection
 
   responses:
     "204":
