@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 0.5.0
+  version: 0.5.1
   title: Swarm API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -21,7 +21,6 @@ servers:
       port:
         default: 1633
         description: Service port provided in bee node config
-
   - url: "http://{apiRoot}:{port}"
     variables:
       apiRoot:
@@ -38,24 +37,9 @@ paths:
       tags:
         - Bytes
       parameters:
-        - in: header
-          name: swarm-tag
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-          required: false
-          description: Associate upload with an existing Tag UID
-        - in: header
-          name: swarm-pin
-          schema:
-            type: boolean
-          required: false
-          description: Represents the pinning state of the bytes
-        - in: header
-          name: swarm-encrypt
-          schema:
-            type: boolean
-          required: false
-          description: Represents the encrypting state of the bytes
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
       requestBody:
         content:
           application/octet-stream:
@@ -65,6 +49,9 @@ paths:
       responses:
         "200":
           description: Ok
+          headers:
+            "swarm-tag":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
           content:
             application/json:
               schema:
@@ -96,12 +83,8 @@ paths:
               schema:
                 type: string
                 format: binary
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
@@ -117,14 +100,20 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRecoveryTargetsParameter"
       responses:
         "200":
           description: Retrieved chunk content
+          headers:
+            "swarm-recovery-targets":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmRecoveryTargets"
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
+        "202":
+          description: chunk recovery initiated. retry after sometime.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
@@ -140,18 +129,8 @@ paths:
       tags:
         - Chunk
       parameters:
-        - in: header
-          name: swarm-tag
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-          required: false
-          description: Associate upload with an existing Tag UID
-        - in: header
-          name: swarm-pin
-          schema:
-            type: boolean
-          required: false
-          description: Represents the pinning state of the chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
       requestBody:
         content:
           application/octet-stream:
@@ -161,6 +140,9 @@ paths:
       responses:
         "200":
           description: Ok
+          headers:
+            "swarm-tag":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
           content:
             application/json:
               schema:
@@ -184,29 +166,10 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FileName"
           required: false
           description: Filename
-        - in: header
-          name: swarm-tag
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-          required: false
-          description: Associate upload with an existing Tag UID
-        - in: header
-          name: swarm-pin
-          schema:
-            type: boolean
-          required: false
-          description: Represents the pinning state of the file
-        - in: header
-          name: swarm-encrypt
-          schema:
-            type: boolean
-          required: false
-          description: Represents the encrypting state of the file
-        - in: header
-          name: Content-Type
-          schema:
-            type: string
-            description: The specified content-type is preserved for download of the asset
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
       requestBody:
         content:
           multipart/form-data:
@@ -224,6 +187,11 @@ paths:
       responses:
         "200":
           description: Ok
+          headers:
+            "swarm-tag":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
+            "etag":
+              $ref: "SwarmCommon.yaml#/components/headers/ETag" 
           content:
             application/json:
               schema:
@@ -249,9 +217,15 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRecoveryTargetsParameter"
       responses:
         "200":
           description: Ok
+          headers:
+            "swarm-recovery-targets":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmRecoveryTargets"
+            "ETag":
+              $ref: "SwarmCommon.yaml#/components/headers/ETag"
           content:
             application/octet-stream:
               schema:
@@ -272,38 +246,12 @@ paths:
       tags:
         - Collection
       parameters:
-        - in: header
-          name: swarm-tag
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-          required: false
-          description: Associate upload with an existing Tag UID
-        - in: header
-          name: swarm-pin
-          schema:
-            type: boolean
-          required: false
-          description: Represents the pinning state of the collection
-        - in: header
-          name: swarm-encrypt
-          schema:
-            type: boolean
-          required: false
-          description: Represents the encrypting state of the collection
-        - in: header
-          name: swarm-index-document
-          schema:
-            type: string
-            example: index.html
-          required: false
-          description: Default file to be referenced on path, if exists under that path
-        - in: header
-          name: swarm-error-document
-          schema:
-            type: string
-            example: error.html
-          required: false
-          description: Configure custom error document to be returned when a specified path can not be found in collection
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
       requestBody:
         content:
           application/x-tar:
@@ -313,6 +261,9 @@ paths:
       responses:
         "200":
           description: Ok
+          headers:
+            "swarm-tag":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
           content:
             application/json:
               schema:
@@ -338,21 +289,20 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
-        - in: query
-          name: targets
-          schema:
-            type: string
-          required: false
-          description: Global pinning targets prefix
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRecoveryTargetsParameter"
       responses:
         "200":
           description: Ok
+          headers:
+            "swarm-recovery-targets":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmRecoveryTargets"
+          # "swarm-feed-index":
+          #   $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndex"
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
@@ -380,15 +330,13 @@ paths:
             type: string
           required: true
           description: Path to the file in the collection.
-        - in: query
-          name: targets
-          schema:
-            type: string
-          required: false
-          description: Global pinning targets prefix
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRecoveryTargetsParameter"
       responses:
         "200":
           description: Ok
+          headers:
+            "swarm-recovery-targets":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmRecoveryTargets"
           content:
             application/octet-stream:
               schema:
