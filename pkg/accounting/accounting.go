@@ -448,7 +448,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 		peerData = &accountingPeer{
 			reservedBalance: big.NewInt(0),
 			// initially assume the peer has the same threshold as us
-			paymentThreshold: a.paymentThreshold,
+			paymentThreshold: new(big.Int).Set(a.paymentThreshold),
 		}
 		a.accountingPeers[peer.String()] = peerData
 	}
