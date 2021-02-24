@@ -105,9 +105,9 @@ func NewAccounting(
 ) (*Accounting, error) {
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
-		paymentThreshold: PaymentThreshold,
-		paymentTolerance: PaymentTolerance,
-		earlyPayment:     EarlyPayment,
+		paymentThreshold: new(big.Int).Set(PaymentThreshold),
+		paymentTolerance: new(big.Int).Set(PaymentTolerance),
+		earlyPayment:     new(big.Int).Set(EarlyPayment),
 		logger:           Logger,
 		store:            Store,
 		settlement:       Settlement,
