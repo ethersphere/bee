@@ -581,7 +581,16 @@ func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm
 
 	// check if self
 	if closest.Equal(k.base) {
-		return swarm.Address{}, topology.ErrWantSelf
+		switch l := len(skipPeers); l {
+		case 0:
+			return swarm.Address{}, topology.ErrWantSelf
+		default:
+			// we skipped some peers and found that we are
+			// the closest one - return an ErrNotFound,
+			// since this means we are probably having poor
+			// connectivity.
+			return swarm.Address{}, topology.ErrNotFound
+		}
 	}
 
 	return closest, nil
