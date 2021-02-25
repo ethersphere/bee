@@ -323,6 +323,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 
 		wantedAddress := c.config.GetString(optionNameClefSignerEthereumAddress)
 		var overlayEthAddress *common.Address = nil
+		// if wantedAddress was specified use that, otherwise clef account 0 will be selected.
 		if wantedAddress != "" {
 			ethAddress := common.HexToAddress(wantedAddress)
 			overlayEthAddress = &ethAddress

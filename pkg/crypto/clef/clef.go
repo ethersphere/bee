@@ -88,14 +88,9 @@ func selectAccount(clef ExternalSignerInterface, ethAddress *common.Address) (ac
 }
 
 // NewSigner creates a new connection to the signer at endpoint.
+// If ethAddress is nil the account with index 0 will be selected. Otherwise it will verify the requested account actually exists.
 // As clef does not expose public keys it signs a test message to recover the public key.
 func NewSigner(clef ExternalSignerInterface, client Client, recoverFunc crypto.RecoverFunc, ethAddress *common.Address) (signer crypto.Signer, err error) {
-	// get the list of available ethereum accounts
-	clefAccounts := clef.Accounts()
-	if len(clefAccounts) == 0 {
-		return nil, ErrNoAccounts
-	}
-
 	account, err := selectAccount(clef, ethAddress)
 	if err != nil {
 		return nil, err
