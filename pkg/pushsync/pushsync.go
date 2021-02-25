@@ -49,7 +49,6 @@ type PushSync struct {
 	streamer      p2p.StreamerDisconnecter
 	storer        storage.Putter
 	peerSuggester topology.ClosestPeerer
-	inflight      map[string]struct{}
 	tagger        *tags.Tags
 	unwrap        func(swarm.Chunk)
 	logger        logging.Logger
