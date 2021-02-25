@@ -6,6 +6,7 @@ package mock
 
 import (
 	"crypto/ecdsa"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -14,7 +15,7 @@ import (
 )
 
 type signerMock struct {
-	signTx          func(transaction *types.Transaction) (*types.Transaction, error)
+	signTx          func(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error)
 	signTypedData   func(*eip712.TypedData) ([]byte, error)
 	ethereumAddress func() (common.Address, error)
 }
@@ -30,8 +31,8 @@ func (*signerMock) Sign(data []byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *signerMock) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
-	return m.signTx(transaction)
+func (m *signerMock) SignTx(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+	return m.signTx(transaction, chainID)
 }
 
 func (*signerMock) PublicKey() (*ecdsa.PublicKey, error) {
@@ -59,7 +60,7 @@ type optionFunc func(*signerMock)
 
 func (f optionFunc) apply(r *signerMock) { f(r) }
 
-func WithSignTxFunc(f func(transaction *types.Transaction) (*types.Transaction, error)) Option {
+func WithSignTxFunc(f func(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error)) Option {
 	return optionFunc(func(s *signerMock) {
 		s.signTx = f
 	})
