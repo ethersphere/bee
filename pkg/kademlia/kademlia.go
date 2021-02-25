@@ -584,8 +584,12 @@ func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm
 		return swarm.Address{}, topology.ErrWantSelf
 	}
 
-	if swarm.DistanceCmp(addr.Bytes(), k.base.Bytes(), closest.Bytes()) < 0 {
-		return topology.ErrNotFound
+	dcmp, err := swarm.DistanceCmp(addr.Bytes(), k.base.Bytes(), closest.Bytes())
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+	if dcmp < 0 {
+		return swarm.ZeroAddress, topology.ErrNotFound
 	}
 
 	return closest, nil
