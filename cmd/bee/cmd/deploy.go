@@ -52,6 +52,8 @@ func (c *command) initDeployCmd() error {
 				return
 			}
 
+			defer stateStore.Close()
+
 			signerConfig, err := c.configureSigner(cmd, logger)
 			if err != nil {
 				return
@@ -70,6 +72,7 @@ func (c *command) initDeployCmd() error {
 			if err != nil {
 				return
 			}
+			defer swapBackend.Close()
 
 			chequebookFactory, err := node.InitChequebookFactory(
 				logger,

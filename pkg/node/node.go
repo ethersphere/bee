@@ -77,6 +77,7 @@ type Bee struct {
 	pullerCloser          io.Closer
 	pullSyncCloser        io.Closer
 	pssCloser             io.Closer
+	ethClientCloser       func()
 	recoveryHandleCleanup func()
 }
 
@@ -155,6 +156,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
+		b.ethClientCloser = swapBackend.Close
 
 		chequebookFactory, err = InitChequebookFactory(
 			logger,
@@ -553,6 +555,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	b.p2pCancel()
 	if err := b.p2pService.Close(); err != nil {
 		errs.add(fmt.Errorf("p2p server: %w", err))
+	}
+
+	if c := b.ethClientCloser; c != nil {
+		c()
 	}
 
 	if err := b.tracerCloser.Close(); err != nil {
