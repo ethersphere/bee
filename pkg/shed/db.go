@@ -32,7 +32,9 @@ import (
 )
 
 var (
-	openFileLimit = 128 // The limit for LevelDB OpenFilesCacheCapacity.
+	openFileLimit      = 128 // The limit for LevelDB OpenFilesCacheCapacity.
+	blockCacheCapacity = 32 * 1024 * 1024
+	writeBuffer        = 32 * 1024 * 1024
 )
 
 // DB provides abstractions over LevelDB in order to
@@ -55,6 +57,9 @@ func NewDB(path string) (db *DB, err error) {
 	} else {
 		ldb, err = leveldb.OpenFile(path, &opt.Options{
 			OpenFilesCacheCapacity: openFileLimit,
+			BlockCacheCapacity:     blockCacheCapacity,
+			DisableSeeksCompaction: true,
+			WriteBuffer:            writeBuffer,
 		})
 	}
 
