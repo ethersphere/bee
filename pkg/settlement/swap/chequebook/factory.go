@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
@@ -43,8 +43,6 @@ type factory struct {
 	backend            transaction.Backend
 	transactionService transaction.Service
 	address            common.Address
-
-	instance SimpleSwapFactoryBinding
 }
 
 type simpleSwapDeployedEvent struct {
@@ -52,18 +50,12 @@ type simpleSwapDeployedEvent struct {
 }
 
 // NewFactory creates a new factory service for the provided factory contract.
-func NewFactory(backend transaction.Backend, transactionService transaction.Service, address common.Address, simpleSwapFactoryBindingFunc SimpleSwapFactoryBindingFunc) (Factory, error) {
-	instance, err := simpleSwapFactoryBindingFunc(address, backend)
-	if err != nil {
-		return nil, err
-	}
-
+func NewFactory(backend transaction.Backend, transactionService transaction.Service, address common.Address) Factory {
 	return &factory{
 		backend:            backend,
 		transactionService: transactionService,
 		address:            address,
-		instance:           instance,
-	}, nil
+	}
 }
 
 // Deploy deploys a new chequebook and returns once the transaction has been submitted.
@@ -121,12 +113,25 @@ func (c *factory) VerifyBytecode(ctx context.Context) (err error) {
 
 // VerifyChequebook checks that the supplied chequebook has been deployed by this factory.
 func (c *factory) VerifyChequebook(ctx context.Context, chequebook common.Address) error {
-	deployed, err := c.instance.DeployedContracts(&bind.CallOpts{
-		Context: ctx,
-	}, chequebook)
+	callData, err := factoryABI.Pack("deployedContracts", chequebook)
 	if err != nil {
 		return err
 	}
+
+	output, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.address,
+		Data: callData,
+	})
+	if err != nil {
+		return err
+	}
+
+	results, err := factoryABI.Unpack("deployedContracts", output)
+	if err != nil {
+		return err
+	}
+
+	deployed := *abi.ConvertType(results[0], new(bool)).(*bool)
 	if !deployed {
 		return ErrNotDeployedByFactory
 	}
@@ -135,13 +140,25 @@ func (c *factory) VerifyChequebook(ctx context.Context, chequebook common.Addres
 
 // ERC20Address returns the token for which this factory deploys chequebooks.
 func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
-	erc20Address, err := c.instance.ERC20Address(&bind.CallOpts{
-		Context: ctx,
+	callData, err := factoryABI.Pack("ERC20Address")
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	output, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.address,
+		Data: callData,
 	})
 	if err != nil {
 		return common.Address{}, err
 	}
-	return erc20Address, nil
+
+	results, err := factoryABI.Unpack("ERC20Address", output)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	return *abi.ConvertType(results[0], new(common.Address)).(*common.Address), nil
 }
 
 // DiscoverFactoryAddress returns the canonical factory for this chainID
