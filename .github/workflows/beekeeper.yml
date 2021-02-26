@@ -8,7 +8,7 @@ on:
 
 jobs:
   beekeeper:
-    name: Execute beekeeper tests
+    name: Infra tests
     env:
       REPLICA: 3
     runs-on: ubuntu-latest
