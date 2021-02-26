@@ -56,20 +56,23 @@ type transactionService struct {
 	signer  crypto.Signer
 	sender  common.Address
 	store   storage.StateStorer
+	chainID *big.Int
 }
 
 // NewService creates a new transaction service.
-func NewService(logger logging.Logger, backend Backend, signer crypto.Signer, store storage.StateStorer) (Service, error) {
+func NewService(logger logging.Logger, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
+
 	return &transactionService{
 		logger:  logger,
 		backend: backend,
 		signer:  signer,
 		sender:  senderAddress,
 		store:   store,
+		chainID: chainID,
 	}, nil
 }
 
@@ -88,7 +91,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 		return common.Hash{}, err
 	}
 
-	signedTx, err := t.signer.SignTx(tx)
+	signedTx, err := t.signer.SignTx(tx, t.chainID)
 	if err != nil {
 		return common.Hash{}, err
 	}

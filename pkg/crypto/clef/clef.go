@@ -109,7 +109,7 @@ func (c *clefSigner) Sign(data []byte) ([]byte, error) {
 }
 
 // SignTx signs an ethereum transaction.
-func (c *clefSigner) SignTx(transaction *types.Transaction) (*types.Transaction, error) {
+func (c *clefSigner) SignTx(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 	// chainId is nil here because it is set on the clef side
 	return c.clef.SignTx(c.account, transaction, nil)
 }

@@ -27,9 +27,9 @@ func nonceKey(sender common.Address) string {
 	return fmt.Sprintf("transaction_nonce_%x", sender)
 }
 
-func signerMockForTransaction(signedTx *types.Transaction, sender common.Address, t *testing.T) crypto.Signer {
+func signerMockForTransaction(signedTx *types.Transaction, sender common.Address, signerChainID *big.Int, t *testing.T) crypto.Signer {
 	return signermock.New(
-		signermock.WithSignTxFunc(func(transaction *types.Transaction) (*types.Transaction, error) {
+		signermock.WithSignTxFunc(func(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 			if signedTx.To() == nil {
 				if transaction.To() != nil {
 					t.Fatalf("signing transaction with recipient. wanted nil, got %x", transaction.To())
@@ -44,6 +44,9 @@ func signerMockForTransaction(signedTx *types.Transaction, sender common.Address
 			}
 			if transaction.Value().Cmp(signedTx.Value()) != 0 {
 				t.Fatalf("signing transaction with wrong value. wanted %d, got %d", signedTx.Value(), transaction.Value())
+			}
+			if chainID.Cmp(signerChainID) != 0 {
+				t.Fatalf("signing transaction with wrong chainID. wanted %d, got %d", signerChainID, transaction.ChainId())
 			}
 			if transaction.Gas() != signedTx.Gas() {
 				t.Fatalf("signing transaction with wrong gas. wanted %d, got %d", signedTx.Gas(), transaction.Gas())
@@ -73,6 +76,7 @@ func TestTransactionSend(t *testing.T) {
 	suggestedGasPrice := big.NewInt(2)
 	estimatedGasLimit := uint64(3)
 	nonce := uint64(2)
+	chainID := big.NewInt(5)
 
 	t.Run("send", func(t *testing.T) {
 		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
@@ -111,8 +115,9 @@ func TestTransactionSend(t *testing.T) {
 					return nonce - 1, nil
 				}),
 			),
-			signerMockForTransaction(signedTx, sender, t),
+			signerMockForTransaction(signedTx, sender, chainID, t),
 			store,
+			chainID,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -170,8 +175,9 @@ func TestTransactionSend(t *testing.T) {
 					return nonce, nil
 				}),
 			),
-			signerMockForTransaction(signedTx, sender, t),
+			signerMockForTransaction(signedTx, sender, chainID, t),
 			store,
+			chainID,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -234,8 +240,9 @@ func TestTransactionSend(t *testing.T) {
 					return nextNonce, nil
 				}),
 			),
-			signerMockForTransaction(signedTx, sender, t),
+			signerMockForTransaction(signedTx, sender, chainID, t),
 			store,
+			chainID,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -292,8 +299,9 @@ func TestTransactionSend(t *testing.T) {
 					return nonce, nil
 				}),
 			),
-			signerMockForTransaction(signedTx, sender, t),
+			signerMockForTransaction(signedTx, sender, chainID, t),
 			storemock.NewStateStore(),
+			chainID,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -313,6 +321,7 @@ func TestTransactionSend(t *testing.T) {
 func TestTransactionWaitForReceipt(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	txHash := common.HexToHash("0xabcdee")
+	chainID := big.NewInt(5)
 
 	transactionService, err := transaction.NewService(logger,
 		backendmock.New(
@@ -324,6 +333,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 		),
 		signermock.New(),
 		nil,
+		chainID,
 	)
 	if err != nil {
 		t.Fatal(err)
