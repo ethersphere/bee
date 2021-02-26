@@ -10,9 +10,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 )
@@ -29,23 +29,14 @@ func checkBalance(
 	swapBackend transaction.Backend,
 	chainId int64,
 	overlayEthAddress common.Address,
-	erc20BindingFunc ERC20BindingFunc,
-	erc20Address common.Address,
+	erc20Token erc20.Service,
 	backoffDuration time.Duration,
 	maxRetries uint64,
 ) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, backoffDuration*time.Duration(maxRetries))
 	defer cancel()
-
-	erc20Token, err := erc20BindingFunc(erc20Address, swapBackend)
-	if err != nil {
-		return err
-	}
-
 	for {
-		erc20Balance, err := erc20Token.BalanceOf(&bind.CallOpts{
-			Context: timeoutCtx,
-		}, overlayEthAddress)
+		erc20Balance, err := erc20Token.BalanceOf(timeoutCtx, overlayEthAddress)
 		if err != nil {
 			return err
 		}
@@ -111,7 +102,7 @@ func Init(
 	overlayEthAddress common.Address,
 	chequeSigner ChequeSigner,
 	simpleSwapBindingFunc SimpleSwapBindingFunc,
-	erc20BindingFunc ERC20BindingFunc) (chequebookService Service, err error) {
+) (chequebookService Service, err error) {
 	// verify that the supplied factory is valid
 	err = chequebookFactory.VerifyBytecode(ctx)
 	if err != nil {
@@ -122,6 +113,8 @@ func Init(
 	if err != nil {
 		return nil, err
 	}
+
+	erc20Service := erc20.New(swapBackend, transactionService, erc20Address)
 
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)
@@ -138,7 +131,7 @@ func Init(
 		if err == storage.ErrNotFound {
 			logger.Info("no chequebook found, deploying new one.")
 			if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
-				err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20BindingFunc, erc20Address, 20*time.Second, 10)
+				err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20Service, 20*time.Second, 10)
 				if err != nil {
 					return nil, err
 				}
@@ -173,7 +166,7 @@ func Init(
 			return nil, err
 		}
 
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, stateStore, chequeSigner, simpleSwapBindingFunc, erc20BindingFunc)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, overlayEthAddress, stateStore, chequeSigner, erc20Service, simpleSwapBindingFunc)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +187,7 @@ func Init(
 			logger.Info("successfully deposited to chequebook")
 		}
 	} else {
-		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, erc20Address, overlayEthAddress, stateStore, chequeSigner, simpleSwapBindingFunc, erc20BindingFunc)
+		chequebookService, err = New(swapBackend, transactionService, chequebookAddress, overlayEthAddress, stateStore, chequeSigner, erc20Service, simpleSwapBindingFunc)
 		if err != nil {
 			return nil, err
 		}
