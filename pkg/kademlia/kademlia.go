@@ -29,12 +29,14 @@ const (
 )
 
 var (
-	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
-	errOverlayMismatch         = errors.New("overlay mismatch")
-	timeToRetry                = 60 * time.Second
-	shortRetry                 = 30 * time.Second
-	saturationPeers            = 4
-	overSaturationPeers        = 32
+	errMissingAddressBookEntry    = errors.New("addressbook underlay entry not found")
+	errOverlayMismatch            = errors.New("overlay mismatch")
+	errDisconnectByOverSaturation = errors.New("connection refused for oversaturated bin")
+
+	timeToRetry         = 60 * time.Second
+	shortRetry          = 30 * time.Second
+	saturationPeers     = 4
+	overSaturationPeers = 32
 )
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
@@ -84,25 +86,26 @@ func New(base swarm.Address, addressbook addressbook.Interface, discovery discov
 	}
 
 	if o.OverSaturationFunc == nil {
-		o.OverSaturationFunc = binSaturated
+		o.OverSaturationFunc = binOverSaturated
 	}
 
 	k := &Kad{
-		base:           base,
-		discovery:      discovery,
-		addressBook:    addressbook,
-		p2p:            p2p,
-		saturationFunc: o.SaturationFunc,
-		connectedPeers: pslice.New(int(swarm.MaxBins)),
-		knownPeers:     pslice.New(int(swarm.MaxBins)),
-		bootnodes:      o.Bootnodes,
-		manageC:        make(chan struct{}, 1),
-		waitNext:       make(map[string]retryInfo),
-		logger:         logger,
-		standalone:     o.Standalone,
-		quit:           make(chan struct{}),
-		done:           make(chan struct{}),
-		wg:             sync.WaitGroup{},
+		base:               base,
+		discovery:          discovery,
+		addressBook:        addressbook,
+		p2p:                p2p,
+		saturationFunc:     o.SaturationFunc,
+		overSaturationFunc: o.OverSaturationFunc,
+		connectedPeers:     pslice.New(int(swarm.MaxBins)),
+		knownPeers:         pslice.New(int(swarm.MaxBins)),
+		bootnodes:          o.Bootnodes,
+		manageC:            make(chan struct{}, 1),
+		waitNext:           make(map[string]retryInfo),
+		logger:             logger,
+		standalone:         o.Standalone,
+		quit:               make(chan struct{}),
+		done:               make(chan struct{}),
+		wg:                 sync.WaitGroup{},
 	}
 
 	return k
@@ -325,13 +328,6 @@ func binOverSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
 		return false
 	}
 
-	// lets assume for now that the minimum number of peers in a bin
-	// would be 2, under which we would always want to connect to new peers
-	// obviously this should be replaced with a better optimization
-	// the iterator is used here since when we check if a bin is saturated,
-	// the plain number of size of bin might not suffice (for example for squared
-	// gaps measurement)
-
 	size := 0
 	_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
 		if po == bin {
@@ -489,6 +485,13 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
+
+	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+	if overSaturated := k.overSaturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
+		_ = k.p2p.Disconnect(peer.Address)
+		return errDisconnectByOverSaturation
+	}
+
 	if err := k.connected(ctx, peer.Address); err != nil {
 		return err
 	}
@@ -508,22 +511,20 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 
 	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 
-	if overSaturated := k.overSaturationFunc(po, k.knownPeers, k.connectedPeers); !overSaturated {
-		k.knownPeers.Add(addr, po)
-		k.connectedPeers.Add(addr, po)
+	k.knownPeers.Add(addr, po)
+	k.connectedPeers.Add(addr, po)
 
-		k.waitNextMu.Lock()
-		delete(k.waitNext, addr.String())
-		k.waitNextMu.Unlock()
+	k.waitNextMu.Lock()
+	delete(k.waitNext, addr.String())
+	k.waitNextMu.Unlock()
 
-		k.depthMu.Lock()
-		k.depth = recalcDepth(k.connectedPeers)
-		k.depthMu.Unlock()
+	k.depthMu.Lock()
+	k.depth = recalcDepth(k.connectedPeers)
+	k.depthMu.Unlock()
 
-		k.notifyPeerSig()
-		return nil
-	}
-	return
+	k.notifyPeerSig()
+	return nil
+
 }
 
 // Disconnected is called when peer disconnects.
