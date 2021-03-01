@@ -1,6 +1,7 @@
 package cac
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 
@@ -70,4 +71,20 @@ func hasher(data []byte) func([]byte) ([]byte, error) {
 		}
 		return hasher.Sum(nil), nil
 	}
+}
+
+// Valid checks whether the given chunk is a valid content-addressed chunk.
+func Valid(c swarm.Chunk) bool {
+	data := c.Data()
+	if len(data) < swarm.SpanSize {
+		return false
+	}
+
+	if len(data) > swarm.ChunkSize+swarm.SpanSize {
+		return false
+	}
+
+	h := hasher(data[swarm.SpanSize:])
+	hash, _ := h(data[:swarm.SpanSize])
+	return bytes.Equal(hash, c.Address().Bytes())
 }
