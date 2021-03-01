@@ -6,11 +6,9 @@ package chequebook_test
 
 import (
 	"context"
-	"errors"
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -22,11 +20,16 @@ import (
 	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
+var (
+	chequebookABI          = transaction.ParseABIUnchecked(simpleswapfactory.ERC20SimpleSwapABI)
+	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
+	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
+)
+
 func TestCashout(t *testing.T) {
 	chequebookAddress := common.HexToAddress("abcd")
 	recipientAddress := common.HexToAddress("efff")
 	txHash := common.HexToHash("dddd")
-	log1Topic := common.HexToHash("eeee")
 	totalPayout := big.NewInt(100)
 	cumulativePayout := big.NewInt(500)
 
@@ -40,25 +43,8 @@ func TestCashout(t *testing.T) {
 	}
 
 	store := storemock.NewStateStore()
-	cashoutService, err := chequebook.NewCashoutService(
+	cashoutService := chequebook.NewCashoutService(
 		store,
-		func(common.Address, bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
-			return &simpleSwapBindingMock{
-				parseChequeCashed: func(l types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeCashed, error) {
-					if l.Topics[0] != log1Topic {
-						t.Fatalf("parsing wrong log. wanted %v, got %v", log1Topic, l.Topics[0])
-					}
-					return &simpleswapfactory.ERC20SimpleSwapChequeCashed{
-						Beneficiary:      cheque.Beneficiary,
-						Recipient:        recipientAddress,
-						Caller:           cheque.Beneficiary,
-						TotalPayout:      totalPayout,
-						CumulativePayout: cumulativePayout,
-						CallerPayout:     big.NewInt(0),
-					}, nil
-				},
-			}, nil
-		},
 		backendmock.New(
 			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
 				if hash != txHash {
@@ -70,12 +56,19 @@ func TestCashout(t *testing.T) {
 				if hash != txHash {
 					t.Fatalf("fetching receipt for transaction. wanted %v, got %v", txHash, hash)
 				}
+
+				logData, err := chequeCashedEventType.Inputs.NonIndexed().Pack(totalPayout, cumulativePayout, big.NewInt(0))
+				if err != nil {
+					t.Fatal(err)
+				}
+
 				return &types.Receipt{
 					Status: types.ReceiptStatusSuccessful,
 					Logs: []*types.Log{
 						{
 							Address: chequebookAddress,
-							Topics:  []common.Hash{log1Topic},
+							Topics:  []common.Hash{chequeCashedEventType.ID, cheque.Beneficiary.Hash(), recipientAddress.Hash(), cheque.Beneficiary.Hash()},
+							Data:    logData,
 						},
 					},
 				}, nil
@@ -101,9 +94,6 @@ func TestCashout(t *testing.T) {
 			}),
 		),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	returnedTxHash, err := cashoutService.CashCheque(context.Background(), chequebookAddress, recipientAddress)
 	if err != nil {
@@ -154,8 +144,6 @@ func TestCashoutBounced(t *testing.T) {
 	chequebookAddress := common.HexToAddress("abcd")
 	recipientAddress := common.HexToAddress("efff")
 	txHash := common.HexToHash("dddd")
-	log1Topic := common.HexToHash("eeee")
-	logBouncedTopic := common.HexToHash("bbbb")
 	totalPayout := big.NewInt(100)
 	cumulativePayout := big.NewInt(500)
 
@@ -169,31 +157,8 @@ func TestCashoutBounced(t *testing.T) {
 	}
 
 	store := storemock.NewStateStore()
-	cashoutService, err := chequebook.NewCashoutService(
+	cashoutService := chequebook.NewCashoutService(
 		store,
-		func(common.Address, bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
-			return &simpleSwapBindingMock{
-				parseChequeCashed: func(l types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeCashed, error) {
-					if l.Topics[0] != log1Topic {
-						return nil, errors.New("")
-					}
-					return &simpleswapfactory.ERC20SimpleSwapChequeCashed{
-						Beneficiary:      cheque.Beneficiary,
-						Recipient:        recipientAddress,
-						Caller:           cheque.Beneficiary,
-						TotalPayout:      totalPayout,
-						CumulativePayout: cumulativePayout,
-						CallerPayout:     big.NewInt(0),
-					}, nil
-				},
-				parseChequeBounced: func(l types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeBounced, error) {
-					if l.Topics[0] != logBouncedTopic {
-						t.Fatalf("parsing wrong bounced log. wanted %v, got %v", logBouncedTopic, l.Topics[0])
-					}
-					return &simpleswapfactory.ERC20SimpleSwapChequeBounced{}, nil
-				},
-			}, nil
-		},
 		backendmock.New(
 			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
 				if hash != txHash {
@@ -205,16 +170,23 @@ func TestCashoutBounced(t *testing.T) {
 				if hash != txHash {
 					t.Fatalf("fetching receipt for transaction. wanted %v, got %v", txHash, hash)
 				}
+
+				chequeCashedLogData, err := chequeCashedEventType.Inputs.NonIndexed().Pack(totalPayout, cumulativePayout, big.NewInt(0))
+				if err != nil {
+					t.Fatal(err)
+				}
+
 				return &types.Receipt{
 					Status: types.ReceiptStatusSuccessful,
 					Logs: []*types.Log{
 						{
 							Address: chequebookAddress,
-							Topics:  []common.Hash{log1Topic},
+							Topics:  []common.Hash{chequeCashedEventType.ID, cheque.Beneficiary.Hash(), recipientAddress.Hash(), cheque.Beneficiary.Hash()},
+							Data:    chequeCashedLogData,
 						},
 						{
 							Address: chequebookAddress,
-							Topics:  []common.Hash{logBouncedTopic},
+							Topics:  []common.Hash{chequeBouncedEventType.ID},
 						},
 					},
 				}, nil
@@ -240,9 +212,6 @@ func TestCashoutBounced(t *testing.T) {
 			}),
 		),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	returnedTxHash, err := cashoutService.CashCheque(context.Background(), chequebookAddress, recipientAddress)
 	if err != nil {
@@ -305,11 +274,8 @@ func TestCashoutStatusReverted(t *testing.T) {
 	}
 
 	store := storemock.NewStateStore()
-	cashoutService, err := chequebook.NewCashoutService(
+	cashoutService := chequebook.NewCashoutService(
 		store,
-		func(common.Address, bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
-			return &simpleSwapBindingMock{}, nil
-		},
 		backendmock.New(
 			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
 				if hash != txHash {
@@ -340,9 +306,6 @@ func TestCashoutStatusReverted(t *testing.T) {
 			}),
 		),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	returnedTxHash, err := cashoutService.CashCheque(context.Background(), chequebookAddress, recipientAddress)
 	if err != nil {
@@ -387,11 +350,8 @@ func TestCashoutStatusPending(t *testing.T) {
 	}
 
 	store := storemock.NewStateStore()
-	cashoutService, err := chequebook.NewCashoutService(
+	cashoutService := chequebook.NewCashoutService(
 		store,
-		func(common.Address, bind.ContractBackend) (chequebook.SimpleSwapBinding, error) {
-			return &simpleSwapBindingMock{}, nil
-		},
 		backendmock.New(
 			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
 				if hash != txHash {
@@ -414,9 +374,6 @@ func TestCashoutStatusPending(t *testing.T) {
 			}),
 		),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	returnedTxHash, err := cashoutService.CashCheque(context.Background(), chequebookAddress, recipientAddress)
 	if err != nil {
