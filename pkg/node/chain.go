@@ -21,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
-	"gopkg.in/src-d/go-log.v1"
 )
 
 const (
@@ -63,7 +62,7 @@ func InitChain(
 		return nil, common.Address{}, 0, nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
-		log.Infof("waiting to sync with the Ethereum backend")
+		logger.Infof("waiting to sync with the Ethereum backend")
 		err := transaction.WaitSynced(ctx, backend, maxDelay)
 		if err != nil {
 			return nil, common.Address{}, 0, nil, fmt.Errorf("waiting backend sync: %w", err)
@@ -88,12 +87,12 @@ func InitChequebookFactory(
 		if !found {
 			return nil, errors.New("no known factory address for this network")
 		}
-		log.Infof("using default factory address for chain id %d: %x", chainID, addr)
+		logger.Infof("using default factory address for chain id %d: %x", chainID, addr)
 	} else if !common.IsHexAddress(factoryAddress) {
 		return nil, errors.New("malformed factory address")
 	} else {
 		addr = common.HexToAddress(factoryAddress)
-		log.Infof("using custom factory address: %x", factoryAddress)
+		logger.Infof("using custom factory address: %x", addr)
 	}
 
 	chequebookFactory, err := chequebook.NewFactory(
