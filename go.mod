@@ -3,21 +3,18 @@ module github.com/ethersphere/bee
 go 1.14
 
 require (
-	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/coreos/go-semver v0.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
-	github.com/ethereum/go-ethereum v1.9.22
+	github.com/ethereum/go-ethereum v1.9.23
 	github.com/ethersphere/bmt v0.1.4
 	github.com/ethersphere/langos v1.0.0
 	github.com/ethersphere/manifest v0.3.6
-	github.com/ethersphere/sw3-bindings/v2 v2.1.0
+	github.com/ethersphere/sw3-bindings/v3 v3.0.3
 	github.com/foxcpp/go-mockdns v0.0.0-20201212160233-ede2f9158d15
-	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
-	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.1.4 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20200217142428-fce0ec30dd00 // indirect
@@ -58,7 +55,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20200815110645-5c35d600f0ca
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
-	github.com/wealdtech/go-ens/v3 v3.4.3
+	github.com/wealdtech/go-ens/v3 v3.4.4
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.opencensus.io v0.22.5 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
@@ -71,9 +68,9 @@ require (
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
 	golang.org/x/text v0.3.4 // indirect
 	golang.org/x/tools v0.0.0-20200626171337-aa94e735be7f // indirect
-	google.golang.org/protobuf v1.25.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
+	gopkg.in/src-d/go-log.v1 v1.0.1
 	gopkg.in/yaml.v2 v2.3.0
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect

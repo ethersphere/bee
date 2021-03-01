@@ -17,7 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
+	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
 // SendChequeFunc is a function to send cheques.
