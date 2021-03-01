@@ -15,12 +15,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        if: github.event.repository_dispatch != 'beekeeper'
+        if: github.event.event_type != 'beekeeper'
         with:
           fetch-depth: 1
       - name: Checkout
         uses: actions/checkout@v2
-        if: github.event.repository_dispatch == 'beekeeper'
+        if: github.event.event_type == 'beekeeper'
         with:
           ref: ${{ github.event.client_payload.ref }}
           fetch-depth: 1
@@ -129,16 +129,16 @@ jobs:
           docker tag registry.localhost:5000/ethersphere/bee:latest ghcr.io/ethersphere/bee
           docker push ghcr.io/ethersphere/bee
       - name: Retag Docker image and push
-        if: github.ref == 'refs/heads/master' && github.event.repository_dispatch != 'beekeeper' && success()
+        if: github.ref == 'refs/heads/master' && github.event.event_type != 'beekeeper' && success()
         run: |
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
           docker push ethersphere/bee:latest
       - name: Set IMAGE_DIGEST variable
-        if: github.ref == 'refs/heads/master' && github.event.repository_dispatch != 'beekeeper' && success()
+        if: github.ref == 'refs/heads/master' && github.event.event_type != 'beekeeper' && success()
         run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
       - name: Trigger ArgoCD
-        if: github.ref == 'refs/heads/master' && github.event.repository_dispatch != 'beekeeper' && success()
+        if: github.ref == 'refs/heads/master' && github.event.event_type != 'beekeeper' && success()
         uses: peter-evans/repository-dispatch@v1
         with:
           token: ${{ secrets.REPO_GHA_PAT }}
