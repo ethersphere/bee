@@ -147,7 +147,9 @@ func (k *Kad) generateCommonBinPrefixes() {
 		}
 	}
 
+	//fmt.Printf("\n %08b", addrBytes)
 	for i := range binPrefixes {
+		//fmt.Printf("\n bin %v", i)
 		for j := range binPrefixes[i] {
 			pseudoAddrBytes := binPrefixes[i][j].Bytes()
 
@@ -178,6 +180,7 @@ func (k *Kad) generateCommonBinPrefixes() {
 				index, pos := l/8, l%8
 				pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 			}
+			//fmt.Printf("\n %08b", pseudoAddrBytes)
 		}
 	}
 
@@ -262,9 +265,9 @@ func (k *Kad) manage() {
 						skipConnectedPeers = append(skipConnectedPeers, closestConnectedPeer)
 
 						// check proximity
-						closestConnectedPO := swarm.Proximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
+						closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
 
-						if int(closestConnectedPO) < i+k.bitSuffixLength {
+						if int(closestConnectedPO) < i+k.bitSuffixLength+1 {
 							// connect to closest known peer
 
 							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, skipKnownPeers...)
@@ -283,9 +286,9 @@ func (k *Kad) manage() {
 								continue
 							}
 
-							closestKnownPeerPO := swarm.Proximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
+							closestKnownPeerPO := swarm.ExtendedProximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
 
-							if int(closestKnownPeerPO) != i+k.bitSuffixLength {
+							if int(closestKnownPeerPO) < i+k.bitSuffixLength+1 {
 								continue
 							}
 
@@ -904,42 +907,21 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 		return false
 	}
 
-	binCheckBitLen := int(bin) + k.bitSuffixLength
-
-	connectedBalancedPeers := 0
-
 	// for each pseudo address
 	for i := range k.commonBinPrefixes[bin] {
 		pseudoAddr := k.commonBinPrefixes[bin][i]
-
-		err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
-			pseudoAddrBytes := pseudoAddr.Bytes()
-			peerBytes := peer.Bytes()
-
-			for j := 1; j < binCheckBitLen; j++ {
-				index, pos := j/8, j%8
-
-				pahb := hasBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos))
-				phb := hasBit(bits.Reverse8(peerBytes[index]), uint8(pos))
-
-				if pahb != phb {
-					// starting bits do not match, go to next peer
-					return false, false, nil
-				}
-			}
-
-			connectedBalancedPeers++
-
-			// we have found peer for pseudo address
-			return true, false, nil
-		})
+		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, swarm.ZeroAddress)
 		if err != nil {
+			return false
+		}
+
+		closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
+		if int(closestConnectedPO) < int(bin)+k.bitSuffixLength+1 {
 			return false
 		}
 	}
 
-	return connectedBalancedPeers >= len(k.commonBinPrefixes[bin])
+	return true
 }
 
 // MarshalJSON returns a JSON representation of Kademlia.
