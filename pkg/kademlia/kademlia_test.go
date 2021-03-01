@@ -251,7 +251,10 @@ func TestManageWithBalancing(t *testing.T) {
 	// But, Proximity(one, other) is limited to return MaxPO.
 	// So, when we get to 1 + suffix length near MaxPO, our expected proximity is not returned,
 	// even if the addresses match in the expected number of bits, because of the MaxPO limiting
-	// Right now, suffix length is 2, + 1 = 3, MaxPO is 15, so we can have balanced connections for bin 12, but not bin 13.
+	// Without extendedPO, suffix length is 2, + 1 = 3, MaxPO is 15,
+	// so we could only have balanced connections for up until bin 12, but not bin 13,
+	// as we would be expecting proximity of pseudoaddress-balancedConnection as 16 and get 15 only
+
 	for i := 1; i <= int(swarm.MaxPO); i++ {
 		waitBalanced(t, kad, uint8(i))
 	}
