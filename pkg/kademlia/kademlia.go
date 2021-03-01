@@ -32,11 +32,10 @@ var (
 	errMissingAddressBookEntry    = errors.New("addressbook underlay entry not found")
 	errOverlayMismatch            = errors.New("overlay mismatch")
 	errDisconnectByOverSaturation = errors.New("connection refused for oversaturated bin")
-
-	timeToRetry         = 60 * time.Second
-	shortRetry          = 30 * time.Second
-	saturationPeers     = 4
-	overSaturationPeers = 32
+	timeToRetry                   = 60 * time.Second
+	shortRetry                    = 30 * time.Second
+	saturationPeers               = 4
+	overSaturationPeers           = 32
 )
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
