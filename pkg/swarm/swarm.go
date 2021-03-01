@@ -24,8 +24,10 @@ const (
 	ChunkSize               = SectionSize * Branches
 	HashSize                = 32
 	MaxPO             uint8 = 15
-	MaxBins                 = MaxPO + 1
-	ChunkWithSpanSize       = ChunkSize + SpanSize
+	ExtendedPO        uint8 = MaxPO + 5
+
+	MaxBins           = MaxPO + 1
+	ChunkWithSpanSize = ChunkSize + SpanSize
 )
 
 var (

@@ -236,20 +236,25 @@ func TestManageWithBalancing(t *testing.T) {
 	waitBalanced(t, kad, 0)
 
 	// add peers for other bins, enough to have balanced connections
-	for i := 0; i < 100; i++ {
-		prox := i % int(swarm.MaxBins)
-		addr := test.RandomAddressAt(base, prox)
-		addOne(t, signer, kad, ab, addr)
+	for i := 1; i <= int(swarm.MaxPO); i++ {
+		for j := 0; j < 20; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, signer, kad, ab, addr)
+		}
+		// sanity check depth
+		kDepth(t, kad, i)
 	}
 
-	waitBalanced(t, kad, 1)
-	waitBalanced(t, kad, 2)
-	waitBalanced(t, kad, 3)
-	waitBalanced(t, kad, 4)
-	waitBalanced(t, kad, 5)
-	waitBalanced(t, kad, 6)
-	waitBalanced(t, kad, 7)
-	waitBalanced(t, kad, 8)
+	// Without introducing ExtendedPO / ExtendedProximity, we could only have balanced connections until a depth of 12
+	// That is because, the proximity expected for a balanced connection is Bin + 1 + suffix length
+	// But, Proximity(one, other) is limited to return MaxPO.
+	// So, when we get to 1 + suffix length near MaxPO, our expected proximity is not returned,
+	// even if the addresses match in the expected number of bits, because of the MaxPO limiting
+	// Right now, suffix length is 2, + 1 = 3, MaxPO is 15, so we can have balanced connections for bin 12, but not bin 13.
+	for i := 1; i <= int(swarm.MaxPO); i++ {
+		waitBalanced(t, kad, uint8(i))
+	}
+
 }
 
 // TestBinSaturation tests the builtin binSaturated function.
