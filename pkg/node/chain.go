@@ -93,7 +93,7 @@ func InitChequebookFactory(
 		return nil, errors.New("malformed factory address")
 	} else {
 		addr = common.HexToAddress(factoryAddress)
-		log.Infof("using custom factory address: %x", factoryAddress)
+		log.Infof("using custom factory address: %x", addr)
 	}
 
 	chequebookFactory, err := chequebook.NewFactory(
