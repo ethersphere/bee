@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
+	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
 func TestCashout(t *testing.T) {

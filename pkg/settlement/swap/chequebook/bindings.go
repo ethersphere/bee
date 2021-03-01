@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
+	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
 // SimpleSwapBinding is the interface for the generated go bindings for ERC20SimpleSwap
