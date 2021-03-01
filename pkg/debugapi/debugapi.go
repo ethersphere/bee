@@ -10,6 +10,7 @@ package debugapi
 import (
 	"crypto/ecdsa"
 	"net/http"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -30,33 +31,32 @@ import (
 
 type Service interface {
 	http.Handler
+	Configure(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service)
 	MustRegisterMetrics(cs ...prometheus.Collector)
 }
 
 type server struct {
-	Overlay           swarm.Address
-	PublicKey         ecdsa.PublicKey
-	PSSPublicKey      ecdsa.PublicKey
-	EthereumAddress   common.Address
-	P2P               p2p.DebugService
-	Pingpong          pingpong.Interface
-	TopologyDriver    topology.Driver
-	Storer            storage.Storer
-	Logger            logging.Logger
-	Tracer            *tracing.Tracer
-	Tags              *tags.Tags
-	Accounting        accounting.Interface
-	Settlement        settlement.Interface
-	ChequebookEnabled bool
-	Chequebook        chequebook.Service
-	Swap              swap.ApiInterface
-	metricsRegistry   *prometheus.Registry
-	Options
-	http.Handler
-}
-
-type Options struct {
+	Overlay            swarm.Address
+	PublicKey          ecdsa.PublicKey
+	PSSPublicKey       ecdsa.PublicKey
+	EthereumAddress    common.Address
+	P2P                p2p.DebugService
+	Pingpong           pingpong.Interface
+	TopologyDriver     topology.Driver
+	Storer             storage.Storer
+	Logger             logging.Logger
+	Tracer             *tracing.Tracer
+	Tags               *tags.Tags
+	Accounting         accounting.Interface
+	Settlement         settlement.Interface
+	ChequebookEnabled  bool
+	Chequebook         chequebook.Service
+	Swap               swap.ApiInterface
 	CORSAllowedOrigins []string
+	metricsRegistry    *prometheus.Registry
+	// handler is changed in the Configure method
+	handler   http.Handler
+	handlerMu sync.RWMutex
 }
 
 // checkOrigin returns true if the origin is not set or is equal to the request host.
@@ -103,28 +103,49 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
-func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, logger logging.Logger, tracer *tracing.Tracer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service, o Options) Service {
-	s := &server{
-		Overlay:           overlay,
-		PublicKey:         publicKey,
-		PSSPublicKey:      pssPublicKey,
-		EthereumAddress:   ethereumAddress,
-		P2P:               p2p,
-		Pingpong:          pingpong,
-		TopologyDriver:    topologyDriver,
-		Storer:            storer,
-		Logger:            logger,
-		Tracer:            tracer,
-		Tags:              tags,
-		Accounting:        accounting,
-		Settlement:        settlement,
-		metricsRegistry:   newMetricsRegistry(),
-		ChequebookEnabled: chequebookEnabled,
-		Chequebook:        chequebook,
-		Swap:              swap,
-	}
+// New creates a new Debug API Service with only basic routers enabled in order
+// to expose /health endpoint, Go metrics and pprof. It is useful to expose
+// these endpoints before all dependencies are configured and injected to have
+// access to basic debugging tools and /health endpoint.
+func New(logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string) Service {
+	s := new(server)
+	s.Logger = logger
+	s.Tracer = tracer
+	s.CORSAllowedOrigins = corsAllowedOrigins
+	s.metricsRegistry = newMetricsRegistry()
 
-	s.setupRouting()
+	s.setRouter(s.newBasicRouter())
 
 	return s
+}
+
+// Configure injects required dependencies and configuration parameters and
+// constructs HTTP routes that depend on them. It is intended and safe to call
+// this method only once.
+func (s *server) Configure(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service) {
+	s.Overlay = overlay
+	s.PublicKey = publicKey
+	s.PSSPublicKey = pssPublicKey
+	s.EthereumAddress = ethereumAddress
+	s.P2P = p2p
+	s.Pingpong = pingpong
+	s.TopologyDriver = topologyDriver
+	s.Storer = storer
+	s.Tags = tags
+	s.Accounting = accounting
+	s.Settlement = settlement
+	s.ChequebookEnabled = chequebookEnabled
+	s.Chequebook = chequebook
+	s.Swap = swap
+
+	s.setRouter(s.newRouter())
+}
+
+func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// protect handler as it is changed by the Configure method
+	s.handlerMu.RLock()
+	h := s.handler
+	s.handlerMu.RUnlock()
+
+	h.ServeHTTP(w, r)
 }

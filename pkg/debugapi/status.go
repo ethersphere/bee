@@ -16,7 +16,7 @@ type statusResponse struct {
 	Version string `json:"version"`
 }
 
-func (s *server) statusHandler(w http.ResponseWriter, r *http.Request) {
+func statusHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, statusResponse{
 		Status:  "ok",
 		Version: bee.Version,

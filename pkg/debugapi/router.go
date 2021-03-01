@@ -19,19 +19,22 @@ import (
 	"github.com/ethersphere/bee/pkg/logging/httpaccess"
 )
 
-func (s *server) setupRouting() {
-	baseRouter := http.NewServeMux()
+// newBasicRouter constructs only the routes that do not depend on the injected dependencies:
+// - /health
+// - pprof
+// - vars
+// - metrics
+func (s *server) newBasicRouter() *mux.Router {
+	router := mux.NewRouter()
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
-	baseRouter.Handle("/metrics", web.ChainHandlers(
+	router.Path("/metrics").Handler(web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
 			s.metricsRegistry,
 			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
 		)),
 	))
-
-	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
 	router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL
@@ -48,11 +51,21 @@ func (s *server) setupRouting() {
 
 	router.Handle("/health", web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(s.statusHandler),
+		web.FinalHandlerFunc(statusHandler),
 	))
+
+	return router
+}
+
+// newRouter construct the complete set of routes after all of the dependencies
+// are injected and exposes /readiness endpoint to provide information that
+// Debug API is fully active.
+func (s *server) newRouter() *mux.Router {
+	router := s.newBasicRouter()
+
 	router.Handle("/readiness", web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(s.statusHandler),
+		web.FinalHandlerFunc(statusHandler),
 	))
 
 	router.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
@@ -149,7 +162,13 @@ func (s *server) setupRouting() {
 		"GET": http.HandlerFunc(s.getTagHandler),
 	})
 
-	baseRouter.Handle("/", web.ChainHandlers(
+	return router
+}
+
+// setRouter sets the base Debug API handler with common middlewares.
+func (s *server) setRouter(router http.Handler) {
+	h := http.NewServeMux()
+	h.Handle("/", web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "debug api access"),
 		handlers.CompressHandler,
 		func(h http.Handler) http.Handler {
@@ -164,10 +183,12 @@ func (s *server) setupRouting() {
 				h.ServeHTTP(w, r)
 			})
 		},
-		// todo: add recovery handler
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(router),
 	))
 
-	s.Handler = baseRouter
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	s.handler = h
 }
