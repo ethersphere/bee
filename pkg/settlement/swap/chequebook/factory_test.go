@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
-	"github.com/ethersphere/sw3-bindings/v2/simpleswapfactory"
+	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
 func newTestFactory(t *testing.T, factoryAddress common.Address, backend transaction.Backend, transactionService transaction.Service, simpleSwapFactoryBinding chequebook.SimpleSwapFactoryBinding) (chequebook.Factory, error) {
