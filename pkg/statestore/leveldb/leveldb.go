@@ -17,16 +17,16 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-var _ storage.StateStorer = (*store)(nil)
+var _ storage.StateStorer = (*Store)(nil)
 
 // Store uses LevelDB to store values.
-type store struct {
+type Store struct {
 	db     *leveldb.DB
 	logger logging.Logger
 }
 
 // New creates a new persistent state storage.
-func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
+func NewStateStore(path string, l logging.Logger) (*Store, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
 		if !ldberr.IsCorrupted(err) {
@@ -40,15 +40,37 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		}
 		l.Warning("statestore recovery ok! you are kindly request to inform us about the steps that preceded the last Bee shutdown.")
 	}
-	return &store{
+
+	s := &Store{
 		db:     db,
 		logger: l,
-	}, nil
+	}
+
+	sn, err := s.GetSchemaName()
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			_ = s.Close()
+			return nil, fmt.Errorf("get schema name: %w", err)
+		}
+		// new statestore - put schema key with current name
+		if err := s.putSchemaName(dbSchemaCurrent); err != nil {
+			_ = s.Close()
+			return nil, fmt.Errorf("put schema name: %w", err)
+		}
+		sn = dbSchemaCurrent
+	}
+
+	if err = s.migrate(sn); err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+
+	return s, nil
 }
 
 // Get retrieves a value of the requested key. If no results are found,
 // storage.ErrNotFound will be returned.
-func (s *store) Get(key string, i interface{}) error {
+func (s *Store) Get(key string, i interface{}) error {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
@@ -67,7 +89,7 @@ func (s *store) Get(key string, i interface{}) error {
 // Put stores a value for an arbitrary key. BinaryMarshaler
 // interface method will be called on the provided value
 // with fallback to JSON serialization.
-func (s *store) Put(key string, i interface{}) (err error) {
+func (s *Store) Put(key string, i interface{}) (err error) {
 	var bytes []byte
 	if marshaler, ok := i.(encoding.BinaryMarshaler); ok {
 		if bytes, err = marshaler.MarshalBinary(); err != nil {
@@ -81,12 +103,12 @@ func (s *store) Put(key string, i interface{}) (err error) {
 }
 
 // Delete removes entries stored under a specific key.
-func (s *store) Delete(key string) (err error) {
+func (s *Store) Delete(key string) (err error) {
 	return s.db.Delete([]byte(key), nil)
 }
 
 // Iterate entries that match the supplied prefix.
-func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
+func (s *Store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
 	iter := s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
 	defer iter.Release()
 	for iter.Next() {
@@ -101,7 +123,22 @@ func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 	return iter.Error()
 }
 
+func (s *Store) GetSchemaName() (string, error) {
+	name, err := s.db.Get([]byte(dbSchemaKey), nil)
+	if err != nil {
+		if errors.Is(err, leveldb.ErrNotFound) {
+			return "", storage.ErrNotFound
+		}
+		return "", err
+	}
+	return string(name), nil
+}
+
+func (s *Store) putSchemaName(val string) error {
+	return s.db.Put([]byte(dbSchemaKey), []byte(val), nil)
+}
+
 // Close releases the resources used by the store.
-func (s *store) Close() error {
+func (s *Store) Close() error {
 	return s.db.Close()
 }
