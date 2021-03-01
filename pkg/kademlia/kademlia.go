@@ -147,9 +147,7 @@ func (k *Kad) generateCommonBinPrefixes() {
 		}
 	}
 
-	//fmt.Printf("\n %08b", addrBytes)
 	for i := range binPrefixes {
-		//fmt.Printf("\n bin %v", i)
 		for j := range binPrefixes[i] {
 			pseudoAddrBytes := binPrefixes[i][j].Bytes()
 
@@ -180,7 +178,6 @@ func (k *Kad) generateCommonBinPrefixes() {
 				index, pos := l/8, l%8
 				pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 			}
-			//fmt.Printf("\n %08b", pseudoAddrBytes)
 		}
 	}
 
@@ -245,14 +242,12 @@ func (k *Kad) manage() {
 			err := func() error {
 				// for each bin
 				for i := range k.commonBinPrefixes {
-					skipConnectedPeers := make([]swarm.Address, 0)
-					skipKnownPeers := make([]swarm.Address, 0)
 
 					// and each pseudo address
 					for j := range k.commonBinPrefixes[i] {
 						pseudoAddr := k.commonBinPrefixes[i][j]
 
-						closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, skipConnectedPeers...)
+						closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, swarm.ZeroAddress)
 						if err != nil {
 							if errors.Is(err, topology.ErrNotFound) {
 								break
@@ -262,15 +257,13 @@ func (k *Kad) manage() {
 							continue
 						}
 
-						skipConnectedPeers = append(skipConnectedPeers, closestConnectedPeer)
-
 						// check proximity
 						closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
 
 						if int(closestConnectedPO) < i+k.bitSuffixLength+1 {
 							// connect to closest known peer
 
-							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, skipKnownPeers...)
+							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, swarm.ZeroAddress)
 							if err != nil {
 								if errors.Is(err, topology.ErrNotFound) {
 									break
@@ -279,8 +272,6 @@ func (k *Kad) manage() {
 								k.logger.Errorf("closest known peer: %v", err)
 								continue
 							}
-
-							skipKnownPeers = append(skipKnownPeers, closestKnownPeer)
 
 							if k.connectedPeers.Exists(closestKnownPeer) {
 								continue
