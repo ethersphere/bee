@@ -183,19 +183,19 @@ func (k *Kad) generateCommonBinPrefixes() {
 }
 
 // Clears the bit at pos in n.
-func clearBit(n uint8, pos uint8) uint8 {
+func clearBit(n, pos uint8) uint8 {
 	mask := ^(uint8(1) << pos)
 	n &= mask
 	return n
 }
 
 // Sets the bit at pos in the integer n.
-func setBit(n uint8, pos uint8) uint8 {
+func setBit(n, pos uint8) uint8 {
 	n |= (1 << pos)
 	return n
 }
 
-func hasBit(n uint8, pos uint8) bool {
+func hasBit(n, pos uint8) bool {
 	val := n & (1 << pos)
 	return (val > 0)
 }
@@ -730,15 +730,6 @@ func (k *Kad) notifyPeerSig() {
 		default:
 		}
 	}
-}
-
-func isIn(a swarm.Address, addresses []p2p.Peer) bool {
-	for _, v := range addresses {
-		if v.Address.Equal(a) {
-			return true
-		}
-	}
-	return false
 }
 
 func closestPeer(peers *pslice.PSlice, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
