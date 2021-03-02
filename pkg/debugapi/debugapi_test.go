@@ -36,20 +36,21 @@ import (
 )
 
 type testServerOptions struct {
-	Overlay         swarm.Address
-	PublicKey       ecdsa.PublicKey
-	PSSPublicKey    ecdsa.PublicKey
-	EthereumAddress common.Address
-	P2P             *p2pmock.Service
-	Pingpong        pingpong.Interface
-	Storer          storage.Storer
-	Resolver        resolver.Interface
-	TopologyOpts    []topologymock.Option
-	Tags            *tags.Tags
-	AccountingOpts  []accountingmock.Option
-	SettlementOpts  []swapmock.Option
-	ChequebookOpts  []chequebookmock.Option
-	SwapOpts        []swapmock.Option
+	Overlay            swarm.Address
+	PublicKey          ecdsa.PublicKey
+	PSSPublicKey       ecdsa.PublicKey
+	EthereumAddress    common.Address
+	CORSAllowedOrigins []string
+	P2P                *p2pmock.Service
+	Pingpong           pingpong.Interface
+	Storer             storage.Storer
+	Resolver           resolver.Interface
+	TopologyOpts       []topologymock.Option
+	Tags               *tags.Tags
+	AccountingOpts     []accountingmock.Option
+	SettlementOpts     []swapmock.Option
+	ChequebookOpts     []chequebookmock.Option
+	SwapOpts           []swapmock.Option
 }
 
 type testServer struct {
@@ -63,7 +64,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	settlement := swapmock.New(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
-	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil)
+	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins)
 	s.Configure(o.P2P, o.Pingpong, topologyDriver, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)

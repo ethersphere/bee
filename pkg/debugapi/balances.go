@@ -31,12 +31,12 @@ type balancesResponse struct {
 	Balances []balanceResponse `json:"balances"`
 }
 
-func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
-	balances, err := s.Accounting.Balances()
+func (s *Service) balancesHandler(w http.ResponseWriter, r *http.Request) {
+	balances, err := s.accounting.Balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		s.Logger.Debugf("debug api: balances: %v", err)
-		s.Logger.Error("debug api: can not get balances")
+		s.logger.Debugf("debug api: balances: %v", err)
+		s.logger.Error("debug api: can not get balances")
 		return
 	}
 
@@ -53,24 +53,24 @@ func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, balancesResponse{Balances: balResponses})
 }
 
-func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: balances peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Errorf("debug api: balances peer: invalid peer address %s", addr)
+		s.logger.Debugf("debug api: balances peer: invalid peer address %s: %v", addr, err)
+		s.logger.Errorf("debug api: balances peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
 
-	balance, err := s.Accounting.Balance(peer)
+	balance, err := s.accounting.Balance(peer)
 	if err != nil {
 		if errors.Is(err, accounting.ErrPeerNoBalance) {
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.Logger.Debugf("debug api: balances peer: get peer %s balance: %v", peer.String(), err)
-		s.Logger.Errorf("debug api: balances peer: can't get peer %s balance", peer.String())
+		s.logger.Debugf("debug api: balances peer: get peer %s balance: %v", peer.String(), err)
+		s.logger.Errorf("debug api: balances peer: can't get peer %s balance", peer.String())
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
@@ -81,12 +81,12 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) compensatedBalancesHandler(w http.ResponseWriter, r *http.Request) {
-	balances, err := s.Accounting.CompensatedBalances()
+func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, r *http.Request) {
+	balances, err := s.accounting.CompensatedBalances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		s.Logger.Debugf("debug api: compensated balances: %v", err)
-		s.Logger.Error("debug api: can not get compensated balances")
+		s.logger.Debugf("debug api: compensated balances: %v", err)
+		s.logger.Error("debug api: can not get compensated balances")
 		return
 	}
 
@@ -103,24 +103,24 @@ func (s *server) compensatedBalancesHandler(w http.ResponseWriter, r *http.Reque
 	jsonhttp.OK(w, balancesResponse{Balances: balResponses})
 }
 
-func (s *server) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.Logger.Debugf("debug api: compensated balances peer: invalid peer address %s: %v", addr, err)
-		s.Logger.Errorf("debug api: compensated balances peer: invalid peer address %s", addr)
+		s.logger.Debugf("debug api: compensated balances peer: invalid peer address %s: %v", addr, err)
+		s.logger.Errorf("debug api: compensated balances peer: invalid peer address %s", addr)
 		jsonhttp.NotFound(w, errInvaliAddress)
 		return
 	}
 
-	balance, err := s.Accounting.CompensatedBalance(peer)
+	balance, err := s.accounting.CompensatedBalance(peer)
 	if err != nil {
 		if errors.Is(err, accounting.ErrPeerNoBalance) {
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.Logger.Debugf("debug api: compensated balances peer: get peer %s balance: %v", peer.String(), err)
-		s.Logger.Errorf("debug api: compensated balances peer: can't get peer %s balance", peer.String())
+		s.logger.Debugf("debug api: compensated balances peer: get peer %s balance: %v", peer.String(), err)
+		s.logger.Errorf("debug api: compensated balances peer: can't get peer %s balance", peer.String())
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}

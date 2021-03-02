@@ -25,7 +25,7 @@ import (
 // - vars
 // - metrics
 // - /addresses
-func (s *server) newBasicRouter() *mux.Router {
+func (s *Service) newBasicRouter() *mux.Router {
 	router := mux.NewRouter()
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
@@ -65,7 +65,7 @@ func (s *server) newBasicRouter() *mux.Router {
 // newRouter construct the complete set of routes after all of the dependencies
 // are injected and exposes /readiness endpoint to provide information that
 // Debug API is fully active.
-func (s *server) newRouter() *mux.Router {
+func (s *Service) newRouter() *mux.Router {
 	router := s.newBasicRouter()
 
 	router.Handle("/readiness", web.ChainHandlers(
@@ -129,7 +129,7 @@ func (s *server) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.peerSettlementsHandler),
 	})
 
-	if s.ChequebookEnabled {
+	if s.chequebookEnabled {
 		router.Handle("/chequebook/balance", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
 		})
@@ -168,23 +168,12 @@ func (s *server) newRouter() *mux.Router {
 }
 
 // setRouter sets the base Debug API handler with common middlewares.
-func (s *server) setRouter(router http.Handler) {
+func (s *Service) setRouter(router http.Handler) {
 	h := http.NewServeMux()
 	h.Handle("/", web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.Logger, logrus.InfoLevel, s.Tracer, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
 		handlers.CompressHandler,
-		func(h http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if o := r.Header.Get("Origin"); o != "" && (len(s.CORSAllowedOrigins) == 0 || s.checkOrigin(r)) {
-					w.Header().Set("Access-Control-Allow-Credentials", "true")
-					w.Header().Set("Access-Control-Allow-Origin", o)
-					w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method")
-					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
-					w.Header().Set("Access-Control-Max-Age", "3600")
-				}
-				h.ServeHTTP(w, r)
-			})
-		},
+		s.corsHandler,
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(router),
 	))

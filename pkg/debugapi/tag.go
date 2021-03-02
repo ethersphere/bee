@@ -42,27 +42,27 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 	}
 }
 
-func (s *server) getTagHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		s.Logger.Debugf("get tag: parse id  %s: %v", idStr, err)
-		s.Logger.Error("get tag: parse id")
+		s.logger.Debugf("get tag: parse id  %s: %v", idStr, err)
+		s.logger.Error("get tag: parse id")
 		jsonhttp.BadRequest(w, "invalid id")
 		return
 	}
 
-	tag, err := s.Tags.Get(uint32(id))
+	tag, err := s.tags.Get(uint32(id))
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.Logger.Debugf("get tag: tag not present: %v, id %s", err, idStr)
-			s.Logger.Error("get tag: tag not present")
+			s.logger.Debugf("get tag: tag not present: %v, id %s", err, idStr)
+			s.logger.Error("get tag: tag not present")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.Logger.Debugf("get tag: tag %v: %v", idStr, err)
-		s.Logger.Errorf("get tag: %v", idStr)
+		s.logger.Debugf("get tag: tag %v: %v", idStr, err)
+		s.logger.Errorf("get tag: %v", idStr)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}

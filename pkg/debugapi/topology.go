@@ -13,17 +13,17 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
-func (s *server) topologyHandler(w http.ResponseWriter, r *http.Request) {
-	ms, ok := s.TopologyDriver.(json.Marshaler)
+func (s *Service) topologyHandler(w http.ResponseWriter, r *http.Request) {
+	ms, ok := s.topologyDriver.(json.Marshaler)
 	if !ok {
-		s.Logger.Error("topology driver cast to json marshaler")
+		s.logger.Error("topology driver cast to json marshaler")
 		jsonhttp.InternalServerError(w, "topology json marshal interface error")
 		return
 	}
 
 	b, err := ms.MarshalJSON()
 	if err != nil {
-		s.Logger.Errorf("topology marshal to json: %v", err)
+		s.logger.Errorf("topology marshal to json: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
