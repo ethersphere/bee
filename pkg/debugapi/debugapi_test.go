@@ -6,6 +6,7 @@ package debugapi_test
 
 import (
 	"crypto/ecdsa"
+	"encoding/hex"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -15,10 +16,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p/mock"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/resolver"
@@ -60,8 +63,8 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	settlement := swapmock.New(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
-	s := debugapi.New(logging.New(ioutil.Discard, 0), nil, nil)
-	s.Configure(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.P2P, o.Pingpong, topologyDriver, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook)
+	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil)
+	s.Configure(o.P2P, o.Pingpong, topologyDriver, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -95,13 +98,38 @@ func mustMultiaddr(t *testing.T, s string) multiaddr.Multiaddr {
 // constructed with only basic routes and after it is configured with
 // dependencies.
 func TestServer_Configure(t *testing.T) {
-	var o testServerOptions
+	privateKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pssPrivateKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	addresses := []multiaddr.Multiaddr{
+		mustMultiaddr(t, "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb"),
+		mustMultiaddr(t, "/ip4/192.168.0.101/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb"),
+		mustMultiaddr(t, "/ip4/127.0.0.1/udp/7071/quic/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb"),
+	}
+
+	ethereumAddress := common.HexToAddress("abcd")
+
+	o := testServerOptions{
+		PublicKey:       privateKey.PublicKey,
+		PSSPublicKey:    pssPrivateKey.PublicKey,
+		Overlay:         overlay,
+		EthereumAddress: ethereumAddress,
+		P2P: mock.New(mock.WithAddressesFunc(func() ([]multiaddr.Multiaddr, error) {
+			return addresses, nil
+		})),
+	}
 	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := swapmock.New(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
-	s := debugapi.New(logging.New(ioutil.Discard, 0), nil, nil)
+	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -123,14 +151,31 @@ func TestServer_Configure(t *testing.T) {
 			Code:    http.StatusNotFound,
 		}),
 	)
+	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
+			Overlay:      o.Overlay,
+			Ethereum:     o.EthereumAddress,
+			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),
+			PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PSSPublicKey)),
+		}),
+	)
 
-	s.Configure(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.P2P, o.Pingpong, topologyDriver, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook)
+	s.Configure(o.P2P, o.Pingpong, topologyDriver, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook)
 
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.StatusResponse{
 			Status:  "ok",
 			Version: bee.Version,
+		}),
+	)
+	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
+			Overlay:      o.Overlay,
+			Underlay:     addresses,
+			Ethereum:     o.EthereumAddress,
+			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),
+			PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PSSPublicKey)),
 		}),
 	)
 }

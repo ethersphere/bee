@@ -31,7 +31,7 @@ import (
 
 type Service interface {
 	http.Handler
-	Configure(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service)
+	Configure(p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service)
 	MustRegisterMetrics(cs ...prometheus.Collector)
 }
 
@@ -104,11 +104,15 @@ func equalASCIIFold(s, t string) bool {
 }
 
 // New creates a new Debug API Service with only basic routers enabled in order
-// to expose /health endpoint, Go metrics and pprof. It is useful to expose
+// to expose /addresses, /health endpoints, Go metrics and pprof. It is useful to expose
 // these endpoints before all dependencies are configured and injected to have
 // access to basic debugging tools and /health endpoint.
-func New(logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string) Service {
+func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string) Service {
 	s := new(server)
+	s.Overlay = overlay
+	s.PublicKey = publicKey
+	s.PSSPublicKey = pssPublicKey
+	s.EthereumAddress = ethereumAddress
 	s.Logger = logger
 	s.Tracer = tracer
 	s.CORSAllowedOrigins = corsAllowedOrigins
@@ -122,11 +126,7 @@ func New(logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []str
 // Configure injects required dependencies and configuration parameters and
 // constructs HTTP routes that depend on them. It is intended and safe to call
 // this method only once.
-func (s *server) Configure(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service) {
-	s.Overlay = overlay
-	s.PublicKey = publicKey
-	s.PSSPublicKey = pssPublicKey
-	s.EthereumAddress = ethereumAddress
+func (s *server) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service) {
 	s.P2P = p2p
 	s.Pingpong = pingpong
 	s.TopologyDriver = topologyDriver

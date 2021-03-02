@@ -24,6 +24,7 @@ import (
 // - pprof
 // - vars
 // - metrics
+// - /addresses
 func (s *server) newBasicRouter() *mux.Router {
 	router := mux.NewRouter()
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
@@ -54,6 +55,10 @@ func (s *server) newBasicRouter() *mux.Router {
 		web.FinalHandlerFunc(statusHandler),
 	))
 
+	router.Handle("/addresses", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.addressesHandler),
+	})
+
 	return router
 }
 
@@ -72,9 +77,6 @@ func (s *server) newRouter() *mux.Router {
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
-	router.Handle("/addresses", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.addressesHandler),
-	})
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
