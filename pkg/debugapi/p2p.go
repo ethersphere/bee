@@ -24,11 +24,18 @@ type addressesResponse struct {
 }
 
 func (s *server) addressesHandler(w http.ResponseWriter, r *http.Request) {
-	underlay, err := s.P2P.Addresses()
-	if err != nil {
-		s.Logger.Debugf("debug api: p2p addresses: %v", err)
-		jsonhttp.InternalServerError(w, err)
-		return
+	// initialize variable to json encode as [] instead null if p2p is nil
+	underlay := make([]multiaddr.Multiaddr, 0)
+	// addresses endpoint is exposed before p2p service is configured
+	// to provide information about other addresses.
+	if s.P2P != nil {
+		u, err := s.P2P.Addresses()
+		if err != nil {
+			s.Logger.Debugf("debug api: p2p addresses: %v", err)
+			jsonhttp.InternalServerError(w, err)
+			return
+		}
+		underlay = u
 	}
 	jsonhttp.OK(w, addressesResponse{
 		Overlay:      s.Overlay,
