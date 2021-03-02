@@ -64,6 +64,7 @@ type Service struct {
 	notifier          p2p.Notifier
 	logger            logging.Logger
 	tracer            *tracing.Tracer
+	ready             chan struct{}
 
 	protocolsmu sync.RWMutex
 }
@@ -222,6 +223,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		logger:            logger,
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
+		ready:             make(chan struct{}),
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -235,6 +237,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	// handshake
 	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
+		select {
+		case <-s.ready:
+		case <-s.ctx.Done():
+			return
+		}
 		peerID := stream.Conn().RemotePeer()
 		handshakeStream := NewStream(stream)
 		i, err := s.handshakeService.Handle(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
@@ -657,4 +664,8 @@ func (s *Service) SetWelcomeMessage(val string) error {
 // GetWelcomeMessage returns the value of the welcome message.
 func (s *Service) GetWelcomeMessage() string {
 	return s.handshakeService.GetWelcomeMessage()
+}
+
+func (s *Service) Ready() {
+	close(s.ready)
 }

@@ -498,6 +498,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, err
 	}
 
+	p2ps.Ready()
+
 	return b, nil
 }
 
