@@ -3,6 +3,7 @@ package cac_test
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -99,5 +100,87 @@ func TestChunkInvariants(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestValid checks whether a chunk is a valid content-addressed chunk
+func TestValid(t *testing.T) {
+	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
+	address := swarm.MustParseHexAddress(bmtHashOfFoo)
+
+	foo := "foo"
+	fooLength := len(foo)
+	fooBytes := make([]byte, swarm.SpanSize+fooLength)
+	binary.LittleEndian.PutUint64(fooBytes, uint64(fooLength))
+	copy(fooBytes[swarm.SpanSize:], foo)
+	ch := swarm.NewChunk(address, fooBytes)
+	if !cac.Valid(ch) {
+		t.Fatalf("data '%s' should have validated to hash '%s'", ch.Data(), ch.Address())
+	}
+}
+
+/// TestInvalid checks whether a chunk is not a valid content-addressed chunk
+func TestInvalid(t *testing.T) {
+	// Generates a chunk with the given data. No validation is performed here,
+	// the chunks are create as it is.
+	chunker := func(addr string, dataBytes []byte) swarm.Chunk {
+		// Decoding errors are ignored here since they will be captured
+		// when validating
+		addrBytes, _ := hex.DecodeString(addr)
+		address := swarm.NewAddress(addrBytes)
+		return swarm.NewChunk(address, dataBytes)
+	}
+
+	// Appends span to given input data.
+	dataWithSpan := func(inputData []byte) []byte {
+		dataLength := len(inputData)
+		dataBytes := make([]byte, swarm.SpanSize+dataLength)
+		binary.LittleEndian.PutUint64(dataBytes, uint64(dataLength))
+		copy(dataBytes[swarm.SpanSize:], inputData)
+		return dataBytes
+	}
+
+	for _, c := range []struct {
+		name    string
+		address string
+		data    []byte
+	}{
+		{
+			name:    "wrong address",
+			address: "0000e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48",
+			data:    dataWithSpan([]byte("foo")),
+		},
+		{
+			name:    "empty address",
+			address: "",
+			data:    dataWithSpan([]byte("foo")),
+		},
+		{
+			name:    "zero data",
+			address: "anything",
+			data:    []byte{},
+		},
+		{
+			name:    "nil data",
+			address: "anything",
+			data:    nil,
+		},
+		{
+			name:    "small data",
+			address: "6251dbc53257832ae80d0e9f1cc41bd54d5b6c704c9c7349709c07fefef0aea6",
+			data:    []byte("small"),
+		},
+		{
+			name:    "large data",
+			address: "ffd70157e48063fc33c97a050f7f640233bf646cc98d9524c6b92bcf3ab56f83",
+			data:    []byte(strings.Repeat("a", swarm.ChunkSize+swarm.SpanSize+1)),
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ch := chunker(c.address, c.data)
+			if cac.Valid(ch) {
+				t.Fatalf("data '%s' should not have validated to hash '%s'", ch.Data(), ch.Address())
+			}
+		})
 	}
 }
