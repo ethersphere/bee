@@ -154,6 +154,7 @@ func TestServer_Configure(t *testing.T) {
 	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
 			Overlay:      o.Overlay,
+			Underlay:     make([]multiaddr.Multiaddr, 0),
 			Ethereum:     o.EthereumAddress,
 			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),
 			PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PSSPublicKey)),
