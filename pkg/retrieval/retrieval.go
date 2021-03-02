@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -242,7 +242,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	s.metrics.TotalRetrieved.Inc()
 
 	chunk = swarm.NewChunk(addr, d.Data)
-	if !content.Valid(chunk) {
+	if !cac.Valid(chunk) {
 		if !soc.Valid(chunk) {
 			s.metrics.InvalidChunkRetrieved.Inc()
 			s.metrics.TotalErrors.Inc()

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/content"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -109,7 +109,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 
-	if content.Valid(chunk) {
+	if cac.Valid(chunk) {
 		if ps.unwrap != nil {
 			go ps.unwrap(chunk)
 		}
