@@ -162,9 +162,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	}
 
 	if s.addPeersHandler != nil {
-		if err := s.addPeersHandler(ctx, peers...); err != nil {
-			return err
-		}
+		return s.addPeersHandler(ctx, peers...)
 	}
 
 	return nil
