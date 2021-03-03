@@ -254,7 +254,7 @@ func waitForClef(logger logging.Logger, maxRetries uint64, endpoint string) (ext
 			return nil, err
 		}
 		maxRetries--
-		logger.Errorf("cannot connect to clef signer: %v", err)
+		logger.Warningf("failing to connect to clef signer: %v", err)
 
 		time.Sleep(5 * time.Second)
 	}
