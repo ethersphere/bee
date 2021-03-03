@@ -6,6 +6,7 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -41,7 +42,7 @@ func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) er
 	}
 
 	if !storedOverlay.Equal(overlay) {
-		return errors.New("overlay changed")
+		return fmt.Errorf("overlay address changed. was %s before but now is %s", storedOverlay, overlay)
 	}
 	return nil
 }
