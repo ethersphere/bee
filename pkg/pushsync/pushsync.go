@@ -50,9 +50,10 @@ type Receipt struct {
 }
 
 type PushSync struct {
+	address       swarm.Address
 	streamer      p2p.StreamerDisconnecter
 	storer        storage.Putter
-	peerSuggester topology.ClosestPeerer
+	peerSuggester topology.EachPeerer
 	tagger        *tags.Tags
 	unwrap        func(swarm.Chunk)
 	logger        logging.Logger
@@ -63,10 +64,13 @@ type PushSync struct {
 	signer        crypto.Signer
 }
 
-var timeToLive = 5 * time.Second // request time to live
+var timeToLive = 5 * time.Second                      // request time to live
+var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
+var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
-func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
+func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.EachPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
+		address:       address,
 		streamer:      streamer,
 		storer:        storer,
 		peerSuggester: closestPeerer,
@@ -126,6 +130,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return swarm.ErrInvalidChunk
 	}
 
+	//if p's address is closer to the chunk than my address, then simply store it and return
+	if dcmp, _ := swarm.DistanceCmp(chunk.Address().Bytes(), p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
+		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
+		if err != nil {
+			return fmt.Errorf("chunk store: %w", err)
+		}
+		return ps.accounting.Debit(p.Address, ps.pricer.PeerPrice(p.Address, chunk.Address()))
+	}
+
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
@@ -151,6 +164,61 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			if err != nil {
 				return fmt.Errorf("receipt signature: %w", err)
 			}
+
+			// push the chunk to the closest peers in parallel for replication
+			// any errors here should NOT impact the rest of the handler
+			var skipPeers []swarm.Address
+			for i := 0; i < nPeersToPushsync; i++ {
+				peer, err := ps.closestPeer(chunk.Address(), skipPeers, true)
+				if err != nil {
+					ps.logger.Tracef("pushsync replication closest peer: %w", err)
+					break
+				}
+				skipPeers = append(skipPeers, peer)
+				go func(peer swarm.Address) {
+
+					var err error
+					defer func() {
+						if err != nil {
+							ps.logger.Tracef("pushsync replication: %v", err)
+						}
+					}()
+
+					receiptPrice := ps.pricer.PeerPrice(peer, chunk.Address())
+
+					err = ps.accounting.Reserve(ctx, peer, receiptPrice)
+					if err != nil {
+						return
+					}
+					defer ps.accounting.Release(peer, receiptPrice)
+
+					streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+					if err != nil {
+						return
+					}
+
+					w := protobuf.NewWriter(streamer)
+					ctx, cancel := context.WithTimeout(ctx, timeToWaitForPushsyncToNeighbor)
+					defer cancel()
+
+					err = w.WriteMsgWithContext(ctx, &pb.Delivery{
+						Address: chunk.Address().Bytes(),
+						Data:    chunk.Data(),
+					})
+					if err != nil {
+						_ = streamer.Reset()
+						return
+					}
+
+					err = ps.accounting.Credit(peer, receiptPrice)
+					if err != nil {
+						return
+					}
+
+				}(peer)
+			}
+
+			// return back receipt
 			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
 			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
@@ -211,8 +279,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		defersFn()
 
-		// find next closest peer
-		peer, err := ps.peerSuggester.ClosestPeer(ch.Address(), skipPeers...)
+		deferFuncs = append(deferFuncs, func() {
+			if lastErr != nil {
+				ps.metrics.TotalErrors.Inc()
+				logger.Errorf("pushsync: %v", lastErr)
+			}
+		})
+
+		// find the next closest peer
+		peer, err := ps.closestPeer(ch.Address(), skipPeers, false)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
@@ -323,4 +398,53 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 	}
 
 	return nil, topology.ErrNotFound
+}
+
+// closestPeer returns address of the peer that is closest to the chunk with
+// provided address addr. This function will ignore peers with addresses
+// provided in skipPeers
+func (ps *PushSync) closestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+	closest := swarm.Address{}
+	err := ps.peerSuggester.EachPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		for _, peerToSkip := range skipPeers {
+			if peerToSkip.Equal(peer) {
+				return false, false, nil
+			}
+		}
+		if closest.IsZero() {
+			closest = peer
+			return false, false, nil
+		}
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), peer.Bytes(), closest.Bytes())
+		if err != nil {
+			return false, false, fmt.Errorf("distance compare error. addr %s closest %s peer %s: %w", addr.String(), closest.String(), peer.String(), err)
+		}
+		if dcmp == 1 {
+			closest = peer
+		}
+		return false, false, nil
+	})
+
+	if err != nil {
+		return swarm.Address{}, err
+	}
+
+	if closest.IsZero() {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	if allowUpstream {
+		return closest, nil
+	}
+
+	dcmp, err := swarm.DistanceCmp(addr.Bytes(), ps.address.Bytes(), closest.Bytes())
+	if err != nil {
+		return swarm.Address{}, fmt.Errorf("distance compare addr %s closest %s base address %s: %w", addr.String(), closest.String(), ps.address.String(), err)
+	}
+
+	if dcmp == 1 {
+		return closest, topology.ErrWantSelf
+	}
+
+	return closest, nil
 }
