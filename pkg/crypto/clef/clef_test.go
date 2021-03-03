@@ -59,6 +59,9 @@ func TestNewClefSigner(t *testing.T) {
 			{
 				Address: ethAddress,
 			},
+			{
+				Address: common.Address{},
+			},
 		},
 		signature: testSignature,
 	}
@@ -72,7 +75,7 @@ func TestNewClefSigner(t *testing.T) {
 			t.Fatalf("wrong data used for recover. expected %v got %v", clef.ClefRecoveryMessage, data)
 		}
 		return publicKey, nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,12 +102,91 @@ func TestNewClefSigner(t *testing.T) {
 	}
 }
 
+func TestNewClefSignerSpecificAccount(t *testing.T) {
+	ethAddress := common.HexToAddress("0x31415b599f636129AD03c196cef9f8f8b184D5C7")
+	wantedAddress := common.HexToAddress("0x41415b599f636129AD03c196cef9f8f8b184D5C7")
+	testSignature := make([]byte, 65)
+
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := &key.PublicKey
+
+	mock := &mockClef{
+		accounts: []accounts.Account{
+			{
+				Address: ethAddress,
+			},
+			{
+				Address: wantedAddress,
+			},
+		},
+		signature: testSignature,
+	}
+
+	signer, err := clef.NewSigner(mock, nil, func(signature, data []byte) (*ecdsa.PublicKey, error) {
+		if !bytes.Equal(testSignature, signature) {
+			t.Fatalf("wrong data used for recover. expected %v got %v", testSignature, signature)
+		}
+
+		if !bytes.Equal(clef.ClefRecoveryMessage, data) {
+			t.Fatalf("wrong data used for recover. expected %v got %v", clef.ClefRecoveryMessage, data)
+		}
+		return publicKey, nil
+	}, &wantedAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if mock.signedAccount.Address != wantedAddress {
+		t.Fatalf("wrong account used for signing. expected %v got %v", wantedAddress, mock.signedAccount.Address)
+	}
+
+	if mock.signedMimeType != accounts.MimetypeTextPlain {
+		t.Fatalf("wrong mime type used for signing. expected %v got %v", accounts.MimetypeTextPlain, mock.signedMimeType)
+	}
+
+	if !bytes.Equal(mock.signedData, clef.ClefRecoveryMessage) {
+		t.Fatalf("wrong data used for signing. expected %v got %v", clef.ClefRecoveryMessage, mock.signedData)
+	}
+
+	signerPublicKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if signerPublicKey != publicKey {
+		t.Fatalf("wrong public key. expected %v got %v", publicKey, signerPublicKey)
+	}
+}
+
+func TestNewClefSignerAccountUnavailable(t *testing.T) {
+	ethAddress := common.HexToAddress("0x31415b599f636129AD03c196cef9f8f8b184D5C7")
+	wantedAddress := common.HexToAddress("0x41415b599f636129AD03c196cef9f8f8b184D5C7")
+
+	mock := &mockClef{
+		accounts: []accounts.Account{
+			{
+				Address: ethAddress,
+			},
+		},
+	}
+
+	_, err := clef.NewSigner(mock, nil, func(signature, data []byte) (*ecdsa.PublicKey, error) {
+		return nil, errors.New("called sign")
+	}, &wantedAddress)
+	if !errors.Is(err, clef.ErrAccountNotAvailable) {
+		t.Fatalf("expected account to be not available. got error %v", err)
+	}
+}
+
 func TestClefNoAccounts(t *testing.T) {
 	mock := &mockClef{
 		accounts: []accounts.Account{},
 	}
 
-	_, err := clef.NewSigner(mock, nil, nil)
+	_, err := clef.NewSigner(mock, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected ErrNoAccounts error if no accounts")
 	}
@@ -158,7 +240,7 @@ func TestClefTypedData(t *testing.T) {
 		},
 	}, func(signature, data []byte) (*ecdsa.PublicKey, error) {
 		return publicKey, nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
