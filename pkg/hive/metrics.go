@@ -4,7 +4,10 @@
 
 package hive
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type metrics struct {
 	BroadcastPeers      prometheus.Counter

@@ -67,7 +67,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
 	max := maxBatchSize
 	s.metrics.BroadcastPeers.Inc()
-	s.metrics.BroadcastPeersSize.Inc(len(peers))
+	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
 
 	for len(peers) > 0 {
 		if max > len(peers) {
@@ -137,7 +137,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	s.metrics.PeersHandlerMessageSize.Inc(len(peersReq.Peers))
+	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
 	// close the stream before processing in order to unblock the sending side
 	// fullclose is called async because there is no need to wait for confirmation,
