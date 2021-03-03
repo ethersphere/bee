@@ -9,14 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
 var (
@@ -33,12 +30,10 @@ type CashoutService interface {
 }
 
 type cashoutService struct {
-	store                 storage.StateStorer
-	simpleSwapBindingFunc SimpleSwapBindingFunc
-	backend               transaction.Backend
-	transactionService    transaction.Service
-	chequebookABI         abi.ABI
-	chequeStore           ChequeStore
+	store              storage.StateStorer
+	backend            transaction.Backend
+	transactionService transaction.Service
+	chequeStore        ChequeStore
 }
 
 // CashoutStatus is the action plus its result
@@ -65,28 +60,28 @@ type cashoutAction struct {
 	TxHash common.Hash
 	Cheque SignedCheque // the cheque that was used to cashout which may be different from the latest cheque
 }
+type chequeCashedEvent struct {
+	Beneficiary      common.Address
+	Recipient        common.Address
+	Caller           common.Address
+	TotalPayout      *big.Int
+	CumulativePayout *big.Int
+	CallerPayout     *big.Int
+}
 
 // NewCashoutService creates a new CashoutService
 func NewCashoutService(
 	store storage.StateStorer,
-	simpleSwapBindingFunc SimpleSwapBindingFunc,
 	backend transaction.Backend,
 	transactionService transaction.Service,
 	chequeStore ChequeStore,
-) (CashoutService, error) {
-	chequebookABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20SimpleSwapABI))
-	if err != nil {
-		return nil, err
-	}
-
+) CashoutService {
 	return &cashoutService{
-		store:                 store,
-		simpleSwapBindingFunc: simpleSwapBindingFunc,
-		backend:               backend,
-		transactionService:    transactionService,
-		chequebookABI:         chequebookABI,
-		chequeStore:           chequeStore,
-	}, nil
+		store:              store,
+		backend:            backend,
+		transactionService: transactionService,
+		chequeStore:        chequeStore,
+	}
 }
 
 // cashoutActionKey computes the store key for the last cashout action for the chequebook
@@ -101,7 +96,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		return common.Hash{}, err
 	}
 
-	callData, err := s.chequebookABI.Pack("cashChequeBeneficiary", recipient, cheque.CumulativePayout, cheque.Signature)
+	callData, err := chequebookABI.Pack("cashChequeBeneficiary", recipient, cheque.CumulativePayout, cheque.Signature)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -188,25 +183,24 @@ func (s *cashoutService) parseCashChequeBeneficiaryReceipt(chequebookAddress com
 		Bounced: false,
 	}
 
-	binding, err := s.simpleSwapBindingFunc(chequebookAddress, s.backend)
+	var cashedEvent chequeCashedEvent
+	err := transaction.FindSingleEvent(&chequebookABI, receipt, chequebookAddress, chequeCashedEventType, &cashedEvent)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, log := range receipt.Logs {
-		if log.Address != chequebookAddress {
-			continue
-		}
-		if event, err := binding.ParseChequeCashed(*log); err == nil {
-			result.Beneficiary = event.Beneficiary
-			result.Caller = event.Caller
-			result.CallerPayout = event.CallerPayout
-			result.TotalPayout = event.TotalPayout
-			result.CumulativePayout = event.CumulativePayout
-			result.Recipient = event.Recipient
-		} else if _, err := binding.ParseChequeBounced(*log); err == nil {
-			result.Bounced = true
-		}
+	result.Beneficiary = cashedEvent.Beneficiary
+	result.Caller = cashedEvent.Caller
+	result.CallerPayout = cashedEvent.CallerPayout
+	result.TotalPayout = cashedEvent.TotalPayout
+	result.CumulativePayout = cashedEvent.CumulativePayout
+	result.Recipient = cashedEvent.Recipient
+
+	err = transaction.FindSingleEvent(&chequebookABI, receipt, chequebookAddress, chequeBouncedEventType, nil)
+	if err == nil {
+		result.Bounced = true
+	} else if !errors.Is(err, transaction.ErrEventNotFound) {
+		return nil, err
 	}
 
 	return result, nil

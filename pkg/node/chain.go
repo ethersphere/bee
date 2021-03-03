@@ -157,7 +157,7 @@ func initChequeStoreCashout(
 	chainID int64,
 	overlayEthAddress common.Address,
 	transactionService transaction.Service,
-) (chequebook.ChequeStore, chequebook.CashoutService, error) {
+) (chequebook.ChequeStore, chequebook.CashoutService) {
 	chequeStore := chequebook.NewChequeStore(
 		stateStore,
 		swapBackend,
@@ -168,18 +168,14 @@ func initChequeStoreCashout(
 		chequebook.RecoverCheque,
 	)
 
-	cashout, err := chequebook.NewCashoutService(
+	cashout := chequebook.NewCashoutService(
 		stateStore,
-		chequebook.NewSimpleSwapBindings,
 		swapBackend,
 		transactionService,
 		chequeStore,
 	)
-	if err != nil {
-		return nil, nil, err
-	}
 
-	return chequeStore, cashout, nil
+	return chequeStore, cashout
 }
 
 // InitSwap will initialize and register the swap service.

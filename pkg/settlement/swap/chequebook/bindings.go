@@ -9,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
@@ -19,8 +18,6 @@ type SimpleSwapBinding interface {
 	Issuer(*bind.CallOpts) (common.Address, error)
 	TotalPaidOut(*bind.CallOpts) (*big.Int, error)
 	PaidOut(*bind.CallOpts, common.Address) (*big.Int, error)
-	ParseChequeCashed(types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeCashed, error)
-	ParseChequeBounced(types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeBounced, error)
 }
 
 type SimpleSwapBindingFunc = func(common.Address, bind.ContractBackend) (SimpleSwapBinding, error)
@@ -44,7 +41,6 @@ func NewERC20Bindings(address common.Address, backend bind.ContractBackend) (ERC
 
 // SimpleSwapFactoryBinding is the interface for the generated go bindings for SimpleSwapFactory
 type SimpleSwapFactoryBinding interface {
-	ParseSimpleSwapDeployed(types.Log) (*simpleswapfactory.SimpleSwapFactorySimpleSwapDeployed, error)
 	DeployedContracts(*bind.CallOpts, common.Address) (bool, error)
 	ERC20Address(*bind.CallOpts) (common.Address, error)
 }

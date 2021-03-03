@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
@@ -33,6 +32,11 @@ var (
 	ErrOutOfFunds = errors.New("chequebook out of funds")
 	// ErrInsufficientFunds is the error when the chequebook has not enough free funds for a user action
 	ErrInsufficientFunds = errors.New("insufficient token balance")
+
+	chequebookABI          = transaction.ParseABIUnchecked(simpleswapfactory.ERC20SimpleSwapABI)
+	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
+	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
+	erc20ABI               = transaction.ParseABIUnchecked(simpleswapfactory.ERC20ABI)
 )
 
 // Service is the main interface for interacting with the nodes chequebook.
@@ -63,12 +67,10 @@ type service struct {
 	transactionService transaction.Service
 
 	address            common.Address
-	chequebookABI      abi.ABI
 	chequebookInstance SimpleSwapBinding
 	ownerAddress       common.Address
 
 	erc20Address  common.Address
-	erc20ABI      abi.ABI
 	erc20Instance ERC20Binding
 
 	store               storage.StateStorer
@@ -78,16 +80,6 @@ type service struct {
 
 // New creates a new chequebook service for the provided chequebook contract.
 func New(backend transaction.Backend, transactionService transaction.Service, address, erc20Address, ownerAddress common.Address, store storage.StateStorer, chequeSigner ChequeSigner, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
-	chequebookABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20SimpleSwapABI))
-	if err != nil {
-		return nil, err
-	}
-
-	erc20ABI, err := abi.JSON(strings.NewReader(simpleswapfactory.ERC20ABI))
-	if err != nil {
-		return nil, err
-	}
-
 	chequebookInstance, err := simpleSwapBindingFunc(address, backend)
 	if err != nil {
 		return nil, err
@@ -102,11 +94,9 @@ func New(backend transaction.Backend, transactionService transaction.Service, ad
 		backend:             backend,
 		transactionService:  transactionService,
 		address:             address,
-		chequebookABI:       chequebookABI,
 		chequebookInstance:  chequebookInstance,
 		ownerAddress:        ownerAddress,
 		erc20Address:        erc20Address,
-		erc20ABI:            erc20ABI,
 		erc20Instance:       erc20Instance,
 		store:               store,
 		chequeSigner:        chequeSigner,
@@ -133,7 +123,7 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	callData, err := s.erc20ABI.Pack("transfer", s.address, amount)
+	callData, err := erc20ABI.Pack("transfer", s.address, amount)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -365,7 +355,7 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	callData, err := s.chequebookABI.Pack("withdraw", amount)
+	callData, err := chequebookABI.Pack("withdraw", amount)
 	if err != nil {
 		return common.Hash{}, err
 	}
