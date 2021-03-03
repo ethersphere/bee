@@ -272,7 +272,6 @@ func TestBinOverSaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil, nil)
-		peers                    []swarm.Address
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -287,7 +286,6 @@ func TestBinOverSaturation(t *testing.T) {
 		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
 			addr := test.RandomAddressAt(base, i)
 			connectOne(t, signer, kad, ab, addr, nil)
-			peers = append(peers, addr)
 		}
 
 		kDepth(t, kad, i)
