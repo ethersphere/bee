@@ -506,12 +506,10 @@ func TestTopologyOverSaturated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectPeers(t, s2, overlay1)
 	expectPeers(t, s1)
 	expectPeersEventually(t, s2)
 
 	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
-
 }
 
 func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
