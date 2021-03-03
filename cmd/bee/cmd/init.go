@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/node"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +42,24 @@ func (c *command) initInitCmd() (err error) {
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
 
-			_, err = c.configureSigner(cmd, logger)
+			signerConfig, err := c.configureSigner(cmd, logger)
+			if err != nil {
+				return err
+			}
+
+			dataDir := c.config.GetString(optionNameDataDir)
+			stateStore, err := node.InitStateStore(logger, dataDir)
+			if err != nil {
+				return err
+			}
+
+			defer stateStore.Close()
+
+			err = node.CheckOverlayWithStore(signerConfig.address, stateStore)
+			if err != nil {
+				return err
+			}
+
 			return err
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
