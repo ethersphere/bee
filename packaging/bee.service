@@ -12,5 +12,13 @@ ExecStart=/usr/bin/bee start --config /etc/bee/bee.yaml
 Restart=on-failure
 RestartSec=5s
 
+# If you are running bee on your work machine where you are compiling
+# code and video conferencing then uncomment:
+#
+# Nice=10
+# IOSchedulingClass=idle
+# IOSchedulingPriority=7
+# ProtectHome=yes
+
 [Install]
 WantedBy=multi-user.target
