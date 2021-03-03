@@ -38,6 +38,7 @@ type Service struct {
 	addPeersHandler func(context.Context, ...swarm.Address) error
 	networkID       uint64
 	logger          logging.Logger
+	metrics         metrics
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
@@ -46,6 +47,7 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		logger:      logger,
 		addressBook: addressbook,
 		networkID:   networkID,
+		metrics:     newMetrics(),
 	}
 }
 
@@ -64,6 +66,9 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
 	max := maxBatchSize
+	s.metrics.BroadcastPeers.Inc()
+	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
+
 	for len(peers) > 0 {
 		if max > len(peers) {
 			max = len(peers)
@@ -83,6 +88,7 @@ func (s *Service) SetAddPeersHandler(h func(ctx context.Context, addr ...swarm.A
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
+	s.metrics.BroadcastPeersSends.Inc()
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
@@ -121,6 +127,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 }
 
 func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+	s.metrics.PeersHandler.Inc()
 	_, r := protobuf.NewWriterAndReader(stream)
 	ctx, cancel := context.WithTimeout(ctx, messageTimeout)
 	defer cancel()
@@ -129,6 +136,8 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		_ = stream.Reset()
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
+
+	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
 	// close the stream before processing in order to unblock the sending side
 	// fullclose is called async because there is no need to wait for confirmation,
