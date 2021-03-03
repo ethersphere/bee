@@ -279,34 +279,38 @@ func TestBinOverSaturation(t *testing.T) {
 	}
 	defer kad.Close()
 
-	// add two peers in a few bins to generate some depth >= 0, this will
-	// make the next iteration result in binSaturated==true, causing no new
-	// connections to be made
+	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
 		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
 			addr := test.RandomAddressAt(base, i)
+			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
 		}
-
+		// see depth is limited to currently added peers proximity
 		kDepth(t, kad, i)
-		// see connections are limited to 8
 	}
 
+	// see depth is 5
 	kDepth(t, kad, 5)
 
 	for k := 0; k < 5; k++ {
 		// no further connections can be made
 		for l := 0; l < 3; l++ {
 			addr := test.RandomAddressAt(base, k)
+			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, topology.ErrDisconnectByOverSaturation)
 		}
 
+		// see depth is still as expected
 		kDepth(t, kad, 5)
 	}
 
+	// see we can still add / not limiting more peers in neighborhood depth
 	for m := 0; m < 12; m++ {
 		addr := test.RandomAddressAt(base, 5)
+		// if error is not nil as specified, connectOne goes fatal
 		connectOne(t, signer, kad, ab, addr, nil)
+		// see depth is still as expected
 		kDepth(t, kad, 5)
 	}
 
