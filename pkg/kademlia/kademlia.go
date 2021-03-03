@@ -29,48 +29,45 @@ const (
 )
 
 var (
-	errMissingAddressBookEntry    = errors.New("addressbook underlay entry not found")
-	errOverlayMismatch            = errors.New("overlay mismatch")
-	errDisconnectByOverSaturation = errors.New("connection refused for oversaturated bin")
-	timeToRetry                   = 60 * time.Second
-	shortRetry                    = 30 * time.Second
-	saturationPeers               = 4
-	overSaturationPeers           = 32
+	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
+	errOverlayMismatch         = errors.New("overlay mismatch")
+	timeToRetry                = 60 * time.Second
+	shortRetry                 = 30 * time.Second
+	saturationPeers            = 4
+	overSaturationPeers        = 16
 )
 
-type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
+type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (bool, bool)
 
 // Options for injecting services to Kademlia.
 type Options struct {
-	SaturationFunc     binSaturationFunc
-	OverSaturationFunc binSaturationFunc
-	Bootnodes          []ma.Multiaddr
-	Standalone         bool
+	SaturationFunc binSaturationFunc
+	Bootnodes      []ma.Multiaddr
+	Standalone     bool
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
 type Kad struct {
-	base               swarm.Address         // this node's overlay address
-	discovery          discovery.Driver      // the discovery driver
-	addressBook        addressbook.Interface // address book to get underlays
-	p2p                p2p.Service           // p2p service to connect to nodes with
-	saturationFunc     binSaturationFunc     // pluggable saturation function
-	overSaturationFunc binSaturationFunc     // pluggable saturation function
-	connectedPeers     *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
-	knownPeers         *pslice.PSlice        // both are po aware slice of addresses
-	bootnodes          []ma.Multiaddr
-	depth              uint8                // current neighborhood depth
-	depthMu            sync.RWMutex         // protect depth changes
-	manageC            chan struct{}        // trigger the manage forever loop to connect to new peers
-	waitNext           map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
-	waitNextMu         sync.Mutex           // synchronize map
-	peerSig            []chan struct{}
-	peerSigMtx         sync.Mutex
-	logger             logging.Logger // logger
-	standalone         bool
-	quit               chan struct{} // quit channel
-	done               chan struct{} // signal that `manage` has quit
-	wg                 sync.WaitGroup
+	base           swarm.Address         // this node's overlay address
+	discovery      discovery.Driver      // the discovery driver
+	addressBook    addressbook.Interface // address book to get underlays
+	p2p            p2p.Service           // p2p service to connect to nodes with
+	saturationFunc binSaturationFunc     // pluggable saturation function
+	connectedPeers *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
+	knownPeers     *pslice.PSlice        // both are po aware slice of addresses
+	bootnodes      []ma.Multiaddr
+	depth          uint8                // current neighborhood depth
+	depthMu        sync.RWMutex         // protect depth changes
+	manageC        chan struct{}        // trigger the manage forever loop to connect to new peers
+	waitNext       map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
+	waitNextMu     sync.Mutex           // synchronize map
+	peerSig        []chan struct{}
+	peerSigMtx     sync.Mutex
+	logger         logging.Logger // logger
+	standalone     bool
+	quit           chan struct{} // quit channel
+	done           chan struct{} // signal that `manage` has quit
+	wg             sync.WaitGroup
 }
 
 type retryInfo struct {
@@ -84,27 +81,22 @@ func New(base swarm.Address, addressbook addressbook.Interface, discovery discov
 		o.SaturationFunc = binSaturated
 	}
 
-	if o.OverSaturationFunc == nil {
-		o.OverSaturationFunc = binOverSaturated
-	}
-
 	k := &Kad{
-		base:               base,
-		discovery:          discovery,
-		addressBook:        addressbook,
-		p2p:                p2p,
-		saturationFunc:     o.SaturationFunc,
-		overSaturationFunc: o.OverSaturationFunc,
-		connectedPeers:     pslice.New(int(swarm.MaxBins)),
-		knownPeers:         pslice.New(int(swarm.MaxBins)),
-		bootnodes:          o.Bootnodes,
-		manageC:            make(chan struct{}, 1),
-		waitNext:           make(map[string]retryInfo),
-		logger:             logger,
-		standalone:         o.Standalone,
-		quit:               make(chan struct{}),
-		done:               make(chan struct{}),
-		wg:                 sync.WaitGroup{},
+		base:           base,
+		discovery:      discovery,
+		addressBook:    addressbook,
+		p2p:            p2p,
+		saturationFunc: o.SaturationFunc,
+		connectedPeers: pslice.New(int(swarm.MaxBins)),
+		knownPeers:     pslice.New(int(swarm.MaxBins)),
+		bootnodes:      o.Bootnodes,
+		manageC:        make(chan struct{}, 1),
+		waitNext:       make(map[string]retryInfo),
+		logger:         logger,
+		standalone:     o.Standalone,
+		quit:           make(chan struct{}),
+		done:           make(chan struct{}),
+		wg:             sync.WaitGroup{},
 	}
 
 	return k
@@ -160,7 +152,7 @@ func (k *Kad) manage() {
 				k.waitNextMu.Unlock()
 
 				currentDepth := k.NeighborhoodDepth()
-				if saturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
+				if saturated, _ := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
@@ -290,12 +282,12 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
+func binSaturated(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 	potentialDepth := recalcDepth(peers)
 
 	// short circuit for bins which are >= depth
 	if bin >= potentialDepth {
-		return false
+		return false, false
 	}
 
 	// lets assume for now that the minimum number of peers in a bin
@@ -313,29 +305,7 @@ func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
 		return false, false, nil
 	})
 
-	return size >= saturationPeers
-}
-
-// binSaturated indicates whether a certain bin is saturated or not.
-// when a bin is not saturated it means we would like to proactively
-// initiate connections to other peers in the bin.
-func binOverSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
-	potentialDepth := recalcDepth(peers)
-
-	// short circuit for bins which are >= depth
-	if bin >= potentialDepth {
-		return false
-	}
-
-	size := 0
-	_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
-		if po == bin {
-			size++
-		}
-		return false, false, nil
-	})
-
-	return size >= overSaturationPeers
+	return size >= saturationPeers, size >= overSaturationPeers
 }
 
 // recalcDepth calculates and returns the kademlia depth.
@@ -486,9 +456,9 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
 
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-	if overSaturated := k.overSaturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
-		_ = k.p2p.Disconnect(peer.Address)
-		return errDisconnectByOverSaturation
+	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
+		// _ = k.p2p.Disconnect(peer.Address)
+		return topology.ErrDisconnectByOverSaturation
 	}
 
 	if err := k.connected(ctx, peer.Address); err != nil {

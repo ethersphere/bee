@@ -301,7 +301,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 		if s.notifier != nil {
 			if err := s.notifier.Connected(ctx, peer); err != nil {
-				s.logger.Debugf("notifier.Connected: peer: %s: %v", i.BzzAddress.Overlay, err)
+				s.logger.Debugf("notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
+				_ = s.Disconnect(i.BzzAddress.Overlay)
+				return
 			}
 		}
 
