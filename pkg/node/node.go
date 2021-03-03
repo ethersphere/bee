@@ -222,7 +222,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, err
 		}
 
-		chequeStore, cashoutService, err = initChequeStoreCashout(
+		chequeStore, cashoutService = initChequeStoreCashout(
 			stateStore,
 			swapBackend,
 			chequebookFactory,
@@ -230,9 +230,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			overlayEthAddress,
 			transactionService,
 		)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{

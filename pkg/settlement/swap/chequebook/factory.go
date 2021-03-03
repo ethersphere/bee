@@ -7,13 +7,11 @@ package chequebook
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 	"golang.org/x/net/context"
@@ -22,6 +20,9 @@ import (
 var (
 	ErrInvalidFactory       = errors.New("not a valid factory contract")
 	ErrNotDeployedByFactory = errors.New("chequebook not deployed by factory")
+
+	factoryABI                  = transaction.ParseABIUnchecked(simpleswapfactory.SimpleSwapFactoryABI)
+	simpleSwapDeployedEventType = factoryABI.Events["SimpleSwapDeployed"]
 )
 
 // Factory is the main interface for interacting with the chequebook factory.
@@ -43,17 +44,15 @@ type factory struct {
 	transactionService transaction.Service
 	address            common.Address
 
-	ABI      abi.ABI
 	instance SimpleSwapFactoryBinding
+}
+
+type simpleSwapDeployedEvent struct {
+	ContractAddress common.Address
 }
 
 // NewFactory creates a new factory service for the provided factory contract.
 func NewFactory(backend transaction.Backend, transactionService transaction.Service, address common.Address, simpleSwapFactoryBindingFunc SimpleSwapFactoryBindingFunc) (Factory, error) {
-	ABI, err := abi.JSON(strings.NewReader(simpleswapfactory.SimpleSwapFactoryABI))
-	if err != nil {
-		return nil, err
-	}
-
 	instance, err := simpleSwapFactoryBindingFunc(address, backend)
 	if err != nil {
 		return nil, err
@@ -63,14 +62,13 @@ func NewFactory(backend transaction.Backend, transactionService transaction.Serv
 		backend:            backend,
 		transactionService: transactionService,
 		address:            address,
-		ABI:                ABI,
 		instance:           instance,
 	}, nil
 }
 
 // Deploy deploys a new chequebook and returns once the transaction has been submitted.
 func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Hash, error) {
-	callData, err := c.ABI.Pack("deploySimpleSwap", issuer, big.NewInt(0).Set(defaultHardDepositTimeoutDuration))
+	callData, err := factoryABI.Pack("deploySimpleSwap", issuer, big.NewInt(0).Set(defaultHardDepositTimeoutDuration))
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -98,32 +96,13 @@ func (c *factory) WaitDeployed(ctx context.Context, txHash common.Hash) (common.
 		return common.Address{}, err
 	}
 
-	chequebookAddress, err := c.parseDeployReceipt(receipt)
+	var event simpleSwapDeployedEvent
+	err = transaction.FindSingleEvent(&factoryABI, receipt, c.address, simpleSwapDeployedEventType, &event)
 	if err != nil {
-		return common.Address{}, err
+		return common.Address{}, fmt.Errorf("contract deployment failed: %w", err)
 	}
 
-	return chequebookAddress, nil
-}
-
-// parseDeployReceipt parses the address of the deployed chequebook from the receipt.
-func (c *factory) parseDeployReceipt(receipt *types.Receipt) (address common.Address, err error) {
-	if receipt.Status != 1 {
-		return common.Address{}, transaction.ErrTransactionReverted
-	}
-	for _, log := range receipt.Logs {
-		if log.Address != c.address {
-			continue
-		}
-		if event, err := c.instance.ParseSimpleSwapDeployed(*log); err == nil {
-			address = event.ContractAddress
-			break
-		}
-	}
-	if (address == common.Address{}) {
-		return common.Address{}, errors.New("contract deployment failed")
-	}
-	return address, nil
+	return event.ContractAddress, nil
 }
 
 // VerifyBytecode checks that the factory is valid.

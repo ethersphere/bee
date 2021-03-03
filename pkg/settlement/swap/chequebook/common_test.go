@@ -10,19 +10,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
 )
 
 type simpleSwapFactoryBindingMock struct {
-	erc20Address            func(*bind.CallOpts) (common.Address, error)
-	deployedContracts       func(*bind.CallOpts, common.Address) (bool, error)
-	parseSimpleSwapDeployed func(types.Log) (*simpleswapfactory.SimpleSwapFactorySimpleSwapDeployed, error)
-}
-
-func (m *simpleSwapFactoryBindingMock) ParseSimpleSwapDeployed(l types.Log) (*simpleswapfactory.SimpleSwapFactorySimpleSwapDeployed, error) {
-	return m.parseSimpleSwapDeployed(l)
+	erc20Address      func(*bind.CallOpts) (common.Address, error)
+	deployedContracts func(*bind.CallOpts, common.Address) (bool, error)
 }
 
 func (m *simpleSwapFactoryBindingMock) DeployedContracts(o *bind.CallOpts, a common.Address) (bool, error) {
@@ -33,12 +26,10 @@ func (m *simpleSwapFactoryBindingMock) ERC20Address(o *bind.CallOpts) (common.Ad
 }
 
 type simpleSwapBindingMock struct {
-	balance            func(*bind.CallOpts) (*big.Int, error)
-	issuer             func(*bind.CallOpts) (common.Address, error)
-	totalPaidOut       func(o *bind.CallOpts) (*big.Int, error)
-	paidOut            func(*bind.CallOpts, common.Address) (*big.Int, error)
-	parseChequeCashed  func(types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeCashed, error)
-	parseChequeBounced func(types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeBounced, error)
+	balance      func(*bind.CallOpts) (*big.Int, error)
+	issuer       func(*bind.CallOpts) (common.Address, error)
+	totalPaidOut func(o *bind.CallOpts) (*big.Int, error)
+	paidOut      func(*bind.CallOpts, common.Address) (*big.Int, error)
 }
 
 func (m *simpleSwapBindingMock) Balance(o *bind.CallOpts) (*big.Int, error) {
@@ -51,14 +42,6 @@ func (m *simpleSwapBindingMock) Issuer(o *bind.CallOpts) (common.Address, error)
 
 func (m *simpleSwapBindingMock) TotalPaidOut(o *bind.CallOpts) (*big.Int, error) {
 	return m.totalPaidOut(o)
-}
-
-func (m *simpleSwapBindingMock) ParseChequeCashed(l types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeCashed, error) {
-	return m.parseChequeCashed(l)
-}
-
-func (m *simpleSwapBindingMock) ParseChequeBounced(l types.Log) (*simpleswapfactory.ERC20SimpleSwapChequeBounced, error) {
-	return m.parseChequeBounced(l)
 }
 
 func (m *simpleSwapBindingMock) PaidOut(o *bind.CallOpts, c common.Address) (*big.Int, error) {
