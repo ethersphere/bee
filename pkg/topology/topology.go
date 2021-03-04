@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	ErrNotFound                   = errors.New("no peer found")
-	ErrWantSelf                   = errors.New("node wants self")
-	ErrDisconnectByOverSaturation = errors.New("connection refused for oversaturated bin")
+	ErrNotFound      = errors.New("no peer found")
+	ErrWantSelf      = errors.New("node wants self")
+	ErrOversaturated = errors.New("oversaturated")
 )
 
 type Driver interface {

@@ -61,7 +61,7 @@ type Service struct {
 	connectionBreaker breaker.Interface
 	blocklist         *blocklist.Blocklist
 	protocols         []p2p.ProtocolSpec
-	notifier          p2p.Notifier
+	notifier          p2p.PickyNotifier
 	logger            logging.Logger
 	tracer            *tracing.Tracer
 
@@ -262,6 +262,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
+		if !s.notifier.Pick(p2p.Peer{Address: i.BzzAddress.Overlay}) {
+			s.logger.Errorf("don't want incoming peer %s. disconnecting", peerID)
+			_ = handshakeStream.Reset()
+			_ = s.host.Network().ClosePeer(peerID)
+			return
+		}
+
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 			if err = handshakeStream.FullClose(); err != nil {
 				s.logger.Debugf("handshake: could not close stream %s: %v", peerID, err)
@@ -296,12 +303,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				}
 			}
 		}
-
 		s.protocolsmu.RUnlock()
 
 		if s.notifier != nil {
 			if err := s.notifier.Connected(ctx, peer); err != nil {
 				s.logger.Debugf("notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
+				// note: this cannot be unit tested since the node
+				// waiting on handshakeStream.FullClose() on the other side
+				// might actually get a stream reset when we disconnect here
+				// resulting in a flaky response from the Connect method on
+				// the other side.
+				// that is why the Pick method has been added to the notifier
+				// interface, in addition to the possibility of deciding whether
+				// a peer connection is wanted prior to adding the peer to the
+				// peer registry and starting the protocols.
 				_ = s.Disconnect(i.BzzAddress.Overlay)
 				return
 			}
@@ -322,7 +337,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	return s, nil
 }
 
-func (s *Service) SetNotifier(n p2p.Notifier) {
+func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.notifier = n
 }
 
@@ -495,12 +510,14 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if err != nil {
 		s.logger.Debugf("blocklisting: exists %s: %v", info.ID, err)
 		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
+		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("peer blocklisted")
 	}
 
 	if blocked {
 		s.logger.Errorf("blocked connection from blocklisted peer %s", info.ID)
+		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("peer blocklisted")
 	}

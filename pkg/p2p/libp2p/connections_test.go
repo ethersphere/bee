@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -389,13 +388,13 @@ func TestTopologyNotifier(t *testing.T) {
 			n2disconnectedPeer = p
 		}
 	)
-	notifier1 := mockNotifier(n1c, n1d, nil)
+	notifier1 := mockNotifier(n1c, n1d, true)
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
-	s1.SetNotifier(notifier1)
+	s1.SetPickyNotifier(notifier1)
 
-	notifier2 := mockNotifier(n2c, n2d, nil)
+	notifier2 := mockNotifier(n2c, n2d, true)
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
-	s2.SetNotifier(notifier2)
+	s2.SetPickyNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -489,21 +488,21 @@ func TestTopologyOverSaturated(t *testing.T) {
 			n2disconnectedPeer = p
 		}
 	)
-
-	notifier1 := mockNotifier(n1c, n1d, topology.ErrDisconnectByOverSaturation)
+	//this notifier will not pick the peer
+	notifier1 := mockNotifier(n1c, n1d, false)
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
-	s1.SetNotifier(notifier1)
+	s1.SetPickyNotifier(notifier1)
 
-	notifier2 := mockNotifier(n2c, n2d, nil)
+	notifier2 := mockNotifier(n2c, n2d, false)
 	s2, _ := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
-	s2.SetNotifier(notifier2)
+	s2.SetPickyNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
 	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err := s2.Connect(ctx, addr)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected connect to fail but it didnt")
 	}
 
 	expectPeers(t, s1)
@@ -553,13 +552,10 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 type notifiee struct {
 	connected    func(context.Context, p2p.Peer) error
 	disconnected func(p2p.Peer)
-	err          error
+	pick         bool
 }
 
 func (n *notifiee) Connected(c context.Context, p p2p.Peer) error {
-	if n.err != nil {
-		return n.err
-	}
 	return n.connected(c, p)
 }
 
@@ -567,8 +563,12 @@ func (n *notifiee) Disconnected(p p2p.Peer) {
 	n.disconnected(p)
 }
 
-func mockNotifier(c cFunc, d dFunc, err error) p2p.Notifier {
-	return &notifiee{connected: c, disconnected: d, err: err}
+func (n *notifiee) Pick(p p2p.Peer) bool {
+	return n.pick
+}
+
+func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
+	return &notifiee{connected: c, disconnected: d, pick: pick}
 }
 
 type cFunc func(context.Context, p2p.Peer) error

@@ -298,9 +298,8 @@ func TestBinOverSaturation(t *testing.T) {
 		for l := 0; l < 3; l++ {
 			addr := test.RandomAddressAt(base, k)
 			// if error is not as specified, connectOne goes fatal
-			connectOne(t, signer, kad, ab, addr, topology.ErrDisconnectByOverSaturation)
+			connectOne(t, signer, kad, ab, addr, topology.ErrOversaturated)
 		}
-
 		// see depth is still as expected
 		kDepth(t, kad, 5)
 	}
@@ -313,7 +312,6 @@ func TestBinOverSaturation(t *testing.T) {
 		// see depth is still as expected
 		kDepth(t, kad, 5)
 	}
-
 }
 
 // TestNotifierHooks tests that the Connected/Disconnected hooks

@@ -23,7 +23,7 @@ type Service struct {
 	peersFunc             func() []p2p.Peer
 	blocklistedPeersFunc  func() ([]p2p.Peer, error)
 	addressesFunc         func() ([]ma.Multiaddr, error)
-	setNotifierFunc       func(p2p.Notifier)
+	setNotifierFunc       func(p2p.PickyNotifier)
 	setWelcomeMessageFunc func(string) error
 	getWelcomeMessageFunc func() string
 	blocklistFunc         func(swarm.Address, time.Duration) error
@@ -38,7 +38,7 @@ func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
 }
 
 // WithSetNotifierFunc sets the mock implementation of the SetNotifier function
-func WithSetNotifierFunc(f func(p2p.Notifier)) Option {
+func WithSetPickyNotifierFunc(f func(p2p.PickyNotifier)) Option {
 	return optionFunc(func(s *Service) {
 		s.setNotifierFunc = f
 	})
@@ -173,7 +173,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error
 	return s.blocklistFunc(overlay, duration)
 }
 
-func (s *Service) SetNotifier(f p2p.Notifier) {
+func (s *Service) SetPickyNotifier(f p2p.PickyNotifier) {
 	if s.setNotifierFunc == nil {
 		return
 	}

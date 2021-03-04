@@ -452,13 +452,17 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 	return nil
 }
 
+func (k *Kad) Pick(peer p2p.Peer) bool {
+	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+	_, oversaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers)
+	return oversaturated
+}
+
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
-
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
 	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
-		// _ = k.p2p.Disconnect(peer.Address)
-		return topology.ErrDisconnectByOverSaturation
+		return topology.ErrOversaturated
 	}
 
 	if err := k.connected(ctx, peer.Address); err != nil {
