@@ -16,20 +16,6 @@ import (
 )
 
 func TestStaticAddressResolver(t *testing.T) {
-	srv, _ := mockdns.NewServer(map[string]mockdns.Zone{
-		"ipv4.com.": {
-			A: []string{"192.168.1.34"},
-		},
-		"ipv4and6.com.": {
-			A:    []string{"192.168.1.34"},
-			AAAA: []string{"2001:db8::8a2e:370:1111"},
-		},
-	}, false)
-	defer srv.Close()
-
-	srv.PatchNet(net.DefaultResolver)
-	defer mockdns.UnpatchNet(net.DefaultResolver)
-
 	for _, tc := range []struct {
 		name              string
 		natAddr           string
@@ -106,6 +92,19 @@ func TestStaticAddressResolver(t *testing.T) {
 			}
 		}
 		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := mockdns.NewServer(map[string]mockdns.Zone{
+				"ipv4.com.": {
+					A: []string{"192.168.1.34"},
+				},
+				"ipv4and6.com.": {
+					A:    []string{"192.168.1.34"},
+					AAAA: []string{"2001:db8::8a2e:370:1111"},
+				},
+			}, false)
+			defer srv.Close()
+
+			srv.PatchNet(net.DefaultResolver)
+			defer mockdns.UnpatchNet(net.DefaultResolver)
 
 			r, err := libp2p.NewStaticAddressResolver(tc.natAddr)
 			if err != nil {
