@@ -21,25 +21,25 @@ type welcomeMessageResponse struct {
 	WelcomeMesssage string `json:"welcome_message"`
 }
 
-func (s *server) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
-	val := s.P2P.GetWelcomeMessage()
+func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+	val := s.p2p.GetWelcomeMessage()
 	jsonhttp.OK(w, welcomeMessageResponse{
 		WelcomeMesssage: val,
 	})
 }
 
-func (s *server) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
 	var data welcomeMessageRequest
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		s.Logger.Debugf("debugapi: welcome message: failed to read request: %v", err)
+		s.logger.Debugf("debugapi: welcome message: failed to read request: %v", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
 
-	if err := s.P2P.SetWelcomeMessage(data.WelcomeMesssage); err != nil {
-		s.Logger.Debugf("debugapi: welcome message: failed to set: %v", err)
-		s.Logger.Errorf("Failed to set welcome message")
+	if err := s.p2p.SetWelcomeMessage(data.WelcomeMesssage); err != nil {
+		s.logger.Debugf("debugapi: welcome message: failed to set: %v", err)
+		s.logger.Errorf("Failed to set welcome message")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

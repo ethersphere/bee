@@ -18,11 +18,11 @@ type pingpongResponse struct {
 	RTT string `json:"rtt"`
 }
 
-func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	peerID := mux.Vars(r)["peer-id"]
 	ctx := r.Context()
 
-	span, logger, ctx := s.Tracer.StartSpanFromContext(ctx, "pingpong-api", s.Logger)
+	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-api", s.logger)
 	defer span.Finish()
 
 	address, err := swarm.ParseHexAddress(peerID)
@@ -32,7 +32,7 @@ func (s *server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rtt, err := s.Pingpong.Ping(ctx, address, "hey", "there", ",", "how are", "you", "?")
+	rtt, err := s.pingpong.Ping(ctx, address, "hey", "there", ",", "how are", "you", "?")
 	if err != nil {
 		logger.Debugf("pingpong: ping %s: %v", peerID, err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
