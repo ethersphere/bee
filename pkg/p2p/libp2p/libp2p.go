@@ -262,11 +262,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return
 		}
 
-		if !s.notifier.Pick(p2p.Peer{Address: i.BzzAddress.Overlay}) {
-			s.logger.Errorf("don't want incoming peer %s. disconnecting", peerID)
-			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
-			return
+		if s.notifier != nil {
+			if !s.notifier.Pick(p2p.Peer{Address: i.BzzAddress.Overlay}) {
+				s.logger.Errorf("don't want incoming peer %s. disconnecting", peerID)
+				_ = handshakeStream.Reset()
+				_ = s.host.Network().ClosePeer(peerID)
+				return
+			}
 		}
 
 		if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
