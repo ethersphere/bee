@@ -128,7 +128,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		tracerCloser:   tracerCloser,
 	}
 
-	var debugAPIService debugapi.Service
+	var debugAPIService *debugapi.Service
 	if o.DebugAPIAddr != "" {
 		overlayEthAddress, err := signer.EthereumAddress()
 		if err != nil {
