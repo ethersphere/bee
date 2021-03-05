@@ -5,6 +5,7 @@
 package soc
 
 var (
+	Hash           = hash
 	ToSignDigest   = toSignDigest
 	RecoverAddress = recoverAddress
 )

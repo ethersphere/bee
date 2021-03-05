@@ -90,9 +90,9 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	ss, err := soc.NewSignedSoc(id, ch, owner, sig)
 	if err != nil {
-		s.logger.Debugf("soc upload: soc error: %v", err)
-		s.logger.Error("soc upload: soc error")
-		jsonhttp.InternalServerError(w, "cannot create soc from data")
+		s.logger.Debugf("soc upload: signed soc error: %v", err)
+		s.logger.Error("soc upload: signed soc error")
+		jsonhttp.Unauthorized(w, "invalid signature")
 		return
 	}
 

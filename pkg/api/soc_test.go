@@ -86,7 +86,7 @@ func TestSoc(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusUnauthorized,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid chunk",
+				Message: "invalid signature",
 				Code:    http.StatusUnauthorized,
 			}),
 		)

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package soc provides the single-owner chunk implemenation
+// Package soc provides the single-owner chunk implemention
 // and validator.
 package soc
 
@@ -22,8 +22,8 @@ const (
 	minChunkSize  = IdSize + SignatureSize + swarm.SpanSize
 )
 
-// Id is a soc identifier
-type Id []byte
+// ID is a soc identifier
+type ID []byte
 
 // Owner is a wrapper that enforces valid length address of soc owner.
 type Owner struct {
@@ -33,7 +33,7 @@ type Owner struct {
 // NewOwner creates a new Owner.
 func NewOwner(address []byte) (*Owner, error) {
 	if len(address) != crypto.AddressSize {
-		return nil, fmt.Errorf("invalid address %x", address)
+		return nil, fmt.Errorf("soc: invalid address %x", address)
 	}
 	return &Owner{
 		address: address,
@@ -42,9 +42,9 @@ func NewOwner(address []byte) (*Owner, error) {
 
 // RawSoc wraps a single-owner chunk.
 type RawSoc struct {
-	id        Id
-	signature []byte
+	id        ID
 	owner     *Owner
+	signature []byte
 	chunk     swarm.Chunk // wrapped chunk
 }
 
@@ -56,7 +56,7 @@ type Soc struct {
 
 // NewSoc creates a single-owner chunk.
 // It does not sign the chunk.
-func NewSoc(id Id, ch swarm.Chunk, signer crypto.Signer) (*Soc, error) {
+func NewSoc(id ID, ch swarm.Chunk, signer crypto.Signer) (*Soc, error) {
 	publicKey, err := signer.PublicKey()
 	if err != nil {
 		return nil, err
@@ -78,12 +78,27 @@ func NewSoc(id Id, ch swarm.Chunk, signer crypto.Signer) (*Soc, error) {
 }
 
 // NewSignedSoc creates a single-owner chunk based on already signed data.
-func NewSignedSoc(id Id, ch swarm.Chunk, owner, sig []byte) (*RawSoc, error) {
+func NewSignedSoc(id ID, ch swarm.Chunk, owner, sig []byte) (*RawSoc, error) {
 	o, err := NewOwner(owner)
 	if err != nil {
 		return nil, err
 	}
 
+	signedBytes, err := toSignDigest(id, ch.Address().Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	recoveredAddress, err := recoverAddress(sig, signedBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	if !bytes.Equal(owner, recoveredAddress) {
+		return nil, errors.New("soc: signature mismatch")
+	}
+
+	// TODO: check signature
 	return &RawSoc{
 		id:        id,
 		signature: sig,
@@ -109,6 +124,11 @@ func (rs *RawSoc) OwnerAddress() []byte {
 // Address returns the soc chunk address.
 func (rs *RawSoc) Address() (swarm.Address, error) {
 	return CreateAddress(rs.id, rs.owner)
+}
+
+// Id returns the soc id.
+func (rs *RawSoc) ID() []byte {
+	return rs.id
 }
 
 // Signature returns the soc signature.
@@ -146,7 +166,7 @@ func (s *Soc) Sign() (swarm.Chunk, error) {
 	}
 	s.signature = signature
 
-	// create chunk
+	// create chunk address
 	socAddress, err := s.Address()
 	if err != nil {
 		return nil, err
@@ -158,7 +178,7 @@ func (s *Soc) Sign() (swarm.Chunk, error) {
 func FromChunk(sch swarm.Chunk) (*RawSoc, error) {
 	chunkData := sch.Data()
 	if len(chunkData) < minChunkSize {
-		return nil, errors.New("less than minimum length")
+		return nil, errors.New("soc: chunk length is less than minimum")
 	}
 
 	// add all the data fields
@@ -196,33 +216,30 @@ func FromChunk(sch swarm.Chunk) (*RawSoc, error) {
 	return s, nil
 }
 
-// toSignDigest creates a digest suitable for signing to represent the soc.
-func toSignDigest(id Id, sum []byte) ([]byte, error) {
-	h := swarm.NewHasher()
-	_, err := h.Write(id)
+// CreateAddress creates a new soc address from the soc id and the ethereum address of the signer.
+func CreateAddress(id ID, owner *Owner) (swarm.Address, error) {
+	sum, err := hash(id, owner.address)
 	if err != nil {
-		return nil, err
+		return swarm.ZeroAddress, err
 	}
-	_, err = h.Write(sum)
-	if err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
+	return swarm.NewAddress(sum), nil
 }
 
-// CreateAddress creates a new soc address from the soc id and the ethereum address of the signer.
-func CreateAddress(id Id, owner *Owner) (swarm.Address, error) {
+// toSignDigest creates a digest suitable for signing to represent the soc.
+func toSignDigest(id ID, sum []byte) ([]byte, error) {
+	return hash(id, sum)
+}
+
+// hash hashes the given values in order.
+func hash(values ...[]byte) ([]byte, error) {
 	h := swarm.NewHasher()
-	_, err := h.Write(id)
-	if err != nil {
-		return swarm.ZeroAddress, err
+	for _, v := range values {
+		_, err := h.Write(v)
+		if err != nil {
+			return nil, err
+		}
 	}
-	_, err = h.Write(owner.address)
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-	sum := h.Sum(nil)
-	return swarm.NewAddress(sum), nil
+	return h.Sum(nil), nil
 }
 
 // recoverAddress returns the ethereum address of the owner of an soc.
