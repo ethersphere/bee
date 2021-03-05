@@ -202,33 +202,50 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	// thus, the following loop will not get executed and the method
 	// returns immediately with the topmost value on the offer, which
 	// will seal the interval and request the next one
+	err = nil
+	var chunksToPut []swarm.Chunk
 
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, ru.Ruid, fmt.Errorf("read delivery: %w", err)
+			// this is not a fatal error and we should write
+			// a partial batch if some chunks have been received.
+			err = fmt.Errorf("read delivery: %w", err)
+			break
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.String()]; !ok {
+			// this is fatal for the entire batch, return the
+			// error and don't write the partial batch.
 			return 0, ru.Ruid, ErrUnsolicitedChunk
 		}
 
 		delete(wantChunks, addr.String())
-		s.metrics.DbOpsCounter.Inc()
 		s.metrics.DeliveryCounter.Inc()
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
+			// this is fatal for the entire batch, return the
+			// error and don't write the partial batch.
 			return 0, ru.Ruid, swarm.ErrInvalidChunk
 		}
-
-		if err = s.storage.Put(ctx, storage.ModePutSync, chunk); err != nil {
+		chunksToPut = append(chunksToPut, chunk)
+	}
+	if len(chunksToPut) > 0 {
+		s.metrics.DbOpsCounter.Inc()
+		if err = s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", err)
 		}
 	}
+	// there might have been an error in the for loop above,
+	// return it if it indeed happened
+	if err != nil {
+		return 0, ru.Ruid, err
+	}
+
 	return offer.Topmost, ru.Ruid, nil
 }
 
