@@ -37,7 +37,7 @@ var (
 	overSaturationPeers        = 16
 )
 
-type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (bool, bool)
+type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 
 // Options for injecting services to Kademlia.
 type Options struct {
@@ -455,7 +455,8 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 func (k *Kad) Pick(peer p2p.Peer) bool {
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
 	_, oversaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers)
-	return oversaturated
+	// pick the peer if we are not oversaturated
+	return !oversaturated
 }
 
 // Connected is called when a peer has dialed in.

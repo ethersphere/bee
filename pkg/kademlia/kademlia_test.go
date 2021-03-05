@@ -263,7 +263,7 @@ func TestBinSaturation(t *testing.T) {
 	waitCounter(t, &conns, 1)
 }
 
-func TestBinOverSaturation(t *testing.T) {
+func TestOversaturation(t *testing.T) {
 	defer func(p int) {
 		*kademlia.OverSaturationPeers = p
 	}(*kademlia.OverSaturationPeers)
@@ -299,6 +299,10 @@ func TestBinOverSaturation(t *testing.T) {
 			addr := test.RandomAddressAt(base, k)
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, topology.ErrOversaturated)
+			// check that pick works correctly
+			if kad.Pick(p2p.Peer{Address: addr}) {
+				t.Fatal("should not pick the peer")
+			}
 		}
 		// see depth is still as expected
 		kDepth(t, kad, 5)
