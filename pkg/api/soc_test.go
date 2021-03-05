@@ -115,7 +115,7 @@ func TestSoc(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ch, err := s.ToChunk()
+		ch, err := s.Sign()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +149,6 @@ func TestSoc(t *testing.T) {
 				}),
 		)
 	})
-
 }
 
 // returns a valid, mocked SOC
@@ -171,16 +170,11 @@ func mockSoc(t *testing.T) (*soc.Soc, []byte, []byte) {
 	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
 
-	sch := soc.New(id, ch)
+	sch, err := soc.NewSoc(id, ch, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = sch.AddSigner(signer)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, _ = sch.ToChunk()
+	_, _ = sch.Sign()
 
 	return sch, sch.OwnerAddress(), ch.Data()
 }

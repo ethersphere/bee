@@ -253,20 +253,15 @@ func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
 	}
 	signer := crypto.NewDefaultSigner(privKey)
 
-	sch := soc.New(id, ch)
-	if err != nil {
-		return nil, err
-	}
-	err = sch.AddSigner(signer)
+	s, err := soc.NewSoc(id, ch, signer)
 	if err != nil {
 		return nil, err
 	}
 
-	return sch.ToChunk()
+	return s.Sign()
 }
 
-type id struct {
-}
+type id struct{}
 
 func (i *id) MarshalBinary() ([]byte, error) {
 	return []byte("accd"), nil

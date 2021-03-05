@@ -40,36 +40,111 @@ func NewOwner(address []byte) (*Owner, error) {
 	}, nil
 }
 
-// Soc wraps a single soc.
-type Soc struct {
+// RawSoc wraps a single-owner chunk.
+type RawSoc struct {
 	id        Id
 	signature []byte
-	signer    crypto.Signer
 	owner     *Owner
-	Chunk     swarm.Chunk
+	chunk     swarm.Chunk // wrapped chunk
 }
 
-// NewChunk is a convenience function to create a single-owner chunk ready to be sent
-// on the network.
-func NewChunk(id Id, ch swarm.Chunk, signer crypto.Signer) (swarm.Chunk, error) {
-	s := New(id, ch)
-	err := s.AddSigner(signer)
+// Soc wraps a single-owner chunk and contains a signer interface to sign it.
+type Soc struct {
+	*RawSoc
+	signer crypto.Signer
+}
+
+// NewSoc creates a single-owner chunk.
+// It does not sign the chunk.
+func NewSoc(id Id, ch swarm.Chunk, signer crypto.Signer) (*Soc, error) {
+	publicKey, err := signer.PublicKey()
 	if err != nil {
 		return nil, err
 	}
-	return s.ToChunk()
+	ownerAddressBytes, err := crypto.NewEthereumAddress(*publicKey)
+	if err != nil {
+		return nil, err
+	}
+	ownerAddress, err := NewOwner(ownerAddressBytes)
+	if err != nil {
+		return nil, err
+	}
+	rs := &RawSoc{
+		id:    id,
+		owner: ownerAddress,
+		chunk: ch,
+	}
+	return &Soc{RawSoc: rs, signer: signer}, nil
 }
 
-// NewChunk is a convenience function to create a single-owner chunk ready to be sent
-// on the network.
-func NewSignedChunk(id Id, ch swarm.Chunk, owner, sig []byte) (swarm.Chunk, error) {
-	s := New(id, ch)
-	s.signature = sig
+// NewSignedSoc creates a single-owner chunk based on already signed data.
+func NewSignedSoc(id Id, ch swarm.Chunk, owner, sig []byte) (*RawSoc, error) {
 	o, err := NewOwner(owner)
 	if err != nil {
 		return nil, err
 	}
-	s.owner = o
+
+	return &RawSoc{
+		id:        id,
+		signature: sig,
+		owner:     o,
+		chunk:     ch,
+	}, nil
+}
+
+// Chunk returns the soc chunk.
+func (rs *RawSoc) Chunk() (swarm.Chunk, error) {
+	socAddress, err := rs.Address()
+	if err != nil {
+		return nil, err
+	}
+	return swarm.NewChunk(socAddress, rs.toBytes()), nil
+}
+
+// OwnerAddress returns the ethereum address of the signer of the Chunk.
+func (rs *RawSoc) OwnerAddress() []byte {
+	return rs.owner.address
+}
+
+// Address returns the soc chunk address.
+func (rs *RawSoc) Address() (swarm.Address, error) {
+	return CreateAddress(rs.id, rs.owner)
+}
+
+// Signature returns the soc signature.
+func (rs *RawSoc) Signature() []byte {
+	return rs.signature
+}
+
+// WrappedChunk returns the chunk wrapped by the soc.
+func (rs *RawSoc) WrappedChunk() swarm.Chunk {
+	return rs.chunk
+}
+
+// toBytes is a helper function to convert the RawSoc data to bytes.
+func (rs *RawSoc) toBytes() []byte {
+	buf := bytes.NewBuffer(nil)
+	buf.Write(rs.id)
+	buf.Write(rs.signature)
+	buf.Write(rs.chunk.Data())
+	return buf.Bytes()
+}
+
+// Sign signs a soc using the signer.
+// It returns a signed chunk ready for submission to the network.
+func (s *Soc) Sign() (swarm.Chunk, error) {
+	// generate the data to sign
+	toSignBytes, err := toSignDigest(s.id, s.chunk.Address().Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	// sign the chunk
+	signature, err := s.signer.Sign(toSignBytes)
+	if err != nil {
+		return nil, err
+	}
+	s.signature = signature
 
 	// create chunk
 	socAddress, err := s.Address()
@@ -79,70 +154,15 @@ func NewSignedChunk(id Id, ch swarm.Chunk, owner, sig []byte) (swarm.Chunk, erro
 	return swarm.NewChunk(socAddress, s.toBytes()), nil
 }
 
-// New creates a new Soc representation from arbitrary soc id and
-// a content-addressed chunk.
-//
-// By default the span of the soc data is set to the length
-// of the payload.
-func New(id Id, ch swarm.Chunk) *Soc {
-	return &Soc{
-		id:    id,
-		Chunk: ch,
-	}
-}
-
-// WithOwnerAddress provides the possibility of setting the ethereum
-// address for the owner of an soc in the absence of a signer.
-func (s *Soc) WithOwnerAddress(ownerAddress *Owner) *Soc {
-	s.owner = ownerAddress
-	return s
-}
-
-// AddSigner currently sets a single signer for the soc.
-//
-// This method will overwrite any value set with WithOwnerAddress with
-// the address derived from the given signer.
-func (s *Soc) AddSigner(signer crypto.Signer) error {
-	publicKey, err := signer.PublicKey()
-	if err != nil {
-		return err
-	}
-	ownerAddressBytes, err := crypto.NewEthereumAddress(*publicKey)
-	if err != nil {
-		return err
-	}
-	ownerAddress, err := NewOwner(ownerAddressBytes)
-	if err != nil {
-		return err
-	}
-	s.signer = signer
-	s.owner = ownerAddress
-	return nil
-}
-
-// OwnerAddress returns the ethereum address of the signer of the Chunk.
-func (s *Soc) OwnerAddress() []byte {
-	return s.owner.address
-}
-
-// Address returns the soc Chunk address.
-func (s *Soc) Address() (swarm.Address, error) {
-	return CreateAddress(s.id, s.owner)
-}
-
-func (s *Soc) Signature() []byte {
-	return s.signature
-}
-
-// FromChunk recreates an Soc representation from swarm.Chunk data.
-func FromChunk(sch swarm.Chunk) (*Soc, error) {
+// FromChunk recreates a RawSoc representation from swarm.Chunk data.
+func FromChunk(sch swarm.Chunk) (*RawSoc, error) {
 	chunkData := sch.Data()
 	if len(chunkData) < minChunkSize {
 		return nil, errors.New("less than minimum length")
 	}
 
 	// add all the data fields
-	s := &Soc{}
+	s := &RawSoc{}
 	cursor := 0
 
 	s.id = chunkData[cursor : cursor+IdSize]
@@ -171,47 +191,9 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 		return nil, err
 	}
 	s.owner = owner
-	s.Chunk = ch
+	s.chunk = ch
 
 	return s, nil
-}
-
-// ToChunk generates a signed chunk payload ready for submission to the swarm network.
-//
-// The method will fail if no signer has been added.
-func (s *Soc) ToChunk() (swarm.Chunk, error) {
-	var err error
-	if s.signer == nil {
-		return nil, errors.New("signer missing")
-	}
-
-	// generate the data to sign
-	toSignBytes, err := toSignDigest(s.id, s.Chunk.Address().Bytes())
-	if err != nil {
-		return nil, err
-	}
-
-	// sign the chunk
-	signature, err := s.signer.Sign(toSignBytes)
-	if err != nil {
-		return nil, err
-	}
-	s.signature = signature
-
-	// create chunk
-	socAddress, err := s.Address()
-	if err != nil {
-		return nil, err
-	}
-	return swarm.NewChunk(socAddress, s.toBytes()), nil
-}
-
-func (s *Soc) toBytes() []byte {
-	buf := bytes.NewBuffer(nil)
-	buf.Write(s.id)
-	buf.Write(s.signature)
-	buf.Write(s.Chunk.Data())
-	return buf.Bytes()
 }
 
 // toSignDigest creates a digest suitable for signing to represent the soc.
@@ -228,7 +210,7 @@ func toSignDigest(id Id, sum []byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-// CreateAddress creates a new soc address from the soc id and the ethereum address of the signer
+// CreateAddress creates a new soc address from the soc id and the ethereum address of the signer.
 func CreateAddress(id Id, owner *Owner) (swarm.Address, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(id)
@@ -243,7 +225,7 @@ func CreateAddress(id Id, owner *Owner) (swarm.Address, error) {
 	return swarm.NewAddress(sum), nil
 }
 
-// recoverOwner returns the ethereum address of the owner of an soc.
+// recoverAddress returns the ethereum address of the owner of an soc.
 func recoverAddress(signature, digest []byte) ([]byte, error) {
 	recoveredPublicKey, err := crypto.Recover(signature, digest)
 	if err != nil {

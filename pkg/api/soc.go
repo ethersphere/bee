@@ -88,7 +88,15 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := soc.NewSignedChunk(id, ch, owner, sig)
+	ss, err := soc.NewSignedSoc(id, ch, owner, sig)
+	if err != nil {
+		s.logger.Debugf("soc upload: soc error: %v", err)
+		s.logger.Error("soc upload: soc error")
+		jsonhttp.InternalServerError(w, "cannot create soc from data")
+		return
+	}
+
+	chunk, err := ss.Chunk()
 	if err != nil {
 		s.logger.Debugf("soc upload: read chunk data error: %v", err)
 		s.logger.Error("soc upload: read chunk data error")

@@ -48,7 +48,11 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 	if err != nil {
 		return err
 	}
-	ch, err := soc.NewChunk(id, cac, u.signer)
+	s, err := soc.NewSoc(id, cac, u.signer)
+	if err != nil {
+		return err
+	}
+	ch, err := s.Sign()
 	if err != nil {
 		return err
 	}

@@ -31,7 +31,11 @@ func TestToChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sch, err := soc.NewChunk(id, ch, signer)
+	s, err := soc.NewSoc(id, ch, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sch, err := s.Sign()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,11 +102,14 @@ func TestFromChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sch, err := soc.NewChunk(id, ch, signer)
+	s, err := soc.NewSoc(id, ch, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	sch, err := s.Sign()
+	if err != nil {
+		t.Fatal(err)
+	}
 	u2, err := soc.FromChunk(sch)
 	if err != nil {
 		t.Fatal(err)
