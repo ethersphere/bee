@@ -5,12 +5,15 @@
 package node
 
 import (
+	"errors"
+	"fmt"
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // InitStateStore will initialze the stateStore with the given path to the
@@ -23,4 +26,23 @@ func InitStateStore(log logging.Logger, dataDir string) (ret storage.StateStorer
 		return ret, nil
 	}
 	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
+}
+
+const overlayKey = "overlay"
+
+// CheckOverlayWithStore checks the overlay is the same as stored in the statestore
+func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) error {
+	var storedOverlay swarm.Address
+	err := storer.Get(overlayKey, &storedOverlay)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
+		return storer.Put(overlayKey, overlay)
+	}
+
+	if !storedOverlay.Equal(overlay) {
+		return fmt.Errorf("overlay address changed. was %s before but now is %s", storedOverlay, overlay)
+	}
+	return nil
 }

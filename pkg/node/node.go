@@ -167,6 +167,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.stateStoreCloser = stateStore
 
+	err = CheckOverlayWithStore(swarmAddress, stateStore)
+	if err != nil {
+		return nil, err
+	}
+
 	addressbook := addressbook.New(stateStore)
 
 	var swapBackend *ethclient.Client
