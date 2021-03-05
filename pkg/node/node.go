@@ -244,6 +244,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
+	defer p2ps.Ready()
 
 	if !o.Standalone {
 		if natManager := p2ps.NATManager(); natManager != nil {
@@ -502,8 +503,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err
 	}
-
-	p2ps.Ready()
 
 	return b, nil
 }
