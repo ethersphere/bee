@@ -357,8 +357,6 @@ func TestHandler(t *testing.T) {
 		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(fixedPrice), balance)
 	}
 
-	// we need to check here for pivotPeer instead of triggerPeer because during
-	// streamtest the peer in the handler is actually the receiver
 	balance, err = pivotAccounting.Balance(triggerPeer)
 	if err != nil {
 		t.Fatal(err)
