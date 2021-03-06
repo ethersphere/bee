@@ -69,6 +69,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.Ready()
 
 	t.Cleanup(func() {
 		cancel()
