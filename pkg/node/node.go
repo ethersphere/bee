@@ -110,7 +110,7 @@ type Options struct {
 	SwapEnable             bool
 }
 
-func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (*Bee, error) {
+func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -121,8 +121,16 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
+	defer func() {
+		// if there's been an error on this function
+		// we'd like to cancel the p2p context so that
+		// incoming connections will not be possible
+		if err != nil {
+			p2pCancel()
+		}
+	}()
 
-	b := &Bee{
+	b = &Bee{
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
@@ -244,7 +252,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
-	defer p2ps.Ready()
 
 	if !o.Standalone {
 		if natManager := p2ps.NATManager(); natManager != nil {
@@ -503,6 +510,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err
 	}
+	p2ps.Ready()
 
 	return b, nil
 }
