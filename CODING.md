@@ -30,7 +30,7 @@ Every channel must have an owning goroutine. That goroutine is the only one that
 
 Errors must be propagated by the caller function. Error should not be logged and passed at the same time. It is up to the next caller function to decide what should be done in case of an error.
 
-If a function has multiple returns with, any returned error should be annotated either with `fmt.Errorf` using `%w` verb or with custom error type that has `Unwrap() error` method.
+If a function has multiple returns with, any returned error should be annotated either with `fmt.Errorf` using `%w` verb or with custom error type that has `Unwrap() error` method. This approach has the advantage of resulting in an error message that is equivalent to a stack trace, since errors are repeatedly wrapped while being passed up the call stack until their eventual logging.
 
 Explicit `error` values that are constructed with `errors.New` may have a message prefixed with the package name and a colon character, if it would improve the message clarity.
 
