@@ -50,8 +50,11 @@ func TestPayment(t *testing.T) {
 	recipient := pseudosettle.New(nil, logger, storeRecipient)
 	recipient.SetNotifyPaymentFunc(observer.NotifyPayment)
 
+	peerID := swarm.MustParseHexAddress("9ee7add7")
+
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
+		streamtest.WithBaseAddr(peerID),
 	)
 
 	storePayer := mock.NewStateStore()
@@ -59,7 +62,6 @@ func TestPayment(t *testing.T) {
 
 	payer := pseudosettle.New(recorder, logger, storePayer)
 
-	peerID := swarm.MustParseHexAddress("9ee7add7")
 	amount := big.NewInt(10000)
 
 	err := payer.Pay(context.Background(), peerID, amount)

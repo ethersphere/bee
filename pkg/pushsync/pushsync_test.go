@@ -48,7 +48,7 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
-	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
+	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
@@ -70,7 +70,6 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
-
 	balance, err := pivotAccounting.Balance(closestPeer)
 	if err != nil {
 		t.Fatal(err)
@@ -80,11 +79,10 @@ func TestSendChunkAndReceiveReceipt(t *testing.T) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
-	balance, err = peerAccounting.Balance(closestPeer)
+	balance, err = peerAccounting.Balance(pivotNode)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on peer. want %d got %d", int64(fixedPrice), balance)
 	}
@@ -104,7 +102,7 @@ func TestPushChunkToClosest(t *testing.T) {
 	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, nil, chanFunc(callbackC), mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
-	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
+	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
@@ -159,7 +157,7 @@ func TestPushChunkToClosest(t *testing.T) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
-	balance, err = peerAccounting.Balance(closestPeer)
+	balance, err = peerAccounting.Balance(pivotNode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +218,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 				}
 			},
 		),
+		streamtest.WithBaseAddr(pivotNode),
 	)
 
 	// pivot node needs the streamer since the chunk is intercepted by
@@ -277,7 +276,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
-	balance2, err := peerAccounting2.Balance(peer2)
+	balance2, err := peerAccounting2.Balance(pivotNode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,13 +314,13 @@ func TestHandler(t *testing.T) {
 	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
-	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()))
+	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
 
 	// creating the pivot peer
 	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, closestRecorder, nil, mock.WithClosestPeer(closestPeer))
 	defer storerPivotDB.Close()
 
-	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()))
+	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()), streamtest.WithBaseAddr(triggerPeer))
 
 	// Creating the trigger peer
 	psTriggerPeer, triggerStorerDB, _, triggerAccounting := createPushSyncNode(t, triggerPeer, pivotRecorder, nil, mock.WithClosestPeer(pivotPeer))
@@ -358,8 +357,7 @@ func TestHandler(t *testing.T) {
 		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(fixedPrice), balance)
 	}
 
-	// we need to check here for pivotPeer instead of triggerPeer because during streamtest the peer in the handler is actually the receiver
-	balance, err = pivotAccounting.Balance(pivotPeer)
+	balance, err = pivotAccounting.Balance(triggerPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +375,7 @@ func TestHandler(t *testing.T) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
-	balance, err = closestAccounting.Balance(closestPeer)
+	balance, err = closestAccounting.Balance(pivotPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
