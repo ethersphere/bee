@@ -20,6 +20,9 @@ import (
 const (
 	chequebookKey           = "swap_chequebook"
 	chequebookDeploymentKey = "swap_chequebook_transaction_deployment"
+
+	balanceCheckBackoffDuration = 20 * time.Second
+	balanceCheckMaxRetries      = 10
 )
 
 func checkBalance(
@@ -30,10 +33,8 @@ func checkBalance(
 	chainId int64,
 	overlayEthAddress common.Address,
 	erc20Token erc20.Service,
-	backoffDuration time.Duration,
-	maxRetries uint64,
 ) error {
-	timeoutCtx, cancel := context.WithTimeout(ctx, backoffDuration*time.Duration(maxRetries))
+	timeoutCtx, cancel := context.WithTimeout(ctx, balanceCheckBackoffDuration*time.Duration(balanceCheckMaxRetries))
 	defer cancel()
 	for {
 		erc20Balance, err := erc20Token.BalanceOf(timeoutCtx, overlayEthAddress)
@@ -74,7 +75,7 @@ func checkBalance(
 				logger.Warningf("get your Goerli ETH and Goerli BZZ now via the bzzaar at https://bzz.ethswarm.org/?transaction=buy&amount=%d&slippage=30&receiver=0x%x", neededERC20, overlayEthAddress)
 			}
 			select {
-			case <-time.After(backoffDuration):
+			case <-time.After(balanceCheckBackoffDuration):
 			case <-timeoutCtx.Done():
 				if insufficientERC20 {
 					return fmt.Errorf("insufficient BZZ for initial deposit")
@@ -131,7 +132,7 @@ func Init(
 		if err == storage.ErrNotFound {
 			logger.Info("no chequebook found, deploying new one.")
 			if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
-				err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20Service, 20*time.Second, 10)
+				err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20Service)
 				if err != nil {
 					return nil, err
 				}
