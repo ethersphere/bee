@@ -34,9 +34,10 @@ var (
 	timeToRetry                = 60 * time.Second
 	shortRetry                 = 30 * time.Second
 	saturationPeers            = 4
+	overSaturationPeers        = 16
 )
 
-type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) bool
+type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 
 // Options for injecting services to Kademlia.
 type Options struct {
@@ -151,7 +152,7 @@ func (k *Kad) manage() {
 				k.waitNextMu.Unlock()
 
 				currentDepth := k.NeighborhoodDepth()
-				if saturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
+				if saturated, _ := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
@@ -281,12 +282,12 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
+func binSaturated(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 	potentialDepth := recalcDepth(peers)
 
 	// short circuit for bins which are >= depth
 	if bin >= potentialDepth {
-		return false
+		return false, false
 	}
 
 	// lets assume for now that the minimum number of peers in a bin
@@ -304,7 +305,7 @@ func binSaturated(bin uint8, peers, connected *pslice.PSlice) bool {
 		return false, false, nil
 	})
 
-	return size >= saturationPeers
+	return size >= saturationPeers, size >= overSaturationPeers
 }
 
 // recalcDepth calculates and returns the kademlia depth.
@@ -451,8 +452,20 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 	return nil
 }
 
+func (k *Kad) Pick(peer p2p.Peer) bool {
+	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+	_, oversaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers)
+	// pick the peer if we are not oversaturated
+	return !oversaturated
+}
+
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
+	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
+		return topology.ErrOversaturated
+	}
+
 	if err := k.connected(ctx, peer.Address); err != nil {
 		return err
 	}
@@ -471,6 +484,7 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 	}
 
 	po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
+
 	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
 
@@ -483,8 +497,8 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 	k.depthMu.Unlock()
 
 	k.notifyPeerSig()
-
 	return nil
+
 }
 
 // Disconnected is called when peer disconnects.
