@@ -209,8 +209,8 @@ func TestManageWithBalancing(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice) bool
-		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice) bool {
+		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice) (bool, bool)
+		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 			f := *saturationFuncImpl
 			return f(bin, peers, connected)
 		}
@@ -218,8 +218,8 @@ func TestManageWithBalancing(t *testing.T) {
 	)
 
 	// implement satiration function (while having access to Kademlia instance)
-	sfImpl := func(bin uint8, peers, connected *pslice.PSlice) bool {
-		return kad.IsBalanced(bin)
+	sfImpl := func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+		return kad.IsBalanced(bin), false
 	}
 	saturationFuncImpl = &sfImpl
 
