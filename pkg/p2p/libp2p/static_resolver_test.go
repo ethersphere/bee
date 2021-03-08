@@ -92,7 +92,7 @@ func TestStaticAddressResolver(t *testing.T) {
 			}
 		}
 		t.Run(tc.name, func(t *testing.T) {
-			srv, _ := mockdns.NewServer(map[string]mockdns.Zone{
+			srv, err := mockdns.NewServer(map[string]mockdns.Zone{
 				"ipv4.com.": {
 					A: []string{"192.168.1.34"},
 				},
@@ -101,6 +101,9 @@ func TestStaticAddressResolver(t *testing.T) {
 					AAAA: []string{"2001:db8::8a2e:370:1111"},
 				},
 			}, false)
+			if err != nil {
+				t.Fatalf("new mockdns: %v", err)
+			}
 			defer srv.Close()
 
 			srv.PatchNet(net.DefaultResolver)
