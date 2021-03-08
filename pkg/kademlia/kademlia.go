@@ -43,7 +43,8 @@ type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturat
 type Options struct {
 	SaturationFunc binSaturationFunc
 	Bootnodes      []ma.Multiaddr
-	Standalone     bool
+	StandaloneMode bool
+	BootnodeMode   bool
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -64,9 +65,10 @@ type Kad struct {
 	peerSig        []chan struct{}
 	peerSigMtx     sync.Mutex
 	logger         logging.Logger // logger
-	standalone     bool
-	quit           chan struct{} // quit channel
-	done           chan struct{} // signal that `manage` has quit
+	standalone     bool           // indicates whether the node is working in standalone mode
+	bootnode       bool           // indicates whether the node is working in bootnode mode
+	quit           chan struct{}  // quit channel
+	done           chan struct{}  // signal that `manage` has quit
 	wg             sync.WaitGroup
 }
 
@@ -93,7 +95,8 @@ func New(base swarm.Address, addressbook addressbook.Interface, discovery discov
 		manageC:        make(chan struct{}, 1),
 		waitNext:       make(map[string]retryInfo),
 		logger:         logger,
-		standalone:     o.Standalone,
+		standalone:     o.StandaloneMode,
+		bootnode:       o.BootnodeMode,
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		wg:             sync.WaitGroup{},
@@ -453,6 +456,11 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 }
 
 func (k *Kad) Pick(peer p2p.Peer) bool {
+	if k.bootnode {
+		// shortcircuit for bootnode mode - always accept connections,
+		// at least until we find a better solution.
+		return true
+	}
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
 	_, oversaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers)
 	// pick the peer if we are not oversaturated
@@ -461,9 +469,12 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
-	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
-		return topology.ErrOversaturated
+	if !k.bootnode {
+		// don't run this check if we're a bootnode
+		po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+		if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
+			return topology.ErrOversaturated
+		}
 	}
 
 	if err := k.connected(ctx, peer.Address); err != nil {

@@ -143,6 +143,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				PaymentEarly:           c.config.GetString(optionNamePaymentEarly),
 				ResolverConnectionCfgs: resolverCfgs,
 				GatewayMode:            c.config.GetBool(optionNameGatewayMode),
+				BootnodeMode:           c.config.GetBool(optionNameBootnodeMode),
 				SwapEndpoint:           c.config.GetString(optionNameSwapEndpoint),
 				SwapFactoryAddress:     c.config.GetString(optionNameSwapFactoryAddress),
 				SwapInitialDeposit:     c.config.GetString(optionNameSwapInitialDeposit),
