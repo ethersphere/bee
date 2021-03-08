@@ -20,6 +20,7 @@ import (
 var (
 	ErrInvalidFactory       = errors.New("not a valid factory contract")
 	ErrNotDeployedByFactory = errors.New("chequebook not deployed by factory")
+	errDecodeABI            = errors.New("could not decode abi data")
 
 	factoryABI                  = transaction.ParseABIUnchecked(simpleswapfactory.SimpleSwapFactoryABI)
 	simpleSwapDeployedEventType = factoryABI.Events["SimpleSwapDeployed"]
@@ -131,8 +132,15 @@ func (c *factory) VerifyChequebook(ctx context.Context, chequebook common.Addres
 		return err
 	}
 
-	deployed := *abi.ConvertType(results[0], new(bool)).(*bool)
-	if !deployed {
+	if len(results) != 1 {
+		return errDecodeABI
+	}
+
+	deployed, ok := abi.ConvertType(results[0], new(bool)).(*bool)
+	if !ok || deployed == nil {
+		return errDecodeABI
+	}
+	if !*deployed {
 		return ErrNotDeployedByFactory
 	}
 	return nil
@@ -158,7 +166,15 @@ func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
 		return common.Address{}, err
 	}
 
-	return *abi.ConvertType(results[0], new(common.Address)).(*common.Address), nil
+	if len(results) != 1 {
+		return common.Address{}, errDecodeABI
+	}
+
+	erc20Address, ok := abi.ConvertType(results[0], new(common.Address)).(*common.Address)
+	if !ok || erc20Address == nil {
+		return common.Address{}, errDecodeABI
+	}
+	return *erc20Address, nil
 }
 
 // DiscoverFactoryAddress returns the canonical factory for this chainID
