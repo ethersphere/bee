@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -25,35 +24,20 @@ var (
 	simpleSwapDeployedEvent = factoryABI.Events["SimpleSwapDeployed"]
 )
 
-func newTestFactory(t *testing.T, factoryAddress common.Address, backend transaction.Backend, transactionService transaction.Service, simpleSwapFactoryBinding chequebook.SimpleSwapFactoryBinding) (chequebook.Factory, error) {
-	return chequebook.NewFactory(backend, transactionService, factoryAddress,
-		func(addr common.Address, b bind.ContractBackend) (chequebook.SimpleSwapFactoryBinding, error) {
-			if addr != factoryAddress {
-				t.Fatalf("initialised binding with wrong address. wanted %x, got %x", factoryAddress, addr)
-			}
-			if b != backend {
-				t.Fatal("initialised binding with wrong backend")
-			}
-			return simpleSwapFactoryBinding, nil
-		})
-}
-
 func TestFactoryERC20Address(t *testing.T) {
 	factoryAddress := common.HexToAddress("0xabcd")
 	erc20Address := common.HexToAddress("0xeffff")
-	factory, err := newTestFactory(
-		t,
-		factoryAddress,
+	factory := chequebook.NewFactory(
 		backendmock.New(),
-		transactionmock.New(),
-		&simpleSwapFactoryBindingMock{
-			erc20Address: func(*bind.CallOpts) (common.Address, error) {
-				return erc20Address, nil
-			},
-		})
-	if err != nil {
-		t.Fatal(err)
-	}
+		transactionmock.New(
+			transactionmock.WithABICall(
+				&factoryABI,
+				erc20Address.Hash().Bytes(),
+				"ERC20Address",
+			),
+		),
+		factoryAddress,
+	)
 
 	addr, err := factory.ERC20Address(context.Background())
 	if err != nil {
@@ -67,9 +51,7 @@ func TestFactoryERC20Address(t *testing.T) {
 
 func TestFactoryVerifySelf(t *testing.T) {
 	factoryAddress := common.HexToAddress("0xabcd")
-	factory, err := newTestFactory(
-		t,
-		factoryAddress,
+	factory := chequebook.NewFactory(
 		backendmock.New(
 			backendmock.WithCodeAtFunc(func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
 				if contract != factoryAddress {
@@ -82,12 +64,10 @@ func TestFactoryVerifySelf(t *testing.T) {
 			}),
 		),
 		transactionmock.New(),
-		&simpleSwapFactoryBindingMock{})
-	if err != nil {
-		t.Fatal(err)
-	}
+		factoryAddress,
+	)
 
-	err = factory.VerifyBytecode(context.Background())
+	err := factory.VerifyBytecode(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,9 +75,7 @@ func TestFactoryVerifySelf(t *testing.T) {
 
 func TestFactoryVerifySelfInvalidCode(t *testing.T) {
 	factoryAddress := common.HexToAddress("0xabcd")
-	factory, err := newTestFactory(
-		t,
-		factoryAddress,
+	factory := chequebook.NewFactory(
 		backendmock.New(
 			backendmock.WithCodeAtFunc(func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
 				if contract != factoryAddress {
@@ -110,12 +88,10 @@ func TestFactoryVerifySelfInvalidCode(t *testing.T) {
 			}),
 		),
 		transactionmock.New(),
-		&simpleSwapFactoryBindingMock{})
-	if err != nil {
-		t.Fatal(err)
-	}
+		factoryAddress,
+	)
 
-	err = factory.VerifyBytecode(context.Background())
+	err := factory.VerifyBytecode(context.Background())
 	if err == nil {
 		t.Fatal("verified invalid factory")
 	}
@@ -127,24 +103,19 @@ func TestFactoryVerifySelfInvalidCode(t *testing.T) {
 func TestFactoryVerifyChequebook(t *testing.T) {
 	factoryAddress := common.HexToAddress("0xabcd")
 	chequebookAddress := common.HexToAddress("0xefff")
-	factory, err := newTestFactory(
-		t,
-		factoryAddress,
+	factory := chequebook.NewFactory(
 		backendmock.New(),
-		transactionmock.New(),
-		&simpleSwapFactoryBindingMock{
-			deployedContracts: func(o *bind.CallOpts, address common.Address) (bool, error) {
-				if address != chequebookAddress {
-					t.Fatalf("checked for wrong contract. wanted %v, got %v", chequebookAddress, address)
-				}
-				return true, nil
-			},
-		})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = factory.VerifyChequebook(context.Background(), chequebookAddress)
+		transactionmock.New(
+			transactionmock.WithABICall(
+				&factoryABI,
+				common.Hex2Bytes("0000000000000000000000000000000000000000000000000000000000000001"),
+				"deployedContracts",
+				chequebookAddress,
+			),
+		),
+		factoryAddress,
+	)
+	err := factory.VerifyChequebook(context.Background(), chequebookAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,24 +124,20 @@ func TestFactoryVerifyChequebook(t *testing.T) {
 func TestFactoryVerifyChequebookInvalid(t *testing.T) {
 	factoryAddress := common.HexToAddress("0xabcd")
 	chequebookAddress := common.HexToAddress("0xefff")
-	factory, err := newTestFactory(
-		t,
-		factoryAddress,
+	factory := chequebook.NewFactory(
 		backendmock.New(),
-		transactionmock.New(),
-		&simpleSwapFactoryBindingMock{
-			deployedContracts: func(o *bind.CallOpts, address common.Address) (bool, error) {
-				if address != chequebookAddress {
-					t.Fatalf("checked for wrong contract. wanted %v, got %v", chequebookAddress, address)
-				}
-				return false, nil
-			},
-		})
-	if err != nil {
-		t.Fatal(err)
-	}
+		transactionmock.New(
+			transactionmock.WithABICall(
+				&factoryABI,
+				common.Hex2Bytes("0000000000000000000000000000000000000000000000000000000000000000"),
+				"deployedContracts",
+				chequebookAddress,
+			),
+		),
+		factoryAddress,
+	)
 
-	err = factory.VerifyChequebook(context.Background(), chequebookAddress)
+	err := factory.VerifyChequebook(context.Background(), chequebookAddress)
 	if err == nil {
 		t.Fatal("verified invalid chequebook")
 	}
@@ -185,20 +152,10 @@ func TestFactoryDeploy(t *testing.T) {
 	defaultTimeout := big.NewInt(1)
 	deployTransactionHash := common.HexToHash("0xffff")
 	deployAddress := common.HexToAddress("0xdddd")
-	factory, err := newTestFactory(
-		t,
-		factoryAddress,
+	factory := chequebook.NewFactory(
 		backendmock.New(),
 		transactionmock.New(
-			transactionmock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
-				if request.To != nil && *request.To != factoryAddress {
-					t.Fatalf("sending to wrong address. wanted %x, got %x", factoryAddress, request.To)
-				}
-				if request.Value.Cmp(big.NewInt(0)) != 0 {
-					t.Fatal("trying to send ether")
-				}
-				return deployTransactionHash, nil
-			}),
+			transactionmock.WithABISend(&factoryABI, deployTransactionHash, factoryAddress, big.NewInt(0), "deploySimpleSwap", issuerAddress, defaultTimeout),
 			transactionmock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 				if txHash != deployTransactionHash {
 					t.Fatalf("waiting for wrong transaction. wanted %x, got %x", deployTransactionHash, txHash)
@@ -220,13 +177,10 @@ func TestFactoryDeploy(t *testing.T) {
 						},
 					},
 				}, nil
-			}),
-		),
-		nil,
+			},
+			)),
+		factoryAddress,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	txHash, err := factory.Deploy(context.Background(), issuerAddress, defaultTimeout)
 	if err != nil {
@@ -250,9 +204,7 @@ func TestFactoryDeploy(t *testing.T) {
 func TestFactoryDeployReverted(t *testing.T) {
 	factoryAddress := common.HexToAddress("0xabcd")
 	deployTransactionHash := common.HexToHash("0xffff")
-	factory, err := newTestFactory(
-		t,
-		factoryAddress,
+	factory := chequebook.NewFactory(
 		backendmock.New(),
 		transactionmock.New(
 			transactionmock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
@@ -264,13 +216,10 @@ func TestFactoryDeployReverted(t *testing.T) {
 				}, nil
 			}),
 		),
-		&simpleSwapFactoryBindingMock{},
+		factoryAddress,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	_, err = factory.WaitDeployed(context.Background(), deployTransactionHash)
+	_, err := factory.WaitDeployed(context.Background(), deployTransactionHash)
 	if err == nil {
 		t.Fatal("returned failed chequebook deployment")
 	}

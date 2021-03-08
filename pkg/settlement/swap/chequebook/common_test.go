@@ -13,18 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
 
-type simpleSwapFactoryBindingMock struct {
-	erc20Address      func(*bind.CallOpts) (common.Address, error)
-	deployedContracts func(*bind.CallOpts, common.Address) (bool, error)
-}
-
-func (m *simpleSwapFactoryBindingMock) DeployedContracts(o *bind.CallOpts, a common.Address) (bool, error) {
-	return m.deployedContracts(o, a)
-}
-func (m *simpleSwapFactoryBindingMock) ERC20Address(o *bind.CallOpts) (common.Address, error) {
-	return m.erc20Address(o)
-}
-
 type simpleSwapBindingMock struct {
 	balance      func(*bind.CallOpts) (*big.Int, error)
 	issuer       func(*bind.CallOpts) (common.Address, error)
