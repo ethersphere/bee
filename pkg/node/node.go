@@ -364,7 +364,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, Standalone: o.Standalone})
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
-	p2ps.SetNotifier(kad)
+	p2ps.SetPickyNotifier(kad)
 	addrs, err := p2ps.Addresses()
 	if err != nil {
 		return nil, fmt.Errorf("get server addresses: %w", err)

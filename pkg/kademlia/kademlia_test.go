@@ -162,9 +162,10 @@ func TestManage(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		saturationVal  = false
-		saturationFunc = func(bin uint8, peers, connected *pslice.PSlice) bool {
-			return saturationVal
+		saturationVal     = false
+		overSaturationVal = false
+		saturationFunc    = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+			return saturationVal, overSaturationVal
 		}
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc, nil)
 	)
@@ -262,6 +263,61 @@ func TestBinSaturation(t *testing.T) {
 	waitCounter(t, &conns, 1)
 }
 
+func TestOversaturation(t *testing.T) {
+	defer func(p int) {
+		*kademlia.OverSaturationPeers = p
+	}(*kademlia.OverSaturationPeers)
+	*kademlia.OverSaturationPeers = 8
+
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, nil, nil)
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	// Add maximum accepted number of peers up until bin 5 without problems
+	for i := 0; i < 6; i++ {
+		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
+			addr := test.RandomAddressAt(base, i)
+			// if error is not nil as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+		}
+		// see depth is limited to currently added peers proximity
+		kDepth(t, kad, i)
+	}
+
+	// see depth is 5
+	kDepth(t, kad, 5)
+
+	for k := 0; k < 5; k++ {
+		// no further connections can be made
+		for l := 0; l < 3; l++ {
+			addr := test.RandomAddressAt(base, k)
+			// if error is not as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, topology.ErrOversaturated)
+			// check that pick works correctly
+			if kad.Pick(p2p.Peer{Address: addr}) {
+				t.Fatal("should not pick the peer")
+			}
+		}
+		// see depth is still as expected
+		kDepth(t, kad, 5)
+	}
+
+	// see we can still add / not limiting more peers in neighborhood depth
+	for m := 0; m < 12; m++ {
+		addr := test.RandomAddressAt(base, 5)
+		// if error is not nil as specified, connectOne goes fatal
+		connectOne(t, signer, kad, ab, addr, nil)
+		// see depth is still as expected
+		kDepth(t, kad, 5)
+	}
+}
+
 // TestNotifierHooks tests that the Connected/Disconnected hooks
 // result in the correct behavior once called.
 func TestNotifierHooks(t *testing.T) {
@@ -276,7 +332,7 @@ func TestNotifierHooks(t *testing.T) {
 	}
 	defer kad.Close()
 
-	connectOne(t, signer, kad, ab, peer)
+	connectOne(t, signer, kad, ab, peer, nil)
 
 	p, err := kad.ClosestPeer(addr)
 	if err != nil {
@@ -324,7 +380,7 @@ func TestDiscoveryHooks(t *testing.T) {
 
 	// add another peer that dialed in, check that all peers gossiped
 	// correctly to each other
-	connectOne(t, signer, kad, ab, p3)
+	connectOne(t, signer, kad, ab, p3, nil)
 	waitBcast(t, disc, p1, p3)
 	waitBcast(t, disc, p2, p3)
 	waitBcast(t, disc, p3, p1, p2)
@@ -725,7 +781,7 @@ func TestStart(t *testing.T) {
 	})
 }
 
-func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, peers, connected *pslice.PSlice) bool, bootnodes []ma.Multiaddr) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademlia(connCounter, failedConnCounter *int32, f func(bin uint8, peers, connected *pslice.PSlice) (bool, bool), bootnodes []ma.Multiaddr) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	pk, _ := crypto.GenerateSecp256k1Key()
 
 	var (
@@ -784,7 +840,7 @@ func removeOne(k *kademlia.Kad, peer swarm.Address) {
 
 const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 
-func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address) {
+func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address, expErr error) {
 	t.Helper()
 	multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
 	if err != nil {
@@ -798,7 +854,12 @@ func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addre
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	_ = k.Connected(context.Background(), p2p.Peer{Address: peer})
+	err = k.Connected(context.Background(), p2p.Peer{Address: peer})
+
+	if !errors.Is(err, expErr) {
+		t.Fatalf("expected error %v , got %v", expErr, err)
+	}
+
 }
 
 func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address) {

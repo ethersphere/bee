@@ -388,13 +388,13 @@ func TestTopologyNotifier(t *testing.T) {
 			n2disconnectedPeer = p
 		}
 	)
-	notifier1 := mockNotifier(n1c, n1d)
+	notifier1 := mockNotifier(n1c, n1d, true)
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
-	s1.SetNotifier(notifier1)
+	s1.SetPickyNotifier(notifier1)
 
-	notifier2 := mockNotifier(n2c, n2d)
+	notifier2 := mockNotifier(n2c, n2d, true)
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
-	s2.SetNotifier(notifier2)
+	s2.SetPickyNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
@@ -455,6 +455,62 @@ func TestTopologyNotifier(t *testing.T) {
 	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
 }
 
+func TestTopologyOverSaturated(t *testing.T) {
+	var (
+		mtx sync.Mutex
+		ctx = context.Background()
+
+		ab1, ab2 = addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore())
+
+		n1connectedPeer    p2p.Peer
+		n2connectedPeer    p2p.Peer
+		n2disconnectedPeer p2p.Peer
+
+		n1c = func(_ context.Context, p p2p.Peer) error {
+			mtx.Lock()
+			defer mtx.Unlock()
+			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
+			n1connectedPeer = p
+			return nil
+		}
+		n1d = func(p p2p.Peer) {}
+
+		n2c = func(_ context.Context, p p2p.Peer) error {
+			mtx.Lock()
+			defer mtx.Unlock()
+			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
+			n2connectedPeer = p
+			return nil
+		}
+		n2d = func(p p2p.Peer) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			n2disconnectedPeer = p
+		}
+	)
+	//this notifier will not pick the peer
+	notifier1 := mockNotifier(n1c, n1d, false)
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
+	s1.SetPickyNotifier(notifier1)
+
+	notifier2 := mockNotifier(n2c, n2d, false)
+	s2, _ := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
+	s2.SetPickyNotifier(notifier2)
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	_, err := s2.Connect(ctx, addr)
+	if err == nil {
+		t.Fatal("expected connect to fail but it didnt")
+	}
+
+	expectPeers(t, s1)
+	expectPeersEventually(t, s2)
+
+	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
+}
+
 func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
 	t.Helper()
 	for i, a := range addrs {
@@ -496,6 +552,7 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 type notifiee struct {
 	connected    func(context.Context, p2p.Peer) error
 	disconnected func(p2p.Peer)
+	pick         bool
 }
 
 func (n *notifiee) Connected(c context.Context, p p2p.Peer) error {
@@ -506,8 +563,12 @@ func (n *notifiee) Disconnected(p p2p.Peer) {
 	n.disconnected(p)
 }
 
-func mockNotifier(c cFunc, d dFunc) p2p.Notifier {
-	return &notifiee{connected: c, disconnected: d}
+func (n *notifiee) Pick(p p2p.Peer) bool {
+	return n.pick
+}
+
+func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
+	return &notifiee{connected: c, disconnected: d, pick: pick}
 }
 
 type cFunc func(context.Context, p2p.Peer) error
