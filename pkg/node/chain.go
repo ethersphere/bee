@@ -95,17 +95,11 @@ func InitChequebookFactory(
 		logger.Infof("using custom factory address: %x", addr)
 	}
 
-	chequebookFactory, err := chequebook.NewFactory(
+	return chequebook.NewFactory(
 		backend,
 		transactionService,
 		addr,
-		chequebook.NewSimpleSwapFactoryBindingFunc,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("new factory: %w", err)
-	}
-
-	return chequebookFactory, nil
+	), nil
 }
 
 // InitChequebookService will initialize the chequebook service with the given
