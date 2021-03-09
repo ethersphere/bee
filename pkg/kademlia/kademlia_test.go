@@ -214,7 +214,7 @@ func TestManageWithBalancing(t *testing.T) {
 			f := *saturationFuncImpl
 			return f(bin, peers, connected)
 		}
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, saturationFunc, nil, 2)
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
 	)
 
 	// implement satiration function (while having access to Kademlia instance)
