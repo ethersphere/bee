@@ -66,7 +66,7 @@ func (s *store) migrate(schemaName string) error {
 		if err != nil {
 			return err
 		}
-		schemaName, err = s.GetSchemaName()
+		schemaName, err = s.getSchemaName()
 		if err != nil {
 			return err
 		}

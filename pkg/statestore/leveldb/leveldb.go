@@ -46,7 +46,7 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		logger: l,
 	}
 
-	sn, err := s.GetSchemaName()
+	sn, err := s.getSchemaName()
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			_ = s.Close()
