@@ -36,16 +36,16 @@ var (
 
 type migration struct {
 	name string               // name of the schema
-	fn   func(s *Store) error // the migration function that needs to be performed in order to get to the current schema name
+	fn   func(s *store) error // the migration function that needs to be performed in order to get to the current schema name
 }
 
 // schemaMigrations contains an ordered list of the database schemes, that is
 // in order to run data migrations in the correct sequence
 var schemaMigrations = []migration{
-	{name: dbSchemaGrace, fn: func(s *Store) error { return nil }},
+	{name: dbSchemaGrace, fn: func(s *store) error { return nil }},
 }
 
-func (s *Store) migrate(schemaName string) error {
+func (s *store) migrate(schemaName string) error {
 	migrations, err := getMigrations(schemaName, dbSchemaCurrent, schemaMigrations, s)
 	if err != nil {
 		return fmt.Errorf("error getting migrations for current schema (%s): %w", schemaName, err)
@@ -78,7 +78,7 @@ func (s *Store) migrate(schemaName string) error {
 // getMigrations returns an ordered list of migrations that need be executed
 // with no errors in order to bring the statestore to the most up-to-date
 // schema definition
-func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []migration, store *Store) (migrations []migration, err error) {
+func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []migration, store *store) (migrations []migration, err error) {
 	foundCurrent := false
 	foundTarget := false
 	if currentSchema == dbSchemaCurrent {

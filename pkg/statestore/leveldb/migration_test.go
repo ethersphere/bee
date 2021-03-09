@@ -19,7 +19,6 @@ package leveldb
 import (
 	"errors"
 	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -38,22 +37,17 @@ func TestOneMigration(t *testing.T) {
 	ran := false
 	shouldNotRun := false
 	schemaMigrations = []migration{
-		{name: dbSchemaCode, fn: func(db *Store) error {
+		{name: dbSchemaCode, fn: func(db *store) error {
 			shouldNotRun = true // this should not be executed
 			return nil
 		}},
-		{name: dbSchemaNext, fn: func(db *Store) error {
+		{name: dbSchemaNext, fn: func(db *store) error {
 			ran = true
 			return nil
 		}},
 	}
 
-	dir, err := ioutil.TempDir("", "statestore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-
+	dir := t.TempDir()
 	logger := logging.New(ioutil.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
@@ -74,8 +68,11 @@ func TestOneMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sn := db.(interface {
+		GetSchemaName() (string, error)
+	})
 
-	schemaName, err := db.GetSchemaName()
+	schemaName, err := sn.GetSchemaName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,36 +108,32 @@ func TestManyMigrations(t *testing.T) {
 	executionOrder := []int{-1, -1, -1, -1}
 
 	schemaMigrations = []migration{
-		{name: dbSchemaCode, fn: func(db *Store) error {
+		{name: dbSchemaCode, fn: func(db *store) error {
 			shouldNotRun = true // this should not be executed
 			return nil
 		}},
-		{name: "keju", fn: func(db *Store) error {
+		{name: "keju", fn: func(db *store) error {
 			executionOrder[0] = 0
 			return nil
 		}},
-		{name: "coconut", fn: func(db *Store) error {
+		{name: "coconut", fn: func(db *store) error {
 			executionOrder[1] = 1
 			return nil
 		}},
-		{name: "mango", fn: func(db *Store) error {
+		{name: "mango", fn: func(db *store) error {
 			executionOrder[2] = 2
 			return nil
 		}},
-		{name: "salvation", fn: func(db *Store) error {
+		{name: "salvation", fn: func(db *store) error {
 			executionOrder[3] = 3
 			return nil
 		}},
 	}
 
-	dir, err := ioutil.TempDir("", "statestore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	logger := logging.New(ioutil.Discard, 0)
 
-	// start the fresh localstore with the sanctuary schema name
+	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -153,13 +146,17 @@ func TestManyMigrations(t *testing.T) {
 
 	dbSchemaCurrent = "salvation"
 
-	// start the existing localstore and expect the migration to run
+	// start the existing statestore and expect the migration to run
 	db, err = NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	schemaName, err := db.GetSchemaName()
+	sn := db.(interface {
+		GetSchemaName() (string, error)
+	})
+
+	schemaName, err := sn.GetSchemaName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,25 +192,20 @@ func TestMigrationErrorFrom(t *testing.T) {
 
 	shouldNotRun := false
 	schemaMigrations = []migration{
-		{name: "langur", fn: func(db *Store) error {
+		{name: "langur", fn: func(db *store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "coconut", fn: func(db *Store) error {
+		{name: "coconut", fn: func(db *store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "chutney", fn: func(db *Store) error {
+		{name: "chutney", fn: func(db *store) error {
 			shouldNotRun = true
 			return nil
 		}},
 	}
-
-	dir, err := ioutil.TempDir("", "statestore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	logger := logging.New(ioutil.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
@@ -251,25 +243,20 @@ func TestMigrationErrorTo(t *testing.T) {
 
 	shouldNotRun := false
 	schemaMigrations = []migration{
-		{name: "langur", fn: func(db *Store) error {
+		{name: "langur", fn: func(db *store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "coconut", fn: func(db *Store) error {
+		{name: "coconut", fn: func(db *store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "chutney", fn: func(db *Store) error {
+		{name: "chutney", fn: func(db *store) error {
 			shouldNotRun = true
 			return nil
 		}},
 	}
-
-	dir, err := ioutil.TempDir("", "statestore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	logger := logging.New(ioutil.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
