@@ -252,13 +252,9 @@ func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
 		return nil, err
 	}
 	signer := crypto.NewDefaultSigner(privKey)
+	s := soc.New(id, ch)
 
-	s, err := soc.NewSoc(id, ch, signer)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.Sign()
+	return s.Sign(signer)
 }
 
 type id struct{}

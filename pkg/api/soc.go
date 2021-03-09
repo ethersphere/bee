@@ -88,15 +88,15 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ss, err := soc.NewSignedSoc(id, ch, owner, sig)
+	ss, err := soc.NewSigned(id, ch, owner, sig)
 	if err != nil {
-		s.logger.Debugf("soc upload: signed soc error: %v", err)
-		s.logger.Error("soc upload: signed soc error")
-		jsonhttp.Unauthorized(w, "invalid signature")
+		s.logger.Debugf("soc upload: address soc error: %v", err)
+		s.logger.Error("soc upload: address soc error")
+		jsonhttp.Unauthorized(w, "invalid address")
 		return
 	}
 
-	chunk, err := ss.Chunk()
+	sch, err := ss.Chunk()
 	if err != nil {
 		s.logger.Debugf("soc upload: read chunk data error: %v", err)
 		s.logger.Error("soc upload: read chunk data error")
@@ -104,7 +104,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !soc.Valid(chunk) {
+	if !soc.Valid(sch) {
 		s.logger.Debugf("soc upload: invalid chunk: %v", err)
 		s.logger.Error("soc upload: invalid chunk")
 		jsonhttp.Unauthorized(w, "invalid chunk")
@@ -114,7 +114,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	has, err := s.storer.Has(ctx, chunk.Address())
+	has, err := s.storer.Has(ctx, sch.Address())
 	if err != nil {
 		s.logger.Debugf("soc upload: store has: %v", err)
 		s.logger.Error("soc upload: store has")
@@ -127,7 +127,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.storer.Put(ctx, requestModePut(r), chunk)
+	_, err = s.storer.Put(ctx, requestModePut(r), sch)
 	if err != nil {
 		s.logger.Debugf("soc upload: chunk write error: %v", err)
 		s.logger.Error("soc upload: chunk write error")
@@ -135,5 +135,5 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
+	jsonhttp.Created(w, chunkAddressResponse{Reference: sch.Address()})
 }

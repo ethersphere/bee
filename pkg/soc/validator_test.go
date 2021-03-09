@@ -33,12 +33,9 @@ func TestValidator(t *testing.T) {
 	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
 
-	s, err := soc.NewSoc(id, ch, signer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := soc.New(id, ch)
 
-	sch, err := s.Sign()
+	sch, err := s.Sign(signer)
 	if err != nil {
 		t.Fatal(err)
 	}

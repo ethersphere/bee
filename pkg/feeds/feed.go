@@ -112,7 +112,7 @@ func NewUpdate(f *Feed, idx Index, timestamp int64, payload []byte, sig []byte) 
 		return nil, fmt.Errorf("toChunk: %w", err)
 	}
 
-	ss, err := soc.NewSignedSoc(id, cac, f.Owner.Bytes(), sig)
+	ss, err := soc.NewSigned(id, cac, f.Owner.Bytes(), sig)
 	if err != nil {
 		return nil, fmt.Errorf("new signed soc: %w", err)
 	}

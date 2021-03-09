@@ -18,12 +18,6 @@ import (
 )
 
 func TestNewSoc(t *testing.T) {
-	privKey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(privKey)
-
 	payload := []byte("foo")
 	ch, err := cac.New(payload)
 	if err != nil {
@@ -31,28 +25,11 @@ func TestNewSoc(t *testing.T) {
 	}
 
 	id := make([]byte, 32)
-	s, err := soc.NewSoc(id, ch, signer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := soc.New(id, ch)
 
 	// check soc fields
 	if !bytes.Equal(s.ID(), id) {
 		t.Fatalf("id mismatch. got %x want %x", s.ID(), id)
-	}
-
-	expectedAddress, err := signer.EthereumAddress()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(s.OwnerAddress(), expectedAddress.Bytes()) {
-		t.Fatalf("owner mismatch. got %x want %x", s.OwnerAddress(), expectedAddress.Bytes())
-	}
-
-	// a NewSoc is not signed yet.
-	if !bytes.Equal(s.Signature(), nil) {
-		t.Fatal("signature not nil")
 	}
 
 	chunkData := s.WrappedChunk().Data()
@@ -81,7 +58,7 @@ func TestNewSignedSoc(t *testing.T) {
 	}
 
 	id := make([]byte, 32)
-	s, err := soc.NewSignedSoc(id, ch, owner.Bytes(), sig)
+	s, err := soc.NewSigned(id, ch, owner.Bytes(), sig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +105,7 @@ func TestChunk(t *testing.T) {
 
 	id := make([]byte, 32)
 	// creates a new soc
-	s, err := soc.NewSignedSoc(id, ch, owner.Bytes(), sig)
+	s, err := soc.NewSigned(id, ch, owner.Bytes(), sig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,13 +168,10 @@ func TestSign(t *testing.T) {
 
 	id := make([]byte, 32)
 	// creates the soc
-	s, err := soc.NewSoc(id, ch, signer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := soc.New(id, ch)
 
 	// signs the chunk
-	sch, err := s.Sign()
+	sch, err := s.Sign(signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,17 +224,14 @@ func TestFromChunk(t *testing.T) {
 	}
 
 	id := make([]byte, 32)
-	s, err := soc.NewSoc(id, ch, signer)
+	s := soc.New(id, ch)
+
+	sch, err := s.Sign(signer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sch, err := s.Sign()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rawSoc, err := soc.FromChunk(sch)
+	s2, err := soc.FromChunk(sch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +246,7 @@ func TestFromChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(ownerEthereumAddress, rawSoc.OwnerAddress()) {
-		t.Fatalf("owner address mismatch. got %x want %x", ownerEthereumAddress, rawSoc.OwnerAddress())
+	if !bytes.Equal(ownerEthereumAddress, s2.OwnerAddress()) {
+		t.Fatalf("owner address mismatch. got %x want %x", ownerEthereumAddress, s2.OwnerAddress())
 	}
 }

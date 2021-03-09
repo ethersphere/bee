@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -79,14 +80,19 @@ func TestSoc(t *testing.T) {
 		id := make([]byte, soc.IdSize)
 
 		// modify the sign
-		sig := s.Signature()
+		sch, err := s.Chunk()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cursor := soc.IdSize
+		sig := sch.Data()[cursor : cursor+soc.SignatureSize]
 		sig[12] = 0x98
 		sig[10] = 0x12
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusUnauthorized,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid signature",
+				Message: "invalid chunk",
 				Code:    http.StatusUnauthorized,
 			}),
 		)
@@ -96,7 +102,13 @@ func TestSoc(t *testing.T) {
 		s, owner, payload := mockSoc(t)
 		id := make([]byte, soc.IdSize)
 
-		sig := s.Signature()
+		sch, err := s.Chunk()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cursor := soc.IdSize
+		sig := sch.Data()[cursor : cursor+soc.SignatureSize]
+
 		addr, err := s.Address()
 		if err != nil {
 			t.Fatal(err)
@@ -115,13 +127,9 @@ func TestSoc(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ch, err := s.Sign()
-		if err != nil {
-			t.Fatal(err)
-		}
 
-		if !bytes.Equal(ch.Data(), data) {
-			t.Fatal("data retrieved doesnt match uploaded content")
+		if !bytes.Equal(sch.Data(), data) {
+			t.Fatal("data retrieved doesn't match uploaded content")
 		}
 	})
 
@@ -129,7 +137,12 @@ func TestSoc(t *testing.T) {
 		s, owner, payload := mockSoc(t)
 		id := make([]byte, soc.IdSize)
 
-		sig := s.Signature()
+		sch, err := s.Chunk()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cursor := soc.IdSize
+		sig := sch.Data()[cursor : cursor+soc.SignatureSize]
 		addr, err := s.Address()
 		if err != nil {
 			t.Fatal(err)
@@ -151,11 +164,23 @@ func TestSoc(t *testing.T) {
 	})
 }
 
+func ownerAddress(privKey *ecdsa.PrivateKey) ([]byte, error) {
+	ownerAddressBytes, err := crypto.NewEthereumAddress(privKey.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return soc.NewOwner(ownerAddressBytes)
+}
+
 // returns a valid, mocked SOC
 func mockSoc(t *testing.T) (*soc.Soc, []byte, []byte) {
 	// create a valid soc
 	id := make([]byte, soc.IdSize)
 	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := ownerAddress(privKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,11 +195,11 @@ func mockSoc(t *testing.T) (*soc.Soc, []byte, []byte) {
 	copy(fooBytes[8:], foo)
 	ch := swarm.NewChunk(address, fooBytes)
 
-	sch, err := soc.NewSoc(id, ch, signer)
+	s := soc.New(id, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = sch.Sign()
+	_, _ = s.Sign(signer)
 
-	return sch, sch.OwnerAddress(), ch.Data()
+	return s, owner, ch.Data()
 }
