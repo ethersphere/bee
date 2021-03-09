@@ -19,7 +19,7 @@ import (
 
 var _ storage.StateStorer = (*store)(nil)
 
-// Store uses LevelDB to store values.
+// store uses LevelDB to store values.
 type store struct {
 	db     *leveldb.DB
 	logger logging.Logger
@@ -40,10 +40,32 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		}
 		l.Warning("statestore recovery ok! you are kindly request to inform us about the steps that preceded the last Bee shutdown.")
 	}
-	return &store{
+
+	s := &store{
 		db:     db,
 		logger: l,
-	}, nil
+	}
+
+	sn, err := s.getSchemaName()
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			_ = s.Close()
+			return nil, fmt.Errorf("get schema name: %w", err)
+		}
+		// new statestore - put schema key with current name
+		if err := s.putSchemaName(dbSchemaCurrent); err != nil {
+			_ = s.Close()
+			return nil, fmt.Errorf("put schema name: %w", err)
+		}
+		sn = dbSchemaCurrent
+	}
+
+	if err = s.migrate(sn); err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+
+	return s, nil
 }
 
 // Get retrieves a value of the requested key. If no results are found,
@@ -99,6 +121,21 @@ func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 		}
 	}
 	return iter.Error()
+}
+
+func (s *store) getSchemaName() (string, error) {
+	name, err := s.db.Get([]byte(dbSchemaKey), nil)
+	if err != nil {
+		if errors.Is(err, leveldb.ErrNotFound) {
+			return "", storage.ErrNotFound
+		}
+		return "", err
+	}
+	return string(name), nil
+}
+
+func (s *store) putSchemaName(val string) error {
+	return s.db.Put([]byte(dbSchemaKey), []byte(val), nil)
 }
 
 // Close releases the resources used by the store.
