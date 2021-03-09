@@ -245,6 +245,9 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 	var attempts, connected int
 	var totalAttempts = maxBootnodeAttempts * len(k.bootnodes)
 
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
 	for _, addr := range k.bootnodes {
 		if attempts >= totalAttempts || connected >= 3 {
 			return
