@@ -76,7 +76,7 @@ func (s *Store) migrate(schemaName string) error {
 }
 
 // getMigrations returns an ordered list of migrations that need be executed
-// with no errors in order to bring the localstore to the most up-to-date
+// with no errors in order to bring the statestore to the most up-to-date
 // schema definition
 func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []migration, store *Store) (migrations []migration, err error) {
 	foundCurrent := false

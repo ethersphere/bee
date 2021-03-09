@@ -56,7 +56,7 @@ func TestOneMigration(t *testing.T) {
 
 	logger := logging.New(ioutil.Discard, 0)
 
-	// start the fresh localstore with the sanctuary schema name
+	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestOneMigration(t *testing.T) {
 
 	dbSchemaCurrent = dbSchemaNext
 
-	// start the existing localstore and expect the migration to run
+	// start the existing statestore and expect the migration to run
 	db, err = NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	defer os.RemoveAll(dir)
 	logger := logging.New(ioutil.Discard, 0)
 
-	// start the fresh localstore with the sanctuary schema name
+	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 
 	dbSchemaCurrent = "foo"
 
-	// start the existing localstore and expect the migration to run
+	// start the existing statestore and expect the migration to run
 	_, err = NewStateStore(dir, logger)
 	if !errors.Is(err, errMissingCurrentSchema) {
 		t.Fatalf("expected errCannotFindSchema but got %v", err)
@@ -272,7 +272,7 @@ func TestMigrationErrorTo(t *testing.T) {
 	defer os.RemoveAll(dir)
 	logger := logging.New(ioutil.Discard, 0)
 
-	// start the fresh localstore with the sanctuary schema name
+	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -285,7 +285,7 @@ func TestMigrationErrorTo(t *testing.T) {
 
 	dbSchemaCurrent = "foo"
 
-	// start the existing localstore and expect the migration to run
+	// start the existing statestore and expect the migration to run
 	_, err = NewStateStore(dir, logger)
 	if !errors.Is(err, errMissingTargetSchema) {
 		t.Fatalf("expected errMissingTargetSchema but got %v", err)
