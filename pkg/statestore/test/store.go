@@ -46,6 +46,7 @@ func (st *Serializing) UnmarshalBinary(data []byte) (err error) {
 // RunPersist is a specific test case for the persistent state store.
 // It tests that values persist across sessions.
 func RunPersist(t *testing.T, f func(t *testing.T, dir string) storage.StateStorer) {
+	t.Helper()
 	dir, err := ioutil.TempDir("", "statestore_test")
 	if err != nil {
 		t.Fatal(err)
@@ -225,5 +226,5 @@ func testStoreIterator(t *testing.T, store storage.StateStorer, prefix string, s
 func testEmpty(t *testing.T, store storage.StateStorer) {
 	t.Helper()
 
-	testStoreIterator(t, store, "", 0)
+	testStoreIterator(t, store, "", 1)
 }
