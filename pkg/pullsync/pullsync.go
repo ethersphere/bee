@@ -236,8 +236,11 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 	if len(chunksToPut) > 0 {
 		s.metrics.DbOpsCounter.Inc()
-		if err = s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
-			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", err)
+		if ierr := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); ierr != nil {
+			if err != nil {
+				ierr = fmt.Errorf(", sync err: %w", err)
+			}
+			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", ierr)
 		}
 	}
 	// there might have been an error in the for loop above,
