@@ -33,16 +33,16 @@ type testPriceTableObserver struct {
 	priceTable []uint64
 }
 
-func (t *testThresholdObserver) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error {
+func (t *testThresholdObserver) NotifyPaymentThreshold(peerAddr swarm.Address, paymentThreshold *big.Int) error {
 	t.called = true
-	t.peer = peer
+	t.peer = peerAddr
 	t.paymentThreshold = paymentThreshold
 	return nil
 }
 
-func (t *testPriceTableObserver) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error {
+func (t *testPriceTableObserver) NotifyPriceTable(peerAddr swarm.Address, priceTable []uint64) error {
 	t.called = true
-	t.peer = peer
+	t.peer = peerAddr
 	t.priceTable = priceTable
 	return nil
 }
@@ -130,14 +130,15 @@ func TestAnnouncePaymentThresholdAndPriceTable(t *testing.T) {
 	recipient := pricing.New(nil, logger, testThreshold, pricerMockService)
 	recipient.SetPaymentThresholdObserver(observer1)
 	recipient.SetPriceTableObserver(observer2)
+	peerID := swarm.MustParseHexAddress("9ee7add7")
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
+		streamtest.WithBaseAddr(peerID),
 	)
 
 	payer := pricing.New(recorder, logger, testThreshold, pricerMockService)
 
-	peerID := swarm.MustParseHexAddress("9ee7add7")
 	paymentThreshold := big.NewInt(10000)
 
 	err := payer.AnnouncePaymentThresholdAndPriceTable(context.Background(), peerID, paymentThreshold)

@@ -155,9 +155,13 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 
 		logger               = logging.New(ioutil.Discard, 0)
 		mockStorer           = storemock.NewStorer()
+		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
-		clientPricerMock     = pricermock.NewMockService(pricermock.WithPeerPrice(price))
-		serverPricerMock     = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithPrice(serverPrice))
+		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
+		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
+
+		clientPricerMock = pricermock.NewMockService(pricermock.WithPeerPrice(price))
+		serverPricerMock = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithPrice(serverPrice))
 	)
 
 	// put testdata in the mock store of the server
@@ -170,9 +174,8 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, serverPricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
+		streamtest.WithBaseAddr(clientAddr),
 	)
-
-	clientMockAccounting := accountingmock.NewAccounting()
 
 	// client mock storer does not store any data at this point
 	// but should be checked at at the end of the test for the
@@ -180,12 +183,11 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
-	peerID := swarm.MustParseHexAddress("9ee7add7")
 	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-		_, _, _ = f(peerID, 0)
+		_, _, _ = f(serverAddr, 0)
 		return nil
 	}}
-	client := retrieval.New(swarm.MustParseHexAddress("9ee7add8"), clientMockStorer, recorder, ps, logger, clientMockAccounting, clientPricerMock, nil)
+	client := retrieval.New(clientAddr, clientMockStorer, recorder, ps, logger, clientMockAccounting, clientPricerMock, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, chunk.Address())
@@ -195,7 +197,7 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	if !bytes.Equal(v.Data(), chunk.Data()) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
 	}
-	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
+	records, err := recorder.Records(serverAddr, "retrieval", "1.0.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,13 +239,12 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 		t.Fatalf("got too many deliveries. want 1 got %d", len(gotDeliveries))
 	}
 
-	clientBalance, _ := clientMockAccounting.Balance(peerID)
-
+	clientBalance, _ := clientMockAccounting.Balance(serverAddr)
 	if clientBalance.Cmp(big.NewInt(-int64(serverPrice))) != 0 {
 		t.Fatalf("unexpected balance on client. want %d got %d", -serverPrice, clientBalance)
 	}
 
-	serverBalance, _ := serverMockAccounting.Balance(peerID)
+	serverBalance, _ := serverMockAccounting.Balance(clientAddr)
 	if serverBalance.Cmp(big.NewInt(int64(serverPrice))) != 0 {
 		t.Fatalf("unexpected balance on server. want %d got %d", serverPrice, serverBalance)
 	}

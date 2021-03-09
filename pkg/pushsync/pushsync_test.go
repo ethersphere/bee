@@ -117,7 +117,7 @@ func TestSendChunkAfterPriceUpdate(t *testing.T) {
 	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, serverPrices, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
-	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()))
+	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
@@ -149,7 +149,7 @@ func TestSendChunkAfterPriceUpdate(t *testing.T) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(serverPrice), balance)
 	}
 
-	balance, err = peerAccounting.Balance(closestPeer)
+	balance, err = peerAccounting.Balance(pivotNode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,13 +472,13 @@ func TestHandlerWithUpdate(t *testing.T) {
 	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
-	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()))
+	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
 
 	// creating the pivot peer who will act as a forwarder node with a higher price (17)
 	psPivot, storerPivotDB, _, pivotAccounting := createPushSyncNode(t, pivotPeer, serverPrices, closestRecorder, nil, mock.WithClosestPeer(closestPeer))
 	defer storerPivotDB.Close()
 
-	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()))
+	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()), streamtest.WithBaseAddr(triggerPeer))
 
 	// Creating the trigger peer with default price (10)
 	psTriggerPeer, triggerStorerDB, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, pivotRecorder, nil, mock.WithClosestPeer(pivotPeer))
@@ -518,7 +518,7 @@ func TestHandlerWithUpdate(t *testing.T) {
 
 	// we need to check here for pivotPeer instead of triggerPeer because during streamtest the peer in the handler is actually the receiver
 	// balance on forwarding peer for the triggering peer should show serverPrice (17)
-	balance, err = pivotAccounting.Balance(pivotPeer)
+	balance, err = pivotAccounting.Balance(triggerPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +536,7 @@ func TestHandlerWithUpdate(t *testing.T) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
-	balance, err = closestAccounting.Balance(closestPeer)
+	balance, err = closestAccounting.Balance(pivotPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
