@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -387,7 +387,7 @@ func TestHandler(t *testing.T) {
 
 func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
 	t.Helper()
-	logger := logging.New(os.Stdout, 5)
+	logger := logging.New(ioutil.Discard, 0)
 
 	storer, err := localstore.New("", addr.Bytes(), nil, logger)
 	if err != nil {
