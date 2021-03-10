@@ -146,7 +146,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	}
 	db.metrics.GCCollectedCounter.Inc()
 
-	db.metrics.GCSize.Set(float64(gcSize-collectedCount))
+	db.metrics.GCSize.Set(float64(gcSize - collectedCount))
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
