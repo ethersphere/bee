@@ -104,7 +104,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	if err != nil {
 		return 0, true, err
 	}
-	db.metrics.GCSize.Inc()
+	db.metrics.GCSize.Set(float64(gcSize))
 
 	done = true
 	err = db.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
@@ -146,6 +146,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	}
 	db.metrics.GCCollectedCounter.Inc()
 
+	db.metrics.GCSize.Set(float64(gcSize-collectedCount))
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
@@ -267,6 +268,7 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 		newSize = gcSize - c
 	}
 	db.gcSize.PutInBatch(batch, newSize)
+	db.metrics.GCSize.Set(float64(newSize))
 
 	// trigger garbage collection if we reached the capacity
 	if newSize >= db.capacity {
