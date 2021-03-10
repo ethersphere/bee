@@ -224,9 +224,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
 
 		w, r := protobuf.NewWriterAndReader(streamer)
-		ctx, cancel := context.WithTimeout(ctx, timeToWaitForReceipt)
-		defer cancel()
-		if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
+		ctxd, cancel := context.WithTimeout(ctx, timeToWaitForReceipt)
+		deferFuncs = append(deferFuncs, func() { cancel() })
+		if err := w.WriteMsgWithContext(ctxd, &pb.Delivery{
 			Address: ch.Address().Bytes(),
 			Data:    ch.Data(),
 		}); err != nil {
@@ -249,9 +249,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		}
 
 		var receipt pb.Receipt
-		cctx, cancel := context.WithTimeout(ctx, timeToWaitForReceipt)
-		defer cancel()
-		if err := r.ReadMsgWithContext(cctx, &receipt); err != nil {
+		ctxr, cancelr := context.WithTimeout(ctx, timeToWaitForReceipt)
+		deferFuncs = append(deferFuncs, func() { cancelr() })
+		if err := r.ReadMsgWithContext(ctxr, &receipt); err != nil {
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
 			continue
