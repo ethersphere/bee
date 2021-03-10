@@ -129,9 +129,9 @@ func TestFeederFlush(t *testing.T) {
 		span      uint64 // expected span of written data
 	}{
 		{
-			name:      "empty write",
+			name:      "empty file",
 			dataSize:  []int{0},
-			expWrites: 0,
+			expWrites: 1,
 		},
 		{
 			name:      "less than chunk, one write",
