@@ -56,6 +56,27 @@ func TestHelloWorld(t *testing.T) {
 	}
 }
 
+// TestEmpty tests that a hash is generated for an empty file.
+func TestEmpty(t *testing.T) {
+	m := mock.NewStorer()
+	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+
+	data := []byte{}
+	_, err := p.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sum, err := p.Sum()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := swarm.MustParseHexAddress("ffd70157e48063fc33c97a050f7f640233bf646cc98d9524c6b92bcf3ab56f83")
+	if !bytes.Equal(exp.Bytes(), sum) {
+		t.Fatalf("expected %s got %s", exp.String(), hex.EncodeToString(sum))
+	}
+}
+
 func TestAllVectors(t *testing.T) {
 	for i := 1; i <= 20; i++ {
 		data, expect := test.GetVector(t, i)

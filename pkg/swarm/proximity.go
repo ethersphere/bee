@@ -36,3 +36,23 @@ func Proximity(one, other []byte) (ret uint8) {
 	}
 	return MaxPO
 }
+
+func ExtendedProximity(one, other []byte) (ret uint8) {
+	b := ExtendedPO/8 + 1
+	if l := uint8(len(one)); b > l {
+		b = l
+	}
+	if l := uint8(len(other)); b > l {
+		b = l
+	}
+	var m uint8 = 8
+	for i := uint8(0); i < b; i++ {
+		oxo := one[i] ^ other[i]
+		for j := uint8(0); j < m; j++ {
+			if (oxo>>(7-j))&0x01 != 0 {
+				return i*8 + j
+			}
+		}
+	}
+	return ExtendedPO
+}
