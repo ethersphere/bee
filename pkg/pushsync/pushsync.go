@@ -58,7 +58,7 @@ type PushSync struct {
 	tracer        *tracing.Tracer
 }
 
-var timeToLive = 3 * time.Second // request time to live
+var timeToLive = 5 * time.Second // request time to live
 
 func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
