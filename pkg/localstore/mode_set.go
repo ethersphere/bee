@@ -33,11 +33,11 @@ import (
 // Set is required to implement chunk.Store
 // interface.
 func (db *DB) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
-	db.metrics.ModePut.Inc()
+	db.metrics.ModeSet.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeSet, time.Now())
 	err = db.set(mode, addrs...)
 	if err != nil {
-		db.metrics.ModePutFailure.Inc()
+		db.metrics.ModeSetFailure.Inc()
 	}
 	return err
 }
