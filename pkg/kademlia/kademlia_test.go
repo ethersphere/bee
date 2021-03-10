@@ -167,7 +167,7 @@ func TestManage(t *testing.T) {
 		saturationFunc    = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 			return saturationVal, overSaturationVal
 		}
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{SaturationFunc: saturationFunc})
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BitSuffixLength: -1, SaturationFunc: saturationFunc})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -202,6 +202,65 @@ func TestManage(t *testing.T) {
 	waitCounter(t, &conns, 0)
 }
 
+func TestManageWithBalancing(t *testing.T) {
+	// use "fixed" seed for this
+	rand.Seed(2)
+
+	var (
+		conns int32 // how many connect calls were made to the p2p mock
+
+		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice) (bool, bool)
+		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+			f := *saturationFuncImpl
+			return f(bin, peers, connected)
+		}
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
+	)
+
+	// implement satiration function (while having access to Kademlia instance)
+	sfImpl := func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+		return kad.IsBalanced(bin), false
+	}
+	saturationFuncImpl = &sfImpl
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	// add peers for bin '0', enough to have balanced connections
+	for i := 0; i < 20; i++ {
+		addr := test.RandomAddressAt(base, 0)
+		addOne(t, signer, kad, ab, addr)
+	}
+
+	waitBalanced(t, kad, 0)
+
+	// add peers for other bins, enough to have balanced connections
+	for i := 1; i <= int(swarm.MaxPO); i++ {
+		for j := 0; j < 20; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, signer, kad, ab, addr)
+		}
+		// sanity check depth
+		kDepth(t, kad, i)
+	}
+
+	// Without introducing ExtendedPO / ExtendedProximity, we could only have balanced connections until a depth of 12
+	// That is because, the proximity expected for a balanced connection is Bin + 1 + suffix length
+	// But, Proximity(one, other) is limited to return MaxPO.
+	// So, when we get to 1 + suffix length near MaxPO, our expected proximity is not returned,
+	// even if the addresses match in the expected number of bits, because of the MaxPO limiting
+	// Without extendedPO, suffix length is 2, + 1 = 3, MaxPO is 15,
+	// so we could only have balanced connections for up until bin 12, but not bin 13,
+	// as we would be expecting proximity of pseudoaddress-balancedConnection as 16 and get 15 only
+
+	for i := 1; i <= int(swarm.MaxPO); i++ {
+		waitBalanced(t, kad, uint8(i))
+	}
+
+}
+
 // TestBinSaturation tests the builtin binSaturated function.
 // the test must have two phases of adding peers so that the section
 // beyond the first flow control statement gets hit (if po >= depth),
@@ -216,7 +275,7 @@ func TestBinSaturation(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BitSuffixLength: -1})
 		peers                    []swarm.Address
 	)
 
@@ -1032,4 +1091,24 @@ func isIn(addr swarm.Address, addrs []swarm.Address) bool {
 		}
 	}
 	return false
+}
+
+// waitBalanced waits for kademlia to be balanced for specified bin.
+func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
+	t.Helper()
+
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			t.Fatalf("timed out waiting to be balanced for bin: %d", int(bin))
+		default:
+		}
+
+		if balanced := k.IsBalanced(bin); balanced {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
 }

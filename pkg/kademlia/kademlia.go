@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/bits"
 	"sync"
 	"time"
 
@@ -23,9 +25,10 @@ import (
 )
 
 const (
-	nnLowWatermark      = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
-	maxConnAttempts     = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
-	maxBootnodeAttempts = 3 // how many attempts to dial to bootnodes before giving up
+	nnLowWatermark         = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	maxConnAttempts        = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	maxBootnodeAttempts    = 3 // how many attempts to dial to bootnodes before giving up
+	defaultBitSuffixLength = 2 // the number of bits used to create pseudo addresses for balancing
 )
 
 var (
@@ -41,35 +44,38 @@ type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturat
 
 // Options for injecting services to Kademlia.
 type Options struct {
-	SaturationFunc binSaturationFunc
-	Bootnodes      []ma.Multiaddr
-	StandaloneMode bool
-	BootnodeMode   bool
+	SaturationFunc  binSaturationFunc
+	Bootnodes       []ma.Multiaddr
+	StandaloneMode  bool
+	BootnodeMode    bool
+	BitSuffixLength int
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
 type Kad struct {
-	base           swarm.Address         // this node's overlay address
-	discovery      discovery.Driver      // the discovery driver
-	addressBook    addressbook.Interface // address book to get underlays
-	p2p            p2p.Service           // p2p service to connect to nodes with
-	saturationFunc binSaturationFunc     // pluggable saturation function
-	connectedPeers *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
-	knownPeers     *pslice.PSlice        // both are po aware slice of addresses
-	bootnodes      []ma.Multiaddr
-	depth          uint8                // current neighborhood depth
-	depthMu        sync.RWMutex         // protect depth changes
-	manageC        chan struct{}        // trigger the manage forever loop to connect to new peers
-	waitNext       map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
-	waitNextMu     sync.Mutex           // synchronize map
-	peerSig        []chan struct{}
-	peerSigMtx     sync.Mutex
-	logger         logging.Logger // logger
-	standalone     bool           // indicates whether the node is working in standalone mode
-	bootnode       bool           // indicates whether the node is working in bootnode mode
-	quit           chan struct{}  // quit channel
-	done           chan struct{}  // signal that `manage` has quit
-	wg             sync.WaitGroup
+	base              swarm.Address         // this node's overlay address
+	discovery         discovery.Driver      // the discovery driver
+	addressBook       addressbook.Interface // address book to get underlays
+	p2p               p2p.Service           // p2p service to connect to nodes with
+	saturationFunc    binSaturationFunc     // pluggable saturation function
+	bitSuffixLength   int                   // additional depth of common prefix for bin
+	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
+	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
+	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
+	bootnodes         []ma.Multiaddr
+	depth             uint8                // current neighborhood depth
+	depthMu           sync.RWMutex         // protect depth changes
+	manageC           chan struct{}        // trigger the manage forever loop to connect to new peers
+	waitNext          map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
+	waitNextMu        sync.Mutex           // synchronize map
+	peerSig           []chan struct{}
+	peerSigMtx        sync.Mutex
+	logger            logging.Logger // logger
+	standalone        bool           // indicates whether the node is working in standalone mode
+	bootnode          bool           // indicates whether the node is working in bootnode mode
+	quit              chan struct{}  // quit channel
+	done              chan struct{}  // signal that `manage` has quit
+	wg                sync.WaitGroup
 }
 
 type retryInfo struct {
@@ -82,27 +88,117 @@ func New(base swarm.Address, addressbook addressbook.Interface, discovery discov
 	if o.SaturationFunc == nil {
 		o.SaturationFunc = binSaturated
 	}
+	if o.BitSuffixLength == 0 {
+		o.BitSuffixLength = defaultBitSuffixLength
+	}
 
 	k := &Kad{
-		base:           base,
-		discovery:      discovery,
-		addressBook:    addressbook,
-		p2p:            p2p,
-		saturationFunc: o.SaturationFunc,
-		connectedPeers: pslice.New(int(swarm.MaxBins)),
-		knownPeers:     pslice.New(int(swarm.MaxBins)),
-		bootnodes:      o.Bootnodes,
-		manageC:        make(chan struct{}, 1),
-		waitNext:       make(map[string]retryInfo),
-		logger:         logger,
-		standalone:     o.StandaloneMode,
-		bootnode:       o.BootnodeMode,
-		quit:           make(chan struct{}),
-		done:           make(chan struct{}),
-		wg:             sync.WaitGroup{},
+		base:              base,
+		discovery:         discovery,
+		addressBook:       addressbook,
+		p2p:               p2p,
+		saturationFunc:    o.SaturationFunc,
+		bitSuffixLength:   o.BitSuffixLength,
+		commonBinPrefixes: make([][]swarm.Address, int(swarm.MaxBins)),
+		connectedPeers:    pslice.New(int(swarm.MaxBins)),
+		knownPeers:        pslice.New(int(swarm.MaxBins)),
+		bootnodes:         o.Bootnodes,
+		manageC:           make(chan struct{}, 1),
+		waitNext:          make(map[string]retryInfo),
+		logger:            logger,
+		standalone:        o.StandaloneMode,
+		bootnode:          o.BootnodeMode,
+		quit:              make(chan struct{}),
+		done:              make(chan struct{}),
+		wg:                sync.WaitGroup{},
+	}
+
+	if k.bitSuffixLength > 0 {
+		k.generateCommonBinPrefixes()
 	}
 
 	return k
+}
+
+func (k *Kad) generateCommonBinPrefixes() {
+	bitCombinationsCount := int(math.Pow(2, float64(k.bitSuffixLength)))
+	bitSufixes := make([]uint8, bitCombinationsCount)
+
+	for i := 0; i < bitCombinationsCount; i++ {
+		bitSufixes[i] = uint8(i)
+	}
+
+	addr := swarm.MustParseHexAddress(k.base.String())
+	addrBytes := addr.Bytes()
+	_ = addrBytes
+
+	binPrefixes := k.commonBinPrefixes
+
+	// copy base address
+	for i := range binPrefixes {
+		binPrefixes[i] = make([]swarm.Address, bitCombinationsCount)
+	}
+
+	for i := range binPrefixes {
+		for j := range binPrefixes[i] {
+			pseudoAddrBytes := make([]byte, len(k.base.Bytes()))
+			copy(pseudoAddrBytes, k.base.Bytes())
+			binPrefixes[i][j] = swarm.NewAddress(pseudoAddrBytes)
+		}
+	}
+
+	for i := range binPrefixes {
+		for j := range binPrefixes[i] {
+			pseudoAddrBytes := binPrefixes[i][j].Bytes()
+
+			// flip first bit for bin
+			indexByte, posBit := i/8, i%8
+			if hasBit(bits.Reverse8(pseudoAddrBytes[indexByte]), uint8(posBit)) {
+				pseudoAddrBytes[indexByte] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[indexByte]), uint8(posBit)))
+			} else {
+				pseudoAddrBytes[indexByte] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[indexByte]), uint8(posBit)))
+			}
+
+			// set pseudo suffix
+			bitSuffixPos := k.bitSuffixLength - 1
+			for l := i + 1; l < i+k.bitSuffixLength+1; l++ {
+				index, pos := l/8, l%8
+
+				if hasBit(bitSufixes[j], uint8(bitSuffixPos)) {
+					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+				} else {
+					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+				}
+
+				bitSuffixPos--
+			}
+
+			// clear rest of the bits
+			for l := i + k.bitSuffixLength + 1; l < len(pseudoAddrBytes)*8; l++ {
+				index, pos := l/8, l%8
+				pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+			}
+		}
+	}
+
+}
+
+// Clears the bit at pos in n.
+func clearBit(n, pos uint8) uint8 {
+	mask := ^(uint8(1) << pos)
+	n &= mask
+	return n
+}
+
+// Sets the bit at pos in the integer n.
+func setBit(n, pos uint8) uint8 {
+	n |= (1 << pos)
+	return n
+}
+
+func hasBit(n, pos uint8) bool {
+	val := n & (1 << pos)
+	return (val > 0)
 }
 
 // manage is a forever loop that manages the connection to new peers
@@ -141,7 +237,112 @@ func (k *Kad) manage() {
 			if k.standalone {
 				continue
 			}
-			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+
+			// attempt balanced connection first
+			err := func() error {
+				// for each bin
+				for i := range k.commonBinPrefixes {
+
+					// and each pseudo address
+					for j := range k.commonBinPrefixes[i] {
+						pseudoAddr := k.commonBinPrefixes[i][j]
+
+						closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, swarm.ZeroAddress)
+						if err != nil {
+							if errors.Is(err, topology.ErrNotFound) {
+								break
+							}
+
+							k.logger.Errorf("closest connected peer: %v", err)
+							continue
+						}
+
+						// check proximity
+						closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
+
+						if int(closestConnectedPO) < i+k.bitSuffixLength+1 {
+							// connect to closest known peer
+
+							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, swarm.ZeroAddress)
+							if err != nil {
+								if errors.Is(err, topology.ErrNotFound) {
+									break
+								}
+
+								k.logger.Errorf("closest known peer: %v", err)
+								continue
+							}
+
+							if k.connectedPeers.Exists(closestKnownPeer) {
+								continue
+							}
+
+							closestKnownPeerPO := swarm.ExtendedProximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
+
+							if int(closestKnownPeerPO) < i+k.bitSuffixLength+1 {
+								continue
+							}
+
+							peer := closestKnownPeer
+
+							bzzAddr, err := k.addressBook.Get(peer)
+							if err != nil {
+								if err == addressbook.ErrNotFound {
+									k.logger.Debugf("failed to get address book entry for peer: %s", peer.String())
+									peerToRemove = peer
+									return errMissingAddressBookEntry
+								}
+								// either a peer is not known in the address book, in which case it
+								// should be removed, or that some severe I/O problem is at hand
+								return err
+							}
+
+							po := swarm.Proximity(k.base.Bytes(), peer.Bytes())
+
+							err = k.connect(ctx, peer, bzzAddr.Underlay, po)
+							if err != nil {
+								if errors.Is(err, errOverlayMismatch) {
+									k.knownPeers.Remove(peer, po)
+									if err := k.addressBook.Remove(peer); err != nil {
+										k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
+									}
+								}
+								k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
+								k.logger.Warningf("peer not reachable when attempting to connect")
+								// continue to next
+								return nil
+							}
+
+							k.waitNextMu.Lock()
+							k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
+							k.waitNextMu.Unlock()
+
+							k.connectedPeers.Add(peer, po)
+
+							k.depthMu.Lock()
+							k.depth = recalcDepth(k.connectedPeers)
+							k.depthMu.Unlock()
+
+							k.logger.Debugf("connected to peer: %s for bin: %d", peer, i)
+
+							k.notifyPeerSig()
+						}
+					}
+				}
+				return nil
+			}()
+			k.logger.Tracef("kademlia balanced connector took %s to finish", time.Since(start))
+
+			if err != nil {
+				if errors.Is(err, errMissingAddressBookEntry) {
+					po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
+					k.knownPeers.Remove(peerToRemove, po)
+				} else {
+					k.logger.Errorf("kademlia manage loop iterator: %v", err)
+				}
+			}
+
+			err = k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
@@ -550,6 +751,46 @@ func (k *Kad) notifyPeerSig() {
 	}
 }
 
+func closestPeer(peers *pslice.PSlice, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
+	closest := swarm.Address{}
+	err := peers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		for _, a := range skipPeers {
+			if a.Equal(peer) {
+				return false, false, nil
+			}
+		}
+		if closest.IsZero() {
+			closest = peer
+			return false, false, nil
+		}
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
+		if err != nil {
+			return false, false, err
+		}
+		switch dcmp {
+		case 0:
+			// do nothing
+		case -1:
+			// current peer is closer
+			closest = peer
+		case 1:
+			// closest is already closer to chunk
+			// do nothing
+		}
+		return false, false, nil
+	})
+	if err != nil {
+		return swarm.Address{}, err
+	}
+
+	// check if found
+	if closest.IsZero() {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	return closest, nil
+}
+
 // ClosestPeer returns the closest peer to a given address.
 func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
@@ -640,6 +881,32 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 
 func (k *Kad) neighborhoodDepth() uint8 {
 	return k.depth
+}
+
+// IsBalanced returns if Kademlia is balanced to bin.
+func (k *Kad) IsBalanced(bin uint8) bool {
+	k.depthMu.RLock()
+	defer k.depthMu.RUnlock()
+
+	if int(bin) > len(k.commonBinPrefixes) {
+		return false
+	}
+
+	// for each pseudo address
+	for i := range k.commonBinPrefixes[bin] {
+		pseudoAddr := k.commonBinPrefixes[bin][i]
+		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, swarm.ZeroAddress)
+		if err != nil {
+			return false
+		}
+
+		closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
+		if int(closestConnectedPO) < int(bin)+k.bitSuffixLength+1 {
+			return false
+		}
+	}
+
+	return true
 }
 
 // MarshalJSON returns a JSON representation of Kademlia.
