@@ -11,6 +11,7 @@ jobs:
     name: Infra tests
     env:
       REPLICA: 3
+      RUN_TYPE: "PR RUN"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -134,6 +135,7 @@ jobs:
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
           docker push ethersphere/bee:latest
+          echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
       - name: Set IMAGE_DIGEST variable
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
@@ -164,7 +166,7 @@ jobs:
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval-2.outcome=='failure' }}; then FAILED=retrieval-2; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Merge run**\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}**\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
