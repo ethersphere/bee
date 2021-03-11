@@ -6,8 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -15,14 +13,13 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/soc"
+	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
@@ -37,8 +34,9 @@ func TestSoc(t *testing.T) {
 			Storer: mockStorer,
 			Tags:   tag,
 		})
+		testData   = []byte("foo")
+		hexPrivKey = "634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd"
 	)
-
 	t.Run("cmpty data", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "bb", "cc"), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -76,21 +74,16 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("signature invalid", func(t *testing.T) {
-		s, owner, payload := mockSoc(t)
-		id := make([]byte, soc.IdSize)
+		s := testingsoc.GenerateMockSoc(hexPrivKey, testData)
 
 		// modify the sign
-		sch, err := s.Chunk()
-		if err != nil {
-			t.Fatal(err)
-		}
-		cursor := soc.IdSize
-		sig := sch.Data()[cursor : cursor+soc.SignatureSize]
+		sig := make([]byte, soc.SignatureSize)
+		copy(sig, s.Signature)
 		sig[12] = 0x98
 		sig[10] = 0x12
 
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusUnauthorized,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(sig)), http.StatusUnauthorized,
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "invalid chunk",
 				Code:    http.StatusUnauthorized,
@@ -99,22 +92,18 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		s, owner, payload := mockSoc(t)
-		id := make([]byte, soc.IdSize)
-
-		sch, err := s.Chunk()
+		s := testingsoc.GenerateMockSoc(hexPrivKey, testData)
+		ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
 		if err != nil {
 			t.Fatal(err)
 		}
-		cursor := soc.IdSize
-		sig := sch.Data()[cursor : cursor+soc.SignatureSize]
-
-		addr, err := s.Address()
+		addr, err := ss.Address()
 		if err != nil {
 			t.Fatal(err)
 		}
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusCreated,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
 				Reference: addr,
 			}),
@@ -128,33 +117,34 @@ func TestSoc(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		sch, err := ss.Chunk()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !bytes.Equal(sch.Data(), data) {
 			t.Fatal("data retrieved doesn't match uploaded content")
 		}
 	})
 
 	t.Run("already exists", func(t *testing.T) {
-		s, owner, payload := mockSoc(t)
-		id := make([]byte, soc.IdSize)
+		s := testingsoc.GenerateMockSoc(hexPrivKey, nil)
+		ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr, err := ss.Address()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		sch, err := s.Chunk()
-		if err != nil {
-			t.Fatal(err)
-		}
-		cursor := soc.IdSize
-		sig := sch.Data()[cursor : cursor+soc.SignatureSize]
-		addr, err := s.Address()
-		if err != nil {
-			t.Fatal(err)
-		}
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusCreated,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
 				Reference: addr,
 			}),
 		)
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(owner), hex.EncodeToString(id), hex.EncodeToString(sig)), http.StatusConflict,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusConflict,
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(
 				jsonhttp.StatusResponse{
 					Message: "chunk already exists",
@@ -162,44 +152,4 @@ func TestSoc(t *testing.T) {
 				}),
 		)
 	})
-}
-
-func ownerAddress(privKey *ecdsa.PrivateKey) ([]byte, error) {
-	ownerAddressBytes, err := crypto.NewEthereumAddress(privKey.PublicKey)
-	if err != nil {
-		return nil, err
-	}
-	return soc.NewOwner(ownerAddressBytes)
-}
-
-// returns a valid, mocked SOC
-func mockSoc(t *testing.T) (*soc.Soc, []byte, []byte) {
-	// create a valid soc
-	id := make([]byte, soc.IdSize)
-	privKey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner, err := ownerAddress(privKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(privKey)
-
-	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
-	address := swarm.MustParseHexAddress(bmtHashOfFoo)
-	foo := "foo"
-	fooLength := len(foo)
-	fooBytes := make([]byte, 8+fooLength)
-	binary.LittleEndian.PutUint64(fooBytes, uint64(fooLength))
-	copy(fooBytes[8:], foo)
-	ch := swarm.NewChunk(address, fooBytes)
-
-	s := soc.New(id, ch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _ = s.Sign(signer)
-
-	return s, owner, ch.Data()
 }
