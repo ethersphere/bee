@@ -144,7 +144,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	s.id = chunkData[cursor:IdSize]
 	cursor += IdSize
 
-	signature := chunkData[cursor : cursor+SignatureSize]
+	s.signature = chunkData[cursor : cursor+SignatureSize]
 	cursor += SignatureSize
 
 	ch, err := cac.NewWithDataSpan(chunkData[cursor:])
@@ -158,7 +158,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	}
 
 	// recover owner information
-	recoveredEthereumAddress, err := recoverAddress(signature, toSignBytes)
+	recoveredEthereumAddress, err := recoverAddress(s.signature, toSignBytes)
 	if err != nil {
 		return nil, err
 	}
