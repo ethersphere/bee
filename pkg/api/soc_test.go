@@ -82,7 +82,7 @@ func TestSoc(t *testing.T) {
 		sig[10] = 0x12
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(sig)), http.StatusUnauthorized,
-			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "invalid chunk",
 				Code:    http.StatusUnauthorized,
@@ -92,58 +92,38 @@ func TestSoc(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		s := testingsoc.GenerateMockSoc(testData)
-		ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
-		if err != nil {
-			t.Fatal(err)
-		}
-		addr, err := ss.Address()
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
-			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
-				Reference: addr,
+				Reference: s.Address(),
 			}),
 		)
 
 		// try to fetch the same chunk
-		rsrc := fmt.Sprintf("/chunks/" + addr.String())
+		rsrc := fmt.Sprintf("/chunks/" + s.Address().String())
 		resp := request(t, client, http.MethodGet, rsrc, nil, http.StatusOK)
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		sch, err := ss.Chunk()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(sch.Data(), data) {
+		if !bytes.Equal(s.Chunk().Data(), data) {
 			t.Fatal("data retrieved doesn't match uploaded content")
 		}
 	})
 
 	t.Run("already exists", func(t *testing.T) {
 		s := testingsoc.GenerateMockSoc(testData)
-		ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
-		if err != nil {
-			t.Fatal(err)
-		}
-		addr, err := ss.Address()
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
-			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
-				Reference: addr,
+				Reference: s.Address(),
 			}),
 		)
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusConflict,
-			jsonhttptest.WithRequestBody(bytes.NewReader(s.Chunk.Data())),
+			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(
 				jsonhttp.StatusResponse{
 					Message: "chunk already exists",

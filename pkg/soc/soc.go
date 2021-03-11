@@ -28,7 +28,7 @@ type ID []byte
 // Owner is the address in bytes of soc owner.
 type Owner []byte
 
-// NewOwner creates a new Owner ensuring a valid length address of soc owner.
+// NewOwner ensures a valid length address of soc owner.
 func NewOwner(address []byte) (Owner, error) {
 	if len(address) != crypto.AddressSize {
 		return nil, fmt.Errorf("soc: invalid address %x", address)
@@ -65,8 +65,8 @@ func NewSigned(id ID, ch swarm.Chunk, owner, sig []byte) (*Soc, error) {
 	return s, nil
 }
 
-// Address returns the soc chunk address.
-func (s *Soc) Address() (swarm.Address, error) {
+// address returns the soc chunk address.
+func (s *Soc) address() (swarm.Address, error) {
 	if len(s.owner) == 0 {
 		return swarm.ZeroAddress, errors.New("soc: owner not set")
 	}
@@ -80,7 +80,7 @@ func (s *Soc) WrappedChunk() swarm.Chunk {
 
 // Chunk returns the soc chunk.
 func (s *Soc) Chunk() (swarm.Chunk, error) {
-	socAddress, err := s.Address()
+	socAddress, err := s.address()
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	return s, nil
 }
 
-// createAddress creates a new soc address from the soc id and the ethereum address of the signer.
+// CreateAddress creates a new soc address from the soc id and the ethereum address of the signer.
 func CreateAddress(id ID, owner Owner) (swarm.Address, error) {
 	sum, err := hash(id, owner)
 	if err != nil {

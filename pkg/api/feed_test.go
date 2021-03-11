@@ -22,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
-	"github.com/ethersphere/bee/pkg/soc"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -83,7 +82,7 @@ func TestFeed_Get(t *testing.T) {
 	t.Run("with at", func(t *testing.T) {
 		var (
 			timestamp    = int64(12121212)
-			ch, _        = toChunk(uint64(timestamp), expReference.Bytes())
+			ch           = toChunk(uint64(timestamp), expReference.Bytes())
 			look         = newMockLookup(12, 0, ch, nil, &id{}, &id{})
 			factory      = newMockFactory(look)
 			idBytes, _   = (&id{}).MarshalBinary()
@@ -114,7 +113,7 @@ func TestFeed_Get(t *testing.T) {
 	t.Run("latest", func(t *testing.T) {
 		var (
 			timestamp  = int64(12121212)
-			ch, _      = toChunk(uint64(timestamp), expReference.Bytes())
+			ch         = toChunk(uint64(timestamp), expReference.Bytes())
 			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
@@ -236,17 +235,13 @@ func (l *mockLookup) At(_ context.Context, at, after int64) (swarm.Chunk, feeds.
 	return nil, nil, nil, errors.New("no feed update found")
 }
 
-func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
+func toChunk(at uint64, payload []byte) swarm.Chunk {
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
 	content := append(ts, payload...)
 
 	s := testingsoc.GenerateMockSoc(content)
-	ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
-	if err != nil {
-		return nil, err
-	}
-	return ss.Chunk()
+	return s.Chunk()
 }
 
 type id struct{}
