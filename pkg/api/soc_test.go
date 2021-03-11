@@ -25,6 +25,7 @@ import (
 
 func TestSoc(t *testing.T) {
 	var (
+		testData       = []byte("foo")
 		socResource    = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 0)
@@ -34,8 +35,6 @@ func TestSoc(t *testing.T) {
 			Storer: mockStorer,
 			Tags:   tag,
 		})
-		testData   = []byte("foo")
-		hexPrivKey = "634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd"
 	)
 	t.Run("cmpty data", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "bb", "cc"), http.StatusBadRequest,
@@ -74,7 +73,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("signature invalid", func(t *testing.T) {
-		s := testingsoc.GenerateMockSoc(hexPrivKey, testData)
+		s := testingsoc.GenerateMockSoc(testData)
 
 		// modify the sign
 		sig := make([]byte, soc.SignatureSize)
@@ -92,7 +91,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		s := testingsoc.GenerateMockSoc(hexPrivKey, testData)
+		s := testingsoc.GenerateMockSoc(testData)
 		ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
 		if err != nil {
 			t.Fatal(err)
@@ -127,7 +126,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("already exists", func(t *testing.T) {
-		s := testingsoc.GenerateMockSoc(hexPrivKey, nil)
+		s := testingsoc.GenerateMockSoc(nil)
 		ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
 		if err != nil {
 			t.Fatal(err)

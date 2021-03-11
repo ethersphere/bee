@@ -16,8 +16,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -25,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/soc"
+	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -241,20 +240,13 @@ func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
 	content := append(ts, payload...)
-	ch, err := cac.New(content)
+
+	s := testingsoc.GenerateMockSoc(content)
+	ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
 	if err != nil {
 		return nil, err
 	}
-
-	id := make([]byte, soc.IdSize)
-	privKey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		return nil, err
-	}
-	signer := crypto.NewDefaultSigner(privKey)
-	s := soc.New(id, ch)
-
-	return s.Sign(signer)
+	return ss.Chunk()
 }
 
 type id struct{}

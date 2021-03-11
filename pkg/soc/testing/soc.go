@@ -5,8 +5,6 @@
 package testing
 
 import (
-	"encoding/binary"
-	"encoding/hex"
 	"math/rand"
 	"time"
 
@@ -28,12 +26,10 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-// GenerateMockSoc generates a valid mock soc from given private key
-// (in hexdecimal format) and data.
+// GenerateMockSoc generates a valid mock soc from given data.
 // If data is nil it generates random data.
-func GenerateMockSoc(hexPrivKey string, data []byte) *MockSoc {
-	keyBytes, _ := hex.DecodeString(hexPrivKey)
-	privKey, _ := crypto.DecodeSecp256k1PrivateKey(keyBytes)
+func GenerateMockSoc(data []byte) *MockSoc {
+	privKey, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(privKey)
 	owner, _ := signer.EthereumAddress()
 
@@ -44,8 +40,6 @@ func GenerateMockSoc(hexPrivKey string, data []byte) *MockSoc {
 	ch, _ := cac.New(data)
 
 	id := make([]byte, 32)
-	binary.LittleEndian.PutUint32(id, rand.Uint32())
-
 	hasher := swarm.NewHasher()
 	_, _ = hasher.Write(append(id, ch.Address().Bytes()...))
 	signature, _ := signer.Sign(hasher.Sum(nil))
