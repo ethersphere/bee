@@ -247,9 +247,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		}
 
 		var receipt pb.Receipt
-		ctxr, cancelr := context.WithTimeout(ctx, timeToLive)
-		deferFuncs = append(deferFuncs, func() { cancelr() })
-		if err := r.ReadMsgWithContext(ctxr, &receipt); err != nil {
+		if err := r.ReadMsgWithContext(ctxd, &receipt); err != nil {
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
 			continue
