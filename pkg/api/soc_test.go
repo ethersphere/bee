@@ -126,7 +126,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("already exists", func(t *testing.T) {
-		s := testingsoc.GenerateMockSoc(nil)
+		s := testingsoc.GenerateMockSoc(testData)
 		ss, err := soc.NewSigned(s.ID, s.Chunk, s.Owner, s.Signature)
 		if err != nil {
 			t.Fatal(err)
