@@ -36,8 +36,8 @@ var (
 	// garbage collection runs.
 	gcTargetRatio = 0.9
 	// gcBatchSize limits the number of chunks in a single
-	// badger transaction on garbage collection.
-	gcBatchSize uint64 = 200
+	// transaction on garbage collection.
+	gcBatchSize uint64 = 2000
 )
 
 // collectGarbageWorker is a long running function that waits for
