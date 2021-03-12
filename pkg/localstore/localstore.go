@@ -119,7 +119,7 @@ type DB struct {
 	collectGarbageWorkerDone chan struct{}
 
 	// wait for all subscriptions to finish before closing
-	// underlaying BadgerDB to prevent possible panics from
+	// underlaying leveldb to prevent possible panics from
 	// iterators
 	subscritionsWG sync.WaitGroup
 
