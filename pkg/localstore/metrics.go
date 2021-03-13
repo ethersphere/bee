@@ -10,10 +10,7 @@ import (
 )
 
 type metrics struct {
-	// all metrics fields must be exported
-	// to be able to return them by Metrics()
-	// using reflection
-
+	TotalTimeGCFirstItem            prometheus.Counter
 	TotalTimeCollectGarbage         prometheus.Counter
 	TotalTimeGCExclude              prometheus.Counter
 	TotalTimeGet                    prometheus.Counter
@@ -68,6 +65,12 @@ func newMetrics() metrics {
 	subsystem := "localstore"
 
 	return metrics{
+		TotalTimeGCFirstItem: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gc_first_item_time",
+			Help:      "Total time taken till first item in gc comes out of gcIndex iterator.",
+		}),
 		TotalTimeCollectGarbage: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,

@@ -107,7 +107,13 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	db.metrics.GCSize.Set(float64(gcSize))
 
 	done = true
+	first := true
+	start := time.Now()
 	err = db.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+		if first {
+			totalTimeMetric(db.metrics.TotalTimeGCFirstItem, start)
+			first = false
+		}
 		if gcSize-collectedCount <= target {
 			return true, nil
 		}
