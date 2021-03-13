@@ -180,7 +180,7 @@ func newMetrics() metrics {
 		GCUpdateError: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "fc_update_error_count",
+			Name:      "gc_update_error_count",
 			Help:      "Number of times the gc update had error.",
 		}),
 
