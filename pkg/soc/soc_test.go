@@ -153,6 +153,23 @@ func TestChunk(t *testing.T) {
 	}
 }
 
+func TestChunkErrorWithoutOwner(t *testing.T) {
+	payload := []byte("foo")
+	ch, err := cac.New(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := make([]byte, soc.IdSize)
+
+	// creates a new soc
+	s := soc.New(id, ch)
+
+	_, err = s.Chunk()
+	if err == nil {
+		t.Fatalf("expect error. got `%v` want `%v`", err, soc.ErrNoOwner)
+	}
+}
+
 // TestSign tests whether a soc is correctly signed.
 func TestSign(t *testing.T) {
 	privKey, err := crypto.GenerateSecp256k1Key()

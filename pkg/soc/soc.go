@@ -22,6 +22,11 @@ const (
 	minChunkSize  = IdSize + SignatureSize + swarm.SpanSize
 )
 
+var (
+	errNoOwner        = errors.New("soc: owner not set")
+	errWrongChunkSize = errors.New("soc: chunk length is less than minimum")
+)
+
 // ID is a soc identifier
 type ID []byte
 
@@ -67,8 +72,8 @@ func NewSigned(id ID, ch swarm.Chunk, owner, sig []byte) (*Soc, error) {
 
 // address returns the soc chunk address.
 func (s *Soc) address() (swarm.Address, error) {
-	if len(s.owner) == 0 {
-		return swarm.ZeroAddress, errors.New("soc: owner not set")
+	if len(s.owner) != crypto.AddressSize {
+		return swarm.ZeroAddress, errNoOwner
 	}
 	return CreateAddress(s.id, s.owner)
 }
@@ -134,7 +139,7 @@ func (s *Soc) Sign(signer crypto.Signer) (swarm.Chunk, error) {
 func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	chunkData := sch.Data()
 	if len(chunkData) < minChunkSize {
-		return nil, errors.New("soc: chunk length is less than minimum")
+		return nil, errWrongChunkSize
 	}
 
 	// add all the data fields

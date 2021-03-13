@@ -5,6 +5,7 @@
 package soc
 
 var (
+	ErrNoOwner     = errNoOwner
 	Hash           = hash
 	RecoverAddress = recoverAddress
 )
