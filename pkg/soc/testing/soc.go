@@ -50,7 +50,7 @@ func GenerateMockSoc(data []byte) *MockSoc {
 	}
 	ch, _ := cac.New(data)
 
-	id := make([]byte, 32)
+	id := make([]byte, soc.IdSize)
 	hasher := swarm.NewHasher()
 	_, _ = hasher.Write(append(id, ch.Address().Bytes()...))
 	signature, _ := signer.Sign(hasher.Sum(nil))

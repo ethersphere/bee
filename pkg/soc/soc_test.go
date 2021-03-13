@@ -24,7 +24,7 @@ func TestNewSoc(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, 32)
+	id := make([]byte, soc.IdSize)
 	s := soc.New(id, ch)
 
 	// check soc fields
@@ -46,6 +46,7 @@ func TestNewSoc(t *testing.T) {
 
 func TestNewSignedSoc(t *testing.T) {
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
+	// signature of h(id + chunk address of foo)
 	sig, err := hex.DecodeString("5acd384febc133b7b245e5ddc62d82d2cded9182d2716126cd8844509af65a053deb418208027f548e3e88343af6f84a8772fb3cebc0a1833a0ea7ec0c1348311b")
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +58,7 @@ func TestNewSignedSoc(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, 32)
+	id := make([]byte, soc.IdSize)
 	s, err := soc.NewSigned(id, ch, owner.Bytes(), sig)
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +104,7 @@ func TestChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, 32)
+	id := make([]byte, soc.IdSize)
 	// creates a new signed soc
 	s, err := soc.NewSigned(id, ch, owner.Bytes(), sig)
 	if err != nil {
@@ -166,7 +167,7 @@ func TestSign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, 32)
+	id := make([]byte, soc.IdSize)
 	// creates the soc
 	s := soc.New(id, ch)
 
@@ -192,7 +193,7 @@ func TestSign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	toSignBytes, err := soc.ToSignDigest(id, ch.Address().Bytes())
+	toSignBytes, err := soc.Hash(id, ch.Address().Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,26 +212,13 @@ func TestSign(t *testing.T) {
 // TestFromChunk verifies that valid chunk data deserializes to
 // a fully populated soc object.
 func TestFromChunk(t *testing.T) {
-	// creates soc
-	privKey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(privKey)
+	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
 
-	payload := []byte("foo")
-	ch, err := cac.New(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	id := make([]byte, 32)
-	s := soc.New(id, ch)
-
-	sch, err := s.Sign(signer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// signed soc chunk of:
+	// id: 0
+	// wrapped chunk of: `foo`
+	// owner: 0x8d3766440f0d7b949a5e32995d09619a7f86e632
+	sch := swarm.NewChunk(socAddress, []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 205, 56, 79, 235, 193, 51, 183, 178, 69, 229, 221, 198, 45, 130, 210, 205, 237, 145, 130, 210, 113, 97, 38, 205, 136, 68, 80, 154, 246, 90, 5, 61, 235, 65, 130, 8, 2, 127, 84, 142, 62, 136, 52, 58, 246, 248, 74, 135, 114, 251, 60, 235, 192, 161, 131, 58, 14, 167, 236, 12, 19, 72, 49, 27, 3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111})
 
 	// recover soc from signed chunk
 	recoveredSoc, err := soc.FromChunk(sch)
@@ -240,15 +228,25 @@ func TestFromChunk(t *testing.T) {
 
 	// owner matching means the address was successfully recovered from
 	// payload and signature
-	publicKey, err := signer.PublicKey()
+	cursor := soc.IdSize + soc.SignatureSize
+	data := sch.Data()
+	id := data[:soc.IdSize]
+	sig := data[soc.IdSize:cursor]
+	chunkData := data[cursor:]
+
+	chunkAddress := swarm.MustParseHexAddress("2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48")
+	ch := swarm.NewChunk(chunkAddress, chunkData)
+	signedDigest, err := soc.Hash(id, ch.Address().Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownerAddress, err := crypto.NewEthereumAddress(*publicKey)
+
+	ownerAddress, err := soc.RecoverAddress(sig, signedDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(ownerAddress, recoveredSoc.OwnerAddress()) {
+
+	if !bytes.Equal(recoveredSoc.OwnerAddress(), ownerAddress) {
 		t.Fatalf("owner address mismatch. got %x want %x", recoveredSoc.OwnerAddress(), ownerAddress)
 	}
 
@@ -256,15 +254,48 @@ func TestFromChunk(t *testing.T) {
 		t.Fatalf("id mismatch. got %x want %x", recoveredSoc.ID(), id)
 	}
 
-	chunkData := sch.Data()
-	// get signature in the chunk
-	cursor := soc.IdSize
-	signature := chunkData[cursor : cursor+soc.SignatureSize]
-	if !bytes.Equal(recoveredSoc.Signature(), signature) {
-		t.Fatalf("signature mismatch. got %x want %x", recoveredSoc.Signature(), signature)
+	if !bytes.Equal(recoveredSoc.Signature(), sig) {
+		t.Fatalf("signature mismatch. got %x want %x", recoveredSoc.Signature(), sig)
 	}
 
 	if !ch.Equal(recoveredSoc.WrappedChunk()) {
 		t.Fatalf("wrapped chunk mismatch. got %s want %s", recoveredSoc.WrappedChunk().Address(), ch.Address())
+	}
+}
+
+func TestCreateAddress(t *testing.T) {
+	id := make([]byte, soc.IdSize)
+	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
+	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
+
+	addr, err := soc.CreateAddress(id, owner.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !addr.Equal(socAddress) {
+		t.Fatalf("soc address mismatch. got %s want %s", addr, socAddress)
+	}
+}
+
+func TestRecoverAddress(t *testing.T) {
+	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
+	id := make([]byte, soc.IdSize)
+	chunkAddress := swarm.MustParseHexAddress("2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48")
+	signedDigest, err := soc.Hash(id, chunkAddress.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sig, err := hex.DecodeString("5acd384febc133b7b245e5ddc62d82d2cded9182d2716126cd8844509af65a053deb418208027f548e3e88343af6f84a8772fb3cebc0a1833a0ea7ec0c1348311b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addr, err := soc.RecoverAddress(sig, signedDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(addr, owner.Bytes()) {
+		t.Fatalf("owner address mismatch. got %x want %x", addr, owner.Bytes())
 	}
 }

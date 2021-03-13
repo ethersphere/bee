@@ -115,7 +115,7 @@ func (s *Soc) Sign(signer crypto.Signer) (swarm.Chunk, error) {
 	s.owner = ownerAddress
 
 	// generate the data to sign
-	toSignBytes, err := toSignDigest(s.id, s.chunk.Address().Bytes())
+	toSignBytes, err := hash(s.id, s.chunk.Address().Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 		return nil, err
 	}
 
-	toSignBytes, err := toSignDigest(s.id, ch.Address().Bytes())
+	toSignBytes, err := hash(s.id, ch.Address().Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -179,11 +179,6 @@ func CreateAddress(id ID, owner Owner) (swarm.Address, error) {
 		return swarm.ZeroAddress, err
 	}
 	return swarm.NewAddress(sum), nil
-}
-
-// toSignDigest creates a digest suitable for signing to represent the soc.
-func toSignDigest(id ID, sum []byte) ([]byte, error) {
-	return hash(id, sum)
 }
 
 // hash hashes the given values in order.
