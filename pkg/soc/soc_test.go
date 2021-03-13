@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -165,7 +166,7 @@ func TestChunkErrorWithoutOwner(t *testing.T) {
 	s := soc.New(id, ch)
 
 	_, err = s.Chunk()
-	if err == nil {
+	if !errors.Is(err, soc.ErrNoOwner) {
 		t.Fatalf("expect error. got `%v` want `%v`", err, soc.ErrNoOwner)
 	}
 }
