@@ -26,10 +26,8 @@ type metrics struct {
 	GCCounter                prometheus.Counter
 	GCErrorCounter           prometheus.Counter
 	GCCollectedCounter       prometheus.Counter
-	GCWriteBatchError        prometheus.Counter
 	GCExcludeCounter         prometheus.Counter
 	GCExcludeError           prometheus.Counter
-	GCExcludedCounter        prometheus.Counter
 	GCExcludeWriteBatchError prometheus.Counter
 	GCUpdate                 prometheus.Counter
 	GCUpdateError            prometheus.Counter
@@ -155,12 +153,6 @@ func newMetrics() metrics {
 			Name:      "gc_collected_count",
 			Help:      "Number of times the GC_COLLECTED operation is done.",
 		}),
-		GCWriteBatchError: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "gc_write_batch_error_count",
-			Help:      "Number of times the GC_WRITE_BATCH operation failed.",
-		}),
 		GCExcludeCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -172,12 +164,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "gc_exclude_fail_count",
 			Help:      "Number of times the GC_EXCLUDE operation failed.",
-		}),
-		GCExcludedCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "gc_excluded_count",
-			Help:      "Number of times the GC_EXCLUDED operation is done.",
 		}),
 		GCExcludeWriteBatchError: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
