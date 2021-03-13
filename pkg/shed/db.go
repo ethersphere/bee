@@ -106,11 +106,13 @@ func (db *DB) Put(key, value []byte) (err error) {
 // Get wraps LevelDB Get method to increment metrics counter.
 func (db *DB) Get(key []byte) (value []byte, err error) {
 	value, err = db.ldb.Get(key, nil)
-	if errors.Is(err, leveldb.ErrNotFound) {
-		db.metrics.GetNotFoundCounter.Inc()
+	if err != nil {
+		if errors.Is(err, leveldb.ErrNotFound) {
+			db.metrics.GetNotFoundCounter.Inc()
+		} else {
+			db.metrics.GetFailCounter.Inc()
+		}
 		return nil, err
-	} else {
-		db.metrics.GetFailCounter.Inc()
 	}
 	db.metrics.GetCounter.Inc()
 	return value, nil
