@@ -79,12 +79,12 @@ func (db *DB) collectGarbageWorker() {
 // This function is called in collectGarbageWorker.
 func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	db.metrics.GCCounter.Inc()
-	defer func() {
+	defer func(start time.Time) {
 		if err != nil {
 			db.metrics.GCErrorCounter.Inc()
 		}
-		totalTimeMetric(db.metrics.TotalTimeCollectGarbage, time.Now())
-	}()
+		totalTimeMetric(db.metrics.TotalTimeCollectGarbage, start)
+	}(time.Now())
 
 	batch := new(leveldb.Batch)
 	target := db.gcTarget()
