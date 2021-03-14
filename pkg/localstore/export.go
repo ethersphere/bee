@@ -68,7 +68,10 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		if err := tw.WriteHeader(hdr); err != nil {
 			return false, err
 		}
-		if _, err := tw.Write(item.Stamp); err != nil {
+		if _, err := tw.Write(item.BatchID); err != nil {
+			return false, err
+		}
+		if _, err := tw.Write(item.Sig); err != nil {
 			return false, err
 		}
 		if _, err := tw.Write(item.Data); err != nil {
@@ -146,7 +149,14 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 				case <-ctx.Done():
 				}
 			}
-			stamp := rawdata[:postage.StampSize]
+			stamp := postage.NewStamp(nil, nil)
+			err = stamp.UnmarshalBinary(rawdata[:postage.StampSize])
+			if err != nil {
+				select {
+				case errC <- err:
+				case <-ctx.Done():
+				}
+			}
 			data := rawdata[postage.StampSize:]
 			key := swarm.NewAddress(keybytes)
 

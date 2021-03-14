@@ -9,7 +9,9 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // StampSize is the number of bytes in the serialisation of a stamp
@@ -101,4 +103,26 @@ func toSignDigest(addr swarm.Address, id []byte) ([]byte, error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) error {
+	return func(chunk swarm.Chunk, stampBytes []byte) error {
+		stamp := new(Stamp)
+		err := stamp.UnmarshalBinary(stampBytes)
+		if err != nil {
+			return err
+		}
+		b, err := batchStore.Get(stamp.BatchID())
+		if err != nil {
+			if errors.Is(err, leveldb.ErrNotFound) {
+				return storage.ErrNotFound
+			}
+			return err
+		}
+		if err = stamp.Valid(chunk.Address(), b.Owner); err != nil {
+			return err
+		}
+		chunk.WithStamp(stamp).WithBatch(b.Radius, b.Depth)
+		return nil
+	}
 }

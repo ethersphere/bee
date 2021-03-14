@@ -120,8 +120,11 @@ type Chunk interface {
 	WithPinCounter(p uint64) Chunk
 	TagID() uint32
 	WithTagID(t uint32) Chunk
-	Stamp() []byte
-	WithStamp([]byte) Chunk
+	Stamp() Stamp
+	WithStamp(Stamp) Chunk
+	Radius() uint8
+	Depth() uint8
+	WithBatch(radius, depth uint8) Chunk
 	Equal(Chunk) bool
 }
 
@@ -138,7 +141,9 @@ type chunk struct {
 	sdata      []byte
 	pinCounter uint64
 	tagID      uint32
-	stamp      []byte
+	stamp      Stamp
+	radius     uint8
+	depth      uint8
 }
 
 func NewChunk(addr Address, data []byte) Chunk {
@@ -158,8 +163,14 @@ func (c *chunk) WithTagID(t uint32) Chunk {
 	return c
 }
 
-func (c *chunk) WithStamp(s []byte) Chunk {
-	c.stamp = s
+func (c *chunk) WithStamp(stamp Stamp) Chunk {
+	c.stamp = stamp
+	return c
+}
+
+func (c *chunk) WithBatch(radius, depth uint8) Chunk {
+	c.radius = radius
+	c.depth = depth
 	return c
 }
 
@@ -179,8 +190,16 @@ func (c *chunk) TagID() uint32 {
 	return c.tagID
 }
 
-func (c *chunk) Stamp() []byte {
+func (c *chunk) Stamp() Stamp {
 	return c.stamp
+}
+
+func (c *chunk) Radius() uint8 {
+	return c.radius
+}
+
+func (c *chunk) Depth() uint8 {
+	return c.depth
 }
 
 func (c *chunk) String() string {
