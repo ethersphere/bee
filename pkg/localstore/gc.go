@@ -79,12 +79,12 @@ func (db *DB) collectGarbageWorker() {
 // This function is called in collectGarbageWorker.
 func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	db.metrics.GCCounter.Inc()
-	defer totalTimeMetric(db.metrics.TotalTimeCollectGarbage, time.Now())
-	defer func() {
+	defer func(start time.Time) {
 		if err != nil {
 			db.metrics.GCErrorCounter.Inc()
 		}
-	}()
+		totalTimeMetric(db.metrics.TotalTimeCollectGarbage, start)
+	}(time.Now())
 
 	batch := new(leveldb.Batch)
 	target := db.gcTarget()
@@ -107,7 +107,13 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	db.metrics.GCSize.Set(float64(gcSize))
 
 	done = true
+	first := true
+	start := time.Now()
 	err = db.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+		if first {
+			totalTimeMetric(db.metrics.TotalTimeGCFirstItem, start)
+			first = false
+		}
 		if gcSize-collectedCount <= target {
 			return true, nil
 		}
@@ -144,13 +150,12 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	if err != nil {
 		return 0, false, err
 	}
-	db.metrics.GCCollectedCounter.Inc()
-
-	db.metrics.GCSize.Set(float64(gcSize - collectedCount))
+	db.metrics.GCCollectedCounter.Add(float64(collectedCount))
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
+
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
-		db.metrics.GCExcludeWriteBatchError.Inc()
+		db.metrics.GCErrorCounter.Inc()
 		return 0, false, err
 	}
 	return collectedCount, done, nil
@@ -216,7 +221,7 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 		return err
 	}
 
-	db.metrics.GCExcludeCounter.Inc()
+	db.metrics.GCExcludeCounter.Add(float64(excludedCount))
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
 		db.metrics.GCExcludeWriteBatchError.Inc()
