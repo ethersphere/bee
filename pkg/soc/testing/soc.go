@@ -42,7 +42,11 @@ func (ms MockSoc) Chunk() swarm.Chunk {
 // If data is nil it generates random data.
 func GenerateMockSoc(t *testing.T, data []byte) *MockSoc {
 	t.Helper()
-	privKey, _ := crypto.GenerateSecp256k1Key()
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
 	signer := crypto.NewDefaultSigner(privKey)
 	owner, err := signer.EthereumAddress()
 	if err != nil {
@@ -68,7 +72,11 @@ func GenerateMockSoc(t *testing.T, data []byte) *MockSoc {
 		t.Fatal(err)
 	}
 
-	signature, _ := signer.Sign(hasher.Sum(nil))
+	signature, err := signer.Sign(hasher.Sum(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	return &MockSoc{
 		ID:           id,
 		Owner:        owner.Bytes(),
