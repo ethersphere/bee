@@ -6,6 +6,7 @@ package testing
 
 import (
 	"math/rand"
+	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
@@ -21,7 +22,7 @@ func init() {
 // MockSoc defines a mocked soc with exported fields for easy testing.
 type MockSoc struct {
 	ID           soc.ID
-	Owner        soc.Owner
+	Owner        []byte
 	Signature    []byte
 	WrappedChunk swarm.Chunk
 }
@@ -39,20 +40,34 @@ func (ms MockSoc) Chunk() swarm.Chunk {
 
 // GenerateMockSoc generates a valid mocked soc from given data.
 // If data is nil it generates random data.
-func GenerateMockSoc(data []byte) *MockSoc {
+func GenerateMockSoc(t *testing.T, data []byte) *MockSoc {
+	t.Helper()
 	privKey, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(privKey)
-	owner, _ := signer.EthereumAddress()
+	owner, err := signer.EthereumAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if data == nil {
 		data = make([]byte, swarm.ChunkSize)
-		_, _ = rand.Read(data)
+		_, err = rand.Read(data)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	ch, _ := cac.New(data)
+	ch, err := cac.New(data)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	id := make([]byte, soc.IdSize)
 	hasher := swarm.NewHasher()
-	_, _ = hasher.Write(append(id, ch.Address().Bytes()...))
+	_, err = hasher.Write(append(id, ch.Address().Bytes()...))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	signature, _ := signer.Sign(hasher.Sum(nil))
 	return &MockSoc{
 		ID:           id,

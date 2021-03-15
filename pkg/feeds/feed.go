@@ -150,9 +150,5 @@ func (u *Update) Address() (swarm.Address, error) {
 	if err != nil {
 		return addr, err
 	}
-	owner, err := soc.NewOwner(u.Owner[:])
-	if err != nil {
-		return addr, err
-	}
-	return soc.CreateAddress(i, owner)
+	return soc.CreateAddress(i, u.Owner[:])
 }

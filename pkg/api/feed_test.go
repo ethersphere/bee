@@ -82,7 +82,7 @@ func TestFeed_Get(t *testing.T) {
 	t.Run("with at", func(t *testing.T) {
 		var (
 			timestamp    = int64(12121212)
-			ch           = toChunk(uint64(timestamp), expReference.Bytes())
+			ch           = toChunk(t, uint64(timestamp), expReference.Bytes())
 			look         = newMockLookup(12, 0, ch, nil, &id{}, &id{})
 			factory      = newMockFactory(look)
 			idBytes, _   = (&id{}).MarshalBinary()
@@ -113,7 +113,7 @@ func TestFeed_Get(t *testing.T) {
 	t.Run("latest", func(t *testing.T) {
 		var (
 			timestamp  = int64(12121212)
-			ch         = toChunk(uint64(timestamp), expReference.Bytes())
+			ch         = toChunk(t, uint64(timestamp), expReference.Bytes())
 			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
@@ -235,12 +235,12 @@ func (l *mockLookup) At(_ context.Context, at, after int64) (swarm.Chunk, feeds.
 	return nil, nil, nil, errors.New("no feed update found")
 }
 
-func toChunk(at uint64, payload []byte) swarm.Chunk {
+func toChunk(t *testing.T, at uint64, payload []byte) swarm.Chunk {
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
 	content := append(ts, payload...)
 
-	s := testingsoc.GenerateMockSoc(content)
+	s := testingsoc.GenerateMockSoc(t, content)
 	return s.Chunk()
 }
 

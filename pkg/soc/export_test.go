@@ -5,9 +5,9 @@
 package soc
 
 var (
-	ErrNoOwner     = errNoOwner
-	Hash           = hash
-	RecoverAddress = recoverAddress
+	ErrInvalidAddress = errInvalidAddress
+	Hash              = hash
+	RecoverAddress    = recoverAddress
 )
 
 // Signature returns the soc signature.

@@ -217,7 +217,7 @@ func TestFeedIndirection(t *testing.T) {
 	// called from the bzz endpoint. then call the bzz endpoint with
 	// the pregenerated feed root manifest hash
 
-	feedUpdate := toChunk(121212, resp.Reference.Bytes())
+	feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
 
 	var (
 		feedChunkAddr       = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")

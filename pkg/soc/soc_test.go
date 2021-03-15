@@ -166,8 +166,8 @@ func TestChunkErrorWithoutOwner(t *testing.T) {
 	s := soc.New(id, ch)
 
 	_, err = s.Chunk()
-	if !errors.Is(err, soc.ErrNoOwner) {
-		t.Fatalf("expect error. got `%v` want `%v`", err, soc.ErrNoOwner)
+	if !errors.Is(err, soc.ErrInvalidAddress) {
+		t.Fatalf("expect error. got `%v` want `%v`", err, soc.ErrInvalidAddress)
 	}
 }
 
