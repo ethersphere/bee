@@ -811,10 +811,18 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	t.Run("gc size", newIndexGCSizeTest(db))
 
 	// the first synced chunk should be removed
-	t.Run("get the first synced chunk", func(t *testing.T) {
+	t.Run("get the first two chunks, third is gone", func(t *testing.T) {
 		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
-		if errors.Is(err, storage.ErrNotFound) {
+		if err != nil {
 			t.Error("got error but expected none")
+		}
+		_, err = db.Get(context.Background(), storage.ModeGetRequest, addrs[1])
+		if err != nil {
+			t.Error("got error but expected none")
+		}
+		_, err = db.Get(context.Background(), storage.ModeGetRequest, addrs[2])
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("expected err not found but got %v", err)
 		}
 	})
 
