@@ -754,23 +754,21 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	go func() {
 		close(online) // make sure this is scheduled, otherwise test might flake
 		i := 0
-		for {
-			select {
-			case <-incomingChan:
-				// set a chunk to be updated in gc, resulting
-				// in a removal from the gc round. but don't do this
-				// for all chunks!
-				if i < 2 {
-					_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
-					if err != nil {
-						t.Fatal(err)
-					}
-					i++
-					time.Sleep(100 * time.Millisecond)
+		for range incomingChan {
+			// set a chunk to be updated in gc, resulting
+			// in a removal from the gc round. but don't do this
+			// for all chunks!
+			if i < 2 {
+				_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
+				if err != nil {
+					t.Error(err)
 				}
-				dirtyChan <- struct{}{}
+				i++
+				time.Sleep(100 * time.Millisecond)
 			}
+			dirtyChan <- struct{}{}
 		}
+
 	}()
 	<-online
 	// upload random chunks
