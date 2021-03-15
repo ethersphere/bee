@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
@@ -36,7 +37,6 @@ var (
 	chequebookABI          = transaction.ParseABIUnchecked(simpleswapfactory.ERC20SimpleSwapABI)
 	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
 	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
-	erc20ABI               = transaction.ParseABIUnchecked(simpleswapfactory.ERC20ABI)
 )
 
 // Service is the main interface for interacting with the nodes chequebook.
@@ -70,8 +70,7 @@ type service struct {
 	chequebookInstance SimpleSwapBinding
 	ownerAddress       common.Address
 
-	erc20Address  common.Address
-	erc20Instance ERC20Binding
+	erc20Service erc20.Service
 
 	store               storage.StateStorer
 	chequeSigner        ChequeSigner
@@ -79,13 +78,8 @@ type service struct {
 }
 
 // New creates a new chequebook service for the provided chequebook contract.
-func New(backend transaction.Backend, transactionService transaction.Service, address, erc20Address, ownerAddress common.Address, store storage.StateStorer, chequeSigner ChequeSigner, simpleSwapBindingFunc SimpleSwapBindingFunc, erc20BindingFunc ERC20BindingFunc) (Service, error) {
+func New(backend transaction.Backend, transactionService transaction.Service, address, ownerAddress common.Address, store storage.StateStorer, chequeSigner ChequeSigner, erc20Service erc20.Service, simpleSwapBindingFunc SimpleSwapBindingFunc) (Service, error) {
 	chequebookInstance, err := simpleSwapBindingFunc(address, backend)
-	if err != nil {
-		return nil, err
-	}
-
-	erc20Instance, err := erc20BindingFunc(erc20Address, backend)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +90,7 @@ func New(backend transaction.Backend, transactionService transaction.Service, ad
 		address:             address,
 		chequebookInstance:  chequebookInstance,
 		ownerAddress:        ownerAddress,
-		erc20Address:        erc20Address,
-		erc20Instance:       erc20Instance,
+		erc20Service:        erc20Service,
 		store:               store,
 		chequeSigner:        chequeSigner,
 		totalIssuedReserved: big.NewInt(0),
@@ -111,9 +104,7 @@ func (s *service) Address() common.Address {
 
 // Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
 func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-	balance, err := s.erc20Instance.BalanceOf(&bind.CallOpts{
-		Context: ctx,
-	}, s.ownerAddress)
+	balance, err := s.erc20Service.BalanceOf(ctx, s.ownerAddress)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -123,25 +114,7 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	callData, err := erc20ABI.Pack("transfer", s.address, amount)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	request := &transaction.TxRequest{
-		To:       &s.erc20Address,
-		Data:     callData,
-		GasPrice: nil,
-		GasLimit: 0,
-		Value:    big.NewInt(0),
-	}
-
-	txHash, err := s.transactionService.Send(ctx, request)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	return txHash, nil
+	return s.erc20Service.Transfer(ctx, s.address, amount)
 }
 
 // Balance returns the token balance of the chequebook.
