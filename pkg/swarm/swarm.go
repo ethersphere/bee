@@ -77,6 +77,17 @@ func (a Address) Equal(b Address) bool {
 	return bytes.Equal(a.b, b.b)
 }
 
+// MemberOf returns true if the address is a member of the
+// provided set.
+func (a Address) MemberOf(addrs []Address) bool {
+	for _, v := range addrs {
+		if v.Equal(a) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsZero returns true if the Address is not set to any value.
 func (a Address) IsZero() bool {
 	return a.Equal(ZeroAddress)
