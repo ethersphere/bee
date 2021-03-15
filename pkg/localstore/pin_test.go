@@ -26,12 +26,6 @@ func TestPinning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// chunk must be present
-	_, err = db.Put(context.Background(), storage.ModePutUpload, chunks...)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	err = db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...)
 	if err != nil {
 		t.Fatal(err)
@@ -57,49 +51,184 @@ func TestPinning(t *testing.T) {
 func TestPinCounter(t *testing.T) {
 	chunk := generateTestRandomChunk()
 	db := newTestDB(t, nil)
-
-	// chunk must be present
-	_, err := db.Put(context.Background(), storage.ModePutUpload, chunk)
+	addr := chunk.Address()
+	ctx := context.Background()
+	_, err := db.Put(ctx, storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// pin once
-	err = db.Set(context.Background(), storage.ModeSetPin, swarm.NewAddress(chunk.Address().Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinCounter, err := db.PinCounter(swarm.NewAddress(chunk.Address().Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if pinCounter != 1 {
-		t.Fatalf("want pin counter %d but got %d", 1, pinCounter)
-	}
-
-	// pin twice
-	err = db.Set(context.Background(), storage.ModeSetPin, swarm.NewAddress(chunk.Address().Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinCounter, err = db.PinCounter(swarm.NewAddress(chunk.Address().Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if pinCounter != 2 {
-		t.Fatalf("want pin counter %d but got %d", 2, pinCounter)
-	}
-
-	err = db.Set(context.Background(), storage.ModeSetUnpin, swarm.NewAddress(chunk.Address().Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.PinCounter(swarm.NewAddress(chunk.Address().Bytes()))
-	if err != nil {
+	var pinCounter uint64
+	t.Run("+1 after first pin", func(t *testing.T) {
+		err := db.Set(ctx, storage.ModeSetPin, addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pinCounter, err = db.PinCounter(addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pinCounter != 1 {
+			t.Fatalf("want pin counter %d but got %d", 1, pinCounter)
+		}
+	})
+	t.Run("2 after second pin", func(t *testing.T) {
+		err = db.Set(ctx, storage.ModeSetPin, addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pinCounter, err = db.PinCounter(addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pinCounter != 2 {
+			t.Fatalf("want pin counter %d but got %d", 2, pinCounter)
+		}
+	})
+	t.Run("1 after first unpin", func(t *testing.T) {
+		err = db.Set(ctx, storage.ModeSetUnpin, addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pinCounter, err = db.PinCounter(addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pinCounter != 1 {
+			t.Fatalf("want pin counter %d but got %d", 1, pinCounter)
+		}
+	})
+	t.Run("not found after second unpin", func(t *testing.T) {
+		err = db.Set(ctx, storage.ModeSetUnpin, addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.PinCounter(addr)
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatal(err)
 		}
+	})
+}
+
+// Pin a file, upload chunks to go past the gc limit to trigger GC,
+// check if the pinned files are still around and removed from gcIndex
+func TestPinIndexes(t *testing.T) {
+	ctx := context.Background()
+
+	db := newTestDB(t, &Options{
+		Capacity: 150,
+	})
+
+	ch := generateTestRandomChunk()
+	addr := ch.Address()
+	_, err := db.Put(ctx, storage.ModePutUpload, ch)
+	if err != nil {
+		t.Fatal(err)
 	}
+	runCountsTest(t, "putUpload", db, 1, 0, 1, 1, 0, 0)
+
+	err = db.Set(ctx, storage.ModeSetSync, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setSync", db, 1, 1, 0, 1, 0, 1)
+
+	err = db.Set(ctx, storage.ModeSetPin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setPin", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetPin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setPin 2", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin 2", db, 1, 1, 0, 1, 0, 1)
+
+}
+
+func TestPinIndexesSync(t *testing.T) {
+	ctx := context.Background()
+
+	db := newTestDB(t, &Options{
+		Capacity: 150,
+	})
+
+	ch := generateTestRandomChunk()
+	addr := ch.Address()
+	_, err := db.Put(ctx, storage.ModePutUpload, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "putUpload", db, 1, 0, 1, 1, 0, 0)
+
+	err = db.Set(ctx, storage.ModeSetPin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setPin", db, 1, 0, 1, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetPin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setPin 2", db, 1, 0, 1, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin", db, 1, 0, 1, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin 2", db, 1, 0, 1, 1, 0, 0)
+
+	err = db.Set(ctx, storage.ModeSetPin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setPin 3", db, 1, 0, 1, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetSync, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setSync", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin", db, 1, 1, 0, 1, 0, 1)
+
+}
+
+func runCountsTest(t *testing.T, name string, db *DB, r, a, push, pull, pin, gc int) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		t.Helper()
+		t.Run("retrieval data Index count", newItemsCountTest(db.retrievalDataIndex, r))
+		t.Run("retrieval access Index count", newItemsCountTest(db.retrievalAccessIndex, a))
+		t.Run("push Index count", newItemsCountTest(db.pushIndex, push))
+		t.Run("pull Index count", newItemsCountTest(db.pullIndex, pull))
+		t.Run("pin Index count", newItemsCountTest(db.pinIndex, pin))
+		t.Run("gc index count", newItemsCountTest(db.gcIndex, gc))
+		t.Run("gc size", newIndexGCSizeTest(db))
+	})
 }
 
 func TestPaging(t *testing.T) {
@@ -107,14 +236,8 @@ func TestPaging(t *testing.T) {
 	addresses := chunksToSortedStrings(chunks)
 	db := newTestDB(t, nil)
 
-	// chunk must be present
-	_, err := db.Put(context.Background(), storage.ModePutUpload, chunks...)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// pin once
-	err = db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...)
+	err := db.Set(context.Background(), storage.ModeSetPin, chunkAddresses(chunks)...)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -83,34 +83,6 @@ func TestModePutRequest(t *testing.T) {
 	}
 }
 
-// TestModePutRequestPin validates ModePutRequestPin index values on the provided DB.
-func TestModePutRequestPin(t *testing.T) {
-	for _, tc := range multiChunkTestCases {
-		t.Run(tc.name, func(t *testing.T) {
-			db := newTestDB(t, nil)
-
-			chunks := generateTestRandomChunks(tc.count)
-
-			wantTimestamp := time.Now().UTC().UnixNano()
-			defer setNow(func() (t int64) {
-				return wantTimestamp
-			})()
-
-			_, err := db.Put(context.Background(), storage.ModePutRequestPin, chunks...)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			for _, ch := range chunks {
-				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
-				newPinIndexTest(db, ch, nil)(t)
-			}
-
-			newItemsCountTest(db.gcIndex, tc.count)(t)
-		})
-	}
-}
-
 // TestModePutSync validates ModePutSync index values on the provided DB.
 func TestModePutSync(t *testing.T) {
 	for _, tc := range multiChunkTestCases {
@@ -141,6 +113,8 @@ func TestModePutSync(t *testing.T) {
 				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			}
+			newItemsCountTest(db.gcIndex, tc.count)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }

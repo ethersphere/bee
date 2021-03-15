@@ -18,6 +18,7 @@ package shed
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -45,8 +46,41 @@ type Item struct {
 	BinID           uint64
 	PinCounter      uint64 // maintains the no of time a chunk is pinned
 	Tag             uint32
-	BatchID         []byte // postage batch ID
-	Sig             []byte // postage stamp
+	BatchID         []byte  // postage batch ID
+	Sig             []byte  // postage stamp
+	Depth           uint8   // postage batch depth
+	Radius          uint8   // postage batch reserve radius, po upto and excluding which chunks are unpinned
+	Counts          *Counts // postage batch counts
+}
+
+type Counts struct {
+	Counts []byte
+}
+
+func (c *Counts) String() string {
+	counts := make([]uint32, len(c.Counts)/4)
+	for i := range counts {
+		counts[i] = c.add(i, 0, true)
+	}
+	return fmt.Sprintf("%v", counts)
+}
+
+func (c *Counts) Inc(i int) uint32 {
+	return c.add(i, 1, true)
+}
+func (c *Counts) Dec(i int) uint32 {
+	return c.add(i, 1, false)
+}
+
+func (c *Counts) add(i int, d uint32, add bool) uint32 {
+	count := binary.BigEndian.Uint32(c.Counts[4*i : 4*i+4]) // deserialise
+	if add {
+		count += d
+	} else {
+		count -= d
+	}
+	binary.BigEndian.PutUint32(c.Counts[4*i:4*i+4], count)
+	return count
 }
 
 // Merge is a helper method to construct a new
@@ -79,6 +113,15 @@ func (i Item) Merge(i2 Item) Item {
 	}
 	if len(i.BatchID) == 0 {
 		i.BatchID = i2.BatchID
+	}
+	if i.Depth == 0 {
+		i.Depth = i2.Depth
+	}
+	if i.Radius == 0 {
+		i.Radius = i2.Radius
+	}
+	if i.Counts == nil {
+		i.Counts = i2.Counts
 	}
 	return i
 }

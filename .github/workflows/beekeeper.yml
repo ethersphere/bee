@@ -96,11 +96,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (Node connection and clef enabled)
         run: |
-<<<<<<< HEAD
-          ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --pay-threshold 1000000000000
-=======
-          ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --postage
->>>>>>> 72cf8f13 (add --postage to beeinfra.sh setup)
+          ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --postage --pay-threshold 1000000000000
       - name: Test pingpong
         id: pingpong-2
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done

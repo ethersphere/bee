@@ -100,6 +100,7 @@ func TestModeGetRequest(t *testing.T) {
 
 		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, uploadTimestamp, 1, nil))
 
+		t.Run("access count", newItemsCountTest(db.retrievalAccessIndex, 1))
 		t.Run("gc index count", newItemsCountTest(db.gcIndex, 1))
 
 		t.Run("gc size", newIndexGCSizeTest(db))
@@ -130,6 +131,7 @@ func TestModeGetRequest(t *testing.T) {
 
 		t.Run("gc index", newGCIndexTest(db, ch, uploadTimestamp, accessTimestamp, 1, nil))
 
+		t.Run("access count", newItemsCountTest(db.retrievalAccessIndex, 1))
 		t.Run("gc index count", newItemsCountTest(db.gcIndex, 1))
 
 		t.Run("gc size", newIndexGCSizeTest(db))
