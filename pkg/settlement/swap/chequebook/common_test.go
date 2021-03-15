@@ -36,14 +36,6 @@ func (m *simpleSwapBindingMock) PaidOut(o *bind.CallOpts, c common.Address) (*bi
 	return m.paidOut(o, c)
 }
 
-type erc20BindingMock struct {
-	balanceOf func(*bind.CallOpts, common.Address) (*big.Int, error)
-}
-
-func (m *erc20BindingMock) BalanceOf(o *bind.CallOpts, a common.Address) (*big.Int, error) {
-	return m.balanceOf(o, a)
-}
-
 type chequeSignerMock struct {
 	sign func(cheque *chequebook.Cheque) ([]byte, error)
 }
