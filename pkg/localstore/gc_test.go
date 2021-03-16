@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -750,6 +751,7 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	closed = db.close
 
 	addrs := make([]swarm.Address, 0)
+	mtx := new(sync.Mutex)
 	online := make(chan struct{})
 	go func() {
 		close(online) // make sure this is scheduled, otherwise test might flake
@@ -759,7 +761,9 @@ func TestGC_NoEvictDirty(t *testing.T) {
 			// in a removal from the gc round. but don't do this
 			// for all chunks!
 			if i < 2 {
+				mtx.Lock()
 				_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
+				mtx.Unlock()
 				if err != nil {
 					t.Error(err)
 				}
@@ -784,8 +788,9 @@ func TestGC_NoEvictDirty(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
+		mtx.Lock()
 		addrs = append(addrs, ch.Address())
+		mtx.Unlock()
 	}
 
 	gcTarget := db.gcTarget()
