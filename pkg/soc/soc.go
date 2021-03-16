@@ -29,7 +29,7 @@ var (
 // ID is a soc identifier
 type ID []byte
 
-// Soc wraps a single-owner chunk.
+// Soc wraps a content-addressed chunk.
 type Soc struct {
 	id        ID
 	owner     []byte // Owner is the address in bytes of soc owner.
