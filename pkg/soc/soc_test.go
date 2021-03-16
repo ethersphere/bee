@@ -238,14 +238,6 @@ func TestFromChunk(t *testing.T) {
 	// owner: 0x8d3766440f0d7b949a5e32995d09619a7f86e632
 	sch := swarm.NewChunk(socAddress, []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 205, 56, 79, 235, 193, 51, 183, 178, 69, 229, 221, 198, 45, 130, 210, 205, 237, 145, 130, 210, 113, 97, 38, 205, 136, 68, 80, 154, 246, 90, 5, 61, 235, 65, 130, 8, 2, 127, 84, 142, 62, 136, 52, 58, 246, 248, 74, 135, 114, 251, 60, 235, 192, 161, 131, 58, 14, 167, 236, 12, 19, 72, 49, 27, 3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111})
 
-	// recover soc from signed chunk
-	recoveredSoc, err := soc.FromChunk(sch)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// owner matching means the address was successfully recovered from
-	// payload and signature
 	cursor := soc.IdSize + soc.SignatureSize
 	data := sch.Data()
 	id := data[:soc.IdSize]
@@ -254,6 +246,7 @@ func TestFromChunk(t *testing.T) {
 
 	chunkAddress := swarm.MustParseHexAddress("2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48")
 	ch := swarm.NewChunk(chunkAddress, chunkData)
+
 	signedDigest, err := soc.Hash(id, ch.Address().Bytes())
 	if err != nil {
 		t.Fatal(err)
@@ -264,6 +257,14 @@ func TestFromChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// attempt to recover soc from signed chunk
+	recoveredSoc, err := soc.FromChunk(sch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// owner matching means the address was successfully recovered from
+	// payload and signature
 	if !bytes.Equal(recoveredSoc.OwnerAddress(), ownerAddress) {
 		t.Fatalf("owner address mismatch. got %x want %x", recoveredSoc.OwnerAddress(), ownerAddress)
 	}
@@ -309,6 +310,7 @@ func TestRecoverAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// attempt to recover address from signature
 	addr, err := soc.RecoverAddress(sig, signedDigest)
 	if err != nil {
 		t.Fatal(err)
