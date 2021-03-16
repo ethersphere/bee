@@ -183,7 +183,7 @@ func hash(values ...[]byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-// recoverAddress returns the ethereum address of the owner of an soc.
+// recoverAddress returns the ethereum address of the owner of a soc.
 func recoverAddress(signature, digest []byte) ([]byte, error) {
 	recoveredPublicKey, err := crypto.Recover(signature, digest)
 	if err != nil {
