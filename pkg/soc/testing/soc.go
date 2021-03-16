@@ -5,19 +5,13 @@
 package testing
 
 import (
-	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 // MockSoc defines a mocked soc with exported fields for easy testing.
 type MockSoc struct {
@@ -53,13 +47,6 @@ func GenerateMockSoc(t *testing.T, data []byte) *MockSoc {
 		t.Fatal(err)
 	}
 
-	if data == nil {
-		data = make([]byte, swarm.ChunkSize)
-		_, err = rand.Read(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
 	ch, err := cac.New(data)
 	if err != nil {
 		t.Fatal(err)
