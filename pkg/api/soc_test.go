@@ -23,7 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
-func TestSoc(t *testing.T) {
+func TestSOC(t *testing.T) {
 	var (
 		testData       = []byte("foo")
 		socResource    = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
@@ -73,7 +73,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("signature invalid", func(t *testing.T) {
-		s := testingsoc.GenerateMockSoc(t, testData)
+		s := testingsoc.GenerateMockSOC(t, testData)
 
 		// modify the sign
 		sig := make([]byte, soc.SignatureSize)
@@ -91,7 +91,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		s := testingsoc.GenerateMockSoc(t, testData)
+		s := testingsoc.GenerateMockSOC(t, testData)
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
 			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
@@ -114,7 +114,7 @@ func TestSoc(t *testing.T) {
 	})
 
 	t.Run("already exists", func(t *testing.T) {
-		s := testingsoc.GenerateMockSoc(t, testData)
+		s := testingsoc.GenerateMockSOC(t, testData)
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
 			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),

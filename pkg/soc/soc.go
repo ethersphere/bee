@@ -26,28 +26,28 @@ var (
 	errWrongChunkSize = errors.New("soc: chunk length is less than minimum")
 )
 
-// ID is a soc identifier
+// ID is a SOC identifier
 type ID []byte
 
-// Soc wraps a content-addressed chunk.
-type Soc struct {
+// SOC wraps a content-addressed chunk.
+type SOC struct {
 	id        ID
-	owner     []byte // Owner is the address in bytes of soc owner.
+	owner     []byte // owner is the address in bytes of SOC owner.
 	signature []byte
 	chunk     swarm.Chunk // wrapped chunk.
 }
 
-// New creates a new Soc representation from arbitrary soc id and
+// New creates a new SOC representation from arbitrary id and
 // a content-addressed chunk.
-func New(id ID, ch swarm.Chunk) *Soc {
-	return &Soc{
+func New(id ID, ch swarm.Chunk) *SOC {
+	return &SOC{
 		id:    id,
 		chunk: ch,
 	}
 }
 
-// NewSignedSoc creates a single-owner chunk based on already signed data.
-func NewSigned(id ID, ch swarm.Chunk, owner, sig []byte) (*Soc, error) {
+// NewSigned creates a single-owner chunk based on already signed data.
+func NewSigned(id ID, ch swarm.Chunk, owner, sig []byte) (*SOC, error) {
 	s := New(id, ch)
 	if len(owner) != crypto.AddressSize {
 		return nil, errInvalidAddress
@@ -57,21 +57,21 @@ func NewSigned(id ID, ch swarm.Chunk, owner, sig []byte) (*Soc, error) {
 	return s, nil
 }
 
-// address returns the soc chunk address.
-func (s *Soc) address() (swarm.Address, error) {
+// address returns the SOC chunk address.
+func (s *SOC) address() (swarm.Address, error) {
 	if len(s.owner) != crypto.AddressSize {
 		return swarm.ZeroAddress, errInvalidAddress
 	}
 	return CreateAddress(s.id, s.owner)
 }
 
-// WrappedChunk returns the chunk wrapped by the soc.
-func (s *Soc) WrappedChunk() swarm.Chunk {
+// WrappedChunk returns the chunk wrapped by the SOC.
+func (s *SOC) WrappedChunk() swarm.Chunk {
 	return s.chunk
 }
 
-// Chunk returns the soc chunk.
-func (s *Soc) Chunk() (swarm.Chunk, error) {
+// Chunk returns the SOC chunk.
+func (s *SOC) Chunk() (swarm.Chunk, error) {
 	socAddress, err := s.address()
 	if err != nil {
 		return nil, err
@@ -79,8 +79,8 @@ func (s *Soc) Chunk() (swarm.Chunk, error) {
 	return swarm.NewChunk(socAddress, s.toBytes()), nil
 }
 
-// toBytes is a helper function to convert the RawSoc data to bytes.
-func (s *Soc) toBytes() []byte {
+// toBytes is a helper function to convert the SOC data to bytes.
+func (s *SOC) toBytes() []byte {
 	buf := bytes.NewBuffer(nil)
 	buf.Write(s.id)
 	buf.Write(s.signature)
@@ -88,9 +88,9 @@ func (s *Soc) toBytes() []byte {
 	return buf.Bytes()
 }
 
-// Sign signs a soc using the signer.
-// It returns a signed chunk ready for submission to the network.
-func (s *Soc) Sign(signer crypto.Signer) (swarm.Chunk, error) {
+// Sign signs a SOC using the given signer.
+// It returns a signed SOC chunk ready for submission to the network.
+func (s *SOC) Sign(signer crypto.Signer) (swarm.Chunk, error) {
 	// create owner
 	publicKey, err := signer.PublicKey()
 	if err != nil {
@@ -121,15 +121,15 @@ func (s *Soc) Sign(signer crypto.Signer) (swarm.Chunk, error) {
 	return s.Chunk()
 }
 
-// FromChunk recreates a Soc representation from swarm.Chunk data.
-func FromChunk(sch swarm.Chunk) (*Soc, error) {
+// FromChunk recreates a SOC representation from swarm.Chunk data.
+func FromChunk(sch swarm.Chunk) (*SOC, error) {
 	chunkData := sch.Data()
 	if len(chunkData) < minChunkSize {
 		return nil, errWrongChunkSize
 	}
 
-	// add all the data fields
-	s := &Soc{}
+	// add all the data fields to the SOC
+	s := &SOC{}
 	cursor := 0
 
 	s.id = chunkData[cursor:IdSize]
@@ -162,7 +162,8 @@ func FromChunk(sch swarm.Chunk) (*Soc, error) {
 	return s, nil
 }
 
-// CreateAddress creates a new soc address from the soc id and the ethereum address of the signer.
+// CreateAddress creates a new SOC address from the id and
+// the ethereum address of the owner.
 func CreateAddress(id ID, owner []byte) (swarm.Address, error) {
 	sum, err := hash(id, owner)
 	if err != nil {
@@ -183,7 +184,7 @@ func hash(values ...[]byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-// recoverAddress returns the ethereum address of the owner of a soc.
+// recoverAddress returns the ethereum address of the owner of a SOC.
 func recoverAddress(signature, digest []byte) ([]byte, error) {
 	recoveredPublicKey, err := crypto.Recover(signature, digest)
 	if err != nil {

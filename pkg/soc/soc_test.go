@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestNewSoc(t *testing.T) {
+func TestNew(t *testing.T) {
 	payload := []byte("foo")
 	ch, err := cac.New(payload)
 	if err != nil {
@@ -28,7 +28,7 @@ func TestNewSoc(t *testing.T) {
 	id := make([]byte, soc.IdSize)
 	s := soc.New(id, ch)
 
-	// check soc fields
+	// check SOC fields
 	if !bytes.Equal(s.ID(), id) {
 		t.Fatalf("id mismatch. got %x want %x", s.ID(), id)
 	}
@@ -45,9 +45,9 @@ func TestNewSoc(t *testing.T) {
 	}
 }
 
-func TestNewSignedSoc(t *testing.T) {
+func TestNewSigned(t *testing.T) {
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
-	// signature of h(id + chunk address of foo)
+	// signature of hash(id + chunk address of foo)
 	sig, err := hex.DecodeString("5acd384febc133b7b245e5ddc62d82d2cded9182d2716126cd8844509af65a053deb418208027f548e3e88343af6f84a8772fb3cebc0a1833a0ea7ec0c1348311b")
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestNewSignedSoc(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// check signed soc fields
+	// check signed SOC fields
 	if !bytes.Equal(s.ID(), id) {
 		t.Fatalf("id mismatch. got %x want %x", s.ID(), id)
 	}
@@ -90,8 +90,8 @@ func TestNewSignedSoc(t *testing.T) {
 	}
 }
 
-// TestChunk verifies that the chunk created from the Soc object
-// corresponds to the soc spec.
+// TestChunk verifies that the chunk created from the SOC object
+// corresponds to the SOC spec.
 func TestChunk(t *testing.T) {
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 	sig, err := hex.DecodeString("5acd384febc133b7b245e5ddc62d82d2cded9182d2716126cd8844509af65a053deb418208027f548e3e88343af6f84a8772fb3cebc0a1833a0ea7ec0c1348311b")
@@ -106,7 +106,7 @@ func TestChunk(t *testing.T) {
 	}
 
 	id := make([]byte, soc.IdSize)
-	// creates a new signed soc
+	// creates a new signed SOC
 	s, err := soc.NewSigned(id, ch, owner.Bytes(), sig)
 	if err != nil {
 		t.Fatal(err)
@@ -116,20 +116,20 @@ func TestChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedSocAddress := swarm.NewAddress(sum)
+	expectedSOCAddress := swarm.NewAddress(sum)
 
-	// creates soc chunk
+	// creates SOC chunk
 	sch, err := s.Chunk()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(sch.Address().Bytes(), expectedSocAddress.Bytes()) {
-		t.Fatalf("soc address mismatch. got %x want %x", sch.Address().Bytes(), expectedSocAddress.Bytes())
+	if !bytes.Equal(sch.Address().Bytes(), expectedSOCAddress.Bytes()) {
+		t.Fatalf("soc address mismatch. got %x want %x", sch.Address().Bytes(), expectedSOCAddress.Bytes())
 	}
 
 	chunkData := sch.Data()
-	// verifies that id, signature, payload is in place in the soc chunk
+	// verifies that id, signature, payload is in place in the SOC chunk
 	cursor := 0
 	if !bytes.Equal(chunkData[cursor:soc.IdSize], id) {
 		t.Fatalf("id mismatch. got %x want %x", chunkData[cursor:soc.IdSize], id)
@@ -258,27 +258,27 @@ func TestFromChunk(t *testing.T) {
 	}
 
 	// attempt to recover soc from signed chunk
-	recoveredSoc, err := soc.FromChunk(sch)
+	recoveredSOC, err := soc.FromChunk(sch)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// owner matching means the address was successfully recovered from
 	// payload and signature
-	if !bytes.Equal(recoveredSoc.OwnerAddress(), ownerAddress) {
-		t.Fatalf("owner address mismatch. got %x want %x", recoveredSoc.OwnerAddress(), ownerAddress)
+	if !bytes.Equal(recoveredSOC.OwnerAddress(), ownerAddress) {
+		t.Fatalf("owner address mismatch. got %x want %x", recoveredSOC.OwnerAddress(), ownerAddress)
 	}
 
-	if !bytes.Equal(recoveredSoc.ID(), id) {
-		t.Fatalf("id mismatch. got %x want %x", recoveredSoc.ID(), id)
+	if !bytes.Equal(recoveredSOC.ID(), id) {
+		t.Fatalf("id mismatch. got %x want %x", recoveredSOC.ID(), id)
 	}
 
-	if !bytes.Equal(recoveredSoc.Signature(), sig) {
-		t.Fatalf("signature mismatch. got %x want %x", recoveredSoc.Signature(), sig)
+	if !bytes.Equal(recoveredSOC.Signature(), sig) {
+		t.Fatalf("signature mismatch. got %x want %x", recoveredSOC.Signature(), sig)
 	}
 
-	if !ch.Equal(recoveredSoc.WrappedChunk()) {
-		t.Fatalf("wrapped chunk mismatch. got %s want %s", recoveredSoc.WrappedChunk().Address(), ch.Address())
+	if !ch.Equal(recoveredSOC.WrappedChunk()) {
+		t.Fatalf("wrapped chunk mismatch. got %s want %s", recoveredSOC.WrappedChunk().Address(), ch.Address())
 	}
 }
 

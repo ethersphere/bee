@@ -10,17 +10,17 @@ var (
 	RecoverAddress    = recoverAddress
 )
 
-// Signature returns the soc signature.
-func (s *Soc) Signature() []byte {
+// Signature returns the SOC signature.
+func (s *SOC) Signature() []byte {
 	return s.signature
 }
 
-// OwnerAddress returns the ethereum address of the signer of the Chunk.
-func (s *Soc) OwnerAddress() []byte {
+// OwnerAddress returns the ethereum address of the SOC owner.
+func (s *SOC) OwnerAddress() []byte {
 	return s.owner
 }
 
-// Id returns the soc id.
-func (s *Soc) ID() []byte {
+// ID returns the SOC id.
+func (s *SOC) ID() []byte {
 	return s.id
 }

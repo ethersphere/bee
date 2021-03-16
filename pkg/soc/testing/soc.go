@@ -13,28 +13,27 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// MockSoc defines a mocked soc with exported fields for easy testing.
-type MockSoc struct {
+// MockSOC defines a mocked SOC with exported fields for easy testing.
+type MockSOC struct {
 	ID           soc.ID
 	Owner        []byte
 	Signature    []byte
 	WrappedChunk swarm.Chunk
 }
 
-// Address returns the soc address of the mocked soc.
-func (ms MockSoc) Address() swarm.Address {
+// Address returns the SOC address of the mocked SOC.
+func (ms MockSOC) Address() swarm.Address {
 	addr, _ := soc.CreateAddress(ms.ID, ms.Owner)
 	return addr
 }
 
-// Chunk returns the soc chunk of the mocked soc.
-func (ms MockSoc) Chunk() swarm.Chunk {
+// Chunk returns the SOC chunk of the mocked SOC.
+func (ms MockSOC) Chunk() swarm.Chunk {
 	return swarm.NewChunk(ms.Address(), append(ms.ID, append(ms.Signature, ms.WrappedChunk.Data()...)...))
 }
 
-// GenerateMockSoc generates a valid mocked soc from given data.
-// If data is nil it generates random data.
-func GenerateMockSoc(t *testing.T, data []byte) *MockSoc {
+// GenerateMockSOC generates a valid mocked SOC from given data.
+func GenerateMockSOC(t *testing.T, data []byte) *MockSOC {
 	t.Helper()
 
 	privKey, err := crypto.GenerateSecp256k1Key()
@@ -64,7 +63,7 @@ func GenerateMockSoc(t *testing.T, data []byte) *MockSoc {
 		t.Fatal(err)
 	}
 
-	return &MockSoc{
+	return &MockSOC{
 		ID:           id,
 		Owner:        owner.Bytes(),
 		Signature:    signature,
