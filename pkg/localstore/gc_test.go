@@ -729,7 +729,12 @@ func TestGC_NoEvictDirty(t *testing.T) {
 
 	chunkCount := 15
 
-	var closed chan struct{}
+	db := newTestDB(t, &Options{
+		Capacity: 10,
+	})
+
+	closed := db.close
+
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
@@ -744,12 +749,6 @@ func TestGC_NoEvictDirty(t *testing.T) {
 		incomingChan <- struct{}{}
 		<-dirtyChan
 	}))
-	db := newTestDB(t, &Options{
-		Capacity: 10,
-	})
-
-	closed = db.close
-
 	addrs := make([]swarm.Address, 0)
 	mtx := new(sync.Mutex)
 	online := make(chan struct{})
@@ -768,6 +767,8 @@ func TestGC_NoEvictDirty(t *testing.T) {
 					t.Error(err)
 				}
 				i++
+				// we sleep so that the async update to gc index
+				// happens and that the dirtyAddresses get updated
 				time.Sleep(100 * time.Millisecond)
 			}
 			dirtyChan <- struct{}{}
