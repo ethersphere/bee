@@ -29,9 +29,7 @@ const (
 	feedMetadataEntryType  = "swarm-feed-type"
 )
 
-var (
-	errInvalidFeedUpdate = errors.New("invalid feed update")
-)
+var errInvalidFeedUpdate = errors.New("invalid feed update")
 
 type feedReferenceResponse struct {
 	Reference swarm.Address `json:"reference"`
@@ -176,12 +174,12 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func parseFeedUpdate(ch swarm.Chunk) (swarm.Address, int64, error) {
-	sch, err := soc.FromChunk(ch)
+	s, err := soc.FromChunk(ch)
 	if err != nil {
 		return swarm.ZeroAddress, 0, fmt.Errorf("soc unmarshal: %w", err)
 	}
 
-	update := sch.Chunk.Data()
+	update := s.WrappedChunk().Data()
 	// split the timestamp and reference
 	// possible values right now:
 	// unencrypted ref: span+timestamp+ref => 8+8+32=48

@@ -55,7 +55,7 @@ func FromChunk(ch swarm.Chunk) (uint64, []byte, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	cac := s.Chunk
+	cac := s.WrappedChunk()
 	if len(cac.Data()) < 16 {
 		return 0, nil, fmt.Errorf("feed update payload too short")
 	}
