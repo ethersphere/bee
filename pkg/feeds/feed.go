@@ -112,10 +112,16 @@ func NewUpdate(f *Feed, idx Index, timestamp int64, payload []byte, sig []byte) 
 		return nil, fmt.Errorf("toChunk: %w", err)
 	}
 
-	ch, err := soc.NewSignedChunk(id, cac, f.Owner.Bytes(), sig)
+	ss, err := soc.NewSigned(id, cac, f.Owner.Bytes(), sig)
+	if err != nil {
+		return nil, fmt.Errorf("new signed soc: %w", err)
+	}
+
+	ch, err := ss.Chunk()
 	if err != nil {
 		return nil, fmt.Errorf("new chunk: %w", err)
 	}
+
 	if !soc.Valid(ch) {
 		return nil, storage.ErrInvalidChunk
 	}
@@ -135,7 +141,6 @@ func Id(topic []byte, index Index) ([]byte, error) {
 	}
 	i := &id{topic, indexBytes}
 	return i.MarshalBinary()
-
 }
 
 // Address calculates the soc address of a feed update
@@ -145,9 +150,5 @@ func (u *Update) Address() (swarm.Address, error) {
 	if err != nil {
 		return addr, err
 	}
-	owner, err := soc.NewOwner(u.Owner[:])
-	if err != nil {
-		return addr, err
-	}
-	return soc.CreateAddress(i, owner)
+	return soc.CreateAddress(i, u.Owner[:])
 }
