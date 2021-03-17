@@ -99,6 +99,9 @@ func (svc *batchService) UpdatePrice(price *big.Int) error {
 
 func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	cs := svc.storer.GetChainState()
+	diff := big.NewInt(0).SetUint64(blockNumber - cs.Block)
+
+	cs.Total.Add(cs.Total, diff.Mul(diff, cs.Price))
 	cs.Block = blockNumber
 	if err := svc.storer.PutChainState(cs); err != nil {
 		return fmt.Errorf("put chain state: %w", err)

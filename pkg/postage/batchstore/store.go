@@ -49,10 +49,10 @@ func New(st storage.StateStorer, unreserveFunc func(batchID []byte, radius uint8
 			return nil, err
 		}
 		rs = &reserveState{
-			Depth:    DefaultDepth,
-			Inner:    big.NewInt(0),
-			Outer:    big.NewInt(0),
-			Capacity: Capacity,
+			Radius:    DefaultDepth,
+			Inner:     big.NewInt(0),
+			Outer:     big.NewInt(0),
+			Available: Capacity,
 		}
 	}
 	return &store{st, cs, rs, unreserveFunc}, nil

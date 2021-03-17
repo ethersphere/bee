@@ -214,6 +214,28 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 		}
 	})
 }
+func TestBatchServiceUpdateBlockNumber(t *testing.T) {
+	testChainState := &postage.ChainState{
+		Block: 1,
+		Price: big.NewInt(100),
+		Total: big.NewInt(100),
+	}
+	svc, batchStore := newTestStoreAndService(
+		mock.WithChainState(testChainState),
+	)
+
+	// advance the block number and expect total cumulative payout to update
+	nextBlock := uint64(4)
+
+	if err := svc.UpdateBlockNumber(nextBlock); err != nil {
+		t.Fatalf("update price: %v", err)
+	}
+	nn := big.NewInt(400)
+	cs := batchStore.GetChainState()
+	if cs.Total.Cmp(nn) != 0 {
+		t.Fatalf("bad price: want %v, got %v", nn, cs.Total)
+	}
+}
 
 func newTestStoreAndService(opts ...mock.Option) (postage.EventUpdater, postage.Storer) {
 	store := mock.New(opts...)

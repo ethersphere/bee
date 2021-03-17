@@ -35,7 +35,7 @@ func IterateAll(bs postage.Storer, f func(b *postage.Batch) (bool, error)) error
 // GetReserve extracts the inner limit and depth of reserve
 func GetReserve(si postage.Storer) (*big.Int, uint8) {
 	s, _ := si.(*store)
-	return s.rs.Inner, s.rs.Depth
+	return s.rs.Inner, s.rs.Radius
 }
 
 func (s *store) String() string {
