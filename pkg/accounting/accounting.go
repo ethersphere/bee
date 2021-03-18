@@ -271,6 +271,73 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
+	// In best effort settlements, we are not going to pay for the complete balance, rather,
+	// we are going to use a formula to calculate the part of the balance we can settle for, that can be loosely stated as:
+	// settleFor := ( "cost of my originated requests” ) +
+	// + ( chequedin / debited ) * ( “total forwarding debt ever to peer” )
+	// - “already settled forwarding debt to peer”
+
+	// the reasoning for this formula can be found in the best effort accounting description @hackmd
+	// this is not a definitive formula, several checks need to be made described below in the pseudocode
+
+	// To implement this formula several members need to be implemented
+	//
+	// "cost of my originated requests” := getOriginatedTabForPeer( peer )
+	// this returns the current originated tab for the peer
+	// The originated tab for the peer is increased in pushsync/retrieval
+	// and have to be reseted to 0 after a successful settlement towards the peer
+	//
+	// chequedin := getSumOfReceivedCheques()
+	// this function returns the sum of all of the received cheques from all peers
+	// to make this efficient, we can increase a global tab by the received amount
+	// whenever we receive a cheque in NotifyPayment from any peer
+	//
+	// debited := getSumOfDebit() + getSumOfReceivedCheques()
+	// the getSumOfDebit() function returns the sum of currently debited amounts for all peers
+	// the function should iterate over all peer balances, and simply sum the positive values
+	//
+	// “already settled forwarding debt to peer” := getSumOfSettledDebtTowardsPeer( peer )
+	// this function returns the sum of forwarding debt previously settled towards the specified peer
+	// to make this efficient, we can increase a per-peer tab whenever we settle
+	// this tab only ever increases (and only when we send out a cheque)
+	//
+	// “total forwarding debt ever to peer” :=
+	// this can be calculated as := “already settled forwarding debt” + (-balance) - "cost of my originated requests”
+	// we use (-balance) as our balance towards the peer is negative when we are in debt
+	// however, because of the nature of accounting, it is not guaranteed that (-balance) is larger than "cost of my originated requests”
+	// if (-balance) < "cost of my originated requests” we settle for -balance without doing any calculations,
+	// as in this case our originated traffic since the last settlement accounted for more than our current debt
+	//
+	// if 'chequedin' and/or 'debited' is zero, we conclude that we can not settle for more than cost of our originated requests
+	// and in this case we also have to avoid division by zero happening in the formula
+	// by checking for this before we do the calculation (included in pseudo below)
+	//
+	// Pseudocode:
+	//
+	// currentDebt := paymentAmount
+	// costOfOriginatedRequests := getOriginatedTabForPeer( peer )
+	// chequedIn := getSumOfReceivedCheques()
+	// debited := getSumOfDebit() + chequedIn
+	// settledDebtTowardsPeer := getSumOfSettledDebtTowardsPeer( peer )
+	// totalForwardingDebtTowardsPeer := settledDebtTowardsPeer + currentDebt - costOfOriginatedRequests
+	//
+	// // if currentdebt is smaller than cost of our originated requests, we leave paymentAmount intact (we settle for full amount), otherwise
+	// if currentDebt.Cmp(costOfOriginatedRequests) > 0 {
+	// // check if chequedIn and debited are not zero
+	//		if debited.Cmp(big.NewInt(0)) > 0 && chequedIn.Cmp(big.NewInt(0)) > 0 {
+	// 			settleableForwardingDebt := chequedIn * totalForwardingDebtTowardsPeer / debited - settledDebtTowardsPeer
+	//			if settleableForwardingDebt.Cmp(big.NewInt(0)) > 0 {
+	//				paymentAmount = costOfOriginatedRequests + settleableForwardingDebt
+	//			} else {
+	//				paymentAmount = costOfOriginatedRequests
+	//			}
+	// 		} else {
+	//			paymentAmount = costOfOriginatedRequests
+	//      }
+	//
+	//
+	// }
+
 	err = a.settlement.Pay(ctx, peer, paymentAmount)
 	if err != nil {
 		err = fmt.Errorf("settlement for amount %d failed: %w", paymentAmount, err)
@@ -570,6 +637,19 @@ func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
 
 // NotifyPayment is called by Settlement when we receive a payment.
 func (a *Accounting) NotifyPayment(peer swarm.Address, amount *big.Int) error {
+
+	// For best effort settlements, we want to keep a tab on the total sum of all received cheques from all peers
+	// In order to do so, we can add the following logic
+	//
+	// defer func() {
+	//		if err == nil {
+	//			increaseGlobalChequedInTab( amount )
+	//		}
+	// }
+	//
+	//
+	//
+
 	accountingPeer, err := a.getAccountingPeer(peer)
 	if err != nil {
 		return err

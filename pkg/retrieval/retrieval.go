@@ -91,6 +91,12 @@ const (
 	retrieveRetryIntervalDuration = 5 * time.Second
 )
 
+// For best effort settlements, we have to start keeping track of the sum of the prices of our originated requests
+// Right now, the handler and store both use RetrieveChunk / retrieveChunk
+// So we somehow have to differentiate between retrieves done as a forwarder and retrieves done as originator
+// For example we can duplicate the functions / add an origin indicating argument,
+// and use the appropriate version in different places in the code
+
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	s.metrics.RequestCounter.Inc()
 
@@ -256,6 +262,13 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		return nil, peer, err
 	}
 	s.metrics.ChunkPrice.Observe(float64(chunkPrice))
+
+	// If we are the originator, increase the tab of original requests
+	// For example if our indicating argument is "originator bool"
+	// if originator {
+	//		increaseOriginatedTabForPeer(peer, chunkPrice)
+	// }
+	//
 
 	return chunk, peer, err
 }

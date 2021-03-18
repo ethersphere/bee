@@ -148,6 +148,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
 }
 
+// For best effort settlements, we have to start keeping track of the sum of the prices of our originated requests
+// Right now, the handler and pusher both use PushChunkToClosest / pushToClosest
+// So we somehow have to differentiate between pushes done as a forwarder and pushes done as an originator
+// For example we can duplicate the functions / add an origin indicating argument,
+// and use the appropriate version in handler / pusher
+
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
@@ -263,6 +269,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		if err != nil {
 			return nil, err
 		}
+
+		// If we are the originator, increase the tab of original requests
+		// For example if our indicating argument is "originator bool"
+		// if originator {
+		//		increaseOriginatedTabForPeer(peer, chunkPrice)
+		// }
+		//
 
 		return &receipt, nil
 	}
