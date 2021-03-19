@@ -26,15 +26,3 @@ type SimpleSwapBindingFunc = func(common.Address, bind.ContractBackend) (SimpleS
 func NewSimpleSwapBindings(address common.Address, backend bind.ContractBackend) (SimpleSwapBinding, error) {
 	return simpleswapfactory.NewERC20SimpleSwap(address, backend)
 }
-
-// ERC20Binding is the interface for the generated go bindings for ERC20
-type ERC20Binding interface {
-	BalanceOf(*bind.CallOpts, common.Address) (*big.Int, error)
-}
-
-type ERC20BindingFunc = func(common.Address, bind.ContractBackend) (ERC20Binding, error)
-
-// NewERC20Bindings generates the default go bindings
-func NewERC20Bindings(address common.Address, backend bind.ContractBackend) (ERC20Binding, error) {
-	return simpleswapfactory.NewERC20(address, backend)
-}

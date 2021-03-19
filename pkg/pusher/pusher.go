@@ -39,7 +39,7 @@ type Service struct {
 
 var (
 	retryInterval  = 5 * time.Second // time interval between retries
-	concurrentJobs = 20              // how many chunks to push simultaneously
+	concurrentJobs = 10              // how many chunks to push simultaneously
 )
 
 func New(storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {

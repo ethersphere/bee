@@ -20,6 +20,7 @@ type metrics struct {
 	BlocklistedPeerCount    prometheus.Counter
 	BlocklistedPeerErrCount prometheus.Counter
 	DisconnectCount         prometheus.Counter
+	ConnectBreakerCount     prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -67,6 +68,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "disconnect_count",
 			Help:      "Number of peers we've disconnected from (initiated locally).",
+		}),
+		ConnectBreakerCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "connect_breaker_count",
+			Help:      "Number of times we got a closed breaker while connecting to another peer.",
 		}),
 	}
 }

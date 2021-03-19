@@ -1,7 +1,7 @@
 # Ethereum Swarm Bee
 
 [![Go](https://github.com/ethersphere/bee/workflows/Go/badge.svg)](https://github.com/ethersphere/bee/actions)
-[![GoDoc](https://godoc.org/github.com/ethersphere/bee?status.svg)](https://godoc.org/github.com/ethersphere/bee)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ethersphere/bee.svg)](https://pkg.go.dev/github.com/ethersphere/bee)
 
 ```
 Welcome to the Swarm.... Bzzz Bzzzz Bzzzz

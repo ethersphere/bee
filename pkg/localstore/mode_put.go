@@ -55,6 +55,11 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	// protect parallel updates
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
+	if db.gcRunning {
+		for _, ch := range chs {
+			db.dirtyAddresses = append(db.dirtyAddresses, ch.Address())
+		}
+	}
 
 	batch := new(leveldb.Batch)
 
