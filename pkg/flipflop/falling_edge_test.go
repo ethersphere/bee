@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	flipflop "github.com/acud/flipflop"
+	"github.com/ethersphere/bee/pkg/flipflop"
 )
 
 func TestFallingEdge(t *testing.T) {
