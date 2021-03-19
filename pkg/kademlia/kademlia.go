@@ -312,6 +312,7 @@ func (k *Kad) manage() {
 
 								k.waitNextMu.Lock()
 								if _, ok := k.waitNext[peer.String()]; !ok {
+									// don't override existing data in the map
 									k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
 								}
 								k.waitNextMu.Unlock()
@@ -392,6 +393,7 @@ func (k *Kad) manage() {
 
 					k.waitNextMu.Lock()
 					if _, ok := k.waitNext[peer.String()]; !ok {
+						// don't override existing data in the map
 						k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
 					}
 					k.waitNextMu.Unlock()
