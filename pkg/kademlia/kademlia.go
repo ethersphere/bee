@@ -309,6 +309,11 @@ func (k *Kad) manage() {
 								}
 								k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
 								k.logger.Warningf("peer not reachable when attempting to connect")
+
+								k.waitNextMu.Lock()
+								k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
+								k.waitNextMu.Unlock()
+
 								// continue to next
 								return nil
 							}
@@ -382,6 +387,11 @@ func (k *Kad) manage() {
 					}
 					k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
 					k.logger.Warningf("peer not reachable when attempting to connect")
+
+					k.waitNextMu.Lock()
+					k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
+					k.waitNextMu.Unlock()
+
 					// continue to next
 					return false, false, nil
 				}
