@@ -38,7 +38,7 @@ func TestFallingEdge(t *testing.T) {
 
 func TestFallingEdgeBuffer(t *testing.T) {
 	ok := make(chan struct{})
-	tt := 100 * time.Millisecond
+	tt := 150 * time.Millisecond
 	worst := 9 * tt
 	in, c, cleanup := flipflop.NewFallingEdge(tt, worst)
 	defer cleanup()
@@ -46,8 +46,9 @@ func TestFallingEdgeBuffer(t *testing.T) {
 	wait := 99 * time.Millisecond
 
 	start := time.Now()
-
+	online := make(chan struct{})
 	go func() {
+		close(online)
 		select {
 		case <-c:
 			if time.Since(start) <= 450*time.Millisecond {
@@ -59,6 +60,10 @@ func TestFallingEdgeBuffer(t *testing.T) {
 			t.Errorf("timed out")
 		}
 	}()
+
+	// wait for goroutine to be scheduled
+	<-online
+
 	for i := 0; i < sleeps; i++ {
 		in <- struct{}{}
 		time.Sleep(wait)
