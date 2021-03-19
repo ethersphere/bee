@@ -47,6 +47,11 @@ var (
 	// Limit the number of goroutines created by Getters
 	// that call updateGC function. Value 0 sets no limit.
 	maxParallelUpdateGC = 1000
+
+	// values needed to adjust subscription trigger
+	// buffer time.
+	flipFlopBufferDuration    = 150 * time.Millisecond
+	flipFlopWorstCaseDuration = 20 * time.Second
 )
 
 // DB is the local store implementation and holds
@@ -64,13 +69,13 @@ type DB struct {
 	// push syncing index
 	pushIndex shed.Index
 	// push syncing subscriptions triggers
-	pushTriggers   []chan struct{}
+	pushTriggers   []chan<- struct{}
 	pushTriggersMu sync.RWMutex
 
 	// pull syncing index
 	pullIndex shed.Index
 	// pull syncing subscriptions triggers per bin
-	pullTriggers   map[uint8][]chan struct{}
+	pullTriggers   map[uint8][]chan<- struct{}
 	pullTriggersMu sync.RWMutex
 
 	// binIDs stores the latest chunk serial ID for every
@@ -310,7 +315,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 	// create a pull syncing triggers used by SubscribePull function
-	db.pullTriggers = make(map[uint8][]chan struct{})
+	db.pullTriggers = make(map[uint8][]chan<- struct{})
 	// push index contains as yet unsynced chunks
 	db.pushIndex, err = db.shed.NewIndex("StoreTimestamp|Hash->Tags", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
@@ -340,7 +345,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 	// create a push syncing triggers used by SubscribePush function
-	db.pushTriggers = make([]chan struct{}, 0)
+	db.pushTriggers = make([]chan<- struct{}, 0)
 	// gc index for removable chunk ordered by ascending last access time
 	db.gcIndex, err = db.shed.NewIndex("AccessTimestamp|BinID|Hash->nil", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
