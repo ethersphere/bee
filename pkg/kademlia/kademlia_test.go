@@ -629,6 +629,8 @@ func TestAddressBookPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	time.Sleep(50 * time.Millisecond)
 	addOne(t, signer, kad, ab, addr2)
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 1)
