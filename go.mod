@@ -3,7 +3,6 @@ module github.com/ethersphere/bee
 go 1.14
 
 require (
-	github.com/acud/flipflop v0.0.2
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/coreos/go-semver v0.3.0
