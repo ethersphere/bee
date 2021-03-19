@@ -109,6 +109,15 @@ type DB struct {
 
 	batchMu sync.Mutex
 
+	// gcRunning is true while GC is running. it is
+	// used to avoid touching dirty gc index entries
+	// while garbage collecting.
+	gcRunning bool
+
+	// dirtyAddresses are marked while gc is running
+	// in order to avoid the removal of dirty entries.
+	dirtyAddresses []swarm.Address
+
 	// this channel is closed when close function is called
 	// to terminate other goroutines
 	close chan struct{}
