@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/flipflop"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -33,20 +34,21 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 	db.metrics.SubscribePush.Inc()
 
 	chunks := make(chan swarm.Chunk)
-	trigger := make(chan struct{}, 1)
+	in, out, clean := flipflop.NewFallingEdge(flipFlopBufferDuration, flipFlopWorstCaseDuration)
 
 	db.pushTriggersMu.Lock()
-	db.pushTriggers = append(db.pushTriggers, trigger)
+	db.pushTriggers = append(db.pushTriggers, in)
 	db.pushTriggersMu.Unlock()
 
 	// send signal for the initial iteration
-	trigger <- struct{}{}
+	in <- struct{}{}
 
 	stopChan := make(chan struct{})
 	var stopChanOnce sync.Once
 
 	db.subscritionsWG.Add(1)
 	go func() {
+		defer clean()
 		defer db.subscritionsWG.Done()
 		db.metrics.SubscribePushIterationDone.Inc()
 		// close the returned chunkInfo channel at the end to
@@ -57,7 +59,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 		var sinceItem *shed.Item
 		for {
 			select {
-			case <-trigger:
+			case <-out:
 				// iterate until:
 				// - last index Item is reached
 				// - subscription stop is called
@@ -133,7 +135,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 		defer db.pushTriggersMu.Unlock()
 
 		for i, t := range db.pushTriggers {
-			if t == trigger {
+			if t == in {
 				db.pushTriggers = append(db.pushTriggers[:i], db.pushTriggers[i+1:]...)
 				break
 			}
