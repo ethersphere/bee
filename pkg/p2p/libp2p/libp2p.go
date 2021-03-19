@@ -496,6 +496,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
+			s.metrics.ConnectBreakerCount.Inc()
 			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
 		}
 		return nil, err
