@@ -81,3 +81,21 @@ func TestAddress_jsonMarshalling(t *testing.T) {
 		t.Error("unmarshalled address is not equal to the original")
 	}
 }
+
+func TestAddress_MemberOf(t *testing.T) {
+	a1 := swarm.MustParseHexAddress("24798dd5a470e927fa")
+	a2 := swarm.MustParseHexAddress("24798dd5a470e927fa")
+	a3 := swarm.MustParseHexAddress("24798dd5a470e927fb")
+	a4 := swarm.MustParseHexAddress("24798dd5a470e927fc")
+
+	set1 := []swarm.Address{a2, a3}
+	if !a1.MemberOf(set1) {
+		t.Fatal("expected addr as member")
+	}
+
+	set2 := []swarm.Address{a3, a4}
+	if a1.MemberOf(set2) {
+		t.Fatal("expected addr not member")
+	}
+
+}

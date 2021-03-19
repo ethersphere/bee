@@ -125,6 +125,9 @@ func (db *DB) updateGCItems(items ...shed.Item) {
 func (db *DB) updateGC(item shed.Item) (err error) {
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
+	if db.gcRunning {
+		db.dirtyAddresses = append(db.dirtyAddresses, swarm.NewAddress(item.Address))
+	}
 
 	batch := new(leveldb.Batch)
 

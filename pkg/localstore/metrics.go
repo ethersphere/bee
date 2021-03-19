@@ -10,6 +10,7 @@ import (
 )
 
 type metrics struct {
+	TotalTimeGCLock                 prometheus.Counter
 	TotalTimeGCFirstItem            prometheus.Counter
 	TotalTimeCollectGarbage         prometheus.Counter
 	TotalTimeGCExclude              prometheus.Counter
@@ -26,6 +27,7 @@ type metrics struct {
 	GCCounter                prometheus.Counter
 	GCErrorCounter           prometheus.Counter
 	GCCollectedCounter       prometheus.Counter
+	GCCommittedCounter       prometheus.Counter
 	GCExcludeCounter         prometheus.Counter
 	GCExcludeError           prometheus.Counter
 	GCExcludeWriteBatchError prometheus.Counter
@@ -63,6 +65,12 @@ func newMetrics() metrics {
 	subsystem := "localstore"
 
 	return metrics{
+		TotalTimeGCLock: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gc_lock_time",
+			Help:      "Total time under lock in gc.",
+		}),
 		TotalTimeGCFirstItem: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -152,6 +160,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "gc_collected_count",
 			Help:      "Number of times the GC_COLLECTED operation is done.",
+		}),
+		GCCommittedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gc_committed_count",
+			Help:      "Number of gc items to commit.",
 		}),
 		GCExcludeCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

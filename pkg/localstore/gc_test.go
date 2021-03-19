@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -715,4 +716,147 @@ func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
 		chunks = append(chunks, ch)
 	}
 	return chunks
+}
+
+// TestGC_NoEvictDirty checks that the garbage collection
+// does not evict chunks that are marked as dirty while the gc
+// is running.
+func TestGC_NoEvictDirty(t *testing.T) {
+	// lower the maximal number of chunks in a single
+	// gc batch to ensure multiple batches.
+	defer func(s uint64) { gcBatchSize = s }(gcBatchSize)
+	gcBatchSize = 2
+
+	chunkCount := 15
+
+	db := newTestDB(t, &Options{
+		Capacity: 10,
+	})
+
+	closed := db.close
+
+	testHookCollectGarbageChan := make(chan uint64)
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		select {
+		case testHookCollectGarbageChan <- collectedCount:
+		case <-closed:
+		}
+	}))
+
+	dirtyChan := make(chan struct{})
+	incomingChan := make(chan struct{})
+	t.Cleanup(setTestHookGCIteratorDone(func() {
+		incomingChan <- struct{}{}
+		<-dirtyChan
+	}))
+	addrs := make([]swarm.Address, 0)
+	mtx := new(sync.Mutex)
+	online := make(chan struct{})
+	go func() {
+		close(online) // make sure this is scheduled, otherwise test might flake
+		i := 0
+		for range incomingChan {
+			// set a chunk to be updated in gc, resulting
+			// in a removal from the gc round. but don't do this
+			// for all chunks!
+			if i < 2 {
+				mtx.Lock()
+				_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
+				mtx.Unlock()
+				if err != nil {
+					t.Error(err)
+				}
+				i++
+				// we sleep so that the async update to gc index
+				// happens and that the dirtyAddresses get updated
+				time.Sleep(100 * time.Millisecond)
+			}
+			dirtyChan <- struct{}{}
+		}
+
+	}()
+	<-online
+	// upload random chunks
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunk()
+
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		mtx.Lock()
+		addrs = append(addrs, ch.Address())
+		mtx.Unlock()
+	}
+
+	gcTarget := db.gcTarget()
+	for {
+		select {
+		case <-testHookCollectGarbageChan:
+		case <-time.After(10 * time.Second):
+			t.Error("collect garbage timeout")
+		}
+		gcSize, err := db.gcSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gcSize == gcTarget {
+			break
+		}
+	}
+
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+
+	// the first synced chunk should be removed
+	t.Run("get the first two chunks, third is gone", func(t *testing.T) {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
+		if err != nil {
+			t.Error("got error but expected none")
+		}
+		_, err = db.Get(context.Background(), storage.ModeGetRequest, addrs[1])
+		if err != nil {
+			t.Error("got error but expected none")
+		}
+		_, err = db.Get(context.Background(), storage.ModeGetRequest, addrs[2])
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("expected err not found but got %v", err)
+		}
+	})
+
+	t.Run("only later inserted chunks should be removed", func(t *testing.T) {
+		for i := 2; i < (chunkCount - int(gcTarget)); i++ {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
+			if !errors.Is(err, storage.ErrNotFound) {
+				t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
+			}
+		}
+	})
+
+	// last synced chunk should not be removed
+	t.Run("get most recent synced chunk", func(t *testing.T) {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[len(addrs)-1])
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+}
+
+// setTestHookGCIteratorDone sets testHookGCIteratorDone and
+// returns a function that will reset it to the
+// value before the change.
+func setTestHookGCIteratorDone(h func()) (reset func()) {
+	current := testHookGCIteratorDone
+	reset = func() { testHookGCIteratorDone = current }
+	testHookGCIteratorDone = h
+	return reset
 }
