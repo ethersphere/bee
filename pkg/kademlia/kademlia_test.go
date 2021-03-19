@@ -578,6 +578,7 @@ func TestAddressBookPrune(t *testing.T) {
 	addr := test.RandomAddressAt(base, 1)
 	addr1 := test.RandomAddressAt(base, 1)
 	addr2 := test.RandomAddressAt(base, 1)
+	addr3 := test.RandomAddressAt(base, 1)
 
 	p, err := ab.Get(nonConnPeer.Overlay)
 	if err != nil {
@@ -620,6 +621,14 @@ func TestAddressBookPrune(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 	// add one valid peer to initiate the retry, check connection and failed connection counters
+	addOne(t, signer, kad, ab, addr3)
+	waitCounter(t, &conns, 1)
+	waitCounter(t, &failedConns, 1)
+
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if err != nil {
+		t.Fatal(err)
+	}
 	addOne(t, signer, kad, ab, addr2)
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 1)

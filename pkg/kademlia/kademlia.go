@@ -311,7 +311,7 @@ func (k *Kad) manage() {
 								k.logger.Warningf("peer not reachable when attempting to connect")
 
 								k.waitNextMu.Lock()
-								k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
+								k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
 								k.waitNextMu.Unlock()
 
 								// continue to next
@@ -389,7 +389,7 @@ func (k *Kad) manage() {
 					k.logger.Warningf("peer not reachable when attempting to connect")
 
 					k.waitNextMu.Lock()
-					k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
+					k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
 					k.waitNextMu.Unlock()
 
 					// continue to next
