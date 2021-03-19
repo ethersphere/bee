@@ -38,13 +38,13 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cheques_received",
-			Help:      "Amount of cheques received from peers",
+			Help:      "Number of cheques received from peers",
 		}),
 		ChequesSent: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cheques_sent",
-			Help:      "Amount of cheques sent to peer",
+			Help:      "Number of cheques sent to peers",
 		}),
 		ChequesRejected: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
