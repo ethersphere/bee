@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/acud/flipflop"
+	"github.com/ethersphere/bee/pkg/flipflop"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
