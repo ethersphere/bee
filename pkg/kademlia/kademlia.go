@@ -791,18 +791,37 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address, skipPeers ...swarm.Ad
 	return closest, nil
 }
 
+func isIn(a swarm.Address, addresses []p2p.Peer) bool {
+	for _, v := range addresses {
+		if v.Address.Equal(a) {
+			return true
+		}
+	}
+	return false
+}
+
 // ClosestPeer returns the closest peer to a given address.
 func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
+	peers := k.p2p.Peers()
+	var peersToDisconnect []swarm.Address
 	closest := k.base
+
 	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		for _, a := range skipPeers {
 			if a.Equal(peer) {
 				return false, false, nil
 			}
+		}
+
+		// kludge: hotfix for topology peer inconsistencies bug
+		if !isIn(peer, peers) {
+			a := swarm.NewAddress(peer.Bytes())
+			peersToDisconnect = append(peersToDisconnect, a)
+			return false, false, nil
 		}
 
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
@@ -823,6 +842,10 @@ func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm
 	})
 	if err != nil {
 		return swarm.Address{}, err
+	}
+
+	for _, v := range peersToDisconnect {
+		k.Disconnected(p2p.Peer{Address: v})
 	}
 
 	// check if self
