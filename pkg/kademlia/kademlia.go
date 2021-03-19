@@ -309,6 +309,14 @@ func (k *Kad) manage() {
 								}
 								k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
 								k.logger.Warningf("peer not reachable when attempting to connect")
+
+								k.waitNextMu.Lock()
+								if _, ok := k.waitNext[peer.String()]; !ok {
+									// don't override existing data in the map
+									k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
+								}
+								k.waitNextMu.Unlock()
+
 								// continue to next
 								return nil
 							}
@@ -382,6 +390,14 @@ func (k *Kad) manage() {
 					}
 					k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
 					k.logger.Warningf("peer not reachable when attempting to connect")
+
+					k.waitNextMu.Lock()
+					if _, ok := k.waitNext[peer.String()]; !ok {
+						// don't override existing data in the map
+						k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
+					}
+					k.waitNextMu.Unlock()
+
 					// continue to next
 					return false, false, nil
 				}
