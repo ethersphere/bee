@@ -50,7 +50,7 @@ var (
 
 	// values needed to adjust subscription trigger
 	// buffer time.
-	flipFlopBufferDuration    = 100 * time.Millisecond
+	flipFlopBufferDuration    = 150 * time.Millisecond
 	flipFlopWorstCaseDuration = 20 * time.Second
 )
 
