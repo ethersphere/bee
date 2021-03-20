@@ -318,7 +318,7 @@ func (k *Kad) manage() {
 								k.waitNextMu.Unlock()
 
 								// continue to next
-								return nil
+								continue
 							}
 
 							k.waitNextMu.Lock()
