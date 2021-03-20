@@ -727,12 +727,11 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	defer func(s uint64) { gcBatchSize = s }(gcBatchSize)
 	gcBatchSize = 2
 
-	chunkCount := 15
+	chunkCount := 10
 
 	db := newTestDB(t, &Options{
 		Capacity: 10,
 	})
-	defer db.Close()
 
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
@@ -748,6 +747,7 @@ func TestGC_NoEvictDirty(t *testing.T) {
 		incomingChan <- struct{}{}
 		<-dirtyChan
 	}))
+	defer close(incomingChan)
 	addrs := make([]swarm.Address, 0)
 	mtx := new(sync.Mutex)
 	online := make(chan struct{})
