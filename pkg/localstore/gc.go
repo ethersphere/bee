@@ -131,9 +131,9 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 
 		collectedCount++
 		if collectedCount >= gcBatchSize {
-			// batch size limit reached,
-			// another gc run is needed
-			done = false
+			// batch size limit reached, however we don't
+			// know whether another gc run is needed until
+			// we weed out the dirty entries below
 			return true, nil
 		}
 		return false, nil
