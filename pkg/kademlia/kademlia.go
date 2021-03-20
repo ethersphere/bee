@@ -210,6 +210,14 @@ func (k *Kad) manage() {
 	var (
 		peerToRemove swarm.Address
 		start        time.Time
+		spf          = func(peer swarm.Address) bool {
+			k.waitNextMu.Lock()
+			defer k.waitNextMu.Unlock()
+			if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
+				return true
+			}
+			return false
+		}
 	)
 
 	defer k.wg.Done()
@@ -244,18 +252,9 @@ func (k *Kad) manage() {
 			// attempt balanced connection first
 			err := func() error {
 				// for each bin
-				spf := func(peer swarm.Address) bool {
-					k.waitNextMu.Lock()
-					defer k.waitNextMu.Unlock()
-					if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
-						return true
-					}
-					return false
-				}
-
 				for i := range k.commonBinPrefixes {
-
 					// and each pseudo address
+
 					for j := range k.commonBinPrefixes[i] {
 						pseudoAddr := k.commonBinPrefixes[i][j]
 
