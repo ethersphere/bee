@@ -244,11 +244,10 @@ func (k *Kad) manage() {
 			// attempt balanced connection first
 			err := func() error {
 				// for each bin
-				k.waitNextMu.Lock()
-				wnCopy := k.waitNext
-				k.waitNextMu.Unlock()
 				spf := func(peer swarm.Address) bool {
-					if next, ok := wnCopy[peer.String()]; ok && time.Now().Before(next.tryAfter) {
+					k.waitNextMu.Lock()
+					defer k.waitNextMu.Unlock()
+					if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
 						return true
 					}
 					return false
