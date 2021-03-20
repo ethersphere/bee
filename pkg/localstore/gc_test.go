@@ -725,7 +725,7 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	// lower the maximal number of chunks in a single
 	// gc batch to ensure multiple batches.
 	defer func(s uint64) { gcBatchSize = s }(gcBatchSize)
-	gcBatchSize = 2
+	gcBatchSize = 1
 
 	chunkCount := 10
 
@@ -735,6 +735,13 @@ func TestGC_NoEvictDirty(t *testing.T) {
 
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		// don't trigger if we haven't collected anything - this may
+		// result in a race condition when we inspect the gcsize below,
+		// causing the database to shut down while the cleanup to happen
+		// before the correct signal has been communicated here.
+		if collectedCount == 0 {
+			return
+		}
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
 		case <-db.close:
@@ -772,7 +779,6 @@ func TestGC_NoEvictDirty(t *testing.T) {
 			}
 			dirtyChan <- struct{}{}
 		}
-
 	}()
 	<-online
 	// upload random chunks

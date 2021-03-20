@@ -162,9 +162,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
 			collectedCount--
-			if gcSize-collectedCount > target {
-				done = false
-			}
 			continue
 		}
 
@@ -189,6 +186,10 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 			return 0, false, err
 		}
 	}
+	if gcSize-collectedCount > target {
+		done = false
+	}
+
 	db.metrics.GCCommittedCounter.Add(float64(collectedCount))
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 
