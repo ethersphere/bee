@@ -732,14 +732,13 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	db := newTestDB(t, &Options{
 		Capacity: 10,
 	})
-
-	closed := db.close
+	defer db.Close()
 
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
-		case <-closed:
+		case <-db.close:
 		}
 	}))
 
