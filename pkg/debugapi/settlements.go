@@ -94,7 +94,7 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.logger.Debugf("debug api: settlements peer: invalid peer address %s: %v", addr, err)
 		s.logger.Errorf("debug api: settlements peer: invalid peer address %s", addr)
-		jsonhttp.NotFound(w, errInvaliAddress)
+		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
 

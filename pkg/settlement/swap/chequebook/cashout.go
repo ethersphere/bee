@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 )
@@ -104,8 +105,8 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 	request := &transaction.TxRequest{
 		To:       &chequebook,
 		Data:     callData,
-		GasPrice: nil,
-		GasLimit: 0,
+		GasPrice: sctx.GetGasPrice(ctx),
+		GasLimit: sctx.GetGasLimit(ctx),
 		Value:    big.NewInt(0),
 	}
 

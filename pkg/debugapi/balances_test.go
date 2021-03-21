@@ -136,7 +136,7 @@ func TestBalancesInvalidAddress(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrInvaliAddress,
+			Message: debugapi.ErrInvalidAddress,
 			Code:    http.StatusNotFound,
 		}),
 	)
@@ -289,7 +289,7 @@ func TestConsumedInvalidAddress(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrInvaliAddress,
+			Message: debugapi.ErrInvalidAddress,
 			Code:    http.StatusNotFound,
 		}),
 	)
