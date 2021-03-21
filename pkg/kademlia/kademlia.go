@@ -41,6 +41,9 @@ var (
 )
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
+type sanctionedPeerFunc func(peer swarm.Address) bool
+
+var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 
 // Options for injecting services to Kademlia.
 type Options struct {
@@ -207,6 +210,14 @@ func (k *Kad) manage() {
 	var (
 		peerToRemove swarm.Address
 		start        time.Time
+		spf          = func(peer swarm.Address) bool {
+			k.waitNextMu.Lock()
+			defer k.waitNextMu.Unlock()
+			if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
+				return true
+			}
+			return false
+		}
 	)
 
 	defer k.wg.Done()
@@ -242,12 +253,12 @@ func (k *Kad) manage() {
 			err := func() error {
 				// for each bin
 				for i := range k.commonBinPrefixes {
-
 					// and each pseudo address
+
 					for j := range k.commonBinPrefixes[i] {
 						pseudoAddr := k.commonBinPrefixes[i][j]
 
-						closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, swarm.ZeroAddress)
+						closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn, swarm.ZeroAddress)
 						if err != nil {
 							if errors.Is(err, topology.ErrNotFound) {
 								break
@@ -261,9 +272,10 @@ func (k *Kad) manage() {
 						closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
 
 						if int(closestConnectedPO) < i+k.bitSuffixLength+1 {
-							// connect to closest known peer
+							// connect to closest known peer which we haven't tried connecting
+							// to recently
 
-							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, swarm.ZeroAddress)
+							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, spf, swarm.ZeroAddress)
 							if err != nil {
 								if errors.Is(err, topology.ErrNotFound) {
 									break
@@ -318,7 +330,7 @@ func (k *Kad) manage() {
 								k.waitNextMu.Unlock()
 
 								// continue to next
-								return nil
+								continue
 							}
 
 							k.waitNextMu.Lock()
@@ -767,13 +779,17 @@ func (k *Kad) notifyPeerSig() {
 	}
 }
 
-func closestPeer(peers *pslice.PSlice, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
+func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFunc, skipPeers ...swarm.Address) (swarm.Address, error) {
 	closest := swarm.Address{}
 	err := peers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		for _, a := range skipPeers {
 			if a.Equal(peer) {
 				return false, false, nil
 			}
+		}
+		// check whether peer is sanctioned
+		if spf(peer) {
+			return false, false, nil
 		}
 		if closest.IsZero() {
 			closest = peer
@@ -934,7 +950,7 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 	// for each pseudo address
 	for i := range k.commonBinPrefixes[bin] {
 		pseudoAddr := k.commonBinPrefixes[bin][i]
-		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, swarm.ZeroAddress)
+		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn, swarm.ZeroAddress)
 		if err != nil {
 			return false
 		}
