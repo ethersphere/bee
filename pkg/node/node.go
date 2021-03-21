@@ -84,6 +84,9 @@ type Bee struct {
 type Options struct {
 	DataDir                string
 	DBCapacity             uint64
+	DBOpenFilesLimit       uint64
+	DBWriteBufferSize      uint64
+	DBBlockCacheCapacity   uint64
 	APIAddr                string
 	DebugAPIAddr           string
 	Addr                   string
@@ -381,7 +384,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
-		Capacity: o.DBCapacity,
+		Capacity:           o.DBCapacity,
+		OpenFilesLimit:     o.DBOpenFilesLimit,
+		BlockCacheCapacity: o.DBBlockCacheCapacity,
+		WriteBufferSize:    o.DBWriteBufferSize,
 	}
 	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
 	if err != nil {

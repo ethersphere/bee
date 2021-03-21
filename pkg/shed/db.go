@@ -32,10 +32,16 @@ import (
 )
 
 var (
-	openFileLimit      = 128 // The limit for LevelDB OpenFilesCacheCapacity.
-	blockCacheCapacity = 32 * 1024 * 1024
-	writeBuffer        = 32 * 1024 * 1024
+	defaultOpenFilesLimit     = uint64(256)
+	defaultBlockCacheCapacity = uint64(32 * 1024 * 1024)
+	defaultWriteBufferSize    = uint64(32 * 1024 * 1024)
 )
+
+type Options struct {
+	BlockCacheCapacity uint64
+	WriteBufferSize    uint64
+	OpenFilesLimit     uint64
+}
 
 // DB provides abstractions over LevelDB in order to
 // implement complex structures using fields and ordered indexes.
@@ -50,16 +56,22 @@ type DB struct {
 // NewDB constructs a new DB and validates the schema
 // if it exists in database on the given path.
 // metricsPrefix is used for metrics collection for the given DB.
-func NewDB(path string) (db *DB, err error) {
+func NewDB(path string, o *Options) (db *DB, err error) {
+	if o == nil {
+		o = &Options{
+			OpenFilesLimit:     defaultOpenFilesLimit,
+			BlockCacheCapacity: defaultBlockCacheCapacity,
+			WriteBufferSize:    defaultWriteBufferSize,
+		}
+	}
 	var ldb *leveldb.DB
 	if path == "" {
 		ldb, err = leveldb.Open(storage.NewMemStorage(), nil)
 	} else {
 		ldb, err = leveldb.OpenFile(path, &opt.Options{
-			OpenFilesCacheCapacity: openFileLimit,
-			BlockCacheCapacity:     blockCacheCapacity,
-			DisableSeeksCompaction: true,
-			WriteBuffer:            writeBuffer,
+			OpenFilesCacheCapacity: int(o.OpenFilesLimit),
+			BlockCacheCapacity:     int(o.BlockCacheCapacity),
+			WriteBuffer:            int(o.WriteBufferSize),
 		})
 	}
 
