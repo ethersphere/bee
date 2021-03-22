@@ -32,15 +32,17 @@ import (
 )
 
 var (
-	defaultOpenFilesLimit     = uint64(256)
-	defaultBlockCacheCapacity = uint64(32 * 1024 * 1024)
-	defaultWriteBufferSize    = uint64(32 * 1024 * 1024)
+	defaultOpenFilesLimit         = uint64(256)
+	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
+	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
+	defaultDisableSeeksCompaction = false
 )
 
 type Options struct {
-	BlockCacheCapacity uint64
-	WriteBufferSize    uint64
-	OpenFilesLimit     uint64
+	BlockCacheCapacity     uint64
+	WriteBufferSize        uint64
+	OpenFilesLimit         uint64
+	DisableSeeksCompaction bool
 }
 
 // DB provides abstractions over LevelDB in order to
@@ -59,9 +61,10 @@ type DB struct {
 func NewDB(path string, o *Options) (db *DB, err error) {
 	if o == nil {
 		o = &Options{
-			OpenFilesLimit:     defaultOpenFilesLimit,
-			BlockCacheCapacity: defaultBlockCacheCapacity,
-			WriteBufferSize:    defaultWriteBufferSize,
+			OpenFilesLimit:         defaultOpenFilesLimit,
+			BlockCacheCapacity:     defaultBlockCacheCapacity,
+			WriteBufferSize:        defaultWriteBufferSize,
+			DisableSeeksCompaction: defaultDisableSeeksCompaction,
 		}
 	}
 	var ldb *leveldb.DB
@@ -72,6 +75,7 @@ func NewDB(path string, o *Options) (db *DB, err error) {
 			OpenFilesCacheCapacity: int(o.OpenFilesLimit),
 			BlockCacheCapacity:     int(o.BlockCacheCapacity),
 			WriteBuffer:            int(o.WriteBufferSize),
+			DisableSeeksCompaction: o.DisableSeeksCompaction,
 		})
 	}
 

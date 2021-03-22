@@ -22,6 +22,7 @@ const (
 	optionNameDBOpenFilesLimit          = "db-open-files-limit"
 	optionNameDBBlockCacheCapacity      = "db-block-cache-capacity"
 	optionNameDBWriteBufferSize         = "db-write-buffer-size"
+	optionNameDBDisableSeeksCompaction  = "db-disable-seeks-compaction"
 	optionNamePassword                  = "password"
 	optionNamePasswordFile              = "password-file"
 	optionNameAPIAddr                   = "api-addr"
@@ -186,6 +187,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameDBOpenFilesLimit, 200, "number of open files allowed by database")
 	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
 	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
+	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, false, "disables db compactions triggered by seeks")
 	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")

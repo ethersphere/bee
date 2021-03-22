@@ -82,36 +82,37 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir                string
-	DBCapacity             uint64
-	DBOpenFilesLimit       uint64
-	DBWriteBufferSize      uint64
-	DBBlockCacheCapacity   uint64
-	APIAddr                string
-	DebugAPIAddr           string
-	Addr                   string
-	NATAddr                string
-	EnableWS               bool
-	EnableQUIC             bool
-	WelcomeMessage         string
-	Bootnodes              []string
-	CORSAllowedOrigins     []string
-	Logger                 logging.Logger
-	Standalone             bool
-	TracingEnabled         bool
-	TracingEndpoint        string
-	TracingServiceName     string
-	GlobalPinningEnabled   bool
-	PaymentThreshold       string
-	PaymentTolerance       string
-	PaymentEarly           string
-	ResolverConnectionCfgs []multiresolver.ConnectionConfig
-	GatewayMode            bool
-	BootnodeMode           bool
-	SwapEndpoint           string
-	SwapFactoryAddress     string
-	SwapInitialDeposit     string
-	SwapEnable             bool
+	DataDir                  string
+	DBCapacity               uint64
+	DBOpenFilesLimit         uint64
+	DBWriteBufferSize        uint64
+	DBBlockCacheCapacity     uint64
+	DBDisableSeeksCompaction bool
+	APIAddr                  string
+	DebugAPIAddr             string
+	Addr                     string
+	NATAddr                  string
+	EnableWS                 bool
+	EnableQUIC               bool
+	WelcomeMessage           string
+	Bootnodes                []string
+	CORSAllowedOrigins       []string
+	Logger                   logging.Logger
+	Standalone               bool
+	TracingEnabled           bool
+	TracingEndpoint          string
+	TracingServiceName       string
+	GlobalPinningEnabled     bool
+	PaymentThreshold         string
+	PaymentTolerance         string
+	PaymentEarly             string
+	ResolverConnectionCfgs   []multiresolver.ConnectionConfig
+	GatewayMode              bool
+	BootnodeMode             bool
+	SwapEndpoint             string
+	SwapFactoryAddress       string
+	SwapInitialDeposit       string
+	SwapEnable               bool
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
@@ -384,10 +385,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
-		Capacity:           o.DBCapacity,
-		OpenFilesLimit:     o.DBOpenFilesLimit,
-		BlockCacheCapacity: o.DBBlockCacheCapacity,
-		WriteBufferSize:    o.DBWriteBufferSize,
+		Capacity:               o.DBCapacity,
+		OpenFilesLimit:         o.DBOpenFilesLimit,
+		BlockCacheCapacity:     o.DBBlockCacheCapacity,
+		WriteBufferSize:        o.DBWriteBufferSize,
+		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 	}
 	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
 	if err != nil {

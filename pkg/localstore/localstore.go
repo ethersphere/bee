@@ -156,6 +156,9 @@ type Options struct {
 	BlockCacheCapacity uint64
 	// WriteBuffer defines the size of writer buffer and is passed on to shed.
 	WriteBufferSize uint64
+	// DisableSeeksCompaction toggles the seek driven compactions feature on leveldb
+	// and is passed on to shed
+	DisableSeeksCompaction bool
 
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
@@ -204,9 +207,10 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	}
 
 	shedOpts := &shed.Options{
-		OpenFilesLimit:     o.OpenFilesLimit,
-		BlockCacheCapacity: o.BlockCacheCapacity,
-		WriteBufferSize:    o.WriteBufferSize,
+		OpenFilesLimit:         o.OpenFilesLimit,
+		BlockCacheCapacity:     o.BlockCacheCapacity,
+		WriteBufferSize:        o.WriteBufferSize,
+		DisableSeeksCompaction: o.DisableSeeksCompaction,
 	}
 
 	db.shed, err = shed.NewDB(path, shedOpts)
