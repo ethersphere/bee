@@ -25,7 +25,7 @@ func NewFallingEdge(bufferTime, worstCase time.Duration) (in chan<- struct{}, ou
 		t:         bufferTime,
 		worstCase: worstCase,
 		buf:       make(chan struct{}, 1),
-		out:       make(chan struct{}, 1),
+		out:       make(chan struct{}),
 		quit:      make(chan struct{}),
 	}
 
@@ -50,14 +50,16 @@ func (d *detector) work() {
 		case <-waitWrite:
 			select {
 			case d.out <- struct{}{}:
-			default:
+			case <-d.quit:
+				return
 			}
 			worstCase = nil
 			waitWrite = nil
 		case <-worstCase:
 			select {
 			case d.out <- struct{}{}:
-			default:
+			case <-d.quit:
+				return
 			}
 			worstCase = nil
 			waitWrite = nil
