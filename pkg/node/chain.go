@@ -35,40 +35,43 @@ func InitChain(
 	stateStore storage.StateStorer,
 	endpoint string,
 	signer crypto.Signer,
-) (*ethclient.Client, common.Address, int64, transaction.Service, error) {
+) (*ethclient.Client, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend, err := ethclient.Dial(endpoint)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("dial eth client: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial eth client: %w", err)
 	}
 
 	chainID, err := backend.ChainID(ctx)
 	if err != nil {
 		logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", endpoint)
-		return nil, common.Address{}, 0, nil, fmt.Errorf("get chain id: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get chain id: %w", err)
 	}
 
-	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID)
-	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("new transaction service: %w", err)
-	}
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("eth address: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
+	}
+
+	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, 15*time.Second, 6)
+
+	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
+	if err != nil {
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
 
 	// Sync the with the given Ethereum backend:
 	isSynced, err := transaction.IsSynced(ctx, backend, maxDelay)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("is synced: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
 		logger.Infof("waiting to sync with the Ethereum backend")
 		err := transaction.WaitSynced(ctx, backend, maxDelay)
 		if err != nil {
-			return nil, common.Address{}, 0, nil, fmt.Errorf("waiting backend sync: %w", err)
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("waiting backend sync: %w", err)
 		}
 	}
-	return backend, overlayEthAddress, chainID.Int64(), transactionService, nil
+	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, nil
 }
 
 // InitChequebookFactory will initialize the chequebook factory with the given
