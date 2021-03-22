@@ -11,6 +11,8 @@ CLEF_CHAINID=5
 # BEE_API_ADDR=:1633
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
 # BEE_BOOTNODE=[/dnsaddr/bootnode.ethswarm.org]
+## cause the node to always accept incoming connections
+# BEE_BOOTNODE_MODE=false
 ## enable clef signer
 BEE_CLEF_SIGNER_ENABLE=true
 ## clef signer endpoint
@@ -23,6 +25,14 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_DATA_DIR=/home/bee/.bee
 ## db capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # BEE_DB_CAPACITY=5000000
+## number of open files allowed by database
+# BEE_DB_OPEN_FILES_LIMIT=200
+## size of block cache of the database in bytes
+# BEE_DB_BLOCK_CACHE_CAPACITY=33554432
+## size of the database write buffer in bytes
+# BEE_DB_WRITE_BUFFER_SIZE=33554432
+## disables db compactions triggered by seeks
+# BEE_DB_DISABLE_SEEKS_COMPACTION=false
 ## debug HTTP API listen address (default :1635)
 # BEE_DEBUG_API_ADDR=:1635
 ## enable debug HTTP API

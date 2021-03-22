@@ -4,6 +4,8 @@
 # api-addr: :1633
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
 # bootnode: [/dnsaddr/bootnode.ethswarm.org]
+## cause the node to always accept incoming connections
+# bootnode-mode: false
 ## enable clef signer
 clef-signer-enable: true
 ## clef signer endpoint
@@ -16,6 +18,14 @@ config: /usr/local/etc/swarm-bee/bee.yaml
 data-dir: /usr/local/var/lib/swarm-bee
 ## db capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # db-capacity: 5000000
+## number of open files allowed by database
+# db-open-files-limit: 200
+## size of block cache of the database in bytes
+# db-block-cache-capacity: 33554432
+## size of the database write buffer in bytes
+# db-write-buffer-size: 33554432
+## disables db compactions triggered by seeks
+# db-disable-seeks-compaction: false
 ## debug HTTP API listen address (default ":1635")
 debug-api-addr: 127.0.0.1:1635
 ## enable debug HTTP API
