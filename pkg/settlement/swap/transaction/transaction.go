@@ -98,6 +98,8 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 		return common.Hash{}, err
 	}
 
+	t.logger.Tracef("sending transaction %x with nonce %d", signedTx.Hash(), nonce)
+
 	err = t.backend.SendTransaction(ctx, signedTx)
 	if err != nil {
 		return common.Hash{}, err
