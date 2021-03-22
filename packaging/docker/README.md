@@ -35,6 +35,11 @@ From logs find URL line with `on goerli you can get both goerli eth and goerli b
 docker-compose logs -f bee-1
 ```
 
+Update services with
+```
+docker-compose pull && docker-compose up -d
+```
+
 ## Running multiple Bee nodes
 It is easy to run multiple bee nodes with docker compose by adding more services to `docker-compose.yaml`
 To do so, open `docker-compose.yaml`, copy lines 3-58 and past this after line 58.
