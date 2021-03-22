@@ -50,7 +50,7 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 	go func() {
 		defer clean()
 		defer db.subscritionsWG.Done()
-		db.metrics.SubscribePushIterationDone.Inc()
+		defer db.metrics.SubscribePushIterationDone.Inc()
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
