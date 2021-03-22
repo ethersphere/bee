@@ -8,9 +8,11 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -29,6 +31,11 @@ var (
 	errCannotCashStatus            = "cannot get cashout status"
 	errNoCashout                   = "no prior cashout"
 	errNoCheque                    = "no prior cheque"
+	errBadGasPrice                 = "bad gas price"
+	errBadGasLimit                 = "bad gas limit"
+
+	gasPriceHeader = "Gas-Price"
+	gasLimitHeader = "Gas-Limit"
 )
 
 type chequebookBalanceResponse struct {
@@ -87,7 +94,7 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		s.logger.Debugf("debug api: chequebook cheque peer: invalid peer address %s: %v", addr, err)
 		s.logger.Errorf("debug api: chequebook cheque peer: invalid peer address %s", addr)
-		jsonhttp.NotFound(w, errInvaliAddress)
+		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
 
@@ -200,11 +207,33 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("debug api: cashout peer: invalid peer address %s: %v", addr, err)
 		s.logger.Errorf("debug api: cashout peer: invalid peer address %s", addr)
-		jsonhttp.NotFound(w, errInvaliAddress)
+		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
 
-	txHash, err := s.swap.CashCheque(r.Context(), peer)
+	ctx := r.Context()
+	if price, ok := r.Header[gasPriceHeader]; ok {
+		p, ok := big.NewInt(0).SetString(price[0], 10)
+		if !ok {
+			s.logger.Error("debug api: cashout peer: bad gas price")
+			jsonhttp.BadRequest(w, errBadGasPrice)
+			return
+		}
+		ctx = sctx.SetGasPrice(ctx, p)
+	}
+
+	if limit, ok := r.Header[gasLimitHeader]; ok {
+		l, err := strconv.ParseUint(limit[0], 10, 64)
+		if err != nil {
+			s.logger.Debugf("debug api: cashout peer: bad gas limit: %v", err)
+			s.logger.Error("debug api: cashout peer: bad gas limit")
+			jsonhttp.BadRequest(w, errBadGasLimit)
+			return
+		}
+		ctx = sctx.SetGasLimit(ctx, l)
+	}
+
+	txHash, err := s.swap.CashCheque(ctx, peer)
 	if err != nil {
 		s.logger.Debugf("debug api: cashout peer: cannot cash %s: %v", addr, err)
 		s.logger.Errorf("debug api: cashout peer: cannot cash %s", addr)
@@ -236,7 +265,7 @@ func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		s.logger.Debugf("debug api: cashout status peer: invalid peer address %s: %v", addr, err)
 		s.logger.Errorf("debug api: cashout status peer: invalid peer address %s", addr)
-		jsonhttp.NotFound(w, errInvaliAddress)
+		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
 

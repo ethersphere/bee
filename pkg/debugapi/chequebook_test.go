@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
@@ -430,6 +431,45 @@ func TestChequebookCashout(t *testing.T) {
 
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
+	}
+}
+
+func TestChequebookCashout_CustomGas(t *testing.T) {
+
+	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
+	deployCashingHash := common.HexToHash("0xffff")
+
+	var price *big.Int
+	var limit uint64
+	cashChequeFunc := func(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+		price = sctx.GetGasPrice(ctx)
+		limit = sctx.GetGasLimit(ctx)
+		return deployCashingHash, nil
+	}
+
+	testServer := newTestServer(t, testServerOptions{
+		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
+	})
+
+	expected := &debugapi.SwapCashoutResponse{TransactionHash: deployCashingHash.String()}
+
+	var got *debugapi.SwapCashoutResponse
+	jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/cashout/"+addr.String(), http.StatusOK,
+		jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
+		jsonhttptest.WithRequestHeader("Gas-Limit", "12221"),
+		jsonhttptest.WithUnmarshalJSONResponse(&got),
+	)
+
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
+	}
+
+	if price.Cmp(big.NewInt(10000)) != 0 {
+		t.Fatalf("expected gas price 10000 got %s", price)
+	}
+
+	if limit != 12221 {
+		t.Fatalf("expected gas limit 12221 got %d", limit)
 	}
 }
 

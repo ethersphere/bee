@@ -16,10 +16,10 @@ import (
 )
 
 var (
-	errCantBalances  = "Cannot get balances"
-	errCantBalance   = "Cannot get balance"
-	errNoBalance     = "No balance for peer"
-	errInvaliAddress = "Invalid address"
+	errCantBalances   = "Cannot get balances"
+	errCantBalance    = "Cannot get balance"
+	errNoBalance      = "No balance for peer"
+	errInvalidAddress = "Invalid address"
 )
 
 type balanceResponse struct {
@@ -59,7 +59,7 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("debug api: balances peer: invalid peer address %s: %v", addr, err)
 		s.logger.Errorf("debug api: balances peer: invalid peer address %s", addr)
-		jsonhttp.NotFound(w, errInvaliAddress)
+		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
 
@@ -109,7 +109,7 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 	if err != nil {
 		s.logger.Debugf("debug api: compensated balances peer: invalid peer address %s: %v", addr, err)
 		s.logger.Errorf("debug api: compensated balances peer: invalid peer address %s", addr)
-		jsonhttp.NotFound(w, errInvaliAddress)
+		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
 
