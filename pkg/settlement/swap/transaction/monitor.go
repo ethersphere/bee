@@ -21,6 +21,9 @@ import (
 var ErrTransactionCancelled = errors.New("transaction cancelled")
 
 // Monitor is a nonce-based watcher for transaction confirmations.
+// Instead of watching transactions individually, the senders nonce is monitored and transactions are checked based on this.
+// The idea is that if the nonce is still lower than that of a pending transaction, there is no point in actually checking the transaction for a receipt.
+// At the same time if the nonce was already used and this was a few blocks ago we can reasonably assume that it will never confirm.
 
 type Monitor interface {
 	io.Closer
