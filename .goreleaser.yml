@@ -55,199 +55,245 @@ snapshot:
 
 archives:
   -
-    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    format: binary
-  -
-    id: homebrew
+    id: scoop
     builds:
-    - darwin
+    - windows
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format: zip
+    wrap_in_directory: false
     files:
-    - packaging/homebrew/bee.yaml
-    - packaging/homebrew/bee-get-addr
+    - packaging/scoop/bee.yaml
     - LICENSE
     - README.md
+  -
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format: binary
+  # -
+  #   id: homebrew
+  #   builds:
+  #   - darwin
+  #   name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+  #   files:
+  #   - packaging/homebrew/bee.yaml
+  #   - packaging/homebrew/bee-get-addr
+  #   - LICENSE
+  #   - README.md
 
-nfpms:
-  - file_name_template: "{{ tolower .ProjectName }}_{{ tolower .Version }}_{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+scoop:
+  url_template: "https://github.com/vandot/bee/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+  bucket:
+    owner: vandot
+    name: scoop
+    token: "{{ .Env.SCOOP }}"
 
-    vendor: Ethereum Swarm
-    homepage: https://swarm.ethereum.org/
+  commit_author:
+    name: goreleaserbot
+    email: goreleaser@carlosbecker.com
 
-    maintainer: Janoš Guljaš <janos@ethswarm.org>
+  commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
 
-    description: Ethereum Swarm node
+  homepage: "https://github.com/ethersphere/bee"
 
-    license: GPL-3
+  description: "Swarm client implemented in Go."
 
-    dependencies:
-      - ca-certificates
-      - adduser
+  license: BSD-3-Clause
 
-    formats:
-      - deb
-      - rpm
+  persist:
+  - "data"
+  - "packaging/scoop/bee.yaml"
+
+  post_install:
+    - "Write-Host 'Running postinstall command'"
+    - "if(!(Test-Path $persist_dir\\bee.yaml)){New-Item -ItemType SymbolicLink -Path \"$persist_dir\\bee.yaml\" -Target \"$persist_dir\\packaging\\scoop\\bee.yaml\" | Out-Null}"
+    - "(Get-Content -path $persist_dir\\bee.yaml -Raw) -replace './bee.yaml',\"$persist_dir\\bee.yaml\" | Set-Content -Path $persist_dir\\bee.yaml"
+    - "(Get-Content -path $persist_dir\\bee.yaml -Raw) -replace './data',\"$persist_dir\\data\" | Set-Content -Path $persist_dir\\bee.yaml"
+    - "(Get-Content -path $persist_dir\\bee.yaml -Raw) -replace './password',\"$persist_dir\\password\" | Set-Content -Path $persist_dir\\bee.yaml"
+    - "if(!(Test-Path $persist_dir\\password)){[System.Web.Security.Membership]::GeneratePassword(32,5) | Set-Content -Path $persist_dir\\password}"
+    - "if(sc.exe query SwarmBeeSvc | Select-String FAILED){$env:BEE_INITIAL = 'True'; sc.exe create SwarmBeeSvc binPath= \"$dir\\bee.exe start --config=$persist_dir\\bee.yaml\" type= share start= auto displayName= \"Bee\"; sc.exe description SwarmBeeSvc \"Swarm client implemented in Go.\"}"
+    - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.\nYou can get both goerli eth and goerli bzz from https://bzz.ethswarm.org/?transaction=buy&amount=10&slippage=30&receiver=0x$ETH_ADDRESS\""
+    - "if($BEE_INITIAL){Write-Host 'After you fund deploy Bee checkbook with [sudo] $dir\\bee.exe deploy --config=$persist_dir\\bee.yaml'}"
+    - "Write-Host 'Start Bee service with [sudo] sc.exe start SwarmBeeSvc'" 
+
+# nfpms:
+#   - file_name_template: "{{ tolower .ProjectName }}_{{ tolower .Version }}_{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+
+#     vendor: Ethereum Swarm
+#     homepage: https://swarm.ethereum.org/
+
+#     maintainer: Janoš Guljaš <janos@ethswarm.org>
+
+#     description: Ethereum Swarm node
+
+#     license: GPL-3
+
+#     dependencies:
+#       - ca-certificates
+#       - adduser
+
+#     formats:
+#       - deb
+#       - rpm
     
-    files:
-      "packaging/bee.service": "/lib/systemd/system/bee.service"
-      "packaging/bee-get-addr": "/usr/bin/bee-get-addr"
+#     files:
+#       "packaging/bee.service": "/lib/systemd/system/bee.service"
+#       "packaging/bee-get-addr": "/usr/bin/bee-get-addr"
 
-    config_files:
-      "packaging/bee.yaml": "/etc/bee/bee.yaml"
-      "packaging/default": "/etc/default/bee"
+#     config_files:
+#       "packaging/bee.yaml": "/etc/bee/bee.yaml"
+#       "packaging/default": "/etc/default/bee"
 
-    overrides:
-      deb:
-        dependencies:
-          - passwd
-          - ca-certificates
-        scripts:
-          preinstall: ./packaging/deb/preinst
-          postinstall: ./packaging/deb/postinst
-          preremove: ./packaging/deb/prerm
-          postremove: ./packaging/deb/postrm
-      rpm:
-        dependencies:
-          - ca-certificates
-          - shadow-utils
-        scripts:
-          preinstall: ./packaging/rpm/pre
-          postinstall: ./packaging/rpm/post
-          preremove: ./packaging/rpm/preun
-          postremove: ./packaging/rpm/postun
+#     overrides:
+#       deb:
+#         dependencies:
+#           - passwd
+#           - ca-certificates
+#         scripts:
+#           preinstall: ./packaging/deb/preinst
+#           postinstall: ./packaging/deb/postinst
+#           preremove: ./packaging/deb/prerm
+#           postremove: ./packaging/deb/postrm
+#       rpm:
+#         dependencies:
+#           - ca-certificates
+#           - shadow-utils
+#         scripts:
+#           preinstall: ./packaging/rpm/pre
+#           postinstall: ./packaging/rpm/post
+#           preremove: ./packaging/rpm/preun
+#           postremove: ./packaging/rpm/postun
 
-    bindir: /usr/bin
+#     bindir: /usr/bin
 
-brews:
-  - name: swarm-bee
-    tap:
-      owner: ethersphere
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_PAT }}"
-    ids:
-      - homebrew
-    commit_author:
-      name: bee-worker
-      email: bee-worker@ethswarm.org
-    homepage: https://swarm.ethereum.org/
-    description: Ethereum Swarm node
-    caveats: |
-        Logs:   #{var}/log/swarm-bee/bee.log
-        Config: #{etc}/swarm-bee/bee.yaml
+# brews:
+#   - name: swarm-bee
+#     tap:
+#       owner: ethersphere
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_PAT }}"
+#     ids:
+#       - homebrew
+#     commit_author:
+#       name: bee-worker
+#       email: bee-worker@ethswarm.org
+#     homepage: https://swarm.ethereum.org/
+#     description: Ethereum Swarm node
+#     caveats: |
+#         Logs:   #{var}/log/swarm-bee/bee.log
+#         Config: #{etc}/swarm-bee/bee.yaml
 
-        Bee has SWAP enabled and by default is using slock.it goerli ethereum endpoint.
-        It is recommended to use external signer with bee.
-        Check documentation for more info:
-        - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives
-        - External signer https://docs.ethswarm.org/docs/installation/bee-clef
+#         Bee has SWAP enabled and by default is using slock.it goerli ethereum endpoint.
+#         It is recommended to use external signer with bee.
+#         Check documentation for more info:
+#         - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives
+#         - External signer https://docs.ethswarm.org/docs/installation/bee-clef
 
-        After you finish configuration run 'bee-get-addr'.
-    test: |
-      system "#{bin}/bee version"
-    install: |
-      (etc/"swarm-bee").mkpath
-      (var/"lib/swarm-bee").mkpath
-      bin.install ["bee", "packaging/homebrew/bee-get-addr"]
-      etc.install "packaging/homebrew/bee.yaml" => "swarm-bee/bee.yaml" unless File.exists? etc/"swarm-bee/bee.yaml"
-    post_install: |
-      unless File.exists? "#{var}/lib/swarm-bee/password"
-      system("openssl", "rand", "-out", var/"lib/swarm-bee/password", "-base64", "32")
-      end
-      system(bin/"bee", "init", "--config", etc/"swarm-bee/bee.yaml", ">/dev/null", "2>&1")
-    plist: |
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-      <dict>
-        <key>KeepAlive</key>
-        <true/>
-        <key>Label</key>
-        <string>#{plist_name}</string>
-        <key>ProgramArguments</key>
-        <array>
-          <string>#{bin}/bee</string>
-          <string>start</string>
-          <string>--config</string>
-          <string>#{etc}/swarm-bee/bee.yaml</string>
-        </array>
-        <key>RunAtLoad</key>
-        <true/>
-        <key>WorkingDirectory</key>
-        <string>/usr/local</string>
-        <key>StandardOutPath</key>
-        <string>#{var}/log/swarm-bee/bee.log</string>
-        <key>StandardErrorPath</key>
-        <string>#{var}/log/swarm-bee/bee.log</string>
-      </dict>
-      </plist>
+#         After you finish configuration run 'bee-get-addr'.
+#     test: |
+#       system "#{bin}/bee version"
+#     install: |
+#       (etc/"swarm-bee").mkpath
+#       (var/"lib/swarm-bee").mkpath
+#       bin.install ["bee", "packaging/homebrew/bee-get-addr"]
+#       etc.install "packaging/homebrew/bee.yaml" => "swarm-bee/bee.yaml" unless File.exists? etc/"swarm-bee/bee.yaml"
+#     post_install: |
+#       unless File.exists? "#{var}/lib/swarm-bee/password"
+#       system("openssl", "rand", "-out", var/"lib/swarm-bee/password", "-base64", "32")
+#       end
+#       system(bin/"bee", "init", "--config", etc/"swarm-bee/bee.yaml", ">/dev/null", "2>&1")
+#     plist: |
+#       <?xml version="1.0" encoding="UTF-8"?>
+#       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+#       <plist version="1.0">
+#       <dict>
+#         <key>KeepAlive</key>
+#         <true/>
+#         <key>Label</key>
+#         <string>#{plist_name}</string>
+#         <key>ProgramArguments</key>
+#         <array>
+#           <string>#{bin}/bee</string>
+#           <string>start</string>
+#           <string>--config</string>
+#           <string>#{etc}/swarm-bee/bee.yaml</string>
+#         </array>
+#         <key>RunAtLoad</key>
+#         <true/>
+#         <key>WorkingDirectory</key>
+#         <string>/usr/local</string>
+#         <key>StandardOutPath</key>
+#         <string>#{var}/log/swarm-bee/bee.log</string>
+#         <key>StandardErrorPath</key>
+#         <string>#{var}/log/swarm-bee/bee.log</string>
+#       </dict>
+#       </plist>
 
-dockers:
-- image_templates:
-  - "ethersphere/bee:{{ .Version }}-amd64"
-  use_buildx: true
-  ids:
-    - linux
-  goarch: amd64
-  dockerfile: Dockerfile.goreleaser
-  build_flag_templates:
-  - "--platform=linux/amd64"
-  - "--pull"
-  - "--label=org.opencontainers.image.created={{.Date}}"
-  - "--label=org.opencontainers.image.title={{.ProjectName}}"
-  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-  - "--label=org.opencontainers.image.version={{.Version}}"
-- image_templates:
-  - "ethersphere/bee:{{ .Version }}-armv7"
-  use_buildx: true
-  ids:
-    - linux
-  goarch: arm
-  goarm: 7
-  dockerfile: Dockerfile.goreleaser
-  build_flag_templates:
-  - "--platform=linux/arm/v7"
-  - "--pull"
-  - "--label=org.opencontainers.image.created={{.Date}}"
-  - "--label=org.opencontainers.image.title={{.ProjectName}}"
-  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-  - "--label=org.opencontainers.image.version={{.Version}}"
-- image_templates:
-  - "ethersphere/bee:{{ .Version }}-arm64v8"
-  use_buildx: true
-  ids:
-    - linux
-  goarch: arm64
-  dockerfile: Dockerfile.goreleaser
-  build_flag_templates:
-  - "--platform=linux/arm64/v8"
-  - "--pull"
-  - "--label=org.opencontainers.image.created={{.Date}}"
-  - "--label=org.opencontainers.image.title={{.ProjectName}}"
-  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-  - "--label=org.opencontainers.image.version={{.Version}}"
-docker_manifests:
-- name_template: ethersphere/bee:{{ .Major }}
-  image_templates:
-  - ethersphere/bee:{{ .Version }}-amd64
-  - ethersphere/bee:{{ .Version }}-armv7
-  - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}
-  image_templates:
-  - ethersphere/bee:{{ .Version }}-amd64
-  - ethersphere/bee:{{ .Version }}-armv7
-  - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}
-  image_templates:
-  - ethersphere/bee:{{ .Version }}-amd64
-  - ethersphere/bee:{{ .Version }}-armv7
-  - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:latest
-  image_templates:
-  - ethersphere/bee:{{ .Version }}-amd64
-  - ethersphere/bee:{{ .Version }}-armv7
-  - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:beta
-  image_templates:
-  - ethersphere/bee:{{ .Version }}-amd64
-  - ethersphere/bee:{{ .Version }}-armv7
-  - ethersphere/bee:{{ .Version }}-arm64v8
+# dockers:
+# - image_templates:
+#   - "ethersphere/bee:{{ .Version }}-amd64"
+#   use_buildx: true
+#   ids:
+#     - linux
+#   goarch: amd64
+#   dockerfile: Dockerfile.goreleaser
+#   build_flag_templates:
+#   - "--platform=linux/amd64"
+#   - "--pull"
+#   - "--label=org.opencontainers.image.created={{.Date}}"
+#   - "--label=org.opencontainers.image.title={{.ProjectName}}"
+#   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+#   - "--label=org.opencontainers.image.version={{.Version}}"
+# - image_templates:
+#   - "ethersphere/bee:{{ .Version }}-armv7"
+#   use_buildx: true
+#   ids:
+#     - linux
+#   goarch: arm
+#   goarm: 7
+#   dockerfile: Dockerfile.goreleaser
+#   build_flag_templates:
+#   - "--platform=linux/arm/v7"
+#   - "--pull"
+#   - "--label=org.opencontainers.image.created={{.Date}}"
+#   - "--label=org.opencontainers.image.title={{.ProjectName}}"
+#   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+#   - "--label=org.opencontainers.image.version={{.Version}}"
+# - image_templates:
+#   - "ethersphere/bee:{{ .Version }}-arm64v8"
+#   use_buildx: true
+#   ids:
+#     - linux
+#   goarch: arm64
+#   dockerfile: Dockerfile.goreleaser
+#   build_flag_templates:
+#   - "--platform=linux/arm64/v8"
+#   - "--pull"
+#   - "--label=org.opencontainers.image.created={{.Date}}"
+#   - "--label=org.opencontainers.image.title={{.ProjectName}}"
+#   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+#   - "--label=org.opencontainers.image.version={{.Version}}"
+# docker_manifests:
+# - name_template: ethersphere/bee:{{ .Major }}
+#   image_templates:
+#   - ethersphere/bee:{{ .Version }}-amd64
+#   - ethersphere/bee:{{ .Version }}-armv7
+#   - ethersphere/bee:{{ .Version }}-arm64v8
+# - name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}
+#   image_templates:
+#   - ethersphere/bee:{{ .Version }}-amd64
+#   - ethersphere/bee:{{ .Version }}-armv7
+#   - ethersphere/bee:{{ .Version }}-arm64v8
+# - name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+#   image_templates:
+#   - ethersphere/bee:{{ .Version }}-amd64
+#   - ethersphere/bee:{{ .Version }}-armv7
+#   - ethersphere/bee:{{ .Version }}-arm64v8
+# - name_template: ethersphere/bee:latest
+#   image_templates:
+#   - ethersphere/bee:{{ .Version }}-amd64
+#   - ethersphere/bee:{{ .Version }}-armv7
+#   - ethersphere/bee:{{ .Version }}-arm64v8
+# - name_template: ethersphere/bee:beta
+#   image_templates:
+#   - ethersphere/bee:{{ .Version }}-amd64
+#   - ethersphere/bee:{{ .Version }}-armv7
+#   - ethersphere/bee:{{ .Version }}-arm64v8
