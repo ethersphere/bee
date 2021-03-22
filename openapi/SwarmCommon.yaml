@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.5.1
+  version: 0.5.3
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -152,6 +152,14 @@ components:
 
     FileName:
       type: string
+
+    GasLimit:
+      type: integer
+      minimum: 0
+      maximum: 18446744073709551615
+
+    GasPrice:
+      type: integer
 
     Hash:
       type: object
@@ -413,6 +421,22 @@ components:
         type: string
 
   parameters:
+
+    GasPriceParameter:
+      in: header
+      name: gas-price
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/GasPrice"
+      required: false
+      description: "Gas price for transaction"
+
+    GasLimitParameter:
+      in: header
+      name: gas-limit
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/GasLimit"
+      required: false
+      description: "Gas limit for transaction"
 
     SwarmRecoveryTargetsParameter:
       in: query

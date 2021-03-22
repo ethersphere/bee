@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 0.5.1
+  version: 0.5.3
   title: Swarm API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 

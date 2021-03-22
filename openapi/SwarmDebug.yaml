@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.5.1
+  version: 0.5.3
   title: Bee Debug API
   description: "A list of the currently provided debug interfaces to interact with the bee node"
 
@@ -477,6 +477,8 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of peer
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       tags:
         - Chequebook
       responses:
