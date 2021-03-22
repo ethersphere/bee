@@ -147,6 +147,19 @@ type Options struct {
 	// Capacity is a limit that triggers garbage collection when
 	// number of items in gcIndex equals or exceeds it.
 	Capacity uint64
+	// OpenFilesLimit defines the upper bound of open files that the
+	// the localstore should maintain at any point of time. It is
+	// passed on to the shed constructor.
+	OpenFilesLimit uint64
+	// BlockCacheCapacity defines the block cache capacity and is passed
+	// on to shed.
+	BlockCacheCapacity uint64
+	// WriteBuffer defines the size of writer buffer and is passed on to shed.
+	WriteBufferSize uint64
+	// DisableSeeksCompaction toggles the seek driven compactions feature on leveldb
+	// and is passed on to shed.
+	DisableSeeksCompaction bool
+
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
@@ -193,7 +206,14 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		db.updateGCSem = make(chan struct{}, maxParallelUpdateGC)
 	}
 
-	db.shed, err = shed.NewDB(path)
+	shedOpts := &shed.Options{
+		OpenFilesLimit:         o.OpenFilesLimit,
+		BlockCacheCapacity:     o.BlockCacheCapacity,
+		WriteBufferSize:        o.WriteBufferSize,
+		DisableSeeksCompaction: o.DisableSeeksCompaction,
+	}
+
+	db.shed, err = shed.NewDB(path, shedOpts)
 	if err != nil {
 		return nil, err
 	}
