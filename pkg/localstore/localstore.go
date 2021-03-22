@@ -157,7 +157,7 @@ type Options struct {
 	// WriteBuffer defines the size of writer buffer and is passed on to shed.
 	WriteBufferSize uint64
 	// DisableSeeksCompaction toggles the seek driven compactions feature on leveldb
-	// and is passed on to shed
+	// and is passed on to shed.
 	DisableSeeksCompaction bool
 
 	// MetricsPrefix defines a prefix for metrics names.
