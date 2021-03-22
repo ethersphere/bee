@@ -475,7 +475,7 @@ func TestTransactionResend(t *testing.T) {
 	}
 	defer transactionService.Close()
 
-	err = transactionService.ResendTransaction(signedTx.Hash())
+	err = transactionService.ResendTransaction(context.Background(), signedTx.Hash())
 	if err != nil {
 		t.Fatal(err)
 	}
