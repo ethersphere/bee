@@ -1,4 +1,4 @@
-## Bee configuration - https://swarm-gateways.net/bzz:/docs.swarm.eth/docs/installation/configuration
+## Bee configuration - https://gateway.ethswarm.org/bzz/docs.swarm.eth/docs/installation/configuration/
 
 ## HTTP API listen address (default ":1633")
 # api-addr: :1633
