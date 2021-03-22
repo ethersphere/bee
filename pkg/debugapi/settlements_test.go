@@ -182,7 +182,7 @@ func TestSettlementsInvalidAddress(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrInvaliAddress,
+			Message: debugapi.ErrInvalidAddress,
 			Code:    http.StatusNotFound,
 		}),
 	)

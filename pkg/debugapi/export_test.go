@@ -35,5 +35,5 @@ var (
 	ErrCantSettlementsPeer = errCantSettlementsPeer
 	ErrCantSettlements     = errCantSettlements
 	ErrChequebookBalance   = errChequebookBalance
-	ErrInvaliAddress       = errInvaliAddress
+	ErrInvalidAddress      = errInvalidAddress
 )
