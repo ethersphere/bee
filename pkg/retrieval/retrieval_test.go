@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"sync"
 	"testing"
 	"time"
 
@@ -230,7 +231,6 @@ func TestRetrieveChunk(t *testing.T) {
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {
-	t.Skip("needs some more tendering. baseaddr change made a mess here")
 	logger := logging.New(ioutil.Discard, 0)
 
 	chunk := testingc.FixtureChunk("0025")
@@ -289,6 +289,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
 
 	t.Run("peer not reachable", func(t *testing.T) {
+		ranOnce := true
+		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
 			streamtest.WithProtocols(
 				server1.Protocol(),
@@ -297,19 +299,19 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithMiddlewares(
 				func(h p2p.HandlerFunc) p2p.HandlerFunc {
 					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+						ranMux.Lock()
+						defer ranMux.Unlock()
 						// NOTE: return error for peer1
-						if serverAddress1.Equal(peer.Address) {
+						if ranOnce {
+							ranOnce = false
 							return fmt.Errorf("peer not reachable: %s", peer.Address.String())
 						}
 
-						if serverAddress2.Equal(peer.Address) {
-							return server2.Handler(ctx, peer, stream)
-						}
-
-						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+						return server2.Handler(ctx, peer, stream)
 					}
 				},
 			),
+			streamtest.WithBaseAddr(clientAddress),
 		)
 
 		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
@@ -325,6 +327,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	})
 
 	t.Run("peer does not have chunk", func(t *testing.T) {
+		ranOnce := true
+		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
 			streamtest.WithProtocols(
 				server1.Protocol(),
@@ -333,15 +337,14 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithMiddlewares(
 				func(h p2p.HandlerFunc) p2p.HandlerFunc {
 					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-						if serverAddress1.Equal(peer.Address) {
+						ranMux.Lock()
+						defer ranMux.Unlock()
+						if ranOnce {
+							ranOnce = false
 							return server1.Handler(ctx, peer, stream)
 						}
 
-						if serverAddress2.Equal(peer.Address) {
-							return server2.Handler(ctx, peer, stream)
-						}
-
-						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+						return server2.Handler(ctx, peer, stream)
 					}
 				},
 			),
@@ -383,6 +386,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		// (here one second more)
 		server1ResponseDelayDuration := 6 * time.Second
 
+		ranOnce := true
+		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
 			streamtest.WithProtocols(
 				server1.Protocol(),
@@ -391,17 +396,17 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithMiddlewares(
 				func(h p2p.HandlerFunc) p2p.HandlerFunc {
 					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-						if serverAddress1.Equal(peer.Address) {
+						ranMux.Lock()
+						if ranOnce {
 							// NOTE: sleep time must be more than retry duration
+							ranOnce = false
+							ranMux.Unlock()
 							time.Sleep(server1ResponseDelayDuration)
 							return server1.Handler(ctx, peer, stream)
 						}
 
-						if serverAddress2.Equal(peer.Address) {
-							return server2.Handler(ctx, peer, stream)
-						}
-
-						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+						ranMux.Unlock()
+						return server2.Handler(ctx, peer, stream)
 					}
 				},
 			),
