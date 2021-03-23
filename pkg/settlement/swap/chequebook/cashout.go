@@ -176,7 +176,7 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 		return nil, err
 	}
 
-	var action *cashoutAction
+	var action cashoutAction
 	err = s.store.Get(cashoutActionKey(chequebookAddress), &action)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
