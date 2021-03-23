@@ -13,7 +13,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -366,7 +365,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 		t.Fatal(err)
 	}
 	var (
-		logger = logging.New(os.Stdout, 6)
+		logger = logging.New(ioutil.Discard, 0)
 		pss    = pss.New(privkey, logger)
 	)
 	if o.pingPeriod == 0 {
