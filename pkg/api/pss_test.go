@@ -30,11 +30,17 @@ import (
 )
 
 var (
-	target      = pss.Target([]byte{1})
-	targets     = pss.Targets([]pss.Target{target})
-	payload     = []byte("testdata")
-	topic       = pss.NewTopic("testtopic")
-	timeout     = 10 * time.Second
+	target  = pss.Target([]byte{1})
+	targets = pss.Targets([]pss.Target{target})
+	payload = []byte("testdata")
+	topic   = pss.NewTopic("testtopic")
+	// mTimeout is used to wait for checking the message contents, whereas rTimeout
+	// is used to wait for reading the message. For the negative cases, i.e. ensuring
+	// no message is received, the rTimeout might trigger before the mTimeout
+	// (Issue #1388) causing test to fail. Hence the rTimeout should be slightly more
+	// than the mTimeout
+	mTimeout    = 10 * time.Second
+	rTimeout    = 15 * time.Second
 	longTimeout = 30 * time.Second
 )
 
@@ -282,7 +288,7 @@ func TestPssPingPong(t *testing.T) {
 
 func waitReadMessage(t *testing.T, mtx *sync.Mutex, cl *websocket.Conn, targetContent []byte, done <-chan struct{}) {
 	t.Helper()
-	timeout := time.After(timeout)
+	timeout := time.After(rTimeout)
 	for {
 		select {
 		case <-done:
@@ -327,7 +333,7 @@ func waitDone(t *testing.T, mtx *sync.Mutex, done *bool) {
 func waitMessage(t *testing.T, data, expData []byte, mtx *sync.Mutex) {
 	t.Helper()
 
-	ttl := time.After(timeout)
+	ttl := time.After(mTimeout)
 	for {
 		select {
 		case <-ttl:
