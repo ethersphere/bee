@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -143,7 +144,11 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 
 	_, pending, err := s.backend.TransactionByHash(ctx, action.TxHash)
 	if err != nil {
-		return nil, err
+		// treat not found as pending
+		if !errors.Is(err, ethereum.NotFound) {
+			return nil, err
+		}
+		pending = true
 	}
 
 	if pending {
