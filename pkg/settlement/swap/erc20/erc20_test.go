@@ -14,11 +14,11 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	backendmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
-	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	erc20ABI = transaction.ParseABIUnchecked(simpleswapfactory.ERC20ABI)
+	erc20ABI = transaction.ParseABIUnchecked(sw3abi.ERC20ABIv0_3_1)
 )
 
 func TestBalanceOf(t *testing.T) {

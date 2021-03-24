@@ -16,11 +16,11 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
-	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	factoryABI              = transaction.ParseABIUnchecked(simpleswapfactory.SimpleSwapFactoryABI)
+	factoryABI              = transaction.ParseABIUnchecked(sw3abi.SimpleSwapFactoryABIv0_3_1)
 	simpleSwapDeployedEvent = factoryABI.Events["SimpleSwapDeployed"]
 )
 
@@ -60,7 +60,7 @@ func TestFactoryVerifySelf(t *testing.T) {
 				if blockNumber != nil {
 					t.Fatal("not called for latest block")
 				}
-				return common.FromHex(simpleswapfactory.SimpleSwapFactoryDeployedCode), nil
+				return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_3_1), nil
 			}),
 		),
 		transactionmock.New(),
@@ -84,7 +84,7 @@ func TestFactoryVerifySelfInvalidCode(t *testing.T) {
 				if blockNumber != nil {
 					t.Fatal("not called for latest block")
 				}
-				return common.FromHex(simpleswapfactory.AddressBin), nil
+				return common.FromHex("abcd"), nil
 			}),
 		),
 		transactionmock.New(),
