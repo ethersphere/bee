@@ -17,6 +17,8 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/pricer"
+	"github.com/ethersphere/bee/pkg/pricer/headerutils"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -53,14 +55,14 @@ type PushSync struct {
 	unwrap        func(swarm.Chunk)
 	logger        logging.Logger
 	accounting    accounting.Interface
-	pricer        accounting.Pricer
+	pricer        pricer.Interface
 	metrics       metrics
 	tracer        *tracing.Tracer
 }
 
 var timeToLive = 5 * time.Second // request time to live
 
-func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		streamer:      streamer,
 		storer:        storer,
@@ -84,6 +86,7 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
+				Headler: s.pricer.PriceHeadler,
 			},
 		},
 	}
@@ -122,6 +125,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
+	// Get price we charge for upstream peer read at headler
+	responseHeaders := stream.ResponseHeaders()
+	price, err := headerutils.ParsePriceHeader(responseHeaders)
+
+	if err != nil {
+		// if not found in returned header, compute the price we charge for this chunk and
+		ps.logger.Warningf("push sync: peer %v no price in previously issued response headers: %v", p.Address, err)
+		price = ps.pricer.PriceForPeer(p.Address, chunk.Address())
+	}
+
 	receipt, err := ps.pushToClosest(ctx, chunk)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
@@ -135,9 +148,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-			return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
+			return ps.accounting.Debit(p.Address, price)
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
+
 	}
 
 	// pass back the receipt
@@ -145,7 +159,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
-	return ps.accounting.Debit(p.Address, ps.pricer.Price(chunk.Address()))
+	return ps.accounting.Debit(p.Address, price)
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
@@ -208,18 +222,43 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		// compute the price we pay for this receipt and reserve it for the rest of this function
 		receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
-		err = ps.accounting.Reserve(ctx, peer, receiptPrice)
-		if err != nil {
-			return nil, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
-		}
-		deferFuncs = append(deferFuncs, func() { ps.accounting.Release(peer, receiptPrice) })
 
-		streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+		headers, err := headerutils.MakePricingHeaders(receiptPrice, ch.Address())
+		if err != nil {
+			return nil, err
+		}
+
+		streamer, err := ps.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
 		if err != nil {
 			lastErr = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 			continue
 		}
 		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
+
+		returnedHeaders := streamer.Headers()
+		returnedTarget, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
+		if err != nil {
+			return nil, fmt.Errorf("push price headers: read returned: %w", err)
+		}
+
+		ps.logger.Debugf("push price headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
+		ps.logger.Debugf("push price headers: original target %v with price as %v, from peer %s", ch.Address(), receiptPrice, peer)
+
+		// check if returned price matches presumed price, if not, update price
+		if returnedPrice != receiptPrice {
+			err = ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
+			if err != nil {
+				return nil, err
+			}
+			receiptPrice = returnedPrice
+		}
+
+		// Reserve to see whether we can make the request based on actual price
+		err = ps.accounting.Reserve(ctx, peer, receiptPrice)
+		if err != nil {
+			return nil, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
+		}
+		deferFuncs = append(deferFuncs, func() { ps.accounting.Release(peer, receiptPrice) })
 
 		w, r := protobuf.NewWriterAndReader(streamer)
 		ctxd, canceld := context.WithTimeout(ctx, timeToLive)

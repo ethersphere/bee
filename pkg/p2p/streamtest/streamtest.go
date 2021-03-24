@@ -97,7 +97,7 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 		handler = r.middlewares[i](handler)
 	}
 	if headler != nil {
-		streamOut.headers = headler(h)
+		streamOut.headers = headler(h, addr)
 	}
 	record := &Record{in: recordIn, out: recordOut, done: make(chan struct{})}
 	go func() {
@@ -194,9 +194,10 @@ func (r *Record) setErr(err error) {
 }
 
 type stream struct {
-	in      *record
-	out     *record
-	headers p2p.Headers
+	in              *record
+	out             *record
+	headers         p2p.Headers
+	responseHeaders p2p.Headers
 }
 
 func newStream(in, out *record) *stream {
@@ -213,6 +214,10 @@ func (s *stream) Write(p []byte) (int, error) {
 
 func (s *stream) Headers() p2p.Headers {
 	return s.headers
+}
+
+func (s *stream) ResponseHeaders() p2p.Headers {
+	return s.responseHeaders
 }
 
 func (s *stream) Close() error {

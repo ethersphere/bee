@@ -11,15 +11,19 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"sync"
 	"testing"
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/pricer/headerutils"
+	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -34,17 +38,23 @@ var testTimeout = 5 * time.Second
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	var (
+		chunk       = testingc.FixtureChunk("0033")
+		headlerFunc = func(h p2p.Headers, a swarm.Address) p2p.Headers {
+			headers, _ := headerutils.MakePricingResponseHeaders(10, chunk.Address(), 0)
+			return headers
+		}
+
 		logger               = logging.New(ioutil.Discard, 0)
 		mockStorer           = storemock.NewStorer()
-		chunk                = testingc.FixtureChunk("0033")
 		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
 		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
 		price      = uint64(10)
-		pricerMock = accountingmock.NewPricer(price, price)
+		pricerMock = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 	)
+
 	// put testdata in the mock store of the server
 	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -132,10 +142,126 @@ func TestDelivery(t *testing.T) {
 	}
 }
 
-func TestRetrieveChunk(t *testing.T) {
+// TestDelivery tests that a naive request -> delivery flow works.
+func TestDeliveryWithPriceUpdate(t *testing.T) {
 	var (
+		price       = uint64(10)
+		serverPrice = uint64(17)
+		chunk       = testingc.FixtureChunk("0033")
+
+		headlerFunc = func(h p2p.Headers, a swarm.Address) p2p.Headers {
+			headers, _ := headerutils.MakePricingResponseHeaders(serverPrice, chunk.Address(), 5)
+			return headers
+		}
+
+		logger               = logging.New(ioutil.Discard, 0)
+		mockStorer           = storemock.NewStorer()
+		clientMockAccounting = accountingmock.NewAccounting()
+		serverMockAccounting = accountingmock.NewAccounting()
+		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
+		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
+
+		clientPricerMock = pricermock.NewMockService(pricermock.WithPeerPrice(price))
+		serverPricerMock = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithPrice(serverPrice))
+	)
+
+	// put testdata in the mock store of the server
+	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create the server that will handle the request and will serve the response
+	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, serverPricerMock, nil)
+	recorder := streamtest.New(
+		streamtest.WithProtocols(server.Protocol()),
+		streamtest.WithBaseAddr(clientAddr),
+	)
+
+	// client mock storer does not store any data at this point
+	// but should be checked at at the end of the test for the
+	// presence of the chunk address key and value to ensure delivery
+	// was successful
+	clientMockStorer := storemock.NewStorer()
+
+	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+		_, _, _ = f(serverAddr, 0)
+		return nil
+	}}
+	client := retrieval.New(clientAddr, clientMockStorer, recorder, ps, logger, clientMockAccounting, clientPricerMock, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+	v, err := client.RetrieveChunk(ctx, chunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(v.Data(), chunk.Data()) {
+		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
+	}
+	records, err := recorder.Records(serverAddr, "retrieval", "1.0.0", "retrieval")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := len(records); l != 1 {
+		t.Fatalf("got %v records, want %v", l, 1)
+	}
+
+	record := records[0]
+
+	messages, err := protobuf.ReadMessages(
+		bytes.NewReader(record.In()),
+		func() protobuf.Message { return new(pb.Request) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reqs []string
+	for _, m := range messages {
+		reqs = append(reqs, hex.EncodeToString(m.(*pb.Request).Addr))
+	}
+
+	if len(reqs) != 1 {
+		t.Fatalf("got too many requests. want 1 got %d", len(reqs))
+	}
+
+	messages, err = protobuf.ReadMessages(
+		bytes.NewReader(record.Out()),
+		func() protobuf.Message { return new(pb.Delivery) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotDeliveries []string
+	for _, m := range messages {
+		gotDeliveries = append(gotDeliveries, string(m.(*pb.Delivery).Data))
+	}
+
+	if len(gotDeliveries) != 1 {
+		t.Fatalf("got too many deliveries. want 1 got %d", len(gotDeliveries))
+	}
+
+	clientBalance, _ := clientMockAccounting.Balance(serverAddr)
+	if clientBalance.Cmp(big.NewInt(-int64(serverPrice))) != 0 {
+		t.Fatalf("unexpected balance on client. want %d got %d", -serverPrice, clientBalance)
+	}
+
+	serverBalance, _ := serverMockAccounting.Balance(clientAddr)
+	if serverBalance.Cmp(big.NewInt(int64(serverPrice))) != 0 {
+		t.Fatalf("unexpected balance on server. want %d got %d", serverPrice, serverBalance)
+	}
+}
+
+func TestRetrieveChunk(t *testing.T) {
+
+	var (
+		headlerFunc = func(h p2p.Headers, a swarm.Address) p2p.Headers {
+			target, _ := headerutils.ParseTargetHeader(h)
+			headers, _ := headerutils.MakePricingResponseHeaders(10, target, 0)
+			return headers
+		}
+
 		logger = logging.New(ioutil.Discard, 0)
-		pricer = accountingmock.NewPricer(1, 1)
+		pricer = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 	)
 
 	// requesting a chunk from downstream peer is expected
@@ -236,8 +362,14 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")
 
-	price := uint64(1)
-	pricerMock := accountingmock.NewPricer(price, price)
+	headlerFunc := func(h p2p.Headers, a swarm.Address) p2p.Headers {
+		target, _ := headerutils.ParseTargetHeader(h)
+		headers, _ := headerutils.MakePricingResponseHeaders(10, target, 0)
+		return headers
+	}
+
+	price := uint64(10)
+	pricerMock := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 
 	clientAddress := swarm.MustParseHexAddress("1010")
 
