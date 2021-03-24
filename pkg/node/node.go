@@ -386,7 +386,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 
 	pricing.SetPaymentThresholdObserver(acc)
-	pricing.SetPriceTableObserver(pricer)
 	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 
 	var path string

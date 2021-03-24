@@ -134,11 +134,11 @@ func (s *Pricer) priceWithIndexForPeer(peer, chunk swarm.Address) (price uint64,
 }
 
 // pricePO returns the price for a PO from the table stored for the node.
-func (s *Pricer) pricePO(PO uint8) (uint64, error) {
+func (s *Pricer) pricePO(po uint8) (uint64, error) {
 	priceTable := s.PriceTable()
 
-	proximity := PO
-	if int(PO) >= len(priceTable) {
+	proximity := po
+	if int(po) >= len(priceTable) {
 		proximity = uint8(len(priceTable) - 1)
 	}
 
@@ -178,7 +178,7 @@ func (s *Pricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 }
 
 // peerPricePO returns the price for a PO from the table stored for the given peer.
-func (s *Pricer) peerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
+func (s *Pricer) peerPricePO(peer swarm.Address, po uint8) (uint64, error) {
 	var priceTable []uint64
 	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
 	if err != nil {
@@ -188,8 +188,8 @@ func (s *Pricer) peerPricePO(peer swarm.Address, PO uint8) (uint64, error) {
 		priceTable = s.defaultPriceTable()
 	}
 
-	proximity := PO
-	if int(PO) >= len(priceTable) {
+	proximity := po
+	if int(po) >= len(priceTable) {
 		proximity = uint8(len(priceTable) - 1)
 	}
 
@@ -293,12 +293,12 @@ func (s *Pricer) defaultPriceTable() []uint64 {
 	return priceTable
 }
 
-func (s *Pricer) defaultPrice(PO uint8) uint64 {
+func (s *Pricer) defaultPrice(po uint8) uint64 {
 	neighborhoodDepth := s.neighborhoodDepth()
-	if PO > neighborhoodDepth {
-		PO = neighborhoodDepth
+	if po > neighborhoodDepth {
+		po = neighborhoodDepth
 	}
-	return uint64(neighborhoodDepth-PO+1) * s.poPrice
+	return uint64(neighborhoodDepth-po+1) * s.poPrice
 }
 
 func (s *Pricer) neighborhoodDepth() uint8 {

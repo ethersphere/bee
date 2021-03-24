@@ -236,14 +236,13 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 
 	s.logger.Debugf("retrieval headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
 	s.logger.Debugf("retrieval headers: original target %v with price as %v, from peer %s", addr, chunkPrice, peer)
-	// returned checker
+	// check if returned price matches presumed price, if not, update price
 	if returnedPrice != chunkPrice {
 		err = s.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
 		if err != nil {
 			return nil, peer, err
 		}
 		chunkPrice = returnedPrice
-		//return nil, swarm.Address{}, fmt.Errorf("price mismatch: %w", err)
 	}
 
 	// Reserve to see whether we can request the chunk based on actual price
