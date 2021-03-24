@@ -351,16 +351,14 @@ components:
       properties:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
-        chequebook:
-          $ref: "#/components/schemas/EthereumAddress"
-        cumulativePayout:
-          type: integer
-        beneficiary:
-          $ref: "#/components/schemas/EthereumAddress"
+        lastCashedCheque:
+          $ref: "#/components/schemas/Cheque"
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
         result:
           $ref: "#/components/schemas/SwapCashoutResult"
+        uncashedAmount:
+          type: integer
 
     TagName:
       type: string
