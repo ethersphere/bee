@@ -2,7 +2,7 @@ if [ $1 -eq 1 ] ; then
     # initial installation
     if [ ! -f /var/lib/bee/keys/libp2p.key ]; then
         /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null 2>&1
-        chown -R bee:bee /var/lib/bee/keys
+        chown -R bee:bee /var/lib/bee
     fi
     systemctl --no-reload preset bee.service &>/dev/null || :
     systemctl --no-reload enable bee.service &>/dev/null || :
