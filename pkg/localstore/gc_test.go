@@ -221,7 +221,7 @@ func TestPinGC(t *testing.T) {
 
 	t.Run("pin Index count", newItemsCountTest(db.pinIndex, pinChunksCount))
 
-	t.Run("gc exclude index count", newItemsCountTest(db.gcExcludeIndex, 50))
+	t.Run("gc exclude index count", newItemsCountTest(db.gcExcludeIndex, pinChunksCount))
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)+pinChunksCount))
 
