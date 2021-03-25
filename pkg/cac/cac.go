@@ -63,9 +63,7 @@ func hasher(data []byte) func([]byte) ([]byte, error) {
 		hasher := bmtpool.Get()
 		defer bmtpool.Put(hasher)
 
-		if err := hasher.SetSpanBytes(span); err != nil {
-			return nil, err
-		}
+		hasher.SetSpanBytes(span)
 		if _, err := hasher.Write(data); err != nil {
 			return nil, err
 		}

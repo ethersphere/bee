@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -6,12 +6,13 @@ package reference_test
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"fmt"
 	"hash"
+	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/bmt/reference"
-	"gitlab.com/nolash/go-mockbytes"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -44,16 +45,18 @@ func sha3hash(t *testing.T, data ...[]byte) []byte {
 func TestRefHasher(t *testing.T) {
 	// the test struct is used to specify the expected BMT hash for
 	// segment counts between from and to and lengths from 1 to datalength
-	for i, x := range []struct {
+	type test struct {
 		from     int
 		to       int
 		expected func([]byte) []byte
-	}{
+	}
+
+	tests := []*test{
+		// all lengths in [0,64] should be:
+		//
+		//   sha3hash(data)
+		//
 		{
-			// all lengths in [0,64] should be:
-			//
-			//   sha3hash(data)
-			//
 			from: 1,
 			to:   2,
 			expected: func(d []byte) []byte {
@@ -61,14 +64,15 @@ func TestRefHasher(t *testing.T) {
 				copy(data, d)
 				return sha3hash(t, data)
 			},
-		}, {
-			// all lengths in [3,4] should be:
-			//
-			//   sha3hash(
-			//     sha3hash(data[:64])
-			//     sha3hash(data[64:])
-			//   )
-			//
+		},
+		// all lengths in [3,4] should be:
+		//
+		//   sha3hash(
+		//     sha3hash(data[:64])
+		//     sha3hash(data[64:])
+		//   )
+		//
+		{
 			from: 3,
 			to:   4,
 			expected: func(d []byte) []byte {
@@ -76,20 +80,21 @@ func TestRefHasher(t *testing.T) {
 				copy(data, d)
 				return sha3hash(t, sha3hash(t, data[:64]), sha3hash(t, data[64:]))
 			},
-		}, {
-			// all bmttestutil.SegmentCounts in [5,8] should be:
-			//
-			//   sha3hash(
-			//     sha3hash(
-			//       sha3hash(data[:64])
-			//       sha3hash(data[64:128])
-			//     )
-			//     sha3hash(
-			//       sha3hash(data[128:192])
-			//       sha3hash(data[192:])
-			//     )
-			//   )
-			//
+		},
+		// all bmttestutil.SegmentCounts in [5,8] should be:
+		//
+		//   sha3hash(
+		//     sha3hash(
+		//       sha3hash(data[:64])
+		//       sha3hash(data[64:128])
+		//     )
+		//     sha3hash(
+		//       sha3hash(data[128:192])
+		//       sha3hash(data[192:])
+		//     )
+		//   )
+		//
+		{
 			from: 5,
 			to:   8,
 			expected: func(d []byte) []byte {
@@ -98,12 +103,15 @@ func TestRefHasher(t *testing.T) {
 				return sha3hash(t, sha3hash(t, sha3hash(t, data[:64]), sha3hash(t, data[64:128])), sha3hash(t, sha3hash(t, data[128:192]), sha3hash(t, data[192:])))
 			},
 		},
-	} {
+	}
+
+	// run the tests
+	for _, x := range tests {
 		for segCount := x.from; segCount <= x.to; segCount++ {
 			for length := 1; length <= segCount*32; length++ {
 				t.Run(fmt.Sprintf("%d_segments_%d_bytes", segCount, length), func(t *testing.T) {
-					g := mockbytes.New(i, mockbytes.MockTypeStandard)
-					data, err := g.RandomBytes(length)
+					data := make([]byte, length)
+					_, err := io.ReadFull(crand.Reader, data)
 					if err != nil {
 						t.Fatal(err)
 					}
