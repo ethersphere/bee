@@ -61,6 +61,13 @@ func testDBCollectGarbageWorker(t *testing.T) {
 	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		// don't trigger if we haven't collected anything - this may
+		// result in a race condition when we inspect the gcsize below,
+		// causing the database to shut down while the cleanup to happen
+		// before the correct signal has been communicated here.
+		if collectedCount == 0 {
+			return
+		}
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
 		case <-closed:
@@ -151,6 +158,14 @@ func TestPinGC(t *testing.T) {
 	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		// don't trigger if we haven't collected anything - this may
+		// result in a race condition when we inspect the gcsize below,
+		// causing the database to shut down while the cleanup to happen
+		// before the correct signal has been communicated here.
+		if collectedCount == 0 {
+			return
+		}
+
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
 		case <-closed:
@@ -169,7 +184,13 @@ func TestPinGC(t *testing.T) {
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
 
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		mode := storage.ModePutUpload
+		if i < pinChunksCount {
+			mode = storage.ModePutUploadPin
+			pinAddrs = append(pinAddrs, ch.Address())
+		}
+
+		_, err := db.Put(context.Background(), mode, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,25 +199,16 @@ func TestPinGC(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		addrs = append(addrs, ch.Address())
-
-		// Pin the chunks at the beginning to make sure they are not removed by GC
-		if i < pinChunksCount {
-			err = db.Set(context.Background(), storage.ModeSetPin, ch.Address())
-			if err != nil {
-				t.Fatal(err)
-			}
-			pinAddrs = append(pinAddrs, ch.Address())
-		}
 	}
-	gcTarget := db.gcTarget()
 
+	gcTarget := db.gcTarget()
+	t.Log(gcTarget)
 	for {
 		select {
 		case <-testHookCollectGarbageChan:
 		case <-time.After(10 * time.Second):
-			t.Error("collect garbage timeout")
+			t.Fatal("collect garbage timeout")
 		}
 		gcSize, err := db.gcSize.Get()
 		if err != nil {
@@ -209,7 +221,7 @@ func TestPinGC(t *testing.T) {
 
 	t.Run("pin Index count", newItemsCountTest(db.pinIndex, pinChunksCount))
 
-	t.Run("gc exclude index count", newItemsCountTest(db.gcExcludeIndex, 0))
+	t.Run("gc exclude index count", newItemsCountTest(db.gcExcludeIndex, pinChunksCount))
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)+pinChunksCount))
 
@@ -308,6 +320,13 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 
 	testHookCollectGarbageChan := make(chan uint64)
 	defer setTestHookCollectGarbage(func(collectedCount uint64) {
+		// don't trigger if we haven't collected anything - this may
+		// result in a race condition when we inspect the gcsize below,
+		// causing the database to shut down while the cleanup to happen
+		// before the correct signal has been communicated here.
+		if collectedCount == 0 {
+			return
+		}
 		testHookCollectGarbageChan <- collectedCount
 	})()
 
@@ -624,6 +643,13 @@ func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
 	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		// don't trigger if we haven't collected anything - this may
+		// result in a race condition when we inspect the gcsize below,
+		// causing the database to shut down while the cleanup to happen
+		// before the correct signal has been communicated here.
+		if collectedCount == 0 {
+			return
+		}
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
 		case <-closed:
