@@ -55,9 +55,6 @@ snapshot:
 
 archives:
   -
-    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    format: binary
-  -
     id: scoop
     builds:
     - windows
@@ -68,6 +65,9 @@ archives:
     - packaging/scoop/bee.yaml
     - LICENSE
     - README.md
+  -
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format: binary
   -
     id: homebrew
     builds:
