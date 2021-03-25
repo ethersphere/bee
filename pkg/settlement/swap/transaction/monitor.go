@@ -19,6 +19,7 @@ import (
 )
 
 var ErrTransactionCancelled = errors.New("transaction cancelled")
+var ErrMonitorClosed = errors.New("monitor closed")
 
 // Monitor is a nonce-based watcher for transaction confirmations.
 // Instead of watching transactions individually, the senders nonce is monitored and transactions are checked based on this.
@@ -107,6 +108,14 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 // main watch loop
 func (tm *transactionMonitor) watchPending() {
 	defer tm.wg.Done()
+	defer func() {
+		tm.lock.Lock()
+		defer tm.lock.Unlock()
+
+		for watch := range tm.watches {
+			watch.errC <- ErrMonitorClosed
+		}
+	}()
 
 	lastBlock := 0
 

@@ -251,4 +251,50 @@ func TestMonitorWatchTransaction(t *testing.T) {
 		}
 	})
 
+	t.Run("shutdown while waiting", func(t *testing.T) {
+		monitor := transaction.NewMonitor(
+			logger,
+			backendsimulation.New(
+				backendsimulation.WithBlocks(
+					backendsimulation.Block{
+						Number: 0,
+					},
+					backendsimulation.Block{
+						Number: 1,
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{
+								BlockNumber: 1,
+								Account:     sender,
+							}: nonce + 1,
+						},
+					},
+				),
+			),
+			sender,
+			pollingInterval,
+			cancellationDepth,
+		)
+
+		receiptC, errC, err := monitor.WatchTransaction(txHash, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = monitor.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case <-receiptC:
+			t.Fatal("got receipt")
+		case err := <-errC:
+			if !errors.Is(err, transaction.ErrMonitorClosed) {
+				t.Fatalf("got wrong error. wanted %v, got %v", transaction.ErrMonitorClosed, err)
+			}
+		case <-time.After(1 * time.Second):
+			t.Fatal("timed out")
+		}
+	})
+
 }
