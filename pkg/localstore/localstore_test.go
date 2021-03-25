@@ -368,6 +368,7 @@ func newItemsCountTest(i shed.Index, want int) func(t *testing.T) {
 
 		var c int
 		err := i.Iterate(func(item shed.Item) (stop bool, err error) {
+			//fmt.Println("item", hex.EncodeToString(item.Address))
 			c++
 			return
 		}, nil)
