@@ -1,0 +1,75 @@
+name: Cluster
+
+on:
+  push:
+    branches:
+      - 'master'
+  # pull_request:
+  #   branches:
+  #     - '**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node: [1, 2, 3]
+
+    env:
+      K3S_TOKEN: ${{ secrets.K3S_TOKEN }}
+      K3S_URL: 10.244.10.1
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Install k3s and zerotier
+        run: |
+          curl -s https://install.zerotier.com | sudo bash
+          sudo mkdir -p /etc/rancher/node
+      - name: Set secrets 1
+        if: ${{ matrix.node }} == "1"
+        run: |
+          curl -sfL https://get.k3s.io | INSTALL_K3S_TYPE=server INSTALL_K3S_SKIP_START=true sh -
+          sudo printf "%s" ${{ secrets.AUTH_TOKEN_1 }} > /var/lib/zerotier-one/authtoken.secret
+          sudo printf "%s" ${{ secrets.IDENDITY_SECRET_1 }} > /var/lib/zerotier-one/identity.secret
+          sudo printf "%s" ${{ secrets.IDENTITY_PUBLIC_1 }} > /var/lib/zerotier-one/identity.public
+          sudo printf "%s" ${{ secrets.K3S_PASSWORD_1 }} > /etc/rancher/node/password
+      - name: Set secrets 2
+        if: ${{ matrix.node }} == "2"
+        run: |
+          curl -sfL https://get.k3s.io | INSTALL_K3S_TYPE=agent INSTALL_K3S_SKIP_START=true sh -
+          sudo printf "%s" ${{ secrets.AUTH_TOKEN_2 }} > /var/lib/zerotier-one/authtoken.secret
+          sudo printf "%s" ${{ secrets.IDENDITY_SECRET_2 }} > /var/lib/zerotier-one/identity.secret
+          sudo printf "%s" ${{ secrets.IDENTITY_PUBLIC_2 }} > /var/lib/zerotier-one/identity.public
+          sudo printf "%s" ${{ secrets.K3S_PASSWORD_2 }} > /etc/rancher/node/password
+      - name: Set secrets 3
+        if: ${{ matrix.node }} == "3"
+        run: |
+          curl -sfL https://get.k3s.io | INSTALL_K3S_TYPE=agent INSTALL_K3S_SKIP_START=true sh -
+          sudo printf "%s" ${{ secrets.AUTH_TOKEN_3 }} > /var/lib/zerotier-one/authtoken.secret
+          sudo printf "%s" ${{ secrets.IDENDITY_SECRET_3 }} > /var/lib/zerotier-one/identity.secret
+          sudo printf "%s" ${{ secrets.IDENTITY_PUBLIC_3 }} > /var/lib/zerotier-one/identity.public
+          sudo printf "%s" ${{ secrets.K3S_PASSWORD_3 }} > /etc/rancher/node/password
+      - name: Start k3s and zerotier
+        run: |
+          sudo systemctl restart zerotier-one.service
+          sudo chmod 600 /var/lib/zerotier-one/authtoken.secret
+          sudo chmod 600 /var/lib/zerotier-one/identity.secret
+          sudo chmod 600 /etc/rancher/node/password
+          sudo /usr/sbin/zerotier-cli join ${{ secrets.ZEROTIER }}
+          sleep 5
+          sudo systemctl start k3s.service
+      - name: Run tunshell
+        if: ${{ matrix.node }} == "1"
+        run: |
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+      - name: Sleep
+        if: ${{ matrix.node }} == "2"
+        run: sleep 3000
+      - name: Sleep
+        if: ${{ matrix.node }} == "3"
+        run: sleep 3000
