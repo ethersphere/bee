@@ -241,9 +241,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 			return nil, fmt.Errorf("push price headers: read returned: %w", err)
 		}
 
-		ps.logger.Debugf("push price headers: returned target %v with price as %v, from peer %s", returnedTarget, returnedPrice, peer)
-		ps.logger.Debugf("push price headers: original target %v with price as %v, from peer %s", ch.Address(), receiptPrice, peer)
-
 		// check if returned price matches presumed price, if not, update price
 		if returnedPrice != receiptPrice {
 			err = ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
