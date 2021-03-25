@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -23,10 +24,12 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
+
 	"github.com/sirupsen/logrus"
 )
 
 type Service struct {
+	networkID         uint64
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
 	logger            logging.Logger
@@ -42,8 +45,11 @@ var (
 	concurrentJobs = 10              // how many chunks to push simultaneously
 )
 
-func New(storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
+var ErrInvalidAddress = errors.New("invalid address")
+
+func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
 	service := &Service{
+		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
 		tag:               tagger,
@@ -129,17 +135,18 @@ LOOP:
 
 			go func(ctx context.Context, ch swarm.Chunk) {
 				var (
-					err       error
-					startTime = time.Now()
-					t         *tags.Tag
-					setSent   bool
+					err        error
+					startTime  = time.Now()
+					t          *tags.Tag
+					setSent    bool
+					storerPeer swarm.Address
 				)
 				defer func() {
 					if err == nil {
 						s.metrics.TotalSynced.Inc()
 						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 						// only print this if there was no error while sending the chunk
-						logger.Tracef("pusher pushed chunk %s", ch.Address().String())
+						logger.Tracef("pusher: pushed chunk %s to node %s", ch.Address().String(), storerPeer.String())
 					} else {
 						s.metrics.TotalErrors.Inc()
 						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
@@ -151,7 +158,7 @@ LOOP:
 				}()
 				// Later when we process receipt, get the receipt and process it
 				// for now ignoring the receipt and checking only for error
-				_, err = s.pushSyncer.PushChunkToClosest(ctx, ch)
+				receipt, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
 				if err != nil {
 					if errors.Is(err, topology.ErrWantSelf) {
 						// we are the closest ones - this is fine
@@ -163,6 +170,19 @@ LOOP:
 						return
 					}
 				}
+
+				publicKey, err := crypto.Recover(receipt.Signature, receipt.Address.Bytes())
+				if err != nil {
+					err = fmt.Errorf("pusher: receipt recover: %w", err)
+					return
+				}
+
+				storerPeer, err = crypto.NewOverlayAddress(*publicKey, s.networkID)
+				if err != nil {
+					err = fmt.Errorf("pusher: receipt storer address: %w", err)
+					return
+				}
+
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 					err = fmt.Errorf("pusher: set sync: %w", err)
 					return

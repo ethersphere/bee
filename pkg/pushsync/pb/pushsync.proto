@@ -15,4 +15,5 @@ message Delivery {
 
 message Receipt {
   bytes Address = 1;
+  bytes Signature = 2;
 }
