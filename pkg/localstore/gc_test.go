@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -215,7 +214,6 @@ func TestPinGC(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println("waiting for size", gcSize)
 		if gcSize == gcTarget {
 			break
 		}

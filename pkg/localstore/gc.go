@@ -177,7 +177,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-		fmt.Println("removing item from pull index")
 		err = db.pullIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return 0, false, err
@@ -187,9 +186,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 			return 0, false, err
 		}
 	}
-	fmt.Println("gc collected", collectedCount, gcSize, target)
 	if gcSize-collectedCount > target {
-		fmt.Println("gc not done")
 		done = false
 	}
 
@@ -213,7 +210,6 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 			db.metrics.GCExcludeError.Inc()
 		}
 	}()
-	fmt.Println("exclude running")
 	batch := new(leveldb.Batch)
 	excludedCount := 0
 	var gcSizeChange int64
@@ -238,7 +234,6 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 			return false, nil
 		}
 		if ok {
-			fmt.Println("exclude removing item")
 			err = db.gcIndex.DeleteInBatch(batch, item)
 			if err != nil {
 				return false, nil
@@ -284,7 +279,6 @@ func (db *DB) gcTarget() (target uint64) {
 // triggerGarbageCollection signals collectGarbageWorker
 // to call collectGarbage.
 func (db *DB) triggerGarbageCollection() {
-	fmt.Println("gc trig")
 	select {
 	case db.collectGarbageTrigger <- struct{}{}:
 	case <-db.close:
