@@ -210,6 +210,7 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 			db.metrics.GCExcludeError.Inc()
 		}
 	}()
+
 	batch := new(leveldb.Batch)
 	excludedCount := 0
 	var gcSizeChange int64
