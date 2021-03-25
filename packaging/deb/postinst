@@ -5,7 +5,7 @@ if [ "$1" = "configure" ]; then
         # initial installation
         if [ ! -f /var/lib/bee/keys/libp2p.key ]; then
             /usr/bin/bee init --config /etc/bee/bee.yaml >/dev/null
-            chown -R bee:bee /var/lib/bee/keys
+            chown -R bee:bee /var/lib/bee
         fi
         echo "
 Logs:   journalctl -f -u bee.service
