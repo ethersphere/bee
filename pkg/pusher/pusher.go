@@ -10,6 +10,7 @@ package pusher
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"sync"
@@ -138,7 +139,7 @@ LOOP:
 					err        error
 					startTime  = time.Now()
 					t          *tags.Tag
-					setSent    bool
+					wantSelf   bool
 					storerPeer swarm.Address
 				)
 				defer func() {
@@ -156,6 +157,7 @@ LOOP:
 					mtx.Unlock()
 					<-sem
 				}()
+
 				// Later when we process receipt, get the receipt and process it
 				// for now ignoring the receipt and checking only for error
 				receipt, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
@@ -165,22 +167,25 @@ LOOP:
 						// this is to make sure that the sent number does not diverge from the synced counter
 						// the edge case is on the uploader node, in the case where the uploader node is
 						// connected to other nodes, but is the closest one to the chunk.
-						setSent = true
+						wantSelf = true
 					} else {
 						return
 					}
 				}
 
-				publicKey, err := crypto.Recover(receipt.Signature, receipt.Address.Bytes())
-				if err != nil {
-					err = fmt.Errorf("pusher: receipt recover: %w", err)
-					return
-				}
+				if receipt != nil {
+					var publicKey *ecdsa.PublicKey
+					publicKey, err = crypto.Recover(receipt.Signature, receipt.Address.Bytes())
+					if err != nil {
+						err = fmt.Errorf("pusher: receipt recover: %w", err)
+						return
+					}
 
-				storerPeer, err = crypto.NewOverlayAddress(*publicKey, s.networkID)
-				if err != nil {
-					err = fmt.Errorf("pusher: receipt storer address: %w", err)
-					return
+					storerPeer, err = crypto.NewOverlayAddress(*publicKey, s.networkID)
+					if err != nil {
+						err = fmt.Errorf("pusher: receipt storer address: %w", err)
+						return
+					}
 				}
 
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
@@ -195,7 +200,7 @@ LOOP:
 						err = fmt.Errorf("pusher: increment synced: %v", err)
 						return
 					}
-					if setSent {
+					if wantSelf {
 						err = t.Inc(tags.StateSent)
 						if err != nil {
 							err = fmt.Errorf("pusher: increment sent: %w", err)
