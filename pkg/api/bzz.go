@@ -5,10 +5,8 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,10 +17,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gorilla/mux"
 
-	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -62,19 +58,13 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 FETCH:
 	// read manifest entry
-	j, _, err := joiner.New(ctx, s.storer, address)
+	m, err := manifest.NewDefaultManifestReference(
+		address,
+		ls,
+	)
 	if err != nil {
-		logger.Debugf("bzz download: joiner manifest entry %s: %v", address, err)
-		logger.Errorf("bzz download: joiner %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, buf)
-	if err != nil {
-		logger.Debugf("bzz download: read entry %s: %v", address, err)
-		logger.Errorf("bzz download: read entry %s", address)
+		logger.Debugf("bzz download: not manifest %s: %v", address, err)
+		logger.Error("bzz download: not manifest")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
@@ -84,7 +74,7 @@ FETCH:
 	// unmarshal as mantaray first and possibly resolve the feed, otherwise
 	// go on normally.
 	if !feedDereferenced {
-		if l, err := s.manifestFeed(ctx, ls, buf.Bytes()); err == nil {
+		if l, err := s.manifestFeed(ctx, ls, m); err == nil {
 			//we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
@@ -125,54 +115,6 @@ FETCH:
 			goto FETCH
 		}
 	}
-	e := &entry.Entry{}
-	err = e.UnmarshalBinary(buf.Bytes())
-	if err != nil {
-		logger.Debugf("bzz download: unmarshal entry %s: %v", address, err)
-		logger.Errorf("bzz download: unmarshal entry %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	// read metadata
-	j, _, err = joiner.New(ctx, s.storer, e.Metadata())
-	if err != nil {
-		logger.Debugf("bzz download: joiner metadata %s: %v", address, err)
-		logger.Errorf("bzz download: joiner %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	// read metadata
-	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, buf)
-	if err != nil {
-		logger.Debugf("bzz download: read metadata %s: %v", address, err)
-		logger.Errorf("bzz download: read metadata %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-	manifestMetadata := &entry.Metadata{}
-	err = json.Unmarshal(buf.Bytes(), manifestMetadata)
-	if err != nil {
-		logger.Debugf("bzz download: unmarshal metadata %s: %v", address, err)
-		logger.Errorf("bzz download: unmarshal metadata %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	// we are expecting manifest Mime type here
-	m, err := manifest.NewManifestReference(
-		manifestMetadata.MimeType,
-		e.Reference(),
-		ls,
-	)
-	if err != nil {
-		logger.Debugf("bzz download: not manifest %s: %v", address, err)
-		logger.Error("bzz download: not manifest")
-		jsonhttp.NotFound(w, nil)
-		return
-	}
 
 	if pathVar == "" {
 		logger.Tracef("bzz download: handle empty path %s", address)
@@ -184,7 +126,7 @@ FETCH:
 				// index document exists
 				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-				s.serveManifestEntry(w, r, address, indexDocumentManifestEntry.Reference(), !feedDereferenced)
+				s.serveManifestEntry(w, r, address, indexDocumentManifestEntry, !feedDereferenced)
 				return
 			}
 		}
@@ -224,7 +166,7 @@ FETCH:
 						// index document exists
 						logger.Debugf("bzz download: serving path: %s", pathWithIndex)
 
-						s.serveManifestEntry(w, r, address, indexDocumentManifestEntry.Reference(), !feedDereferenced)
+						s.serveManifestEntry(w, r, address, indexDocumentManifestEntry, !feedDereferenced)
 						return
 					}
 				}
@@ -238,7 +180,7 @@ FETCH:
 						// error document exists
 						logger.Debugf("bzz download: serving path: %s", errorDocumentPath)
 
-						s.serveManifestEntry(w, r, address, errorDocumentManifestEntry.Reference(), !feedDereferenced)
+						s.serveManifestEntry(w, r, address, errorDocumentManifestEntry, !feedDereferenced)
 						return
 					}
 				}
@@ -252,75 +194,31 @@ FETCH:
 	}
 
 	// serve requested path
-	s.serveManifestEntry(w, r, address, me.Reference(), !feedDereferenced)
+	s.serveManifestEntry(w, r, address, me, !feedDereferenced)
 }
 
-func (s *server) serveManifestEntry(w http.ResponseWriter, r *http.Request, address, manifestEntryAddress swarm.Address, etag bool) {
-	var (
-		logger = tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-		ctx    = r.Context()
-		buf    = bytes.NewBuffer(nil)
-	)
+func (s *server) serveManifestEntry(
+	w http.ResponseWriter,
+	r *http.Request,
+	address swarm.Address,
+	manifestEntry manifest.Entry,
+	etag bool,
+) {
 
-	// read file entry
-	j, _, err := joiner.New(ctx, s.storer, manifestEntryAddress)
-	if err != nil {
-		logger.Debugf("bzz download: joiner read file entry %s: %v", address, err)
-		logger.Errorf("bzz download: joiner read file entry %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
+	mtdt := manifestEntry.Metadata()
+	fname, ok := mtdt["Filename"]
+	if !ok {
 	}
-
-	_, err = file.JoinReadAll(ctx, j, buf)
-	if err != nil {
-		logger.Debugf("bzz download: read file entry %s: %v", address, err)
-		logger.Errorf("bzz download: read file entry %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-	fe := &entry.Entry{}
-	err = fe.UnmarshalBinary(buf.Bytes())
-	if err != nil {
-		logger.Debugf("bzz download: unmarshal file entry %s: %v", address, err)
-		logger.Errorf("bzz download: unmarshal file entry %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	// read file metadata
-	j, _, err = joiner.New(ctx, s.storer, fe.Metadata())
-	if err != nil {
-		logger.Debugf("bzz download: joiner read file entry %s: %v", address, err)
-		logger.Errorf("bzz download: joiner read file entry %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	buf = bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, buf)
-	if err != nil {
-		logger.Debugf("bzz download: read file metadata %s: %v", address, err)
-		logger.Errorf("bzz download: read file metadata %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-	fileMetadata := &entry.Metadata{}
-	err = json.Unmarshal(buf.Bytes(), fileMetadata)
-	if err != nil {
-		logger.Debugf("bzz download: unmarshal metadata %s: %v", address, err)
-		logger.Errorf("bzz download: unmarshal metadata %s", address)
-		jsonhttp.NotFound(w, nil)
-		return
+	mimeType, ok := mtdt["MimeType"]
+	if !ok {
 	}
 
 	additionalHeaders := http.Header{
-		"Content-Disposition": {fmt.Sprintf("inline; filename=\"%s\"", fileMetadata.Filename)},
-		"Content-Type":        {fileMetadata.MimeType},
+		"Content-Disposition": {fmt.Sprintf("inline; filename=\"%s\"", fname)},
+		"Content-Type":        {mimeType},
 	}
 
-	fileEntryAddress := fe.Reference()
-
-	s.downloadHandler(w, r, fileEntryAddress, additionalHeaders, etag)
+	s.downloadHandler(w, r, manifestEntry.Reference(), additionalHeaders, etag)
 }
 
 // manifestMetadataLoad returns the value for a key stored in the metadata of
@@ -340,14 +238,8 @@ func manifestMetadataLoad(ctx context.Context, manifest manifest.Interface, path
 	return "", false
 }
 
-func (s *server) manifestFeed(ctx context.Context, ls file.LoadSaver, candidate []byte) (feeds.Lookup, error) {
-	node := new(mantaray.Node)
-	err := node.UnmarshalBinary(candidate)
-	if err != nil {
-		return nil, fmt.Errorf("node unmarshal: %w", err)
-	}
-
-	e, err := node.LookupNode(context.Background(), []byte("/"), ls)
+func (s *server) manifestFeed(ctx context.Context, ls file.LoadSaver, m manifest.Interface) (feeds.Lookup, error) {
+	e, err := m.Lookup(context.Background(), "/")
 	if err != nil {
 		return nil, fmt.Errorf("node lookup: %w", err)
 	}
