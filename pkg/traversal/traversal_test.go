@@ -7,7 +7,6 @@ package traversal_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"mime"
@@ -18,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -215,32 +213,24 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			fileName := fr.String()
-
-			m := entry.NewMetadata(fileName)
-			m.MimeType = tc.contentType
-			metadataBytes, err := json.Marshal(m)
+			ls := loadsave.New(mockStorer, storage.ModePutRequest, false)
+			fManifest, err := manifest.NewMantarayManifest(ls, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = fManifest.Add(ctx, fr.String(), manifest.NewEntry(fr, map[string]string{
+				"Content-Type": tc.contentType,
+			}))
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
-			mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
+			reference, err := fManifest.Store(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			entrie := entry.New(fr, mr)
-			fileEntryBytes, err := entrie.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
-			reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
-			if err != nil {
-				t.Fatal(err)
-			}
+			fmt.Println("traversing", reference.String())
 
 			traversalCheck(t, mockStorer, traverseFn, reference, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
 		})
@@ -485,73 +475,19 @@ func TestTraversalManifest(t *testing.T) {
 				if fileName == "" {
 					fileName = fr.String()
 				}
-
-				m := entry.NewMetadata(fileName)
-				metadataBytes, err := json.Marshal(m)
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
-				mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				entrie := entry.New(fr, mr)
-				fileEntryBytes, err := entrie.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
-				reference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
-				if err != nil {
-					t.Fatal(err)
-				}
-
 				filePath := path.Join(f.dir, fileName)
 
-				err = dirManifest.Add(ctx, filePath, manifest.NewEntry(reference, nil))
+				err = dirManifest.Add(ctx, filePath, manifest.NewEntry(fr, nil))
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
-
 			// save manifest
-			manifestBytesReference, err := dirManifest.Store(ctx)
+			manifestReference, err := dirManifest.Store(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			// store the manifest metadata and get its reference
-			m := entry.NewMetadata(manifestBytesReference.String())
-			m.MimeType = dirManifest.Type()
-			metadataBytes, err := json.Marshal(m)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
-			mr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			// now join both references (fr, mr) to create an entry and store it
-			e := entry.New(manifestBytesReference, mr)
-			fileEntryBytes, err := e.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			pipe = builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
-			manifestFileReference, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			traversalCheck(t, mockStorer, traverseFn, manifestFileReference, tc.expectedHashesCount, expectedHashes, tc.ignoreDuplicateHash)
+			traversalCheck(t, mockStorer, traverseFn, manifestReference, tc.expectedHashesCount, expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}
 

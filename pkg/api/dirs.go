@@ -6,9 +6,7 @@ package api
 
 import (
 	"archive/tar"
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,7 +16,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/collection/entry"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -65,7 +62,18 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	p := requestPipelineFn(s.storer, r)
 	encrypt := requestEncrypt(r)
 	l := loadsave.New(s.storer, requestModePut(r), encrypt)
-	reference, err := storeDir(ctx, encrypt, r.Body, s.logger, p, l, r.Header.Get(SwarmIndexDocumentHeader), r.Header.Get(SwarmErrorDocumentHeader), tag, created)
+	reference, err := storeDir(
+		ctx,
+		encrypt,
+		r.Body,
+		s.logger,
+		p,
+		l,
+		r.Header.Get(SwarmIndexDocumentHeader),
+		r.Header.Get(SwarmErrorDocumentHeader),
+		tag,
+		created,
+	)
 	if err != nil {
 		logger.Debugf("dir upload: store dir err: %v", err)
 		logger.Errorf("dir upload: store dir")
@@ -172,7 +180,7 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 			}
 		}
 
-		fileReference, err := storeFile(ctx, fileInfo, p, encrypt, tag, tagCreated)
+		fileReference, err := p(ctx, fileInfo.reader, fileInfo.size)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
@@ -224,98 +232,10 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 	}
 
 	// save manifest
-	manifestBytesReference, err := dirManifest.Store(ctx, storeSizeFn...)
+	manifestReference, err := dirManifest.Store(ctx, storeSizeFn...)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}
 
-	// store the manifest metadata and get its reference
-	m := entry.NewMetadata(manifestBytesReference.String())
-	m.MimeType = dirManifest.Type()
-	metadataBytes, err := json.Marshal(m)
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
-	}
-
-	if !tagCreated {
-		// we have additional chunks:
-		// - for manifest file metadata (1 or more) -> we use estimation function
-		// - for manifest file collection entry (1)
-		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), encrypt)
-		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
-		if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
-		}
-	}
-
-	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
-	}
-
-	// now join both references (fr, mr) to create an entry and store it
-	e := entry.New(manifestBytesReference, mr)
-	fileEntryBytes, err := e.MarshalBinary()
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
-	}
-
-	manifestFileReference, err := p(ctx, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
-	}
-
-	return manifestFileReference, nil
-}
-
-// storeFile uploads the given file and returns its reference
-// this function was extracted from `fileUploadHandler` and should eventually replace its current code
-func storeFile(ctx context.Context, fileInfo *fileUploadInfo, p pipelineFunc, encrypt bool, tag *tags.Tag, tagCreated bool) (swarm.Address, error) {
-	// first store the file and get its reference
-	fr, err := p(ctx, fileInfo.reader, fileInfo.size)
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split file: %w", err)
-	}
-
-	// if filename is still empty, use the file hash as the filename
-	if fileInfo.name == "" {
-		fileInfo.name = fr.String()
-	}
-
-	// then store the metadata and get its reference
-	m := entry.NewMetadata(fileInfo.name)
-	m.MimeType = fileInfo.contentType
-	metadataBytes, err := json.Marshal(m)
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("metadata marshal: %w", err)
-	}
-
-	if !tagCreated {
-		// here we have additional chunks:
-		// - for metadata (1 or more) -> we use estimation function
-		// - for collection entry (1)
-		estimatedTotalChunks := calculateNumberOfChunks(int64(len(metadataBytes)), encrypt)
-		err = tag.IncN(tags.TotalChunks, estimatedTotalChunks+1)
-		if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
-		}
-	}
-
-	mr, err := p(ctx, bytes.NewReader(metadataBytes), int64(len(metadataBytes)))
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split metadata: %w", err)
-	}
-
-	// now join both references (mr, fr) to create an entry and store it
-	e := entry.New(fr, mr)
-	fileEntryBytes, err := e.MarshalBinary()
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("entry marshal: %w", err)
-	}
-	ref, err := p(ctx, bytes.NewReader(fileEntryBytes), int64(len(fileEntryBytes)))
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("split entry: %w", err)
-	}
-
-	return ref, nil
+	return manifestReference, nil
 }

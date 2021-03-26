@@ -38,18 +38,18 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	handle(router, "/files", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			s.newTracingHandler("files-upload"),
-			web.FinalHandlerFunc(s.fileUploadHandler),
-		),
-	})
-	handle(router, "/files/{addr}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			s.newTracingHandler("files-download"),
-			web.FinalHandlerFunc(s.fileDownloadHandler),
-		),
-	})
+	// handle(router, "/files", jsonhttp.MethodHandler{
+	// 	"POST": web.ChainHandlers(
+	// 		s.newTracingHandler("files-upload"),
+	// 		web.FinalHandlerFunc(s.fileUploadHandler),
+	// 	),
+	// })
+	// handle(router, "/files/{addr}", jsonhttp.MethodHandler{
+	// 	"GET": web.ChainHandlers(
+	// 		s.newTracingHandler("files-download"),
+	// 		web.FinalHandlerFunc(s.fileDownloadHandler),
+	// 	),
+	// })
 
 	handle(router, "/dirs", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
