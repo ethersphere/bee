@@ -46,6 +46,13 @@ func TestListener(t *testing.T) {
 
 		select {
 		case e := <-evC:
+			e.(blockNumberCall).compare(t, 0) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case e := <-evC:
 			e.(createArgs).compare(t, c) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
@@ -67,6 +74,13 @@ func TestListener(t *testing.T) {
 		)
 		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress)
 		listener.Listen(0, ev)
+
+		select {
+		case e := <-evC:
+			e.(blockNumberCall).compare(t, 0) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for event")
+		}
 
 		select {
 		case e := <-evC:
@@ -94,6 +108,13 @@ func TestListener(t *testing.T) {
 
 		select {
 		case e := <-evC:
+			e.(blockNumberCall).compare(t, 0) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case e := <-evC:
 			e.(depthArgs).compare(t, depthIncrease) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
@@ -113,6 +134,13 @@ func TestListener(t *testing.T) {
 		)
 		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress)
 		listener.Listen(0, ev)
+
+		select {
+		case e := <-evC:
+			e.(blockNumberCall).compare(t, 0) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for event")
+		}
 
 		select {
 		case e := <-evC:
@@ -164,6 +192,13 @@ func TestListener(t *testing.T) {
 
 		select {
 		case e := <-evC:
+			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for block number update")
+		}
+
+		select {
+		case e := <-evC:
 			e.(createArgs).compare(t, c) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
@@ -188,13 +223,6 @@ func TestListener(t *testing.T) {
 			e.(priceArgs).compare(t, priceUpdate)
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
-		}
-
-		select {
-		case e := <-evC:
-			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize))
-		case <-time.After(timeout):
-			t.Fatal("timed out waiting for block number update")
 		}
 	})
 }
@@ -351,6 +379,7 @@ type topupArgs struct {
 }
 
 func (ta topupArgs) compare(t *testing.T, want topupArgs) {
+	t.Helper()
 	if !bytes.Equal(ta.id, want.id) {
 		t.Fatalf("id mismatch. got %v want %v", ta.id, want.id)
 	}
@@ -377,6 +406,7 @@ type depthArgs struct {
 }
 
 func (d depthArgs) compare(t *testing.T, want depthArgs) {
+	t.Helper()
 	if !bytes.Equal(d.id, want.id) {
 		t.Fatalf("id mismatch. got %v want %v", d.id, want.id)
 	}
@@ -404,6 +434,7 @@ type priceArgs struct {
 }
 
 func (p priceArgs) compare(t *testing.T, want priceArgs) {
+	t.Helper()
 	if p.price.Cmp(want.price) != 0 {
 		t.Fatalf("price mismatch. got %s want %s", p.price.String(), want.price.String())
 	}
@@ -425,6 +456,7 @@ type blockNumberCall struct {
 }
 
 func (b blockNumberCall) compare(t *testing.T, want uint64) {
+	t.Helper()
 	if b.blockNumber != want {
 		t.Fatalf("blockNumber mismatch. got %d want %d", b.blockNumber, want)
 	}
