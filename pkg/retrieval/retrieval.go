@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
 	"golang.org/x/sync/singleflight"
@@ -47,29 +46,27 @@ type Interface interface {
 }
 
 type Service struct {
-	addr          swarm.Address
-	streamer      p2p.Streamer
-	peerSuggester topology.EachPeerer
-	storer        storage.Storer
-	singleflight  singleflight.Group
-	logger        logging.Logger
-	accounting    accounting.Interface
-	metrics       metrics
-	pricer        pricer.Interface
-	tracer        *tracing.Tracer
+	addr         swarm.Address
+	streamer     p2p.Streamer
+	storer       storage.Storer
+	singleflight singleflight.Group
+	logger       logging.Logger
+	accounting   accounting.Interface
+	metrics      metrics
+	pricer       pricer.Interface
+	tracer       *tracing.Tracer
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *Service {
 	return &Service{
-		addr:          addr,
-		streamer:      streamer,
-		peerSuggester: chunkPeerer,
-		storer:        storer,
-		logger:        logger,
-		accounting:    accounting,
-		pricer:        pricer,
-		metrics:       newMetrics(),
-		tracer:        tracer,
+		addr:       addr,
+		streamer:   streamer,
+		storer:     storer,
+		logger:     logger,
+		accounting: accounting,
+		pricer:     pricer,
+		metrics:    newMetrics(),
+		tracer:     tracer,
 	}
 }
 
@@ -183,9 +180,9 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
-	peer, err = s.closestPeer(addr, sp.All(), allowUpstream)
+	peer, err = s.pricer.CheapestPeer(addr, sp.All(), allowUpstream)
 	if err != nil {
-		return nil, peer, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
+		return nil, peer, fmt.Errorf("get cheapest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
 	}
 
 	peerPO := swarm.Proximity(s.addr.Bytes(), peer.Bytes())
@@ -285,62 +282,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	s.metrics.ChunkPrice.Observe(float64(chunkPrice))
 
 	return chunk, peer, err
-}
-
-// closestPeer returns address of the peer that is closest to the chunk with
-// provided address addr. This function will ignore peers with addresses
-// provided in skipPeers and if allowUpstream is true, peers that are further of
-// the chunk than this node is, could also be returned, allowing the upstream
-// retrieve request.
-func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
-	closest := swarm.Address{}
-	err := s.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		for _, a := range skipPeers {
-			if a.Equal(peer) {
-				return false, false, nil
-			}
-		}
-		if closest.IsZero() {
-			closest = peer
-			return false, false, nil
-		}
-		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
-		if err != nil {
-			return false, false, fmt.Errorf("distance compare error. addr %s closest %s peer %s: %w", addr.String(), closest.String(), peer.String(), err)
-		}
-		switch dcmp {
-		case 0:
-			// do nothing
-		case -1:
-			// current peer is closer
-			closest = peer
-		case 1:
-			// closest is already closer to chunk
-			// do nothing
-		}
-		return false, false, nil
-	})
-	if err != nil {
-		return swarm.Address{}, err
-	}
-
-	// check if found
-	if closest.IsZero() {
-		return swarm.Address{}, topology.ErrNotFound
-	}
-	if allowUpstream {
-		return closest, nil
-	}
-
-	dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), s.addr.Bytes())
-	if err != nil {
-		return swarm.Address{}, fmt.Errorf("distance compare addr %s closest %s base address %s: %w", addr.String(), closest.String(), s.addr.String(), err)
-	}
-	if dcmp != 1 {
-		return swarm.Address{}, topology.ErrNotFound
-	}
-
-	return closest, nil
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {

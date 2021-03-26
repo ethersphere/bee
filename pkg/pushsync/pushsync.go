@@ -319,10 +319,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		defersFn()
 
-		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), skipPeers...)
+		// find the next cheapest peer
+		peer, err := ps.pricer.CheapestPeer(ch.Address(), skipPeers, false)
 		if err != nil {
-			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
+			// CheapestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			return nil, fmt.Errorf("closest peer: %w", err)

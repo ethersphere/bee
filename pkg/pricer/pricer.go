@@ -37,6 +37,8 @@ type Interface interface {
 	NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error
 	// PriceHeadler creates response headers with pricing information
 	PriceHeadler(p2p.Headers, swarm.Address) p2p.Headers
+	// Price based router
+	CheapestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error)
 }
 
 var (
@@ -50,6 +52,7 @@ type pricingPeer struct {
 type Pricer struct {
 	pricingPeersMu sync.Mutex
 	pricingPeers   map[string]*pricingPeer
+	peerSuggester  topology.EachPeerer
 	logger         logging.Logger
 	store          storage.StateStorer
 	overlay        swarm.Address
@@ -333,6 +336,53 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 
 }
 
+func (s *Pricer) CheapestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+	cheapest := swarm.Address{}
+	var cheapestPrice uint64
+
+	err := s.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		for _, a := range skipPeers {
+			if a.Equal(peer) {
+				return false, false, nil
+			}
+		}
+		if cheapest.IsZero() {
+			cheapest = peer
+			cheapestPrice = s.PeerPrice(peer, addr)
+			return false, false, nil
+		}
+		currentPeerPrice := s.PeerPrice(peer, addr)
+		if currentPeerPrice < cheapestPrice {
+			cheapest = peer
+			cheapestPrice = currentPeerPrice
+		}
+
+		return false, false, nil
+	})
+	if err != nil {
+		return swarm.Address{}, err
+	}
+
+	// check if found
+	if cheapest.IsZero() {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+	if allowUpstream {
+		return cheapest, nil
+	}
+
+	dcmp, err := swarm.DistanceCmp(addr.Bytes(), cheapest.Bytes(), s.overlay.Bytes())
+	if err != nil {
+		return swarm.Address{}, fmt.Errorf("distance compare addr %s cheapest %s base address %s: %w", addr.String(), cheapest.String(), s.overlay.String(), err)
+	}
+	if dcmp != 1 {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	return cheapest, nil
+}
+
 func (s *Pricer) SetTopology(top topology.Driver) {
 	s.topology = top
+	s.peerSuggester = top
 }
