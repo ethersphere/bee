@@ -799,7 +799,10 @@ func TestBatchStore_EvictExpired(t *testing.T) {
 	cs := store.GetChainState()
 	cs.Block = 4
 	cs.Total = big.NewInt(4)
-	store.PutChainState(cs)
+	err := store.PutChainState(cs)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// expect the 5 to be preserved and the rest to be unreserved
 	checkUnreserved(t, unreserved, batches[:3], swarm.MaxPO)
