@@ -8,8 +8,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"math/rand"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -53,8 +55,7 @@ func TestBatchStoreUnreserveEvents(t *testing.T) {
 	}(batchstore.Capacity)
 	batchstore.Capacity = batchstore.Exp2(16)
 
-	bStore, unreserved, clean := setupBatchStore(t)
-	defer clean()
+	bStore, unreserved := setupBatchStore(t)
 	batches := make(map[string]*postage.Batch)
 
 	t.Run("new batches only", func(t *testing.T) {
@@ -136,8 +137,7 @@ func TestBatchStoreUnreserveAll(t *testing.T) {
 	}(batchstore.Capacity)
 	batchstore.Capacity = batchstore.Exp2(16)
 
-	bStore, unreserved, clean := setupBatchStore(t)
-	defer clean()
+	bStore, unreserved := setupBatchStore(t)
 	var batches [][]byte
 	// iterate starting from batchstore.DefaultDepth to maxPO
 	_, depth := batchstore.GetReserve(bStore)
@@ -179,16 +179,29 @@ func TestBatchStoreUnreserveAll(t *testing.T) {
 	}
 }
 
-func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8, func()) {
+func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 	t.Helper()
 	// we cannot  use the mock statestore here since the iterator is not giving the right order
 	// must use the leveldb statestore
-	dir := t.TempDir()
+	dir, err := ioutil.TempDir("", "batchstore_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	stateStore, err := leveldb.NewStateStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := stateStore.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	// set mock unreserve call
 	unreserved := make(map[string]uint8)
@@ -207,7 +220,7 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return bStore, unreserved, func() { _ = stateStore.Close() }
+	return bStore, unreserved
 }
 
 func nextChainState(bStore postage.Storer) (*postage.ChainState, error) {
@@ -520,8 +533,7 @@ func TestBatchStore_Unreserve(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			store, unreserved, clean := setupBatchStore(t)
-			defer clean()
+			store, unreserved := setupBatchStore(t)
 			batches := addBatch(t, store,
 				depthValue(initBatchDepth, 3),
 				depthValue(initBatchDepth, 4),
@@ -637,8 +649,7 @@ func TestBatchStore_Topup(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			store, unreserved, clean := setupBatchStore(t)
-			defer clean()
+			store, unreserved := setupBatchStore(t)
 			batches := addBatch(t, store,
 				depthValue(initBatchDepth, 2),
 				depthValue(initBatchDepth, 3),
@@ -758,8 +769,7 @@ func TestBatchStore_Dilution(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			store, unreserved, clean := setupBatchStore(t)
-			defer clean()
+			store, unreserved := setupBatchStore(t)
 			batches := addBatch(t, store,
 				depthValue(initBatchDepth, 2),
 				depthValue(initBatchDepth, 3),
@@ -787,8 +797,7 @@ func TestBatchStore_EvictExpired(t *testing.T) {
 	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
 	initBatchDepth := uint8(8)
 
-	store, unreserved, clean := setupBatchStore(t)
-	defer clean()
+	store, unreserved := setupBatchStore(t)
 	batches := addBatch(t, store,
 		depthValue(initBatchDepth, 2),
 		depthValue(initBatchDepth, 3),
