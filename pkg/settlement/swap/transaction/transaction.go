@@ -166,6 +166,9 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 		if err != nil {
 			return nil, err
 		}
+
+		gasLimit += gasLimit / 5 // add 20% on top
+
 	} else {
 		gasLimit = request.GasLimit
 	}
