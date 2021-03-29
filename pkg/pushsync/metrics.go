@@ -10,9 +10,11 @@ import (
 )
 
 type metrics struct {
-	TotalSent     prometheus.Counter
-	TotalReceived prometheus.Counter
-	TotalErrors   prometheus.Counter
+	TotalSent            prometheus.Counter
+	TotalReceived        prometheus.Counter
+	TotalErrors          prometheus.Counter
+	TotalReplicated      prometheus.Counter
+	TotalReplicatedError prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -36,6 +38,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_errors",
 			Help:      "Total no of time error received while sending chunk.",
+		}),
+		TotalReplicated: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_replication",
+			Help:      "Total no of successfully sent replication chunks.",
+		}),
+		TotalReplicatedError: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_replication_error",
+			Help:      "Total no of failed replication chunks.",
 		}),
 	}
 }
