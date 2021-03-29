@@ -15,6 +15,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pushsync"
@@ -86,10 +87,14 @@ type Handler func(context.Context, []byte)
 func (p *pss) Send(ctx context.Context, topic Topic, payload []byte, recipient *ecdsa.PublicKey, targets Targets) error {
 	p.metrics.TotalMessagesSentCounter.Inc()
 
+	tStart := time.Now()
+
 	tc, err := Wrap(ctx, topic, payload, recipient, targets)
 	if err != nil {
 		return err
 	}
+
+	p.metrics.MessageMiningDuration.Set(time.Since(tStart).Seconds())
 
 	// push the chunk using push sync so that it reaches it destination in network
 	if _, err = p.pusher.PushChunkToClosest(ctx, tc); err != nil {
