@@ -117,12 +117,14 @@ func (tm *transactionMonitor) watchPending() {
 		}
 	}()
 
-	lastBlock := 0
+	var lastBlock uint64 = 0
 
 	for {
+		var added bool = false // flag if this iteration was triggered by the watchAdded channel
 		select {
 		// if a new watch has been added check again without waiting
 		case <-tm.watchAdded:
+			added = true
 		// otherwise wait
 		case <-time.After(tm.pollingInterval):
 		// if the main context is cancelled terminate
@@ -139,8 +141,10 @@ func (tm *transactionMonitor) watchPending() {
 		block, err := tm.backend.BlockNumber(tm.ctx)
 		if err != nil {
 			tm.logger.Errorf("could not get block number: %v", err)
-		} else if block <= uint64(lastBlock) {
+			continue
+		} else if block <= lastBlock && !added {
 			// if the block number is not higher than before there is nothing todo
+			// unless a watch was added in which case we will do the check anyway
 			// in the rare case where a block was reorged and the new one is the first to contain our tx we wait an extra block
 			continue
 		}
@@ -148,6 +152,8 @@ func (tm *transactionMonitor) watchPending() {
 		if err := tm.checkPending(block); err != nil {
 			tm.logger.Errorf("error while checking pending transactions: %v", err)
 		}
+
+		lastBlock = block
 	}
 }
 
