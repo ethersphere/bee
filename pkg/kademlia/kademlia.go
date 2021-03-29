@@ -888,12 +888,41 @@ func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm
 	return closest, nil
 }
 
-// EachPeer iterates from closest bin to farthest
+// IsWithinDepth returns if an address is within the neighborhood depth of a node.
+func (k *Kad) IsWithinDepth(adr swarm.Address) bool {
+	return swarm.Proximity(k.base.Bytes(), adr.Bytes()) >= k.NeighborhoodDepth()
+}
+
+// // EachNeighbor iterates from closest bin to farthest of the neighborhood peers.
+func (k *Kad) EachNeighbor(f topology.EachPeerFunc) error {
+	depth := k.NeighborhoodDepth()
+	fn := func(a swarm.Address, po uint8) (bool, bool, error) {
+		if po < depth {
+			return true, false, nil
+		}
+		return f(a, po)
+	}
+	return k.connectedPeers.EachBin(fn)
+}
+
+// EachNeighborRev iterates from farthest bin to closest of the neighborhood peers.
+func (k *Kad) EachNeighborRev(f topology.EachPeerFunc) error {
+	depth := k.NeighborhoodDepth()
+	fn := func(a swarm.Address, po uint8) (bool, bool, error) {
+		if po < depth {
+			return false, true, nil
+		}
+		return f(a, po)
+	}
+	return k.connectedPeers.EachBinRev(fn)
+}
+
+// EachPeer iterates from closest bin to farthest.
 func (k *Kad) EachPeer(f topology.EachPeerFunc) error {
 	return k.connectedPeers.EachBin(f)
 }
 
-// EachPeerRev iterates from farthest bin to closest
+// EachPeerRev iterates from farthest bin to closest.
 func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
 	return k.connectedPeers.EachBinRev(f)
 }
