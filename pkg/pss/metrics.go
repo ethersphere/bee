@@ -11,6 +11,7 @@ import (
 
 type metrics struct {
 	TotalMessagesSentCounter prometheus.Counter
+	MessageMiningDuration    prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -22,6 +23,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_message_sent",
 			Help:      "Total messages sent.",
+		}),
+		MessageMiningDuration: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "mining_duration",
+			Help:      "Time duration to mine a message.",
 		}),
 	}
 }
