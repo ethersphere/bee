@@ -146,6 +146,89 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 1)
 }
 
+func TestIsWithinDepth(t *testing.T) {
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		peers                    []swarm.Address
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	for i := 0; i < 15; i++ {
+		addr := test.RandomAddressAt(base, i)
+		peers = append(peers, addr)
+	}
+
+	add(t, signer, kad, ab, peers, 0, 15)
+	waitCounter(t, &conns, 15)
+
+	if kad.IsWithinDepth(peers[kad.NeighborhoodDepth()-1]) {
+		t.Fatalf("peer should NOT be in neignborhood")
+	}
+
+	if !kad.IsWithinDepth(peers[kad.NeighborhoodDepth()]) {
+		t.Fatalf("peer should be in neignborhood")
+	}
+}
+
+func TestEachNeighbor(t *testing.T) {
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		peers                    []swarm.Address
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	for i := 0; i < 15; i++ {
+		addr := test.RandomAddressAt(base, i)
+		peers = append(peers, addr)
+	}
+
+	add(t, signer, kad, ab, peers, 0, 15)
+	waitCounter(t, &conns, 15)
+
+	var depth uint8 = 15
+
+	err := kad.EachNeighbor(func(adr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+
+		if po < depth {
+			depth = po
+		}
+		return false, false, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if depth < kad.NeighborhoodDepth() {
+		t.Fatalf("incorrect depth argument pass to iterator function: expected >= %d (neighbourhood depth), got %d", kad.NeighborhoodDepth(), depth)
+	}
+
+	depth = 15
+	err = kad.EachNeighborRev(func(adr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+
+		if po < depth {
+			depth = po
+		}
+		return false, false, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if depth < kad.NeighborhoodDepth() {
+		t.Fatalf("incorrect depth argument pass to iterator function: expected >= %d (neighbourhood depth), got %d", kad.NeighborhoodDepth(), depth)
+	}
+}
+
 // TestManage explicitly tests that new connections are made according to
 // the addition or subtraction of peers to the knownPeers and connectedPeers
 // data structures. It tests that kademlia will try to initiate (emphesis on _initiate_,
