@@ -914,21 +914,6 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 }
 
-func TestMarshal(t *testing.T) {
-	_, kad, ab, _, signer := newTestKademlia(nil, nil, kademlia.Options{})
-	if err := kad.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	defer kad.Close()
-
-	a := test.RandomAddress()
-	addOne(t, signer, kad, ab, a)
-	_, err := kad.MarshalJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestStart(t *testing.T) {
 	var bootnodes []ma.Multiaddr
 	for i := 0; i < 10; i++ {
