@@ -74,7 +74,6 @@ FETCH:
 	// go on normally.
 	if !feedDereferenced {
 		if l, err := s.manifestFeed(ctx, m); err == nil {
-			logger.Debug("FEED")
 			//we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
@@ -96,7 +95,6 @@ FETCH:
 				jsonhttp.InternalServerError(w, "parse feed update")
 				return
 			}
-			logger.Debugf("Feed update: %s", ref)
 			address = ref
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
@@ -114,8 +112,6 @@ FETCH:
 			// resulting in inconsistent headers in the response.
 			w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
 			goto FETCH
-		} else {
-			fmt.Println(err)
 		}
 	}
 
