@@ -7,8 +7,10 @@ package kademlia_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -912,6 +914,40 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 			// all fine
 		}
 	})
+}
+
+func TestSnapshot(t *testing.T) {
+	sa, kad, ab, _, signer := newTestKademlia(nil, nil, kademlia.Options{})
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	a := test.RandomAddress()
+	addOne(t, signer, kad, ab, a)
+
+	snap := kad.Snapshot()
+
+	if snap.Connected != 0 {
+		t.Error("wrong connected value", snap.Connected)
+	}
+	if snap.Population != 1 {
+		t.Error("wrong population value", snap.Population)
+	}
+
+	po := swarm.Proximity(sa.Bytes(), a.Bytes())
+
+	if getBinPopulation(snap.Bins, po) != 1 {
+		t.Error("wrong bin")
+	}
+}
+
+func getBinPopulation(bins topology.KadBins, po uint8) uint64 {
+	rv := reflect.ValueOf(bins)
+	bin := fmt.Sprintf("Bin%d", po)
+	f := reflect.Indirect(rv).FieldByName(bin)
+	s := f.FieldByName("BinPopulation")
+	return s.Uint()
 }
 
 func TestStart(t *testing.T) {
