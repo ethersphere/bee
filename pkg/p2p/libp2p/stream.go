@@ -21,7 +21,8 @@ var _ p2p.Stream = (*stream)(nil)
 
 type stream struct {
 	network.Stream
-	headers map[string][]byte
+	headers         map[string][]byte
+	responseHeaders map[string][]byte
 }
 
 func NewStream(s network.Stream) p2p.Stream {
@@ -33,6 +34,10 @@ func newStream(s network.Stream) *stream {
 }
 func (s *stream) Headers() p2p.Headers {
 	return s.headers
+}
+
+func (s *stream) ResponseHeaders() p2p.Headers {
+	return s.responseHeaders
 }
 
 func (s *stream) FullClose() error {

@@ -251,12 +251,11 @@ type swapCashoutStatusResult struct {
 }
 
 type swapCashoutStatusResponse struct {
-	Peer             swarm.Address            `json:"peer"`
-	Chequebook       common.Address           `json:"chequebook"`
-	CumulativePayout *big.Int                 `json:"cumulativePayout"`
-	Beneficiary      common.Address           `json:"beneficiary"`
-	TransactionHash  common.Hash              `json:"transactionHash"`
-	Result           *swapCashoutStatusResult `json:"result"`
+	Peer            swarm.Address                     `json:"peer"`
+	Cheque          *chequebookLastChequePeerResponse `json:"lastCashedCheque"`
+	TransactionHash *common.Hash                      `json:"transactionHash"`
+	Result          *swapCashoutStatusResult          `json:"result"`
+	UncashedAmount  *big.Int                          `json:"uncashedAmount"`
 }
 
 func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -290,21 +289,30 @@ func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	var result *swapCashoutStatusResult
-	if status.Result != nil {
-		result = &swapCashoutStatusResult{
-			Recipient:  status.Result.Recipient,
-			LastPayout: status.Result.TotalPayout,
-			Bounced:    status.Result.Bounced,
+	var txHash *common.Hash
+	var chequeResponse *chequebookLastChequePeerResponse
+	if status.Last != nil {
+		if status.Last.Result != nil {
+			result = &swapCashoutStatusResult{
+				Recipient:  status.Last.Result.Recipient,
+				LastPayout: status.Last.Result.TotalPayout,
+				Bounced:    status.Last.Result.Bounced,
+			}
 		}
+		chequeResponse = &chequebookLastChequePeerResponse{
+			Chequebook:  status.Last.Cheque.Chequebook.String(),
+			Payout:      status.Last.Cheque.CumulativePayout,
+			Beneficiary: status.Last.Cheque.Beneficiary.String(),
+		}
+		txHash = &status.Last.TxHash
 	}
 
 	jsonhttp.OK(w, swapCashoutStatusResponse{
-		Peer:             peer,
-		TransactionHash:  status.TxHash,
-		Chequebook:       status.Cheque.Chequebook,
-		CumulativePayout: status.Cheque.CumulativePayout,
-		Beneficiary:      status.Cheque.Beneficiary,
-		Result:           result,
+		Peer:            peer,
+		TransactionHash: txHash,
+		Cheque:          chequeResponse,
+		Result:          result,
+		UncashedAmount:  status.UncashedAmount,
 	})
 }
 
