@@ -149,7 +149,7 @@ func (db *DB) Import(r io.Reader, legacy bool) (count int64, err error) {
 				case <-ctx.Done():
 				}
 			}
-			stamp := postage.NewStamp(nil, nil)
+			stamp := new(postage.Stamp)
 			err = stamp.UnmarshalBinary(rawdata[:postage.StampSize])
 			if err != nil {
 				select {

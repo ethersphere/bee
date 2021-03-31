@@ -190,6 +190,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
+
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err

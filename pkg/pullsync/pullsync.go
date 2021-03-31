@@ -58,14 +58,14 @@ type Interface interface {
 }
 
 type Syncer struct {
-	streamer         p2p.Streamer
-	metrics          metrics
-	logger           logging.Logger
-	storage          pullstorage.Storer
-	quit             chan struct{}
-	wg               sync.WaitGroup
-	unwrap           func(swarm.Chunk)
-	attachValidStamp func(swarm.Chunk, []byte) error
+	streamer   p2p.Streamer
+	metrics    metrics
+	logger     logging.Logger
+	storage    pullstorage.Storer
+	quit       chan struct{}
+	wg         sync.WaitGroup
+	unwrap     func(swarm.Chunk)
+	validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error)
 
 	ruidMtx sync.Mutex
 	ruidCtx map[uint32]func()
@@ -74,17 +74,17 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), attachValidStamp func(swarm.Chunk, []byte) error, logger logging.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), attachValidStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger) *Syncer {
 	return &Syncer{
-		streamer:         streamer,
-		storage:          storage,
-		metrics:          newMetrics(),
-		unwrap:           unwrap,
-		attachValidStamp: attachValidStamp,
-		logger:           logger,
-		ruidCtx:          make(map[uint32]func()),
-		wg:               sync.WaitGroup{},
-		quit:             make(chan struct{}),
+		streamer:   streamer,
+		storage:    storage,
+		metrics:    newMetrics(),
+		unwrap:     unwrap,
+		validStamp: attachValidStamp,
+		logger:     logger,
+		ruidCtx:    make(map[uint32]func()),
+		wg:         sync.WaitGroup{},
+		quit:       make(chan struct{}),
 	}
 }
 
@@ -219,7 +219,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		s.metrics.DeliveryCounter.Inc()
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
-		if err = s.attachValidStamp(chunk, delivery.Stamp); err != nil {
+		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
 			return 0, ru.Ruid, err
 		}
 		if content.Valid(chunk) {

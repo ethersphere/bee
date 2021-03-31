@@ -44,34 +44,34 @@ type Receipt struct {
 }
 
 type PushSync struct {
-	streamer         p2p.StreamerDisconnecter
-	storer           storage.Putter
-	peerSuggester    topology.ClosestPeerer
-	tagger           *tags.Tags
-	unwrap           func(swarm.Chunk)
-	attachValidStamp func(swarm.Chunk, []byte) error
-	logger           logging.Logger
-	accounting       accounting.Interface
-	pricer           accounting.Pricer
-	metrics          metrics
-	tracer           *tracing.Tracer
+	streamer      p2p.StreamerDisconnecter
+	storer        storage.Putter
+	peerSuggester topology.ClosestPeerer
+	tagger        *tags.Tags
+	unwrap        func(swarm.Chunk)
+	validStamp    func(swarm.Chunk, []byte) (swarm.Chunk, error)
+	logger        logging.Logger
+	accounting    accounting.Interface
+	pricer        accounting.Pricer
+	metrics       metrics
+	tracer        *tracing.Tracer
 }
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), attachValidStamp func(swarm.Chunk, []byte) error, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), attachValidStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
-		streamer:         streamer,
-		storer:           storer,
-		peerSuggester:    closestPeerer,
-		attachValidStamp: attachValidStamp,
-		tagger:           tagger,
-		unwrap:           unwrap,
-		logger:           logger,
-		accounting:       accounting,
-		pricer:           pricer,
-		metrics:          newMetrics(),
-		tracer:           tracer,
+		streamer:      streamer,
+		storer:        storer,
+		peerSuggester: closestPeerer,
+		validStamp:    attachValidStamp,
+		tagger:        tagger,
+		unwrap:        unwrap,
+		logger:        logger,
+		accounting:    accounting,
+		pricer:        pricer,
+		metrics:       newMetrics(),
+		tracer:        tracer,
 	}
 	return ps
 }
@@ -108,7 +108,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	ps.metrics.TotalReceived.Inc()
 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
-	if err = ps.attachValidStamp(chunk, ch.Stamp); err != nil {
+	if chunk, err = ps.validStamp(chunk, ch.Stamp); err != nil {
 		return err
 	}
 

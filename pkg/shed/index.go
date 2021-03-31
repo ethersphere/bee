@@ -236,7 +236,6 @@ func (f Index) Fill(items []Item) (err error) {
 			return fmt.Errorf("decode value: %w", err)
 		}
 		items[i] = v.Merge(item)
-		// items[i] = item.Merge(v)
 	}
 	return nil
 }

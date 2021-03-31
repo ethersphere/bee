@@ -52,7 +52,6 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 	}
 	return swarm.NewChunk(swarm.NewAddress(out.Address), out.Data).
 		WithPinCounter(out.PinCounter).
-		// WithTag(out.Tag).
 		WithStamp(postage.NewStamp(out.BatchID, out.Sig)), nil
 }
 

@@ -407,9 +407,8 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	if unwrap == nil {
 		unwrap = func(swarm.Chunk) {}
 	}
-	attachValidStamp := func(ch swarm.Chunk, stamp []byte) error {
-		_ = ch.WithStamp(postage.NewStamp(nil, nil))
-		return nil
+	attachValidStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
 	}
 
 	return pushsync.New(recorderDisconnecter, storer, mockTopology, mtag, unwrap, attachValidStamp, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
