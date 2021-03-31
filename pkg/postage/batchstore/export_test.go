@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-// ChainStateKey is the localstore key for the chain state.
+// ChainStateKey is the statestore key for the chain state.
 const StateKey = chainStateKey
 
 // BatchKey returns the index key for the batch ID used in the by-ID batch index.
