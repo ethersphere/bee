@@ -54,6 +54,10 @@ const (
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
 )
 
+const (
+	contentTypeHeader = "Content-Type"
+)
+
 var (
 	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
 	errNoResolver           = errors.New("no resolver connected")

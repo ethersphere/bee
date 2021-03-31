@@ -48,7 +48,7 @@ func (s *server) pinFile(w http.ResponseWriter, r *http.Request) {
 
 	chunkAddressFn := s.pinChunkAddressFn(ctx, addr)
 
-	err = s.traversal.TraverseFileAddresses(ctx, addr, chunkAddressFn)
+	err = s.traversal.TraverseAddresses(ctx, addr, chunkAddressFn)
 	if err != nil {
 		s.logger.Debugf("pin files: traverse chunks: %v, addr %s", err, addr)
 
@@ -93,7 +93,7 @@ func (s *server) unpinFile(w http.ResponseWriter, r *http.Request) {
 
 	chunkAddressFn := s.unpinChunkAddressFn(ctx, addr)
 
-	err = s.traversal.TraverseFileAddresses(ctx, addr, chunkAddressFn)
+	err = s.traversal.TraverseAddresses(ctx, addr, chunkAddressFn)
 	if err != nil {
 		s.logger.Debugf("pin files: traverse chunks: %v, addr %s", err, addr)
 

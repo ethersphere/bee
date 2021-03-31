@@ -28,14 +28,15 @@ import (
 )
 
 const (
-	contentTypeHeader = "Content-Type"
-	contentTypeTar    = "application/x-tar"
+	contentTypeTar = "application/x-tar"
 )
 
 const (
 	manifestRootPath                      = "/"
 	manifestWebsiteIndexDocumentSuffixKey = "website-index-document"
 	manifestWebsiteErrorDocumentPathKey   = "website-error-document"
+	manifestEntryMetadataContentTypeKey   = "Content-Type"
+	manifestEntryMetadataFilenameKey      = "Filename"
 )
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
@@ -113,7 +114,18 @@ func validateRequest(r *http.Request) error {
 
 // storeDir stores all files recursively contained in the directory given as a tar
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
-func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log logging.Logger, p pipelineFunc, ls file.LoadSaver, indexFilename string, errorFilename string, tag *tags.Tag, tagCreated bool) (swarm.Address, error) {
+func storeDir(
+	ctx context.Context,
+	encrypt bool,
+	reader io.ReadCloser,
+	log logging.Logger,
+	p pipelineFunc,
+	ls file.LoadSaver,
+	indexFilename string,
+	errorFilename string,
+	tag *tags.Tag,
+	tagCreated bool,
+) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
@@ -160,19 +172,12 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 
 		fileName := fileHeader.FileInfo().Name()
 		contentType := mime.TypeByExtension(filepath.Ext(fileHeader.Name))
-
-		// upload file
-		fileInfo := &fileUploadInfo{
-			name:        fileName,
-			size:        fileHeader.FileInfo().Size(),
-			contentType: contentType,
-			reader:      tarReader,
-		}
+		fileSize := fileHeader.FileInfo().Size()
 
 		if !tagCreated {
 			// only in the case when tag is sent via header (i.e. not created by this request)
 			// for each file
-			if estimatedTotalChunks := calculateNumberOfChunks(fileInfo.size, encrypt); estimatedTotalChunks > 0 {
+			if estimatedTotalChunks := calculateNumberOfChunks(fileSize, encrypt); estimatedTotalChunks > 0 {
 				err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
 				if err != nil {
 					return swarm.ZeroAddress, fmt.Errorf("increment tag: %w", err)
@@ -180,14 +185,18 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 			}
 		}
 
-		fileReference, err := p(ctx, fileInfo.reader, fileInfo.size)
+		fileReference, err := p(ctx, tarReader, fileSize)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
 		logger.Tracef("uploaded dir file %v with reference %v", filePath, fileReference)
 
+		fileMtdt := map[string]string{
+			manifestEntryMetadataContentTypeKey: contentType,
+			manifestEntryMetadataFilenameKey:    fileName,
+		}
 		// add file entry to dir manifest
-		err = dirManifest.Add(ctx, filePath, manifest.NewEntry(fileReference, nil))
+		err = dirManifest.Add(ctx, filePath, manifest.NewEntry(fileReference, fileMtdt))
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("add to manifest: %w", err)
 		}
@@ -236,6 +245,7 @@ func storeDir(ctx context.Context, encrypt bool, reader io.ReadCloser, log loggi
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}
+	logger.Tracef("finished uploaded dir with reference %v", manifestReference)
 
 	return manifestReference, nil
 }

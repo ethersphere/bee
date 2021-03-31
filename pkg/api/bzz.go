@@ -75,6 +75,7 @@ FETCH:
 	// go on normally.
 	if !feedDereferenced {
 		if l, err := s.manifestFeed(ctx, ls, m); err == nil {
+			fmt.Println("FEED")
 			//we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
@@ -205,17 +206,14 @@ func (s *server) serveManifestEntry(
 	etag bool,
 ) {
 
+	additionalHeaders := http.Header{}
 	mtdt := manifestEntry.Metadata()
-	fname, ok := mtdt["Filename"]
-	if !ok {
+	if fname, ok := mtdt[manifestEntryMetadataFilenameKey]; ok {
+		additionalHeaders["Content-Disposition"] =
+			[]string{fmt.Sprintf("inline; filename=\"%s\"", fname)}
 	}
-	mimeType, ok := mtdt["MimeType"]
-	if !ok {
-	}
-
-	additionalHeaders := http.Header{
-		"Content-Disposition": {fmt.Sprintf("inline; filename=\"%s\"", fname)},
-		"Content-Type":        {mimeType},
+	if mimeType, ok := mtdt[manifestEntryMetadataContentTypeKey]; ok {
+		additionalHeaders["Content-Type"] = []string{mimeType}
 	}
 
 	s.downloadHandler(w, r, manifestEntry.Reference(), additionalHeaders, etag)
@@ -224,7 +222,11 @@ func (s *server) serveManifestEntry(
 // manifestMetadataLoad returns the value for a key stored in the metadata of
 // manifest path, or empty string if no value is present.
 // The ok result indicates whether value was found in the metadata.
-func manifestMetadataLoad(ctx context.Context, manifest manifest.Interface, path, metadataKey string) (string, bool) {
+func manifestMetadataLoad(
+	ctx context.Context,
+	manifest manifest.Interface,
+	path, metadataKey string,
+) (string, bool) {
 	me, err := manifest.Lookup(ctx, path)
 	if err != nil {
 		return "", false
@@ -238,9 +240,14 @@ func manifestMetadataLoad(ctx context.Context, manifest manifest.Interface, path
 	return "", false
 }
 
-func (s *server) manifestFeed(ctx context.Context, ls file.LoadSaver, m manifest.Interface) (feeds.Lookup, error) {
+func (s *server) manifestFeed(
+	ctx context.Context,
+	ls file.LoadSaver,
+	m manifest.Interface,
+) (feeds.Lookup, error) {
 	e, err := m.Lookup(context.Background(), "/")
 	if err != nil {
+		fmt.Println("Failed node lookup", err.Error())
 		return nil, fmt.Errorf("node lookup: %w", err)
 	}
 	var (
@@ -265,6 +272,9 @@ func (s *server) manifestFeed(ctx context.Context, ls file.LoadSaver, m manifest
 		if err != nil {
 			return nil, err
 		}
+	}
+	if len(owner) == 0 || len(topic) == 0 {
+		return nil, fmt.Errorf("node lookup: %s", "feed metadata absent")
 	}
 	f := feeds.New(topic, common.BytesToAddress(owner))
 	return s.feedFactory.NewLookup(*t, f)
