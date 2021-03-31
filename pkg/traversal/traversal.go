@@ -61,7 +61,6 @@ func (s *traversalService) TraverseAddresses(
 
 	if isManifest {
 		return m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) error {
-			fmt.Println("Iterating", manifestNodeAddr.String())
 			return s.processBytes(ctx, manifestNodeAddr, chunkAddressFunc)
 		})
 	}
@@ -91,7 +90,6 @@ func (s *traversalService) TraverseManifestAddresses(
 	}
 
 	err = m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) error {
-		fmt.Println("Iterating", manifestNodeAddr.String())
 		return s.processBytes(ctx, manifestNodeAddr, chunkAddressFunc)
 	})
 	if err != nil {
@@ -121,7 +119,6 @@ func (s *traversalService) checkIsManifest(
 		err = fmt.Errorf("traversal: read manifest: %s: %w", reference, err)
 		return
 	}
-	fmt.Println("Found Manifest", m.Type())
 	isManifest = true
 	return
 }

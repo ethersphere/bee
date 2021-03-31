@@ -5,8 +5,9 @@
 package api_test
 
 import (
-	"io/ioutil"
+	// "io/ioutil"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -30,11 +31,12 @@ func TestPinBzzHandler(t *testing.T) {
 		mockStorer       = mock.NewStorer()
 		mockStatestore   = statestore.NewStateStore()
 		traversalService = traversal.NewService(mockStorer)
-		logger           = logging.New(ioutil.Discard, 0)
+		logger           = logging.New(os.Stdout, 6)
 		client, _, _     = newTestServer(t, testServerOptions{
 			Storer:    mockStorer,
 			Traversal: traversalService,
 			Tags:      tags.NewTags(mockStatestore, logger),
+			Logger:    logger,
 		})
 	)
 
@@ -49,7 +51,7 @@ func TestPinBzzHandler(t *testing.T) {
 
 		tarReader := tarFiles(t, files)
 
-		rootHash := "a85aaea6a34a5c7127a3546196f2111f866fe369c6d6562ed5d3313a99388c03"
+		rootHash := "9e178dbd1ed4b748379e25144e28dfb29c07a4b5114896ef454480115a56b237"
 
 		// verify directory tar upload response
 		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK,
@@ -67,7 +69,7 @@ func TestPinBzzHandler(t *testing.T) {
 			}),
 		)
 
-		expectedChunkCount := 7
+		expectedChunkCount := 3
 
 		// get the reference as everytime it will change because of random encryption key
 		var resp api.ListPinnedChunksResponse
@@ -82,7 +84,7 @@ func TestPinBzzHandler(t *testing.T) {
 	})
 
 	t.Run("unpin-bzz-1", func(t *testing.T) {
-		rootHash := "a85aaea6a34a5c7127a3546196f2111f866fe369c6d6562ed5d3313a99388c03"
+		rootHash := "9e178dbd1ed4b748379e25144e28dfb29c07a4b5114896ef454480115a56b237"
 
 		jsonhttptest.Request(t, client, http.MethodDelete, pinBzzAddressResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
