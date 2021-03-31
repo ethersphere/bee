@@ -18,7 +18,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -74,8 +73,8 @@ FETCH:
 	// unmarshal as mantaray first and possibly resolve the feed, otherwise
 	// go on normally.
 	if !feedDereferenced {
-		if l, err := s.manifestFeed(ctx, ls, m); err == nil {
-			fmt.Println("FEED")
+		if l, err := s.manifestFeed(ctx, m); err == nil {
+			logger.Debug("FEED")
 			//we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
@@ -97,6 +96,7 @@ FETCH:
 				jsonhttp.InternalServerError(w, "parse feed update")
 				return
 			}
+			logger.Debugf("Feed update: %s", ref)
 			address = ref
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
@@ -114,6 +114,8 @@ FETCH:
 			// resulting in inconsistent headers in the response.
 			w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
 			goto FETCH
+		} else {
+			fmt.Println(err)
 		}
 	}
 
@@ -242,10 +244,9 @@ func manifestMetadataLoad(
 
 func (s *server) manifestFeed(
 	ctx context.Context,
-	ls file.LoadSaver,
 	m manifest.Interface,
 ) (feeds.Lookup, error) {
-	e, err := m.Lookup(context.Background(), "/")
+	e, err := m.Lookup(ctx, "/")
 	if err != nil {
 		fmt.Println("Failed node lookup", err.Error())
 		return nil, fmt.Errorf("node lookup: %w", err)
