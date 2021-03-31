@@ -16,7 +16,6 @@ import (
 // Batch.
 func TestBatchMarshalling(t *testing.T) {
 	a := postagetesting.MustNewBatch()
-
 	buf, err := a.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)

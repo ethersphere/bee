@@ -6,6 +6,7 @@ package mock_test
 
 import (
 	"errors"
+	"math/big"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
@@ -23,11 +24,11 @@ func TestBatchStorePutGet(t *testing.T) {
 
 	// Put should return error after a number of tries:
 	for i := 0; i < testCnt; i++ {
-		if err := batchStore.Put(testBatch); err != nil {
+		if err := batchStore.Put(testBatch, big.NewInt(0), 0); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := batchStore.Put(testBatch); err == nil {
+	if err := batchStore.Put(testBatch, big.NewInt(0), 0); err == nil {
 		t.Fatal("expected error")
 	}
 
@@ -45,13 +46,12 @@ func TestBatchStorePutGet(t *testing.T) {
 	}
 }
 
-func TestBatchStorePutGetChainState(t *testing.T) {
+func TestBatchStorePutChainState(t *testing.T) {
 	const testCnt = 3
 
 	testChainState := postagetesting.NewChainState()
 	batchStore := mock.New(
 		mock.WithChainState(testChainState),
-		mock.WithGetErr(errors.New("fails"), testCnt),
 		mock.WithPutErr(errors.New("fails"), testCnt),
 	)
 
@@ -62,16 +62,6 @@ func TestBatchStorePutGetChainState(t *testing.T) {
 		}
 	}
 	if err := batchStore.PutChainState(testChainState); err == nil {
-		t.Fatal("expected error")
-	}
-
-	// GetChainState should return an error after a number of tries:
-	for i := 0; i < testCnt; i++ {
-		if _, err := batchStore.GetChainState(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := batchStore.GetChainState(); err == nil {
 		t.Fatal("expected error")
 	}
 }

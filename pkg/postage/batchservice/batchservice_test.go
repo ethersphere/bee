@@ -33,36 +33,12 @@ func newMockListener() *mockListener {
 	return &mockListener{}
 }
 
-func TestNewBatchService(t *testing.T) {
-	t.Run("expect get error", func(t *testing.T) {
-		store := mock.New(
-			mock.WithGetErr(testErr, 0),
-		)
-		_, err := batchservice.New(store, testLog, newMockListener())
-		if err == nil {
-			t.Fatal("expected get error")
-		}
-	})
-
-	t.Run("passes", func(t *testing.T) {
-		testChainState := postagetesting.NewChainState()
-		store := mock.New(
-			mock.WithChainState(testChainState),
-		)
-		_, err := batchservice.New(store, testLog, newMockListener())
-		if err != nil {
-			t.Fatalf("new batch service: %v", err)
-		}
-	})
-}
-
 func TestBatchServiceCreate(t *testing.T) {
 	testBatch := postagetesting.MustNewBatch()
 	testChainState := postagetesting.NewChainState()
 
 	t.Run("expect put create put error", func(t *testing.T) {
 		svc, _ := newTestStoreAndService(
-			t,
 			mock.WithChainState(testChainState),
 			mock.WithPutErr(testErr, 0),
 		)
@@ -79,7 +55,6 @@ func TestBatchServiceCreate(t *testing.T) {
 
 	t.Run("passes", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
-			t,
 			mock.WithChainState(testChainState),
 		)
 
@@ -122,9 +97,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 
 	t.Run("expect get error", func(t *testing.T) {
 		svc, _ := newTestStoreAndService(
-			t,
-			// NOTE: we skip the error on the first get call in batchservice.New.
-			mock.WithGetErr(testErr, 1),
+			mock.WithGetErr(testErr, 0),
 		)
 
 		if err := svc.TopUp(testBatch.ID, testNormalisedBalance); err == nil {
@@ -134,7 +107,6 @@ func TestBatchServiceTopUp(t *testing.T) {
 
 	t.Run("expect put error", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
-			t,
 			mock.WithPutErr(testErr, 1),
 		)
 		putBatch(t, batchStore, testBatch)
@@ -145,7 +117,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore := newTestStoreAndService(t)
+		svc, batchStore := newTestStoreAndService()
 		putBatch(t, batchStore, testBatch)
 
 		want := testNormalisedBalance
@@ -172,8 +144,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 	t.Run("expect get error", func(t *testing.T) {
 		svc, _ := newTestStoreAndService(
-			t,
-			mock.WithGetErr(testErr, 1),
+			mock.WithGetErr(testErr, 0),
 		)
 
 		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance); err == nil {
@@ -183,7 +154,6 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 	t.Run("expect put error", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
-			t,
 			mock.WithPutErr(testErr, 1),
 		)
 		putBatch(t, batchStore, testBatch)
@@ -194,7 +164,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore := newTestStoreAndService(t)
+		svc, batchStore := newTestStoreAndService()
 		putBatch(t, batchStore, testBatch)
 
 		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance); err != nil {
@@ -219,7 +189,6 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 
 	t.Run("expect put error", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
-			t,
 			mock.WithChainState(testChainState),
 			mock.WithPutErr(testErr, 1),
 		)
@@ -232,7 +201,6 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 
 	t.Run("passes", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
-			t,
 			mock.WithChainState(testChainState),
 		)
 
@@ -240,33 +208,45 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 			t.Fatalf("update price: %v", err)
 		}
 
-		cs, err := batchStore.GetChainState()
-		if err != nil {
-			t.Fatalf("batch store get chain state: %v", err)
-		}
-
+		cs := batchStore.GetChainState()
 		if cs.Price.Cmp(testNewPrice) != 0 {
 			t.Fatalf("bad price: want %v, got %v", cs.Price, testNewPrice)
 		}
 	})
 }
-
-func newTestStoreAndService(t *testing.T, opts ...mock.Option) (postage.EventUpdater, postage.Storer) {
-	t.Helper()
-
-	store := mock.New(opts...)
-	svc, err := batchservice.New(store, testLog, newMockListener())
-	if err != nil {
-		t.Fatalf("new batch service: %v", err)
+func TestBatchServiceUpdateBlockNumber(t *testing.T) {
+	testChainState := &postage.ChainState{
+		Block: 1,
+		Price: big.NewInt(100),
+		Total: big.NewInt(100),
 	}
+	svc, batchStore := newTestStoreAndService(
+		mock.WithChainState(testChainState),
+	)
 
+	// advance the block number and expect total cumulative payout to update
+	nextBlock := uint64(4)
+
+	if err := svc.UpdateBlockNumber(nextBlock); err != nil {
+		t.Fatalf("update price: %v", err)
+	}
+	nn := big.NewInt(400)
+	cs := batchStore.GetChainState()
+	if cs.Total.Cmp(nn) != 0 {
+		t.Fatalf("bad price: want %v, got %v", nn, cs.Total)
+	}
+}
+
+func newTestStoreAndService(opts ...mock.Option) (postage.EventUpdater, postage.Storer) {
+	store := mock.New(opts...)
+	svc := batchservice.New(store, testLog, newMockListener())
 	return svc, store
 }
 
 func putBatch(t *testing.T, store postage.Storer, b *postage.Batch) {
 	t.Helper()
 
-	if err := store.Put(b); err != nil {
+	if err := store.Put(b, big.NewInt(0), 0); err != nil {
 		t.Fatalf("store put batch: %v", err)
 	}
 }

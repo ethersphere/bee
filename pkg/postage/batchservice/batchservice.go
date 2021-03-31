@@ -14,7 +14,6 @@ import (
 )
 
 type batchService struct {
-	cs       *postage.ChainState
 	storer   postage.Storer
 	logger   logging.Logger
 	listener postage.Listener
@@ -22,32 +21,14 @@ type batchService struct {
 
 type Interface interface {
 	postage.EventUpdater
-	Start() error
 }
 
 // New will create a new BatchService.
-func New(storer postage.Storer, logger logging.Logger, listener postage.Listener) (Interface, error) {
-	b := &batchService{
-		storer:   storer,
-		logger:   logger,
-		listener: listener,
-	}
-
-	cs, err := storer.GetChainState()
-	if err != nil {
-		return nil, fmt.Errorf("get chain state: %w", err)
-	}
-	b.cs = cs
-	return b, nil
-}
-
-func (svc *batchService) Start() error {
-	cs, err := svc.storer.GetChainState()
-	if err != nil {
-		return fmt.Errorf("get chain state: %w", err)
-	}
+func New(storer postage.Storer, logger logging.Logger, listener postage.Listener) Interface {
+	svc := &batchService{storer, logger, listener}
+	cs := svc.storer.GetChainState()
 	svc.listener.Listen(cs.Block+1, svc)
-	return nil
+	return svc
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -56,12 +37,12 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 	b := &postage.Batch{
 		ID:    id,
 		Owner: owner,
-		Value: normalisedBalance,
-		Start: svc.cs.Block,
+		Value: big.NewInt(0),
+		Start: svc.storer.GetChainState().Block,
 		Depth: depth,
 	}
 
-	err := svc.storer.Put(b)
+	err := svc.storer.Put(b, normalisedBalance, depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
@@ -78,14 +59,12 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int) error {
 		return fmt.Errorf("get: %w", err)
 	}
 
-	b.Value.Set(normalisedBalance)
-
-	err = svc.storer.Put(b)
+	err = svc.storer.Put(b, normalisedBalance, b.Depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
 
-	svc.logger.Debugf("topped up batch id %s with %v", hex.EncodeToString(b.ID), b.Value)
+	svc.logger.Debugf("topped up batch id %s from %v to %v", hex.EncodeToString(b.ID), b.Value, normalisedBalance)
 	return nil
 }
 
@@ -96,39 +75,38 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
 	}
-
-	b.Depth = depth
-	b.Value.Set(normalisedBalance)
-
-	err = svc.storer.Put(b)
+	err = svc.storer.Put(b, normalisedBalance, depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
 
-	svc.logger.Debugf("updated depth of batch id %s to %d", hex.EncodeToString(b.ID), b.Depth)
+	svc.logger.Debugf("updated depth of batch id %s from %d to %d", hex.EncodeToString(b.ID), b.Depth, depth)
 	return nil
 }
 
 // UpdatePrice implements the EventUpdater interface. It sets the current
 // price from the chain in the service chain state.
 func (svc *batchService) UpdatePrice(price *big.Int) error {
-	svc.cs.Price = price
-
-	if err := svc.storer.PutChainState(svc.cs); err != nil {
+	cs := svc.storer.GetChainState()
+	cs.Price = price
+	if err := svc.storer.PutChainState(cs); err != nil {
 		return fmt.Errorf("put chain state: %w", err)
 	}
 
-	svc.logger.Debugf("updated chain price to %s", svc.cs.Price)
+	svc.logger.Debugf("updated chain price to %s", price)
 	return nil
 }
 
 func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
-	svc.cs.Block = blockNumber
+	cs := svc.storer.GetChainState()
+	diff := big.NewInt(0).SetUint64(blockNumber - cs.Block)
 
-	if err := svc.storer.PutChainState(svc.cs); err != nil {
+	cs.Total.Add(cs.Total, diff.Mul(diff, cs.Price))
+	cs.Block = blockNumber
+	if err := svc.storer.PutChainState(cs); err != nil {
 		return fmt.Errorf("put chain state: %w", err)
 	}
 
-	svc.logger.Debugf("updated block height to %d", svc.cs.Block)
+	svc.logger.Debugf("updated block height to %d", blockNumber)
 	return nil
 }

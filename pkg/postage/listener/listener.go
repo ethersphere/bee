@@ -202,15 +202,19 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 			return err
 		}
 
+		// this is called before processing the events
+		// so that the eviction in batchstore gets the correct
+		// block height context for the gc round. otherwise
+		// expired batches might be "revived".
+		err = updater.UpdateBlockNumber(to)
+		if err != nil {
+			return err
+		}
+
 		for _, e := range events {
 			if err = l.processEvent(e, updater); err != nil {
 				return err
 			}
-		}
-
-		err = updater.UpdateBlockNumber(to)
-		if err != nil {
-			return err
 		}
 
 		from = to + 1

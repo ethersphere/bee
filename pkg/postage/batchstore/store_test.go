@@ -14,12 +14,13 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
+func unreserve([]byte, uint8) error { return nil }
 func TestBatchStoreGet(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore := batchstore.New(stateStore)
+	batchStore, _ := batchstore.New(stateStore, nil)
 
 	stateStorePut(t, stateStore, key, testBatch)
 	got := batchStoreGetBatch(t, batchStore, testBatch.ID)
@@ -31,7 +32,7 @@ func TestBatchStorePut(t *testing.T) {
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore := batchstore.New(stateStore)
+	batchStore, _ := batchstore.New(stateStore, unreserve)
 
 	batchStorePutBatch(t, batchStore, testBatch)
 
@@ -44,10 +45,13 @@ func TestBatchStoreGetChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
-	bStore := batchstore.New(stateStore)
+	batchStore, _ := batchstore.New(stateStore, nil)
 
-	stateStorePut(t, stateStore, batchstore.StateKey, testChainState)
-	got := batchStoreGetChainState(t, bStore)
+	err := batchStore.PutChainState(testChainState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := batchStore.GetChainState()
 	postagetest.CompareChainState(t, testChainState, got)
 }
 
@@ -55,9 +59,9 @@ func TestBatchStorePutChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
-	bStore := batchstore.New(stateStore)
+	batchStore, _ := batchstore.New(stateStore, nil)
 
-	batchStorePutChainState(t, bStore, testChainState)
+	batchStorePutChainState(t, batchStore, testChainState)
 	var got postage.ChainState
 	stateStoreGet(t, stateStore, batchstore.StateKey, &got)
 	postagetest.CompareChainState(t, testChainState, &got)
@@ -86,7 +90,7 @@ func batchStoreGetBatch(t *testing.T, st postage.Storer, id []byte) *postage.Bat
 
 func batchStorePutBatch(t *testing.T, st postage.Storer, b *postage.Batch) {
 	t.Helper()
-	if err := st.Put(b); err != nil {
+	if err := st.Put(b, b.Value, b.Depth); err != nil {
 		t.Fatalf("postage storer put: %v", err)
 	}
 }
@@ -96,13 +100,4 @@ func batchStorePutChainState(t *testing.T, st postage.Storer, cs *postage.ChainS
 	if err := st.PutChainState(cs); err != nil {
 		t.Fatalf("postage storer put chain state: %v", err)
 	}
-}
-
-func batchStoreGetChainState(t *testing.T, st postage.Storer) *postage.ChainState {
-	t.Helper()
-	cs, err := st.GetChainState()
-	if err != nil {
-		t.Fatalf("postage storer get chain state: %v", err)
-	}
-	return cs
 }

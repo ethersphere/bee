@@ -7,6 +7,7 @@ package mock
 import (
 	"bytes"
 	"errors"
+	"math/big"
 
 	"github.com/ethersphere/bee/pkg/postage"
 )
@@ -30,7 +31,7 @@ type Option func(*BatchStore)
 // New creates a new mock BatchStore
 func New(opts ...Option) *BatchStore {
 	bs := &BatchStore{}
-
+	bs.cs = &postage.ChainState{}
 	for _, o := range opts {
 		o(bs)
 	}
@@ -80,7 +81,7 @@ func (bs *BatchStore) Get(id []byte) (*postage.Batch, error) {
 }
 
 // Put mocks the Put method from the BatchStore
-func (bs *BatchStore) Put(batch *postage.Batch) error {
+func (bs *BatchStore) Put(batch *postage.Batch, newValue *big.Int, newDepth uint8) error {
 	if bs.putErr != nil {
 		if bs.putErrDelayCnt == 0 {
 			return bs.putErr
@@ -88,19 +89,15 @@ func (bs *BatchStore) Put(batch *postage.Batch) error {
 		bs.putErrDelayCnt--
 	}
 	bs.batch = batch
+	batch.Depth = newDepth
+	batch.Value.Set(newValue)
 	bs.id = batch.ID
 	return nil
 }
 
 // GetChainState mocks the GetChainState method from the BatchStore
-func (bs *BatchStore) GetChainState() (*postage.ChainState, error) {
-	if bs.getErr != nil {
-		if bs.getErrDelayCnt == 0 {
-			return nil, bs.getErr
-		}
-		bs.getErrDelayCnt--
-	}
-	return bs.cs, nil
+func (bs *BatchStore) GetChainState() *postage.ChainState {
+	return bs.cs
 }
 
 // PutChainState mocks the PutChainState method from the BatchStore
