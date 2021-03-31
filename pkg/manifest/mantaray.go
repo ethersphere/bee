@@ -135,6 +135,7 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 	}
 
 	walker := func(path []byte, node *mantaray.Node, err error) error {
+		fmt.Println("Walking path", string(path))
 		if err != nil {
 			return err
 		}
@@ -148,6 +149,8 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 					return err
 				}
 			}
+
+			fmt.Println(node, string(node.Entry()), node.IsValueType(), node.IsWithMetadataType())
 
 			if node.IsValueType() && node.Entry() != nil {
 				entry := swarm.NewAddress(node.Entry())

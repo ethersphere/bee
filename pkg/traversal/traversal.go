@@ -33,8 +33,6 @@ type Service interface {
 
 	// TraverseBytesAddresses iterates through each address of a bytes.
 	TraverseBytesAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
-	// TraverseFileAddresses iterates through each address of a file.
-	TraverseFileAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
 	// TraverseManifestAddresses iterates through each address of a manifest,
 	// as well as each entry found in it.
 	TraverseManifestAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
@@ -62,25 +60,12 @@ func (s *traversalService) TraverseAddresses(
 	}
 
 	if isManifest {
-		err = m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) error {
+		return m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) error {
+			fmt.Println("Iterating", manifestNodeAddr.String())
 			return s.processBytes(ctx, manifestNodeAddr, chunkAddressFunc)
 		})
-		if err != nil {
-			return fmt.Errorf("traversal: iterate chunks: %s: %w", reference, err)
-		}
-		// metadataReference := e.Metadata()
-
-		// err = s.processBytes(ctx, metadataReference, chunkAddressFunc)
-		// if err != nil {
-		// 	return err
-		// }
-
-		_ = chunkAddressFunc(reference)
-
-	} else {
-		return s.processBytes(ctx, reference, chunkAddressFunc)
 	}
-	return nil
+	return s.processBytes(ctx, reference, chunkAddressFunc)
 }
 
 func (s *traversalService) TraverseBytesAddresses(
@@ -89,14 +74,6 @@ func (s *traversalService) TraverseBytesAddresses(
 	chunkAddressFunc swarm.AddressIterFunc,
 ) error {
 	return s.processBytes(ctx, reference, chunkAddressFunc)
-}
-
-func (s *traversalService) TraverseFileAddresses(
-	ctx context.Context,
-	reference swarm.Address,
-	chunkAddressFunc swarm.AddressIterFunc,
-) error {
-	return s.TraverseManifestAddresses(ctx, reference, chunkAddressFunc)
 }
 
 func (s *traversalService) TraverseManifestAddresses(
@@ -120,14 +97,6 @@ func (s *traversalService) TraverseManifestAddresses(
 	if err != nil {
 		return fmt.Errorf("traversal: iterate chunks: %s: %w", reference, err)
 	}
-	// metadataReference := e.Metadata()
-
-	// err = s.processBytes(ctx, metadataReference, chunkAddressFunc)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// _ = chunkAddressFunc(reference)
 
 	return nil
 }
