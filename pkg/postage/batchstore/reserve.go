@@ -94,6 +94,15 @@ func (s *store) evictExpired() error {
 		if b.Value.Cmp(until) >= 0 {
 			return true, nil
 		}
+
+		// in the following if statements we check the batch value
+		// against the inner and outer values and set the multiplier
+		// to 1 or 2 depending on the value. if the batch value falls
+		// outside of Outer it means we are evicting twice more chunks
+		// than within Inner, therefore the multiplier is needed to
+		// estimate better how much capacity gain is leveraged from
+		// evicting this specific batch.
+
 		// if multiplier == 0 && batch value >= inner
 		if multiplier == 0 && b.Value.Cmp(s.rs.Inner) >= 0 {
 			multiplier = 1
@@ -119,7 +128,10 @@ func (s *store) evictExpired() error {
 	if err != nil {
 		return err
 	}
-	// set inner/outer to total if total is greater
+
+	// set inner to either until or Outer, whichever
+	// is the smaller value.
+
 	s.rs.Inner.Set(until)
 
 	// if outer < until

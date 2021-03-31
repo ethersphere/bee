@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	batchKeyPrefix  = "batch"
-	valueKeyPrefix  = "value"
-	chainStateKey   = "chain"
-	reserveStateKey = "reserve"
+	batchKeyPrefix  = "batchstore_batch_"
+	valueKeyPrefix  = "batchstore_value_"
+	chainStateKey   = "batchstore_chain_"
+	reserveStateKey = "batchstore_reserve_"
 )
 
 // store implements postage.Storer
