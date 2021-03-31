@@ -49,7 +49,7 @@ jobs:
       - name: Prepare testing cluster (DNS discovery)
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          ./beeinfra.sh prepare --geth --k3s
+          timeout 30m ./beeinfra.sh prepare --geth --k3s
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
@@ -59,7 +59,7 @@ jobs:
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s
+          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s
       - name: Test pingpong
         id: pingpong-1
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
@@ -98,14 +98,14 @@ jobs:
           ./beeinfra.sh uninstall
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
-          ./beeinfra.sh prepare --geth --clef --k3s
+          timeout 30m ./beeinfra.sh prepare --geth --clef --k3s
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (Node connection and clef enabled)
         run: |
-          ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s 
+          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s
       - name: Test pingpong
         id: pingpong-2
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
