@@ -7,8 +7,10 @@ package kademlia_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -914,8 +916,9 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 }
 
-func TestMarshal(t *testing.T) {
-	_, kad, ab, _, signer := newTestKademlia(nil, nil, kademlia.Options{})
+func TestSnapshot(t *testing.T) {
+	var conns = new(int32)
+	sa, kad, ab, _, signer := newTestKademlia(conns, nil, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -923,10 +926,31 @@ func TestMarshal(t *testing.T) {
 
 	a := test.RandomAddress()
 	addOne(t, signer, kad, ab, a)
-	_, err := kad.MarshalJSON()
-	if err != nil {
-		t.Fatal(err)
+
+	snap := kad.Snapshot()
+
+	waitConn(t, conns)
+
+	if snap.Connected != 0 {
+		t.Errorf("expected %d connected peers but got %d", 0, snap.Connected)
 	}
+	if snap.Population != 1 {
+		t.Errorf("expected population %d but got %d", 1, snap.Population)
+	}
+
+	po := swarm.Proximity(sa.Bytes(), a.Bytes())
+
+	if binP := getBinPopulation(&snap.Bins, po); binP != 1 {
+		t.Errorf("expected bin(%d) to have population %d but got %d", po, 1, snap.Population)
+	}
+}
+
+func getBinPopulation(bins *topology.KadBins, po uint8) uint64 {
+	rv := reflect.ValueOf(bins)
+	bin := fmt.Sprintf("Bin%d", po)
+	b0 := reflect.Indirect(rv).FieldByName(bin)
+	bp := b0.FieldByName("BinPopulation")
+	return bp.Uint()
 }
 
 func TestStart(t *testing.T) {

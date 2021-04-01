@@ -174,6 +174,10 @@ func (m *Mock) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
+func (m *Mock) Snapshot() *topology.KadParams {
+	panic("not implemented") // TODO: Implement
+}
+
 type Option interface {
 	apply(*Mock)
 }

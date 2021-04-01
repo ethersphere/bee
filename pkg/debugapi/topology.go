@@ -14,14 +14,9 @@ import (
 )
 
 func (s *Service) topologyHandler(w http.ResponseWriter, r *http.Request) {
-	ms, ok := s.topologyDriver.(json.Marshaler)
-	if !ok {
-		s.logger.Error("topology driver cast to json marshaler")
-		jsonhttp.InternalServerError(w, "topology json marshal interface error")
-		return
-	}
+	params := s.topologyDriver.Snapshot()
 
-	b, err := ms.MarshalJSON()
+	b, err := json.Marshal(params)
 	if err != nil {
 		s.logger.Errorf("topology marshal to json: %v", err)
 		jsonhttp.InternalServerError(w, err)
