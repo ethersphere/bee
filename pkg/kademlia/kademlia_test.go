@@ -917,7 +917,8 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 }
 
 func TestSnapshot(t *testing.T) {
-	sa, kad, ab, _, signer := newTestKademlia(nil, nil, kademlia.Options{})
+	var conns = new(int32)
+	sa, kad, ab, _, signer := newTestKademlia(conns, nil, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -928,6 +929,8 @@ func TestSnapshot(t *testing.T) {
 
 	snap := kad.Snapshot()
 
+	waitConn(t, conns)
+
 	if snap.Connected != 0 {
 		t.Error("wrong connected value", snap.Connected)
 	}
@@ -937,17 +940,17 @@ func TestSnapshot(t *testing.T) {
 
 	po := swarm.Proximity(sa.Bytes(), a.Bytes())
 
-	if getBinPopulation(snap.Bins, po) != 1 {
+	if getBinPopulation(&snap.Bins, po) != 1 {
 		t.Error("wrong bin")
 	}
 }
 
-func getBinPopulation(bins topology.KadBins, po uint8) uint64 {
+func getBinPopulation(bins *topology.KadBins, po uint8) uint64 {
 	rv := reflect.ValueOf(bins)
 	bin := fmt.Sprintf("Bin%d", po)
-	f := reflect.Indirect(rv).FieldByName(bin)
-	s := f.FieldByName("BinPopulation")
-	return s.Uint()
+	b0 := reflect.Indirect(rv).FieldByName(bin)
+	bp := b0.FieldByName("BinPopulation")
+	return bp.Uint()
 }
 
 func TestStart(t *testing.T) {
