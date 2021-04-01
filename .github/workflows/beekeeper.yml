@@ -93,6 +93,9 @@ jobs:
       - name: Test pin remote chunks
         id: pin-remote-1
         run: ./beekeeper check pin-remote --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Test pss
+        id: pss
+        run: ./beekeeper check pss --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Destroy the cluster
         run: |
           ./beeinfra.sh uninstall
@@ -165,6 +168,7 @@ jobs:
           if ${{ steps.pushsync-bytes-2.outcome=='failure' }}; then FAILED=pushsync-bytes-2; fi
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval-2.outcome=='failure' }}; then FAILED=retrieval-2; fi
+          if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}**\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
