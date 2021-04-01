@@ -244,7 +244,6 @@ func (s *server) manifestFeed(
 ) (feeds.Lookup, error) {
 	e, err := m.Lookup(ctx, "/")
 	if err != nil {
-		fmt.Println("Failed node lookup", err.Error())
 		return nil, fmt.Errorf("node lookup: %w", err)
 	}
 	var (
