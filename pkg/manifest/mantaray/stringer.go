@@ -30,18 +30,18 @@ func nodeStringWithPrefix(n *Node, prefix string, writer io.Writer) {
 	io.WriteString(writer, prefix)
 	io.WriteString(writer, tableCharsMap["left-mid"])
 	io.WriteString(writer, fmt.Sprintf("t: '%s'", strconv.FormatInt(int64(n.nodeType), 2)))
-	io.WriteString(writer, fmt.Sprint(" ["))
+	io.WriteString(writer, " [")
 	if n.IsValueType() {
-		io.WriteString(writer, fmt.Sprint(" Value"))
+		io.WriteString(writer, " Value")
 	}
 	if n.IsEdgeType() {
-		io.WriteString(writer, fmt.Sprint(" Edge"))
+		io.WriteString(writer, " Edge")
 	}
 	if n.IsWithPathSeparatorType() {
-		io.WriteString(writer, fmt.Sprint(" PathSeparator"))
+		io.WriteString(writer, " PathSeparator")
 	}
-	io.WriteString(writer, fmt.Sprint(" ]"))
-	io.WriteString(writer, fmt.Sprint("\n"))
+	io.WriteString(writer, " ]")
+	io.WriteString(writer, "\n")
 	io.WriteString(writer, prefix)
 	if len(n.forks) > 0 || len(n.metadata) > 0 {
 		io.WriteString(writer, tableCharsMap["left-mid"])

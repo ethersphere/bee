@@ -41,9 +41,7 @@ var testEntries = []nodeEntry{
 }
 
 func init() {
-	obfuscationKeyFn = func(p []byte) (n int, err error) {
-		return mrand.Read(p)
-	}
+	obfuscationKeyFn = mrand.Read
 }
 
 func TestVersion01(t *testing.T) {
@@ -154,7 +152,7 @@ func TestMarshal(t *testing.T) {
 	i := uint8(0)
 	refBytes = func(*fork) []byte {
 		b := make([]byte, 32)
-		b[31] = byte(i)
+		b[31] = i
 		i++
 		return b
 	}

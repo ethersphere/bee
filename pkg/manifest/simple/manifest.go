@@ -60,8 +60,8 @@ func notFound(path string) error {
 	return fmt.Errorf("entry on '%s': %w", path, ErrNotFound)
 }
 
-func (m *manifest) Add(path string, entry string, metadata map[string]string) error {
-	if len(path) == 0 {
+func (m *manifest) Add(path, entry string, metadata map[string]string) error {
+	if path == "" {
 		return ErrEmptyPath
 	}
 
@@ -74,7 +74,7 @@ func (m *manifest) Add(path string, entry string, metadata map[string]string) er
 }
 
 func (m *manifest) Remove(path string) error {
-	if len(path) == 0 {
+	if path == "" {
 		return ErrEmptyPath
 	}
 

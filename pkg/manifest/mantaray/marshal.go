@@ -83,9 +83,7 @@ var (
 	ErrForkIvalid = errors.New("fork node without reference")
 )
 
-var obfuscationKeyFn = func(p []byte) (n int, err error) {
-	return rand.Read(p)
-}
+var obfuscationKeyFn = rand.Read
 
 // SetObfuscationKeyFn allows configuring custom function for generating
 // obfuscation key.
@@ -186,12 +184,12 @@ func (bb *bitsForBytes) fromBytes(b []byte) {
 }
 
 func (bb *bitsForBytes) set(b byte) {
-	bb.bits[uint8(b)/8] |= 1 << (uint8(b) % 8)
+	bb.bits[b/8] |= 1 << (b % 8)
 }
 
 //nolint,unused
-func (bb *bitsForBytes) get(b byte) bool {
-	return bb.getUint8(uint8(b))
+func (bb *bitsForBytes) get(b byte) bool { // skipcq: SCC-U1000
+	return bb.getUint8(b)
 }
 
 func (bb *bitsForBytes) getUint8(i uint8) bool {
@@ -201,7 +199,7 @@ func (bb *bitsForBytes) getUint8(i uint8) bool {
 func (bb *bitsForBytes) iter(f func(byte) error) error {
 	for i := uint8(0); ; i++ {
 		if bb.getUint8(i) {
-			if err := f(byte(i)); err != nil {
+			if err := f(i); err != nil {
 				return err
 			}
 		}
@@ -283,7 +281,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 				return fmt.Errorf("not enough bytes for node fork: %d (%d) on byte '%x'", (len(data) - offset), (nodeForkTypeBytesSize), []byte{b})
 			}
 
-			nodeType := uint8(data[offset])
+			nodeType := data[offset]
 
 			nodeForkSize := nodeForkPreReferenceSize + refBytesSize
 
@@ -322,8 +320,8 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 }
 
 func (f *fork) fromBytes(b []byte) error {
-	nodeType := uint8(b[0])
-	prefixLen := int(uint8(b[1]))
+	nodeType := b[0]
+	prefixLen := int(b[1])
 
 	if prefixLen == 0 || prefixLen > nodePrefixMaxSize {
 		return fmt.Errorf("invalid prefix length: %d", prefixLen)
@@ -337,8 +335,8 @@ func (f *fork) fromBytes(b []byte) error {
 }
 
 func (f *fork) fromBytes02(b []byte, refBytesSize, metadataBytesSize int) error {
-	nodeType := uint8(b[0])
-	prefixLen := int(uint8(b[1]))
+	nodeType := b[0]
+	prefixLen := int(b[1])
 
 	if prefixLen == 0 || prefixLen > nodePrefixMaxSize {
 		return fmt.Errorf("invalid prefix length: %d", prefixLen)
@@ -371,8 +369,7 @@ func (f *fork) bytes() (b []byte, err error) {
 		err = fmt.Errorf("node reference size > 256: %d", len(r))
 		return
 	}
-	b = append(b, f.Node.nodeType)
-	b = append(b, uint8(len(f.prefix)))
+	b = append(b, f.Node.nodeType, uint8(len(f.prefix)))
 
 	prefixBytes := make([]byte, nodePrefixMaxSize)
 	copy(prefixBytes, f.prefix)

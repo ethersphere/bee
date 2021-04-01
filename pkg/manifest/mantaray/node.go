@@ -110,12 +110,12 @@ func (n *Node) makeWithMetadata() {
 }
 
 //nolint,unused
-func (n *Node) makeNotValue() {
+func (n *Node) makeNotValue() { // skipcq: SCC-U1000
 	n.nodeType = (nodeTypeMask ^ nodeTypeValue) & n.nodeType
 }
 
 //nolint,unused
-func (n *Node) makeNotEdge() {
+func (n *Node) makeNotEdge() { // skipcq: SCC-U1000
 	n.nodeType = (nodeTypeMask ^ nodeTypeEdge) & n.nodeType
 }
 
@@ -124,7 +124,7 @@ func (n *Node) makeNotWithPathSeparator() {
 }
 
 //nolint,unused
-func (n *Node) makeNotWithMetadata() {
+func (n *Node) makeNotWithMetadata() { // skipcq: SCC-U1000
 	n.nodeType = (nodeTypeMask ^ nodeTypeWithMetadata) & n.nodeType
 }
 
@@ -185,7 +185,7 @@ func (n *Node) Lookup(ctx context.Context, path []byte, l Loader) ([]byte, error
 }
 
 // Add adds an entry to the path
-func (n *Node) Add(ctx context.Context, path []byte, entry []byte, metadata map[string]string, ls LoadSaver) error {
+func (n *Node) Add(ctx context.Context, path, entry []byte, metadata map[string]string, ls LoadSaver) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -199,10 +199,8 @@ func (n *Node) Add(ctx context.Context, path []byte, entry []byte, metadata map[
 		if len(entry) > 0 {
 			n.refBytesSize = len(entry)
 		}
-	} else {
-		if len(entry) > 0 && n.refBytesSize != len(entry) {
-			return fmt.Errorf("invalid entry size: %d, expected: %d", len(entry), n.refBytesSize)
-		}
+	} else if len(entry) > 0 && n.refBytesSize != len(entry) {
+		return fmt.Errorf("invalid entry size: %d, expected: %d", len(entry), n.refBytesSize)
 	}
 
 	if len(path) == 0 {
