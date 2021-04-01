@@ -3,8 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package manifest contains the abstractions needed for
-// collection representation in Swarm. It uses implementations
-// in ethersphere/manifest repo under the hood.
+// collection representation in Swarm.
 package manifest
 
 import (
