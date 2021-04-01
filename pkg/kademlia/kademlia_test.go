@@ -932,16 +932,16 @@ func TestSnapshot(t *testing.T) {
 	waitConn(t, conns)
 
 	if snap.Connected != 0 {
-		t.Error("wrong connected value", snap.Connected)
+		t.Errorf("expected %d connected peers but got %d", 0, snap.Connected)
 	}
 	if snap.Population != 1 {
-		t.Error("wrong population value", snap.Population)
+		t.Errorf("expected population %d but got %d", 1, snap.Population)
 	}
 
 	po := swarm.Proximity(sa.Bytes(), a.Bytes())
 
-	if getBinPopulation(&snap.Bins, po) != 1 {
-		t.Error("wrong bin")
+	if binP := getBinPopulation(&snap.Bins, po); binP != 1 {
+		t.Errorf("expected bin(%d) to have population %d but got %d", po, 1, snap.Population)
 	}
 }
 
