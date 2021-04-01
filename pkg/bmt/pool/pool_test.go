@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ethersphere/bmt/pool"
+	"github.com/ethersphere/bee/pkg/bmt/pool"
 )
 
 const str = "hello world"

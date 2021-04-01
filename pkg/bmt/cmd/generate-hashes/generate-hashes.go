@@ -8,12 +8,11 @@ package main
 
 import (
 	"fmt"
-	"hash"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"github.com/ethersphere/bmt/legacy"
+	"github.com/ethersphere/bee/pkg/bmt/legacy"
 	"gitlab.com/nolash/go-mockbytes"
 	"golang.org/x/crypto/sha3"
 )
@@ -30,7 +29,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Invalid input: %s", err)
 		os.Exit(1)
 	}
-	err = os.Mkdir(outputDir, 0777)
+	err = os.Mkdir(outputDir, 0750)
 	if err == os.ErrExist {
 		fmt.Fprintf(os.Stderr, "Directory %s already exists\n", outputDir)
 		os.Exit(1)
@@ -40,10 +39,7 @@ func main() {
 	}
 
 	// set up hasher
-	hashFunc := func() hash.Hash {
-		return sha3.NewLegacyKeccak256()
-	}
-	hashPool := legacy.NewTreePool(hashFunc, 128, legacy.PoolSize)
+	hashPool := legacy.NewTreePool(sha3.NewLegacyKeccak256, 128, legacy.PoolSize)
 	bmtHash := legacy.New(hashPool)
 
 	// create sequence generator and outputs

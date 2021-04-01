@@ -8,7 +8,7 @@ import (
 	"hash"
 	"sync"
 
-	bmtlegacy "github.com/ethersphere/bmt/legacy"
+	bmtlegacy "github.com/ethersphere/bee/pkg/bmt/legacy"
 	"golang.org/x/crypto/sha3"
 )
 

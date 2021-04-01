@@ -11,11 +11,10 @@ package main
 
 import (
 	"fmt"
-	"hash"
 	"io"
 	"os"
 
-	"github.com/ethersphere/bmt/legacy"
+	"github.com/ethersphere/bee/pkg/bmt/legacy"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -44,10 +43,7 @@ func main() {
 	}
 	infile.Close()
 
-	hashFunc := func() hash.Hash {
-		return sha3.NewLegacyKeccak256()
-	}
-	hashPool := legacy.NewTreePool(hashFunc, 128, legacy.PoolSize)
+	hashPool := legacy.NewTreePool(sha3.NewLegacyKeccak256, 128, legacy.PoolSize)
 	bmtHash := legacy.New(hashPool)
 	_, err = bmtHash.Write(data[:c])
 	if err != nil {

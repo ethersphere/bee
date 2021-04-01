@@ -26,8 +26,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bmt"
-	"github.com/ethersphere/bmt/reference"
+	"github.com/ethersphere/bee/pkg/bmt"
+	"github.com/ethersphere/bee/pkg/bmt/reference"
 	"gitlab.com/nolash/go-mockbytes"
 	"golang.org/x/crypto/sha3"
 )

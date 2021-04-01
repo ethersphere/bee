@@ -25,7 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/ethersphere/bmt"
+	"github.com/ethersphere/bee/pkg/bmt"
 )
 
 var _ bmt.Hash = (*Hasher)(nil)
@@ -226,8 +226,7 @@ func (t *tree) Draw(hash []byte) string {
 		rows = append(rows, row)
 
 	}
-	rows = append(rows, strings.Join(left, "  "))
-	rows = append(rows, strings.Join(right, "  "))
+	rows = append(rows, strings.Join(left, "  "), strings.Join(right, "  "))
 	return strings.Join(rows, "\n") + "\n"
 }
 
@@ -268,7 +267,7 @@ func (h *Hasher) Capacity() int {
 
 // writeSection is not in use for this implementation.
 func (h *Hasher) WriteSection(idx int, data []byte) error {
-	return errors.New("This hasher only implements sequential writes. Please use Write() instead")
+	return errors.New("this hasher only implements sequential writes. please use Write() instead")
 }
 
 // SetSpan sets the span length value prefix in numeric form for the current hash operation.
@@ -358,11 +357,9 @@ func (h *Hasher) write(b []byte) int {
 			t.offset += l
 			return l
 		}
-	} else {
+	} else if t.cursor == h.pool.SegmentCount*2 {
 		// if end of a section
-		if t.cursor == h.pool.SegmentCount*2 {
-			return 0
-		}
+		return 0
 	}
 	// read full sections and the last possibly partial section from the input buffer
 	for smax < l {
@@ -469,7 +466,7 @@ func calculateDepthFor(n int) (d int) {
 }
 
 // writeSection writes the hash of i-th section into level 1 node of the BMT tree.
-func (h *Hasher) writeSection(i int, section []byte, double bool, final bool) {
+func (h *Hasher) writeSection(i int, section []byte, double, final bool) {
 	// select the leaf node for the section
 	var n *node
 	var isLeft bool
