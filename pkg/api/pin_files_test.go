@@ -6,8 +6,9 @@ package api_test
 
 import (
 	"bytes"
-	"io/ioutil"
+	// "io/ioutil"
 	"net/http"
+	"os"
 	"sort"
 	"testing"
 
@@ -24,7 +25,7 @@ import (
 
 func TestPinFilesHandler(t *testing.T) {
 	var (
-		fileUploadResource      = "/files"
+		fileUploadResource      = "/bzz"
 		pinFilesResource        = "/pin/files"
 		pinFilesAddressResource = func(addr string) string { return pinFilesResource + "/" + addr }
 		pinChunksResource       = "/pin/chunks"
@@ -34,20 +35,22 @@ func TestPinFilesHandler(t *testing.T) {
 		mockStorer       = mock.NewStorer()
 		mockStatestore   = statestore.NewStateStore()
 		traversalService = traversal.NewService(mockStorer)
-		logger           = logging.New(ioutil.Discard, 0)
+		logger           = logging.New(os.Stdout, 6)
 		client, _, _     = newTestServer(t, testServerOptions{
 			Storer:    mockStorer,
 			Traversal: traversalService,
 			Tags:      tags.NewTags(mockStatestore, logger),
+			Logger:    logger,
 		})
 	)
 
 	t.Run("pin-file-1", func(t *testing.T) {
-		rootHash := "dc82503e0ed041a57327ad558d7aa69a867024c8221306c461ae359dc34d1c6a"
+		rootHash := "dd13a5a6cc9db3ef514d645e6719178dbfb1a90b49b9262cafce35b0d27cf245"
 		metadataHash := "d936d7180f230b3424842ea10848aa205f2f0e830cb9cc7588a39c9381544bf9"
 		contentHash := "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2aeb"
 
-		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost,
+			fileUploadResource+"?name=somefile.txt", http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
@@ -82,7 +85,7 @@ func TestPinFilesHandler(t *testing.T) {
 	})
 
 	t.Run("unpin-file-1", func(t *testing.T) {
-		rootHash := "dc82503e0ed041a57327ad558d7aa69a867024c8221306c461ae359dc34d1c6a"
+		rootHash := "dd13a5a6cc9db3ef514d645e6719178dbfb1a90b49b9262cafce35b0d27cf245"
 
 		jsonhttptest.Request(t, client, http.MethodDelete, pinFilesAddressResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{

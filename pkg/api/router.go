@@ -97,6 +97,12 @@ func (s *server) setupRouting() {
 		),
 	})
 
+	handle(router, "/bzz", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			s.newTracingHandler("bzz-upload"),
+			web.FinalHandlerFunc(s.bzzUploadHandler),
+		),
+	})
 	handle(router, "/bzz/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL
 		u.Path += "/"

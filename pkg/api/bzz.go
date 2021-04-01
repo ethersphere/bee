@@ -5,12 +5,19 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,12 +28,254 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
-	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
+
+const (
+	multiPartFormData = "multipart/form-data"
+)
+
+func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+
+	contentType := r.Header.Get(contentTypeHeader)
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		logger.Debugf("bzz upload: parse content type header %q: %v", contentType, err)
+		logger.Errorf("bzz upload: parse content type header %q", contentType)
+		jsonhttp.BadRequest(w, "invalid content-type header")
+		return
+	}
+	switch mediaType {
+	case contentTypeTar:
+		s.dirUploadHandler(w, r)
+	default:
+		s.fileUploadHandler(w, r)
+	}
+}
+
+// fileUploadResponse is returned when an HTTP request to upload a file is successful
+// type fileUploadResponse struct {
+// 	Reference swarm.Address `json:"reference"`
+// }
+
+// fileUploadHandler uploads the file and its metadata supplied as:
+// - multipart http message
+// - other content types as complete file body
+func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+	var (
+		reader                  io.Reader
+		fileName, contentLength string
+		fileSize                uint64
+	)
+
+	// Content-Type has already been validated by this time
+	contentType := r.Header.Get(contentTypeHeader)
+	mediaType, params, _ := mime.ParseMediaType(contentType)
+
+	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
+	if err != nil {
+		logger.Debugf("bzz upload file: get or create tag: %v", err)
+		logger.Error("bzz upload file: get or create tag")
+		jsonhttp.InternalServerError(w, "cannot get or create tag")
+		return
+	}
+
+	if !created {
+		// only in the case when tag is sent via header (i.e. not created by this request)
+		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
+			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
+			if err != nil {
+				s.logger.Debugf("bzz upload file: increment tag: %v", err)
+				s.logger.Error("bzz upload file: increment tag")
+				jsonhttp.InternalServerError(w, "increment tag")
+				return
+			}
+		}
+	}
+
+	// Add the tag to the context
+	ctx := sctx.SetTag(r.Context(), tag)
+
+	if mediaType == multiPartFormData {
+		mr := multipart.NewReader(r.Body, params["boundary"])
+
+		// read only the first part, as only one bzz upload file is supported
+		part, err := mr.NextPart()
+		if err != nil {
+			logger.Debugf("bzz upload file: read multipart: %v", err)
+			logger.Error("bzz upload file: read multipart")
+			jsonhttp.BadRequest(w, "invalid multipart/form-data")
+			return
+		}
+
+		// try to find filename
+		// 1) in part header params
+		// 2) as formname
+		// 3) file reference hash (after uploading the file)
+		if fileName = part.FileName(); fileName == "" {
+			fileName = part.FormName()
+		}
+
+		// then find out content type, this will be saved as metadata
+		contentType = part.Header.Get("Content-Type")
+		if contentType == "" {
+			br := bufio.NewReader(part)
+			buf, err := br.Peek(512)
+			if err != nil && err != io.EOF {
+				logger.Debugf("bzz upload file: read content type, file %q: %v", fileName, err)
+				logger.Errorf("bzz upload file: read content type, file %q", fileName)
+				jsonhttp.BadRequest(w, "error reading content type")
+				return
+			}
+			contentType = http.DetectContentType(buf)
+			reader = br
+		} else {
+			reader = part
+		}
+		contentLength = part.Header.Get("Content-Length")
+	} else {
+		fileName = r.URL.Query().Get("name")
+		contentLength = r.Header.Get("Content-Length")
+		reader = r.Body
+	}
+
+	if contentLength != "" {
+		fileSize, err = strconv.ParseUint(contentLength, 10, 64)
+		if err != nil {
+			logger.Debugf("bzz upload file: content length, file %q: %v", fileName, err)
+			logger.Errorf("bzz upload file: content length, file %q", fileName)
+			jsonhttp.BadRequest(w, "invalid content length header")
+			return
+		}
+	} else {
+		// copy the part to a tmp file to get its size
+		tmp, err := ioutil.TempFile("", "bee-multipart")
+		if err != nil {
+			logger.Debugf("bzz upload file: create temporary file: %v", err)
+			logger.Errorf("bzz upload file: create temporary file")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+		defer os.Remove(tmp.Name())
+		defer tmp.Close()
+		n, err := io.Copy(tmp, reader)
+		if err != nil {
+			logger.Debugf("bzz upload file: write temporary file: %v", err)
+			logger.Error("bzz upload file: write temporary file")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+			logger.Debugf("bzz upload file: seek to beginning of temporary file: %v", err)
+			logger.Error("bzz upload file: seek to beginning of temporary file")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+		fileSize = uint64(n)
+		reader = tmp
+	}
+
+	p := requestPipelineFn(s.storer, r)
+
+	// first store the file and get its reference
+	fr, err := p(ctx, reader, int64(fileSize))
+	if err != nil {
+		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
+		logger.Errorf("bzz upload file: file store, file %q", fileName)
+		jsonhttp.InternalServerError(w, "could not store file data")
+		return
+	}
+
+	// If filename is still empty, use the file hash as the filename
+	if fileName == "" {
+		fileName = fr.String()
+	}
+
+	encrypt := requestEncrypt(r)
+	l := loadsave.New(s.storer, requestModePut(r), encrypt)
+
+	fileMtdt := map[string]string{
+		manifestEntryMetadataContentTypeKey: contentType,
+		manifestEntryMetadataFilenameKey:    fileName,
+	}
+
+	logger.Debugf("Uploading file Encrypt: %v Filename: %s Filehash: %s FileMtdt: %v",
+		encrypt, fileName, fr.String(), fileMtdt)
+
+	m, err := manifest.NewDefaultManifest(l, encrypt)
+	if err != nil {
+		logger.Debugf("bzz upload file: create manifest, file %q: %v", fileName, err)
+		logger.Errorf("bzz upload file: create manifest, file %q", fileName)
+		jsonhttp.InternalServerError(w, "could not create file manifest")
+		return
+	}
+
+	rootMetadata := map[string]string{
+		manifestWebsiteIndexDocumentSuffixKey: fileName,
+	}
+
+	err = m.Add(ctx, "/", manifest.NewEntry(swarm.ZeroAddress, rootMetadata))
+	if err != nil {
+		logger.Debugf("bzz upload file: adding metadata to manifest, file %q: %v", fileName, err)
+		logger.Errorf("bzz upload file: adding metadata to manifest, file %q", fileName)
+		jsonhttp.InternalServerError(w, "could not add file to manifest")
+		return
+	}
+
+	err = m.Add(ctx, fileName, manifest.NewEntry(fr, fileMtdt))
+	if err != nil {
+		logger.Debugf("bzz upload file: adding file to manifest, file %q: %v", fileName, err)
+		logger.Errorf("bzz upload file: adding file to manifest, file %q", fileName)
+		jsonhttp.InternalServerError(w, "could not add file to manifest")
+		return
+	}
+
+	storeSizeFn := []manifest.StoreSizeFunc{}
+	if !created {
+		// only in the case when tag is sent via header (i.e. not created by this request)
+		// each content that is saved for manifest
+		storeSizeFn = append(storeSizeFn, func(dataSize int64) error {
+			if estimatedTotalChunks := calculateNumberOfChunks(dataSize, encrypt); estimatedTotalChunks > 0 {
+				err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
+				if err != nil {
+					return fmt.Errorf("increment tag: %w", err)
+				}
+			}
+			return nil
+		})
+	}
+
+	manifestReference, err := m.Store(ctx, storeSizeFn...)
+	if err != nil {
+		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
+		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
+		jsonhttp.InternalServerError(w, "could not store manifest")
+		return
+	}
+	logger.Debugf("Manifest Reference: %s", manifestReference.String())
+
+	if created {
+		_, err = tag.DoneSplit(manifestReference)
+		if err != nil {
+			logger.Debugf("bzz upload file: done split: %v", err)
+			logger.Error("bzz upload file: done split failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+	}
+	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
+	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
+	jsonhttp.OK(w, fileUploadResponse{
+		Reference: manifestReference,
+	})
+}
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)

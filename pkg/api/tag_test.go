@@ -36,7 +36,7 @@ func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 
 func TestTags(t *testing.T) {
 	var (
-		// filesResource  = "/files"
+		bzzResource    = "/bzz"
 		dirResource    = "/dirs"
 		bytesResource  = "/bytes"
 		chunksResource = "/chunks"
@@ -263,23 +263,24 @@ func TestTags(t *testing.T) {
 		tagValueTest(t, tagId, 1, 1, 1, 0, 0, 1, addr, client)
 	})
 
-	// t.Run("file tags", func(t *testing.T) {
-	// 	// upload a file without supplying tag
-	// 	expectedHash := swarm.MustParseHexAddress("8e27bb803ff049e8c2f4650357026723220170c15ebf9b635a7026539879a1a8")
-	// 	expectedResponse := api.FileUploadResponse{Reference: expectedHash}
+	t.Run("file tags", func(t *testing.T) {
+		// upload a file without supplying tag
+		expectedHash := swarm.MustParseHexAddress("40e739ebdfd18292925bba4138cd097db9aa18c1b57e74042f48469b48da33a8")
+		expectedResponse := api.FileUploadResponse{Reference: expectedHash}
 
-	// 	respHeaders := jsonhttptest.Request(t, client, http.MethodPost, filesResource, http.StatusOK,
-	// 		jsonhttptest.WithRequestBody(bytes.NewReader([]byte("some data"))),
-	// 		jsonhttptest.WithExpectedJSONResponse(expectedResponse),
-	// 		jsonhttptest.WithRequestHeader("Content-Type", "application/octet-stream"),
-	// 	)
+		respHeaders := jsonhttptest.Request(t, client, http.MethodPost,
+			bzzResource+"?name=somefile", http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader([]byte("some data"))),
+			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
+			jsonhttptest.WithRequestHeader("Content-Type", "application/octet-stream"),
+		)
 
-	// 	tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagHeader))
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	tagValueTest(t, uint32(tagId), 3, 3, 0, 0, 0, 3, expectedHash, client)
-	// })
+		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagHeader))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tagValueTest(t, uint32(tagId), 4, 4, 0, 0, 0, 4, expectedHash, client)
+	})
 
 	t.Run("dir tags", func(t *testing.T) {
 		// upload a dir without supplying tag
