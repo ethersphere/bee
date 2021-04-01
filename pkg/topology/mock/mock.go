@@ -158,8 +158,8 @@ func (d *mock) EachPeerRev(f topology.EachPeerFunc) (err error) {
 	return nil
 }
 
-func (d *mock) MarshalJSON() ([]byte, error) {
-	return d.marshalJSONFunc()
+func (d *mock) Snapshot() *topology.KadParams {
+	return new(topology.KadParams)
 }
 
 func (d *mock) Close() error {
