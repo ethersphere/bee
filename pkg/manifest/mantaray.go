@@ -10,8 +10,8 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/manifest/mantaray"
 )
 
 const (
