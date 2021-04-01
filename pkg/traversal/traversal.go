@@ -58,6 +58,7 @@ func (s *traversalService) TraverseAddresses(
 	if err != nil {
 		return err
 	}
+	fmt.Println("TRAVERSE ADDRESSES", isManifest, err.Error())
 
 	if isManifest {
 		return m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) error {
