@@ -1,0 +1,60 @@
+trigger:
+- master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  K3S_CACHE_FOLDER: /tmp/k3s-v1.19.5+k3s2
+  GO_CACHE_DIR: $(Pipeline.Workspace)/.cache/go-build/
+
+steps:
+- checkout: self
+  fetchDepth: 1
+- task: Cache@2
+  inputs:
+    key: k3s-v1.19.5+k3s2
+    path: $(K3S_CACHE_FOLDER)
+    restoreKeys: |
+      k3s-v1.19.5+k3s2
+  displayName: Cache k3s images
+
+- task: Cache@2
+  inputs:
+    key: 'go | "$(Agent.OS)" | go.mod'
+    restoreKeys: | 
+      go | "$(Agent.OS)"
+    path: $(GO_CACHE_DIR)
+  displayName: Cache GO packages
+
+- script: |
+    export URL=$(curl -s https://api.github.com/repos/ethersphere/bee-local/releases/latest | jq -r .tarball_url)
+    curl -Ls ${URL} -o bee-local.tar.gz
+    tar --strip-components=1 --wildcards -xzf bee-local.tar.gz ethersphere-bee-local-*/{beeinfra.sh,helm-values,hack}
+  displayName: 'Install bee-local'
+
+- script: |
+    export TAG=$(curl -s https://api.github.com/repos/ethersphere/beekeeper/releases/latest | jq -r .tag_name)
+    curl -Ls https://github.com/ethersphere/beekeeper/releases/download/${TAG}/beekeeper-linux-amd64 -o beekeeper
+    chmod +x beekeeper
+  displayName: 'Install latest beekeeper'
+
+- script: |
+    printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+    timeout 30m ./beeinfra.sh prepare --geth --k3s
+  displayName: Prepare testing cluster (DNS discovery)
+
+- script: |
+    mkdir -p ~/.kube
+    cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+    echo "kubeconfig: ${HOME}/.kube/config" > ~/.beekeeper.yaml
+  displayName: Set kube config
+
+- script: |
+    echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
+    for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
+    timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s
+  displayName: Set testing cluster (DNS discovery)
+
+- script: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
+  displayName: Test pingpong
