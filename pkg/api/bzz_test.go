@@ -367,7 +367,12 @@ func TestRangeRequests(t *testing.T) {
 				jsonhttptest.WithUnmarshalJSONResponse(&resp),
 			)
 
-			downloadPath := upload.downloadEndpoint + "/" + resp.Reference.String() + "/" + upload.filepath
+			var downloadPath string
+			if upload.downloadEndpoint != "/bytes" {
+				downloadPath = upload.downloadEndpoint + "/" + resp.Reference.String() + "/" + upload.filepath
+			} else {
+				downloadPath = upload.downloadEndpoint + "/" + resp.Reference.String()
+			}
 
 			for _, tc := range ranges {
 				t.Run(tc.name, func(t *testing.T) {

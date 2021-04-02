@@ -16,6 +16,14 @@ import (
 
 const DefaultManifestType = ManifestMantarayContentType
 
+const (
+	RootPath                      = "/"
+	WebsiteIndexDocumentSuffixKey = "website-index-document"
+	WebsiteErrorDocumentPathKey   = "website-error-document"
+	EntryMetadataContentTypeKey   = "Content-Type"
+	EntryMetadataFilenameKey      = "Filename"
+)
+
 var (
 	// ErrNotFound is returned when an Entry is not found in the manifest.
 	ErrNotFound = errors.New("manifest: not found")

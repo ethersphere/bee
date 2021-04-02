@@ -30,6 +30,8 @@ var (
 	ManifestRootPath                      = manifestRootPath
 	ManifestWebsiteIndexDocumentSuffixKey = manifestWebsiteIndexDocumentSuffixKey
 	ManifestWebsiteErrorDocumentPathKey   = manifestWebsiteErrorDocumentPathKey
+	ManifestEntryMetadataContentTypeKey   = manifestEntryMetadataContentTypeKey
+	ManifestEntryMetadataFilenameKey      = manifestEntryMetadataFilenameKey
 )
 
 var (
