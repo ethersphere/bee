@@ -76,7 +76,7 @@ func TestDB_SubscribePush(t *testing.T) {
 	// receive and validate addresses from the subscription
 	go func() {
 		var (
-			err                 error
+			err, ierr           error
 			i                   int // address index
 			gotStamp, wantStamp []byte
 		)
@@ -97,13 +97,11 @@ func TestDB_SubscribePush(t *testing.T) {
 				if !got.Address().Equal(want.Address()) {
 					err = fmt.Errorf("got chunk %v address %s, want %s", i, got.Address(), want.Address())
 				}
-				gotStamp, err = got.Stamp().MarshalBinary()
-				if err != nil {
-					err = err
+				if gotStamp, ierr = got.Stamp().MarshalBinary(); ierr != nil {
+					err = ierr
 				}
-				wantStamp, err = want.Stamp().MarshalBinary()
-				if err != nil {
-					err = err
+				if wantStamp, ierr = want.Stamp().MarshalBinary(); ierr != nil {
+					err = ierr
 				}
 				if !bytes.Equal(gotStamp, wantStamp) {
 					err = errors.New("stamps don't match")
