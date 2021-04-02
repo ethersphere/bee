@@ -93,7 +93,7 @@ type DB struct {
 	capacity uint64
 
 	// triggers garbage collection event loop
-	gcTrigger chan struct{}
+	collectGarbageTrigger chan struct{}
 
 	// a buffered channel acting as a semaphore
 	// to limit the maximal number of goroutines
@@ -118,7 +118,7 @@ type DB struct {
 	// protect Close method from exiting before
 	// garbage collection and gc size write workers
 	// are done
-	gcWorkerDone chan struct{}
+	collectGarbageWorkerDone chan struct{}
 
 	// wait for all subscriptions to finish before closing
 	// underlaying BadgerDB to prevent possible panics from
@@ -155,15 +155,15 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		capacity: o.Capacity,
 		baseKey:  baseKey,
 		tags:     o.Tags,
-		// channel gcTrigger
+		// channel collectGarbageTrigger
 		// needs to be buffered with the size of 1
 		// to signal another event if it
 		// is triggered during already running function
-		gcTrigger:    make(chan struct{}, 1),
-		gcWorkerDone: make(chan struct{}),
-		close:        make(chan struct{}),
-		metrics:      newMetrics(),
-		logger:       logger,
+		collectGarbageTrigger:    make(chan struct{}, 1),
+		close:                    make(chan struct{}),
+		collectGarbageWorkerDone: make(chan struct{}),
+		metrics:                  newMetrics(),
+		logger:                   logger,
 	}
 	if db.capacity == 0 {
 		db.capacity = defaultCapacity
@@ -395,7 +395,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	}
 
 	// start garbage collection worker
-	go db.gcWorker()
+	go db.collectGarbageWorker()
 	return db, nil
 }
 
@@ -410,7 +410,7 @@ func (db *DB) Close() (err error) {
 		db.subscritionsWG.Wait()
 		// wait for gc worker to
 		// return before closing the shed
-		<-db.gcWorkerDone
+		<-db.collectGarbageWorkerDone
 		close(done)
 	}()
 	select {
@@ -473,7 +473,6 @@ func chunkToItem(ch swarm.Chunk) shed.Item {
 		Address: ch.Address().Bytes(),
 		Data:    ch.Data(),
 		Tag:     ch.TagID(),
-		// PinCounter: ch.PinCounter(),
 		BatchID: ch.Stamp().BatchID(),
 		Sig:     ch.Stamp().Sig(),
 		Depth:   ch.Depth(),

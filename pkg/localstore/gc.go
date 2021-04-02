@@ -39,20 +39,20 @@ var (
 	gcBatchSize uint64 = 200
 )
 
-// gcWorker is a long running function that waits for
-// gcTrigger channel to signal a garbage collection
+// collectGarbageWorker is a long running function that waits for
+// collectGarbageTrigger channel to signal a garbage collection
 // run. GC run iterates on gcIndex and removes older items
 // form retrieval and other indexes.
-func (db *DB) gcWorker() {
-	defer close(db.gcWorkerDone)
+func (db *DB) collectGarbageWorker() {
+	defer close(db.collectGarbageWorkerDone)
 
 	for {
 		select {
-		case <-db.gcTrigger:
+		case <-db.collectGarbageTrigger:
 			// run a single collect garbage run and
 			// if done is false, gcBatchSize is reached and
 			// another collect garbage run is needed
-			collectedCount, done, err := db.gc()
+			collectedCount, done, err := db.collectGarbage()
 			if err != nil {
 				db.logger.Errorf("localstore: collect garbage: %v", err)
 			}
@@ -61,8 +61,8 @@ func (db *DB) gcWorker() {
 				db.triggerGarbageCollection()
 			}
 
-			if testGCHook != nil {
-				testGCHook(collectedCount)
+			if testHookCollectGarbage != nil {
+				testHookCollectGarbage(collectedCount)
 			}
 		case <-db.close:
 			return
@@ -70,13 +70,13 @@ func (db *DB) gcWorker() {
 	}
 }
 
-// gc removes chunks from retrieval and other
+// collectGarbage removes chunks from retrieval and other
 // indexes if maximal number of chunks in database is reached.
 // This function returns the number of removed chunks. If done
 // is false, another call to this function is needed to collect
 // the rest of the garbage as the batch size limit is reached.
-// This function is called in gcWorker.
-func (db *DB) gc() (collectedCount uint64, done bool, err error) {
+// This function is called in collectGarbageWorker.
+func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	db.metrics.GCCounter.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeCollectGarbage, time.Now())
 	defer func() {
@@ -103,11 +103,33 @@ func (db *DB) gc() (collectedCount uint64, done bool, err error) {
 		if gcSize-collectedCount <= target {
 			return true, nil
 		}
-		gcSizeChange, err := db.setRemove(batch, item, false)
+
+		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
+		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
+
+		// delete from retrieve, pull, gc
+		err = db.retrievalDataIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return true, nil
 		}
-		collectedCount += uint64(-gcSizeChange)
+		err = db.retrievalAccessIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
+		err = db.pullIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
+		err = db.gcIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
+		err = db.postage.deleteInBatch(batch, item)
+		if err != nil {
+			return true, nil
+		}
+
+		collectedCount++
 		if collectedCount >= gcBatchSize {
 			// batch size limit reached, another gc run is needed
 			done = false
@@ -135,11 +157,11 @@ func (db *DB) gcTarget() (target uint64) {
 	return uint64(float64(db.capacity) * gcTargetRatio)
 }
 
-// triggerGarbageCollection signals gcWorker
-// to call gc.
+// triggerGarbageCollection signals collectGarbageWorker
+// to call collectGarbage.
 func (db *DB) triggerGarbageCollection() {
 	select {
-	case db.gcTrigger <- struct{}{}:
+	case db.collectGarbageTrigger <- struct{}{}:
 	case <-db.close:
 	default:
 	}
@@ -157,17 +179,29 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 		return err
 	}
 
-	gcSize = uint64(int64(gcSize) + change)
-	db.gcSize.PutInBatch(batch, gcSize)
+	var newSize uint64
+	if change > 0 {
+		newSize = gcSize + uint64(change)
+	} else {
+		// 'change' is an int64 and is negative
+		// a conversion is needed with correct sign
+		c := uint64(-change)
+		if c > gcSize {
+			// protect uint64 undeflow
+			return nil
+		}
+		newSize = gcSize - c
+	}
+	db.gcSize.PutInBatch(batch, newSize)
 
 	// trigger garbage collection if we reached the capacity
-	if gcSize >= db.capacity {
+	if newSize >= db.capacity {
 		db.triggerGarbageCollection()
 	}
 	return nil
 }
 
-// testGCHook is a hook that can provide
+// testHookCollectGarbage is a hook that can provide
 // information when a garbage collection run is done
 // and how many items it removed.
-var testGCHook func(collectedCount uint64)
+var testHookCollectGarbage func(collectedCount uint64)
