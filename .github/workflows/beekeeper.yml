@@ -4,7 +4,8 @@ on:
   repository_dispatch:
     types: [trigger-beekeeper, beekeeper]
   pull_request:
-    types: [ready_for_review]
+    branches:
+      - '**'
 
 jobs:
   beekeeper:
