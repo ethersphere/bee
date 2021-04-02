@@ -239,7 +239,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
 			e.BinID = binary.BigEndian.Uint64(value[:8])
-			stamp := postage.NewStamp(nil, nil)
+			stamp := new(postage.Stamp)
 			if err = stamp.UnmarshalBinary(value[16:headerSize]); err != nil {
 				return e, err
 			}

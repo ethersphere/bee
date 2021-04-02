@@ -216,6 +216,6 @@ func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.Pull
 	storage := mock.NewPullStorage(o...)
 	logger := logging.New(ioutil.Discard, 0)
 	unwrap := func(swarm.Chunk) {}
-	attachValidStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
-	return pullsync.New(s, storage, unwrap, attachValidStamp, logger), storage
+	validStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
+	return pullsync.New(s, storage, unwrap, validStamp, logger), storage
 }

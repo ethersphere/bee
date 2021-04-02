@@ -104,6 +104,7 @@ func toSignDigest(addr swarm.Address, id []byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
+// ValidStamp returns a stampvalidator function passed to protocols with chunk entrypoints.
 func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
 	return func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
 		stamp := new(Stamp)

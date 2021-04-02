@@ -74,13 +74,13 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), attachValidStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger) *Syncer {
 	return &Syncer{
 		streamer:   streamer,
 		storage:    storage,
 		metrics:    newMetrics(),
 		unwrap:     unwrap,
-		validStamp: attachValidStamp,
+		validStamp: validStamp,
 		logger:     logger,
 		ruidCtx:    make(map[uint32]func()),
 		wg:         sync.WaitGroup{},

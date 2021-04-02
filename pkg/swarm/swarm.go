@@ -114,17 +114,29 @@ var ZeroAddress = NewAddress(nil)
 type AddressIterFunc func(address Address) error
 
 type Chunk interface {
+	// Address returns the chunk address.
 	Address() Address
+	// Data returns the chunk data.
 	Data() []byte
+	// PinCounter returns the pin counter for the chunk.
 	PinCounter() uint64
+	// WithPinCounter attaches the pin counter data to the chunk.
 	WithPinCounter(p uint64) Chunk
+	// TagID returns the tag ID for this chunk.
 	TagID() uint32
+	// WithTagID attaches the tag ID to the chunk.
 	WithTagID(t uint32) Chunk
+	// Stamp returns the postage stamp associated with this chunk.
 	Stamp() Stamp
+	// WithStamp attaches a postage stamp to the chunk.
 	WithStamp(Stamp) Chunk
+	// Radius is the PO above which the batch is preserved.
 	Radius() uint8
+	// Depth returns the batch depth of the stamp - allowed batch size = 2^{depth}.
 	Depth() uint8
+	// WithBatch attaches batch parameters to the chunk.
 	WithBatch(radius, depth uint8) Chunk
+	// Equal checks if the chunk is equal to another.
 	Equal(Chunk) bool
 }
 
