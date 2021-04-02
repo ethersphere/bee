@@ -7,7 +7,6 @@ package bmt_test
 import (
 	"bytes"
 	"context"
-	crand "crypto/rand"
 	"fmt"
 	"io"
 	"math/rand"
@@ -17,7 +16,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmt/reference"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -36,56 +35,49 @@ const (
 
 var (
 	testSegmentCounts = []int{1, 2, 3, 4, 5, 8, 9, 15, 16, 17, 32, 37, 42, 53, 63, 64, 65, 111, 127, 128}
-	testHasher        = sha3.NewLegacyKeccak256
+	hashSize          = swarm.NewHasher().Size()
+	testData          = make([]byte, BufferSize)
+
+	seed = time.Now().Unix()
 )
 
-// calculates the Keccak256 SHA3 hash of the data
-func sha3hash(data ...[]byte) []byte {
-	h := sha3.NewLegacyKeccak256()
-	return bmt.DoSum(h, nil, data...)
-}
-
 func refHash(count, n int, data []byte) ([]byte, error) {
-	rbmt := reference.NewRefHasher(testHasher(), count)
-	refNoMetaHash, err := rbmt.Hash(data)
+	rbmt := reference.NewRefHasher(swarm.NewHasher(), count)
+	refNoMetaHash, err := rbmt.Hash(data[:n])
 	if err != nil {
 		return nil, err
 	}
-	span := make([]byte, bmt.SpanSize)
-	bmt.LengthToSpan(span, int64(n))
-	return sha3hash(span, refNoMetaHash), nil
+	return bmt.Sha3hash(bmt.LengthToSpan(int64(n)), refNoMetaHash)
 }
 
 // Hash hashes the data and the span using the bmt hasher
 func syncHash(h *bmt.Hasher, n int, data []byte) ([]byte, error) {
 	h.Reset()
-	h.SetSpan(int64(n))
-	_, err := h.Write(data)
+	h.SetMetaToLength(int64(n))
+	_, err := h.Write(data[:n])
 	if err != nil {
 		return nil, err
 	}
-	return h.Sum(nil), nil
+	return h.Hash(nil)
 }
 
 // tests if hasher responds with correct hash comparing the reference implementation return value
 func TestHasherEmptyData(t *testing.T) {
-	var data []byte
 	for _, count := range testSegmentCounts {
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
-			pool := bmt.NewPool(bmt.NewConf(testHasher, count, 1))
+			expHash, err := refHash(count, 0, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, 1))
 			h := pool.Get()
-			defer pool.Put(h)
-			rbmt := reference.NewRefHasher(testHasher(), count)
-			expHash, err := rbmt.Hash(data)
+			resHash, err := syncHash(h, 0, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			resHash, err := syncHash(h, 0, data)
-			if err != nil {
-				t.Fatal(err)
-			}
+			pool.Put(h)
 			if !bytes.Equal(expHash, resHash) {
-				t.Fatalf("hash mismatch with reference. expected %x, got %x", resHash, expHash)
+				t.Fatalf("hash mismatch with reference. expected %x, got %x", expHash, resHash)
 			}
 		})
 	}
@@ -93,27 +85,22 @@ func TestHasherEmptyData(t *testing.T) {
 
 // tests sequential write with entire max size written in one go
 func TestSyncHasherCorrectness(t *testing.T) {
-	data := make([]byte, BufferSize)
-	_, err := io.ReadFull(crand.Reader, data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	size := testHasher().Size()
+	setRandomBytes(t, testData, seed)
 
 	for _, count := range testSegmentCounts {
 		t.Run(fmt.Sprintf("segments_%v", count), func(t *testing.T) {
-			max := count * size
+			max := count * hashSize
 			var incr int
 			capacity := 1
-			pool := bmt.NewPool(bmt.NewConf(testHasher, count, capacity))
-			h := pool.Get()
-			defer pool.Put(h)
+			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, capacity))
 			for n := 0; n <= max; n += incr {
+				h := pool.Get()
 				incr = 1 + rand.Intn(5)
-				err = testHasherCorrectness(h, testHasher, data, n, count)
+				err := testHasherCorrectness(h, testData, n, count)
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("seed %d: %v", seed, err)
 				}
+				pool.Put(h)
 			}
 		})
 	}
@@ -122,37 +109,36 @@ func TestSyncHasherCorrectness(t *testing.T) {
 // Tests that the BMT hasher can be synchronously reused with poolsizes 1 and testPoolSize
 func TestHasherReuse(t *testing.T) {
 	t.Run(fmt.Sprintf("poolsize_%d", 1), func(t *testing.T) {
-		testHasherReuse(1, t)
+		testHasherReuse(t, 1)
 	})
 	t.Run(fmt.Sprintf("poolsize_%d", testPoolSize), func(t *testing.T) {
-		testHasherReuse(testPoolSize, t)
+		testHasherReuse(t, testPoolSize)
 	})
 }
 
 // tests if bmt reuse is not corrupting result
-func testHasherReuse(poolsize int, t *testing.T) {
-	pool := bmt.NewPool(bmt.NewConf(testHasher, testSegmentCount, poolsize))
+func testHasherReuse(t *testing.T, poolsize int) {
+	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
 	h := pool.Get()
 	defer pool.Put(h)
 
 	for i := 0; i < 100; i++ {
-		data := make([]byte, BufferSize)
-		_, err := io.ReadFull(crand.Reader, data)
+		seed := int64(i)
+		setRandomBytes(t, testData, seed)
+		n := rand.Intn(h.Capacity())
+		err := testHasherCorrectness(h, testData, n, testSegmentCount)
 		if err != nil {
-			t.Fatal(err)
-		}
-		n := rand.Intn(h.Size())
-		err = testHasherCorrectness(h, testHasher, data, n, testSegmentCount)
-		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("seed %d: %v", seed, err)
 		}
 	}
 }
 
-// Tests if pool can be cleanly reused even in concurrent use by several hasher
+// Tests if pool can be cleanly reused even in concurrent use by several hashers
 func TestBMTConcurrentUse(t *testing.T) {
-	pool := bmt.NewPool(bmt.NewConf(testHasher, testSegmentCount, testPoolSize))
+	setRandomBytes(t, testData, seed)
+	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	cycles := 100
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	eg, ectx := errgroup.WithContext(ctx)
@@ -165,40 +151,34 @@ func TestBMTConcurrentUse(t *testing.T) {
 			}
 			h := pool.Get()
 			defer pool.Put(h)
-			data := make([]byte, BufferSize)
-			_, err := io.ReadFull(crand.Reader, data)
-			if err != nil {
-				return err
-			}
-			n := rand.Intn(h.Size())
-			return testHasherCorrectness(h, testHasher, data, n, 128)
+
+			n := rand.Intn(h.Capacity())
+			return testHasherCorrectness(h, testData, n, testSegmentCount)
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("seed %d: %v", seed, err)
 	}
 }
 
 // Tests BMT Hasher io.Writer interface is working correctly
 // even multiple short random write buffers
 func TestBMTWriterBuffers(t *testing.T) {
-	for _, count := range testSegmentCounts {
+	for i, count := range testSegmentCounts {
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
-			pool := bmt.NewPool(bmt.NewConf(testHasher, count, testPoolSize))
+			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, testPoolSize))
 			h := pool.Get()
 			defer pool.Put(h)
 
-			span := h.Capacity()
-			data := make([]byte, span)
-			_, err := io.ReadFull(crand.Reader, data)
+			size := h.Capacity()
+			seed := int64(i)
+			setRandomBytes(t, testData, seed)
+
+			resHash, err := syncHash(h, size, testData)
 			if err != nil {
 				t.Fatal(err)
 			}
-			resHash, err := syncHash(h, span, data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			expHash, err := refHash(count, span, data)
+			expHash, err := refHash(count, size, testData)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,18 +189,18 @@ func TestBMTWriterBuffers(t *testing.T) {
 			f := func() error {
 				h := pool.Get()
 				defer pool.Put(h)
-				h.Reset()
+
 				reads := rand.Intn(count*2-1) + 1
 				offsets := make([]int, reads+1)
 				for i := 0; i < reads; i++ {
-					offsets[i] = rand.Intn(span) + 1
+					offsets[i] = rand.Intn(size) + 1
 				}
-				offsets[reads] = span
+				offsets[reads] = size
 				from := 0
 				sort.Ints(offsets)
 				for _, to := range offsets {
 					if from < to {
-						read, err := h.Write(data[from:to])
+						read, err := h.Write(testData[from:to])
 						if err != nil {
 							return err
 						}
@@ -230,8 +210,11 @@ func TestBMTWriterBuffers(t *testing.T) {
 						from = to
 					}
 				}
-				h.SetSpan(int64(span))
-				resHash := h.Sum(nil)
+				h.SetMetaToLength(int64(size))
+				resHash, err := h.Hash(nil)
+				if err != nil {
+					return err
+				}
 				if !bytes.Equal(resHash, expHash) {
 					return fmt.Errorf("hash mismatch on %v. expected %x, got %x", offsets, expHash, resHash)
 				}
@@ -251,7 +234,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 				})
 			}
 			if err := eg.Wait(); err != nil {
-				t.Fatal(err)
+				t.Fatalf("seed %d: %v", seed, err)
 			}
 		})
 	}
@@ -259,7 +242,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 
 // helper function that compares reference and optimised implementations on
 // correctness
-func testHasherCorrectness(h *bmt.Hasher, hasher bmt.BaseHasherFunc, data []byte, n, count int) (err error) {
+func testHasherCorrectness(h *bmt.Hasher, data []byte, n, count int) (err error) {
 	if len(data) < n {
 		n = len(data)
 	}
@@ -274,12 +257,12 @@ func testHasherCorrectness(h *bmt.Hasher, hasher bmt.BaseHasherFunc, data []byte
 	if !bytes.Equal(got, exp) {
 		return fmt.Errorf("wrong hash: expected %x, got %x", exp, got)
 	}
-	return err
+	return nil
 }
 
 // TestUseSyncAsOrdinaryHasher verifies that the bmt.Hasher can be used with the hash.Hash interface
 func TestUseSyncAsOrdinaryHasher(t *testing.T) {
-	pool := bmt.NewPool(bmt.NewConf(testHasher, testSegmentCount, testPoolSize))
+	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	h := pool.Get()
 	defer pool.Put(h)
 	data := []byte("moodbytesmoodbytesmoodbytesmoodbytes")
@@ -293,5 +276,15 @@ func TestUseSyncAsOrdinaryHasher(t *testing.T) {
 	}
 	if !bytes.Equal(expHash, resHash) {
 		t.Fatalf("normalhash; expected %x, got %x", expHash, resHash)
+	}
+}
+
+func setRandomBytes(t testing.TB, data []byte, seed int64) {
+	t.Helper()
+	s := rand.NewSource(seed)
+	r := rand.New(s)
+	_, err := io.ReadFull(r, data)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

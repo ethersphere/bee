@@ -7,11 +7,14 @@ package bmt
 import (
 	"encoding/binary"
 	"hash"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var _ Hash = (*Hasher)(nil)
 
 var zerospan = make([]byte, 8)
+var zerosection = make([]byte, 64)
 
 // Hasher a reusable hasher for fixed maximum size chunks representing a BMT
 // It reuses a pool of trees for amortised memory allocation and resource control,
@@ -31,36 +34,31 @@ type Hasher struct {
 	pos    int         // index of rightmost currently open segment
 	offset int         // offset (cursor position) within currently open segment
 	result chan []byte // result channel
+	errc   chan error  // error channel
 	span   []byte      // The span of the data subsumed under the chunk
 }
 
 // Capacity returns the maximum amount of bytes that will be processed by this hasher implementation.
+// since BMT assumes a balanced binary tree, capacity it is always a power of 2
 func (h *Hasher) Capacity() int {
 	return h.maxSize
 }
 
-// writeSection allows asynchronous writes of the base segments
-func (h *Hasher) WriteSection(idx int, data []byte) {
-	// secsize := 2 * h.segmentCount
-	// l := len(data)
-	// if secsize < l {
-	// 	l = secsize
-	// }
-	// copy(h.bmt.buffer[idx*secsize:], data[:l])
-	// if h.pos > idx {
-	// 	go h.processSection(idx, false)
-	// } else {
-	// 	h.pos = idx
-	// }
+// LengthToSpan creates a binary data span size representation.
+// It is required for calculating the BMT hash.
+func LengthToSpan(length int64) []byte {
+	span := make([]byte, SpanSize)
+	binary.LittleEndian.PutUint64(span, uint64(length))
+	return span
 }
 
-// SetSpan sets the span length value prefix in numeric form for the current hash operation.
-func (h *Hasher) SetSpan(length int64) {
+// SetMetaToLengths sets the metadata preamble to the little endian binary representation of int64 argument for the current hash operation.
+func (h *Hasher) SetMetaToLength(length int64) {
 	binary.LittleEndian.PutUint64(h.span, uint64(length))
 }
 
-// SetSpanBytes sets the span length value prefix in bytes for the current hash operation.
-func (h *Hasher) SetSpanBytes(span []byte) {
+// SetMetaBytes sets the metadata preamble to the span bytes given argument for the current hash operation.
+func (h *Hasher) SetMetaBytes(span []byte) {
 	copy(h.span, span)
 }
 
@@ -74,29 +72,38 @@ func (h *Hasher) BlockSize() int {
 	return 2 * h.segmentSize
 }
 
-// Sum returns the BMT root hash of the buffer
-// using Sum presupposes sequential synchronous writes (io.Writer interface).
-func (h *Hasher) Sum(b []byte) []byte {
-	if h.size == 0 && h.offset == 0 {
-		return h.GetZeroHash()
+// Hash returns the BMT root hash of the buffer and an error
+// using Hash presupposes sequential synchronous writes (io.Writer interface).
+func (h *Hasher) Hash(b []byte) ([]byte, error) {
+	if h.size == 0 {
+		return sha3hash(h.span, h.zerohashes[h.depth])
 	}
-
-	zeros := make([]byte, 2*h.segmentSize)
-	copy(h.bmt.buffer[h.size:], zeros)
+	copy(h.bmt.buffer[h.size:], zerosection)
 	// write the last section with final flag set to true
 	go h.processSection(h.pos, true)
-	return doSum(h.hasher(), b, h.span, <-h.result)
+	select {
+	case result := <-h.result:
+		return sha3hash(h.span, result)
+	case err := <-h.errc:
+		return nil, err
+	}
+}
+
+// Sum returns the BMT root hash of the buffer, unsafe version of Hash
+func (h *Hasher) Sum(b []byte) []byte {
+	s, _ := h.Hash(b)
+	return s
 }
 
 // Write calls sequentially add to the buffer to be hashed,
 // with every full segment calls processSection in a go routine.
 func (h *Hasher) Write(b []byte) (int, error) {
-	copy(h.bmt.buffer[h.size:], b)
 	l := len(b)
 	max := h.maxSize - h.size
 	if l > max {
 		l = max
 	}
+	copy(h.bmt.buffer[h.size:], b)
 	secsize := 2 * h.segmentSize
 	from := h.size / secsize
 	h.offset = h.size % secsize
@@ -120,30 +127,25 @@ func (h *Hasher) Reset() {
 	copy(h.span, zerospan)
 }
 
-// LengthToSpan creates a binary data span size representation.
-// It is required for calculating the BMT hash.
-func LengthToSpan(span []byte, length int64) {
-	binary.LittleEndian.PutUint64(span, uint64(length))
-}
-
-// GetZeroHash returns the zero hash of the full depth of the Hasher instance.
-func (h *Hasher) GetZeroHash() []byte {
-	return h.zerohashes[h.depth]
-}
-
 // processSection writes the hash of i-th section into level 1 node of the BMT tree.
 func (h *Hasher) processSection(i int, final bool) {
-	// select the leaf node for the section
 	secsize := 2 * h.segmentSize
 	offset := i * secsize
-	section := h.bmt.buffer[offset : offset+secsize]
 	level := 1
+	// select the leaf node for the section
 	n := h.bmt.leaves[i]
 	isLeft := n.isLeft
 	hasher := n.hasher
 	n = n.parent
 	// hash the section
-	section = doSum(hasher, nil, section)
+	section, err := doHash(hasher, h.bmt.buffer[offset:offset+secsize])
+	if err != nil {
+		select {
+		case h.errc <- err:
+		default:
+		}
+		return
+	}
 	// write hash into parent node
 	if final {
 		// for the last segment use writeFinalNode
@@ -153,23 +155,13 @@ func (h *Hasher) processSection(i int, final bool) {
 	}
 }
 
-// calculates the hash of the data using hash.Hash.
-//
-// BUG: This legacy implementation has no error handling for the writer. Use with caution.
-func doSum(h hash.Hash, b []byte, data ...[]byte) []byte {
-	h.Reset()
-	for _, v := range data {
-		_, _ = h.Write(v)
-	}
-	return h.Sum(b)
-}
-
 // writeNode pushes the data to the node.
 // if it is the first of 2 sisters written, the routine terminates.
 // if it is the second, it calculates the hash and writes it
 // to the parent node recursively.
 // since hashing the parent is synchronous the same hasher can be used.
 func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
+	var err error
 	level := 1
 	for {
 		// at the root of the bmt just write the result to the result channel
@@ -189,7 +181,14 @@ func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
 		}
 		// the thread coming second now can be sure both left and right children are written
 		// so it calculates the hash of left|right and pushes it to the parent
-		s = doSum(n.hasher, nil, n.left, n.right)
+		s, err = doHash(n.hasher, n.left, n.right)
+		if err != nil {
+			select {
+			case h.errc <- err:
+			default:
+			}
+			return
+		}
 		isLeft = n.isLeft
 		n = n.parent
 		level++
@@ -202,6 +201,7 @@ func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
 // the pool's lookup table for BMT subtree root hashes for all-zero sections.
 // Otherwise behaves like `writeNode`.
 func (h *Hasher) writeFinalNode(level int, n *node, isLeft bool, s []byte) {
+	var err error
 	for {
 		// at the root of the bmt just write the result to the result channel
 		if n == nil {
@@ -245,11 +245,34 @@ func (h *Hasher) writeFinalNode(level int, n *node, isLeft bool, s []byte) {
 		if noHash {
 			s = nil
 		} else {
-			s = doSum(n.hasher, nil, n.left, n.right)
+			s, err = doHash(n.hasher, n.left, n.right)
+			if err != nil {
+				select {
+				case h.errc <- err:
+				default:
+				}
+				return
+			}
 		}
 		// iterate to parent
 		isLeft = n.isLeft
 		n = n.parent
 		level++
 	}
+}
+
+// calculates the Keccak256 SHA3 hash of the data
+func sha3hash(data ...[]byte) ([]byte, error) {
+	return doHash(swarm.NewHasher(), data...)
+}
+
+// calculates Hash of the data
+func doHash(h hash.Hash, data ...[]byte) ([]byte, error) {
+	h.Reset()
+	for _, v := range data {
+		if _, err := h.Write(v); err != nil {
+			return nil, err
+		}
+	}
+	return h.Sum(nil), nil
 }

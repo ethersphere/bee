@@ -3,4 +3,4 @@
 // license that can be found in the LICENSE file.
 package bmt
 
-var DoSum = doSum
+var Sha3hash = sha3hash

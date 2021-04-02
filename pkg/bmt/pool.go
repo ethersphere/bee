@@ -38,9 +38,12 @@ func NewConf(hasher BaseHasherFunc, segmentCount, capacity int) *Conf {
 	zerohashes := make([][]byte, depth+1)
 	zeros := make([]byte, segmentSize)
 	zerohashes[0] = zeros
+	var err error
 	// initialises the zerohashes lookup table
 	for i := 1; i < depth+1; i++ {
-		zeros = doSum(hasher(), nil, zeros, zeros)
+		if zeros, err = doHash(hasher(), zeros, zeros); err != nil {
+			panic(err.Error())
+		}
 		zerohashes[i] = zeros
 	}
 	return &Conf{
@@ -73,6 +76,7 @@ func (p *Pool) Get() *Hasher {
 	return &Hasher{
 		Conf:   p.Conf,
 		result: make(chan []byte),
+		errc:   make(chan error, 1),
 		span:   make([]byte, SpanSize),
 		bmt:    t,
 	}

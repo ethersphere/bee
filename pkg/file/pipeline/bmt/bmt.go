@@ -35,14 +35,17 @@ func (w *bmtWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		return errInvalidData
 	}
 	hasher := bmtpool.Get()
-	hasher.SetSpanBytes(p.Data[:swarm.SpanSize])
+	hasher.SetMetaBytes(p.Data[:swarm.SpanSize])
 	_, err := hasher.Write(p.Data[swarm.SpanSize:])
 	if err != nil {
 		bmtpool.Put(hasher)
 		return err
 	}
-	p.Ref = hasher.Sum(nil)
+	p.Ref, err = hasher.Hash(nil)
 	bmtpool.Put(hasher)
+	if err != nil {
+		return err
+	}
 
 	return w.next.ChainWrite(p)
 }

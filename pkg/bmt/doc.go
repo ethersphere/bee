@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package bmt implements Binary Merkle Tree hash.
 // Binary Merkle Tree Hash is a hash function over arbitrary datachunks of limited size.
 // The BMT hash is defined as H(span|bmt-root) where span is an 8-byte metadata prefix and
 // bmt-root is the root hash of the binary merkle tree built over fixed size segments

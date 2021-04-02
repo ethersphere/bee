@@ -45,13 +45,11 @@ func sha3hash(t *testing.T, data ...[]byte) []byte {
 func TestRefHasher(t *testing.T) {
 	// the test struct is used to specify the expected BMT hash for
 	// segment counts between from and to and lengths from 1 to datalength
-	type test struct {
+	for _, x := range []struct {
 		from     int
 		to       int
 		expected func([]byte) []byte
-	}
-
-	tests := []*test{
+	}{
 		// all lengths in [0,64] should be:
 		//
 		//   sha3hash(data)
@@ -103,10 +101,7 @@ func TestRefHasher(t *testing.T) {
 				return sha3hash(t, sha3hash(t, sha3hash(t, data[:64]), sha3hash(t, data[64:128])), sha3hash(t, sha3hash(t, data[128:192]), sha3hash(t, data[192:])))
 			},
 		},
-	}
-
-	// run the tests
-	for _, x := range tests {
+	} {
 		for segCount := x.from; segCount <= x.to; segCount++ {
 			for length := 1; length <= segCount*32; length++ {
 				t.Run(fmt.Sprintf("%d_segments_%d_bytes", segCount, length), func(t *testing.T) {

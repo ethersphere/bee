@@ -5,15 +5,13 @@
 package bmt_test
 
 import (
-	crand "crypto/rand"
 	"fmt"
-	"io"
-	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmt/reference"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 //
@@ -35,28 +33,23 @@ func BenchmarkBMT(t *testing.B) {
 }
 
 func BenchmarkPool(t *testing.B) {
-	caps := []int{1, testPoolSize}
-	for size := 4096; size >= 128; size /= 2 {
-		for _, c := range caps {
-			t.Run(fmt.Sprintf("poolsize_%v_size_%v", c, size), func(t *testing.B) {
-				benchmarkPool(t, c, size)
-			})
-		}
+	for _, c := range []int{1, 8, 16, 32, 64} {
+		t.Run(fmt.Sprintf("poolsize_%v", c), func(t *testing.B) {
+			benchmarkPool(t, c)
+		})
 	}
 }
 
 // benchmarks simple sha3 hash on chunks
 func benchmarkSHA3(t *testing.B, n int) {
-	data := make([]byte, n)
-	_, err := io.ReadFull(crand.Reader, data)
-	if err != nil {
-		t.Fatal(err)
-	}
+	setRandomBytes(t, testData, seed)
 
 	t.ReportAllocs()
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
-		_ = sha3hash(data)
+		if _, err := bmt.Sha3hash(testData[:n]); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
 	}
 }
 
@@ -66,93 +59,76 @@ func benchmarkSHA3(t *testing.B, n int) {
 // the premise is that this is the minimum computation needed for a BMT
 // therefore this serves as a theoretical optimum for concurrent implementations
 func benchmarkBMTBaseline(t *testing.B, n int) {
-	hashSize := testHasher().Size()
-	data := make([]byte, hashSize)
-	_, err := io.ReadFull(crand.Reader, data)
-	if err != nil {
-		t.Fatal(err)
-	}
+	setRandomBytes(t, testData, seed)
 
 	t.ReportAllocs()
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
-		count := int32((n-1)/hashSize + 1)
-		wg := sync.WaitGroup{}
-		wg.Add(testPoolSize)
-		var i int32
-		for j := 0; j < testPoolSize; j++ {
-			go func() {
-				defer wg.Done()
-				for atomic.AddInt32(&i, 1) < count {
-					_ = sha3hash(data)
-				}
-			}()
+		eg := new(errgroup.Group)
+		for j := 0; j < testSegmentCount; j++ {
+			eg.Go(func() error {
+				_, err := bmt.Sha3hash(testData[:hashSize])
+				return err
+			})
 		}
-		wg.Wait()
+		if err := eg.Wait(); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
 	}
 }
 
 // benchmarks BMT Hasher
 func benchmarkBMT(t *testing.B, n int) {
-	data := make([]byte, n)
-	_, err := io.ReadFull(crand.Reader, data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool := bmt.NewPool(bmt.NewConf(testHasher, testSegmentCount, testPoolSize))
+	setRandomBytes(t, testData, seed)
+
+	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	h := pool.Get()
 	defer pool.Put(h)
 
 	t.ReportAllocs()
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
-		_, err = syncHash(h, 0, data)
-		if err != nil {
-			t.Fatal(err)
+		if _, err := syncHash(h, n, testData); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
 		}
 	}
 }
 
 // benchmarks 100 concurrent bmt hashes with pool capacity
-func benchmarkPool(t *testing.B, poolsize, n int) {
-	data := make([]byte, n)
-	_, err := io.ReadFull(crand.Reader, data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool := bmt.NewPool(bmt.NewConf(testHasher, testSegmentCount, poolsize))
+func benchmarkPool(t *testing.B, poolsize int) {
+	setRandomBytes(t, testData, seed)
+
+	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
 	cycles := 100
 
 	t.ReportAllocs()
 	t.ResetTimer()
-	wg := sync.WaitGroup{}
 	for i := 0; i < t.N; i++ {
-		wg.Add(cycles)
+		eg := new(errgroup.Group)
 		for j := 0; j < cycles; j++ {
-			go func() {
-				defer wg.Done()
+			eg.Go(func() error {
 				h := pool.Get()
 				defer pool.Put(h)
-				_, _ = syncHash(h, 0, data)
-			}()
+				_, err := syncHash(h, h.Capacity(), testData)
+				return err
+			})
 		}
-		wg.Wait()
+		if err := eg.Wait(); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
 	}
 }
 
 // benchmarks the reference hasher
 func benchmarkRefHasher(t *testing.B, n int) {
-	data := make([]byte, n)
-	_, err := io.ReadFull(crand.Reader, data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rbmt := reference.NewRefHasher(testHasher(), 128)
+	setRandomBytes(t, testData, seed)
+
+	rbmt := reference.NewRefHasher(swarm.NewHasher(), 128)
 
 	t.ReportAllocs()
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
-		_, err := rbmt.Hash(data)
+		_, err := rbmt.Hash(testData[:n])
 		if err != nil {
 			t.Fatal(err)
 		}
