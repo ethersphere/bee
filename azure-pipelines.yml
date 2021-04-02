@@ -40,7 +40,6 @@ steps:
   displayName: 'Install latest beekeeper'
 
 - script: |
-    printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
     timeout 30m ./beeinfra.sh prepare --geth --k3s
   displayName: Prepare testing cluster (DNS discovery)
 
