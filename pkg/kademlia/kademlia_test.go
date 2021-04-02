@@ -927,12 +927,12 @@ func TestSnapshot(t *testing.T) {
 	a := test.RandomAddress()
 	addOne(t, signer, kad, ab, a)
 
-	snap := kad.Snapshot()
-
 	waitConn(t, conns)
 
-	if snap.Connected != 0 {
-		t.Errorf("expected %d connected peers but got %d", 0, snap.Connected)
+	snap := kad.Snapshot()
+
+	if snap.Connected != 1 {
+		t.Errorf("expected %d connected peers but got %d", 1, snap.Connected)
 	}
 	if snap.Population != 1 {
 		t.Errorf("expected population %d but got %d", 1, snap.Population)
