@@ -58,13 +58,14 @@ type Interface interface {
 }
 
 type Syncer struct {
-	streamer p2p.Streamer
-	metrics  metrics
-	logger   logging.Logger
-	storage  pullstorage.Storer
-	quit     chan struct{}
-	wg       sync.WaitGroup
-	unwrap   func(swarm.Chunk)
+	streamer   p2p.Streamer
+	metrics    metrics
+	logger     logging.Logger
+	storage    pullstorage.Storer
+	quit       chan struct{}
+	wg         sync.WaitGroup
+	unwrap     func(swarm.Chunk)
+	validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error)
 
 	ruidMtx sync.Mutex
 	ruidCtx map[uint32]func()
@@ -73,16 +74,17 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), logger logging.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger) *Syncer {
 	return &Syncer{
-		streamer: streamer,
-		storage:  storage,
-		metrics:  newMetrics(),
-		unwrap:   unwrap,
-		logger:   logger,
-		ruidCtx:  make(map[uint32]func()),
-		wg:       sync.WaitGroup{},
-		quit:     make(chan struct{}),
+		streamer:   streamer,
+		storage:    storage,
+		metrics:    newMetrics(),
+		unwrap:     unwrap,
+		validStamp: validStamp,
+		logger:     logger,
+		ruidCtx:    make(map[uint32]func()),
+		wg:         sync.WaitGroup{},
+		quit:       make(chan struct{}),
 	}
 }
 
@@ -215,13 +217,16 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		delete(wantChunks, addr.String())
 		s.metrics.DbOpsCounter.Inc()
 		s.metrics.DeliveryCounter.Inc()
-		chunk := swarm.NewChunk(addr, delivery.Data).WithStamp(delivery.Stamp)
+
+		chunk := swarm.NewChunk(addr, delivery.Data)
+		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
+			return 0, ru.Ruid, err
+		}
 		if content.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
 			return 0, ru.Ruid, swarm.ErrInvalidChunk
 		}
-
 		if err = s.storage.Put(ctx, storage.ModePutSync, chunk); err != nil {
 			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", err)
 		}
@@ -303,7 +308,11 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 	}
 
 	for _, v := range chs {
-		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data(), Stamp: v.Stamp()}
+		stamp, err := v.Stamp().MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("serialise stamp: %w", err)
+		}
+		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data(), Stamp: stamp}
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
 			return fmt.Errorf("write delivery: %w", err)
 		}

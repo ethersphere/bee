@@ -142,10 +142,7 @@ func TestIncoming_WantAll(t *testing.T) {
 func TestIncoming_UnsolicitedChunk(t *testing.T) {
 	evilAddr := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000666")
 	evilData := []byte{0x66, 0x66, 0x66}
-	stamp, err := postagetesting.MustNewStamp().MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
+	stamp := postagetesting.MustNewStamp()
 	evil := swarm.NewChunk(evilAddr, evilData).WithStamp(stamp)
 
 	var (
@@ -155,7 +152,7 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 		psClient, _ = newPullSync(recorder)
 	)
 
-	_, _, err = psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	_, _, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
 		t.Fatalf("expected ErrUnsolicitedChunk but got %v", err)
 	}
@@ -219,5 +216,6 @@ func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.Pull
 	storage := mock.NewPullStorage(o...)
 	logger := logging.New(ioutil.Discard, 0)
 	unwrap := func(swarm.Chunk) {}
-	return pullsync.New(s, storage, unwrap, logger), storage
+	validStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
+	return pullsync.New(s, storage, unwrap, validStamp, logger), storage
 }

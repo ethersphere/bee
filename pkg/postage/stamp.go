@@ -9,6 +9,7 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -101,4 +102,26 @@ func toSignDigest(addr swarm.Address, id []byte) ([]byte, error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+// ValidStamp returns a stampvalidator function passed to protocols with chunk entrypoints.
+func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
+	return func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
+		stamp := new(Stamp)
+		err := stamp.UnmarshalBinary(stampBytes)
+		if err != nil {
+			return nil, err
+		}
+		b, err := batchStore.Get(stamp.BatchID())
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, ErrNotFound
+			}
+			return nil, err
+		}
+		if err = stamp.Valid(chunk.Address(), b.Owner); err != nil {
+			return nil, err
+		}
+		return chunk.WithStamp(stamp).WithBatch(b.Radius, b.Depth), nil
+	}
 }

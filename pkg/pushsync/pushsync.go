@@ -49,6 +49,7 @@ type PushSync struct {
 	peerSuggester topology.ClosestPeerer
 	tagger        *tags.Tags
 	unwrap        func(swarm.Chunk)
+	validStamp    func(swarm.Chunk, []byte) (swarm.Chunk, error)
 	logger        logging.Logger
 	accounting    accounting.Interface
 	pricer        accounting.Pricer
@@ -58,11 +59,12 @@ type PushSync struct {
 
 var timeToWaitForReceipt = 3 * time.Second // time to wait to get a receipt for a chunk
 
-func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
+func New(streamer p2p.StreamerDisconnecter, storer storage.Putter, closestPeerer topology.ClosestPeerer, tagger *tags.Tags, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		streamer:      streamer,
 		storer:        storer,
 		peerSuggester: closestPeerer,
+		validStamp:    validStamp,
 		tagger:        tagger,
 		unwrap:        unwrap,
 		logger:        logger,
@@ -105,8 +107,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 	ps.metrics.TotalReceived.Inc()
 
-	// these are needed until we wire up the protocol the pass the stamps
-	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).WithStamp(ch.Stamp)
+	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
+	if chunk, err = ps.validStamp(chunk, ch.Stamp); err != nil {
+		return err
+	}
 
 	if content.Valid(chunk) {
 		if ps.unwrap != nil {
@@ -168,6 +172,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		lastErr   error
 	)
 
+	stamp, err := ch.Stamp().MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
 	deferFuncs := make([]func(), 0)
 	defersFn := func() {
 		if len(deferFuncs) > 0 {
@@ -228,7 +237,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 			Address: ch.Address().Bytes(),
 			Data:    ch.Data(),
-			Stamp:   ch.Stamp(),
+			Stamp:   stamp,
 		}); err != nil {
 			_ = streamer.Reset()
 			lastErr = fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)

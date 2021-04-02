@@ -450,7 +450,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	traversalService := traversal.NewService(ns)
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, accounting.NewFixedPricer(swarmAddress, 1000000000), tracer)
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, postage.ValidStamp(batchStore), logger, acc, accounting.NewFixedPricer(swarmAddress, 1000000000), tracer)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -470,7 +470,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSync := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, logger)
+	pullSync := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, postage.ValidStamp(batchStore), logger)
 	b.pullSyncCloser = pullSync
 
 	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {

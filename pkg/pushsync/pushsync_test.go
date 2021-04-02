@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -406,8 +407,11 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.R
 	if unwrap == nil {
 		unwrap = func(swarm.Chunk) {}
 	}
+	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
+	}
 
-	return pushsync.New(recorderDisconnecter, storer, mockTopology, mtag, unwrap, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
+	return pushsync.New(recorderDisconnecter, storer, mockTopology, mtag, unwrap, validStamp, logger, mockAccounting, mockPricer, nil), storer, mtag, mockAccounting
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
