@@ -73,18 +73,26 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	binIDs := make(map[uint8]uint64)
 
 	switch mode {
-	case storage.ModePutRequest:
+	case storage.ModePutRequest, storage.ModePutRequestPin:
 		for i, ch := range chs {
 			if containsChunk(ch.Address(), chs[:i]...) {
 				exist[i] = true
 				continue
 			}
-			exists, c, err := db.putRequest(batch, binIDs, chunkToItem(ch))
+			item := chunkToItem(ch)
+			exists, c, err := db.putRequest(batch, binIDs, item)
 			if err != nil {
 				return nil, err
 			}
 			exist[i] = exists
 			gcSizeChange += c
+
+			if mode == storage.ModePutRequestPin {
+				_, err = db.setPin(batch, item)
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 
 	case storage.ModePutUpload, storage.ModePutUploadPin:
@@ -192,6 +200,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
+
 	return false, gcSizeChange, nil
 }
 
@@ -207,6 +216,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if exists {
 		return true, 0, nil
 	}
+
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
@@ -243,6 +253,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if exists {
 		return true, 0, nil
 	}
+
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
@@ -264,6 +275,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
+
 	return false, gcSizeChange, nil
 }
 
