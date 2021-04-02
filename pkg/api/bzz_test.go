@@ -12,12 +12,9 @@ import (
 	"io/ioutil"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"strconv"
 	"strings"
-	// "encoding/hex"
-	// "io/ioutil"
-	"net/http"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -40,7 +37,7 @@ func TestBzzFiles(t *testing.T) {
 		fileDownloadResource = func(addr string) string { return "/bzz/" + addr }
 		simpleData           = []byte("this is a simple text")
 		mockStatestore       = statestore.NewStateStore()
-		logger               = logging.New(os.Stdout, 6)
+		logger               = logging.New(ioutil.Discard, 0)
 		client, _, _         = newTestServer(t, testServerOptions{
 			Storer: smock.NewStorer(),
 			Tags:   tags.NewTags(mockStatestore, logger),
@@ -356,7 +353,7 @@ func TestRangeRequests(t *testing.T) {
 			client, _, _ := newTestServer(t, testServerOptions{
 				Storer: smock.NewStorer(),
 				Tags:   tags.NewTags(mockStatestore, logger),
-				Logger: logging.New(os.Stdout, 6),
+				Logger: logger,
 			})
 
 			var resp api.FileUploadResponse
@@ -454,7 +451,7 @@ func TestFeedIndirection(t *testing.T) {
 	var (
 		updateData     = []byte("<h1>Swarm Feeds Hello World!</h1>")
 		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(os.Stdout, 6)
+		logger         = logging.New(ioutil.Discard, 0)
 		storer         = smock.NewStorer()
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: storer,
@@ -505,7 +502,7 @@ func TestFeedIndirection(t *testing.T) {
 	client, _, _ = newTestServer(t, testServerOptions{
 		Storer: storer,
 		Tags:   tags.NewTags(mockStatestore, logger),
-		Logger: logging.New(os.Stdout, 6),
+		Logger: logger,
 		Feeds:  factory,
 	})
 	_, err := storer.Put(ctx, storage.ModePutUpload, feedUpdate)

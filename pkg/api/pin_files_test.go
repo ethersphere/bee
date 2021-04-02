@@ -6,10 +6,8 @@ package api_test
 
 import (
 	"bytes"
-	// "io/ioutil"
+	"io/ioutil"
 	"net/http"
-	"os"
-	// "sort"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -35,7 +33,7 @@ func TestPinFilesHandler(t *testing.T) {
 		mockStorer       = mock.NewStorer()
 		mockStatestore   = statestore.NewStateStore()
 		traversalService = traversal.NewService(mockStorer)
-		logger           = logging.New(os.Stdout, 6)
+		logger           = logging.New(ioutil.Discard, 0)
 		client, _, _     = newTestServer(t, testServerOptions{
 			Storer:    mockStorer,
 			Traversal: traversalService,
