@@ -123,7 +123,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
-	receipt, err := ps.pushToClosest(ctx, chunk, ch.Stamp)
+	receipt, err := ps.pushToClosest(ctx, chunk)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 
@@ -157,24 +157,25 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	stamp, err := ch.Stamp().MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	r, err := ps.pushToClosest(ctx, ch, stamp)
+	r, err := ps.pushToClosest(ctx, ch)
 	if err != nil {
 		return nil, err
 	}
 	return &Receipt{Address: swarm.NewAddress(r.Address)}, nil
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, stamp []byte) (rr *pb.Receipt, reterr error) {
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.Receipt, reterr error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	var (
 		skipPeers []swarm.Address
 		lastErr   error
 	)
+
+	stamp, err := ch.Stamp().MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
 
 	deferFuncs := make([]func(), 0)
 	defersFn := func() {
