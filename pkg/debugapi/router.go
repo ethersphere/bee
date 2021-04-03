@@ -160,8 +160,20 @@ func (s *Service) newRouter() *mux.Router {
 		})
 	}
 
+	router.Handle("/tags", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.listTagsHandler),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(1024),
+			web.FinalHandlerFunc(s.createTagHandler),
+		),
+	})
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTagHandler),
+		"GET":    http.HandlerFunc(s.getTagHandler),
+		"DELETE": http.HandlerFunc(s.deleteTagHandler),
+		"PATCH": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(1024),
+			web.FinalHandlerFunc(s.doneSplitHandler),
+		),
 	})
 
 	return router
