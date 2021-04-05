@@ -72,3 +72,50 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID: batchID,
 	})
 }
+
+type postageStampResponse struct {
+	BatchID     batchID `json:"batchID"`
+	Utilization uint32  `json:"utilization"`
+}
+
+type postageStampsResponse struct {
+	Stamps []postageStampResponse `json:"stamps"`
+}
+
+func (s *server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
+	issuers := s.post.StampIssuers()
+	resp := postageStampsResponse{}
+	for _, v := range issuers {
+		issuer := postageStampResponse{BatchID: v.ID(), Utilization: v.Utilization()}
+		resp.Stamps = append(resp.Stamps, issuer)
+	}
+	jsonhttp.OK(w, resp)
+}
+func (s *server) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	if idStr == "" || len(idStr) != 64 {
+		s.Logger.Error("get stamp issuer: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+	id, err := hex.DecodeString(idStr)
+	if err != nil {
+		s.Logger.Error("get stamp issuer: invalid batchID: %v", err)
+		s.Logger.Error("get stamp issuer: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+
+	issuer, err := s.post.GetStampIssuer(id)
+	if err != nil {
+		s.Logger.Error("get stamp issuer: get issuer: %v", err)
+		s.Logger.Error("get stamp issuer: get issuer")
+		jsonhttp.BadRequest(w, "cannot get issuer")
+		return
+	}
+	resp := postageStampResponse{
+		BatchID:     id,
+		Utilization: issuer.Utilization(),
+	}
+	jsonhttp.OK(w, &resp)
+}

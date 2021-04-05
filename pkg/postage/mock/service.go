@@ -47,7 +47,7 @@ func (m *mockPostage) Add(s *postage.StampIssuer) {
 }
 
 func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
-	panic("not implemented") // TODO: Implement
+	return []*postage.StampIssuer{m.i}
 }
 
 func (m *mockPostage) GetStampIssuer(_ []byte) (*postage.StampIssuer, error) {

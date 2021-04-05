@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -126,6 +127,59 @@ func TestPostageCreateStamp(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid postage amount",
+			}),
+		)
+	})
+}
+
+func TestPostageGetStamps(t *testing.T) {
+	batchID := make([]byte, 32) // this will break once the fallback batchid is gone
+	client, _, _ := newTestServer(t, testServerOptions{})
+
+	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
+			Stamps: []api.PostageStampResponse{
+				api.PostageStampResponse{
+					BatchID:     batchID,
+					Utilization: 0,
+				},
+			},
+		}),
+	)
+}
+
+func TestPostageGetStamp(t *testing.T) {
+	batchID := make([]byte, 32) // this will break once the fallback batchid is gone
+
+	t.Run("ok", func(t *testing.T) {
+		client, _, _ := newTestServer(t, testServerOptions{})
+
+		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(batchID), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
+				BatchID:     batchID,
+				Utilization: 0,
+			}),
+		)
+	})
+	t.Run("ok", func(t *testing.T) {
+		client, _, _ := newTestServer(t, testServerOptions{})
+		badBatch := []byte{0, 1, 2}
+
+		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid batchID",
+			}),
+		)
+	})
+	t.Run("ok", func(t *testing.T) {
+		client, _, _ := newTestServer(t, testServerOptions{})
+		badBatch := []byte{0, 1, 2, 4}
+
+		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid batchID",
 			}),
 		)
 	})

@@ -110,3 +110,13 @@ func toString(buf []byte) string {
 	}
 	return string(buf[i:])
 }
+
+func (st *StampIssuer) Utilization() uint32 {
+	return 0
+}
+
+func (s *StampIssuer) ID() []byte {
+	id := make([]byte, len(s.batchID))
+	copy(id, s.batchID)
+	return id
+}
