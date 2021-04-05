@@ -96,7 +96,7 @@ jobs:
         run: ./beekeeper check pin-remote --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pss
         id: pss
-        run: ./beekeeper check pss --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+        run: ./beekeeper check pss --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --timeout 5m
       - name: Test soc
         id: soc
         run: ./beekeeper check soc --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
