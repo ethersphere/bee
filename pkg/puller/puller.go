@@ -22,15 +22,12 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-const defaultShallowBinPeers = 2
-
 var (
 	logMore = false // enable this to get more logging
 )
 
 type Options struct {
-	Bins            uint8
-	ShallowBinPeers int
+	Bins uint8
 }
 
 type Puller struct {
@@ -52,20 +49,15 @@ type Puller struct {
 	quit chan struct{}
 	wg   sync.WaitGroup
 
-	bins            uint8 // how many bins do we support
-	shallowBinPeers int   // how many peers per bin do we want to sync with outside of depth
+	bins uint8 // how many bins do we support
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options) *Puller {
 	var (
-		bins            uint8 = swarm.MaxBins
-		shallowBinPeers int   = defaultShallowBinPeers
+		bins uint8 = swarm.MaxBins
 	)
 	if o.Bins != 0 {
 		bins = o.Bins
-	}
-	if o.ShallowBinPeers != 0 {
-		shallowBinPeers = o.ShallowBinPeers
 	}
 
 	p := &Puller{
@@ -80,8 +72,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pull
 		quit:      make(chan struct{}),
 		wg:        sync.WaitGroup{},
 
-		bins:            bins,
-		shallowBinPeers: shallowBinPeers,
+		bins: bins,
 	}
 
 	for i := uint8(0); i < bins; i++ {
@@ -148,23 +139,8 @@ func (p *Puller) manage() {
 				if _, ok := bp[peerAddr.String()]; ok {
 					delete(peersDisconnected, peerAddr.String())
 				}
-				syncing := len(bp)
-				if po < depth {
-					// outside of depth, sync peerPO bin only
-					if _, ok := bp[peerAddr.String()]; !ok {
-						if syncing < p.shallowBinPeers {
-							// peer not syncing yet and we still need more peers in this bin
-							bp[peerAddr.String()] = newSyncPeer(peerAddr, p.bins)
-							peerEntry := peer{addr: peerAddr, po: po}
-							peersToSync = append(peersToSync, peerEntry)
-						}
-					} else {
-						// already syncing, recalc
-						peerEntry := peer{addr: peerAddr, po: po}
-						peersToRecalc = append(peersToRecalc, peerEntry)
-					}
-				} else {
-					// within depth, sync everything >= depth
+				if po >= depth {
+					// within depth, sync everything
 					if _, ok := bp[peerAddr.String()]; !ok {
 						// we're not syncing with this peer yet, start doing so
 						bp[peerAddr.String()] = newSyncPeer(peerAddr, p.bins)
@@ -244,23 +220,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 		}
 		syncCtx.cancelBins(dontWant...)
 	} else {
-		// outside of depth
-		var (
-			want     = po
-			dontWant = []uint8{0} // never want bin 0
-		)
-
-		for i := uint8(0); i < p.bins; i++ {
-			if i == want {
-				continue
-			}
-			dontWant = append(dontWant, i)
-		}
-
-		if !syncCtx.isBinSyncing(want) {
-			p.syncPeerBin(ctx, syncCtx, peer, want, c[want])
-		}
-		syncCtx.cancelBins(dontWant...)
+		panic("shouldn't")
 	}
 }
 
@@ -288,12 +248,6 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 		p.cursors[peer.String()] = cursors
 		p.cursorsMtx.Unlock()
 		c = cursors
-	}
-
-	// peer outside depth?
-	if po < d && po > 0 {
-		p.syncPeerBin(ctx, syncCtx, peer, po, c[po])
-		return
 	}
 
 	for bin, cur := range c {
