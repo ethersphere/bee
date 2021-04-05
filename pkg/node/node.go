@@ -259,7 +259,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.localstoreCloser = storer
 
-	batchStore, err := batchstore.New(stateStore, nil)
+	batchStore, err := batchstore.New(stateStore, storer.UnreserveBatch)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}

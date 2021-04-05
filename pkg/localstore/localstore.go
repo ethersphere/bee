@@ -277,7 +277,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 	// pull index allows history and live syncing per po bin
-	db.pullIndex, err = db.shed.NewIndex("PO|BinID->Hash|BatchID", shed.IndexFuncs{
+	db.pullIndex, err = db.shed.NewIndex("PO|BinID->Hash", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 9)
 			key[0] = db.po(swarm.NewAddress(fields.Address))
@@ -446,7 +446,6 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 		"gcIndex":                 db.gcIndex,
 		"pinIndex":                db.pinIndex,
 		"postageBatchChunksIndex": db.postage.chunks,
-		"postageBatchCountsIndex": db.postage.counts,
 	} {
 		indexSize, err := v.Count()
 		if err != nil {
