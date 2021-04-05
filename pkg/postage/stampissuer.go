@@ -112,7 +112,10 @@ func toString(buf []byte) string {
 }
 
 func (st *StampIssuer) Utilization() uint32 {
-	return 0
+	top := 0
+
+	//TODO return top bucket value for now
+	return top
 }
 
 func (s *StampIssuer) ID() []byte {
