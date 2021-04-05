@@ -5,22 +5,11 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 
-	cmdfile "github.com/ethersphere/bee/cmd/internal/file"
-	"github.com/ethersphere/bee/pkg/collection/entry"
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
@@ -44,183 +33,9 @@ var (
 	logger       logging.Logger
 )
 
-// getEntry handles retrieving and writing a file from the file entry
-// referenced by the given address.
-func getEntry(cmd *cobra.Command, args []string) (err error) {
-	// process the reference to retrieve
-	addr, err := swarm.ParseHexAddress(args[0])
-	if err != nil {
-		return err
-	}
-
-	// initialize interface with HTTP API
-	store := cmdfile.NewApiStore(host, port, ssl)
-
-	buf := bytes.NewBuffer(nil)
-	writeCloser := cmdfile.NopWriteCloser(buf)
-	limitBuf := cmdfile.NewLimitWriteCloser(writeCloser, limitMetadataLength)
-	j, _, err := joiner.New(cmd.Context(), store, addr)
-	if err != nil {
-		return err
-	}
-
-	_, err = file.JoinReadAll(cmd.Context(), j, limitBuf)
-	if err != nil {
-		return err
-	}
-	e := &entry.Entry{}
-	err = e.UnmarshalBinary(buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	j, _, err = joiner.New(cmd.Context(), store, e.Metadata())
-	if err != nil {
-		return err
-	}
-
-	buf = bytes.NewBuffer(nil)
-
-	_, err = file.JoinReadAll(cmd.Context(), j, buf)
-	if err != nil {
-		return err
-	}
-
-	// retrieve metadata
-	metaData := &entry.Metadata{}
-	err = json.Unmarshal(buf.Bytes(), metaData)
-	if err != nil {
-		return err
-	}
-	logger.Debugf("Filename: %s", metaData.Filename)
-	logger.Debugf("MIME-type: %s", metaData.MimeType)
-
-	if outDir == "" {
-		outDir = "."
-	} else {
-		err := os.MkdirAll(outDir, 0o777) // skipcq: GSC-G301
-		if err != nil {
-			return err
-		}
-	}
-	outFilePath := filepath.Join(outDir, metaData.Filename)
-
-	// create output dir if not exist
-	if outDir != "." {
-		err := os.MkdirAll(outDir, 0o777) // skipcq: GSC-G301
-		if err != nil {
-			return err
-		}
-	}
-
-	// protect any existing file unless explicitly told not to
-	outFileFlags := os.O_CREATE | os.O_WRONLY
-	if outFileForce {
-		outFileFlags |= os.O_TRUNC
-	} else {
-		outFileFlags |= os.O_EXCL
-	}
-
-	// open the file
-	outFile, err := os.OpenFile(outFilePath, outFileFlags, 0o666) // skipcq: GSC-G302
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
-
-	j, _, err = joiner.New(cmd.Context(), store, e.Reference())
-	if err != nil {
-		return err
-	}
-
-	_, err = file.JoinReadAll(cmd.Context(), j, outFile)
-	return err
-}
-
-// putEntry creates a new file entry with the given reference.
-func putEntry(cmd *cobra.Command, args []string) (err error) {
-	// process the reference to retrieve
-	addr, err := swarm.ParseHexAddress(args[0])
-	if err != nil {
-		return err
-	}
-	// add the fsStore and/or apiStore, depending on flags
-	stores := cmdfile.NewTeeStore()
-	if outDir != "" {
-		err := os.MkdirAll(outDir, 0o777) // skipcq: GSC-G301
-		if err != nil {
-			return err
-		}
-		store := cmdfile.NewFsStore(outDir)
-		stores.Add(store)
-	}
-	if useHttp {
-		store := cmdfile.NewApiStore(host, port, ssl)
-		stores.Add(store)
-	}
-
-	// create metadata object, with defaults for missing values
-	if filename == "" {
-		filename = args[0]
-	}
-	if mimeType == "" {
-		mimeType = defaultMimeType
-	}
-	metadata := entry.NewMetadata(filename)
-	metadata.MimeType = mimeType
-
-	// serialize metadata and send it to splitter
-	metadataBytes, err := json.Marshal(metadata)
-	if err != nil {
-		return err
-	}
-	logger.Debugf("metadata contents: %s", metadataBytes)
-
-	// set up splitter to process the metadata
-	s := splitter.NewSimpleSplitter(stores, storage.ModePutUpload)
-	ctx := context.Background()
-
-	// first add metadata
-	metadataBuf := bytes.NewBuffer(metadataBytes)
-	metadataReader := io.LimitReader(metadataBuf, int64(len(metadataBytes)))
-	metadataReadCloser := ioutil.NopCloser(metadataReader)
-	metadataAddr, err := s.Split(ctx, metadataReadCloser, int64(len(metadataBytes)), false)
-	if err != nil {
-		return err
-	}
-
-	// create entry from given reference and metadata,
-	// serialize and send to splitter
-	fileEntry := entry.New(addr, metadataAddr)
-	fileEntryBytes, err := fileEntry.MarshalBinary()
-	if err != nil {
-		return err
-	}
-	fileEntryBuf := bytes.NewBuffer(fileEntryBytes)
-	fileEntryReader := io.LimitReader(fileEntryBuf, int64(len(fileEntryBytes)))
-	fileEntryReadCloser := ioutil.NopCloser(fileEntryReader)
-	fileEntryAddr, err := s.Split(ctx, fileEntryReadCloser, int64(len(fileEntryBytes)), false)
-	if err != nil {
-		return err
-	}
-
-	// output reference to file entry
-	cmd.Println(fileEntryAddr)
-	return nil
-}
-
 // Entry is the underlying procedure for the CLI command
 func Entry(cmd *cobra.Command, args []string) (err error) {
-	logger, err = cmdfile.SetLogger(cmd, verbosity)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	if retrieve {
-		return getEntry(cmd, args)
-	}
-	return putEntry(cmd, args)
+	return errors.New("command is deprecated")
 }
 
 func main() {
