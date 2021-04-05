@@ -179,7 +179,7 @@ func TestTraversalFiles(t *testing.T) {
 				"7e0a4b6cd542eb501f372438cbbbcd8a82c444740f00bdd54f4981f487bcf8b7", // root manifest
 				"0cc878d32c96126d47f63fbe391114ee1438cd521146fc975dea1546d302b6c0", // manifest root metadata
 				"3f538c3b5225111a79b3b1dbb5e269ca2115f2a7caf0e6925b773457cdef7be5", // manifest file entry (Edge)
-				"2f09e41846a24201758db3535dc6c42d738180c8874d4d40d4f2924d0091521f", // mainfest file entry (Edge)
+				"2f09e41846a24201758db3535dc6c42d738180c8874d4d40d4f2924d0091521f", // manifest file entry (Edge)
 				"b2662d17d51ce734695d993b44c0e2df34c3f50d5889e5bc3b8718838658e6b0", // manifest file entry (Value)
 				"f833c17be12d68aec95eca7f9d993f7d7aaa7a9c282eb2c3d79ab26a5aeaf384", // bytes
 			},

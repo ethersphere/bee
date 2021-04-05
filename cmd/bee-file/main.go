@@ -9,14 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
-)
-
-const (
-	defaultMimeType     = "application/octet-stream"
-	limitMetadataLength = swarm.ChunkSize
 )
 
 var (
@@ -30,7 +23,6 @@ var (
 	ssl          bool   // flag variable, uses https for api if set
 	retrieve     bool   // flag variable, if set will resolve and retrieve referenced file
 	verbosity    string // flag variable, debug level
-	logger       logging.Logger
 )
 
 // Entry is the underlying procedure for the CLI command

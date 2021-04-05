@@ -103,19 +103,17 @@ func TestDirs(t *testing.T) {
 			expectedReference: swarm.MustParseHexAddress("f3312af64715d26b5e1a3dc90f012d2c9cc74a167899dab1d07cdee8c107f939"),
 			files: []f{
 				{
-					data:      []byte("first file data"),
-					name:      "file1",
-					dir:       "",
-					reference: swarm.MustParseHexAddress("bad821911b35e3607d61066afcdc950ca4b7fccf00233413f415f7dff94e06dc"),
+					data: []byte("first file data"),
+					name: "file1",
+					dir:  "",
 					header: http.Header{
 						"Content-Type": {""},
 					},
 				},
 				{
-					data:      []byte("second file data"),
-					name:      "file2",
-					dir:       "",
-					reference: swarm.MustParseHexAddress("cbacb865e84b094188fedb14cb78ebd6db9fa4490a8999ae09748e37ad65d590"),
+					data: []byte("second file data"),
+					name: "file2",
+					dir:  "",
 					header: http.Header{
 						"Content-Type": {""},
 					},
@@ -127,28 +125,25 @@ func TestDirs(t *testing.T) {
 			expectedReference: swarm.MustParseHexAddress("4c9c76d63856102e54092c38a7cd227d769752d768b7adc8c3542e3dd9fcf295"),
 			files: []f{
 				{
-					data:      []byte("robots text"),
-					name:      "robots.txt",
-					dir:       "",
-					reference: swarm.MustParseHexAddress("3f6c7dba0fa623e6fc3463a8815bcb8c48853a9a3a8f865c461df22edc39583a"),
+					data: []byte("robots text"),
+					name: "robots.txt",
+					dir:  "",
 					header: http.Header{
 						"Content-Type": {"text/plain; charset=utf-8"},
 					},
 				},
 				{
-					data:      []byte("image 1"),
-					name:      "1.png",
-					dir:       "img",
-					reference: swarm.MustParseHexAddress("c759b48b31ef5c25d111770b0691a5535ad774b22ddf0b876082185a9feb5b81"),
+					data: []byte("image 1"),
+					name: "1.png",
+					dir:  "img",
 					header: http.Header{
 						"Content-Type": {"image/png"},
 					},
 				},
 				{
-					data:      []byte("image 2"),
-					name:      "2.png",
-					dir:       "img",
-					reference: swarm.MustParseHexAddress("aac724b67fb1c2e9a5f892eae8dc87b8fc88c3cffd2fa4f1cea1787a6373dbce"),
+					data: []byte("image 2"),
+					name: "2.png",
+					dir:  "img",
 					header: http.Header{
 						"Content-Type": {"image/png"},
 					},
@@ -160,10 +155,9 @@ func TestDirs(t *testing.T) {
 			expectedReference: swarm.MustParseHexAddress("9e178dbd1ed4b748379e25144e28dfb29c07a4b5114896ef454480115a56b237"),
 			files: []f{
 				{
-					data:      []byte("<h1>Swarm"),
-					name:      "index.html",
-					dir:       "",
-					reference: swarm.MustParseHexAddress("b5d31db0a992ae1513f2a08b8c35ecef98d0bdd4a1a0ee2810ef465fc8777e6e"),
+					data: []byte("<h1>Swarm"),
+					name: "index.html",
+					dir:  "",
 					header: http.Header{
 						"Content-Type": {"text/html; charset=utf-8"},
 					},
@@ -177,10 +171,9 @@ func TestDirs(t *testing.T) {
 			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
 			files: []f{
 				{
-					data:      []byte("<h1>Swarm"),
-					name:      "index.html",
-					dir:       "",
-					reference: swarm.MustParseHexAddress("b5d31db0a992ae1513f2a08b8c35ecef98d0bdd4a1a0ee2810ef465fc8777e6e"),
+					data: []byte("<h1>Swarm"),
+					name: "index.html",
+					dir:  "",
 					header: http.Header{
 						"Content-Type": {"text/html; charset=utf-8"},
 					},
@@ -194,10 +187,9 @@ func TestDirs(t *testing.T) {
 			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
 			files: []f{
 				{
-					data:      []byte("<h1>Swarm"),
-					name:      "index.html",
-					dir:       "dir",
-					reference: swarm.MustParseHexAddress("b5d31db0a992ae1513f2a08b8c35ecef98d0bdd4a1a0ee2810ef465fc8777e6e"),
+					data: []byte("<h1>Swarm"),
+					name: "index.html",
+					dir:  "dir",
 					header: http.Header{
 						"Content-Type": {"text/html; charset=utf-8"},
 					},
@@ -213,19 +205,17 @@ func TestDirs(t *testing.T) {
 			errorFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmErrorDocumentHeader, "error.html"),
 			files: []f{
 				{
-					data:      []byte("<h1>Swarm"),
-					name:      "index.html",
-					dir:       "",
-					reference: swarm.MustParseHexAddress("b5d31db0a992ae1513f2a08b8c35ecef98d0bdd4a1a0ee2810ef465fc8777e6e"),
+					data: []byte("<h1>Swarm"),
+					name: "index.html",
+					dir:  "",
 					header: http.Header{
 						"Content-Type": {"text/html; charset=utf-8"},
 					},
 				},
 				{
-					data:      []byte("<h2>404"),
-					name:      "error.html",
-					dir:       "",
-					reference: swarm.MustParseHexAddress("d7f66c79dfc685705fb3661d51902046399838afac15727b8a22c5b5c7c2fd29"),
+					data: []byte("<h2>404"),
+					name: "error.html",
+					dir:  "",
 					header: http.Header{
 						"Content-Type": {"text/html; charset=utf-8"},
 					},
@@ -237,26 +227,23 @@ func TestDirs(t *testing.T) {
 			expectedReference: swarm.MustParseHexAddress("133c92414c047708f3d6a8561571a0cc96512899ff0edbd9690c857f01ab6883"),
 			files: []f{
 				{
-					data:      []byte("<h1>Swarm"),
-					name:      "index.html",
-					dir:       "",
-					filePath:  "./index.html",
-					reference: swarm.MustParseHexAddress("b5d31db0a992ae1513f2a08b8c35ecef98d0bdd4a1a0ee2810ef465fc8777e6e"),
+					data:     []byte("<h1>Swarm"),
+					name:     "index.html",
+					dir:      "",
+					filePath: "./index.html",
 				},
 				{
-					data:      []byte("body {}"),
-					name:      "app.css",
-					dir:       "",
-					filePath:  "./app.css",
-					reference: swarm.MustParseHexAddress("dfc87bae9d2ae9fdb04a95ee97057dc9efbc74479a8f40342f2db56a14c4411f"),
+					data:     []byte("body {}"),
+					name:     "app.css",
+					dir:      "",
+					filePath: "./app.css",
 				},
 				{
 					data: []byte(`User-agent: *
 		Disallow: /`),
-					name:      "robots.txt",
-					dir:       "",
-					filePath:  "./robots.txt",
-					reference: swarm.MustParseHexAddress("65addc34caacbaaf916b8f8e4d55ad1d367bf9b25f2c7c4339c076bc872b7fae"),
+					name:     "robots.txt",
+					dir:      "",
+					filePath: "./robots.txt",
 				},
 			},
 		},
@@ -445,10 +432,9 @@ func tarFiles(t *testing.T, files []f) *bytes.Buffer {
 
 // struct for dir files for test cases
 type f struct {
-	data      []byte
-	name      string
-	dir       string
-	filePath  string
-	reference swarm.Address
-	header    http.Header
+	data     []byte
+	name     string
+	dir      string
+	filePath string
+	header   http.Header
 }

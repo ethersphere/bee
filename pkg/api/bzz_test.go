@@ -513,6 +513,9 @@ func TestFeedIndirection(t *testing.T) {
 		loadsave.New(storer, storage.ModePutUpload, false),
 		false,
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	emptyAddr := make([]byte, 32)
 	err = m.Add(ctx, "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), map[string]string{
 		api.FeedMetadataEntryOwner: "8d3766440f0d7b949a5e32995d09619a7f86e632",

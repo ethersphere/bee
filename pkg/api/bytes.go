@@ -7,7 +7,6 @@ package api
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -148,12 +147,4 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
 type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
-}
-
-// fileUploadInfo contains the data for a file to be uploaded
-type fileUploadInfo struct {
-	name        string // file name
-	size        int64  // file size
-	contentType string
-	reader      io.Reader
 }
