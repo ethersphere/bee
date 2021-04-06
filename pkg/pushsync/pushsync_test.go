@@ -218,6 +218,9 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
 
+	// sleep for a bit to allow the second peer to the store replicated chunk
+	time.Sleep(time.Millisecond * 500)
+
 	// this intercepts the outgoing delivery message from storer node to second storer node
 	waitOnRecordAndTest(t, secondPeer, secondRecorder, chunk.Address(), chunk.Data())
 
