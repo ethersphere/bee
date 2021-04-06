@@ -85,7 +85,7 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(adr swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
 	if len(skipPeers) == 0 {
 		if d.closestPeerErr != nil {
 			return d.closestPeer, d.closestPeerErr
@@ -119,7 +119,7 @@ func (d *mock) ClosestPeer(adr swarm.Address, skipPeers ...swarm.Address) (peerA
 			peerAddr = p
 		}
 
-		if cmp, _ := swarm.DistanceCmp(adr.Bytes(), p.Bytes(), peerAddr.Bytes()); cmp == 1 {
+		if cmp, _ := swarm.DistanceCmp(addr.Bytes(), p.Bytes(), peerAddr.Bytes()); cmp == 1 {
 			peerAddr = p
 		}
 	}
@@ -138,7 +138,7 @@ func (*mock) NeighborhoodDepth() uint8 {
 	return 0
 }
 
-func (m *mock) IsWithinDepth(adr swarm.Address) bool {
+func (m *mock) IsWithinDepth(addr swarm.Address) bool {
 	return false
 }
 
