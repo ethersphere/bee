@@ -151,6 +151,12 @@ func (p *Puller) manage() {
 						peerEntry := peer{addr: peerAddr, po: po}
 						peersToRecalc = append(peersToRecalc, peerEntry)
 					}
+				} else {
+					if _, ok := bp[peerAddr.String()]; ok {
+						// already syncing, recalc so that existing streams get cleaned up
+						peerEntry := peer{addr: peerAddr, po: po}
+						peersToRecalc = append(peersToRecalc, peerEntry)
+					}
 				}
 
 				return false, false, nil
