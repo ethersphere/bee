@@ -74,6 +74,7 @@ func (c *command) initDeployCmd() error {
 				chainID,
 				transactionService,
 				factoryAddress,
+				nil,
 			)
 			if err != nil {
 				return err
