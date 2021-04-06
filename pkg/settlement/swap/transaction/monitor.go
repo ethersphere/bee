@@ -28,7 +28,7 @@ var ErrMonitorClosed = errors.New("monitor closed")
 type Monitor interface {
 	io.Closer
 	// WatchTransaction watches the transaction until either there is 1 confirmation or a competing transaction with cancellationDepth confirmations.
-	WatchTransaction(txHash common.Hash, nonce uint64) (chan types.Receipt, chan error, error)
+	WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)
 }
 type transactionMonitor struct {
 	lock       sync.Mutex
@@ -78,7 +78,7 @@ func NewMonitor(logger logging.Logger, backend Backend, sender common.Address, p
 	return t
 }
 
-func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64) (chan types.Receipt, chan error, error) {
+func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 

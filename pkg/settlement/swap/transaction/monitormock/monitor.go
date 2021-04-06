@@ -13,10 +13,10 @@ import (
 )
 
 type transactionMonitorMock struct {
-	watchTransaction func(txHash common.Hash, nonce uint64) (chan types.Receipt, chan error, error)
+	watchTransaction func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)
 }
 
-func (m *transactionMonitorMock) WatchTransaction(txHash common.Hash, nonce uint64) (chan types.Receipt, chan error, error) {
+func (m *transactionMonitorMock) WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
 	if m.watchTransaction != nil {
 		return m.watchTransaction(txHash, nonce)
 	}
@@ -36,7 +36,7 @@ type optionFunc func(*transactionMonitorMock)
 
 func (f optionFunc) apply(r *transactionMonitorMock) { f(r) }
 
-func WithWatchTransactionFunc(f func(txHash common.Hash, nonce uint64) (chan types.Receipt, chan error, error)) Option {
+func WithWatchTransactionFunc(f func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)) Option {
 	return optionFunc(func(s *transactionMonitorMock) {
 		s.watchTransaction = f
 	})

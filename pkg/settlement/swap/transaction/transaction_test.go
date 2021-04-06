@@ -351,7 +351,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 		store,
 		chainID,
 		monitormock.New(
-			monitormock.WithWatchTransactionFunc(func(txh common.Hash, n uint64) (chan types.Receipt, chan error, error) {
+			monitormock.WithWatchTransactionFunc(func(txh common.Hash, n uint64) (<-chan types.Receipt, <-chan error, error) {
 				if nonce != n {
 					return nil, nil, fmt.Errorf("nonce mismatch. wanted %d, got %d", nonce, n)
 				}

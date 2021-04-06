@@ -38,7 +38,7 @@ func (m *transactionServiceMock) WaitForReceipt(ctx context.Context, txHash comm
 	return nil, errors.New("not implemented")
 }
 
-func (m *transactionServiceMock) WatchSentTransaction(txHash common.Hash) (chan types.Receipt, chan error, error) {
+func (m *transactionServiceMock) WatchSentTransaction(txHash common.Hash) (<-chan types.Receipt, <-chan error, error) {
 	if m.watchSentTransaction != nil {
 		return m.watchSentTransaction(txHash)
 	}

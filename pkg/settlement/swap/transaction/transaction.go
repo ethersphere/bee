@@ -61,7 +61,7 @@ type Service interface {
 	// WatchSentTransaction start watching the given transaction.
 	// This wraps the monitors watch function by loading the correct nonce from the store.
 	// This is only valid for transaction sent by this service.
-	WatchSentTransaction(txHash common.Hash) (chan types.Receipt, chan error, error)
+	WatchSentTransaction(txHash common.Hash) (<-chan types.Receipt, <-chan error, error)
 }
 
 type transactionService struct {
@@ -273,7 +273,7 @@ func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.H
 	}
 }
 
-func (t *transactionService) WatchSentTransaction(txHash common.Hash) (chan types.Receipt, chan error, error) {
+func (t *transactionService) WatchSentTransaction(txHash common.Hash) (<-chan types.Receipt, <-chan error, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
