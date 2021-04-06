@@ -199,18 +199,14 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	c := p.cursors[peer.String()]
 	p.cursorsMtx.Unlock()
 
+	var want, dontWant []uint8
 	if po >= d {
 		// within depth
-		var want, dontWant []uint8
-
 		for i := d; i < p.bins; i++ {
 			if i == 0 {
 				continue
 			}
 			want = append(want, i)
-		}
-		for i := uint8(0); i < d; i++ {
-			dontWant = append(dontWant, i)
 		}
 
 		for _, bin := range want {
@@ -218,10 +214,19 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 				p.syncPeerBin(ctx, syncCtx, peer, bin, c[bin])
 			}
 		}
-		syncCtx.cancelBins(dontWant...)
+
+		// cancel everything outside of depth
+		for i := uint8(0); i < d; i++ {
+			dontWant = append(dontWant, i)
+		}
 	} else {
-		panic("shouldn't")
+		// peer is outside depth. cancel everything
+		for i := uint8(0); i < p.bins; i++ {
+			dontWant = append(dontWant, i)
+		}
 	}
+
+	syncCtx.cancelBins(dontWant...)
 }
 
 func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
