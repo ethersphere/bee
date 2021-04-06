@@ -208,7 +208,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	var want, dontWant []uint8
 	if po >= d {
 		// within depth
-		for i := d; i <= p.bins; i++ {
+		for i := d; i < p.bins; i++ {
 			if i == 0 {
 				continue
 			}
@@ -227,7 +227,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 		}
 	} else {
 		// peer is outside depth. cancel everything
-		for i := uint8(0); i <= p.bins; i++ {
+		for i := uint8(0); i < p.bins; i++ {
 			dontWant = append(dontWant, i)
 		}
 	}
