@@ -199,7 +199,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 					), mockk.WithDepth(1),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
-				bins:     5,
+				bins:     5 - 1, // bins is actually MaxPO which is bins-1
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -246,7 +246,7 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 					), mockk.WithDepth(2),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
-				bins:     5,
+				bins:     5 - 1, // bins is actually MaxPO which is bins-1
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -278,7 +278,7 @@ func TestPeerDisconnected(t *testing.T) {
 			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
-		bins:     5,
+		bins:     5 - 1, // bins is actually MaxPO which is bins-1
 	})
 	t.Cleanup(func() {
 		pullsync.Close()
@@ -357,6 +357,8 @@ func TestDepthChange(t *testing.T) {
 			cursors:        []uint64{0, 0, 0, 0, 0},
 			binsNotSyncing: []uint8{1, 2, 3, 4}, // no bins should be syncing
 			syncReplies: []mockps.SyncReply{
+				reply(1, 1, 1, true),
+				reply(2, 1, 1, true),
 				reply(3, 1, 1, true),
 				reply(4, 1, 1, true),
 			},
@@ -384,7 +386,7 @@ func TestDepthChange(t *testing.T) {
 					), mockk.WithDepthCalls(tc.depths...),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
-				bins:     5,
+				bins:     5 - 1, // bins is actually MaxPO which is number of bins minus 1
 			})
 			defer puller.Close()
 			defer pullsync.Close()
