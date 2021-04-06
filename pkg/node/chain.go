@@ -24,7 +24,9 @@ import (
 )
 
 const (
-	maxDelay = 1 * time.Minute
+	maxDelay          = 1 * time.Minute
+	pollingInterval   = 15 * time.Second
+	cancellationDepth = 6
 )
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
@@ -52,7 +54,7 @@ func InitChain(
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
 	}
 
-	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, 15*time.Second, 6)
+	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
 	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
 	if err != nil {

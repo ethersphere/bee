@@ -25,7 +25,6 @@ var ErrMonitorClosed = errors.New("monitor closed")
 // Instead of watching transactions individually, the senders nonce is monitored and transactions are checked based on this.
 // The idea is that if the nonce is still lower than that of a pending transaction, there is no point in actually checking the transaction for a receipt.
 // At the same time if the nonce was already used and this was a few blocks ago we can reasonably assume that it will never confirm.
-
 type Monitor interface {
 	io.Closer
 	// WatchTransaction watches the transaction until either there is 1 confirmation or a competing transaction with cancellationDepth confirmations.
@@ -119,8 +118,9 @@ func (tm *transactionMonitor) watchPending() {
 
 	var lastBlock uint64 = 0
 
+	var added bool // flag if this iteration was triggered by the watchAdded channel
 	for {
-		var added bool = false // flag if this iteration was triggered by the watchAdded channel
+		added = false
 		select {
 		// if a new watch has been added check again without waiting
 		case <-tm.watchAdded:

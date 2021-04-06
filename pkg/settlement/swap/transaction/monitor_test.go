@@ -25,6 +25,8 @@ func TestMonitorWatchTransaction(t *testing.T) {
 	pollingInterval := 1 * time.Millisecond
 	cancellationDepth := uint64(5)
 
+	testTimeout := 5 * time.Second
+
 	t.Run("single transaction confirmed", func(t *testing.T) {
 		monitor := transaction.NewMonitor(
 			logger,
@@ -64,7 +66,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			}
 		case err := <-errC:
 			t.Fatal(err)
-		case <-time.After(1 * time.Second):
+		case <-time.After(testTimeout):
 			t.Fatal("timed out")
 		}
 
@@ -119,7 +121,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			if !errors.Is(err, transaction.ErrTransactionCancelled) {
 				t.Fatalf("got wrong error. wanted %v, got %v", transaction.ErrTransactionCancelled, err)
 			}
-		case <-time.After(1 * time.Second):
+		case <-time.After(testTimeout):
 			t.Fatal("timed out")
 		}
 
@@ -219,7 +221,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			}
 		case err := <-errC:
 			t.Fatalf("got wrong error. wanted %v, got %v", transaction.ErrTransactionCancelled, err)
-		case <-time.After(1 * time.Second):
+		case <-time.After(testTimeout):
 			t.Fatal("timed out")
 		}
 
@@ -230,7 +232,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			if !errors.Is(err, transaction.ErrTransactionCancelled) {
 				t.Fatalf("got wrong error. wanted %v, got %v", transaction.ErrTransactionCancelled, err)
 			}
-		case <-time.After(1 * time.Second):
+		case <-time.After(testTimeout):
 			t.Fatal("timed out")
 		}
 
@@ -241,7 +243,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			}
 		case err := <-errC3:
 			t.Fatal(err)
-		case <-time.After(1 * time.Second):
+		case <-time.After(testTimeout):
 			t.Fatal("timed out")
 		}
 
@@ -292,7 +294,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			if !errors.Is(err, transaction.ErrMonitorClosed) {
 				t.Fatalf("got wrong error. wanted %v, got %v", transaction.ErrMonitorClosed, err)
 			}
-		case <-time.After(1 * time.Second):
+		case <-time.After(testTimeout):
 			t.Fatal("timed out")
 		}
 	})
