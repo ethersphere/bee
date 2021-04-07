@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -74,7 +75,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunk()
+		ch := generateTestRandomChunk().WithBatch(4, 4)
 
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -86,6 +87,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		fmt.Println("set chunk", i)
 		addrs = append(addrs, ch.Address())
 
 	}

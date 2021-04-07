@@ -19,6 +19,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -283,6 +284,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 // (the retrieval access index and the gc index)
 func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
 	if db.postage.withinRadius(item) {
+		fmt.Println("batch within radius")
 		return db.setPin(batch, item)
 	}
 	if item.BinID == 0 {

@@ -19,6 +19,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -64,6 +65,7 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 			if err != nil {
 				return err
 			}
+			fmt.Println("set sync gc size change", c)
 			gcSizeChange += c
 		}
 
@@ -172,7 +174,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 	if err != nil {
 		return 0, err
 	}
-
+	fmt.Println("end")
 	return db.preserveOrCache(batch, item)
 }
 
