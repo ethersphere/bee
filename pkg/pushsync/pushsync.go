@@ -322,14 +322,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		// find the next cheapest peer
 		peer, err := ps.pricer.CheapestPeer(ch.Address(), skipPeers, false)
 		if err != nil {
-			// CheapestPeer can return ErrNotFound in case we are not connected to any peers
+			// CheapestPeer can return ErrWantSelf in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
-
-		// save found peer (to be skipped if there is some error with him)
-		skipPeers = append(skipPeers, peer)
 
 		deferFuncs = append(deferFuncs, func() {
 			if lastErr != nil {
@@ -343,7 +340,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		headers, err := headerutils.MakePricingHeaders(receiptPrice, ch.Address())
 		if err != nil {
-			return nil, err
+			continue
+			// return nil, err
 		}
 
 		streamer, err := ps.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
@@ -356,17 +354,31 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		returnedHeaders := streamer.Headers()
 		_, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
 		if err != nil {
-			return nil, fmt.Errorf("push price headers: read returned: %w", err)
+			continue
+			//return nil, fmt.Errorf("push price headers: read returned: %w", err)
 		}
 
 		// check if returned price matches presumed price, if not, update price
 		if returnedPrice != receiptPrice {
 			err = ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
 			if err != nil {
-				return nil, err
+				continue
+				// return nil, err
 			}
+
+			currentCheapestPeer, err := ps.pricer.CheapestPeer(ch.Address(), skipPeers, false)
+			if err == nil {
+				if !currentCheapestPeer.Equal(peer) {
+					continue
+					// return nil, fmt.Errorf("push price headers: cheapest peer changed")
+				}
+			}
+
 			receiptPrice = returnedPrice
 		}
+
+		// save found peer (to be skipped if there is some error with him)
+		skipPeers = append(skipPeers, peer)
 
 		// Reserve to see whether we can make the request based on actual price
 		err = ps.accounting.Reserve(ctx, peer, receiptPrice)

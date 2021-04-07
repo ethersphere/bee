@@ -7,6 +7,7 @@ package mock
 import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 )
 
 type Service struct {
@@ -18,6 +19,7 @@ type Service struct {
 	notifyPriceTableFunc func(peer swarm.Address, priceTable []uint64) error
 	priceHeadlerFunc     func(p2p.Headers, swarm.Address) p2p.Headers
 	notifyPeerPriceFunc  func(peer swarm.Address, price uint64, index uint8) error
+	cheapestPeerFunc     func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error)
 }
 
 // WithReserveFunc sets the mock Reserve function
@@ -50,6 +52,12 @@ func WithPeerPrice(p uint64) Option {
 func WithPriceTableFunc(f func() (priceTable []uint64)) Option {
 	return optionFunc(func(s *Service) {
 		s.priceTableFunc = f
+	})
+}
+
+func WithCheapestPeerFunc(f func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.cheapestPeerFunc = f
 	})
 }
 
@@ -108,6 +116,13 @@ func (pricer *Service) NotifyPeerPrice(peer swarm.Address, price uint64, index u
 		return pricer.notifyPeerPriceFunc(peer, price, index)
 	}
 	return nil
+}
+
+func (pricer *Service) CheapestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+	if pricer.cheapestPeerFunc != nil {
+		return pricer.cheapestPeerFunc(addr, skipPeers, allowUpstream)
+	}
+	return swarm.Address{}, topology.ErrWantSelf
 }
 
 // Option is the option passed to the mock accounting service

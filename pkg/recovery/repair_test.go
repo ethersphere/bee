@@ -28,7 +28,6 @@ import (
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 )
 
 // TestCallback tests that a  callback can be created and called.
@@ -221,29 +220,14 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 	serverMockAccounting := accountingmock.NewAccounting()
 
 	pricerMock := pricermock.NewMockService()
-	peerID := swarm.MustParseHexAddress("deadbeef")
-	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-		_, _, _ = f(peerID, 0)
-		return nil
-	}}
-	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, pricerMock, nil)
+
+	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
-	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil)
+	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, logger, serverMockAccounting, pricerMock, nil)
 	ns := netstore.New(storer, recoveryFunc, retrieve, logger)
 	return ns
-}
-
-type mockPeerSuggester struct {
-	eachPeerRevFunc func(f topology.EachPeerFunc) error
-}
-
-func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
-	return errors.New("not implemented")
-}
-func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
-	return s.eachPeerRevFunc(f)
 }
 
 type mockPssSender struct {

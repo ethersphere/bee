@@ -93,7 +93,6 @@ const (
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	s.metrics.RequestCounter.Inc()
-
 	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
 		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 		defer span.Finish()
@@ -199,8 +198,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 			Inc()
 	}
 
-	sp.Add(peer)
-
 	// compute the price we presume to pay for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
@@ -210,9 +207,10 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
+
 	stream, err := s.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
 	if err != nil {
-		s.metrics.TotalErrors.Inc()
+		//		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
 
@@ -237,9 +235,19 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		if err != nil {
 			return nil, peer, err
 		}
+
+		currentCheapestPeer, err := s.pricer.CheapestPeer(addr, sp.All(), allowUpstream)
+		if err == nil {
+			if !currentCheapestPeer.Equal(peer) {
+				return nil, swarm.ZeroAddress, fmt.Errorf("retrieval headers: peer price changed cheapest peer")
+			}
+		}
+
 		chunkPrice = returnedPrice
+
 	}
 
+	sp.Add(peer)
 	// Reserve to see whether we can request the chunk based on actual price
 	err = s.accounting.Reserve(ctx, peer, chunkPrice)
 	if err != nil {

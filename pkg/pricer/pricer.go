@@ -17,10 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-const (
-	priceTablePrefix string = "pricetable_"
-)
-
 var _ Interface = (*Pricer)(nil)
 
 // Pricer returns pricing information for chunk hashes and proximity orders
@@ -46,7 +42,8 @@ var (
 )
 
 type pricingPeer struct {
-	lock sync.Mutex
+	lock       sync.Mutex
+	priceTable []uint64
 }
 
 type Pricer struct {
@@ -58,6 +55,7 @@ type Pricer struct {
 	overlay        swarm.Address
 	topology       topology.Driver
 	poPrice        uint64
+	priceTable     []uint64
 }
 
 func New(logger logging.Logger, store storage.StateStorer, overlay swarm.Address, poPrice uint64) *Pricer {
@@ -73,21 +71,26 @@ func New(logger logging.Logger, store storage.StateStorer, overlay swarm.Address
 // PriceTable returns the pricetable stored for the node
 // If not available, the default pricetable is provided
 func (s *Pricer) PriceTable() (priceTable []uint64) {
-	err := s.store.Get(priceTableKey(), &priceTable)
-	if err != nil {
-		priceTable = s.defaultPriceTable()
+	if len(s.priceTable) > 0 {
+		return s.priceTable
 	}
-	return priceTable
+	return s.defaultPriceTable()
 }
 
 // peerPriceTable returns the price table stored for the given peer.
 // If we can't get price table from store, we return the default price table
 func (s *Pricer) peerPriceTable(peer swarm.Address) (priceTable []uint64) {
-	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
+	pricingPeer, err := s.getPricingPeer(peer)
+	// this never happens as getPricingPeer has no error branch currently
 	if err != nil {
-		priceTable = s.defaultPriceTable() // get default pricetable
+		return s.defaultPriceTable()
 	}
-	return priceTable
+
+	if len(pricingPeer.priceTable) > 0 {
+		return pricingPeer.priceTable
+	}
+
+	return s.defaultPriceTable()
 }
 
 // PriceForPeer returns the price for the PO of a chunk from the table stored for the node.
@@ -155,12 +158,8 @@ func (s *Pricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 	proximity := swarm.Proximity(peer.Bytes(), chunk.Bytes())
 
 	// Determine neighborhood depth presumed by peer based on pricetable rows
-	var priceTable []uint64
-	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
+	priceTable := s.peerPriceTable(peer)
 	peerNeighborhoodDepth := uint8(len(priceTable) - 1)
-	if err != nil {
-		peerNeighborhoodDepth = s.neighborhoodDepth()
-	}
 
 	// determine whether the chunk is within presumed neighborhood depth of peer
 	if proximity >= peerNeighborhoodDepth {
@@ -182,14 +181,7 @@ func (s *Pricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 
 // peerPricePO returns the price for a PO from the table stored for the given peer.
 func (s *Pricer) peerPricePO(peer swarm.Address, po uint8) (uint64, error) {
-	var priceTable []uint64
-	err := s.store.Get(peerPriceTableKey(peer), &priceTable)
-	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return 0, err
-		}
-		priceTable = s.defaultPriceTable()
-	}
+	priceTable := s.peerPriceTable(peer)
 
 	proximity := po
 	if int(po) >= len(priceTable) {
@@ -201,14 +193,14 @@ func (s *Pricer) peerPricePO(peer swarm.Address, po uint8) (uint64, error) {
 }
 
 // peerPriceTableKey returns the price table storage key for the given peer.
-func peerPriceTableKey(peer swarm.Address) string {
-	return fmt.Sprintf("%s%s", priceTablePrefix, peer.String())
-}
-
-// priceTableKey returns the price table storage key for own price table
-func priceTableKey() string {
-	return fmt.Sprintf("%s%s", priceTablePrefix, "self")
-}
+// func peerPriceTableKey(peer swarm.Address) string {
+// 	return fmt.Sprintf("%s%s", priceTablePrefix, peer.String())
+// }
+//
+// // priceTableKey returns the price table storage key for own price table
+// func priceTableKey() string {
+// 	return fmt.Sprintf("%s%s", priceTablePrefix, "self")
+// }
 
 func (s *Pricer) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
 	s.pricingPeersMu.Lock()
@@ -223,12 +215,8 @@ func (s *Pricer) getPricingPeer(peer swarm.Address) (*pricingPeer, error) {
 	return peerData, nil
 }
 
-func (s *Pricer) storePriceTable(peer swarm.Address, priceTable []uint64) error {
-	s.logger.Tracef("Storing pricetable %v for peer %v", priceTable, peer)
-	err := s.store.Put(peerPriceTableKey(peer), priceTable)
-	if err != nil {
-		return err
-	}
+func (s *Pricer) storePriceTable(pricingPeer *pricingPeer, priceTable []uint64) error {
+	pricingPeer.priceTable = priceTable
 	return nil
 }
 
@@ -242,7 +230,7 @@ func (s *Pricer) NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 	pricingPeer.lock.Lock()
 	defer pricingPeer.lock.Unlock()
 
-	return s.storePriceTable(peer, priceTable)
+	return s.storePriceTable(pricingPeer, priceTable)
 }
 
 func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) error {
@@ -256,16 +244,26 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 		return err
 	}
 
+	var priceTable []uint64
+
+	// lock pricingPeer until update is done so that no other changes are discarded
 	pricingPeer.lock.Lock()
 	defer pricingPeer.lock.Unlock()
 
-	priceTable := s.peerPriceTable(peer)
+	if len(pricingPeer.priceTable) > 0 {
+		priceTable = pricingPeer.priceTable
+	}
+
 	currentIndexDepth := uint8(len(priceTable)) - 1
 
+	// Simple case, already have index depth, single value change
 	if index <= currentIndexDepth {
-		// Simple case, already have index depth, single value change
+		// if value not updated, return
+		if priceTable[index] == price {
+			return nil
+		}
 		priceTable[index] = price
-		return s.storePriceTable(peer, priceTable)
+		return s.storePriceTable(pricingPeer, priceTable)
 	}
 
 	// Complicated case, index is larger than depth of already known table
@@ -277,13 +275,13 @@ func (s *Pricer) NotifyPeerPrice(peer swarm.Address, price uint64, index uint8) 
 	// Check how many rows are missing
 	numberOfMissingRows := index - currentIndexDepth
 
+	// make descending values for the missing rows, ending with newly learned value
 	for i := uint8(0); i < numberOfMissingRows; i++ {
 		currentrow := index - i
 		newPriceTable[currentrow] = price + uint64(i)*s.poPrice
-		s.logger.Debugf("Guessing price %v for extending pricetable %v for peer %v", newPriceTable[currentrow], newPriceTable, peer)
 	}
 
-	return s.storePriceTable(peer, newPriceTable)
+	return s.storePriceTable(pricingPeer, newPriceTable)
 }
 
 func (s *Pricer) defaultPriceTable() []uint64 {
@@ -339,8 +337,22 @@ func (s *Pricer) PriceHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Add
 func (s *Pricer) CheapestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
 	cheapest := swarm.Address{}
 	var cheapestPrice uint64
+	neighborhoodDepth := s.neighborhoodDepth()
+	chunkProximity := swarm.Proximity(s.overlay.Bytes(), addr.Bytes())
 
 	err := s.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		// If the chunk is not within neighborhood depth, we want to select from specific PO bin
+		if chunkProximity < neighborhoodDepth {
+			if po != chunkProximity {
+				return false, false, nil
+			}
+		} else {
+			// If the chunk is within neighborhood depth, we want to select from any bin with PO >= ND
+			if po < neighborhoodDepth {
+				return false, false, nil
+			}
+		}
+
 		for _, a := range skipPeers {
 			if a.Equal(peer) {
 				return false, false, nil
@@ -355,6 +367,23 @@ func (s *Pricer) CheapestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		if currentPeerPrice < cheapestPrice {
 			cheapest = peer
 			cheapestPrice = currentPeerPrice
+			return false, false, nil
+		}
+		if currentPeerPrice == cheapestPrice {
+			dcmp, err := swarm.DistanceCmp(addr.Bytes(), cheapest.Bytes(), peer.Bytes())
+			if err != nil {
+				return false, false, err
+			}
+			switch dcmp {
+			case 0:
+				// do nothing
+			case -1:
+				// current peer is closer
+				cheapest = peer
+			case 1:
+				// closest is already closer to chunk
+				// do nothing
+			}
 		}
 
 		return false, false, nil
@@ -365,8 +394,9 @@ func (s *Pricer) CheapestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 
 	// check if found
 	if cheapest.IsZero() {
-		return swarm.Address{}, topology.ErrNotFound
+		return swarm.Address{}, topology.ErrWantSelf
 	}
+
 	if allowUpstream {
 		return cheapest, nil
 	}
@@ -376,7 +406,7 @@ func (s *Pricer) CheapestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		return swarm.Address{}, fmt.Errorf("distance compare addr %s cheapest %s base address %s: %w", addr.String(), cheapest.String(), s.overlay.String(), err)
 	}
 	if dcmp != 1 {
-		return swarm.Address{}, topology.ErrNotFound
+		return swarm.Address{}, topology.ErrWantSelf
 	}
 
 	return cheapest, nil

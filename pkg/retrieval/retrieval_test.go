@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -30,7 +29,6 @@ import (
 	storemock "github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 )
 
 var testTimeout = 5 * time.Second
@@ -51,8 +49,12 @@ func TestDelivery(t *testing.T) {
 		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
+		peerFunc = func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			return serverAddr, nil
+		}
+
 		price      = uint64(10)
-		pricerMock = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
+		pricerMock = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
 	)
 
 	// put testdata in the mock store of the server
@@ -62,7 +64,7 @@ func TestDelivery(t *testing.T) {
 	}
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil)
+	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 		streamtest.WithBaseAddr(clientAddr),
@@ -74,12 +76,7 @@ func TestDelivery(t *testing.T) {
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
-	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-		_, _, _ = f(serverAddr, 0)
-		return nil
-	}}
-
-	client := retrieval.New(clientAddr, clientMockStorer, recorder, ps, logger, clientMockAccounting, pricerMock, nil)
+	client := retrieval.New(clientAddr, clientMockStorer, recorder, logger, clientMockAccounting, pricerMock, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, chunk.Address())
@@ -161,7 +158,11 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
-		clientPricerMock = pricermock.NewMockService(pricermock.WithPeerPrice(price))
+		peerFunc = func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			return serverAddr, nil
+		}
+
+		clientPricerMock = pricermock.NewMockService(pricermock.WithPeerPrice(price), pricermock.WithCheapestPeerFunc(peerFunc))
 		serverPricerMock = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithPrice(serverPrice))
 	)
 
@@ -172,7 +173,7 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	}
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, serverPricerMock, nil)
+	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, logger, serverMockAccounting, serverPricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 		streamtest.WithBaseAddr(clientAddr),
@@ -184,11 +185,7 @@ func TestDeliveryWithPriceUpdate(t *testing.T) {
 	// was successful
 	clientMockStorer := storemock.NewStorer()
 
-	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-		_, _, _ = f(serverAddr, 0)
-		return nil
-	}}
-	client := retrieval.New(clientAddr, clientMockStorer, recorder, ps, logger, clientMockAccounting, clientPricerMock, nil)
+	client := retrieval.New(clientAddr, clientMockStorer, recorder, logger, clientMockAccounting, clientPricerMock, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, chunk.Address())
@@ -261,6 +258,7 @@ func TestRetrieveChunk(t *testing.T) {
 		}
 
 		logger = logging.New(ioutil.Discard, 0)
+
 		pricer = pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
 	)
 
@@ -276,14 +274,15 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, nil)
+		server := retrieval.New(serverAddress, serverStorer, nil, logger, accountingmock.NewAccounting(), pricer, nil)
 		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
 
-		clientSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-			_, _, _ = f(serverAddress, 0)
-			return nil
-		}}
-		client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, nil)
+		peerFunc := func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			return serverAddress, nil
+		}
+
+		clientPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
+		client := retrieval.New(clientAddress, nil, recorder, logger, accountingmock.NewAccounting(), clientPricer, nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
@@ -311,38 +310,41 @@ func TestRetrieveChunk(t *testing.T) {
 			serverAddress,
 			serverStorer, // chunk is in server's store
 			nil,
-			nil,
 			logger,
 			accountingmock.NewAccounting(),
 			pricer,
 			nil,
 		)
+
+		peerFunc := func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			return serverAddress, nil
+		}
+
+		forwarderPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
 
 		forwarder := retrieval.New(
 			forwarderAddress,
 			storemock.NewStorer(), // no chunk in forwarder's store
 			streamtest.New(streamtest.WithProtocols(server.Protocol())), // connect to server
-			mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-				_, _, _ = f(serverAddress, 0) // suggest server's address
-				return nil
-			}},
 			logger,
 			accountingmock.NewAccounting(),
-			pricer,
+			forwarderPricer,
 			nil,
 		)
+
+		peerFunc = func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			return forwarderAddress, nil
+		}
+
+		clientPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
 
 		client := retrieval.New(
 			clientAddress,
 			storemock.NewStorer(), // no chunk in clients's store
 			streamtest.New(streamtest.WithProtocols(forwarder.Protocol())), // connect to forwarder
-			mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-				_, _, _ = f(forwarderAddress, 0) // suggest forwarder's address
-				return nil
-			}},
 			logger,
 			accountingmock.NewAccounting(),
-			pricer,
+			clientPricer,
 			nil,
 		)
 
@@ -368,17 +370,13 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		return headers
 	}
 
-	price := uint64(10)
 	pricerMock := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc))
+	price := uint64(10)
 
 	clientAddress := swarm.MustParseHexAddress("1010")
 
 	serverAddress1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	serverAddress2 := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
-	peers := []swarm.Address{
-		serverAddress1,
-		serverAddress2,
-	}
 
 	serverStorer1 := storemock.NewStorer()
 	serverStorer2 := storemock.NewStorer()
@@ -394,31 +392,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	noPeerSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-		_, _, _ = f(swarm.ZeroAddress, 0)
-		return nil
-	}}
-
-	peerSuggesterFn := func(peers ...swarm.Address) topology.EachPeerer {
-		if len(peers) == 0 {
-			return noPeerSuggester
-		}
-
-		peerID := 0
-		peerSuggester := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
-			_, _, _ = f(peers[peerID], 0)
-			// circulate suggested peers
-			peerID++
-			if peerID >= len(peers) {
-				peerID = 0
-			}
-			return nil
-		}}
-		return peerSuggester
-	}
-
-	server1 := retrieval.New(serverAddress1, serverStorer1, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
-	server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
+	server1 := retrieval.New(serverAddress1, serverStorer1, nil, logger, accountingmock.NewAccounting(), pricerMock, nil)
+	server2 := retrieval.New(serverAddress2, serverStorer2, nil, logger, accountingmock.NewAccounting(), pricerMock, nil)
 
 	t.Run("peer not reachable", func(t *testing.T) {
 		ranOnce := true
@@ -438,7 +413,6 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 							ranOnce = false
 							return fmt.Errorf("peer not reachable: %s", peer.Address.String())
 						}
-
 						return server2.Handler(ctx, peer, stream)
 					}
 				},
@@ -446,7 +420,27 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithBaseAddr(clientAddress),
 		)
 
-		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
+		var peerFuncCalled bool
+		peerFuncCalled = false
+
+		peerFunc := func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			if !peerFuncCalled {
+				peerFuncCalled = true
+				return serverAddress1, nil
+			}
+			return serverAddress2, nil
+		}
+
+		clientPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
+
+		client := retrieval.New(
+			clientAddress,
+			storemock.NewStorer(),
+			recorder,
+			logger,
+			accountingmock.NewAccounting(),
+			clientPricer,
+			nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
@@ -473,16 +467,36 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 						defer ranMux.Unlock()
 						if ranOnce {
 							ranOnce = false
+							//return nil
 							return server1.Handler(ctx, peer, stream)
 						}
-
+						// return nil
 						return server2.Handler(ctx, peer, stream)
 					}
 				},
 			),
 		)
+		var peerFuncCalled bool
+		peerFuncCalled = false
 
-		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
+		peerFunc := func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			if !peerFuncCalled {
+				peerFuncCalled = true
+				return serverAddress1, nil
+			}
+			return serverAddress2, nil
+		}
+
+		clientPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
+
+		client := retrieval.New(
+			clientAddress,
+			storemock.NewStorer(),
+			recorder,
+			logger,
+			accountingmock.NewAccounting(),
+			clientPricer,
+			nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
@@ -511,8 +525,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		server1MockAccounting := accountingmock.NewAccounting()
 		server2MockAccounting := accountingmock.NewAccounting()
 
-		server1 := retrieval.New(serverAddress1, serverStorer1, nil, noPeerSuggester, logger, server1MockAccounting, pricerMock, nil)
-		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, server2MockAccounting, pricerMock, nil)
+		server1 := retrieval.New(serverAddress1, serverStorer1, nil, logger, server1MockAccounting, pricerMock, nil)
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, logger, server2MockAccounting, pricerMock, nil)
 
 		// NOTE: must be more than retry duration
 		// (here one second more)
@@ -546,7 +560,20 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		clientMockAccounting := accountingmock.NewAccounting()
 
-		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, clientMockAccounting, pricerMock, nil)
+		var peerFuncCalled bool
+		peerFuncCalled = false
+
+		peerFunc := func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			if !peerFuncCalled {
+				peerFuncCalled = true
+				return serverAddress1, nil
+			}
+			return serverAddress2, nil
+		}
+
+		clientPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
+
+		client := retrieval.New(clientAddress, nil, recorder, logger, clientMockAccounting, clientPricer, nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
@@ -584,21 +611,33 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 	t.Run("peer forwards request", func(t *testing.T) {
 		// server 2 has the chunk
-		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, logger, accountingmock.NewAccounting(), pricerMock, nil)
 
 		server1Recorder := streamtest.New(
 			streamtest.WithProtocols(server2.Protocol()),
 		)
 
+		peerFunc := func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			return serverAddress2, nil
+		}
+
+		forwardingPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
+
 		// server 1 will forward request to server 2
-		server1 := retrieval.New(serverAddress1, serverStorer1, server1Recorder, peerSuggesterFn(serverAddress2), logger, accountingmock.NewAccounting(), pricerMock, nil)
+		server1 := retrieval.New(serverAddress1, serverStorer1, server1Recorder, logger, accountingmock.NewAccounting(), forwardingPricer, nil)
 
 		clientRecorder := streamtest.New(
 			streamtest.WithProtocols(server1.Protocol()),
 		)
 
+		peerFunc = func(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+			return serverAddress1, nil
+		}
+
+		clientPricer := pricermock.NewMockService(pricermock.WithPriceHeadlerFunc(headlerFunc), pricermock.WithCheapestPeerFunc(peerFunc))
+
 		// client only knows about server 1
-		client := retrieval.New(clientAddress, nil, clientRecorder, peerSuggesterFn(serverAddress1), logger, accountingmock.NewAccounting(), pricerMock, nil)
+		client := retrieval.New(clientAddress, nil, clientRecorder, logger, accountingmock.NewAccounting(), clientPricer, nil)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address())
 		if err != nil {
@@ -609,15 +648,4 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
 	})
-}
-
-type mockPeerSuggester struct {
-	eachPeerRevFunc func(f topology.EachPeerFunc) error
-}
-
-func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
-	return errors.New("not implemented")
-}
-func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
-	return s.eachPeerRevFunc(f)
 }
