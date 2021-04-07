@@ -139,7 +139,7 @@ func TestPostageGetStamps(t *testing.T) {
 	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 			Stamps: []api.PostageStampResponse{
-				api.PostageStampResponse{
+				{
 					BatchID:     batchID,
 					Utilization: 0,
 				},
