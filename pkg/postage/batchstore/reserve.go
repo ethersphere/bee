@@ -64,7 +64,7 @@ type reserveState struct {
 // unreserve is called when the batchstore decides not to reserve a batch on a PO
 // i.e. chunk of the batch in bins [0 upto PO] (closed  interval) are unreserved
 func (s *store) unreserve(b *postage.Batch, oldRadius, newRadius uint8) error {
-	return s.unreserveFunc(b.ID, s.rs.Radius, oldRadius, newRadius)
+	return s.unreserveFunc(b.ID, oldRadius, newRadius)
 }
 
 // evictExpired is called when PutChainState is called (and there is 'settlement')
@@ -113,7 +113,7 @@ func (s *store) evictExpired() error {
 		}
 
 		// unreserve batch fully
-		err = s.unreserve(b, s.rs.Outer, swarm.MaxPO)
+		err = s.unreserve(b, b.Radius, swarm.MaxPO)
 		if err != nil {
 			return true, err
 		}
@@ -250,10 +250,15 @@ func (s *store) update(b *postage.Batch, oldDepth uint8, oldValue *big.Int) erro
 	newDepth := b.Depth
 	capacityChange, reserveRadius := s.rs.change(oldValue, newValue, oldDepth, newDepth)
 	s.rs.Available += capacityChange
-	if err := s.unreserve(b, s.rs.Radius, reserveRadius); err != nil {
+
+	if err := s.unreserve(b, b.Radius, reserveRadius); err != nil {
 		return err
 	}
-	return s.evictOuter(b)
+	if err := s.evictOuter(b); err != nil {
+		return err
+	}
+	b.Radius = reserveRadius
+	return nil
 }
 
 // evictOuter is responsible for keeping capacity positive by unreserving lowest priority batches
@@ -281,10 +286,11 @@ func (s *store) evictOuter(last *postage.Batch) error {
 		if s.rs.Available >= 0 && s.rs.Outer.Cmp(b.Value) != 0 {
 			return true, nil
 		}
+
 		// unreserve outer PO of the lowest priority batch  until capacity is back to positive
 		s.rs.Available += exp2(b.Depth - s.rs.Radius - 1)
 		s.rs.Outer.Set(b.Value)
-		return false, s.unreserve(b, s.rs.Radius)
+		return false, s.unreserve(b, b.Radius, s.rs.Radius)
 	})
 	if err != nil {
 		return err

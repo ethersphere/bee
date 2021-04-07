@@ -134,7 +134,7 @@ func batchKey(id []byte) string {
 	return batchKeyPrefix + string(id)
 }
 
-// batchKey returns the index key for the batch ID used in the by-ID batch index.
+// valueKey returns the index key for the batch ID used in the by-ID batch index.
 func valueKey(val *big.Int, id []byte) string {
 	value := make([]byte, 32)
 	val.FillBytes(value) // zero-extended big-endian byte slice
