@@ -33,12 +33,16 @@ var testTimeout = 5 * time.Second
 
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
-	logger := logging.New(os.Stdout, 5)
+	logger := logging.New(ioutil.Discard, 5)
 	mockStorer := storemock.NewStorer()
 	chunk := testingc.FixtureChunk("0033")
+	stamp, err := chunk.Stamp().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// put testdata in the mock store of the server
-	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err = mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +80,13 @@ func TestDelivery(t *testing.T) {
 	}
 	if !bytes.Equal(v.Data(), chunk.Data()) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
+	}
+	vstamp, err := v.Stamp().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(vstamp, stamp) {
+		t.Fatal("stamp mismatch")
 	}
 	records, err := recorder.Records(peerID, "retrieval", "1.0.0", "retrieval")
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 var _ storage.Storer = (*MockStorer)(nil)
 
 type MockStorer struct {
-	store           map[string][]byte
+	store           map[string]swarm.Chunk
 	modePut         map[string]storage.ModePut
 	modeSet         map[string]storage.ModeSet
 	pinnedAddress   []swarm.Address // Stores the pinned address
@@ -53,7 +53,7 @@ func WithPartialInterval(v bool) Option {
 
 func NewStorer(opts ...Option) *MockStorer {
 	s := &MockStorer{
-		store:    make(map[string][]byte),
+		store:    make(map[string]swarm.Chunk),
 		modePut:  make(map[string]storage.ModePut),
 		modeSet:  make(map[string]storage.ModeSet),
 		morePull: make(chan struct{}),
@@ -76,7 +76,7 @@ func (m *MockStorer) Get(_ context.Context, _ storage.ModeGet, addr swarm.Addres
 	if !has {
 		return nil, storage.ErrNotFound
 	}
-	return swarm.NewChunk(addr, v), nil
+	return v, nil
 }
 
 func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
@@ -93,7 +93,7 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 			po := swarm.Proximity(ch.Address().Bytes(), m.baseAddress)
 			m.bins[po]++
 		}
-		m.store[ch.Address().String()] = ch.Data()
+		m.store[ch.Address().String()] = ch
 		m.modePut[ch.Address().String()] = mode
 
 		// pin chunks if needed
