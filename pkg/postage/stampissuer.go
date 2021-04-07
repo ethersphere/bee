@@ -111,13 +111,21 @@ func toString(buf []byte) string {
 	return string(buf[i:])
 }
 
+// Utilization returns the batch utilization in the form of
+// an integer between 0 and 4294967295.
 func (st *StampIssuer) Utilization() uint32 {
-	top := 0
+	top := uint32(0)
 
-	//TODO return top bucket value for now
+	for _, v := range st.buckets {
+		if v > top {
+			top = v
+		}
+	}
+
 	return top
 }
 
+// ID returns the BatchID for this batch.
 func (s *StampIssuer) ID() []byte {
 	id := make([]byte, len(s.batchID))
 	copy(id, s.batchID)

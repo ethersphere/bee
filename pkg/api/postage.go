@@ -91,6 +91,7 @@ func (s *server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request)
 	}
 	jsonhttp.OK(w, resp)
 }
+
 func (s *server) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	if idStr == "" || len(idStr) != 64 {
