@@ -7,10 +7,12 @@ package clef
 import (
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -123,6 +125,11 @@ func (c *clefSigner) PublicKey() (*ecdsa.PublicKey, error) {
 
 // SignData signs with the text/plain type which is the standard Ethereum prefix method.
 func (c *clefSigner) Sign(data []byte) ([]byte, error) {
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		fmt.Printf("\n--- Waited %dms for signature ---\n", elapsed.Milliseconds())
+	}()
 	return c.clef.SignData(c.account, accounts.MimetypeTextPlain, data)
 }
 
