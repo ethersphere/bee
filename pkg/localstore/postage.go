@@ -35,7 +35,7 @@ func newPostageBatches(db *DB) (*postageBatches, error) {
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 65)
 			copy(key[:32], fields.BatchID)
-			key[32] = uint8(pof(swarm.NewAddress(fields.Address)))
+			key[32] = pof(swarm.NewAddress(fields.Address))
 			copy(key[33:], fields.Address)
 			return key, nil
 		},
