@@ -112,7 +112,8 @@ func toString(buf []byte) string {
 }
 
 // Utilization returns the batch utilization in the form of
-// an integer between 0 and 4294967295.
+// an integer between 0 and 4294967295. Batch fullness can be
+// calculated with: max_bucket_value / 2 ^ (batch_depth - bucket_depth)
 func (st *StampIssuer) Utilization() uint32 {
 	top := uint32(0)
 
