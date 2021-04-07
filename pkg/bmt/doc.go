@@ -2,16 +2,17 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package bmt implements Binary Merkle Tree hash.
-// Binary Merkle Tree Hash is a hash function over arbitrary datachunks of limited size.
-// The BMT hash is defined as H(span|bmt-root) where span is an 8-byte metadata prefix and
+// Package bmt implements  Binary Merkle Tree hash.
+// Binary Merkle Tree Hash is a hash function over arbitrary byte slices of limited size.
+// The BMT hash is defined as H(header|bmt-root) where header is an 8-byte metadata prefix and
 // bmt-root is the root hash of the binary merkle tree built over fixed size segments
 // of the underlying chunk using any base hash function H (e.g., keccak 256 SHA3).
+// The segment size is the same as the hash size of H.
 // The number of segments on the base must be a power of 2 so that the resulting tree is balanced.
 // Chunks with data shorter than the fixed size are hashed as if they had zero padding.
 //
 // BMT hash is used as the chunk hash function in swarm which in turn is the basis for the
-// 128 branching swarm hash http://swarm-guide.readthedocs.io/en/latest/architecture.html#swarm-hash
+// 128 branching swarm hash used to represent files.
 //
 // The BMT is optimal for providing compact inclusion proofs, i.e. prove that a
 // segment is a substring of a chunk starting at a particular offset.
@@ -24,12 +25,11 @@
 // RefHasher is optimized for code simplicity and meant as a reference implementation
 // that is simple to understand
 //
-// Hasher is optimized for speed taking advantage of concurrency with minimalistic
-// control structure to coordinate the concurrent routines
+// Hasher is optimized for speed taking advantage of concurrency with minimalistic concurrency control.
 //
 // BMT Hasher implements the following interfaces:
 //
-// standard golang hash.Hash - synchronous, reusable
+// - standard golang hash.Hash - synchronous, reusable
 //
-// io.Writer - synchronous left-to-right datawriter
+// - io.Writer - synchronous left-to-right datawriter
 package bmt

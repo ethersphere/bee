@@ -180,7 +180,7 @@ func hasher(span, b []byte) func([]byte) ([]byte, error) {
 		s := append(nonce, b...)
 		hasher := bmtpool.Get()
 		defer bmtpool.Put(hasher)
-		hasher.SetMetaBytes(span)
+		hasher.SetHeader(span)
 		if _, err := hasher.Write(s); err != nil {
 			return nil, err
 		}

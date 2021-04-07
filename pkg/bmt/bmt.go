@@ -13,10 +13,12 @@ import (
 
 var _ Hash = (*Hasher)(nil)
 
-var zerospan = make([]byte, 8)
-var zerosection = make([]byte, 64)
+var (
+	zerospan    = make([]byte, 8)
+	zerosection = make([]byte, 64)
+)
 
-// Hasher a reusable hasher for fixed maximum size chunks representing a BMT
+// Hasher is a reusable hasher for fixed maximum size chunks representing a BMT
 // It reuses a pool of trees for amortised memory allocation and resource control,
 // and supports order-agnostic concurrent segment writes and section (double segment) writes
 // as well as sequential read and write.
@@ -52,13 +54,13 @@ func LengthToSpan(length int64) []byte {
 	return span
 }
 
-// SetMetaToLengths sets the metadata preamble to the little endian binary representation of int64 argument for the current hash operation.
-func (h *Hasher) SetMetaToLength(length int64) {
+// SetHeaderInt64 sets the metadata preamble to the little endian binary representation of int64 argument for the current hash operation.
+func (h *Hasher) SetHeaderInt64(length int64) {
 	binary.LittleEndian.PutUint64(h.span, uint64(length))
 }
 
-// SetMetaBytes sets the metadata preamble to the span bytes given argument for the current hash operation.
-func (h *Hasher) SetMetaBytes(span []byte) {
+// SetHeader sets the metadata preamble to the span bytes given argument for the current hash operation.
+func (h *Hasher) SetHeader(span []byte) {
 	copy(h.span, span)
 }
 

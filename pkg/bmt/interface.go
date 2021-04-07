@@ -19,13 +19,13 @@ const (
 type Hash interface {
 	hash.Hash
 
-	// SetMetaLength sets the length prefix of BMT hash.
-	SetMetaToLength(int64)
+	// SetHeaderInt64 sets the header bytes of BMT hash to the little endian binary representation of the int64 argument.
+	SetHeaderInt64(int64)
 
-	// SetSpanBytes sets the length prefix of BMT hash in byte form.
-	SetMetaBytes([]byte)
+	// SetHeader sets the header bytes of BMT hash by copying the first 8 bytes of the argument.
+	SetHeader([]byte)
 
-	// Hash
+	// Hash calculates the BMT hash of the buffer written so far and appends it to the argument
 	Hash([]byte) ([]byte, error)
 
 	// Capacity returns the maximum amount of bytes that will be processed by the implementation.

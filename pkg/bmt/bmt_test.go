@@ -53,7 +53,7 @@ func refHash(count, n int, data []byte) ([]byte, error) {
 // Hash hashes the data and the span using the bmt hasher
 func syncHash(h *bmt.Hasher, n int, data []byte) ([]byte, error) {
 	h.Reset()
-	h.SetMetaToLength(int64(n))
+	h.SetHeaderInt64(int64(n))
 	_, err := h.Write(data[:n])
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 						from = to
 					}
 				}
-				h.SetMetaToLength(int64(size))
+				h.SetHeaderInt64(int64(size))
 				resHash, err := h.Hash(nil)
 				if err != nil {
 					return err
