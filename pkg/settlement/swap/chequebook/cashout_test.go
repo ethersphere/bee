@@ -17,11 +17,11 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	chequebookABI          = transaction.ParseABIUnchecked(simpleswapfactory.ERC20SimpleSwapABI)
+	chequebookABI          = transaction.ParseABIUnchecked(sw3abi.ERC20SimpleSwapABIv0_3_1)
 	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
 	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
 )
