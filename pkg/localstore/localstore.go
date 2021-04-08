@@ -393,25 +393,24 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 
-	db.postageChunksIndex, err = db.shed.NewIndex("BatchID|PO|Radius|Hash->nil", shed.IndexFuncs{
+	db.postageChunksIndex, err = db.shed.NewIndex("BatchID|PO|Hash->Radius", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
-			key = make([]byte, 66)
+			key = make([]byte, 65)
 			copy(key[:32], fields.BatchID)
 			key[32] = db.po(swarm.NewAddress(fields.Address))
-			key[33] = fields.Radius
-			copy(key[34:], fields.Address)
+			copy(key[33:], fields.Address)
 			return key, nil
 		},
 		DecodeKey: func(key []byte) (e shed.Item, err error) {
 			e.BatchID = key[:32]
-			e.Radius = key[33]
-			e.Address = key[34:65]
+			e.Address = key[33:65]
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			return nil, nil
+			return []byte{fields.Radius}, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
+			e.Radius = value[0]
 			return e, nil
 		},
 	})

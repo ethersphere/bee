@@ -426,6 +426,92 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	})
 }
 
+// TestDB_ReserveGC tests that when all chunks fall outside of
+// batch radius, all end up in the cache and that gc size eventually
+// converges to the correct value.
+func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
+
+	chunkCount := 150
+
+	var closed chan struct{}
+	testHookCollectGarbageChan := make(chan uint64)
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		select {
+		case testHookCollectGarbageChan <- collectedCount:
+		case <-closed:
+		}
+	}))
+
+	db := newTestDB(t, &Options{
+		Capacity: 100,
+	})
+	closed = db.close
+
+	addrs := make([]swarm.Address, 0)
+
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addrs = append(addrs, ch.Address())
+	}
+
+	gcTarget := db.gcTarget()
+
+	for {
+		select {
+		case <-testHookCollectGarbageChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("collect garbage timeout")
+		}
+		gcSize, err := db.gcSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gcSize == gcTarget {
+			break
+		}
+	}
+
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+
+	// the first synced chunk should be removed
+	t.Run("get the first synced chunk", func(t *testing.T) {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
+		}
+	})
+
+	t.Run("only first inserted chunks should be removed", func(t *testing.T) {
+		for i := 0; i < (chunkCount - int(gcTarget)); i++ {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
+			if !errors.Is(err, storage.ErrNotFound) {
+				t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
+			}
+		}
+	})
+
+	// last synced chunk should not be removed
+	t.Run("get most recent synced chunk", func(t *testing.T) {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[len(addrs)-1])
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 // TestDB_gcSize checks if gcSize has a correct value after
 // database is initialized with existing data.
 func TestDB_gcSize(t *testing.T) {
