@@ -42,7 +42,7 @@ func BenchmarkPool(t *testing.B) {
 
 // benchmarks simple sha3 hash on chunks
 func benchmarkSHA3(t *testing.B, n int) {
-	setRandomBytes(t, testData, seed)
+	testData := randomBytes(t, seed)
 
 	t.ReportAllocs()
 	t.ResetTimer()
@@ -59,7 +59,7 @@ func benchmarkSHA3(t *testing.B, n int) {
 // the premise is that this is the minimum computation needed for a BMT
 // therefore this serves as a theoretical optimum for concurrent implementations
 func benchmarkBMTBaseline(t *testing.B, n int) {
-	setRandomBytes(t, testData, seed)
+	testData := randomBytes(t, seed)
 
 	t.ReportAllocs()
 	t.ResetTimer()
@@ -79,7 +79,7 @@ func benchmarkBMTBaseline(t *testing.B, n int) {
 
 // benchmarks BMT Hasher
 func benchmarkBMT(t *testing.B, n int) {
-	setRandomBytes(t, testData, seed)
+	testData := randomBytes(t, seed)
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	h := pool.Get()
@@ -96,7 +96,7 @@ func benchmarkBMT(t *testing.B, n int) {
 
 // benchmarks 100 concurrent bmt hashes with pool capacity
 func benchmarkPool(t *testing.B, poolsize int) {
-	setRandomBytes(t, testData, seed)
+	testData := randomBytes(t, seed)
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
 	cycles := 100
@@ -121,7 +121,7 @@ func benchmarkPool(t *testing.B, poolsize int) {
 
 // benchmarks the reference hasher
 func benchmarkRefHasher(t *testing.B, n int) {
-	setRandomBytes(t, testData, seed)
+	testData := randomBytes(t, seed)
 
 	rbmt := reference.NewRefHasher(swarm.NewHasher(), 128)
 

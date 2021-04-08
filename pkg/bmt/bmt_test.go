@@ -32,7 +32,6 @@ const (
 var (
 	testSegmentCounts = []int{1, 2, 3, 4, 5, 8, 9, 15, 16, 17, 32, 37, 42, 53, 63, 64, 65, 111, 127, 128}
 	hashSize          = swarm.NewHasher().Size()
-	testData          = make([]byte, 4096)
 	seed              = time.Now().Unix()
 )
 
@@ -80,7 +79,7 @@ func TestHasherEmptyData(t *testing.T) {
 
 // tests sequential write with entire max size written in one go
 func TestSyncHasherCorrectness(t *testing.T) {
-	setRandomBytes(t, testData, seed)
+	testData := randomBytes(t, seed)
 
 	for _, count := range testSegmentCounts {
 		t.Run(fmt.Sprintf("segments_%v", count), func(t *testing.T) {
@@ -119,7 +118,7 @@ func testHasherReuse(t *testing.T, poolsize int) {
 
 	for i := 0; i < 100; i++ {
 		seed := int64(i)
-		setRandomBytes(t, testData, seed)
+		testData := randomBytes(t, seed)
 		n := rand.Intn(h.Capacity())
 		err := testHasherCorrectness(h, testData, n, testSegmentCount)
 		if err != nil {
@@ -130,7 +129,7 @@ func testHasherReuse(t *testing.T, poolsize int) {
 
 // tests if pool can be cleanly reused even in concurrent use by several hashers
 func TestBMTConcurrentUse(t *testing.T) {
-	setRandomBytes(t, testData, seed)
+	testData := randomBytes(t, seed)
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	cycles := 100
 
@@ -166,7 +165,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 
 			size := h.Capacity()
 			seed := int64(i)
-			setRandomBytes(t, testData, seed)
+			testData := randomBytes(t, seed)
 
 			resHash, err := syncHash(h, testData[:size])
 			if err != nil {
@@ -274,12 +273,14 @@ func TestUseSyncAsOrdinaryHasher(t *testing.T) {
 	}
 }
 
-func setRandomBytes(t testing.TB, data []byte, seed int64) {
+func randomBytes(t testing.TB, seed int64) []byte {
 	t.Helper()
+	data := make([]byte, 4096)
 	s := rand.NewSource(seed)
 	r := rand.New(s)
 	_, err := io.ReadFull(r, data)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return data
 }
