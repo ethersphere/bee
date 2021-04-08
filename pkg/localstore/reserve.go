@@ -13,23 +13,31 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-var (
-	// ErrBatchOverissued is returned if number of chunks found in neighbourhood extrapolates to overissued stamp
-	// count(batch, po) > 1<< (depth(batch) - po)
-	ErrBatchOverissued = errors.New("postage batch overissued")
-)
-
-// UnreserveBatch atomically unpins chunks of a batch in proximity order upto and including po
-// and marks the batch pinned within radius po
-// if batch is marked as pinned within radius r>po, then do nothing
-// unpinning will result in all chunks  with pincounter 0 to be put in the gc index
+// UnreserveBatch atomically unpins chunks of a batch in proximity order upto and including po.
+// Unpinning will result in all chunks with pincounter 0 to be put in the gc index
 // so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able
-func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
+func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
-	// todo add metrics
+	var (
+		item = shed.Item{
+			BatchID: id,
+		}
+		batch = new(leveldb.Batch)
+	)
 
-	batch := new(leveldb.Batch)
+	i, err := db.postageRadiusIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return err
+		}
+		item.Radius = radius
+		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
+			return err
+		}
+		return db.shed.WriteBatch(batch)
+	}
+	oldRadius := i.Radius
 	var gcSizeChange int64 // number to add or subtract from gcSize
 	unpin := func(item shed.Item) (stop bool, err error) {
 		c, err := db.setUnpin(batch, swarm.NewAddress(item.Address))
@@ -53,9 +61,13 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 	}
 
 	// iterate over chunk in bins
+<<<<<<< Updated upstream:pkg/localstore/unreserve.go
 	// TODO the initial value needs to change to the previous
 	// batch radius value.
+	for bin := oldRadius; bin < radius; bin++ {
+=======
 	for bin := oldRadius; bin < newRadius; bin++ {
+>>>>>>> Stashed changes:pkg/localstore/reserve.go
 		err := db.postageChunksIndex.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
 		if err != nil {
 			return err

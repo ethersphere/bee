@@ -19,7 +19,7 @@ const (
 	reserveStateKey = "batchstore_reserve_"
 )
 
-type unreserveFn func(batchID []byte, oldRadius, newRadius uint8) error
+type unreserveFn func(batchID []byte, radius uint8) error
 
 // store implements postage.Storer
 type store struct {

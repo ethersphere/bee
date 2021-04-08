@@ -88,6 +88,9 @@ type DB struct {
 	// postage chunks index
 	postageChunksIndex shed.Index
 
+	// postage chunks index
+	postageRadiusIndex shed.Index
+
 	// field that stores number of intems in gc index
 	gcSize shed.Uint64Field
 
@@ -393,7 +396,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 
-	db.postageChunksIndex, err = db.shed.NewIndex("BatchID|PO|Hash->Radius", shed.IndexFuncs{
+	db.postageChunksIndex, err = db.shed.NewIndex("BatchID|PO|Hash->nil", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 65)
 			copy(key[:32], fields.BatchID)
@@ -404,6 +407,28 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		DecodeKey: func(key []byte) (e shed.Item, err error) {
 			e.BatchID = key[:32]
 			e.Address = key[33:65]
+			return e, nil
+		},
+		EncodeValue: func(fields shed.Item) (value []byte, err error) {
+			return []byte{fields.Radius}, nil
+		},
+		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
+			e.Radius = value[0]
+			return e, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	db.postageRadiusIndex, err = db.shed.NewIndex("BatchID->Radius", shed.IndexFuncs{
+		EncodeKey: func(fields shed.Item) (key []byte, err error) {
+			key = make([]byte, 32)
+			copy(key[:32], fields.BatchID)
+			return key, nil
+		},
+		DecodeKey: func(key []byte) (e shed.Item, err error) {
+			e.BatchID = key[:32]
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
@@ -463,13 +488,14 @@ func (db *DB) po(addr swarm.Address) (bin uint8) {
 func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 	indexInfo = make(map[string]int)
 	for k, v := range map[string]shed.Index{
-		"retrievalDataIndex":      db.retrievalDataIndex,
-		"retrievalAccessIndex":    db.retrievalAccessIndex,
-		"pushIndex":               db.pushIndex,
-		"pullIndex":               db.pullIndex,
-		"gcIndex":                 db.gcIndex,
-		"pinIndex":                db.pinIndex,
-		"postageBatchChunksIndex": db.postageChunksIndex,
+		"retrievalDataIndex":   db.retrievalDataIndex,
+		"retrievalAccessIndex": db.retrievalAccessIndex,
+		"pushIndex":            db.pushIndex,
+		"pullIndex":            db.pullIndex,
+		"gcIndex":              db.gcIndex,
+		"pinIndex":             db.pinIndex,
+		"postageChunksIndex":   db.postageChunksIndex,
+		"postageRadiusIndex":   db.postageRadiusIndex,
 	} {
 		indexSize, err := v.Count()
 		if err != nil {

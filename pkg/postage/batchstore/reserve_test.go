@@ -205,7 +205,7 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 
 	// set mock unreserve call
 	unreserved := make(map[string]uint8)
-	unreserveFunc := func(batchID []byte, _, radius uint8) error {
+	unreserveFunc := func(batchID []byte, radius uint8) error {
 		unreserved[hex.EncodeToString(batchID)] = radius
 		return nil
 	}
