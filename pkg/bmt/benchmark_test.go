@@ -88,7 +88,7 @@ func benchmarkBMT(t *testing.B, n int) {
 	t.ReportAllocs()
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
-		if _, err := syncHash(h, n, testData); err != nil {
+		if _, err := syncHash(h, testData[:n]); err != nil {
 			t.Fatalf("seed %d: %v", seed, err)
 		}
 	}
@@ -109,7 +109,7 @@ func benchmarkPool(t *testing.B, poolsize int) {
 			eg.Go(func() error {
 				h := pool.Get()
 				defer pool.Put(h)
-				_, err := syncHash(h, h.Capacity(), testData)
+				_, err := syncHash(h, testData[:h.Capacity()])
 				return err
 			})
 		}

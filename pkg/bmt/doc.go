@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package bmt implements  Binary Merkle Tree hash.
+// Package bmt implements Binary Merkle Tree hash.
 // Binary Merkle Tree Hash is a hash function over arbitrary byte slices of limited size.
 // The BMT hash is defined as H(header|bmt-root) where header is an 8-byte metadata prefix and
 // bmt-root is the root hash of the binary merkle tree built over fixed size segments
@@ -31,5 +31,5 @@
 //
 // - standard golang hash.Hash - synchronous, reusable
 //
-// - io.Writer - synchronous left-to-right datawriter
+// - io.Writer - synchronous left-to-right datawriter.
 package bmt
