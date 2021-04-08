@@ -294,24 +294,30 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 		fileName = part.FormName()
 	}
 	if fileName == "" {
+		m.logger.Error("filename missing in multipart request")
 		return nil, errors.New("filename missing")
 	}
 
 	contentType := part.Header.Get(contentTypeHeader)
 	if contentType == "" {
+		m.logger.Error("content-type missing in multipart request")
 		return nil, errors.New("content-type missing")
 	}
 
 	contentLength := part.Header.Get("Content-Length")
 	if contentLength == "" {
+		m.logger.Error("content-length missing in multipart request")
 		return nil, errors.New("content-length missing")
 	}
 	fileSize, err := strconv.ParseInt(contentLength, 10, 64)
 	if err != nil {
+		m.logger.Errorf("Failed to parse content-length %s Err:%s",
+			contentLength, err.Error())
 		return nil, errors.New("invalid file size")
 	}
 
 	if filepath.Dir(fileName) != "." {
+		m.logger.Errorf("Invalid filename for multipart request: %s", fileName)
 		return nil, errors.New("multipart upload supports only single directory")
 	}
 
