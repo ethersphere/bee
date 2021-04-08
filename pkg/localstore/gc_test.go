@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -579,7 +578,6 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
-		fmt.Println("gc ran")
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
 		case <-closed:
