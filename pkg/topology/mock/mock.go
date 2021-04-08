@@ -16,6 +16,7 @@ type mock struct {
 	peers           []swarm.Address
 	closestPeer     swarm.Address
 	closestPeerErr  error
+	peersErr        error
 	addPeersErr     error
 	marshalJSONFunc func() ([]byte, error)
 	mtx             sync.Mutex
@@ -64,11 +65,10 @@ func (d *mock) AddPeers(_ context.Context, addrs ...swarm.Address) error {
 		return d.addPeersErr
 	}
 
-	for _, addr := range addrs {
-		d.mtx.Lock()
-		d.peers = append(d.peers, addr)
-		d.mtx.Unlock()
-	}
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	d.peers = append(d.peers, addrs...)
 
 	return nil
 }
@@ -85,7 +85,7 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(_ swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
 	if len(skipPeers) == 0 {
 		if d.closestPeerErr != nil {
 			return d.closestPeer, d.closestPeerErr
@@ -97,6 +97,10 @@ func (d *mock) ClosestPeer(_ swarm.Address, skipPeers ...swarm.Address) (peerAdd
 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+
+	if len(d.peers) == 0 {
+		return peerAddr, topology.ErrNotFound
+	}
 
 	skipPeer := false
 	for _, p := range d.peers {
@@ -111,7 +115,13 @@ func (d *mock) ClosestPeer(_ swarm.Address, skipPeers ...swarm.Address) (peerAdd
 			continue
 		}
 
-		peerAddr = p
+		if peerAddr.IsZero() {
+			peerAddr = p
+		}
+
+		if cmp, _ := swarm.DistanceCmp(addr.Bytes(), p.Bytes(), peerAddr.Bytes()); cmp == 1 {
+			peerAddr = p
+		}
 	}
 
 	if peerAddr.IsZero() {
@@ -128,10 +138,26 @@ func (*mock) NeighborhoodDepth() uint8 {
 	return 0
 }
 
+func (m *mock) IsWithinDepth(addr swarm.Address) bool {
+	return false
+}
+
+func (m *mock) EachNeighbor(f topology.EachPeerFunc) error {
+	return m.EachPeer(f)
+}
+
+func (*mock) EachNeighborRev(topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
 // EachPeer iterates from closest bin to farthest
 func (d *mock) EachPeer(f topology.EachPeerFunc) (err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+
+	if d.peersErr != nil {
+		return d.peersErr
+	}
 
 	for i, p := range d.peers {
 		_, _, err = f(p, uint8(i))

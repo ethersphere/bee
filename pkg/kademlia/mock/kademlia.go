@@ -68,6 +68,18 @@ func (m *Mock) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (peer
 	panic("not implemented") // TODO: Implement
 }
 
+func (m *Mock) IsWithinDepth(adr swarm.Address) bool {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *Mock) EachNeighbor(topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (m *Mock) EachNeighborRev(topology.EachPeerFunc) error {
+	panic("not implemented") // TODO: Implement
+}
+
 // EachPeer iterates from closest bin to farthest
 func (m *Mock) EachPeer(f topology.EachPeerFunc) error {
 	m.mtx.Lock()

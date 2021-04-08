@@ -25,6 +25,7 @@ type Driver interface {
 	PeerAdder
 	ClosestPeerer
 	EachPeerer
+	EachNeighbor
 	NeighborhoodDepth() uint8
 	SubscribePeersChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
@@ -49,6 +50,15 @@ type EachPeerer interface {
 	EachPeer(EachPeerFunc) error
 	// EachPeerRev iterates from farthest bin to closest
 	EachPeerRev(EachPeerFunc) error
+}
+
+type EachNeighbor interface {
+	// EachNeighbor iterates from closest bin to farthest within the neighborhood.
+	EachNeighbor(EachPeerFunc) error
+	// EachNeighborRev iterates from farthest bin to closest within the neighborhood.
+	EachNeighborRev(EachPeerFunc) error
+	// IsWithinDepth checks if an address is the within neighborhood.
+	IsWithinDepth(swarm.Address) bool
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO
