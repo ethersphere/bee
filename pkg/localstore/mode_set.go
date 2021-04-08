@@ -317,7 +317,10 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 			return 0, err
 		}
 		item.AccessTimestamp = now()
-		db.retrievalAccessIndex.PutInBatch(batch, item)
+		err = db.retrievalAccessIndex.PutInBatch(batch, item)
+		if err != nil {
+			return 0, err
+		}
 	} else {
 		item.AccessTimestamp = i.AccessTimestamp
 	}

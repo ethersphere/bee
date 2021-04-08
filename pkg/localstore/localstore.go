@@ -414,6 +414,9 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			return e, nil
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// start garbage collection worker
 	go db.collectGarbageWorker()
