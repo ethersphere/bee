@@ -430,7 +430,6 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 // batch radius, all end up in the cache and that gc size eventually
 // converges to the correct value.
 func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
-
 	chunkCount := 150
 
 	var closed chan struct{}
@@ -508,6 +507,63 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[len(addrs)-1])
 		if err != nil {
 			t.Fatal(err)
+		}
+	})
+}
+
+// TestDB_ReserveGC_AllWithinRadius tests that when all chunks fall within
+// batch radius, none get collected.
+func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
+	chunkCount := 150
+
+	var closed chan struct{}
+	testHookCollectGarbageChan := make(chan uint64)
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		select {
+		case testHookCollectGarbageChan <- collectedCount:
+		case <-closed:
+		}
+	}))
+
+	db := newTestDB(t, &Options{
+		Capacity: 100,
+	})
+	closed = db.close
+
+	addrs := make([]swarm.Address, 0)
+
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addrs = append(addrs, ch.Address())
+	}
+
+	select {
+	case <-testHookCollectGarbageChan:
+		t.Fatal("gc ran but shouldnt have")
+	case <-time.After(1 * time.Second):
+	}
+
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
+
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, 0))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+
+	t.Run("all chunks should be accessible", func(t *testing.T) {
+		for _, a := range addrs {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, a)
+			if err != nil {
+				t.Errorf("got error %v, want none", err)
+			}
 		}
 	})
 }
