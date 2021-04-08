@@ -313,13 +313,19 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	}
 	i, err = db.retrievalAccessIndex.Get(item)
 	if err != nil {
-		return 0, err
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return 0, err
+		}
+		item.AccessTimestamp = now()
+		db.retrievalAccessIndex.PutInBatch(batch, item)
+	} else {
+		item.AccessTimestamp = i.AccessTimestamp
 	}
-	item.AccessTimestamp = i.AccessTimestamp
 	err = db.gcIndex.PutInBatch(batch, item)
 	if err != nil {
 		return 0, err
 	}
+
 	gcSizeChange++
 	return gcSizeChange, nil
 }

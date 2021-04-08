@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -563,6 +564,105 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 			_, err := db.Get(context.Background(), storage.ModeGetRequest, a)
 			if err != nil {
 				t.Errorf("got error %v, want none", err)
+			}
+		}
+	})
+}
+
+// TestDB_ReserveGC_Unreserve tests that after calling UnreserveBatch
+// with a certain radius change, the correct chunks get put into the
+// GC index and eventually get garbage collected.
+// batch radius, none get collected.
+func TestDB_ReserveGC_Unreserve(t *testing.T) {
+	chunkCount := 150
+
+	var closed chan struct{}
+	testHookCollectGarbageChan := make(chan uint64)
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		fmt.Println("gc ran")
+		select {
+		case testHookCollectGarbageChan <- collectedCount:
+		case <-closed:
+		}
+	}))
+
+	db := newTestDB(t, &Options{
+		Capacity: 100,
+	})
+	closed = db.close
+
+	// put the first chunkCount-1 chunks within radius
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var gcChs []swarm.Chunk
+	for i := 0; i < 100; i++ {
+		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, gcch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, gcch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		gcChs = append(gcChs, gcch)
+	}
+
+	// radius increases from 2 to 3, chunk is in PO 2, therefore it should be
+	// GCd
+
+	for _, ch := range gcChs {
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), ch.Radius(), 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	gcTarget := db.gcTarget()
+
+	for {
+		select {
+		case <-testHookCollectGarbageChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("collect garbage timeout")
+		}
+		gcSize, err := db.gcSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gcSize == gcTarget {
+			break
+		}
+	}
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
+
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+
+	t.Run("first ten unreserved chunks should not be accessible", func(t *testing.T) {
+		for _, ch := range gcChs[:10] {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
+			if err == nil {
+				t.Error("got no error, want NotFound")
+			}
+		}
+	})
+	t.Run("the rest should be accessible", func(t *testing.T) {
+		for _, ch := range gcChs[10:] {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
+			if err != nil {
+				t.Errorf("got error %v but want none", err)
 			}
 		}
 	})

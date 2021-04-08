@@ -5,7 +5,9 @@
 package localstore
 
 import (
+	"encoding/hex"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -27,13 +29,14 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
 	// todo add metrics
+	fmt.Println("unpin1", oldRadius, newRadius)
 
 	batch := new(leveldb.Batch)
 	var gcSizeChange int64 // number to add or subtract from gcSize
 	unpin := func(item shed.Item) (stop bool, err error) {
 		c, err := db.setUnpin(batch, swarm.NewAddress(item.Address))
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("unpin: %w", err)
 		}
 
 		// if the batch is unreserved we should remove the chunk
@@ -46,6 +49,7 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 		if err != nil {
 			return false, err
 		}
+		fmt.Println("unpin", hex.EncodeToString(item.Address))
 
 		gcSizeChange += c
 		return false, err
@@ -59,6 +63,7 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 		if err != nil {
 			return err
 		}
+		fmt.Println("change", gcSizeChange)
 		// adjust gcSize
 		if err := db.incGCSizeInBatch(batch, gcSizeChange); err != nil {
 			return err
@@ -69,6 +74,17 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 		batch = new(leveldb.Batch)
 		gcSizeChange = 0
 	}
+
+	gcSize, err := db.gcSize.Get()
+	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+		return err
+	}
+	fmt.Println("gcsize", gcSize)
+	// trigger garbage collection if we reached the capacity
+	if gcSize >= db.capacity {
+		db.triggerGarbageCollection()
+	}
+
 	return nil
 }
 
