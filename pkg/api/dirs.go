@@ -122,7 +122,7 @@ func storeDir(
 	log logging.Logger,
 	p pipelineFunc,
 	ls file.LoadSaver,
-	indexFilename string,
+	indexFilename,
 	errorFilename string,
 	tag *tags.Tag,
 	tagCreated bool,
