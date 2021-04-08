@@ -6,7 +6,6 @@ package localstore
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -139,7 +138,6 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 
 func (p *postageBatches) withinRadius(item shed.Item) bool {
 	po := p.po(swarm.NewAddress(item.Address))
-	fmt.Println(po, item.Radius)
 
 	return po >= item.Radius
 }
