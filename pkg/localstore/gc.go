@@ -18,7 +18,6 @@ package localstore
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -78,7 +77,6 @@ func (db *DB) collectGarbageWorker() {
 // the rest of the garbage as the batch size limit is reached.
 // This function is called in collectGarbageWorker.
 func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
-	fmt.Println("trig")
 	db.metrics.GCCounter.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeCollectGarbage, time.Now())
 	defer func() {
@@ -126,7 +124,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return true, nil
 		}
-		err = db.postage.deleteInBatch(batch, item)
+		err = db.postageChunksIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return true, nil
 		}
@@ -207,3 +205,5 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 // information when a garbage collection run is done
 // and how many items it removed.
 var testHookCollectGarbage func(collectedCount uint64)
+
+var withinRadiusFn func(*DB, shed.Item) bool

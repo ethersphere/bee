@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -31,6 +32,7 @@ import (
 
 // TestModePutRequest validates ModePutRequest index values on the provided DB.
 func TestModePutRequest(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newTestDB(t, nil)
@@ -85,6 +87,7 @@ func TestModePutRequest(t *testing.T) {
 
 // TestModePutRequestPin validates ModePutRequestPin index values on the provided DB.
 func TestModePutRequestPin(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newTestDB(t, nil)
@@ -113,6 +116,7 @@ func TestModePutRequestPin(t *testing.T) {
 
 // TestModePutSync validates ModePutSync index values on the provided DB.
 func TestModePutSync(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newTestDB(t, nil)

@@ -19,7 +19,6 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -193,7 +192,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
-	err = db.postage.putInBatch(batch, item)
+	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
@@ -235,7 +234,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if err != nil {
 		return false, 0, err
 	}
-	err = db.postage.putInBatch(batch, item)
+	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
@@ -268,7 +267,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-	err = db.postage.putInBatch(batch, item)
+	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
@@ -283,8 +282,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 // preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache
 // (the retrieval access index and the gc index)
 func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
-	if db.postage.withinRadius(item) {
-		fmt.Println("batch within radius")
+	if withinRadiusFn(db, item) {
 		return db.setPin(batch, item)
 	}
 	if item.BinID == 0 {

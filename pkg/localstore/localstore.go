@@ -85,6 +85,9 @@ type DB struct {
 	// pin files Index
 	pinIndex shed.Index
 
+	// postage chunks index
+	postageChunksIndex shed.Index
+
 	// field that stores number of intems in gc index
 	gcSize shed.Uint64Field
 
@@ -102,9 +105,6 @@ type DB struct {
 	// a wait group to ensure all updateGC goroutines
 	// are done before closing the database
 	updateGCWG sync.WaitGroup
-
-	// postage batch
-	postage *postageBatches
 
 	// baseKey is the overlay address
 	baseKey []byte
@@ -179,6 +179,10 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 
 	if maxParallelUpdateGC > 0 {
 		db.updateGCSem = make(chan struct{}, maxParallelUpdateGC)
+	}
+
+	if withinRadiusFn == nil {
+		withinRadiusFn = withinRadius
 	}
 
 	db.shed, err = shed.NewDB(path)
@@ -389,10 +393,28 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 
-	db.postage, err = newPostageBatches(db)
-	if err != nil {
-		return nil, err
-	}
+	db.postageChunksIndex, err = db.shed.NewIndex("BatchID|PO|Radius|Hash->nil", shed.IndexFuncs{
+		EncodeKey: func(fields shed.Item) (key []byte, err error) {
+			key = make([]byte, 66)
+			copy(key[:32], fields.BatchID)
+			key[32] = db.po(swarm.NewAddress(fields.Address))
+			key[33] = fields.Radius
+			copy(key[34:], fields.Address)
+			return key, nil
+		},
+		DecodeKey: func(key []byte) (e shed.Item, err error) {
+			e.BatchID = key[:32]
+			e.Radius = key[33]
+			e.Address = key[34:65]
+			return e, nil
+		},
+		EncodeValue: func(fields shed.Item) (value []byte, err error) {
+			return nil, nil
+		},
+		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
+			return e, nil
+		},
+	})
 
 	// start garbage collection worker
 	go db.collectGarbageWorker()
@@ -445,7 +467,7 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 		"pullIndex":               db.pullIndex,
 		"gcIndex":                 db.gcIndex,
 		"pinIndex":                db.pinIndex,
-		"postageBatchChunksIndex": db.postage.chunks,
+		"postageBatchChunksIndex": db.postageChunksIndex,
 	} {
 		indexSize, err := v.Count()
 		if err != nil {

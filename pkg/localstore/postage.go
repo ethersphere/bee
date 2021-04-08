@@ -18,70 +18,6 @@ var (
 	ErrBatchOverissued = errors.New("postage batch overissued")
 )
 
-type postageBatches struct {
-	// postage batch to chunks index
-	chunks shed.Index
-	po     func(swarm.Address) (bin uint8)
-	db     *DB
-}
-
-func newPostageBatches(db *DB) (*postageBatches, error) {
-	// po applied to the item address returns the proximity order (as int)
-	// of the chunk relative to the node base address
-	// return value is max swarm.MaxPO
-	pof := db.po
-
-	chunksIndex, err := db.shed.NewIndex("BatchID|PO|Hash->nil", shed.IndexFuncs{
-		EncodeKey: func(fields shed.Item) (key []byte, err error) {
-			key = make([]byte, 65)
-			copy(key[:32], fields.BatchID)
-			key[32] = pof(swarm.NewAddress(fields.Address))
-			copy(key[33:], fields.Address)
-			return key, nil
-		},
-		DecodeKey: func(key []byte) (e shed.Item, err error) {
-			e.BatchID = key[:32]
-			e.Address = key[33:65]
-			return e, nil
-		},
-		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			return nil, nil
-		},
-		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			return e, nil
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &postageBatches{
-		chunks: chunksIndex,
-		po:     pof,
-		db:     db,
-	}, nil
-}
-
-func (p *postageBatches) putInBatch(batch *leveldb.Batch, item shed.Item) error {
-	err := p.chunks.PutInBatch(batch, item)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p *postageBatches) deleteInBatch(batch *leveldb.Batch, item shed.Item) error {
-	err := p.chunks.DeleteInBatch(batch, item)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // UnreserveBatch atomically unpins chunks of a batch in proximity order upto and including po
 // and marks the batch pinned within radius po
 // if batch is marked as pinned within radius r>po, then do nothing
@@ -119,7 +55,7 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 	// TODO the initial value needs to change to the previous
 	// batch radius value.
 	for bin := oldRadius; bin < newRadius; bin++ {
-		err := db.postage.chunks.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
+		err := db.postageChunksIndex.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
 		if err != nil {
 			return err
 		}
@@ -136,8 +72,7 @@ func (db *DB) UnreserveBatch(id []byte, oldRadius, newRadius uint8) error {
 	return nil
 }
 
-func (p *postageBatches) withinRadius(item shed.Item) bool {
-	po := p.po(swarm.NewAddress(item.Address))
-
+func withinRadius(db *DB, item shed.Item) bool {
+	po := db.po(swarm.NewAddress(item.Address))
 	return po >= item.Radius
 }

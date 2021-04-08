@@ -40,7 +40,7 @@ func TestPutPostage(t *testing.T) {
 					}
 				}
 				newItemsCountTest(db.retrievalDataIndex, tc.count)(t)
-				newItemsCountTest(db.postage.chunks, tc.count)(t)
+				newItemsCountTest(db.postageChunksIndex, tc.count)(t)
 			})
 
 			t.Run("second put", func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestPutPostage(t *testing.T) {
 					}
 				}
 				newItemsCountTest(db.retrievalDataIndex, tc.count)(t)
-				newItemsCountTest(db.postage.chunks, tc.count)(t)
+				newItemsCountTest(db.postageChunksIndex, tc.count)(t)
 			})
 		})
 	}

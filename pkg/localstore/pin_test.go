@@ -10,6 +10,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -113,6 +114,7 @@ func TestPinCounter(t *testing.T) {
 // check if the pinned files are still around and removed from gcIndex
 func TestPinIndexes(t *testing.T) {
 	ctx := context.Background()
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 
 	db := newTestDB(t, &Options{
 		Capacity: 150,
@@ -160,6 +162,7 @@ func TestPinIndexes(t *testing.T) {
 
 func TestPinIndexesSync(t *testing.T) {
 	ctx := context.Background()
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 
 	db := newTestDB(t, &Options{
 		Capacity: 150,

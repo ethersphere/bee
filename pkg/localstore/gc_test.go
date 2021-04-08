@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -66,6 +65,8 @@ func testDBCollectGarbageWorker(t *testing.T) {
 		case <-closed:
 		}
 	}))
+
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, &Options{
 		Capacity: 100,
 	})
@@ -75,7 +76,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunk().WithBatch(4, 4)
+		ch := generateTestRandomChunk()
 
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -87,9 +88,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		fmt.Println("set chunk", i)
 		addrs = append(addrs, ch.Address())
-
 	}
 
 	gcTarget := db.gcTarget()
@@ -157,6 +156,7 @@ func TestPinGC(t *testing.T) {
 		case <-closed:
 		}
 	}))
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 
 	db := newTestDB(t, &Options{
 		Capacity: dbCapacity,
@@ -299,14 +299,16 @@ func TestGCAfterPin(t *testing.T) {
 // to test garbage collection runs by uploading, syncing and
 // requesting a number of chunks.
 func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
-	db := newTestDB(t, &Options{
-		Capacity: 100,
-	})
-
 	testHookCollectGarbageChan := make(chan uint64)
 	defer setTestHookCollectGarbage(func(collectedCount uint64) {
 		testHookCollectGarbageChan <- collectedCount
 	})()
+
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+
+	db := newTestDB(t, &Options{
+		Capacity: 100,
+	})
 
 	addrs := make([]swarm.Address, 0)
 
@@ -480,6 +482,13 @@ func setTestHookCollectGarbage(h func(collectedCount uint64)) (reset func()) {
 	return reset
 }
 
+func setWithinRadiusFunc(h func(*DB, shed.Item) bool) (reset func()) {
+	current := withinRadiusFn
+	reset = func() { withinRadiusFn = current }
+	withinRadiusFn = h
+	return reset
+}
+
 // TestSetTestHookCollectGarbage tests if setTestHookCollectGarbage changes
 // testHookCollectGarbage function correctly and if its reset function
 // resets the original function.
@@ -534,6 +543,7 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 }
 
 func TestPinAfterMultiGC(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, &Options{
 		Capacity: 10,
 	})

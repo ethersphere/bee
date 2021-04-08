@@ -22,11 +22,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
 // TestModeGetRequest validates ModeGetRequest index values on the provided DB.
 func TestModeGetRequest(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, nil)
 
 	uploadTimestamp := time.Now().UTC().UnixNano()
