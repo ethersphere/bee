@@ -5,7 +5,6 @@
 package api
 
 import (
-	"bufio"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"io"
 	"io/ioutil"
 	"mime"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path"
@@ -35,10 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
-const (
-	multiPartFormData = "multipart/form-data"
-)
-
 func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
@@ -50,12 +44,12 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid content-type header")
 		return
 	}
-	switch mediaType {
-	case contentTypeTar:
+	isDir := r.Header.Get(SwarmCollectionHeader)
+	if strings.ToLower(isDir) == "true" || mediaType == multiPartFormData {
 		s.dirUploadHandler(w, r)
-	default:
-		s.fileUploadHandler(w, r)
+		return
 	}
+	s.fileUploadHandler(w, r)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -76,7 +70,6 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Content-Type has already been validated by this time
 	contentType := r.Header.Get(contentTypeHeader)
-	mediaType, params, _ := mime.ParseMediaType(contentType)
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
@@ -102,48 +95,9 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	if mediaType == multiPartFormData {
-		mr := multipart.NewReader(r.Body, params["boundary"])
-
-		// read only the first part, as only one bzz upload file is supported
-		part, err := mr.NextPart()
-		if err != nil {
-			logger.Debugf("bzz upload file: read multipart: %v", err)
-			logger.Error("bzz upload file: read multipart")
-			jsonhttp.BadRequest(w, "invalid multipart/form-data")
-			return
-		}
-
-		// try to find filename
-		// 1) in part header params
-		// 2) as formname
-		// 3) file reference hash (after uploading the file)
-		if fileName = part.FileName(); fileName == "" {
-			fileName = part.FormName()
-		}
-
-		// then find out content type, this will be saved as metadata
-		contentType = part.Header.Get("Content-Type")
-		if contentType == "" {
-			br := bufio.NewReader(part)
-			buf, err := br.Peek(512)
-			if err != nil && err != io.EOF {
-				logger.Debugf("bzz upload file: read content type, file %q: %v", fileName, err)
-				logger.Errorf("bzz upload file: read content type, file %q", fileName)
-				jsonhttp.BadRequest(w, "error reading content type")
-				return
-			}
-			contentType = http.DetectContentType(buf)
-			reader = br
-		} else {
-			reader = part
-		}
-		contentLength = part.Header.Get("Content-Length")
-	} else {
-		fileName = r.URL.Query().Get("name")
-		contentLength = r.Header.Get("Content-Length")
-		reader = r.Body
-	}
+	fileName = r.URL.Query().Get("name")
+	contentLength = r.Header.Get("Content-Length")
+	reader = r.Body
 
 	if contentLength != "" {
 		fileSize, err = strconv.ParseUint(contentLength, 10, 64)

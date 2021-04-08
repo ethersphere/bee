@@ -56,11 +56,37 @@ func TestBzzFiles(t *testing.T) {
 		)
 	})
 
-	t.Run("multipart-upload", func(t *testing.T) {
-		fileName := "simple_file.txt"
-		rootHash := "21be25fbd38696334abe758e3d217388b375ad09a9ce4f7165e6bd57a48603fb"
+	t.Run("tar-file-upload", func(t *testing.T) {
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+			{
+				data: []byte("image 1"),
+				name: "1.png",
+				dir:  "img",
+				header: http.Header{
+					"Content-Type": {"image/png"},
+				},
+			},
+			{
+				data: []byte("image 2"),
+				name: "2.png",
+				dir:  "img",
+				header: http.Header{
+					"Content-Type": {"image/png"},
+				},
+			},
+		})
+		rootHash := "f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b"
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
-			jsonhttptest.WithMultipartRequest(bytes.NewReader(simpleData), len(simpleData), fileName, ""),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
@@ -101,57 +127,30 @@ func TestBzzFiles(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 		rootHash := "4f9146b3813ccbd7ce45a18be23763d7e436ab7a3982ef39961c6f3cd4da1dcf"
 
-		t.Run("binary", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodPost,
-				fileUploadResource+"?name="+fileName, http.StatusOK,
-				jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
-					Reference: swarm.MustParseHexAddress(rootHash),
-				}),
-				jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
-			)
+		jsonhttptest.Request(t, client, http.MethodPost,
+			fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(rootHash),
+			}),
+			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
+		)
 
-			rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet,
-				fileDownloadResource(rootHash), http.StatusOK,
-				jsonhttptest.WithExpectedResponse(simpleData),
-			)
-			cd := rcvdHeader.Get("Content-Disposition")
-			_, params, err := mime.ParseMediaType(cd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if params["filename"] != fileName {
-				t.Fatal("Invalid file name detected")
-			}
-			if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
-				t.Fatal("Invalid content type detected")
-			}
-		})
-
-		t.Run("multipart", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
-				jsonhttptest.WithMultipartRequest(bytes.NewReader(simpleData), len(simpleData), fileName, "image/jpeg; charset=utf-8"),
-				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
-					Reference: swarm.MustParseHexAddress(rootHash),
-				}),
-			)
-
-			rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet,
-				fileDownloadResource(rootHash), http.StatusOK,
-				jsonhttptest.WithExpectedResponse(simpleData),
-			)
-			cd := rcvdHeader.Get("Content-Disposition")
-			_, params, err := mime.ParseMediaType(cd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if params["filename"] != fileName {
-				t.Fatal("Invalid file name detected")
-			}
-			if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
-				t.Fatal("Invalid content type detected")
-			}
-		})
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet,
+			fileDownloadResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(simpleData),
+		)
+		cd := rcvdHeader.Get("Content-Disposition")
+		_, params, err := mime.ParseMediaType(cd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if params["filename"] != fileName {
+			t.Fatal("Invalid file name detected")
+		}
+		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
+			t.Fatal("Invalid content type detected")
+		}
 	})
 
 	t.Run("upload-then-download-and-check-data", func(t *testing.T) {
@@ -168,72 +167,38 @@ func TestBzzFiles(t *testing.T) {
 		</body>
 		</html>`
 
-		t.Run("binary", func(t *testing.T) {
-			rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
-				fileUploadResource+"?name="+fileName, http.StatusOK,
-				jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
-				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
-					Reference: swarm.MustParseHexAddress(rootHash),
-				}),
-				jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
-			)
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
+			fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
+			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+				Reference: swarm.MustParseHexAddress(rootHash),
+			}),
+			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
+		)
 
-			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
-				t.Fatal("Invalid ETags header received")
-			}
+		if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
+			t.Fatal("Invalid ETags header received")
+		}
 
-			// try to fetch the same file and check the data
-			rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
-				fileDownloadResource(rootHash), http.StatusOK,
-				jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
-			)
+		// try to fetch the same file and check the data
+		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
+			fileDownloadResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
+		)
 
-			// check the headers
-			cd := rcvdHeader.Get("Content-Disposition")
-			_, params, err := mime.ParseMediaType(cd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if params["filename"] != fileName {
-				t.Fatal("Invalid filename detected")
-			}
-			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
-				t.Fatal("Invalid content type detected")
-			}
-		})
+		// check the headers
+		cd := rcvdHeader.Get("Content-Disposition")
+		_, params, err := mime.ParseMediaType(cd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if params["filename"] != fileName {
+			t.Fatal("Invalid filename detected")
+		}
+		if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
+			t.Fatal("Invalid content type detected")
+		}
 
-		t.Run("multipart", func(t *testing.T) {
-			rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
-				fileUploadResource, http.StatusOK,
-				jsonhttptest.WithMultipartRequest(strings.NewReader(sampleHtml), len(sampleHtml), fileName, ""),
-				jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
-					Reference: swarm.MustParseHexAddress(rootHash),
-				}),
-			)
-
-			if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
-				t.Fatal("Invalid ETags header received")
-			}
-
-			// try to fetch the same file and check the data
-			rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
-				fileDownloadResource(rootHash), http.StatusOK,
-				jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
-			)
-
-			// check the headers
-			cd := rcvdHeader.Get("Content-Disposition")
-			_, params, err := mime.ParseMediaType(cd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if params["filename"] != fileName {
-				t.Fatal("Invalid filename detected")
-			}
-			if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
-				t.Fatal("Invalid content type detected")
-			}
-		})
 	})
 
 	t.Run("upload-then-download-with-targets", func(t *testing.T) {
@@ -290,7 +255,7 @@ func TestRangeRequests(t *testing.T) {
 			contentType:      "text/plain; charset=utf-8",
 		},
 		{
-			name:             "bzz",
+			name:             "dir",
 			uploadEndpoint:   "/bzz",
 			downloadEndpoint: "/bzz",
 			filepath:         "ipsum/lorem.txt",
@@ -358,10 +323,17 @@ func TestRangeRequests(t *testing.T) {
 
 			var resp api.FileUploadResponse
 
-			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusOK,
+			testOpts := []jsonhttptest.Option{
 				jsonhttptest.WithRequestBody(upload.reader),
 				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
 				jsonhttptest.WithUnmarshalJSONResponse(&resp),
+			}
+			if upload.name == "dir" {
+				testOpts = append(testOpts, jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"))
+			}
+
+			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusOK,
+				testOpts...,
 			)
 
 			var downloadPath string
