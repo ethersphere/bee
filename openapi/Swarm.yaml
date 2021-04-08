@@ -154,92 +154,6 @@ paths:
         default:
           description: Default response
 
-  "/files":
-    post:
-      summary: "Upload file"
-      tags:
-        - File
-      parameters:
-        - in: query
-          name: name
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/FileName"
-          required: false
-          description: Filename
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              properties:
-                file:
-                  type: array
-                  items:
-                    type: string
-                    format: binary
-          application/octet-stream:
-            schema:
-              type: string
-              format: binary
-      responses:
-        "200":
-          description: Ok
-          headers:
-            "swarm-tag":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
-            "etag":
-              $ref: "SwarmCommon.yaml#/components/headers/ETag" 
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
-  "/files/{reference}":
-    get:
-      summary: "Get referenced file"
-      tags:
-        - File
-      parameters:
-        - in: path
-          name: reference
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
-          required: true
-          description: Swarm address of content
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRecoveryTargetsParameter"
-      responses:
-        "200":
-          description: Ok
-          headers:
-            "swarm-recovery-targets":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmRecoveryTargets"
-            "ETag":
-              $ref: "SwarmCommon.yaml#/components/headers/ETag"
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
   "/dirs":
     post:
       summary: "Upload a collection"
@@ -277,9 +191,68 @@ paths:
         default:
           description: Default response
 
+  "/bzz":
+    post:
+      summary: "Upload file or a collection of files"
+      tags:
+        - File
+        - Collection
+      parameters:
+        - in: query
+          name: name
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/FileName"
+          required: false
+          description: Filename when uploading single file
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCollection"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                file:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+          application/x-tar:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Ok
+          headers:
+            "swarm-tag":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
+            "etag":
+              $ref: "SwarmCommon.yaml#/components/headers/ETag" 
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/bzz/{reference}":
     get:
-      summary: "Get index document from a collection of files"
+      summary: "Get file or index document from a collection of files"
       tags:
         - Collection
       parameters:
