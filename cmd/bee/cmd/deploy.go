@@ -67,7 +67,7 @@ func (c *command) initDeployCmd() error {
 
 			ctx := cmd.Context()
 
-			swapBackend, overlayEthAddress, chainID, transactionService, err := node.InitChain(
+			swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := node.InitChain(
 				ctx,
 				logger,
 				stateStore,
@@ -78,6 +78,7 @@ func (c *command) initDeployCmd() error {
 				return err
 			}
 			defer swapBackend.Close()
+			defer transactionMonitor.Close()
 
 			chequebookFactory, err := node.InitChequebookFactory(
 				logger,
