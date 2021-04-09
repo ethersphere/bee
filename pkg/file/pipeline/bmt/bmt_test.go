@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
 	mock "github.com/ethersphere/bee/pkg/file/pipeline/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // TestStoreWriter tests that store writer stores the provided data and calls the next chain writer.
@@ -29,9 +28,9 @@ func TestBmtWriter(t *testing.T) {
 		{
 			// this is a special case, since semantically it can be considered the hash
 			// of an empty file (since data is all zeros).
-			name:    "all zeros",
-			data:    make([]byte, swarm.ChunkSize),
-			expHash: mustDecodeString(t, "09ae927d0f3aaa37324df178928d3826820f3dd3388ce4aaebfc3af410bde23a"),
+			name:    "empty file",
+			data:    make([]byte, 0),
+			expHash: mustDecodeString(t, "b34ca8c22b9e982354f9c7f50b470d66db428d880c8a904d5fe4ec9713171526"),
 		},
 		{
 			name:    "hello world",
@@ -68,7 +67,7 @@ func TestBmtWriter(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !bytes.Equal(tc.expHash, args.Ref) {
-				t.Fatalf("ref mismatch. got %v want %v", args.Ref, tc.expHash)
+				t.Fatalf("ref mismatch. got %x want %x", args.Ref, tc.expHash)
 			}
 
 			if calls := mockChainWriter.ChainWriteCalls(); calls != 1 {

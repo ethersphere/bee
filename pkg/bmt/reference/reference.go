@@ -1,7 +1,13 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package reference is a simple nonconcurrent reference implementation of the BMT hash
+//
+// This implementation does not take advantage of any paralellisms and uses
+// far more memory than necessary, but it is easy to see that it is correct.
+// It can be used for generating test cases for optimized implementations.
+// There is extra check on reference hasher correctness in reference_test.go
 package reference
 
 import (
