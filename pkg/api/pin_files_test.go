@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
-	"sort"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -24,7 +23,7 @@ import (
 
 func TestPinFilesHandler(t *testing.T) {
 	var (
-		fileUploadResource      = "/files"
+		fileUploadResource      = "/bzz"
 		pinFilesResource        = "/pin/files"
 		pinFilesAddressResource = func(addr string) string { return pinFilesResource + "/" + addr }
 		pinChunksResource       = "/pin/chunks"
@@ -39,15 +38,18 @@ func TestPinFilesHandler(t *testing.T) {
 			Storer:    mockStorer,
 			Traversal: traversalService,
 			Tags:      tags.NewTags(mockStatestore, logger),
+			Logger:    logger,
 		})
 	)
 
 	t.Run("pin-file-1", func(t *testing.T) {
-		rootHash := "dc82503e0ed041a57327ad558d7aa69a867024c8221306c461ae359dc34d1c6a"
-		metadataHash := "d936d7180f230b3424842ea10848aa205f2f0e830cb9cc7588a39c9381544bf9"
+		rootHash := "dd13a5a6cc9db3ef514d645e6719178dbfb1a90b49b9262cafce35b0d27cf245"
+		metadataHash := "0cc878d32c96126d47f63fbe391114ee1438cd521146fc975dea1546d302b6c0"
+		metadataHash2 := "a14d1ef845307c634e9ec74539bd668d0d1b37f37de4128939d57098135850da"
 		contentHash := "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2aeb"
 
-		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost,
+			fileUploadResource+"?name=somefile.txt", http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
@@ -62,27 +64,36 @@ func TestPinFilesHandler(t *testing.T) {
 			}),
 		)
 
-		hashes := []string{rootHash, metadataHash, contentHash}
-		sort.Strings(hashes)
+		hashes := map[string]int{
+			rootHash:      1,
+			metadataHash:  1,
+			metadataHash2: 1,
+			contentHash:   1,
+		}
 
-		expectedResponse := api.ListPinnedChunksResponse{
+		actualResponse := api.ListPinnedChunksResponse{
 			Chunks: []api.PinnedChunk{},
 		}
 
-		for _, h := range hashes {
-			expectedResponse.Chunks = append(expectedResponse.Chunks, api.PinnedChunk{
-				Address:    swarm.MustParseHexAddress(h),
-				PinCounter: 1,
-			})
-		}
-
 		jsonhttptest.Request(t, client, http.MethodGet, pinChunksResource, http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
+			jsonhttptest.WithUnmarshalJSONResponse(&actualResponse),
 		)
+		if len(actualResponse.Chunks) != len(hashes) {
+			t.Fatalf("Response chunk count mismatch Expected: %d Found: %d",
+				len(hashes), len(actualResponse.Chunks))
+		}
+		for _, v := range actualResponse.Chunks {
+			if counter, ok := hashes[v.Address.String()]; !ok {
+				t.Fatalf("Found unexpected hash %s", v.Address.String())
+			} else if uint64(counter) != v.PinCounter {
+				t.Fatalf("Found unexpected Pin counter Expected: %d Found: %d",
+					counter, v.PinCounter)
+			}
+		}
 	})
 
 	t.Run("unpin-file-1", func(t *testing.T) {
-		rootHash := "dc82503e0ed041a57327ad558d7aa69a867024c8221306c461ae359dc34d1c6a"
+		rootHash := "dd13a5a6cc9db3ef514d645e6719178dbfb1a90b49b9262cafce35b0d27cf245"
 
 		jsonhttptest.Request(t, client, http.MethodDelete, pinFilesAddressResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{

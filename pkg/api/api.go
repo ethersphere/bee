@@ -40,6 +40,7 @@ const (
 	SwarmErrorDocumentHeader = "Swarm-Error-Document"
 	SwarmFeedIndexHeader     = "Swarm-Feed-Index"
 	SwarmFeedIndexNextHeader = "Swarm-Feed-Index-Next"
+	SwarmCollectionHeader    = "Swarm-Collection"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -56,6 +57,7 @@ const (
 
 const (
 	contentTypeHeader = "Content-Type"
+	multiPartFormData = "multipart/form-data"
 )
 
 var (

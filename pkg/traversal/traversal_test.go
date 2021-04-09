@@ -154,6 +154,7 @@ func TestTraversalFiles(t *testing.T) {
 	testCases := []struct {
 		filesSize           int
 		contentType         string
+		filename            string
 		expectedHashesCount int
 		expectedHashes      []string
 		ignoreDuplicateHash bool
@@ -161,31 +162,38 @@ func TestTraversalFiles(t *testing.T) {
 		{
 			filesSize:           len(simpleData),
 			contentType:         "text/plain; charset=utf-8",
-			expectedHashesCount: 3,
+			filename:            "simple.txt",
+			expectedHashesCount: 4,
 			expectedHashes: []string{
-				"06e50210b6bcebca15cfc8bc9ee3aa51ad8fa9cac41340f9f6396ada74fec78f", // root
-				"999a9f2e1fd29a6691a3b8e437cbb36e34a1f67decc973dfc70928d1e7de3c3b", // metadata
+				"ae16fb27474b41273c0deb355e4405d3cd0a6639f834285f97c75636c9e29df7", // root manifest
+				"0cc878d32c96126d47f63fbe391114ee1438cd521146fc975dea1546d302b6c0", // mainifest root metadata
+				"05e34f11a0967e8c09968b69c4f486f569ef58a31a197992e01304a1e59f8e75", // manifest file entry
 				"e94a5aadf259f008b7d5039420c65d692901846523f503d97d24e2f077786d9a", // bytes
 			},
 		},
 		{
-			filesSize:           swarm.ChunkSize * 10,
+			filesSize:           swarm.ChunkSize,
 			contentType:         "text/plain; charset=utf-8",
-			expectedHashesCount: 3,
+			expectedHashesCount: 6,
 			expectedHashes: []string{
-				"29ae87fda18bee4255ef19faabe901e2cf9c1c5c4648083383255670492e814e", // root
-				"e7d4d4a897cd69f5759621044402e40a3d5c903cf1e225864eef5d1f77d97680", // metadata
-				"f833c17be12d68aec95eca7f9d993f7d7aaa7a9c282eb2c3d79ab26a5aeaf384", // bytes (4096)
+				"7e0a4b6cd542eb501f372438cbbbcd8a82c444740f00bdd54f4981f487bcf8b7", // root manifest
+				"0cc878d32c96126d47f63fbe391114ee1438cd521146fc975dea1546d302b6c0", // manifest root metadata
+				"3f538c3b5225111a79b3b1dbb5e269ca2115f2a7caf0e6925b773457cdef7be5", // manifest file entry (Edge)
+				"2f09e41846a24201758db3535dc6c42d738180c8874d4d40d4f2924d0091521f", // manifest file entry (Edge)
+				"b2662d17d51ce734695d993b44c0e2df34c3f50d5889e5bc3b8718838658e6b0", // manifest file entry (Value)
+				"f833c17be12d68aec95eca7f9d993f7d7aaa7a9c282eb2c3d79ab26a5aeaf384", // bytes
 			},
 		},
 		{
 			filesSize:           swarm.ChunkSize + 1,
 			contentType:         "text/plain; charset=utf-8",
-			expectedHashesCount: 5,
+			filename:            "simple.txt",
+			expectedHashesCount: 6,
 			expectedHashes: []string{
-				"aa4a46bfbdff91c8db555edcfa4ba18371a083fdec67120db58d7ef177815ff0", // root
-				"be1f048819e744886803fbe44cf16205949b196640665077bfcacf68c323aa49", // metadata
-				"a1c4483d15167aeb406017942c9625464574cf70bf7e42f237094acbccdb6834", // bytes (joiner)
+				"ea58761906f98bd88204efbbab5c690329af02548afec37d7a556a47ca78ac62", // manifest root
+				"0cc878d32c96126d47f63fbe391114ee1438cd521146fc975dea1546d302b6c0", // manifest root metadata
+				"85617df0249a12649b56d09cf7f21e8642627b4fb9c0c9e03e2d25340cf60499", // manifest file entry
+				"a1c4483d15167aeb406017942c9625464574cf70bf7e42f237094acbccdb6834", // manifest file entry
 				"f833c17be12d68aec95eca7f9d993f7d7aaa7a9c282eb2c3d79ab26a5aeaf384", // bytes (4096)
 				"dcbfb467950a28f8c5023b86d31de4ff3a337993e921ae623ae62c7190d60329", // bytes (1)
 			},
@@ -212,16 +220,29 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			fmt.Println("File ref", fr.String())
-
 			ls := loadsave.New(mockStorer, storage.ModePutRequest, false)
-			fManifest, err := manifest.NewMantarayManifest(ls, false)
+			fManifest, err := manifest.NewDefaultManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = fManifest.Add(ctx, "/", manifest.NewEntry(fr, map[string]string{
-				"Content-Type": tc.contentType,
-			}))
+			filename := tc.filename
+			if filename == "" {
+				filename = fr.String()
+			}
+
+			rootMtdt := map[string]string{
+				manifest.WebsiteIndexDocumentSuffixKey: filename,
+			}
+			err = fManifest.Add(ctx, "/", manifest.NewEntry(swarm.ZeroAddress, rootMtdt))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			fileMtdt := map[string]string{
+				manifest.EntryMetadataFilenameKey:    filename,
+				manifest.EntryMetadataContentTypeKey: tc.contentType,
+			}
+			err = fManifest.Add(ctx, filename, manifest.NewEntry(fr, fileMtdt))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -230,8 +251,6 @@ func TestTraversalFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			fmt.Println("traversing", reference.String())
 
 			traversalCheck(t, mockStorer, traverseFn, reference, tc.expectedHashesCount, tc.expectedHashes, tc.ignoreDuplicateHash)
 		})
@@ -316,18 +335,11 @@ func TestTraversalManifest(t *testing.T) {
 			},
 			manifestHashes: []string{
 				// NOTE: references will be fixed, due to custom obfuscation key function
-				"d182df1cb214167d085256fafa657f38a191efe51af16834f6288ef23416fd25",
-				"05e34f11a0967e8c09968b69c4f486f569ef58a31a197992e01304a1e59f8e75",
-				"7e6bc53ca11bff459f77892563d04e09b440c63ce2f7d5fe8a8b0f0ba9eeefcf",
-				"b2662d17d51ce734695d993b44c0e2df34c3f50d5889e5bc3b8718838658e6b0",
-				"b2662d17d51ce734695d993b44c0e2df34c3f50d5889e5bc3b8718838658e6b0",
-				// "10a70b3a0102b94e909d08b91b98a2d8ca22c762ad7286d5451de2dd6432c218", // root
-				// "fb2c46942a3b2148e856d778731de9c173a26bec027aa27897f32e423eb14458", // metadata
-				// "39caaed3c9e42ea3ad9a374d37181e21c9a686367e0ae42d66c20465538d9789", // bytes - root node
-				// "735aee067bdc02e1c1e8e88eea8b5b0535bfc9d0d36bf3a4d6fbac94a03bc233", // bytes - node [d]
-				// "3d6a9e4eec6ebaf6ca6c6412dae6a23c76bc0c0672d259d98562368915d16b88", // bytes - node [h]
-				// "ddb31ae6a74caf5df03e5d8bf6056e589229b4cae3087433db64a4768923f73b", // bytes - node [d]/[2]
-				// "281dc7467f647abbfbaaf259a95ab60df8bf76ec3fbc525bfbca794d6360fa46", // bytes - node [d]/[1]
+				"d182df1cb214167d085256fafa657f38a191efe51af16834f6288ef23416fd25", // root
+				"05e34f11a0967e8c09968b69c4f486f569ef58a31a197992e01304a1e59f8e75", // manifest entry
+				"7e6bc53ca11bff459f77892563d04e09b440c63ce2f7d5fe8a8b0f0ba9eeefcf", // manifest entry (Edge PathSeparator)
+				"b2662d17d51ce734695d993b44c0e2df34c3f50d5889e5bc3b8718838658e6b0", // manifest file entry (1.txt)
+				"b2662d17d51ce734695d993b44c0e2df34c3f50d5889e5bc3b8718838658e6b0", // manifest file entry (2.txt)
 			},
 			expectedHashesCount: 8,
 			ignoreDuplicateHash: true,
@@ -388,7 +400,7 @@ func TestTraversalManifest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Println("traversing", manifestReference.String())
+
 			traversalCheck(t, mockStorer, traverseFn, manifestReference, tc.expectedHashesCount, expectedHashes, tc.ignoreDuplicateHash)
 		})
 	}

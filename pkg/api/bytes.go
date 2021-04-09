@@ -5,21 +5,15 @@
 package api
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"time"
 
-	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
 )
 
@@ -97,63 +91,4 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.downloadHandler(w, r, address, additionalHeaders, true)
-}
-
-// downloadHandler contains common logic for dowloading Swarm file from API
-func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-	targets := r.URL.Query().Get("targets")
-	if targets != "" {
-		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
-
-	}
-
-	reader, l, err := joiner.New(r.Context(), s.storer, reference)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			logger.Debugf("api download: not found %s: %v", reference, err)
-			logger.Error("api download: not found")
-			jsonhttp.NotFound(w, nil)
-			return
-		}
-		logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
-		logger.Error("api download: invalid root chunk")
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	// include additional headers
-	for name, values := range additionalHeaders {
-		var v string
-		for _, value := range values {
-			if v != "" {
-				v += "; "
-			}
-			v += value
-		}
-		w.Header().Set(name, v)
-	}
-	if etag {
-		w.Header().Set("ETag", fmt.Sprintf("%q", reference))
-	}
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
-	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
-	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
-	if targets != "" {
-		w.Header().Set(TargetsRecoveryHeader, targets)
-	}
-	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
-}
-
-// fileUploadResponse is returned when an HTTP request to upload a file is successful
-type fileUploadResponse struct {
-	Reference swarm.Address `json:"reference"`
-}
-
-// fileUploadInfo contains the data for a file to be uploaded
-type fileUploadInfo struct {
-	name        string // file name
-	size        int64  // file size
-	contentType string
-	reader      io.Reader
 }

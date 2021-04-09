@@ -493,6 +493,14 @@ components:
       required: false
       description: Configure custom error document to be returned when a specified path can not be found in collection
 
+    SwarmCollection:
+      in: header
+      name: swarm-collection
+      schema:
+        type: boolean
+      required: false
+      description: Upload file/files as a collection
+
   responses:
     "204":
       description: The resource was deleted successfully.

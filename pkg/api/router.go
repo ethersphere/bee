@@ -38,19 +38,6 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	// handle(router, "/files", jsonhttp.MethodHandler{
-	// 	"POST": web.ChainHandlers(
-	// 		s.newTracingHandler("files-upload"),
-	// 		web.FinalHandlerFunc(s.fileUploadHandler),
-	// 	),
-	// })
-	// handle(router, "/files/{addr}", jsonhttp.MethodHandler{
-	// 	"GET": web.ChainHandlers(
-	// 		s.newTracingHandler("files-download"),
-	// 		web.FinalHandlerFunc(s.fileDownloadHandler),
-	// 	),
-	// })
-
 	handle(router, "/dirs", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.newTracingHandler("dirs-upload"),
@@ -97,6 +84,12 @@ func (s *server) setupRouting() {
 		),
 	})
 
+	handle(router, "/bzz", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			s.newTracingHandler("bzz-upload"),
+			web.FinalHandlerFunc(s.bzzUploadHandler),
+		),
+	})
 	handle(router, "/bzz/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL
 		u.Path += "/"
