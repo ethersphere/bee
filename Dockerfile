@@ -8,7 +8,7 @@ COPY . ./
 
 RUN make binary
 
-FROM debian:10.2-slim
+FROM debian:10.9-slim
 
 ENV DEBIAN_FRONTEND noninteractive
 
