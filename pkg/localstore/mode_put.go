@@ -286,7 +286,7 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item) (gcSizeChang
 	// item needs to be populated with Radius
 	item2, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
-		return 0, fmt.Errorf("postage chunks index: %w", err)
+		return 0, fmt.Errorf("postage radius index: %w", err)
 	}
 	item.Radius = item2.Radius
 

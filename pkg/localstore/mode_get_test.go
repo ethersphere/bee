@@ -37,6 +37,10 @@ func TestModeGetRequest(t *testing.T) {
 	})()
 
 	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
 
 	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {

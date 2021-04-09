@@ -121,6 +121,11 @@ func TestPinIndexes(t *testing.T) {
 	})
 
 	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
+
 	addr := ch.Address()
 	_, err := db.Put(ctx, storage.ModePutUpload, ch)
 	if err != nil {
@@ -169,6 +174,11 @@ func TestPinIndexesSync(t *testing.T) {
 	})
 
 	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
+
 	addr := ch.Address()
 	_, err := db.Put(ctx, storage.ModePutUpload, ch)
 	if err != nil {
