@@ -110,3 +110,25 @@ func toString(buf []byte) string {
 	}
 	return string(buf[i:])
 }
+
+// Utilization returns the batch utilization in the form of
+// an integer between 0 and 4294967295. Batch fullness can be
+// calculated with: max_bucket_value / 2 ^ (batch_depth - bucket_depth)
+func (st *StampIssuer) Utilization() uint32 {
+	top := uint32(0)
+
+	for _, v := range st.buckets {
+		if v > top {
+			top = v
+		}
+	}
+
+	return top
+}
+
+// ID returns the BatchID for this batch.
+func (s *StampIssuer) ID() []byte {
+	id := make([]byte, len(s.batchID))
+	copy(id, s.batchID)
+	return id
+}
