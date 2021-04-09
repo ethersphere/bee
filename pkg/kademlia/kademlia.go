@@ -561,15 +561,16 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 		if bin == shallowestUnsaturated {
 			binCount++
 			return false, false, nil
-		} else if bin > shallowestUnsaturated && binCount < saturationPeers {
+		}
+		if bin > shallowestUnsaturated && binCount < saturationPeers {
 			// this means we have less than saturationPeers in the previous bin
 			// therefore we can return assuming that bin is the unsaturated one.
 			return true, false, nil
-		} else {
-			// bin > shallowestUnsaturated && binCount >= saturationPeers
-			shallowestUnsaturated = bin
-			binCount = 1
 		}
+		// bin > shallowestUnsaturated && binCount >= saturationPeers
+		shallowestUnsaturated = bin
+		binCount = 1
+
 		return false, false, nil
 	})
 
