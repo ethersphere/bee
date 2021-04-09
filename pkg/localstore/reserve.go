@@ -61,13 +61,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	}
 
 	// iterate over chunk in bins
-<<<<<<< Updated upstream:pkg/localstore/unreserve.go
-	// TODO the initial value needs to change to the previous
-	// batch radius value.
 	for bin := oldRadius; bin < radius; bin++ {
-=======
-	for bin := oldRadius; bin < newRadius; bin++ {
->>>>>>> Stashed changes:pkg/localstore/reserve.go
 		err := db.postageChunksIndex.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
 		if err != nil {
 			return err

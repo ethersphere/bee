@@ -34,7 +34,11 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +124,11 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,10 +185,14 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	})
 	closed = db.close
 
-	// put the first chunkCount-1 chunks within radius
+	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,7 +205,11 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	var gcChs []swarm.Chunk
 	for i := 0; i < 100; i++ {
 		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, gcch)
+		err := db.UnreserveBatch(gcch.Stamp().BatchID(), 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Put(context.Background(), storage.ModePutUpload, gcch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +224,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// GCd
 
 	for _, ch := range gcChs {
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), ch.Radius(), 3)
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), 3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,6 +262,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 			}
 		}
 	})
+
 	t.Run("the rest should be accessible", func(t *testing.T) {
 		for _, ch := range gcChs[10:] {
 			_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
