@@ -8,13 +8,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
+	"io/ioutil"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -23,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	mocks "github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -388,14 +388,11 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), mockOpts ...mock.Option) (*pushsync.PushSync, *localstore.DB, *tags.Tags, accounting.Interface) {
+func createPushSyncNode(t *testing.T, addr swarm.Address, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags, accounting.Interface) {
 	t.Helper()
-	logger := logging.New(os.Stdout, 5)
+	logger := logging.New(ioutil.Discard, 5)
 
-	storer, err := localstore.New("", addr.Bytes(), nil, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+	storer := mocks.NewStorer()
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)
 	mockStatestore := statestore.NewStateStore()

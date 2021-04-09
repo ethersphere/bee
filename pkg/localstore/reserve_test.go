@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TestDB_ReserveGC tests that when all chunks fall outside of
+// TestDB_ReserveGC_AllOutOfRadius tests that when all chunks fall outside of
 // batch radius, all end up in the cache and that gc size eventually
 // converges to the correct value.
 func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
