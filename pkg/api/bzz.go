@@ -23,6 +23,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/ethersphere/bee/pkg/feeds"
+	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -31,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/langos"
 )
 
 func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -53,9 +55,9 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
-// type fileUploadResponse struct {
-// 	Reference swarm.Address `json:"reference"`
-// }
+type fileUploadResponse struct {
+	Reference swarm.Address `json:"reference"`
+}
 
 // fileUploadHandler uploads the file and its metadata supplied as:
 // - multipart http message
@@ -418,6 +420,52 @@ func (s *server) serveManifestEntry(
 	}
 
 	s.downloadHandler(w, r, manifestEntry.Reference(), additionalHeaders, etag)
+}
+
+// downloadHandler contains common logic for dowloading Swarm file from API
+func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+	targets := r.URL.Query().Get("targets")
+	if targets != "" {
+		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
+
+	}
+
+	reader, l, err := joiner.New(r.Context(), s.storer, reference)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			logger.Debugf("api download: not found %s: %v", reference, err)
+			logger.Error("api download: not found")
+			jsonhttp.NotFound(w, nil)
+			return
+		}
+		logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
+		logger.Error("api download: invalid root chunk")
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+
+	// include additional headers
+	for name, values := range additionalHeaders {
+		var v string
+		for _, value := range values {
+			if v != "" {
+				v += "; "
+			}
+			v += value
+		}
+		w.Header().Set(name, v)
+	}
+	if etag {
+		w.Header().Set("ETag", fmt.Sprintf("%q", reference))
+	}
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
+	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
+	if targets != "" {
+		w.Header().Set(TargetsRecoveryHeader, targets)
+	}
+	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
 
 // manifestMetadataLoad returns the value for a key stored in the metadata of

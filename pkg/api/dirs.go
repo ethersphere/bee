@@ -61,9 +61,9 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var dReader dirReader
 	switch mediaType {
 	case contentTypeTar:
-		dReader = &tarReader{r: tar.NewReader(r.Body)}
+		dReader = &tarReader{r: tar.NewReader(r.Body), logger: s.logger}
 	case multiPartFormData:
-		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"])}
+		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"]), logger: s.logger}
 	default:
 		logger.Error("dir upload, invalid content-type for directory upload")
 		jsonhttp.BadRequest(w, "could not validate request")
