@@ -25,6 +25,7 @@ type Backend interface {
 	BlockNumber(ctx context.Context) (uint64, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
+	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
 }
 
 // IsSynced will check if we are synced with the given blockchain backend. This

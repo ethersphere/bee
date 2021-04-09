@@ -62,24 +62,25 @@ import (
 )
 
 type Bee struct {
-	p2pService            io.Closer
-	p2pCancel             context.CancelFunc
-	apiCloser             io.Closer
-	apiServer             *http.Server
-	debugAPIServer        *http.Server
-	resolverCloser        io.Closer
-	errorLogWriter        *io.PipeWriter
-	tracerCloser          io.Closer
-	tagsCloser            io.Closer
-	stateStoreCloser      io.Closer
-	localstoreCloser      io.Closer
-	topologyCloser        io.Closer
-	pusherCloser          io.Closer
-	pullerCloser          io.Closer
-	pullSyncCloser        io.Closer
-	pssCloser             io.Closer
-	ethClientCloser       func()
-	recoveryHandleCleanup func()
+	p2pService               io.Closer
+	p2pCancel                context.CancelFunc
+	apiCloser                io.Closer
+	apiServer                *http.Server
+	debugAPIServer           *http.Server
+	resolverCloser           io.Closer
+	errorLogWriter           *io.PipeWriter
+	tracerCloser             io.Closer
+	tagsCloser               io.Closer
+	stateStoreCloser         io.Closer
+	localstoreCloser         io.Closer
+	topologyCloser           io.Closer
+	pusherCloser             io.Closer
+	pullerCloser             io.Closer
+	pullSyncCloser           io.Closer
+	pssCloser                io.Closer
+	ethClientCloser          func()
+	transactionMonitorCloser io.Closer
+	recoveryHandleCleanup    func()
 }
 
 type Options struct {
@@ -192,13 +193,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var overlayEthAddress common.Address
 	var chainID int64
 	var transactionService transaction.Service
+	var transactionMonitor transaction.Monitor
 	var chequebookFactory chequebook.Factory
 	var chequebookService chequebook.Service
 	var chequeStore chequebook.ChequeStore
 	var cashoutService chequebook.CashoutService
 
 	if o.SwapEnable {
-		swapBackend, overlayEthAddress, chainID, transactionService, err = InitChain(
+		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 			p2pCtx,
 			logger,
 			stateStore,
@@ -209,6 +211,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, err
 		}
 		b.ethClientCloser = swapBackend.Close
+		b.transactionMonitorCloser = transactionMonitor
 
 		chequebookFactory, err = InitChequebookFactory(
 			logger,
@@ -592,6 +595,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	b.p2pCancel()
 	if err := b.p2pService.Close(); err != nil {
 		errs.add(fmt.Errorf("p2p server: %w", err))
+	}
+
+	if err := b.transactionMonitorCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("transaction monitor: %w", err))
 	}
 
 	if c := b.ethClientCloser; c != nil {

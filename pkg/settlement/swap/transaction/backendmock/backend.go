@@ -26,6 +26,7 @@ type backendMock struct {
 	blockNumber        func(ctx context.Context) (uint64, error)
 	headerByNumber     func(ctx context.Context, number *big.Int) (*types.Header, error)
 	balanceAt          func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
+	nonceAt            func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
 }
 
 func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
@@ -113,6 +114,12 @@ func (m *backendMock) BalanceAt(ctx context.Context, address common.Address, blo
 	}
 	return nil, errors.New("not implemented")
 }
+func (m *backendMock) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+	if m.nonceAt != nil {
+		return m.nonceAt(ctx, account, blockNumber)
+	}
+	return 0, errors.New("not implemented")
+}
 
 func New(opts ...Option) transaction.Backend {
 	mock := new(backendMock)
@@ -182,5 +189,11 @@ func WithBlockNumberFunc(f func(context.Context) (uint64, error)) Option {
 func WithHeaderbyNumberFunc(f func(ctx context.Context, number *big.Int) (*types.Header, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.headerByNumber = f
+	})
+}
+
+func WithNonceAtFunc(f func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.nonceAt = f
 	})
 }
