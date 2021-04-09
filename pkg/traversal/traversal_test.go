@@ -226,7 +226,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			filename := tc.filename
-			if len(filename) == 0 {
+			if filename == "" {
 				filename = fr.String()
 			}
 
