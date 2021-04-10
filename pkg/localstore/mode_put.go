@@ -81,19 +81,13 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				continue
 			}
 			item := chunkToItem(ch)
-			exists, c, err := db.putRequest(batch, binIDs, item)
+			pin := mode == storage.ModePutRequestPin // force pin in this mode
+			exists, c, err := db.putRequest(batch, binIDs, item, pin)
 			if err != nil {
 				return nil, err
 			}
 			exist[i] = exists
 			gcSizeChange += c
-
-			if mode == storage.ModePutRequestPin {
-				_, err = db.setPin(batch, item)
-				if err != nil {
-					return nil, err
-				}
-			}
 		}
 
 	case storage.ModePutUpload, storage.ModePutUploadPin:
@@ -175,7 +169,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 //  - it does not enter the syncpool
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
-func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
+func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item, forcePin bool) (exists bool, gcSizeChange int64, err error) {
 	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
 		return false, 0, err
@@ -197,7 +191,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.preserveOrCache(batch, item)
+	gcSizeChange, err = db.preserveOrCache(batch, item, forcePin)
 	if err != nil {
 		return false, 0, err
 	}
@@ -272,7 +266,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.preserveOrCache(batch, item)
+	gcSizeChange, err = db.preserveOrCache(batch, item, false)
 	if err != nil {
 		return false, 0, err
 	}
@@ -282,7 +276,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 
 // preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache
 // (the retrieval access index and the gc index)
-func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
+func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin bool) (gcSizeChange int64, err error) {
 	// item needs to be populated with Radius
 	item2, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
@@ -290,7 +284,7 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item) (gcSizeChang
 	}
 	item.Radius = item2.Radius
 
-	if withinRadiusFn(db, item) {
+	if withinRadiusFn(db, item) || forcePin {
 		return db.setPin(batch, item)
 	}
 	if item.BinID == 0 {

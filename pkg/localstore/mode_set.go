@@ -182,7 +182,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 	}
 	item.Radius = item2.Radius
 
-	return db.preserveOrCache(batch, item)
+	return db.preserveOrCache(batch, item, false)
 }
 
 // setRemove removes the chunk by updating indexes:

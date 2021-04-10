@@ -26,7 +26,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
-	mockstamp "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -514,10 +513,6 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 
 // chunkToItem creates new Item with data provided by the Chunk.
 func chunkToItem(ch swarm.Chunk) shed.Item {
-	// FIXME
-	if ch.Stamp() == nil {
-		ch = ch.WithStamp(mockstamp.MustNewStamp())
-	}
 	return shed.Item{
 		Address: ch.Address().Bytes(),
 		Data:    ch.Data(),
