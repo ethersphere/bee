@@ -23,14 +23,13 @@ type Batch struct {
 // postage batch to a byte slice.
 // serialised as ID(32)|big endian value(32)|start block(8)|owner addr(20)|depth(1)
 func (b *Batch) MarshalBinary() ([]byte, error) {
-	out := make([]byte, 94)
+	out := make([]byte, 93)
 	copy(out, b.ID)
 	value := b.Value.Bytes()
 	copy(out[64-len(value):], value)
 	binary.BigEndian.PutUint64(out[64:72], b.Start)
 	copy(out[72:], b.Owner)
 	out[92] = b.Depth
-	out[93] = b.Radius
 	return out, nil
 }
 
@@ -42,6 +41,5 @@ func (b *Batch) UnmarshalBinary(buf []byte) error {
 	b.Start = binary.BigEndian.Uint64(buf[64:72])
 	b.Owner = buf[72:92]
 	b.Depth = buf[92]
-	b.Radius = buf[93]
 	return nil
 }

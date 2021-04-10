@@ -250,15 +250,10 @@ func (s *store) update(b *postage.Batch, oldDepth uint8, oldValue *big.Int) erro
 	newDepth := b.Depth
 	capacityChange, reserveRadius := s.rs.change(oldValue, newValue, oldDepth, newDepth)
 	s.rs.Available += capacityChange
-
 	if err := s.unreserve(b, reserveRadius); err != nil {
 		return err
 	}
-	if err := s.evictOuter(b); err != nil {
-		return err
-	}
-	b.Radius = reserveRadius
-	return nil
+	return s.evictOuter(b)
 }
 
 // evictOuter is responsible for keeping capacity positive by unreserving lowest priority batches
@@ -286,7 +281,6 @@ func (s *store) evictOuter(last *postage.Batch) error {
 		if s.rs.Available >= 0 && s.rs.Outer.Cmp(b.Value) != 0 {
 			return true, nil
 		}
-
 		// unreserve outer PO of the lowest priority batch  until capacity is back to positive
 		s.rs.Available += exp2(b.Depth - s.rs.Radius - 1)
 		s.rs.Outer.Set(b.Value)

@@ -16,13 +16,12 @@ import (
 // Batch.
 func TestBatchMarshalling(t *testing.T) {
 	a := postagetesting.MustNewBatch()
-	a.Radius = 5
 	buf, err := a.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != 94 {
-		t.Fatalf("invalid length for serialised batch. expected 94, got %d", len(buf))
+	if len(buf) != 93 {
+		t.Fatalf("invalid length for serialised batch. expected 93, got %d", len(buf))
 	}
 	b := &postage.Batch{}
 	if err := b.UnmarshalBinary(buf); err != nil {
@@ -42,8 +41,5 @@ func TestBatchMarshalling(t *testing.T) {
 	}
 	if a.Depth != b.Depth {
 		t.Fatalf("depth mismatch, expected %d, got %d", a.Depth, b.Depth)
-	}
-	if a.Radius != b.Radius {
-		t.Fatalf("radius mismatch expected %d got %d", a.Depth, b.Depth)
 	}
 }
