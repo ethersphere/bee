@@ -175,14 +175,27 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 		return 0, err
 	}
 
+	i1, err := db.retrievalAccessIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return 0, err
+		}
+		item.AccessTimestamp = 1 // prioritize item to be gc-d earlier
+		err := db.retrievalAccessIndex.PutInBatch(batch, item)
+		if err != nil {
+			return 0, err
+		}
+	}
+	item.AccessTimestamp = i1.AccessTimestamp
+
 	// item needs to be populated with Radius
 	item2, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
 		return 0, fmt.Errorf("postage chunks index: %w", err)
 	}
 	item.Radius = item2.Radius
-
-	return db.preserveOrCache(batch, item, false)
+	fmt.Println("preserve or cache with radius", item.Radius)
+	return db.preserveOrCache(batch, item, false, false)
 }
 
 // setRemove removes the chunk by updating indexes:
@@ -305,6 +318,9 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 		item.PinCounter--
 		return 0, db.pinIndex.PutInBatch(batch, item)
 	}
+
+	// PinCounter == 0
+
 	err = db.pinIndex.DeleteInBatch(batch, item)
 	if err != nil {
 		return 0, err
@@ -316,16 +332,19 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 	i, err = db.pushIndex.Get(item)
-	// if in pushindex, then not synced yet, dont put in gcIndex
 	if !errors.Is(err, leveldb.ErrNotFound) {
+		// err is either nil or not leveldb.ErrNotFound
 		return 0, err
 	}
+
 	i, err = db.retrievalAccessIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return 0, err
 		}
-		item.AccessTimestamp = now()
+		// we dont set AccessTimestamp since it should
+		// already be set through being synced or retrieved
+		// and this just serves as a failsafe.
 		err = db.retrievalAccessIndex.PutInBatch(batch, item)
 		if err != nil {
 			return 0, err

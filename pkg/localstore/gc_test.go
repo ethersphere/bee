@@ -354,18 +354,18 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	// request the latest synced chunk
 	// to prioritize it in the gc index
 	// not to be collected
-	_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	//_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
+	//if err != nil {
+	//t.Fatal(err)
+	//}
 
 	// wait for update gc goroutine to finish for garbage
 	// collector to be correctly triggered after the last upload
-	select {
-	case <-testHookUpdateGCChan:
-	case <-time.After(10 * time.Second):
-		t.Fatal("updateGC was not called after getting chunk with ModeGetRequest")
-	}
+	//select {
+	//case <-testHookUpdateGCChan:
+	//case <-time.After(10 * time.Second):
+	//t.Fatal("updateGC was not called after getting chunk with ModeGetRequest")
+	//}
 
 	// no need to wait for update gc hook anymore
 	resetTestHookUpdateGC()
@@ -378,7 +378,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	// be inserted into the database
 	unreserveChunkBatch(t, db, 0, ch)
 
-	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}

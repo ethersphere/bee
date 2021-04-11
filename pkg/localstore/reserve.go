@@ -45,17 +45,6 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 			return false, fmt.Errorf("unpin: %w", err)
 		}
 
-		// if the batch is unreserved we should remove the chunk
-		// from the pull index
-		item2, err := db.retrievalDataIndex.Get(item)
-		if err != nil {
-			return false, err
-		}
-		err = db.pullIndex.DeleteInBatch(batch, item2)
-		if err != nil {
-			return false, err
-		}
-
 		gcSizeChange += c
 		return false, err
 	}
@@ -68,6 +57,10 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 		}
 		// adjust gcSize
 		if err := db.incGCSizeInBatch(batch, gcSizeChange); err != nil {
+			return err
+		}
+		item.Radius = bin
+		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
 			return err
 		}
 		if err := db.shed.WriteBatch(batch); err != nil {

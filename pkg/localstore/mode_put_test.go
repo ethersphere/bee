@@ -116,6 +116,46 @@ func TestModePutRequestPin(t *testing.T) {
 				newPinIndexTest(db, ch, nil)(t)
 			}
 
+			// gc index should be always 0 since we're pinning
+			newItemsCountTest(db.gcIndex, 0)(t)
+		})
+	}
+}
+
+// TestModePutRequestCache validates ModePutRequestCache index values on the provided DB.
+func TestModePutRequestCache(t *testing.T) {
+	// note: we set WithinRadius to be true, and verify that nevertheless
+	// the chunk lands in the cache
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
+	for _, tc := range multiChunkTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newTestDB(t, nil)
+			var chunks []swarm.Chunk
+			for i := 0; i < tc.count; i++ {
+				chunk := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2)
+				chunks = append(chunks, chunk)
+			}
+			// call unreserve on the batch with radius 0 so that
+			// localstore is aware of the batch and the chunk can
+			// be inserted into the database. in the following case
+			// the radius is 2, and since chunk PO is 2, it falls within
+			// radius.
+			unreserveChunkBatch(t, db, 2, chunks...)
+
+			wantTimestamp := time.Now().UTC().UnixNano()
+			defer setNow(func() (t int64) {
+				return wantTimestamp
+			})()
+			_, err := db.Put(context.Background(), storage.ModePutRequestCache, chunks...)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for _, ch := range chunks {
+				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
+				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
+			}
+
 			newItemsCountTest(db.gcIndex, tc.count)(t)
 		})
 	}
