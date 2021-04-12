@@ -236,6 +236,8 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if err != nil {
 		return false, 0, err
 	}
+	fmt.Printf("put->%x\n", item.BatchID)
+
 	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err

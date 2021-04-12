@@ -424,11 +424,23 @@ func testItemsOrder(t *testing.T, i shed.Index, chunks []testIndexChunk, sortFun
 	}
 
 	var cursor int
+	var search []byte
 	err := i.Iterate(func(item shed.Item) (stop bool, err error) {
+		if search != nil {
+			if !bytes.Equal(search, item.Address) {
+				cursor++
+				return false, nil
+			}
+			fmt.Printf("found in pos %d access: %d, %d, %x, %x\n", cursor, item.AccessTimestamp, item.BinID, item.Address, item.BatchID)
+			return true, fmt.Errorf("wrong address")
+		}
 		want := chunks[cursor].Address()
 		got := item.Address
 		if !bytes.Equal(got, want.Bytes()) {
-			return true, fmt.Errorf("got address %x at position %v, want %x", got, cursor, want)
+			fmt.Printf("access: %d, %d, %x, %x\n", item.AccessTimestamp, item.BinID, item.Address, item.BatchID)
+			search = want.Bytes()
+			fmt.Printf("got address %x at position %v, want %v", got, cursor, want)
+			// return true, fmt.Errorf("got address %x at position %v, want %v", got, cursor, want)
 		}
 		cursor++
 		return false, nil

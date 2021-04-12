@@ -250,9 +250,9 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90))
 
-	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+100))
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
 

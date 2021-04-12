@@ -185,9 +185,9 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 		if err != nil {
 			return 0, err
 		}
+	} else {
+		item.AccessTimestamp = i1.AccessTimestamp
 	}
-	item.AccessTimestamp = i1.AccessTimestamp
-
 	// item needs to be populated with Radius
 	item2, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
@@ -331,6 +331,7 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	}
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
+	item.BatchID = i.BatchID
 	i, err = db.pushIndex.Get(item)
 	if !errors.Is(err, leveldb.ErrNotFound) {
 		// err is either nil or not leveldb.ErrNotFound
@@ -352,6 +353,7 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	} else {
 		item.AccessTimestamp = i.AccessTimestamp
 	}
+	fmt.Printf("unpin>%x\n", item.BatchID)
 	err = db.gcIndex.PutInBatch(batch, item)
 	if err != nil {
 		return 0, err

@@ -72,8 +72,8 @@ func testDBCollectGarbageWorker(t *testing.T) {
 	})
 	closed = db.close
 
-	addrs := make([]swarm.Address, 0)
-
+	addrs := make([]swarm.Address, chunkCount)
+	ctx := context.Background()
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
@@ -81,17 +81,23 @@ func testDBCollectGarbageWorker(t *testing.T) {
 		// localstore is aware of the batch and the chunk can
 		// be inserted into the database
 		unreserveChunkBatch(t, db, 0, ch)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		// _, err := db.Put(ctx, storage.ModePutUpload, ch)
+		_, err := db.Put(ctx, storage.ModePutRequest, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
-		if err != nil {
-			t.Fatal(err)
-		}
+		// err = db.Set(ctx, storage.ModeSetSync, ch.Address())
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
 
-		addrs = append(addrs, ch.Address())
+		// _, err = db.Get(ctx, storage.ModeGetRequest, ch.Address())
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
+
+		addrs[i] = ch.Address()
 	}
 
 	gcTarget := db.gcTarget()
@@ -111,7 +117,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 		}
 	}
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+	// t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
@@ -354,18 +360,18 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	// request the latest synced chunk
 	// to prioritize it in the gc index
 	// not to be collected
-	//_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
-	//if err != nil {
-	//t.Fatal(err)
-	//}
+	_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// wait for update gc goroutine to finish for garbage
 	// collector to be correctly triggered after the last upload
-	//select {
-	//case <-testHookUpdateGCChan:
-	//case <-time.After(10 * time.Second):
-	//t.Fatal("updateGC was not called after getting chunk with ModeGetRequest")
-	//}
+	select {
+	case <-testHookUpdateGCChan:
+	case <-time.After(10 * time.Second):
+		t.Fatal("updateGC was not called after getting chunk with ModeGetRequest")
+	}
 
 	// no need to wait for update gc hook anymore
 	resetTestHookUpdateGC()
@@ -378,7 +384,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	// be inserted into the database
 	unreserveChunkBatch(t, db, 0, ch)
 
-	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
