@@ -194,7 +194,6 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 		return 0, fmt.Errorf("postage chunks index: %w", err)
 	}
 	item.Radius = item2.Radius
-	//fmt.Println("preserve or cache with radius", item.Radius)
 	return db.preserveOrCache(batch, item, false, false)
 }
 

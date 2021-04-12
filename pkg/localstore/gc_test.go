@@ -351,7 +351,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 		close(testHookUpdateGCChan)
 	})
 
-	// request the latest synced chunk
+	// request the oldest synced chunk
 	// to prioritize it in the gc index
 	// not to be collected
 	_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
