@@ -154,46 +154,14 @@ paths:
         default:
           description: Default response
 
-  "/dirs":
-    post:
-      summary: "Upload a collection"
-      tags:
-        - Collection
-      parameters:
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
-      requestBody:
-        content:
-          application/x-tar:
-            schema:
-              type: string
-              format: binary
-      responses:
-        "200":
-          description: Ok
-          headers:
-            "swarm-tag":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
   "/bzz":
     post:
       summary: "Upload file or a collection of files"
+      description: "In order to upload a collection, user can send a multipart request with all the files populated in the form data with appropriate headers.\n\n
+        User can also upload a tar file along with the swarm-collection header. This will upload the tar file after extracting the entire directory structure.\n\n
+        If the swarm-collection header is absent, all requests (including tar files) are considered as single file uploads.\n\n
+        A multipart request is treated as a collection regardless of whether the swarm-collection header is present. This means in order to serve single files
+        uploaded as a multipart request, the swarm-index-document header should be used with the name of the file."
       tags:
         - File
         - Collection

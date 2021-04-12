@@ -50,7 +50,7 @@ func TestBzzFiles(t *testing.T) {
 			http.StatusBadRequest,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid content-type header",
+				Message: api.InvalidContentType.Error(),
 				Code:    http.StatusBadRequest,
 			}),
 		)
@@ -87,7 +87,7 @@ func TestBzzFiles(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
-			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 		)
@@ -96,7 +96,7 @@ func TestBzzFiles(t *testing.T) {
 	t.Run("encrypt-decrypt", func(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 
-		var resp api.FileUploadResponse
+		var resp api.BzzUploadResponse
 		jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -130,7 +130,7 @@ func TestBzzFiles(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
@@ -170,7 +170,7 @@ func TestBzzFiles(t *testing.T) {
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
 			jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
-			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
@@ -208,7 +208,7 @@ func TestBzzFiles(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
@@ -321,7 +321,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 				Logger: logger,
 			})
 
-			var resp api.FileUploadResponse
+			var resp api.BzzUploadResponse
 
 			testOpts := []jsonhttptest.Option{
 				jsonhttptest.WithRequestBody(upload.reader),
@@ -444,17 +444,18 @@ func TestFeedIndirection(t *testing.T) {
 		},
 	})
 
-	var resp api.FileUploadResponse
+	var resp api.BzzUploadResponse
 
 	options := []jsonhttptest.Option{
 		jsonhttptest.WithRequestBody(tarReader),
 		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 		jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
 	}
 
 	// verify directory tar upload response
-	jsonhttptest.Request(t, client, http.MethodPost, "/dirs", http.StatusOK, options...)
+	jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusOK, options...)
 
 	if resp.Reference.String() == "" {
 		t.Fatalf("expected file reference, did not got any")
@@ -492,7 +493,7 @@ func TestFeedIndirection(t *testing.T) {
 		t.Fatal(err)
 	}
 	emptyAddr := make([]byte, 32)
-	err = m.Add(ctx, "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), map[string]string{
+	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.NewAddress(emptyAddr), map[string]string{
 		api.FeedMetadataEntryOwner: "8d3766440f0d7b949a5e32995d09619a7f86e632",
 		api.FeedMetadataEntryTopic: "abcc",
 		api.FeedMetadataEntryType:  "epoch",

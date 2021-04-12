@@ -51,7 +51,7 @@ func TestPinFilesHandler(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name=somefile.txt", http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", "text/plain"),

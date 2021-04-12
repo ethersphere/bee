@@ -58,11 +58,29 @@ const (
 const (
 	contentTypeHeader = "Content-Type"
 	multiPartFormData = "multipart/form-data"
+	contentTypeTar    = "application/x-tar"
 )
 
 var (
 	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
 	errNoResolver           = errors.New("no resolver connected")
+	invalidRequest          = errors.New("could not validate request")
+	invalidContentType      = errors.New("invalid content-type")
+	invalidContentLength    = errors.New("invalid content-length")
+	invalidAddress          = errors.New("invalid hex address")
+	tagGetError             = errors.New("cannot get or create tag")
+	tagSplitError           = errors.New("tag done split failed")
+	tagIncError             = errors.New("incrementing tag")
+	directoryStoreError     = errors.New("could not store directory")
+	fileStoreError          = errors.New("could not store file")
+	manifestGetError        = errors.New("could not find manifest")
+	manifestCreateError     = errors.New("could not create manifest")
+	manifestEntryError      = errors.New("could not add entry to manifest")
+	manifestStoreError      = errors.New("could not store manifest")
+	feedNotFound            = errors.New("feed not found")
+	feedInvalidUpdate       = errors.New("upable to parse feed update")
+	feedNoUpdate            = errors.New("no update found")
+	feedMarshalIndexError   = errors.New("marshal index")
 )
 
 // Service is the API service interface.

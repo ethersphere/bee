@@ -43,7 +43,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload: parse content type header %q: %v", contentType, err)
 		logger.Errorf("bzz upload: parse content type header %q", contentType)
-		jsonhttp.BadRequest(w, "invalid content-type header")
+		jsonhttp.BadRequest(w, invalidContentType)
 		return
 	}
 	isDir := r.Header.Get(SwarmCollectionHeader)
@@ -55,13 +55,12 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
-type fileUploadResponse struct {
+type bzzUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-// fileUploadHandler uploads the file and its metadata supplied as:
-// - multipart http message
-// - other content types as complete file body
+// fileUploadHandler uploads the file and its metadata supplied in the file body and
+// the headers
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	var (
@@ -77,7 +76,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: get or create tag: %v", err)
 		logger.Error("bzz upload file: get or create tag")
-		jsonhttp.InternalServerError(w, "cannot get or create tag")
+		jsonhttp.InternalServerError(w, tagGetError)
 		return
 	}
 
@@ -88,7 +87,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				s.logger.Debugf("bzz upload file: increment tag: %v", err)
 				s.logger.Error("bzz upload file: increment tag")
-				jsonhttp.InternalServerError(w, "increment tag")
+				jsonhttp.InternalServerError(w, tagIncError)
 				return
 			}
 		}
@@ -106,7 +105,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			logger.Debugf("bzz upload file: content length, file %q: %v", fileName, err)
 			logger.Errorf("bzz upload file: content length, file %q", fileName)
-			jsonhttp.BadRequest(w, "invalid content length header")
+			jsonhttp.BadRequest(w, invalidContentLength)
 			return
 		}
 	} else {
@@ -144,7 +143,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: file store, file %q", fileName)
-		jsonhttp.InternalServerError(w, "could not store file data")
+		jsonhttp.InternalServerError(w, fileStoreError)
 		return
 	}
 
@@ -156,41 +155,41 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	encrypt := requestEncrypt(r)
 	l := loadsave.New(s.storer, requestModePut(r), encrypt)
 
-	fileMtdt := map[string]string{
-		manifestEntryMetadataContentTypeKey: contentType,
-		manifestEntryMetadataFilenameKey:    fileName,
-	}
-
-	logger.Debugf("Uploading file Encrypt: %v Filename: %s Filehash: %s FileMtdt: %v",
-		encrypt, fileName, fr.String(), fileMtdt)
-
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
 		logger.Debugf("bzz upload file: create manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: create manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, "could not create file manifest")
+		jsonhttp.InternalServerError(w, manifestCreateError)
 		return
 	}
 
 	rootMetadata := map[string]string{
-		manifestWebsiteIndexDocumentSuffixKey: fileName,
+		manifest.WebsiteIndexDocumentSuffixKey: fileName,
 	}
 
 	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.ZeroAddress, rootMetadata))
 	if err != nil {
 		logger.Debugf("bzz upload file: adding metadata to manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: adding metadata to manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, "could not add file to manifest")
+		jsonhttp.InternalServerError(w, manifestEntryError)
 		return
+	}
+
+	fileMtdt := map[string]string{
+		manifest.EntryMetadataContentTypeKey: contentType,
+		manifest.EntryMetadataFilenameKey:    fileName,
 	}
 
 	err = m.Add(ctx, fileName, manifest.NewEntry(fr, fileMtdt))
 	if err != nil {
 		logger.Debugf("bzz upload file: adding file to manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: adding file to manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, "could not add file to manifest")
+		jsonhttp.InternalServerError(w, manifestEntryError)
 		return
 	}
+
+	logger.Debugf("Uploading file Encrypt: %v Filename: %s Filehash: %s FileMtdt: %v",
+		encrypt, fileName, fr.String(), fileMtdt)
 
 	storeSizeFn := []manifest.StoreSizeFunc{}
 	if !created {
@@ -211,7 +210,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
-		jsonhttp.InternalServerError(w, "could not store manifest")
+		jsonhttp.InternalServerError(w, manifestStoreError)
 		return
 	}
 	logger.Debugf("Manifest Reference: %s", manifestReference.String())
@@ -221,14 +220,14 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			logger.Debugf("bzz upload file: done split: %v", err)
 			logger.Error("bzz upload file: done split failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, tagSplitError)
 			return
 		}
 	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.OK(w, fileUploadResponse{
+	jsonhttp.OK(w, bzzUploadResponse{
 		Reference: manifestReference,
 	})
 }
@@ -256,7 +255,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz download: parse address %s: %v", nameOrHex, err)
 		logger.Error("bzz download: parse address")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.NotFound(w, invalidAddress)
 		return
 	}
 
@@ -269,7 +268,7 @@ FETCH:
 	if err != nil {
 		logger.Debugf("bzz download: not manifest %s: %v", address, err)
 		logger.Error("bzz download: not manifest")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.NotFound(w, manifestGetError)
 		return
 	}
 
@@ -284,20 +283,20 @@ FETCH:
 			if err != nil {
 				logger.Debugf("bzz download: feed lookup: %v", err)
 				logger.Error("bzz download: feed lookup")
-				jsonhttp.NotFound(w, "feed not found")
+				jsonhttp.NotFound(w, feedNotFound)
 				return
 			}
 			if ch == nil {
 				logger.Debugf("bzz download: feed lookup: no updates")
 				logger.Error("bzz download: feed lookup")
-				jsonhttp.NotFound(w, "no update found")
+				jsonhttp.NotFound(w, feedNoUpdate)
 				return
 			}
 			ref, _, err := parseFeedUpdate(ch)
 			if err != nil {
 				logger.Debugf("bzz download: parse feed update: %v", err)
 				logger.Error("bzz download: parse feed update")
-				jsonhttp.InternalServerError(w, "parse feed update")
+				jsonhttp.InternalServerError(w, feedInvalidUpdate)
 				return
 			}
 			address = ref
@@ -306,7 +305,7 @@ FETCH:
 			if err != nil {
 				s.logger.Debugf("bzz download: marshal feed index: %v", err)
 				s.logger.Error("bzz download: marshal index")
-				jsonhttp.InternalServerError(w, "marshal index")
+				jsonhttp.InternalServerError(w, feedMarshalIndexError)
 				return
 			}
 
@@ -323,7 +322,7 @@ FETCH:
 	if pathVar == "" {
 		logger.Tracef("bzz download: handle empty path %s", address)
 
-		if indexDocumentSuffixKey, ok := manifestMetadataLoad(ctx, m, manifestRootPath, manifestWebsiteIndexDocumentSuffixKey); ok {
+		if indexDocumentSuffixKey, ok := manifestMetadataLoad(ctx, m, manifest.RootPath, manifest.WebsiteIndexDocumentSuffixKey); ok {
 			pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
 			indexDocumentManifestEntry, err := m.Lookup(ctx, pathWithIndex)
 			if err == nil {
@@ -361,7 +360,7 @@ FETCH:
 			}
 
 			// check index suffix path
-			if indexDocumentSuffixKey, ok := manifestMetadataLoad(ctx, m, manifestRootPath, manifestWebsiteIndexDocumentSuffixKey); ok {
+			if indexDocumentSuffixKey, ok := manifestMetadataLoad(ctx, m, manifest.RootPath, manifest.WebsiteIndexDocumentSuffixKey); ok {
 				if !strings.HasSuffix(pathVar, indexDocumentSuffixKey) {
 					// check if path is directory with index
 					pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
@@ -377,7 +376,7 @@ FETCH:
 			}
 
 			// check if error document is to be shown
-			if errorDocumentPath, ok := manifestMetadataLoad(ctx, m, manifestRootPath, manifestWebsiteErrorDocumentPathKey); ok {
+			if errorDocumentPath, ok := manifestMetadataLoad(ctx, m, manifest.RootPath, manifest.WebsiteErrorDocumentPathKey); ok {
 				if pathVar != errorDocumentPath {
 					errorDocumentManifestEntry, err := m.Lookup(ctx, errorDocumentPath)
 					if err == nil {
@@ -411,11 +410,11 @@ func (s *server) serveManifestEntry(
 
 	additionalHeaders := http.Header{}
 	mtdt := manifestEntry.Metadata()
-	if fname, ok := mtdt[manifestEntryMetadataFilenameKey]; ok {
+	if fname, ok := mtdt[manifest.EntryMetadataFilenameKey]; ok {
 		additionalHeaders["Content-Disposition"] =
 			[]string{fmt.Sprintf("inline; filename=\"%s\"", fname)}
 	}
-	if mimeType, ok := mtdt[manifestEntryMetadataContentTypeKey]; ok {
+	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
 		additionalHeaders["Content-Type"] = []string{mimeType}
 	}
 
@@ -438,9 +437,9 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 			jsonhttp.NotFound(w, nil)
 			return
 		}
-		logger.Debugf("api download: invalid root chunk %s: %v", reference, err)
-		logger.Error("api download: invalid root chunk")
-		jsonhttp.NotFound(w, nil)
+		logger.Debugf("api download: unexpected error %s: %v", reference, err)
+		logger.Error("api download: unexpected error")
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 

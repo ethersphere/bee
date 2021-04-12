@@ -36,7 +36,6 @@ func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 func TestTags(t *testing.T) {
 	var (
 		bzzResource    = "/bzz"
-		dirResource    = "/dirs"
 		bytesResource  = "/bytes"
 		chunksResource = "/chunks"
 		tagsResource   = "/tags"
@@ -265,7 +264,7 @@ func TestTags(t *testing.T) {
 	t.Run("file tags", func(t *testing.T) {
 		// upload a file without supplying tag
 		expectedHash := swarm.MustParseHexAddress("40e739ebdfd18292925bba4138cd097db9aa18c1b57e74042f48469b48da33a8")
-		expectedResponse := api.FileUploadResponse{Reference: expectedHash}
+		expectedResponse := api.BzzUploadResponse{Reference: expectedHash}
 
 		respHeaders := jsonhttptest.Request(t, client, http.MethodPost,
 			bzzResource+"?name=somefile", http.StatusOK,
@@ -288,10 +287,11 @@ func TestTags(t *testing.T) {
 			name: "binary-file",
 		}})
 		expectedHash := swarm.MustParseHexAddress("42bc27c9137c93705ffbc2945fa1aab0e8e1826f1500b7f06f6e3f86f617213b")
-		expectedResponse := api.FileUploadResponse{Reference: expectedHash}
+		expectedResponse := api.BzzUploadResponse{Reference: expectedHash}
 
-		respHeaders := jsonhttptest.Request(t, client, http.MethodPost, dirResource, http.StatusOK,
+		respHeaders := jsonhttptest.Request(t, client, http.MethodPost, bzzResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(tarReader),
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 		)

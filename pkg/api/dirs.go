@@ -29,32 +29,20 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
-const (
-	contentTypeTar = "application/x-tar"
-)
-
-const (
-	manifestRootPath                      = "/"
-	manifestWebsiteIndexDocumentSuffixKey = "website-index-document"
-	manifestWebsiteErrorDocumentPathKey   = "website-error-document"
-	manifestEntryMetadataContentTypeKey   = "Content-Type"
-	manifestEntryMetadataFilenameKey      = "Filename"
-)
-
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	if r.Body == http.NoBody {
-		logger.Error("dir upload, request has no body")
-		jsonhttp.BadRequest(w, "could not validate request")
+		logger.Error("bzz upload dir: request has no body")
+		jsonhttp.BadRequest(w, invalidRequest)
 		return
 	}
 	contentType := r.Header.Get(contentTypeHeader)
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		logger.Errorf("dir upload, invalid content-type")
-		logger.Debugf("dir upload, invalid content-type err: %v", err)
-		jsonhttp.BadRequest(w, "invalid content-type")
+		logger.Errorf("bzz upload dir: invalid content-type")
+		logger.Debugf("bzz upload dir: invalid content-type err: %v", err)
+		jsonhttp.BadRequest(w, invalidContentType)
 		return
 	}
 
@@ -63,19 +51,19 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	case contentTypeTar:
 		dReader = &tarReader{r: tar.NewReader(r.Body), logger: s.logger}
 	case multiPartFormData:
-		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"]), logger: s.logger}
+		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"])}
 	default:
-		logger.Error("dir upload, invalid content-type for directory upload")
-		jsonhttp.BadRequest(w, "invalid content-type")
+		logger.Error("bzz upload dir: invalid content-type for directory upload")
+		jsonhttp.BadRequest(w, invalidContentType)
 		return
 	}
 	defer r.Body.Close()
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
-		logger.Debugf("dir upload: get or create tag: %v", err)
-		logger.Error("dir upload: get or create tag")
-		jsonhttp.InternalServerError(w, "cannot get or create tag")
+		logger.Debugf("bzz upload dir: get or create tag: %v", err)
+		logger.Error("bzz upload dir: get or create tag")
+		jsonhttp.InternalServerError(w, tagGetError)
 		return
 	}
 
@@ -93,27 +81,27 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		created,
 	)
 	if err != nil {
-		logger.Debugf("dir upload: store dir err: %v", err)
-		logger.Errorf("dir upload: store dir")
-		jsonhttp.InternalServerError(w, "could not store dir")
+		logger.Debugf("bzz upload dir: store dir err: %v", err)
+		logger.Errorf("bzz upload dir: store dir")
+		jsonhttp.InternalServerError(w, directoryStoreError)
 		return
 	}
 	if created {
 		_, err = tag.DoneSplit(reference)
 		if err != nil {
-			logger.Debugf("dir upload: done split: %v", err)
-			logger.Error("dir upload: done split failed")
-			jsonhttp.InternalServerError(w, nil)
+			logger.Debugf("bzz upload dir: done split: %v", err)
+			logger.Error("bzz upload dir: done split failed")
+			jsonhttp.InternalServerError(w, tagSplitError)
 			return
 		}
 	}
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
-	jsonhttp.OK(w, fileUploadResponse{
+	jsonhttp.OK(w, bzzUploadResponse{
 		Reference: reference,
 	})
 }
 
-// storeDir stores all files recursively contained in the directory given as a tar
+// storeDir stores all files recursively contained in the directory given as a tar/multipart
 // it returns the hash for the uploaded manifest corresponding to the uploaded dir
 func storeDir(
 	ctx context.Context,
@@ -167,8 +155,8 @@ func storeDir(
 		logger.Tracef("uploaded dir file %v with reference %v", fileInfo.Path, fileReference)
 
 		fileMtdt := map[string]string{
-			manifestEntryMetadataContentTypeKey: fileInfo.ContentType,
-			manifestEntryMetadataFilenameKey:    fileInfo.Name,
+			manifest.EntryMetadataContentTypeKey: fileInfo.ContentType,
+			manifest.EntryMetadataFilenameKey:    fileInfo.Name,
 		}
 		// add file entry to dir manifest
 		err = dirManifest.Add(ctx, fileInfo.Path, manifest.NewEntry(fileReference, fileMtdt))
@@ -188,13 +176,13 @@ func storeDir(
 	if indexFilename != "" || errorFilename != "" {
 		metadata := map[string]string{}
 		if indexFilename != "" {
-			metadata[manifestWebsiteIndexDocumentSuffixKey] = indexFilename
+			metadata[manifest.WebsiteIndexDocumentSuffixKey] = indexFilename
 		}
 		if errorFilename != "" {
-			metadata[manifestWebsiteErrorDocumentPathKey] = errorFilename
+			metadata[manifest.WebsiteErrorDocumentPathKey] = errorFilename
 		}
 		rootManifestEntry := manifest.NewEntry(swarm.ZeroAddress, metadata)
-		err = dirManifest.Add(ctx, manifestRootPath, rootManifestEntry)
+		err = dirManifest.Add(ctx, manifest.RootPath, rootManifestEntry)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("add to manifest: %w", err)
 		}
@@ -278,9 +266,10 @@ func (t *tarReader) Next() (*FileInfo, error) {
 	}
 }
 
+// multipart reader returns files added as a multipart form. We will ensure all the
+// part headers are passed correctly
 type multipartReader struct {
-	r      *multipart.Reader
-	logger logging.Logger
+	r *multipart.Reader
 }
 
 func (m *multipartReader) Next() (*FileInfo, error) {
@@ -294,30 +283,24 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 		fileName = part.FormName()
 	}
 	if fileName == "" {
-		m.logger.Error("filename missing in multipart request")
 		return nil, errors.New("filename missing")
 	}
 
 	contentType := part.Header.Get(contentTypeHeader)
 	if contentType == "" {
-		m.logger.Error("content-type missing in multipart request")
 		return nil, errors.New("content-type missing")
 	}
 
 	contentLength := part.Header.Get("Content-Length")
 	if contentLength == "" {
-		m.logger.Error("content-length missing in multipart request")
 		return nil, errors.New("content-length missing")
 	}
 	fileSize, err := strconv.ParseInt(contentLength, 10, 64)
 	if err != nil {
-		m.logger.Errorf("Failed to parse content-length %s Err:%s",
-			contentLength, err.Error())
 		return nil, errors.New("invalid file size")
 	}
 
 	if filepath.Dir(fileName) != "." {
-		m.logger.Errorf("Invalid filename for multipart request: %s", fileName)
 		return nil, errors.New("multipart upload supports only single directory")
 	}
 

@@ -74,10 +74,19 @@ func TestBytes(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/0xabcd", http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Not Found",
 				Code:    http.StatusNotFound,
+			}),
+		)
+	})
+
+	t.Run("internal error", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "Internal Server Error",
+				Code:    http.StatusInternalServerError,
 			}),
 		)
 	})

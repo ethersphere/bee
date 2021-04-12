@@ -53,7 +53,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(nil)),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "could not validate request",
+				Message: api.InvalidRequest.Error(),
 				Code:    http.StatusBadRequest,
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -68,7 +68,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestBody(file),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "could not store dir",
+				Message: api.DirectoryStoreError.Error(),
 				Code:    http.StatusInternalServerError,
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -87,7 +87,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid content-type",
+				Message: api.InvalidContentType.Error(),
 				Code:    http.StatusBadRequest,
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", "other"),
@@ -271,14 +271,14 @@ func TestDirs(t *testing.T) {
 			},
 		},
 	} {
-		verify := func(t *testing.T, resp api.FileUploadResponse) {
+		verify := func(t *testing.T, resp api.BzzUploadResponse) {
 			t.Helper()
 			// NOTE: reference will be different each time when encryption is enabled
-			// if !tc.encrypt {
-			// 	if !resp.Reference.Equal(tc.expectedReference) {
-			// 		t.Fatalf("expected root reference to match %s, got %s", tc.expectedReference, resp.Reference)
-			// 	}
-			// }
+			if !tc.encrypt {
+				if !resp.Reference.Equal(tc.expectedReference) {
+					t.Fatalf("expected root reference to match %s, got %s", tc.expectedReference, resp.Reference)
+				}
+			}
 
 			// verify manifest content
 			verifyManifest, err := manifest.NewDefaultManifestReference(
@@ -336,13 +336,13 @@ func TestDirs(t *testing.T) {
 
 			// check index filename
 			if tc.wantIndexFilename != "" {
-				entry, err := verifyManifest.Lookup(ctx, api.ManifestRootPath)
+				entry, err := verifyManifest.Lookup(ctx, manifest.RootPath)
 				if err != nil {
 					t.Fatal(err)
 				}
 
 				manifestRootMetadata := entry.Metadata()
-				indexDocumentSuffixPath, ok := manifestRootMetadata[api.ManifestWebsiteIndexDocumentSuffixKey]
+				indexDocumentSuffixPath, ok := manifestRootMetadata[manifest.WebsiteIndexDocumentSuffixKey]
 				if !ok {
 					t.Fatalf("expected index filename '%s', did not find any", tc.wantIndexFilename)
 				}
@@ -358,13 +358,13 @@ func TestDirs(t *testing.T) {
 
 			// check error filename
 			if tc.wantErrorFilename != "" {
-				entry, err := verifyManifest.Lookup(ctx, api.ManifestRootPath)
+				entry, err := verifyManifest.Lookup(ctx, manifest.RootPath)
 				if err != nil {
 					t.Fatal(err)
 				}
 
 				manifestRootMetadata := entry.Metadata()
-				errorDocumentPath, ok := manifestRootMetadata[api.ManifestWebsiteErrorDocumentPathKey]
+				errorDocumentPath, ok := manifestRootMetadata[manifest.WebsiteErrorDocumentPathKey]
 				if !ok {
 					t.Fatalf("expected error filename '%s', did not find any", tc.wantErrorFilename)
 				}
@@ -379,7 +379,7 @@ func TestDirs(t *testing.T) {
 				// tar all the test case files
 				tarReader := tarFiles(t, tc.files)
 
-				var resp api.FileUploadResponse
+				var resp api.BzzUploadResponse
 
 				options := []jsonhttptest.Option{
 					jsonhttptest.WithRequestBody(tarReader),
@@ -411,7 +411,7 @@ func TestDirs(t *testing.T) {
 					// tar all the test case files
 					mwReader, mwBoundary := multipartFiles(t, tc.files)
 
-					var resp api.FileUploadResponse
+					var resp api.BzzUploadResponse
 
 					options := []jsonhttptest.Option{
 						jsonhttptest.WithRequestBody(mwReader),

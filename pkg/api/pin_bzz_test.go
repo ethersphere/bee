@@ -22,7 +22,7 @@ import (
 
 func TestPinBzzHandler(t *testing.T) {
 	var (
-		dirUploadResource     = "/dirs"
+		dirUploadResource     = "/bzz"
 		pinBzzResource        = "/pin/bzz"
 		pinBzzAddressResource = func(addr string) string { return pinBzzResource + "/" + addr }
 		pinChunksResource     = "/pin/chunks"
@@ -56,7 +56,8 @@ func TestPinBzzHandler(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
-			jsonhttptest.WithExpectedJSONResponse(api.FileUploadResponse{
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 		)
