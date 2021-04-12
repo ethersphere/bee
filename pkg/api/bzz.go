@@ -176,7 +176,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		manifestWebsiteIndexDocumentSuffixKey: fileName,
 	}
 
-	err = m.Add(ctx, "/", manifest.NewEntry(swarm.ZeroAddress, rootMetadata))
+	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.ZeroAddress, rootMetadata))
 	if err != nil {
 		logger.Debugf("bzz upload file: adding metadata to manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: adding metadata to manifest, file %q", fileName)
@@ -428,7 +428,6 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	targets := r.URL.Query().Get("targets")
 	if targets != "" {
 		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
-
 	}
 
 	reader, l, err := joiner.New(r.Context(), s.storer, reference)

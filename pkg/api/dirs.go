@@ -54,7 +54,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Errorf("dir upload, invalid content-type")
 		logger.Debugf("dir upload, invalid content-type err: %v", err)
-		jsonhttp.BadRequest(w, "could not validate request")
+		jsonhttp.BadRequest(w, "invalid content-type")
 		return
 	}
 
@@ -66,7 +66,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"]), logger: s.logger}
 	default:
 		logger.Error("dir upload, invalid content-type for directory upload")
-		jsonhttp.BadRequest(w, "could not validate request")
+		jsonhttp.BadRequest(w, "invalid content-type")
 		return
 	}
 	defer r.Body.Close()

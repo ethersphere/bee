@@ -229,7 +229,7 @@ func TestBzzFiles(t *testing.T) {
 
 // TestRangeRequests validates that all endpoints are serving content with
 // respect to HTTP Range headers.
-func TestRangeRequests(t *testing.T) {
+func TestBzzFilesRangeRequests(t *testing.T) {
 	data := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus dignissim tincidunt orci id aliquam. Praesent eget turpis in lectus semper consectetur et ut nibh. Nam rhoncus, augue sit amet sollicitudin lacinia, turpis tortor molestie urna, at mattis sem sapien sit amet augue. In bibendum ex vel odio dignissim interdum. Quisque hendrerit sapien et porta condimentum. Vestibulum efficitur mauris tellus, eget vestibulum sapien vulputate ac. Proin et vulputate sapien. Duis tincidunt mauris vulputate porta venenatis. Sed dictum aliquet urna, sit amet fermentum velit pellentesque vitae. Nam sed nisi ultrices, volutpat quam et, malesuada sapien. Nunc gravida non orci at rhoncus. Sed vitae dui accumsan, venenatis lectus et, mattis tellus. Proin sed mauris eu mi congue lacinia.")
 
 	uploads := []struct {
@@ -379,7 +379,8 @@ func createRangeHeader(data []byte, ranges [][2]int) (header string, parts [][]b
 		}
 		if r[0] >= 0 && r[1] >= 0 {
 			parts = append(parts, data[r[0]:r[1]])
-			header += fmt.Sprintf("%v-%v", r[0], r[1]-1) // Range: <unit>=<range-start>-<range-end> // end is inclusive
+			// Range: <unit>=<range-start>-<range-end>, end is inclusive
+			header += fmt.Sprintf("%v-%v", r[0], r[1]-1)
 		} else {
 			if r[0] >= 0 {
 				header += strconv.Itoa(r[0]) // Range: <unit>=<range-start>-
@@ -388,9 +389,11 @@ func createRangeHeader(data []byte, ranges [][2]int) (header string, parts [][]b
 			header += "-"
 			if r[1] >= 0 {
 				if r[0] >= 0 {
-					header += strconv.Itoa(r[1] - 1) // Range: <unit>=<range-start>-<range-end> // end is inclusive
+					// Range: <unit>=<range-start>-<range-end>, end is inclusive
+					header += strconv.Itoa(r[1] - 1)
 				} else {
-					header += strconv.Itoa(r[1]) // Range: <unit>=-<suffix-length> // the parameter is length
+					// Range: <unit>=-<suffix-length>, the parameter is length
+					header += strconv.Itoa(r[1])
 				}
 				parts = append(parts, data[:r[1]])
 			}

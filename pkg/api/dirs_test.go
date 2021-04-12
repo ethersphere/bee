@@ -87,7 +87,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "could not validate request",
+				Message: "invalid content-type",
 				Code:    http.StatusBadRequest,
 			}),
 			jsonhttptest.WithRequestHeader("Content-Type", "other"),

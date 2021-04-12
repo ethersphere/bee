@@ -84,9 +84,9 @@ func TestPinFilesHandler(t *testing.T) {
 		}
 		for _, v := range actualResponse.Chunks {
 			if counter, ok := hashes[v.Address.String()]; !ok {
-				t.Fatalf("Found unexpected hash %s", v.Address.String())
+				t.Fatalf("found unexpected hash %s", v.Address.String())
 			} else if uint64(counter) != v.PinCounter {
-				t.Fatalf("Found unexpected Pin counter Expected: %d Found: %d",
+				t.Fatalf("found unexpected pin counter: Expected: %d, Found: %d",
 					counter, v.PinCounter)
 			}
 		}
