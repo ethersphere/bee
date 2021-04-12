@@ -180,7 +180,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return 0, err
 		}
-		item.AccessTimestamp = 1 // prioritize item to be gc-d earlier
+		item.AccessTimestamp = now()
 		err := db.retrievalAccessIndex.PutInBatch(batch, item)
 		if err != nil {
 			return 0, err
@@ -194,7 +194,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 		return 0, fmt.Errorf("postage chunks index: %w", err)
 	}
 	item.Radius = item2.Radius
-	fmt.Println("preserve or cache with radius", item.Radius)
+	//fmt.Println("preserve or cache with radius", item.Radius)
 	return db.preserveOrCache(batch, item, false, false)
 }
 
@@ -343,9 +343,7 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return 0, err
 		}
-		// we dont set AccessTimestamp since it should
-		// already be set through being synced or retrieved
-		// and this just serves as a failsafe.
+		item.AccessTimestamp = now()
 		err = db.retrievalAccessIndex.PutInBatch(batch, item)
 		if err != nil {
 			return 0, err
@@ -353,7 +351,6 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	} else {
 		item.AccessTimestamp = i.AccessTimestamp
 	}
-	fmt.Printf("unpin>%x\n", item.BatchID)
 	err = db.gcIndex.PutInBatch(batch, item)
 	if err != nil {
 		return 0, err

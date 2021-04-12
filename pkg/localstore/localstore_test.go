@@ -325,7 +325,7 @@ func newPushIndexTest(db *DB, ch swarm.Chunk, storeTimestamp int64, wantError er
 
 // newGCIndexTest returns a test function that validates if the right
 // chunk values are in the GC index.
-func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp int64, binID uint64, wantError error) func(t *testing.T) {
+func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp int64, binID uint64, wantError error, stamp *postage.Stamp) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()
 
@@ -338,7 +338,7 @@ func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp i
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, chunk.Address().Bytes(), nil, 0, accessTimestamp, postage.NewStamp(nil, nil))
+			validateItem(t, item, chunk.Address().Bytes(), nil, 0, accessTimestamp, stamp)
 		}
 	}
 }
@@ -424,23 +424,11 @@ func testItemsOrder(t *testing.T, i shed.Index, chunks []testIndexChunk, sortFun
 	}
 
 	var cursor int
-	var search []byte
 	err := i.Iterate(func(item shed.Item) (stop bool, err error) {
-		if search != nil {
-			if !bytes.Equal(search, item.Address) {
-				cursor++
-				return false, nil
-			}
-			fmt.Printf("found in pos %d access: %d, %d, %x, %x\n", cursor, item.AccessTimestamp, item.BinID, item.Address, item.BatchID)
-			return true, fmt.Errorf("wrong address")
-		}
 		want := chunks[cursor].Address()
 		got := item.Address
 		if !bytes.Equal(got, want.Bytes()) {
-			fmt.Printf("access: %d, %d, %x, %x\n", item.AccessTimestamp, item.BinID, item.Address, item.BatchID)
-			search = want.Bytes()
-			fmt.Printf("got address %x at position %v, want %v", got, cursor, want)
-			// return true, fmt.Errorf("got address %x at position %v, want %v", got, cursor, want)
+			return true, fmt.Errorf("got address %x at position %v, want %x", got, cursor, want)
 		}
 		cursor++
 		return false, nil

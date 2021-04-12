@@ -150,13 +150,9 @@ func TestDB_gcIndex(t *testing.T) {
 		newIndexGCSizeTest(db)(t)
 	})
 
-	t.Run("sync and request all chunks", func(t *testing.T) {
+	t.Run("sync all chunks", func(t *testing.T) {
 		for i := range chunks {
 			err := db.Set(context.Background(), storage.ModeSetSync, chunks[i].Address())
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = db.Get(context.Background(), storage.ModeGetRequest, chunks[i].Address())
 			if err != nil {
 				t.Fatal(err)
 			}

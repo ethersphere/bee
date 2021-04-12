@@ -18,7 +18,6 @@ package localstore
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -125,7 +124,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return true, nil
 		}
-		fmt.Printf(">%x\n", item.BatchID)
 		err = db.postageChunksIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return true, nil

@@ -81,21 +81,15 @@ func testDBCollectGarbageWorker(t *testing.T) {
 		// localstore is aware of the batch and the chunk can
 		// be inserted into the database
 		unreserveChunkBatch(t, db, 0, ch)
-		// _, err := db.Put(ctx, storage.ModePutUpload, ch)
-		_, err := db.Put(ctx, storage.ModePutRequest, ch)
+		_, err := db.Put(ctx, storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		// err = db.Set(ctx, storage.ModeSetSync, ch.Address())
-		// if err != nil {
-		// 	t.Fatal(err)
-		// }
-
-		// _, err = db.Get(ctx, storage.ModeGetRequest, ch.Address())
-		// if err != nil {
-		// 	t.Fatal(err)
-		// }
+		err = db.Set(ctx, storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		addrs[i] = ch.Address()
 	}
@@ -117,7 +111,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 		}
 	}
 
-	// t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 

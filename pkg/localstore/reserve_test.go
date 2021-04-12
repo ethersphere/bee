@@ -73,7 +73,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
 
-	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount))
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, int(gcTarget)))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 

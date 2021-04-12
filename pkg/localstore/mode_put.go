@@ -18,6 +18,7 @@ package localstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -236,7 +237,6 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if err != nil {
 		return false, 0, err
 	}
-	fmt.Printf("put->%x\n", item.BatchID)
 
 	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
@@ -310,11 +310,17 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 		return 0, err
 	}
 	if !ok {
-		err = db.gcIndex.PutInBatch(batch, item)
-		if err != nil {
+		exists, err := db.gcIndex.Has(item)
+		if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
 			return 0, err
 		}
-		gcSizeChange++
+		if !exists {
+			err = db.gcIndex.PutInBatch(batch, item)
+			if err != nil {
+				return 0, err
+			}
+			gcSizeChange++
+		}
 	}
 
 	return gcSizeChange, nil
