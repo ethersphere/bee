@@ -63,6 +63,11 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
 			return err
 		}
+		if bin == swarm.MaxPO {
+			if err := db.postageRadiusIndex.DeleteInBatch(batch, item); err != nil {
+				return err
+			}
+		}
 		if err := db.shed.WriteBatch(batch); err != nil {
 			return err
 		}

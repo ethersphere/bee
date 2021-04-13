@@ -19,7 +19,6 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -296,9 +295,11 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 	// item needs to be populated with Radius
 	item2, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
-		return 0, fmt.Errorf("postage radius index: %w", err)
+		// if there's an error, assume the chunk needs to be GCd
+		forceCache = true
+	} else {
+		item.Radius = item2.Radius
 	}
-	item.Radius = item2.Radius
 
 	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
 		return db.setPin(batch, item)
