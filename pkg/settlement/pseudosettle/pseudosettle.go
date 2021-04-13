@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle/headerutils"
 	pb "github.com/ethersphere/bee/pkg/settlement/pseudosettle/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -65,6 +66,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
+				Headler: s.headler,
 			},
 		},
 	}
@@ -82,6 +84,26 @@ func totalKeyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
 		return swarm.ZeroAddress, errors.New("no peer in key")
 	}
 	return swarm.ParseHexAddress(split[1])
+}
+
+func (s *Service) peerAllowance(peer swarm.Address) (limit big.Int, stamp int64) {
+	currentTime := time.Now().Unix()
+	return big.NewInt(10000), currentTime
+}
+
+func (s *Service) settlementAllowedHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
+
+	allowedLimit, timestamp := s.peerAllowance(peerAddress)
+
+	returnHeaders, err = headerutils.MakeSettlementResponseHeaders(allowedLimit, timestamp)
+	if err != nil {
+		return p2p.Headers{
+			"error": []byte("Error creating response allowance headers"),
+		}
+	}
+	s.logger.Debugf("settlement headler: response with allowance as %v, timestamp as %v, for peer %s", allowedLimit, timestamp, peerAddress)
+
+	return returnHeaders
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
