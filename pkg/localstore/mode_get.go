@@ -151,24 +151,28 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 	if err != nil {
 		return err
 	}
-	// update access timestamp
-	item.AccessTimestamp = now()
-	// update retrieve access index
-	err = db.retrievalAccessIndex.PutInBatch(batch, item)
-	if err != nil {
-		return err
-	}
 
-	// add new entry to gc index ONLY if it is not present in pinIndex
-	ok, err := db.pinIndex.Has(item)
-	if err != nil {
-		return err
-	}
-	if !ok {
+	updatedTimestamp := false
+	// update the gc item timestamp in case
+	// it exists
+	_, err = db.gcIndex.Get(item)
+	if err == nil {
+		updatedTimestamp = true
+		item.AccessTimestamp = now()
 		err = db.gcIndex.PutInBatch(batch, item)
 		if err != nil {
 			return err
 		}
+	}
+
+	if !updatedTimestamp {
+		// update access timestamp
+		item.AccessTimestamp = now()
+	}
+	// update retrieve access index
+	err = db.retrievalAccessIndex.PutInBatch(batch, item)
+	if err != nil {
+		return err
 	}
 
 	return db.shed.WriteBatch(batch)

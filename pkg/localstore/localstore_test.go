@@ -172,8 +172,9 @@ func newTestDB(t testing.TB, o *Options) *DB {
 }
 
 var (
-	generateTestRandomChunk  = chunktesting.GenerateTestRandomChunk
-	generateTestRandomChunks = chunktesting.GenerateTestRandomChunks
+	generateTestRandomChunk   = chunktesting.GenerateTestRandomChunk
+	generateTestRandomChunks  = chunktesting.GenerateTestRandomChunks
+	generateTestRandomChunkAt = chunktesting.GenerateTestRandomChunkAt
 )
 
 // chunkAddresses return chunk addresses of provided chunks.
@@ -298,7 +299,7 @@ func newPullIndexTest(db *DB, ch swarm.Chunk, binID uint64, wantError error) fun
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, ch.Address().Bytes(), nil, 0, 0, postage.NewStamp(nil, nil))
+			validateItem(t, item, ch.Address().Bytes(), nil, 0, 0, postage.NewStamp(ch.Stamp().BatchID(), nil))
 		}
 	}
 }
@@ -324,7 +325,7 @@ func newPushIndexTest(db *DB, ch swarm.Chunk, storeTimestamp int64, wantError er
 
 // newGCIndexTest returns a test function that validates if the right
 // chunk values are in the GC index.
-func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp int64, binID uint64, wantError error) func(t *testing.T) {
+func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp int64, binID uint64, wantError error, stamp *postage.Stamp) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()
 
@@ -337,7 +338,7 @@ func newGCIndexTest(db *DB, chunk swarm.Chunk, storeTimestamp, accessTimestamp i
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, chunk.Address().Bytes(), nil, 0, accessTimestamp, postage.NewStamp(nil, nil))
+			validateItem(t, item, chunk.Address().Bytes(), nil, 0, accessTimestamp, stamp)
 		}
 	}
 }

@@ -814,7 +814,7 @@ func TestBatchStore_EvictExpired(t *testing.T) {
 	}
 
 	// expect the 5 to be preserved and the rest to be unreserved
-	checkUnreserved(t, unreserved, batches[:3], swarm.MaxPO)
+	checkUnreserved(t, unreserved, batches[:3], swarm.MaxPO+1)
 	checkUnreserved(t, unreserved, batches[3:], 4)
 
 	// check that the batches is actually deleted from

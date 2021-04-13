@@ -113,7 +113,7 @@ func (s *store) evictExpired() error {
 		}
 
 		// unreserve batch fully
-		err = s.unreserve(b, swarm.MaxPO)
+		err = s.unreserve(b, swarm.MaxPO+1)
 		if err != nil {
 			return true, err
 		}

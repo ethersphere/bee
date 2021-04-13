@@ -258,13 +258,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
-	// register localstore unreserve function on the batchstore before batch service starts listening to blockchain events
 
-	batchStore, err := batchstore.New(stateStore, nil)
+	batchStore, err := batchstore.New(stateStore, storer.UnreserveBatch)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
-
+	validStamp := postage.ValidStamp(batchStore)
 	post := postage.NewService(stateStore, chainID.Int64())
 
 	var postageContractService postagecontract.Interface
@@ -443,14 +442,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
 		recoverFunc := recovery.NewCallback(pssService)
-		ns = netstore.New(storer, recoverFunc, retrieve, logger)
+		ns = netstore.New(storer, validStamp, recoverFunc, retrieve, logger)
 	} else {
-		ns = netstore.New(storer, nil, retrieve, logger)
+		ns = netstore.New(storer, validStamp, nil, retrieve, logger)
 	}
 
 	traversalService := traversal.NewService(ns)
 
-	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, postage.ValidStamp(batchStore), logger, acc, accounting.NewFixedPricer(swarmAddress, 1000000000), tracer)
+	pushSyncProtocol := pushsync.New(p2ps, storer, kad, tagService, pssService.TryUnwrap, validStamp, logger, acc, accounting.NewFixedPricer(swarmAddress, 1000000000), tracer)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -470,7 +469,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSync := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, postage.ValidStamp(batchStore), logger)
+	pullSync := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSync
 
 	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {

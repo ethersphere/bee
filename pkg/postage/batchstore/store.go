@@ -19,17 +19,19 @@ const (
 	reserveStateKey = "batchstore_reserve_"
 )
 
+type unreserveFn func(batchID []byte, radius uint8) error
+
 // store implements postage.Storer
 type store struct {
-	store         storage.StateStorer                      // State store backend to persist batches.
-	cs            *postage.ChainState                      // the chain state
-	rs            *reserveState                            // the reserve state
-	unreserveFunc func(batchID []byte, radius uint8) error // unreserve function
+	store         storage.StateStorer // State store backend to persist batches.
+	cs            *postage.ChainState // the chain state
+	rs            *reserveState       // the reserve state
+	unreserveFunc unreserveFn         // unreserve function
 }
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store
-func New(st storage.StateStorer, unreserveFunc func(batchID []byte, radius uint8) error) (postage.Storer, error) {
+func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -132,7 +134,7 @@ func batchKey(id []byte) string {
 	return batchKeyPrefix + string(id)
 }
 
-// batchKey returns the index key for the batch ID used in the by-ID batch index.
+// valueKey returns the index key for the batch ID used in the by-ID batch index.
 func valueKey(val *big.Int, id []byte) string {
 	value := make([]byte, 32)
 	val.FillBytes(value) // zero-extended big-endian byte slice
