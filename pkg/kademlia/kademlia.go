@@ -555,6 +555,32 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 		shallowestEmpty, noEmptyBins = peers.ShallowestEmpty()
 	)
 
+	shallowestUnsaturated := uint8(0)
+	binCount := 0
+	_ = peers.EachBinRev(func(_ swarm.Address, bin uint8) (bool, bool, error) {
+		if bin == shallowestUnsaturated {
+			binCount++
+			return false, false, nil
+		}
+		if bin > shallowestUnsaturated && binCount < saturationPeers {
+			// this means we have less than saturationPeers in the previous bin
+			// therefore we can return assuming that bin is the unsaturated one.
+			return true, false, nil
+		}
+		// bin > shallowestUnsaturated && binCount >= saturationPeers
+		shallowestUnsaturated = bin
+		binCount = 1
+
+		return false, false, nil
+	})
+
+	// if there are some empty bins and the shallowestEmpty is
+	// smaller than the shallowestUnsaturated then set shallowest
+	// unsaturated to the empty bin.
+	if !noEmptyBins && shallowestEmpty < shallowestUnsaturated {
+		shallowestUnsaturated = shallowestEmpty
+	}
+
 	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
 		peersCtr++
 		if peersCtr >= nnLowWatermark {
@@ -563,12 +589,11 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 		}
 		return false, false, nil
 	})
-
-	if noEmptyBins || shallowestEmpty > candidate {
+	if shallowestUnsaturated > candidate {
 		return candidate
 	}
 
-	return shallowestEmpty
+	return shallowestUnsaturated
 }
 
 // connect connects to a peer and gossips its address to our connected peers,
@@ -889,8 +914,8 @@ func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm
 }
 
 // IsWithinDepth returns if an address is within the neighborhood depth of a node.
-func (k *Kad) IsWithinDepth(adr swarm.Address) bool {
-	return swarm.Proximity(k.base.Bytes(), adr.Bytes()) >= k.NeighborhoodDepth()
+func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
+	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
 }
 
 // // EachNeighbor iterates from closest bin to farthest of the neighborhood peers.

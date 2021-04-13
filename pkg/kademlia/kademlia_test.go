@@ -49,8 +49,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
-		peers                    []swarm.Address
-		binEight                 []swarm.Address
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -58,123 +56,127 @@ func TestNeighborhoodDepth(t *testing.T) {
 	}
 	defer kad.Close()
 
-	for i := 0; i < 8; i++ {
-		addr := test.RandomAddressAt(base, i)
-		peers = append(peers, addr)
-	}
-
+	// add 2 peers in bin 8
 	for i := 0; i < 2; i++ {
 		addr := test.RandomAddressAt(base, 8)
-		binEight = append(binEight, addr)
-	}
-
-	// check empty kademlia depth is 0
-	kDepth(t, kad, 0)
-
-	// add two bin 8 peers, verify depth still 0
-	add(t, signer, kad, ab, binEight, 0, 2)
-	kDepth(t, kad, 0)
-
-	// add two first peers (po0,po1)
-	add(t, signer, kad, ab, peers, 0, 2)
-
-	// wait for 4 connections
-	waitCounter(t, &conns, 4)
-
-	// depth 2 (shallowest empty bin)
-	kDepth(t, kad, 2)
-
-	for i := 2; i < len(peers)-1; i++ {
-		addOne(t, signer, kad, ab, peers[i])
+		addOne(t, signer, kad, ab, addr)
 
 		// wait for one connection
 		waitConn(t, &conns)
+	}
+	// depth is 0
+	kDepth(t, kad, 0)
 
-		// depth is i+1
+	var shallowPeers []swarm.Address
+	// add two first peers (po0,po1)
+	for i := 0; i < 2; i++ {
+		addr := test.RandomAddressAt(base, i)
+		addOne(t, signer, kad, ab, addr)
+		shallowPeers = append(shallowPeers, addr)
+
+		// wait for one connection
+		waitConn(t, &conns)
+	}
+
+	for _, a := range shallowPeers {
+		if !kad.IsWithinDepth(a) {
+			t.Fatal("expected address to be within depth")
+		}
+	}
+
+	// depth 0 - bin 0 is unsaturated
+	kDepth(t, kad, 0)
+
+	for i := 2; i < 8; i++ {
+		addr := test.RandomAddressAt(base, i)
+		addOne(t, signer, kad, ab, addr)
+
+		// wait for one connection
+		waitConn(t, &conns)
+	}
+	// still zero
+	kDepth(t, kad, 0)
+
+	// now add peers from bin 0 and expect the depth
+	// to shift. the depth will be that of the shallowest
+	// unsaturated bin.
+	for i := 0; i < 7; i++ {
+		for j := 0; j < 3; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, signer, kad, ab, addr)
+			waitConn(t, &conns)
+		}
 		kDepth(t, kad, i+1)
 	}
 
-	// the last peer in bin 7 which is empty we insert manually,
-	addOne(t, signer, kad, ab, peers[len(peers)-1])
-	waitConn(t, &conns)
+	// depth is 7 because bin 7 is unsaturated (1 peer)
+	kDepth(t, kad, 7)
 
-	// depth is 8 because we have nnLowWatermark neighbors in bin 8
-	kDepth(t, kad, 8)
+	// expect shallow peers not in depth
 
-	// now add another ONE peer at depth+1, and expect the depth to still
+	for _, a := range shallowPeers {
+		if kad.IsWithinDepth(a) {
+			t.Fatal("expected address to outside of depth")
+		}
+	}
+
+	// now add another ONE peer at depth, and expect the depth to still
 	// stay 8, because the counter for nnLowWatermark would be reached only at the next
 	// depth iteration when calculating depth
-	addr := test.RandomAddressAt(base, 9)
+	addr := test.RandomAddressAt(base, 8)
+	addOne(t, signer, kad, ab, addr)
+	waitConn(t, &conns)
+	kDepth(t, kad, 7)
+
+	// now fill bin 7 so that it is saturated, expect depth 8
+	for i := 0; i < 3; i++ {
+		addr := test.RandomAddressAt(base, 7)
+		addOne(t, signer, kad, ab, addr)
+		waitConn(t, &conns)
+	}
+	kDepth(t, kad, 8)
+
+	// saturate bin 8
+	addr = test.RandomAddressAt(base, 8)
 	addOne(t, signer, kad, ab, addr)
 	waitConn(t, &conns)
 	kDepth(t, kad, 8)
 
+	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
-	for i := 10; i < int(swarm.MaxBins)-1; i++ {
-		addr := test.RandomAddressAt(base, i)
-		addOne(t, signer, kad, ab, addr)
-		waitConn(t, &conns)
-		kDepth(t, kad, i-1)
+	for i := 9; i < int(swarm.MaxBins); i++ {
+		for j := 0; j < 4; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, signer, kad, ab, addr)
+			waitConn(t, &conns)
+			addrs = append(addrs, addr)
+		}
+		kDepth(t, kad, i)
 	}
 
-	// add a whole bunch of peers in bin 13, expect depth to stay at 13
+	// add a whole bunch of peers in bin 15, expect depth to stay at 15
 	for i := 0; i < 15; i++ {
-		addr = test.RandomAddressAt(base, 13)
+		addr = test.RandomAddressAt(base, 15)
 		addOne(t, signer, kad, ab, addr)
 	}
 
 	waitCounter(t, &conns, 15)
-	kDepth(t, kad, 13)
-
-	// add one at 14 - depth should be now 14
-	addr = test.RandomAddressAt(base, 14)
-	addOne(t, signer, kad, ab, addr)
-	kDepth(t, kad, 14)
-
-	addr2 := test.RandomAddressAt(base, 15)
-	addOne(t, signer, kad, ab, addr2)
-	kDepth(t, kad, 14)
-
-	addr3 := test.RandomAddressAt(base, 15)
-	addOne(t, signer, kad, ab, addr3)
 	kDepth(t, kad, 15)
 
-	// now remove that peer and check that the depth is back at 14
-	removeOne(kad, addr3)
+	// remove one at 14, depth should be 14
+	removeOne(kad, addrs[len(addrs)-5])
 	kDepth(t, kad, 14)
 
-	// remove the peer at bin 1, depth should be 1
-	removeOne(kad, peers[1])
-	kDepth(t, kad, 1)
-}
-
-func TestIsWithinDepth(t *testing.T) {
-	var (
-		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
-		peers                    []swarm.Address
-	)
-
-	if err := kad.Start(context.Background()); err != nil {
-		t.Fatal(err)
+	// empty bin 9 and expect depth 9
+	for i := 0; i < 4; i++ {
+		removeOne(kad, addrs[i])
 	}
-	defer kad.Close()
+	kDepth(t, kad, 9)
 
-	for i := 0; i < 15; i++ {
-		addr := test.RandomAddressAt(base, i)
-		peers = append(peers, addr)
+	if !kad.IsWithinDepth(addrs[0]) {
+		t.Fatal("expected address to be within depth")
 	}
 
-	add(t, signer, kad, ab, peers, 0, 15)
-	waitCounter(t, &conns, 15)
-
-	if kad.IsWithinDepth(peers[kad.NeighborhoodDepth()-1]) {
-		t.Fatalf("peer should NOT be in neignborhood")
-	}
-
-	if !kad.IsWithinDepth(peers[kad.NeighborhoodDepth()]) {
-		t.Fatalf("peer should be in neignborhood")
-	}
 }
 
 func TestEachNeighbor(t *testing.T) {
