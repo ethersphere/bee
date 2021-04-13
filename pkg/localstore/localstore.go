@@ -414,10 +414,9 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			return []byte{fields.Radius}, nil
+			return nil, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e.Radius = value[0]
 			return e, nil
 		},
 	})

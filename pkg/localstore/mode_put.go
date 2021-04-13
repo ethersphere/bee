@@ -309,19 +309,21 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 	if err != nil {
 		return 0, err
 	}
-	if !ok {
-		exists, err := db.gcIndex.Has(item)
-		if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
-			return 0, err
-		}
-		if !exists {
-			err = db.gcIndex.PutInBatch(batch, item)
-			if err != nil {
-				return 0, err
-			}
-			gcSizeChange++
-		}
+	if ok {
+		return gcSizeChange, nil
 	}
+	exists, err := db.gcIndex.Has(item)
+	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+		return 0, err
+	}
+	if exists {
+		return 0, nil
+	}
+	err = db.gcIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0, err
+	}
+	gcSizeChange++
 
 	return gcSizeChange, nil
 }

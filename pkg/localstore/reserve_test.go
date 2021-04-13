@@ -206,6 +206,24 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		}
 	}
 
+	var po4Chs []swarm.Chunk
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 4).WithBatch(2, 3)
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		po4Chs = append(po4Chs, ch)
+	}
+
 	var gcChs []swarm.Chunk
 	for i := 0; i < 100; i++ {
 		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
@@ -250,9 +268,9 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount*2+90))
 
-	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90))
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount*2+90))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
 
@@ -269,6 +287,15 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	t.Run("the rest should be accessible", func(t *testing.T) {
 		for _, ch := range gcChs[10:] {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
+			if err != nil {
+				t.Errorf("got error %v but want none", err)
+			}
+		}
+	})
+
+	t.Run("po 4 chunks accessible", func(t *testing.T) {
+		for _, ch := range po4Chs {
 			_, err := db.Get(context.Background(), storage.ModeGetRequest, ch.Address())
 			if err != nil {
 				t.Errorf("got error %v but want none", err)
