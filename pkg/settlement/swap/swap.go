@@ -107,31 +107,31 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) (*big.Int, error) {
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !known {
 		s.logger.Warningf("disconnecting non-swap peer %v", peer)
 		err = s.p2pService.Disconnect(peer)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		return ErrUnknownBeneficary
+		return nil, ErrUnknownBeneficary
 	}
 	balance, err := s.chequebook.Issue(ctx, beneficiary, amount, func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
 	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
 	s.metrics.TotalSent.Add(amountFloat)
 	s.metrics.ChequesSent.Inc()
-	return nil
+	return amount, nil
 }
 
 // SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify

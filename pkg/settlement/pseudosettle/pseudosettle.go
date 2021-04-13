@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"time"
@@ -27,9 +28,16 @@ const (
 	streamName      = "pseudosettle"
 )
 
+const (
+	refreshRate = int64(10000000000000)
+)
+
 var (
 	SettlementReceivedPrefix = "pseudosettle_total_received_"
 	SettlementSentPrefix     = "pseudosettle_total_sent_"
+
+	SettlementReceivedTimestampPrefix = "pseudosettle_timestamp_received_"
+	SettlementSentTimestampPrefix     = "pseudosettle_timestamp_sent_"
 )
 
 type Service struct {
@@ -82,7 +90,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			go stream.FullClose()
 		}
 	}()
 	var req pb.Payment
@@ -91,7 +99,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	s.metrics.TotalReceivedPseudoSettlements.Add(float64(req.Amount))
-	s.logger.Tracef("received payment message from peer %v of %d", p.Address, req.Amount)
+	s.logger.Tracef("pseudosettle received payment message from peer %v of %d", p.Address, req.Amount)
 
 	totalReceived, err := s.TotalReceived(p.Address)
 	if err != nil {
@@ -101,7 +109,36 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		totalReceived = big.NewInt(0)
 	}
 
+	var lastTime int64
+	err = s.store.Get(totalKey(p.Address, SettlementReceivedTimestampPrefix), &lastTime)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
+		lastTime = 0
+	}
+
+	if req.Timestamp <= uint64(lastTime) {
+		return errors.New("pseudosettle time not increasing")
+	}
+
+	currentTime := time.Now().Unix()
+	if math.Abs(float64(currentTime-int64(req.Timestamp))) > 5 {
+		return errors.New("pseudosettle time difference is too big")
+	}
+
+	maxAllowance := (int64(req.Timestamp) - lastTime) * refreshRate
+	if req.Amount > uint64(maxAllowance) {
+		s.logger.Trace("pseudosettle allowance exceeded")
+		return fmt.Errorf("pseudosettle allowance exceeded. amount was %d, should have been %d max", req.Amount, maxAllowance)
+	}
+
 	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), totalReceived.Add(totalReceived, new(big.Int).SetUint64(req.Amount)))
+	if err != nil {
+		return err
+	}
+
+	err = s.store.Put(totalKey(p.Address, SettlementReceivedTimestampPrefix), req.Timestamp)
 	if err != nil {
 		return err
 	}
@@ -110,13 +147,34 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) (*big.Int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	var lastTime int64
+	err := s.store.Get(totalKey(peer, SettlementSentTimestampPrefix), &lastTime)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, err
+		}
+		lastTime = 0
+	}
+
+	currentTime := time.Now().Unix()
+	if currentTime == lastTime {
+		return nil, errors.New("pseudosettle too soon")
+	}
+
+	maxAllowance := (currentTime - lastTime) * refreshRate
+
+	if amount.Int64() > maxAllowance {
+		s.logger.Infof("pseudosettle using reduced settlement %d instead of %d", maxAllowance, amount)
+		amount = new(big.Int).SetInt64(maxAllowance)
+	}
+
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() {
 		if err != nil {
@@ -126,29 +184,36 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		}
 	}()
 
-	s.logger.Tracef("sending payment message to peer %v of %d", peer, amount)
+	s.logger.Tracef("pseudosettle sending payment message to peer %v of %d", peer, amount)
 	w := protobuf.NewWriter(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
-		Amount: amount.Uint64(),
+		Amount:    amount.Uint64(),
+		Timestamp: uint64(currentTime),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	totalSent, err := s.TotalSent(peer)
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			return err
+			return nil, err
 		}
 		totalSent = big.NewInt(0)
 	}
+
 	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent.Add(totalSent, amount))
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	err = s.store.Put(totalKey(peer, SettlementSentTimestampPrefix), currentTime)
+	if err != nil {
+		return nil, err
 	}
 
 	amountFloat, _ := new(big.Float).SetInt(amount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
-	return nil
+	return amount, nil
 }
 
 // SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify

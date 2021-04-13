@@ -116,6 +116,35 @@ func NewAccounting(
 	}, nil
 }
 
+func (a *Accounting) expectedDebt(peer swarm.Address, nextReserved *big.Int) (*big.Int, error) {
+	currentBalance, err := a.Balance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return nil, fmt.Errorf("failed to load balance: %w", err)
+		}
+	}
+
+	expectedBalance := new(big.Int).Sub(currentBalance, nextReserved)
+
+	// Determine if we will owe anything to the peer, if we owe less than 0, we conclude we owe nothing
+	expectedDebt := new(big.Int).Neg(expectedBalance)
+	if expectedDebt.Cmp(big.NewInt(0)) < 0 {
+		expectedDebt.SetInt64(0)
+	}
+
+	additionalDebt, err := a.SurplusBalance(peer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load surplus balance: %w", err)
+	}
+
+	// uint64 conversion of surplusbalance is safe because surplusbalance is always positive
+	if additionalDebt.Cmp(big.NewInt(0)) < 0 {
+		return nil, ErrInvalidValue
+	}
+
+	return new(big.Int).Add(expectedDebt, additionalDebt), nil
+}
+
 // Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
 func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
 	accountingPeer, err := a.getAccountingPeer(peer)
@@ -136,12 +165,9 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	bigPrice := new(big.Int).SetUint64(price)
 	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
 
-	expectedBalance := new(big.Int).Sub(currentBalance, nextReserved)
-
-	// Determine if we will owe anything to the peer, if we owe less than 0, we conclude we owe nothing
-	expectedDebt := new(big.Int).Neg(expectedBalance)
-	if expectedDebt.Cmp(big.NewInt(0)) < 0 {
-		expectedDebt.SetInt64(0)
+	increasedExpectedDebt, err := a.expectedDebt(peer, nextReserved)
+	if err != nil {
+		return err
 	}
 
 	threshold := new(big.Int).Set(accountingPeer.paymentThreshold)
@@ -151,18 +177,6 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		threshold.SetInt64(0)
 	}
 
-	additionalDebt, err := a.SurplusBalance(peer)
-	if err != nil {
-		return fmt.Errorf("failed to load surplus balance: %w", err)
-	}
-
-	// uint64 conversion of surplusbalance is safe because surplusbalance is always positive
-	if additionalDebt.Cmp(big.NewInt(0)) < 0 {
-		return ErrInvalidValue
-	}
-
-	increasedExpectedDebt := new(big.Int).Add(expectedDebt, additionalDebt)
-
 	// If our expected debt is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
@@ -171,10 +185,11 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
 		}
-		// if we settled successfully our balance is back at 0
-		// and the expected debt therefore equals next reserved amount
-		expectedDebt = nextReserved
-		increasedExpectedDebt = new(big.Int).Add(expectedDebt, additionalDebt)
+
+		increasedExpectedDebt, err = a.expectedDebt(peer, nextReserved)
+		if err != nil {
+			return err
+		}
 	}
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
@@ -271,7 +286,7 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
-	err = a.settlement.Pay(ctx, peer, paymentAmount)
+	settledAmount, err := a.settlement.Pay(ctx, peer, paymentAmount)
 	if err != nil {
 		err = fmt.Errorf("settlement for amount %d failed: %w", paymentAmount, err)
 		// If the payment didn't succeed we should restore the old balance in
@@ -280,6 +295,14 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 			a.logger.Errorf("failed to restore balance after failed settlement for peer %v: %v", peer, storeErr)
 		}
 		return err
+	}
+
+	if settledAmount.Cmp(paymentAmount) != 0 {
+		a.logger.Tracef("different payment amount. balancee change from %d to %d", oldBalance, new(big.Int).Add(oldBalance, settledAmount))
+		err = a.store.Put(peerBalanceKey(peer), oldBalance.Add(oldBalance, settledAmount))
+		if err != nil {
+			return fmt.Errorf("failed to persist balance: %w", err)
+		}
 	}
 
 	return nil
@@ -583,25 +606,27 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 		if !errors.Is(err, ErrPeerNoBalance) {
 			return err
 		}
-
 	}
-	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
-	if currentBalance.Cmp(big.NewInt(0)) <= 0 {
-		surplus, err := a.SurplusBalance(peer)
-		if err != nil {
-			return fmt.Errorf("failed to get surplus balance: %w", err)
+
+	/*
+		// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
+		if currentBalance.Cmp(big.NewInt(0)) <= 0 {
+			surplus, err := a.SurplusBalance(peer)
+			if err != nil {
+				return fmt.Errorf("failed to get surplus balance: %w", err)
+			}
+			increasedSurplus := new(big.Int).Add(surplus, amount)
+
+			a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, amount, increasedSurplus)
+
+			err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
+			if err != nil {
+				return fmt.Errorf("failed to persist surplus balance: %w", err)
+			}
+
+			return nil
 		}
-		increasedSurplus := new(big.Int).Add(surplus, amount)
-
-		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, amount, increasedSurplus)
-
-		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
-		if err != nil {
-			return fmt.Errorf("failed to persist surplus balance: %w", err)
-		}
-
-		return nil
-	}
+	*/
 
 	// if current balance is positive, let's make a partial credit to
 	newBalance := new(big.Int).Sub(currentBalance, amount)
@@ -615,6 +640,11 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 	}
 
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+
+	if newBalance.Cmp(big.NewInt(0)) < 0 {
+		a.logger.Error("rejecting payment")
+		return fmt.Errorf("rejecting incoming surplus balance. new balance would have been %d", newBalance)
+	}
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
