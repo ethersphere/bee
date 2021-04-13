@@ -21,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pricer"
-	"github.com/ethersphere/bee/pkg/pricer/headerutils"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -81,7 +80,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
-				Headler: s.pricer.PriceHeadler,
 			},
 		},
 	}
@@ -207,19 +205,12 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	// compute the price we presume to pay for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
-	headers, err := headerutils.MakePricingHeaders(chunkPrice, addr)
-	if err != nil {
-		return nil, swarm.Address{}, err
-	}
-
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
-	stream, err := s.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
-
-	returnedHeaders := stream.Headers()
 
 	defer func() {
 		if err != nil {
@@ -228,20 +219,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 			go stream.FullClose()
 		}
 	}()
-
-	_, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
-	if err != nil {
-		return nil, peer, fmt.Errorf("retrieval headers: read returned: %w", err)
-	}
-
-	// check if returned price matches presumed price, if not, update price
-	if returnedPrice != chunkPrice {
-		err = s.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
-		if err != nil {
-			return nil, peer, err
-		}
-		chunkPrice = returnedPrice
-	}
 
 	// Reserve to see whether we can request the chunk based on actual price
 	err = s.accounting.Reserve(ctx, peer, chunkPrice)
@@ -383,15 +360,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
-	// to get price Read in headler,
-	returnedHeaders := stream.ResponseHeaders()
-	chunkPrice, err := headerutils.ParsePriceHeader(returnedHeaders)
+	chunkPrice := s.pricer.Price(chunk.Address())
 
-	if err != nil {
-		// if not found in returned header, compute the price we charge for this chunk and
-		s.logger.Warningf("retrieval: peer %v no price in previously issued response headers: %v", p.Address, err)
-		chunkPrice = s.pricer.PriceForPeer(p.Address, chunk.Address())
-	}
 	// debit price from p's balance
 	return s.accounting.Debit(p.Address, chunkPrice)
 }

@@ -324,11 +324,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
 
-	pricer := pricer.New(logger, stateStore, swarmAddress, 1000000000)
-	pricer.SetTopology(kad)
+	pricer := pricer.NewFixedPricer(swarmAddress, 1000000000)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, pricer)
-	pricing.SetPriceTableObserver(pricer)
+	pricing := pricing.New(p2ps, logger, paymentThreshold)
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)

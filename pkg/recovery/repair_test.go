@@ -220,7 +220,7 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 	mockStorer := storemock.NewStorer()
 	serverMockAccounting := accountingmock.NewAccounting()
 
-	pricerMock := pricermock.NewMockService()
+	pricerMock := pricermock.NewMockService(10, 10)
 	peerID := swarm.MustParseHexAddress("deadbeef")
 	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 		_, _, _ = f(peerID, 0)

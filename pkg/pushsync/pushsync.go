@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pricer"
-	"github.com/ethersphere/bee/pkg/pricer/headerutils"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -98,7 +97,6 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
-				Headler: s.pricer.PriceHeadler,
 			},
 		},
 	}
@@ -134,14 +132,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return swarm.ErrInvalidChunk
 	}
 
-	// Get price we charge for upstream peer read at headler.
-	responseHeaders := stream.ResponseHeaders()
-	price, err := headerutils.ParsePriceHeader(responseHeaders)
-	// if not found in returned header, compute the price we charge for this chunk.
-	if err != nil {
-		ps.logger.Warningf("pushsync: peer %v no price in previously issued response headers: %v", p.Address, err)
-		price = ps.pricer.PriceForPeer(p.Address, chunk.Address())
-	}
+	price := ps.pricer.Price(chunk.Address())
 
 	// if the peer is closer to the chunk, we were selected for replication. Return early.
 	if dcmp, _ := swarm.DistanceCmp(chunk.Address().Bytes(), p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
@@ -153,6 +144,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			return ps.accounting.Debit(p.Address, price)
 		}
+		fmt.Println("YAY")
+		fmt.Println(ps.address)
 
 		return ErrOutOfDepthReplication
 	}
@@ -204,33 +197,21 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					}()
 
 					// price for neighborhood replication
-					const receiptPrice uint64 = 0
+					receiptPrice := ps.pricer.PeerPrice(peer, chunk.Address())
 
-					headers, err := headerutils.MakePricingHeaders(receiptPrice, chunk.Address())
+					err = ps.accounting.Reserve(ctx, peer, receiptPrice)
 					if err != nil {
-						err = fmt.Errorf("make pricing headers: %w", err)
+						err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
 						return
 					}
+					defer ps.accounting.Release(peer, receiptPrice)
 
-					streamer, err := ps.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
+					streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 					if err != nil {
 						err = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 						return
 					}
 					defer streamer.Close()
-
-					returnedHeaders := streamer.Headers()
-					_, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
-					if err != nil {
-						err = fmt.Errorf("push price headers read returned: %w", err)
-						return
-					}
-
-					// check if returned price matches presumed price, if not, return early.
-					if returnedPrice != receiptPrice {
-						err = ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex)
-						return
-					}
 
 					w := protobuf.NewWriter(streamer)
 					ctx, cancel := context.WithTimeout(ctx, timeToWaitForPushsyncToNeighbor)
@@ -244,6 +225,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						_ = streamer.Reset()
 						return
 					}
+
+					_ = ps.accounting.Credit(peer, receiptPrice)
 
 				}(peer)
 
@@ -341,32 +324,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		// compute the price we pay for this receipt and reserve it for the rest of this function
 		receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
-		headers, err := headerutils.MakePricingHeaders(receiptPrice, ch.Address())
-		if err != nil {
-			return nil, err
-		}
-
-		streamer, err := ps.streamer.NewStream(ctx, peer, headers, protocolName, protocolVersion, streamName)
+		streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 		if err != nil {
 			lastErr = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 			continue
 		}
 		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
-
-		returnedHeaders := streamer.Headers()
-		_, returnedPrice, returnedIndex, err := headerutils.ParsePricingResponseHeaders(returnedHeaders)
-		if err != nil {
-			return nil, fmt.Errorf("push price headers: read returned: %w", err)
-		}
-
-		// check if returned price matches presumed price, if not, update price
-		if returnedPrice != receiptPrice {
-			err = ps.pricer.NotifyPeerPrice(peer, returnedPrice, returnedIndex) // save priceHeaders["price"] corresponding row for peer
-			if err != nil {
-				return nil, err
-			}
-			receiptPrice = returnedPrice
-		}
 
 		// Reserve to see whether we can make the request based on actual price
 		err = ps.accounting.Reserve(ctx, peer, receiptPrice)
