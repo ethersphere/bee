@@ -15,7 +15,7 @@ import (
 
 // UnreserveBatch atomically unpins chunks of a batch in proximity order upto and including po.
 // Unpinning will result in all chunks with pincounter 0 to be put in the gc index
-// so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able
+// so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able.
 func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()

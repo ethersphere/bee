@@ -153,6 +153,8 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 	}
 
 	updatedTimestamp := false
+	// update the gc item timestamp in case
+	// it exists
 	_, err = db.gcIndex.Get(item)
 	if err == nil {
 		updatedTimestamp = true
