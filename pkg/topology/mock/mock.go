@@ -18,6 +18,7 @@ type mock struct {
 	closestPeerErr  error
 	peersErr        error
 	addPeersErr     error
+	isWithinFunc    func(c swarm.Address) bool
 	marshalJSONFunc func() ([]byte, error)
 	mtx             sync.Mutex
 }
@@ -49,6 +50,12 @@ func WithClosestPeerErr(err error) Option {
 func WithMarshalJSONFunc(f func() ([]byte, error)) Option {
 	return optionFunc(func(d *mock) {
 		d.marshalJSONFunc = f
+	})
+}
+
+func WithIsWithinFunc(f func(swarm.Address) bool) Option {
+	return optionFunc(func(d *mock) {
+		d.isWithinFunc = f
 	})
 }
 
@@ -139,6 +146,9 @@ func (*mock) NeighborhoodDepth() uint8 {
 }
 
 func (m *mock) IsWithinDepth(addr swarm.Address) bool {
+	if m.isWithinFunc != nil {
+		return m.isWithinFunc(addr)
+	}
 	return false
 }
 
