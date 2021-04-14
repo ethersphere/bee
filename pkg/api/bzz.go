@@ -76,7 +76,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: get or create tag: %v", err)
 		logger.Error("bzz upload file: get or create tag")
-		jsonhttp.InternalServerError(w, tagGetError)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 
@@ -87,7 +87,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				s.logger.Debugf("bzz upload file: increment tag: %v", err)
 				s.logger.Error("bzz upload file: increment tag")
-				jsonhttp.InternalServerError(w, tagIncError)
+				jsonhttp.InternalServerError(w, nil)
 				return
 			}
 		}
@@ -159,7 +159,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: create manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: create manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, manifestCreateError)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 
@@ -171,7 +171,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: adding metadata to manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: adding metadata to manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, manifestEntryError)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 
@@ -184,7 +184,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: adding file to manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: adding file to manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, manifestEntryError)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 
@@ -210,7 +210,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
-		jsonhttp.InternalServerError(w, manifestStoreError)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 	logger.Debugf("Manifest Reference: %s", manifestReference.String())
@@ -220,7 +220,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			logger.Debugf("bzz upload file: done split: %v", err)
 			logger.Error("bzz upload file: done split failed")
-			jsonhttp.InternalServerError(w, tagSplitError)
+			jsonhttp.InternalServerError(w, nil)
 			return
 		}
 	}
@@ -255,7 +255,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz download: parse address %s: %v", nameOrHex, err)
 		logger.Error("bzz download: parse address")
-		jsonhttp.NotFound(w, invalidAddress)
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
@@ -268,7 +268,7 @@ FETCH:
 	if err != nil {
 		logger.Debugf("bzz download: not manifest %s: %v", address, err)
 		logger.Error("bzz download: not manifest")
-		jsonhttp.NotFound(w, manifestGetError)
+		jsonhttp.NotFound(w, nil)
 		return
 	}
 
@@ -283,20 +283,20 @@ FETCH:
 			if err != nil {
 				logger.Debugf("bzz download: feed lookup: %v", err)
 				logger.Error("bzz download: feed lookup")
-				jsonhttp.NotFound(w, feedNotFound)
+				jsonhttp.NotFound(w, "feed not found")
 				return
 			}
 			if ch == nil {
 				logger.Debugf("bzz download: feed lookup: no updates")
 				logger.Error("bzz download: feed lookup")
-				jsonhttp.NotFound(w, feedNoUpdate)
+				jsonhttp.NotFound(w, "no update found")
 				return
 			}
 			ref, _, err := parseFeedUpdate(ch)
 			if err != nil {
 				logger.Debugf("bzz download: parse feed update: %v", err)
 				logger.Error("bzz download: parse feed update")
-				jsonhttp.InternalServerError(w, feedInvalidUpdate)
+				jsonhttp.InternalServerError(w, "parse feed update")
 				return
 			}
 			address = ref
@@ -305,7 +305,7 @@ FETCH:
 			if err != nil {
 				s.logger.Debugf("bzz download: marshal feed index: %v", err)
 				s.logger.Error("bzz download: marshal index")
-				jsonhttp.InternalServerError(w, feedMarshalIndexError)
+				jsonhttp.InternalServerError(w, "marshal index")
 				return
 			}
 
@@ -445,14 +445,7 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 
 	// include additional headers
 	for name, values := range additionalHeaders {
-		var v string
-		for _, value := range values {
-			if v != "" {
-				v += "; "
-			}
-			v += value
-		}
-		w.Header().Set(name, v)
+		w.Header().Set(name, strings.Join(values, "; "))
 	}
 	if etag {
 		w.Header().Set("ETag", fmt.Sprintf("%q", reference))

@@ -63,7 +63,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload dir: get or create tag: %v", err)
 		logger.Error("bzz upload dir: get or create tag")
-		jsonhttp.InternalServerError(w, tagGetError)
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 
@@ -91,7 +91,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			logger.Debugf("bzz upload dir: done split: %v", err)
 			logger.Error("bzz upload dir: done split failed")
-			jsonhttp.InternalServerError(w, tagSplitError)
+			jsonhttp.InternalServerError(w, nil)
 			return
 		}
 	}
