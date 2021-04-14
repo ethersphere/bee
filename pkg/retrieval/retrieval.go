@@ -202,7 +202,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 
 	sp.Add(peer)
 
-	// compute the price we presume to pay for this chunk for price header
+	// compute the peer's price for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
@@ -220,7 +220,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		}
 	}()
 
-	// Reserve to see whether we can request the chunk based on actual price
+	// Reserve to see whether we can request the chunk
 	err = s.accounting.Reserve(ctx, peer, chunkPrice)
 	if err != nil {
 		return nil, peer, err

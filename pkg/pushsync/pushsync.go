@@ -331,7 +331,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 		}
 		deferFuncs = append(deferFuncs, func() { go streamer.FullClose() })
 
-		// Reserve to see whether we can make the request based on actual price
+		// Reserve to see whether we can make the request
 		err = ps.accounting.Reserve(ctx, peer, receiptPrice)
 		if err != nil {
 			return nil, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
