@@ -226,9 +226,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					}
 
 					err = ps.accounting.Credit(peer, receiptPrice)
-					if err != nil {
-						ps.logger.Errorf("pushsync: crediting neighborhood peer: %w", err)
-					}
 
 				}(peer)
 
