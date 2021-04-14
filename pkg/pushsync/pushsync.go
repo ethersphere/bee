@@ -199,6 +199,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					// price for neighborhood replication
 					receiptPrice := ps.pricer.PeerPrice(peer, chunk.Address())
 
+					ctx, cancel := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+					defer cancel()
+
 					err = ps.accounting.Reserve(ctx, peer, receiptPrice)
 					if err != nil {
 						err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
@@ -214,8 +217,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					defer streamer.Close()
 
 					w := protobuf.NewWriter(streamer)
-					ctx, cancel := context.WithTimeout(ctx, timeToWaitForPushsyncToNeighbor)
-					defer cancel()
 
 					err = w.WriteMsgWithContext(ctx, &pb.Delivery{
 						Address: chunk.Address().Bytes(),
