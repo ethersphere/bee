@@ -23,8 +23,7 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type AnnouncePaymentThreshold struct {
-	PaymentThreshold []byte   `protobuf:"bytes,1,opt,name=PaymentThreshold,proto3" json:"PaymentThreshold,omitempty"`
-	ProximityPrice   []uint64 `protobuf:"varint,2,rep,packed,name=ProximityPrice,proto3" json:"ProximityPrice,omitempty"`
+	PaymentThreshold []byte `protobuf:"bytes,1,opt,name=PaymentThreshold,proto3" json:"PaymentThreshold,omitempty"`
 }
 
 func (m *AnnouncePaymentThreshold) Reset()         { *m = AnnouncePaymentThreshold{} }
@@ -67,13 +66,6 @@ func (m *AnnouncePaymentThreshold) GetPaymentThreshold() []byte {
 	return nil
 }
 
-func (m *AnnouncePaymentThreshold) GetProximityPrice() []uint64 {
-	if m != nil {
-		return m.ProximityPrice
-	}
-	return nil
-}
-
 func init() {
 	proto.RegisterType((*AnnouncePaymentThreshold)(nil), "pricing.AnnouncePaymentThreshold")
 }
@@ -81,17 +73,15 @@ func init() {
 func init() { proto.RegisterFile("pricing.proto", fileDescriptor_ec4cc93d045d43d0) }
 
 var fileDescriptor_ec4cc93d045d43d0 = []byte{
-	// 150 bytes of a gzipped FileDescriptorProto
+	// 122 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x2d, 0x28, 0xca, 0x4c,
-	0xce, 0xcc, 0x4b, 0xd7, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x87, 0x72, 0x95, 0xf2, 0xb8,
+	0xce, 0xcc, 0x4b, 0xd7, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x87, 0x72, 0x95, 0xdc, 0xb8,
 	0x24, 0x1c, 0xf3, 0xf2, 0xf2, 0x4b, 0xf3, 0x92, 0x53, 0x03, 0x12, 0x2b, 0x73, 0x53, 0xf3, 0x4a,
 	0x42, 0x32, 0x8a, 0x52, 0x8b, 0x33, 0xf2, 0x73, 0x52, 0x84, 0xb4, 0xb8, 0x04, 0xd0, 0xc5, 0x24,
-	0x18, 0x15, 0x18, 0x35, 0x78, 0x82, 0x30, 0xc4, 0x85, 0xd4, 0xb8, 0xf8, 0x02, 0x8a, 0xf2, 0x2b,
-	0x32, 0x73, 0x33, 0x4b, 0x2a, 0x03, 0x8a, 0x32, 0x93, 0x53, 0x25, 0x98, 0x14, 0x98, 0x35, 0x58,
-	0x82, 0xd0, 0x44, 0x9d, 0x64, 0x4e, 0x3c, 0x92, 0x63, 0xbc, 0xf0, 0x48, 0x8e, 0xf1, 0xc1, 0x23,
-	0x39, 0xc6, 0x09, 0x8f, 0xe5, 0x18, 0x2e, 0x3c, 0x96, 0x63, 0xb8, 0xf1, 0x58, 0x8e, 0x21, 0x8a,
-	0xa9, 0x20, 0x29, 0x89, 0x0d, 0xec, 0x3a, 0x63, 0x40, 0x00, 0x00, 0x00, 0xff, 0xff, 0x90, 0x49,
-	0x1c, 0x6f, 0xae, 0x00, 0x00, 0x00,
+	0x18, 0x15, 0x18, 0x35, 0x78, 0x82, 0x30, 0xc4, 0x9d, 0x64, 0x4e, 0x3c, 0x92, 0x63, 0xbc, 0xf0,
+	0x48, 0x8e, 0xf1, 0xc1, 0x23, 0x39, 0xc6, 0x09, 0x8f, 0xe5, 0x18, 0x2e, 0x3c, 0x96, 0x63, 0xb8,
+	0xf1, 0x58, 0x8e, 0x21, 0x8a, 0xa9, 0x20, 0x29, 0x89, 0x0d, 0x6c, 0xab, 0x31, 0x20, 0x00, 0x00,
+	0xff, 0xff, 0x50, 0xca, 0x0e, 0x0a, 0x86, 0x00, 0x00, 0x00,
 }
 
 func (m *AnnouncePaymentThreshold) Marshal() (dAtA []byte, err error) {
@@ -114,24 +104,6 @@ func (m *AnnouncePaymentThreshold) MarshalToSizedBuffer(dAtA []byte) (int, error
 	_ = i
 	var l int
 	_ = l
-	if len(m.ProximityPrice) > 0 {
-		dAtA2 := make([]byte, len(m.ProximityPrice)*10)
-		var j1 int
-		for _, num := range m.ProximityPrice {
-			for num >= 1<<7 {
-				dAtA2[j1] = uint8(uint64(num)&0x7f | 0x80)
-				num >>= 7
-				j1++
-			}
-			dAtA2[j1] = uint8(num)
-			j1++
-		}
-		i -= j1
-		copy(dAtA[i:], dAtA2[:j1])
-		i = encodeVarintPricing(dAtA, i, uint64(j1))
-		i--
-		dAtA[i] = 0x12
-	}
 	if len(m.PaymentThreshold) > 0 {
 		i -= len(m.PaymentThreshold)
 		copy(dAtA[i:], m.PaymentThreshold)
@@ -162,13 +134,6 @@ func (m *AnnouncePaymentThreshold) Size() (n int) {
 	l = len(m.PaymentThreshold)
 	if l > 0 {
 		n += 1 + l + sovPricing(uint64(l))
-	}
-	if len(m.ProximityPrice) > 0 {
-		l = 0
-		for _, e := range m.ProximityPrice {
-			l += sovPricing(uint64(e))
-		}
-		n += 1 + sovPricing(uint64(l)) + l
 	}
 	return n
 }
@@ -242,82 +207,6 @@ func (m *AnnouncePaymentThreshold) Unmarshal(dAtA []byte) error {
 				m.PaymentThreshold = []byte{}
 			}
 			iNdEx = postIndex
-		case 2:
-			if wireType == 0 {
-				var v uint64
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return ErrIntOverflowPricing
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					v |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				m.ProximityPrice = append(m.ProximityPrice, v)
-			} else if wireType == 2 {
-				var packedLen int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return ErrIntOverflowPricing
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					packedLen |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				if packedLen < 0 {
-					return ErrInvalidLengthPricing
-				}
-				postIndex := iNdEx + packedLen
-				if postIndex < 0 {
-					return ErrInvalidLengthPricing
-				}
-				if postIndex > l {
-					return io.ErrUnexpectedEOF
-				}
-				var elementCount int
-				var count int
-				for _, integer := range dAtA[iNdEx:postIndex] {
-					if integer < 128 {
-						count++
-					}
-				}
-				elementCount = count
-				if elementCount != 0 && len(m.ProximityPrice) == 0 {
-					m.ProximityPrice = make([]uint64, 0, elementCount)
-				}
-				for iNdEx < postIndex {
-					var v uint64
-					for shift := uint(0); ; shift += 7 {
-						if shift >= 64 {
-							return ErrIntOverflowPricing
-						}
-						if iNdEx >= l {
-							return io.ErrUnexpectedEOF
-						}
-						b := dAtA[iNdEx]
-						iNdEx++
-						v |= uint64(b&0x7F) << shift
-						if b < 0x80 {
-							break
-						}
-					}
-					m.ProximityPrice = append(m.ProximityPrice, v)
-				}
-			} else {
-				return fmt.Errorf("proto: wrong wireType = %d for field ProximityPrice", wireType)
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPricing(dAtA[iNdEx:])
