@@ -30,6 +30,10 @@ dist:
 beekeeper:
 	test -f $(BEEKEEPER) || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
 
+.PHONY: beelocal
+beelocal:
+	curl -sSfL https://raw.githubusercontent.com/ethersphere/beelocal/main/beelocal.sh | bash
+
 .PHONY: lint
 lint: linter
 	$(GOLANGCI_LINT) run
