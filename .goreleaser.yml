@@ -230,6 +230,7 @@ brews:
 dockers:
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-amd64"
+  - "quay.io/ethersphere/bee:{{ .Version }}-amd64"
   use_buildx: true
   ids:
     - linux
@@ -244,6 +245,7 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-armv7"
+  - "quay.io/ethersphere/bee:{{ .Version }}-armv7"
   use_buildx: true
   ids:
     - linux
@@ -259,6 +261,7 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-arm64v8"
+  - "quay.io/ethersphere/bee:{{ .Version }}-arm64v8"
   use_buildx: true
   ids:
     - linux
@@ -297,3 +300,28 @@ docker_manifests:
   - ethersphere/bee:{{ .Version }}-amd64
   - ethersphere/bee:{{ .Version }}-armv7
   - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:{{ .Major }}
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:latest
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:beta
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8

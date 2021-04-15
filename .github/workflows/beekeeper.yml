@@ -140,8 +140,11 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         run: |
           docker tag registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
+          docker tag registry.localhost:5000/ethersphere/bee:latest quay.io/ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
           docker push ethersphere/bee:latest
+          docker push quay.io/ethersphere/bee:latest
           echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
       - name: Set IMAGE_DIGEST variable
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
