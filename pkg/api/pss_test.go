@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -391,7 +392,7 @@ func newMockPss(f pssSendFn) *mpss {
 }
 
 // Send arbitrary byte slice with the given topic to Targets.
-func (m *mpss) Send(ctx context.Context, topic pss.Topic, payload []byte, recipient *ecdsa.PublicKey, targets pss.Targets) error {
+func (m *mpss) Send(ctx context.Context, topic pss.Topic, payload []byte, _ postage.Stamper, recipient *ecdsa.PublicKey, targets pss.Targets) error {
 	chunk, err := pss.Wrap(ctx, topic, payload, recipient, targets)
 	if err != nil {
 		return err

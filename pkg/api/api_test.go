@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -242,52 +243,48 @@ func TestPostageHeaderError(t *testing.T) {
 	var (
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(ioutil.Discard, 0)
+		logger         = logging.New(ioutil.Discard, 5)
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logger,
 		})
+
+		batchInvalid = []byte{0}
+		batchOk      = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} //32 bytes - ok
+		batchEmpty   = []byte{}
+
+		endpoints = []string{
+			"bytes", "bzz", "chunks",
+		}
 	)
 
-	for _, tc := range []struct {
-		name     string
-		endpoint string
-		batchId  []byte
-		expErr   bool
-	}{
-		{
-			name:     "bytes",
-			endpoint: "/bytes",
-			batchId:  []byte{0},
-			expErr:   true,
-		},
-		{
-			name:     "bytes",
-			endpoint: "/bytes",
-			batchId:  []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //32 bytes - ok
-		},
-		{
-			name:     "bytes",
-			endpoint: "/bytes",
-			batchId:  []byte{}, // empty batch id falls back to the default zero batch id, so expect 200 OK. This will change once we do not fall back to a default value
-		},
-		{
-			name:     "bzz",
-			endpoint: "/bzz",
-			batchId:  []byte{0},
-			expErr:   true,
-		},
-	} {
-
-		t.Run(tc.name, func(t *testing.T) {
-			hexbatch := hex.EncodeToString(tc.batchId)
+	for _, endpoint := range endpoints {
+		t.Run(endpoint+": empty batch", func(t *testing.T) {
+			hexbatch := hex.EncodeToString(batchEmpty)
 			expCode := http.StatusOK
-			if tc.expErr {
-				expCode = http.StatusBadRequest
-			}
-			jsonhttptest.Request(t, client, http.MethodPost, tc.endpoint, expCode,
+			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0, 0, 0, 0, 0, 0, 0, 0})),
+			)
+		})
+		t.Run(endpoint+": all zeros - ok", func(t *testing.T) {
+			hexbatch := hex.EncodeToString(batchOk)
+			expCode := http.StatusOK
+			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0, 0, 0, 0, 0, 0, 0, 0})),
+			)
+		})
+		t.Run(endpoint+": bad batch", func(t *testing.T) {
+			hexbatch := hex.EncodeToString(batchInvalid)
+			expCode := http.StatusBadRequest
+			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0, 0, 0, 0, 0, 0, 0, 0})),
 			)
 		})
 	}

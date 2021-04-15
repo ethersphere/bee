@@ -24,13 +24,14 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
-func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
+func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	if r.Body == http.NoBody {
 		logger.Error("bzz upload dir: request has no body")
@@ -70,29 +71,13 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	batch, err := requestPostageBatchId(r)
-	if err != nil {
-		logger.Debugf("dir upload: postage batch id:%v", err)
-		logger.Error("dir upload: postage batch id")
-		jsonhttp.InternalServerError(w, nil)
-		return
-	}
-
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
-	if err != nil {
-		logger.Debugf("dirs upload: putter:%v", err)
-		logger.Error("dirs upload: putter")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
-
 	reference, err := storeDir(
 		ctx,
 		requestEncrypt(r),
 		dReader,
 		s.logger,
-		requestPipelineFn(putter, r),
-		loadsave.New(putter, requestModePut(r), requestEncrypt(r)),
+		requestPipelineFn(storer, r),
+		loadsave.New(storer, requestModePut(r), requestEncrypt(r)),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
 		tag,
