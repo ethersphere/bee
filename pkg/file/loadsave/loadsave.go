@@ -11,17 +11,22 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type PutGetter interface {
+	storage.Putter
+	storage.Getter
+}
+
 // loadSave is needed for manifest operations and provides
 // simple wrapping over load and save operations using file
 // package abstractions. use with caution since Loader will
 // load all of the subtrie of a given hash in memory.
 type loadSave struct {
-	storer    storage.Storer
+	storer    PutGetter
 	mode      storage.ModePut
 	encrypted bool
 }
 
-func New(storer storage.Storer, mode storage.ModePut, enc bool) file.LoadSaver {
+func New(storer PutGetter, mode storage.ModePut, enc bool) file.LoadSaver {
 	return &loadSave{
 		storer:    storer,
 		mode:      mode,

@@ -40,6 +40,7 @@ const (
 	SwarmErrorDocumentHeader = "Swarm-Error-Document"
 	SwarmFeedIndexHeader     = "Swarm-Feed-Index"
 	SwarmFeedIndexNextHeader = "Swarm-Feed-Index-Next"
+	SwarmCollectionHeader    = "Swarm-Collection"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -54,9 +55,20 @@ const (
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
 )
 
+const (
+	contentTypeHeader = "Content-Type"
+	multiPartFormData = "multipart/form-data"
+	contentTypeTar    = "application/x-tar"
+)
+
 var (
 	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
 	errNoResolver           = errors.New("no resolver connected")
+	invalidRequest          = errors.New("could not validate request")
+	invalidContentType      = errors.New("invalid content-type")
+	invalidContentLength    = errors.New("invalid content-length")
+	directoryStoreError     = errors.New("could not store directory")
+	fileStoreError          = errors.New("could not store file")
 )
 
 // Service is the API service interface.

@@ -154,22 +154,31 @@ paths:
         default:
           description: Default response
 
-  "/files":
+  "/bzz":
     post:
-      summary: "Upload file"
+      summary: "Upload file or a collection of files"
+      description: "In order to upload a collection, user can send a multipart request with all the files populated in the form data with appropriate headers.\n\n
+        User can also upload a tar file along with the swarm-collection header. This will upload the tar file after extracting the entire directory structure.\n\n
+        If the swarm-collection header is absent, all requests (including tar files) are considered as single file uploads.\n\n
+        A multipart request is treated as a collection regardless of whether the swarm-collection header is present. This means in order to serve single files
+        uploaded as a multipart request, the swarm-index-document header should be used with the name of the file."
       tags:
         - File
+        - Collection
       parameters:
         - in: query
           name: name
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/FileName"
           required: false
-          description: Filename
+          description: Filename when uploading single file
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCollection"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
       requestBody:
         content:
           multipart/form-data:
@@ -181,6 +190,10 @@ paths:
                     type: string
                     format: binary
           application/octet-stream:
+            schema:
+              type: string
+              format: binary
+          application/x-tar:
             schema:
               type: string
               format: binary
@@ -205,81 +218,9 @@ paths:
         default:
           description: Default response
 
-  "/files/{reference}":
-    get:
-      summary: "Get referenced file"
-      tags:
-        - File
-      parameters:
-        - in: path
-          name: reference
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
-          required: true
-          description: Swarm address of content
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRecoveryTargetsParameter"
-      responses:
-        "200":
-          description: Ok
-          headers:
-            "swarm-recovery-targets":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmRecoveryTargets"
-            "ETag":
-              $ref: "SwarmCommon.yaml#/components/headers/ETag"
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
-  "/dirs":
-    post:
-      summary: "Upload a collection"
-      tags:
-        - Collection
-      parameters:
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
-      requestBody:
-        content:
-          application/x-tar:
-            schema:
-              type: string
-              format: binary
-      responses:
-        "200":
-          description: Ok
-          headers:
-            "swarm-tag":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
   "/bzz/{reference}":
     get:
-      summary: "Get index document from a collection of files"
+      summary: "Get file or index document from a collection of files"
       tags:
         - Collection
       parameters:
