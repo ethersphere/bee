@@ -144,8 +144,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			return ps.accounting.Debit(p.Address, price)
 		}
-		fmt.Println("YAY")
-		fmt.Println(ps.address)
 
 		return ErrOutOfDepthReplication
 	}
@@ -227,7 +225,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						return
 					}
 
-					_ = ps.accounting.Credit(peer, receiptPrice)
+					err = ps.accounting.Credit(peer, receiptPrice)
 
 				}(peer)
 
