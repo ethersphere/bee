@@ -44,7 +44,7 @@ func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	return exist, err
 }
 
-// put stores Chunks to database and updates other indexes. It acquires lockAddr
+// put stores Chunks to database and updates other indexes. It acquires batchMu
 // to protect two calls of this function for the same address in parallel. Item
 // fields Address and Data must not be with their nil values. If chunks with the
 // same address are passed in arguments, only the first chunk will be stored,
@@ -52,6 +52,19 @@ func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 // slice. This is the same behaviour as if the same chunks are passed one by one
 // in multiple put method calls.
 func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	// this is an optimization that tries to optimize on already existing chunks
+	// not needing to acquire batchMu. This is in order to reduce lock contention
+	// when chunks are retried across the network for whatever reason.
+	if len(chs) == 1 {
+		has, err := db.retrievalDataIndex.Has(chunkToItem(chs[0]))
+		if err != nil {
+			return []bool{false}, err
+		}
+		if has {
+			return []bool{true}, nil
+		}
+	}
+
 	// protect parallel updates
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
