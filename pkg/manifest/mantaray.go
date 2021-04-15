@@ -149,7 +149,7 @@ func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.Addres
 				}
 			}
 
-			if node.IsValueType() && node.Entry() != nil {
+			if node.IsValueType() && len(node.Entry()) > 0 {
 				entry := swarm.NewAddress(node.Entry())
 				err = fn(entry)
 				if err != nil {

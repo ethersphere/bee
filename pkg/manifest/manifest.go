@@ -16,6 +16,14 @@ import (
 
 const DefaultManifestType = ManifestMantarayContentType
 
+const (
+	RootPath                      = "/"
+	WebsiteIndexDocumentSuffixKey = "website-index-document"
+	WebsiteErrorDocumentPathKey   = "website-error-document"
+	EntryMetadataContentTypeKey   = "Content-Type"
+	EntryMetadataFilenameKey      = "Filename"
+)
+
 var (
 	// ErrNotFound is returned when an Entry is not found in the manifest.
 	ErrNotFound = errors.New("manifest: not found")
@@ -66,6 +74,14 @@ func NewDefaultManifest(
 	encrypted bool,
 ) (Interface, error) {
 	return NewManifest(DefaultManifestType, ls, encrypted)
+}
+
+// NewDefaultManifest creates a new manifest with default type.
+func NewDefaultManifestReference(
+	reference swarm.Address,
+	ls file.LoadSaver,
+) (Interface, error) {
+	return NewManifestReference(DefaultManifestType, reference, ls)
 }
 
 // NewManifest creates a new manifest.
