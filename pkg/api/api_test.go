@@ -38,7 +38,7 @@ import (
 
 var (
 	batchInvalid = []byte{0}
-	batchOk      = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} //32 bytes - ok
+	batchOk      = []byte{31: 0} // 32 zeros
 	batchEmpty   = []byte{}
 )
 
