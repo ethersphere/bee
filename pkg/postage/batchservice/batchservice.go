@@ -47,7 +47,7 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		return fmt.Errorf("put: %w", err)
 	}
 
-	svc.logger.Debugf("created batch id %s", hex.EncodeToString(b.ID))
+	svc.logger.Debugf("batch service: created batch id %s", hex.EncodeToString(b.ID))
 	return nil
 }
 
@@ -64,7 +64,7 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int) error {
 		return fmt.Errorf("put: %w", err)
 	}
 
-	svc.logger.Debugf("topped up batch id %s from %v to %v", hex.EncodeToString(b.ID), b.Value, normalisedBalance)
+	svc.logger.Debugf("batch service: topped up batch id %s from %v to %v", hex.EncodeToString(b.ID), b.Value, normalisedBalance)
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("put: %w", err)
 	}
 
-	svc.logger.Debugf("updated depth of batch id %s from %d to %d", hex.EncodeToString(b.ID), b.Depth, depth)
+	svc.logger.Debugf("batch service: updated depth of batch id %s from %d to %d", hex.EncodeToString(b.ID), b.Depth, depth)
 	return nil
 }
 
@@ -93,7 +93,7 @@ func (svc *batchService) UpdatePrice(price *big.Int) error {
 		return fmt.Errorf("put chain state: %w", err)
 	}
 
-	svc.logger.Debugf("updated chain price to %s", price)
+	svc.logger.Debugf("batch service: updated chain price to %s", price)
 	return nil
 }
 
@@ -107,6 +107,6 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 		return fmt.Errorf("put chain state: %w", err)
 	}
 
-	svc.logger.Debugf("updated block height to %d", blockNumber)
+	svc.logger.Debugf("batch service: updated block height to %d", blockNumber)
 	return nil
 }
