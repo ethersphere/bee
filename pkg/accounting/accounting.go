@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pricing"
-	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -55,11 +54,14 @@ type Interface interface {
 	CompensatedBalances() (map[string]*big.Int, error)
 }
 
+type PayFunc func(context.Context, swarm.Address, *big.Int)
+
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
 	lock             sync.Mutex // lock to be held during any accounting action for this peer
 	reservedBalance  *big.Int   // amount currently reserved for active peer interaction
 	paymentThreshold *big.Int   // the threshold at which the peer expects us to pay
+	paymentOngoing   bool       // indicate if we are currently settling with the peer
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -75,7 +77,7 @@ type Accounting struct {
 	// disconnect them.
 	paymentTolerance *big.Int
 	earlyPayment     *big.Int
-	settlement       settlement.Interface
+	payFunction      PayFunc
 	pricing          pricing.Interface
 	metrics          metrics
 }
@@ -100,7 +102,6 @@ func NewAccounting(
 	EarlyPayment *big.Int,
 	Logger logging.Logger,
 	Store storage.StateStorer,
-	Settlement settlement.Interface,
 	Pricing pricing.Interface,
 ) (*Accounting, error) {
 	return &Accounting{
@@ -110,7 +111,6 @@ func NewAccounting(
 		earlyPayment:     new(big.Int).Set(EarlyPayment),
 		logger:           Logger,
 		store:            Store,
-		settlement:       Settlement,
 		pricing:          Pricing,
 		metrics:          newMetrics(),
 	}, nil
@@ -118,10 +118,7 @@ func NewAccounting(
 
 // Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
 func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
-	accountingPeer, err := a.getAccountingPeer(peer)
-	if err != nil {
-		return err
-	}
+	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
@@ -167,14 +164,10 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 	if increasedExpectedDebt.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
-		err = a.settle(ctx, peer, accountingPeer)
+		err = a.settle(context.Background(), peer, accountingPeer)
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
 		}
-		// if we settled successfully our balance is back at 0
-		// and the expected debt therefore equals next reserved amount
-		expectedDebt = nextReserved
-		increasedExpectedDebt = new(big.Int).Add(expectedDebt, additionalDebt)
 	}
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
@@ -190,11 +183,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 
 // Release releases reserved funds.
 func (a *Accounting) Release(peer swarm.Address, price uint64) {
-	accountingPeer, err := a.getAccountingPeer(peer)
-	if err != nil {
-		a.logger.Errorf("cannot release balance for peer: %v", err)
-		return
-	}
+	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
@@ -213,10 +202,7 @@ func (a *Accounting) Release(peer swarm.Address, price uint64) {
 // Credit increases the amount of credit we have with the given peer
 // (and decreases existing debt).
 func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
-	accountingPeer, err := a.getAccountingPeer(peer)
-	if err != nil {
-		return err
-	}
+	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
@@ -246,6 +232,10 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 // Settle all debt with a peer. The lock on the accountingPeer must be held when
 // called.
 func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *accountingPeer) error {
+	if balance.paymentOngoing {
+		return nil
+	}
+
 	oldBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
@@ -263,24 +253,9 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
 	paymentAmount := new(big.Int).Neg(oldBalance)
 
-	// Try to save the next balance first.
-	// Otherwise we might pay and then not be able to save, forcing us to pay
-	// again after restart.
-	err = a.store.Put(peerBalanceKey(peer), big.NewInt(0))
-	if err != nil {
-		return fmt.Errorf("failed to persist balance: %w", err)
-	}
+	balance.paymentOngoing = true
 
-	err = a.settlement.Pay(ctx, peer, paymentAmount)
-	if err != nil {
-		err = fmt.Errorf("settlement for amount %d failed: %w", paymentAmount, err)
-		// If the payment didn't succeed we should restore the old balance in
-		// the state store.
-		if storeErr := a.store.Put(peerBalanceKey(peer), oldBalance); storeErr != nil {
-			a.logger.Errorf("failed to restore balance after failed settlement for peer %v: %v", peer, storeErr)
-		}
-		return err
-	}
+	go a.payFunction(ctx, peer, paymentAmount)
 
 	return nil
 }
@@ -288,16 +263,14 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 // Debit increases the amount of debt we have with the given peer (and decreases
 // existing credit).
 func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
-	accountingPeer, err := a.getAccountingPeer(peer)
-	if err != nil {
-		return err
-	}
+	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
 	cost := new(big.Int).SetUint64(price)
 	// see if peer has surplus balance to deduct this transaction of
+
 	surplusBalance, err := a.SurplusBalance(peer)
 	if err != nil {
 		return fmt.Errorf("failed to get surplus balance: %w", err)
@@ -439,7 +412,7 @@ func peerSurplusBalanceKey(peer swarm.Address) string {
 
 // getAccountingPeer returns the accountingPeer for a given swarm address.
 // If not found in memory it will initialize it.
-func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, error) {
+func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	a.accountingPeersMu.Lock()
 	defer a.accountingPeersMu.Unlock()
 
@@ -453,7 +426,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) (*accountingPeer, err
 		a.accountingPeers[peer.String()] = peerData
 	}
 
-	return peerData, nil
+	return peerData
 }
 
 // Balances gets balances for all peers from store.
@@ -569,11 +542,8 @@ func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
 }
 
 // NotifyPayment is called by Settlement when we receive a payment.
-func (a *Accounting) NotifyPayment(peer swarm.Address, amount *big.Int) error {
-	accountingPeer, err := a.getAccountingPeer(peer)
-	if err != nil {
-		return err
-	}
+func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
+	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
@@ -644,28 +614,67 @@ func (a *Accounting) NotifyPayment(peer swarm.Address, amount *big.Int) error {
 	return nil
 }
 
-// AsyncNotifyPayment calls notify payment in a go routine.
-// This is needed when accounting needs to be notified but the accounting lock is already held.
-func (a *Accounting) AsyncNotifyPayment(peer swarm.Address, amount *big.Int) error {
-	go func() {
-		err := a.NotifyPayment(peer, amount)
-		if err != nil {
-			a.logger.Errorf("failed to notify accounting of payment: %v", err)
-		}
-	}()
-	return nil
-}
-
 // NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
 func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error {
-	accountingPeer, err := a.getAccountingPeer(peer)
-	if err != nil {
-		return err
-	}
+	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentThreshold.Set(paymentThreshold)
 	return nil
+}
+
+func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
+	zero := big.NewInt(0)
+	balance, err := a.Balance(peer)
+	if err != nil {
+		if errors.Is(err, ErrPeerNoBalance) {
+			return zero, nil
+		}
+		return nil, err
+	}
+
+	if balance.Cmp(zero) <= 0 {
+		return zero, nil
+	}
+
+	return balance, nil
+}
+
+func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error) {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
+
+	accountingPeer.paymentOngoing = false
+
+	if receivedError != nil {
+		a.logger.Warningf("accouting: payment failure %v", receivedError)
+		return
+	}
+
+	currentBalance, err := a.Balance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			a.logger.Warningf("accounting: notifypaymentsent failed to load balance: %v", err)
+			return
+		}
+	}
+
+	// Get nextBalance by safely increasing current balance with price
+	nextBalance := new(big.Int).Add(currentBalance, amount)
+
+	a.logger.Tracef("registering payment sent to peer %v with amount %d, new balance is %d", peer, amount, nextBalance)
+
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	if err != nil {
+		a.logger.Warningf("accounting: notifypaymentsent failed to persist balance: %v", err)
+		return
+	}
+}
+
+func (a *Accounting) SetPayFunc(f PayFunc) {
+	a.payFunction = f
 }

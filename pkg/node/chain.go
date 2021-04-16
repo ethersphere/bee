@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
@@ -184,6 +185,7 @@ func InitSwap(
 	chequebookService chequebook.Service,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
+	accountingAPI settlement.AccountingAPI,
 ) (*swap.Service, error) {
 	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
 	swapAddressBook := swap.NewAddressbook(stateStore)
@@ -198,6 +200,7 @@ func InitSwap(
 		networkID,
 		cashoutService,
 		p2ps,
+		accountingAPI,
 	)
 
 	swapProtocol.SetSwap(swapService)
