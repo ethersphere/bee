@@ -198,24 +198,20 @@ func TestPssSend(t *testing.T) {
 		hasher    = swarm.NewHasher()
 		_, err    = hasher.Write([]byte(topic))
 		topicHash = hasher.Sum(nil)
-
-		batchInvalid = []byte{0}
-		batchOk      = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} //32 bytes - ok
-		batchEmpty   = []byte{}
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	//t.Run("err - bad targets", func(t *testing.T) {
-	//jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
-	//jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
-	//jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-	//Message: "Bad Request",
-	//Code:    http.StatusBadRequest,
-	//}),
-	//)
-	//})
+	t.Run("err - bad targets", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "Bad Request",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
 
 	t.Run("err - bad batch", func(t *testing.T) {
 		hexbatch := hex.EncodeToString(batchInvalid)

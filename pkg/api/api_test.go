@@ -36,6 +36,12 @@ import (
 	"resenje.org/web"
 )
 
+var (
+	batchInvalid = []byte{0}
+	batchOk      = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} //32 bytes - ok
+	batchEmpty   = []byte{}
+)
+
 type testServerOptions struct {
 	Storer             storage.Storer
 	Resolver           resolver.Interface
@@ -249,10 +255,6 @@ func TestPostageHeaderError(t *testing.T) {
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logger,
 		})
-
-		batchInvalid = []byte{0}
-		batchOk      = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} //32 bytes - ok
-		batchEmpty   = []byte{}
 
 		endpoints = []string{
 			"bytes", "bzz", "chunks",
