@@ -86,16 +86,16 @@ func totalKeyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
 	return swarm.ParseHexAddress(split[1])
 }
 
-func (s *Service) peerAllowance(peer swarm.Address) (limit big.Int, stamp int64) {
+func (s *Service) peerAllowance(peer swarm.Address) (limit *big.Int, stamp int64) {
 	currentTime := time.Now().Unix()
 	return big.NewInt(10000), currentTime
 }
 
-func (s *Service) settlementAllowedHeadler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
+func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
 
 	allowedLimit, timestamp := s.peerAllowance(peerAddress)
 
-	returnHeaders, err = headerutils.MakeSettlementResponseHeaders(allowedLimit, timestamp)
+	returnHeaders, err := headerutils.MakeAllowanceResponseHeaders(allowedLimit, timestamp)
 	if err != nil {
 		return p2p.Headers{
 			"error": []byte("Error creating response allowance headers"),
