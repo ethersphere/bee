@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement"
-	"github.com/ethersphere/bee/pkg/settlement/pseudosettle/headerutils"
 	pb "github.com/ethersphere/bee/pkg/settlement/pseudosettle/pb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -95,7 +94,7 @@ func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address
 
 	allowedLimit, timestamp := s.peerAllowance(peerAddress)
 
-	returnHeaders, err := headerutils.MakeAllowanceResponseHeaders(allowedLimit, timestamp)
+	returnHeaders, err := MakeAllowanceResponseHeaders(allowedLimit, timestamp)
 	if err != nil {
 		return p2p.Headers{
 			"error": []byte("Error creating response allowance headers"),

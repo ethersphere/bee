@@ -2,27 +2,26 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package headerutils_test
+package pseudosettle_test
 
 import (
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"math/big"
 	"reflect"
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/settlement/pseudosettle/headerutils"
 )
 
 func TestMakeAllowanceResponseHeaders(t *testing.T) {
 
-	makeHeaders, err := headerutils.MakeAllowanceResponseHeaders(big.NewInt(906000000000), int64(5348))
+	makeHeaders, err := pseudosettle.MakeAllowanceResponseHeaders(big.NewInt(906000000000), int64(5348))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	expectedHeaders := p2p.Headers{
-		headerutils.AllowanceFieldName: []byte{210, 241, 206, 228, 0},
-		headerutils.TimestampFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		pseudosettle.AllowanceFieldName: []byte{210, 241, 206, 228, 0},
+		pseudosettle.TimestampFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
 	}
 
 	if !reflect.DeepEqual(makeHeaders, expectedHeaders) {
@@ -33,11 +32,11 @@ func TestMakeAllowanceResponseHeaders(t *testing.T) {
 func TestParseAllowanceHeaders(t *testing.T) {
 
 	toReadHeaders := p2p.Headers{
-		headerutils.AllowanceFieldName: []byte{234, 96},
-		headerutils.TimestampFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		pseudosettle.AllowanceFieldName: []byte{234, 96},
+		pseudosettle.TimestampFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
 	}
 
-	parsedAllowance, parsedTimestamp, err := headerutils.ParseAllowanceResponseHeaders(toReadHeaders)
+	parsedAllowance, parsedTimestamp, err := pseudosettle.ParseAllowanceResponseHeaders(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,10 +52,10 @@ func TestParseAllowanceHeaders(t *testing.T) {
 
 func TestParseAllowanceHeader(t *testing.T) {
 	toReadHeaders := p2p.Headers{
-		headerutils.AllowanceFieldName: []byte{210, 241, 206, 228, 0},
+		pseudosettle.AllowanceFieldName: []byte{210, 241, 206, 228, 0},
 	}
 
-	parsedAllowance, err := headerutils.ParseAllowanceHeader(toReadHeaders)
+	parsedAllowance, err := pseudosettle.ParseAllowanceHeader(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,10 +68,10 @@ func TestParseAllowanceHeader(t *testing.T) {
 
 func TestParseTimestampHeader(t *testing.T) {
 	toReadHeaders := p2p.Headers{
-		headerutils.TimestampFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
+		pseudosettle.TimestampFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
 	}
 
-	parsedTimestamp, err := headerutils.ParseTimestampHeader(toReadHeaders)
+	parsedTimestamp, err := pseudosettle.ParseTimestampHeader(toReadHeaders)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,27 +85,27 @@ func TestParseTimestampHeader(t *testing.T) {
 /*
 func TestReadMalformedHeaders(t *testing.T) {
 	toReadHeaders := p2p.Headers{
-		headerutils.IndexFieldName:  []byte{11, 0},
-		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
-		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 20, 228},
+		pseudosettle.IndexFieldName:  []byte{11, 0},
+		pseudosettle.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
+		pseudosettle.PriceFieldName:  []byte{0, 0, 0, 0, 0, 20, 228},
 	}
 
-	_, err := headerutils.ParseTimestampHeader(toReadHeaders)
+	_, err := pseudosettle.ParseTimestampHeader(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error from bad length of index bytes")
 	}
 
-	_, err = headerutils.ParsePriceHeader(toReadHeaders)
+	_, err = pseudosettle.ParsePriceHeader(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error from bad length of price bytes")
 	}
 
-	_, _, _, err = headerutils.ParsePricingResponseHeaders(toReadHeaders)
+	_, _, _, err = pseudosettle.ParsePricingResponseHeaders(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error caused by bad length of fields")
 	}
 
-	_, _, err = headerutils.ParsePricingHeaders(toReadHeaders)
+	_, _, err = pseudosettle.ParsePricingHeaders(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error caused by bad length of fields")
 	}
