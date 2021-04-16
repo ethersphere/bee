@@ -126,7 +126,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	if chunk, err = ps.validStamp(chunk, ch.Stamp); err != nil {
-		return err
+		return fmt.Errorf("pushsync valid stamp: %w", err)
 	}
 
 	if cac.Valid(chunk) {
