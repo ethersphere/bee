@@ -260,7 +260,7 @@ func TestPostageHeaderError(t *testing.T) {
 			"bytes", "bzz", "chunks",
 		}
 	)
-
+	content := []byte{7: 0} // 8 zeros
 	for _, endpoint := range endpoints {
 		t.Run(endpoint+": empty batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchEmpty)
@@ -268,7 +268,7 @@ func TestPostageHeaderError(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
-				jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0, 0, 0, 0, 0, 0, 0, 0})),
+				jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			)
 		})
 		t.Run(endpoint+": all zeros - ok", func(t *testing.T) {
@@ -277,7 +277,7 @@ func TestPostageHeaderError(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
-				jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0, 0, 0, 0, 0, 0, 0, 0})),
+				jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			)
 		})
 		t.Run(endpoint+": bad batch", func(t *testing.T) {
@@ -286,7 +286,7 @@ func TestPostageHeaderError(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
-				jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0, 0, 0, 0, 0, 0, 0, 0})),
+				jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			)
 		})
 	}
