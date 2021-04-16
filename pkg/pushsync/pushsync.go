@@ -144,7 +144,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// if the peer is closer to the chunk, we were selected for replication. Return early.
 	if dcmp, _ := swarm.DistanceCmp(chunk.Address().Bytes(), p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
 		if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
-			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
+			ctxd, _ := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+
+			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 			if err != nil {
 				ps.logger.Errorf("pushsync: chunk store: %v", err)
 			}
@@ -155,7 +157,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			// return back receipt
 			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
-			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
+			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
@@ -229,7 +231,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						err = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 						return
 					}
-					defer streamer.Close()
+
+					defer func() {
+						if err != nil {
+							ps.metrics.TotalErrors.Inc()
+							_ = streamer.Reset()
+						} else {
+							_ = streamer.FullClose()
+						}
+					}()
 
 					w := protobuf.NewWriter(streamer)
 					ctx, cancel = context.WithTimeout(ctx, timeToWaitForPushsyncToNeighbor)
@@ -244,13 +254,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						Stamp:   stamp,
 					})
 					if err != nil {
-						_ = streamer.Reset()
 						return
 					}
 
 					var receipt pb.Receipt
-					if err := r.ReadMsgWithContext(ctx, &receipt); err != nil {
-						_ = streamer.Reset()
+					if err = r.ReadMsgWithContext(ctx, &receipt); err != nil {
 						return
 					}
 
