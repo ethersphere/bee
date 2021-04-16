@@ -35,16 +35,25 @@ func (m *swapProtocolMock) EmitCheque(ctx context.Context, peer swarm.Address, c
 }
 
 type testObserver struct {
-	called bool
-	peer   swarm.Address
-	amount *big.Int
+	called  bool
+	peer    swarm.Address
+	amount  *big.Int
+	SentErr error
 }
 
-func (t *testObserver) NotifyPayment(peer swarm.Address, amount *big.Int) error {
+func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
+	return nil, nil
+}
+func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
 	t.called = true
 	t.peer = peer
 	t.amount = amount
 	return nil
+}
+func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, err error) {
+	if err != nil {
+		t.SentErr = err
+	}
 }
 
 type addressbookMock struct {
@@ -131,6 +140,8 @@ func TestReceiveCheque(t *testing.T) {
 		},
 	}
 
+	observer := &testObserver{}
+
 	swap := swap.New(
 		&swapProtocolMock{},
 		logger,
@@ -141,10 +152,8 @@ func TestReceiveCheque(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		observer,
 	)
-
-	observer := &testObserver{}
-	swap.SetNotifyPaymentFunc(observer.NotifyPayment)
 
 	err := swap.ReceiveCheque(context.Background(), peer, cheque)
 	if err != nil {
@@ -194,6 +203,8 @@ func TestReceiveChequeReject(t *testing.T) {
 		},
 	}
 
+	observer := &testObserver{}
+
 	swap := swap.New(
 		&swapProtocolMock{},
 		logger,
@@ -204,10 +215,8 @@ func TestReceiveChequeReject(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		observer,
 	)
-
-	observer := &testObserver{}
-	swap.SetNotifyPaymentFunc(observer.NotifyPayment)
 
 	err := swap.ReceiveCheque(context.Background(), peer, cheque)
 	if err == nil {
@@ -246,6 +255,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		},
 	}
 
+	observer := &testObserver{}
 	swapService := swap.New(
 		&swapProtocolMock{},
 		logger,
@@ -256,10 +266,8 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		observer,
 	)
-
-	observer := &testObserver{}
-	swapService.SetNotifyPaymentFunc(observer.NotifyPayment)
 
 	err := swapService.ReceiveCheque(context.Background(), peer, cheque)
 	if err == nil {
@@ -307,6 +315,8 @@ func TestPay(t *testing.T) {
 		},
 	}
 
+	observer := &testObserver{}
+
 	var emitCalled bool
 	swap := swap.New(
 		&swapProtocolMock{
@@ -329,12 +339,10 @@ func TestPay(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		observer,
 	)
 
-	err := swap.Pay(context.Background(), peer, amount)
-	if err != nil {
-		t.Fatal(err)
-	}
+	swap.Pay(context.Background(), peer, amount)
 
 	if !chequebookCalled {
 		t.Fatal("chequebook was not called")
@@ -380,11 +388,15 @@ func TestPayIssueError(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		nil,
 	)
 
-	err := swap.Pay(context.Background(), peer, amount)
-	if !errors.Is(err, errReject) {
-		t.Fatalf("wrong error. wanted %v, got %v", errReject, err)
+	observer := &testObserver{}
+	swap.SetAccountingAPI(observer)
+
+	swap.Pay(context.Background(), peer, amount)
+	if !errors.Is(observer.SentErr, errReject) {
+		t.Fatalf("wrong error. wanted %v, got %v", errReject, observer.SentErr)
 	}
 }
 
@@ -403,6 +415,8 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 			return common.Address{}, false, nil
 		},
 	}
+
+	observer := &testObserver{}
 
 	var disconnectCalled bool
 	swapService := swap.New(
@@ -423,11 +437,12 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 				return nil
 			}),
 		),
+		observer,
 	)
 
-	err := swapService.Pay(context.Background(), peer, amount)
-	if !errors.Is(err, swap.ErrUnknownBeneficary) {
-		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrUnknownBeneficary, err)
+	swapService.Pay(context.Background(), peer, amount)
+	if !errors.Is(observer.SentErr, swap.ErrUnknownBeneficary) {
+		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrUnknownBeneficary, observer.SentErr)
 	}
 
 	if !disconnectCalled {
@@ -462,6 +477,7 @@ func TestHandshake(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		nil,
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -501,6 +517,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		nil,
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -531,6 +548,7 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 		networkID,
 		&cashoutMock{},
 		mockp2p.New(),
+		nil,
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
@@ -580,6 +598,7 @@ func TestCashout(t *testing.T) {
 			},
 		},
 		mockp2p.New(),
+		nil,
 	)
 
 	returnedHash, err := swapService.CashCheque(context.Background(), peer)
@@ -626,6 +645,7 @@ func TestCashoutStatus(t *testing.T) {
 			},
 		},
 		mockp2p.New(),
+		nil,
 	)
 
 	returnedStatus, err := swapService.CashoutStatus(context.Background(), peer)
