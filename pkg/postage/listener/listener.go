@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	chainUpdateInterval     = 30 * time.Second
+	chainUpdateInterval     = 5 * time.Second
 	postageStampABI         = parseABI(PostageStampABIJSON)
 	priceOracleABI          = parseABI(PriceOracleABIJSON)
 	batchCreatedTopic       = postageStampABI.Events["BatchCreated"].ID
