@@ -148,6 +148,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			if err != nil {
 				ps.logger.Errorf("pushsync: chunk store: %v", err)
 			}
+			signature, err := ps.signer.Sign(ch.Address)
+			if err != nil {
+				return fmt.Errorf("receipt signature: %w", err)
+			}
+
+			// return back receipt
+			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
+			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
+				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
+			}
 
 			return ps.accounting.Debit(p.Address, price)
 		}
@@ -235,6 +245,17 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					})
 					if err != nil {
 						_ = streamer.Reset()
+						return
+					}
+
+					var receipt pb.Receipt
+					if err := r.ReadMsgWithContext(ctx, &receipt); err != nil {
+						_ = streamer.Reset()
+						return
+					}
+
+					if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
+						// if the receipt is invalid, give up
 						return
 					}
 
