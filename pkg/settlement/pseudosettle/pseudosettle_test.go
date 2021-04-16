@@ -33,12 +33,17 @@ func newTestObserver() *testObserver {
 	}
 }
 
-func (t *testObserver) NotifyPayment(peer swarm.Address, amount *big.Int) error {
+func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
+	return nil, nil
+}
+func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
 	close(t.called)
 	t.peer = peer
 	t.amount = amount
 	return nil
 }
+
+func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, err error) {}
 
 func TestPayment(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
@@ -47,8 +52,7 @@ func TestPayment(t *testing.T) {
 	defer storeRecipient.Close()
 
 	observer := newTestObserver()
-	recipient := pseudosettle.New(nil, logger, storeRecipient)
-	recipient.SetNotifyPaymentFunc(observer.NotifyPayment)
+	recipient := pseudosettle.New(nil, logger, storeRecipient, observer)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 
@@ -60,14 +64,13 @@ func TestPayment(t *testing.T) {
 	storePayer := mock.NewStateStore()
 	defer storePayer.Close()
 
-	payer := pseudosettle.New(recorder, logger, storePayer)
+	observer2 := newTestObserver()
+	payer := pseudosettle.New(recorder, logger, storePayer, observer2)
+	payer.SetAccountingAPI(observer2)
 
 	amount := big.NewInt(10000)
 
-	err := payer.Pay(context.Background(), peerID, amount)
-	if err != nil {
-		t.Fatal(err)
-	}
+	payer.Pay(context.Background(), peerID, amount)
 
 	records, err := recorder.Records(peerID, "pseudosettle", "1.0.0", "pseudosettle")
 	if err != nil {
