@@ -58,7 +58,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	if len(chs) == 1 {
 		has, err := db.retrievalDataIndex.Has(chunkToItem(chs[0]))
 		if err != nil {
-			return []bool{false}, err
+			return nil, err
 		}
 		if has {
 			return []bool{true}, nil
