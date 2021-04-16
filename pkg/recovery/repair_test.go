@@ -256,7 +256,7 @@ type mockPssSender struct {
 }
 
 // Send mocks the pss Send function
-func (mp *mockPssSender) Send(ctx context.Context, topic pss.Topic, payload []byte, recipient *ecdsa.PublicKey, targets pss.Targets) error {
+func (mp *mockPssSender) Send(ctx context.Context, topic pss.Topic, payload []byte, _ postage.Stamper, recipient *ecdsa.PublicKey, targets pss.Targets) error {
 	mp.callbackC <- true
 	return nil
 }
