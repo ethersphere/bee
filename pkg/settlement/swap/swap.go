@@ -47,32 +47,33 @@ type ApiInterface interface {
 
 // Service is the implementation of the swap settlement layer.
 type Service struct {
-	proto             swapprotocol.Interface
-	logger            logging.Logger
-	store             storage.StateStorer
-	notifyPaymentFunc settlement.NotifyPaymentFunc
-	metrics           metrics
-	chequebook        chequebook.Service
-	chequeStore       chequebook.ChequeStore
-	cashout           chequebook.CashoutService
-	p2pService        p2p.Service
-	addressbook       Addressbook
-	networkID         uint64
+	proto         swapprotocol.Interface
+	logger        logging.Logger
+	store         storage.StateStorer
+	accountingAPI settlement.AccountingAPI
+	metrics       metrics
+	chequebook    chequebook.Service
+	chequeStore   chequebook.ChequeStore
+	cashout       chequebook.CashoutService
+	p2pService    p2p.Service
+	addressbook   Addressbook
+	networkID     uint64
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, p2pService p2p.Service) *Service {
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, p2pService p2p.Service, accountingAPI settlement.AccountingAPI) *Service {
 	return &Service{
-		proto:       proto,
-		logger:      logger,
-		store:       store,
-		metrics:     newMetrics(),
-		chequebook:  chequebook,
-		chequeStore: chequeStore,
-		addressbook: addressbook,
-		networkID:   networkID,
-		cashout:     cashout,
-		p2pService:  p2pService,
+		proto:         proto,
+		logger:        logger,
+		store:         store,
+		metrics:       newMetrics(),
+		chequebook:    chequebook,
+		chequeStore:   chequeStore,
+		addressbook:   addressbook,
+		networkID:     networkID,
+		cashout:       cashout,
+		p2pService:    p2pService,
+		accountingAPI: accountingAPI,
 	}
 }
 
@@ -103,40 +104,46 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
 	s.metrics.ChequesReceived.Inc()
 
-	return s.notifyPaymentFunc(peer, amount)
+	return s.accountingAPI.NotifyPaymentReceived(peer, amount)
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) {
+	var err error
+	defer func() {
+		if err != nil {
+			s.accountingAPI.NotifyPaymentSent(peer, nil, err)
+		}
+	}()
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
-		return err
+		return
 	}
 	if !known {
 		s.logger.Warningf("disconnecting non-swap peer %v", peer)
 		err = s.p2pService.Disconnect(peer)
 		if err != nil {
-			return err
+			return
 		}
-		return ErrUnknownBeneficary
+		err = ErrUnknownBeneficary
+		return
 	}
 	balance, err := s.chequebook.Issue(ctx, beneficiary, amount, func(signedCheque *chequebook.SignedCheque) error {
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
 	if err != nil {
-		return err
+		return
 	}
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
+	s.accountingAPI.NotifyPaymentSent(peer, amount, nil)
 	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
 	s.metrics.TotalSent.Add(amountFloat)
 	s.metrics.ChequesSent.Inc()
-	return nil
 }
 
-// SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify
-func (s *Service) SetNotifyPaymentFunc(notifyPaymentFunc settlement.NotifyPaymentFunc) {
-	s.notifyPaymentFunc = notifyPaymentFunc
+func (s *Service) SetAccountingAPI(accountingAPI settlement.AccountingAPI) {
+	s.accountingAPI = accountingAPI
 }
 
 // TotalSent returns the total amount sent to a peer
