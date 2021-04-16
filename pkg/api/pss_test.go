@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
@@ -197,18 +198,49 @@ func TestPssSend(t *testing.T) {
 		hasher    = swarm.NewHasher()
 		_, err    = hasher.Write([]byte(topic))
 		topicHash = hasher.Sum(nil)
+
+		batchInvalid = []byte{0}
+		batchOk      = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0} //32 bytes - ok
+		batchEmpty   = []byte{}
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Run("err - bad targets", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
+	//t.Run("err - bad targets", func(t *testing.T) {
+	//jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
+	//jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+	//jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+	//Message: "Bad Request",
+	//Code:    http.StatusBadRequest,
+	//}),
+	//)
+	//})
+
+	t.Run("err - bad batch", func(t *testing.T) {
+		hexbatch := hex.EncodeToString(batchInvalid)
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "Bad Request",
+				Message: "invalid postage batch id",
 				Code:    http.StatusBadRequest,
 			}),
+		)
+	})
+
+	t.Run("ok - batch zeros", func(t *testing.T) {
+		hexbatch := hex.EncodeToString(batchOk)
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		)
+	})
+	t.Run("ok - batch empty", func(t *testing.T) {
+		hexbatch := hex.EncodeToString(batchEmpty)
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 		)
 	})
 

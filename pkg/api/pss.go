@@ -77,7 +77,6 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid postage batch id")
 		return
 	}
-
 	i, err := s.post.GetStampIssuer(batch)
 	if err != nil {
 		s.logger.Debugf("pss: postage batch issuer: %v", err)
