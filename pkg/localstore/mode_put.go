@@ -55,7 +55,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	// this is an optimization that tries to optimize on already existing chunks
 	// not needing to acquire batchMu. This is in order to reduce lock contention
 	// when chunks are retried across the network for whatever reason.
-	if len(chs) == 1 {
+	if len(chs) == 1 && mode != storage.ModePutRequestPin && mode != storage.ModePutUploadPin {
 		has, err := db.retrievalDataIndex.Has(chunkToItem(chs[0]))
 		if err != nil {
 			return nil, err
