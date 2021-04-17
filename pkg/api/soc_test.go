@@ -131,4 +131,35 @@ func TestSOC(t *testing.T) {
 				}),
 		)
 	})
+
+	t.Run("postage", func(t *testing.T) {
+		s := testingsoc.GenerateMockSOC(t, testData)
+		t.Run("err - bad batch", func(t *testing.T) {
+			hexbatch := hex.EncodeToString(batchInvalid)
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusBadRequest,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Message: "invalid postage batch id",
+					Code:    http.StatusBadRequest,
+				}))
+		})
+
+		t.Run("ok - batch zeros", func(t *testing.T) {
+			s := testingsoc.GenerateMockSOC(t, testData)
+			hexbatch := hex.EncodeToString(batchOk)
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+			)
+		})
+		t.Run("ok - batch empty", func(t *testing.T) {
+			s := testingsoc.GenerateMockSOC(t, testData)
+			hexbatch := hex.EncodeToString(batchEmpty)
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+			)
+		})
+	})
 }

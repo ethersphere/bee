@@ -86,15 +86,15 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	batch, err := requestPostageBatchId(r)
 	if err != nil {
-		s.logger.Debugf("chunk upload: postage batch id:%v", err)
+		s.logger.Debugf("chunk upload: postage batch id: %v", err)
 		s.logger.Error("chunk upload: postage batch id")
-		jsonhttp.BadRequest(w, nil)
+		jsonhttp.BadRequest(w, "invalid postage batch id")
 		return
 	}
 
 	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
 	if err != nil {
-		s.logger.Debugf("chunk upload: get putter:%v", err)
+		s.logger.Debugf("chunk upload: putter:%v", err)
 		s.logger.Error("chunk upload: putter")
 		jsonhttp.BadRequest(w, nil)
 		return

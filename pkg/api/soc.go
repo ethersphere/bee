@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -110,7 +111,6 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("soc upload: invalid chunk")
 		jsonhttp.Unauthorized(w, "invalid chunk")
 		return
-
 	}
 
 	ctx := r.Context()
@@ -127,7 +127,30 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.Conflict(w, "chunk already exists")
 		return
 	}
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		s.logger.Debugf("soc upload: postage batch id: %v", err)
+		s.logger.Error("soc upload: postage batch id")
+		jsonhttp.BadRequest(w, "invalid postage batch id")
+		return
+	}
 
+	i, err := s.post.GetStampIssuer(batch)
+	if err != nil {
+		s.logger.Debugf("soc upload: postage batch issuer: %v", err)
+		s.logger.Error("soc upload: postage batch issue")
+		jsonhttp.BadRequest(w, "postage stamp issuer")
+		return
+	}
+	stamper := postage.NewStamper(i, s.signer)
+	stamp, err := stamper.Stamp(sch.Address())
+	if err != nil {
+		s.logger.Debugf("soc upload: stamp: %v", err)
+		s.logger.Error("soc upload: stamp error")
+		jsonhttp.InternalServerError(w, "stamp error")
+		return
+	}
+	sch = sch.WithStamp(stamp)
 	_, err = s.storer.Put(ctx, requestModePut(r), sch)
 	if err != nil {
 		s.logger.Debugf("soc upload: chunk write error: %v", err)
