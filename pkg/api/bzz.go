@@ -46,12 +46,29 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, invalidContentType)
 		return
 	}
-	isDir := r.Header.Get(SwarmCollectionHeader)
-	if strings.ToLower(isDir) == "true" || mediaType == multiPartFormData {
-		s.dirUploadHandler(w, r)
+
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		logger.Debugf("bzz upload: postage batch id: %v", err)
+		logger.Error("bzz upload: postage batch id")
+		jsonhttp.BadRequest(w, "invalid postage batch id")
 		return
 	}
-	s.fileUploadHandler(w, r)
+
+	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	if err != nil {
+		logger.Debugf("bzz upload: putter: %v", err)
+		logger.Error("bzz upload: putter")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	isDir := r.Header.Get(SwarmCollectionHeader)
+	if strings.ToLower(isDir) == "true" || mediaType == multiPartFormData {
+		s.dirUploadHandler(w, r, putter)
+		return
+	}
+	s.fileUploadHandler(w, r, putter)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -61,7 +78,7 @@ type bzzUploadResponse struct {
 
 // fileUploadHandler uploads the file and its metadata supplied in the file body and
 // the headers
-func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
+func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	var (
 		reader                  io.Reader
@@ -136,7 +153,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		reader = tmp
 	}
 
-	p := requestPipelineFn(s.storer, r)
+	p := requestPipelineFn(storer, r)
 
 	// first store the file and get its reference
 	fr, err := p(ctx, reader, int64(fileSize))
@@ -153,7 +170,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encrypt := requestEncrypt(r)
-	l := loadsave.New(s.storer, requestModePut(r), encrypt)
+	l := loadsave.New(storer, requestModePut(r), encrypt)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {

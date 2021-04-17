@@ -339,7 +339,7 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 
 type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
+func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
