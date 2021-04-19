@@ -53,6 +53,16 @@ builds:
 snapshot:
   name_template: "{{.Tag}}-snapshot"
 
+signs:
+  - artifacts: checksum
+    args: [
+    "--pinentry-mode", "loopback",
+    "--passphrase", "{{ .Env.GPG_PASSPHRASE }}",
+    "-u", "{{ .Env.GPG_FINGERPRINT }}",
+    "--output", "${signature}",
+    "--detach-sign", "${artifact}",
+  ]
+
 archives:
   -
     id: scoop
