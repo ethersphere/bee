@@ -53,6 +53,9 @@ builds:
 snapshot:
   name_template: "{{.Tag}}-snapshot"
 
+signs:
+  - artifacts: checksum
+
 archives:
   -
     id: scoop
