@@ -71,6 +71,12 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		if _, err := tw.Write(item.BatchID); err != nil {
 			return false, err
 		}
+		if _, err := tw.Write(item.Index); err != nil {
+			return false, err
+		}
+		if _, err := tw.Write(item.Timestamp); err != nil {
+			return false, err
+		}
 		if _, err := tw.Write(item.Sig); err != nil {
 			return false, err
 		}
