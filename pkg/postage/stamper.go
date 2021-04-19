@@ -36,7 +36,11 @@ func NewStamper(st *StampIssuer, signer crypto.Signer) Stamper {
 // Stamp takes chunk, see if the chunk can included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
 func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
-	toSign, err := toSignDigest(addr, st.issuer.batchID)
+	index, err := st.issuer.inc(addr)
+	if err != nil {
+		return nil, err
+	}
+	toSign, err := toSignDigest(addr.Bytes(), st.issuer.batchID, index)
 	if err != nil {
 		return nil, err
 	}
@@ -44,8 +48,5 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := st.issuer.inc(addr); err != nil {
-		return nil, err
-	}
-	return NewStamp(st.issuer.batchID, sig), nil
+	return NewStamp(st.issuer.batchID, index, sig), nil
 }

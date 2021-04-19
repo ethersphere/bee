@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
@@ -41,22 +42,31 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth
 
 // inc increments the count in the correct collision bucket for a newly stamped
 // chunk with address addr.
-func (st *StampIssuer) inc(addr swarm.Address) error {
+func (st *StampIssuer) inc(addr swarm.Address) (uint64, error) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	b := toBucket(st.bucketDepth, addr)
-	if st.buckets[b] == 1<<(st.batchDepth-st.bucketDepth) {
+	index := st.buckets[b]
+	if index == 1<<(st.batchDepth-st.bucketDepth) {
 		return ErrBucketFull
 	}
 	st.buckets[b]++
-	return nil
+	return indexToBytes(b, index), nil
 }
 
 // toBucket calculates the index of the collision bucket for a swarm address
 // using depth as collision bucket depth
 func toBucket(depth uint8, addr swarm.Address) uint32 {
 	i := binary.BigEndian.Uint32(addr.Bytes()[:4])
-	return i >> (32 - depth)
+	return i >> (swarm.HashSize - depth)
+}
+
+// indexToBytes creates an uint64 index from the bucket (neighbourhood index, <256)
+// and the within-bucket index
+func indexToBytes(bucket uint8, index int) uint64 {
+	buf := make([]byte, IndexSize)
+	index64 := uint64(index) + uint64(bucket)<<((IndexSize-1)*8)
+	return index64
 }
 
 // Label returns the label of the issuer.

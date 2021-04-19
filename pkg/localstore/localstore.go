@@ -269,7 +269,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			b := make([]byte, headerSize)
 			binary.BigEndian.PutUint64(b[:8], fields.BinID)
 			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
-			stamp, err := postage.NewStamp(fields.BatchID, fields.Sig).MarshalBinary()
+			stamp, err := postage.NewStamp(fields.BatchID, fields.Index, fields.Sig).MarshalBinary()
 			if err != nil {
 				return nil, err
 			}
