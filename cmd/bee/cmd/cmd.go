@@ -7,11 +7,14 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -111,6 +114,7 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	c.initVersionCmd()
+	c.initDBCmd()
 
 	if err := c.initConfigurateOptionsCmd(); err != nil {
 		return nil, err
@@ -220,4 +224,25 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "100000000000000000", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
+}
+
+func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
+	var logger logging.Logger
+	switch verbosity {
+	case "0", "silent":
+		logger = logging.New(ioutil.Discard, 0)
+	case "1", "error":
+		logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
+	case "2", "warn":
+		logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
+	case "3", "info":
+		logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
+	case "4", "debug":
+		logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
+	case "5", "trace":
+		logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
+	default:
+		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
+	}
+	return logger, nil
 }
