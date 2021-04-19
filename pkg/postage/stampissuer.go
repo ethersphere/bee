@@ -11,7 +11,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
@@ -48,7 +47,7 @@ func (st *StampIssuer) inc(addr swarm.Address) (uint64, error) {
 	b := toBucket(st.bucketDepth, addr)
 	index := st.buckets[b]
 	if index == 1<<(st.batchDepth-st.bucketDepth) {
-		return ErrBucketFull
+		return 0, ErrBucketFull
 	}
 	st.buckets[b]++
 	return indexToBytes(b, index), nil
@@ -63,8 +62,8 @@ func toBucket(depth uint8, addr swarm.Address) uint32 {
 
 // indexToBytes creates an uint64 index from the bucket (neighbourhood index, <256)
 // and the within-bucket index
-func indexToBytes(bucket uint8, index int) uint64 {
-	buf := make([]byte, IndexSize)
+func indexToBytes(bucket uint32, index uint32) uint64 {
+	//buf := make([]byte, IndexSize)
 	index64 := uint64(index) + uint64(bucket)<<((IndexSize-1)*8)
 	return index64
 }

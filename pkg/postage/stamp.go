@@ -60,7 +60,7 @@ func (s *Stamp) Sig() []byte {
 func (s *Stamp) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, StampSize)
 	copy(buf, s.batchID)
-	copy(buf, s.index)
+	copy(buf[32:40], s.index)
 	copy(buf[40:], s.sig)
 	return buf, nil
 }

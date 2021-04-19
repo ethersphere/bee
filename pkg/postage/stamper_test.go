@@ -87,7 +87,7 @@ func TestStamperStamping(t *testing.T) {
 			// i.e., fall into the same collision bucket
 			h[0] = chunkAddr.Bytes()[0]
 			// calling Inc we pretend a stamp was issued to the address
-			err = st.Inc(swarm.NewAddress(h))
+			_, err = st.Inc(swarm.NewAddress(h))
 			if err != nil {
 				t.Fatal(err)
 			}

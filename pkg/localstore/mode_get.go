@@ -52,7 +52,7 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 	}
 	return swarm.NewChunk(swarm.NewAddress(out.Address), out.Data).
 		WithPinCounter(out.PinCounter).
-		WithStamp(postage.NewStamp(out.BatchID, out.Sig, out.Index)), nil
+		WithStamp(postage.NewStamp(out.BatchID, out.Index, out.Sig)), nil
 }
 
 // get returns Item from the retrieval index

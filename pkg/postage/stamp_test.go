@@ -15,7 +15,6 @@ import (
 
 // TestStampMarshalling tests the idempotence  of binary marshal/unmarshals for Stamps.
 func TestStampMarshalling(t *testing.T) {
-
 	sExp := newStamp(t)
 	buf, _ := sExp.MarshalBinary()
 	if len(buf) != postage.StampSize {
@@ -34,11 +33,11 @@ func TestStampMarshalling(t *testing.T) {
 	if !bytes.Equal(sExp.Sig(), s.Sig()) {
 		t.Fatalf("sig mismatch, expected %x, got %x", sExp.Sig(), s.Sig())
 	}
-
 }
 
 func newStamp(t *testing.T) *postage.Stamp {
 	const idSize = 32
+	const indexSize = 8
 	const signatureSize = 65
 
 	id := make([]byte, idSize)
@@ -46,7 +45,7 @@ func newStamp(t *testing.T) *postage.Stamp {
 		panic(err)
 	}
 
-	index := make([]byte, idSize)
+	index := make([]byte, indexSize)
 	if _, err := io.ReadFull(crand.Reader, index); err != nil {
 		t.Fatal(err)
 	}
@@ -55,5 +54,5 @@ func newStamp(t *testing.T) *postage.Stamp {
 	if _, err := io.ReadFull(crand.Reader, sig); err != nil {
 		t.Fatal(err)
 	}
-	return postage.NewStamp(id, sig, index)
+	return postage.NewStamp(id, index, sig)
 }

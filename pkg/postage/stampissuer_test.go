@@ -45,7 +45,7 @@ func newTestStampIssuer(t *testing.T) *postage.StampIssuer {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = st.Inc(swarm.NewAddress(addr))
+		_, err = st.Inc(swarm.NewAddress(addr))
 		if err != nil {
 			t.Fatal(err)
 		}

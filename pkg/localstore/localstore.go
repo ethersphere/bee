@@ -92,8 +92,11 @@ type DB struct {
 	// postage chunks index
 	postageChunksIndex shed.Index
 
-	// postage chunks index
+	// postage radius index
 	postageRadiusIndex shed.Index
+
+	// postage index index
+	postageIndexIndex shed.Index
 
 	// field that stores number of intems in gc index
 	gcSize shed.Uint64Field
@@ -257,7 +260,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 
 	// Index storing actual chunk address, data and bin id.
 	headerSize := 16 + postage.StampSize
-	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|Sig|Data", shed.IndexFuncs{
+	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Data", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.Address, nil
 		},
@@ -285,6 +288,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 				return e, err
 			}
 			e.BatchID = stamp.BatchID()
+			e.Index = stamp.Index()
 			e.Sig = stamp.Sig()
 			e.Data = value[headerSize:]
 			return e, nil
@@ -381,7 +385,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	// create a push syncing triggers used by SubscribePush function
 	db.pushTriggers = make([]chan<- struct{}, 0)
 	// gc index for removable chunk ordered by ascending last access time
-	db.gcIndex, err = db.shed.NewIndex("AccessTimestamp|BinID|Hash->BatchID", shed.IndexFuncs{
+	db.gcIndex, err = db.shed.NewIndex("AccessTimestamp|BinID|Hash->BatchID|BatchIndex", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			b := make([]byte, 16, 16+len(fields.Address))
 			binary.BigEndian.PutUint64(b[:8], uint64(fields.AccessTimestamp))
@@ -396,14 +400,17 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			value = make([]byte, 32)
+			value = make([]byte, 40)
 			copy(value, fields.BatchID)
+			copy(value[32:], fields.Index)
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e = keyItem
 			e.BatchID = make([]byte, 32)
-			copy(e.BatchID, value)
+			copy(e.BatchID, value[:32])
+			e.Index = make([]byte, postage.IndexSize)
+			copy(e.Index, value[32:])
 			return e, nil
 		},
 	})
@@ -473,6 +480,32 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e.Radius = value[0]
+			return e, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	db.postageIndexIndex, err = db.shed.NewIndex("BatchID|BatchIndex->Hash", shed.IndexFuncs{
+		EncodeKey: func(fields shed.Item) (key []byte, err error) {
+			key = make([]byte, 40)
+			copy(key[:32], fields.BatchID)
+			copy(key[32:40], fields.Index)
+			return key, nil
+		},
+		DecodeKey: func(key []byte) (e shed.Item, err error) {
+			e.BatchID = key[:32]
+			e.Index = key[32:40]
+			return e, nil
+		},
+		EncodeValue: func(fields shed.Item) (value []byte, err error) {
+			value = make([]byte, 32)
+			copy(value[:32], fields.Address)
+			return value, nil
+		},
+		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
+			e.Address = value
 			return e, nil
 		},
 	})
