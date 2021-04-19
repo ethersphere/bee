@@ -41,7 +41,7 @@ func New(opts ...Option) *BatchStore {
 	return bs
 }
 
-// WithChainState will set the initial chainstate in the ChainStore mock.
+// WithReserveState will set the initial reservestate in the ChainStore mock.
 func WithReserveState(rs *postage.ReserveState) Option {
 	return func(bs *BatchStore) {
 		bs.rs = rs
@@ -72,6 +72,15 @@ func WithPutErr(err error, delayCnt int) Option {
 	return func(bs *BatchStore) {
 		bs.putErr = err
 		bs.putErrDelayCnt = delayCnt
+	}
+}
+
+// WithBatch will set batch to the one provided by user. This will be returned in
+// the next Get
+func WithBatch(b *postage.Batch) Option {
+	return func(bs *BatchStore) {
+		bs.batch = b
+		bs.id = b.ID
 	}
 }
 
