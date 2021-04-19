@@ -147,6 +147,8 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 	item.BatchID = i.BatchID
+	item.Index = i.Index
+	item.Timestamp = i.Timestamp
 
 	i, err = db.pushIndex.Get(item)
 	if err != nil {
@@ -240,6 +242,7 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSiz
 	if err != nil {
 		return 0, err
 	}
+
 	// unless called by GC which iterates through the gcIndex
 	// a check is needed for decrementing gcSize
 	// as delete is not reporting if the key/value pair is deleted or not
