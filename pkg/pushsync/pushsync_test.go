@@ -801,7 +801,7 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 		unwrap = func(swarm.Chunk) {}
 	}
 	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
-		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
+		return ch.WithStamp(postage.NewStamp(nil, nil, nil, nil)), nil
 	}
 
 	return pushsync.New(addr, recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil), storer, mtag

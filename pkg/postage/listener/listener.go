@@ -115,7 +115,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.BatchId[:],
 			c.Owner.Bytes(),
 			c.NormalisedBalance,
+			c.BucketDepth,
 			c.Depth,
+			c.Immutable,
 		)
 	case batchTopupTopic:
 		c := &batchTopUpEvent{}
@@ -301,6 +303,8 @@ type batchCreatedEvent struct {
 	NormalisedBalance *big.Int
 	Owner             common.Address
 	Depth             uint8
+	BucketDepth       uint8
+	Immutable         bool
 }
 
 type batchTopUpEvent struct {
