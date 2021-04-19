@@ -18,12 +18,6 @@ binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
 
-.PHONY: binaries
-binaries: binary
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-file ./cmd/bee-file
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-join ./cmd/bee-join
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee-split ./cmd/bee-split
-
 dist:
 	mkdir $@
 
