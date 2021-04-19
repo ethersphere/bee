@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	postageStampABI = parseABI(postageabi.PostageStampABIv0_2_0)
+	postageStampABI = parseABI(postageabi.PostageStampABIv0_3_0)
 	// batchCreatedTopic is the postage contract's batch created event topic
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 	// batchTopupTopic is the postage contract's batch topup event topic
@@ -116,6 +116,8 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.Owner.Bytes(),
 			c.NormalisedBalance,
 			c.Depth,
+			c.BucketDepth,
+			c.Immutable,
 		)
 	case batchTopupTopic:
 		c := &batchTopUpEvent{}
@@ -301,6 +303,8 @@ type batchCreatedEvent struct {
 	NormalisedBalance *big.Int
 	Owner             common.Address
 	Depth             uint8
+	BucketDepth       uint8
+	Immutable         bool
 }
 
 type batchTopUpEvent struct {

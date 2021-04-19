@@ -81,7 +81,7 @@ func TestExportImport(t *testing.T) {
 		}
 		got := append(stamp, ch.Data()...)
 		if !bytes.Equal(got, want) {
-			t.Fatalf("chunk %s: got stamp+data %x, want %x", addr, got, want)
+			t.Fatalf("chunk %s: got stamp+data %x, want %x", addr, got[:256], want[:256])
 		}
 	}
 }

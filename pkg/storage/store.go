@@ -56,6 +56,8 @@ const (
 	ModeGetRequestPin
 )
 
+var PutModes = []ModePut{ModePutRequest, ModePutRequestPin, ModePutSync, ModePutUpload, ModePutUploadPin, ModePutRequestCache}
+
 // ModePut enumerates different Putter modes.
 type ModePut int
 
@@ -69,6 +71,10 @@ func (m ModePut) String() string {
 		return "Upload"
 	case ModePutUploadPin:
 		return "UploadPin"
+	case ModePutRequestPin:
+		return "RequestPin"
+	case ModePutRequestCache:
+		return "RequestCache"
 	default:
 		return "Unknown"
 	}

@@ -20,8 +20,8 @@ func TestBatchMarshalling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != 93 {
-		t.Fatalf("invalid length for serialised batch. expected 93, got %d", len(buf))
+	if len(buf) != 95 {
+		t.Fatalf("invalid length for serialised batch. expected 95, got %d", len(buf))
 	}
 	b := &postage.Batch{}
 	if err := b.UnmarshalBinary(buf); err != nil {
@@ -41,5 +41,11 @@ func TestBatchMarshalling(t *testing.T) {
 	}
 	if a.Depth != b.Depth {
 		t.Fatalf("depth mismatch, expected %d, got %d", a.Depth, b.Depth)
+	}
+	if a.BucketDepth != b.BucketDepth {
+		t.Fatalf("bucket depth mismatch, expected %d, got %d", a.BucketDepth, b.BucketDepth)
+	}
+	if a.Immutable != b.Immutable {
+		t.Fatalf("depth mismatch, expected %v, got %v", a.Immutable, b.Immutable)
 	}
 }

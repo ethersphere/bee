@@ -47,6 +47,7 @@ func TestListener(t *testing.T) {
 				c.toLog(496),
 			),
 		)
+
 		l := listener.New(logger, mf, postageStampAddress, 1, nil)
 		l.Listen(0, ev)
 
@@ -306,12 +307,14 @@ type updater struct {
 	eventC chan interface{}
 }
 
-func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth uint8) error {
+func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, bucketDepth uint8, immutable bool) error {
 	u.eventC <- createArgs{
 		id:               id,
 		owner:            owner,
 		normalisedAmount: normalisedAmount,
+		bucketDepth:      bucketDepth,
 		depth:            depth,
+		immutable:        immutable,
 	}
 	return nil
 }
@@ -428,7 +431,9 @@ type createArgs struct {
 	owner            []byte
 	amount           *big.Int
 	normalisedAmount *big.Int
+	bucketDepth      uint8
 	depth            uint8
+	immutable        bool
 }
 
 func (c createArgs) compare(t *testing.T, want createArgs) {
@@ -444,6 +449,7 @@ func (c createArgs) compare(t *testing.T, want createArgs) {
 }
 
 func (c createArgs) toLog(blockNumber uint64) types.Log {
+	// b, err := listener.PostageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.bucketDepth, c.depth, c.immutable)
 	b, err := listener.PostageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.depth)
 	if err != nil {
 		panic(err)
