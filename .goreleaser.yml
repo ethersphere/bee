@@ -99,13 +99,17 @@ nfpms:
       - deb
       - rpm
     
-    files:
-      "packaging/bee.service": "/lib/systemd/system/bee.service"
-      "packaging/bee-get-addr": "/usr/bin/bee-get-addr"
-
-    config_files:
-      "packaging/bee.yaml": "/etc/bee/bee.yaml"
-      "packaging/default": "/etc/default/bee"
+    contents:
+      - src: packaging/bee.service
+        dst: /lib/systemd/system/bee.service
+      - src: packaging/bee-get-addr
+        dst: /usr/bin/bee-get-addr
+      - src: packaging/bee.yaml
+        dst: /etc/bee/bee.yaml
+        type: config
+      - src: packaging/default
+        dst: /etc/default/bee
+        type: config
 
     overrides:
       deb:
