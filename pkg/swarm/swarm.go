@@ -151,7 +151,9 @@ type Chunk interface {
 // Stamp interface for postage.Stamp to avoid circular dependency
 type Stamp interface {
 	BatchID() []byte
+	Index() []byte
 	Sig() []byte
+	Timestamp() []byte
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }

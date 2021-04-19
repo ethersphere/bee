@@ -19,11 +19,14 @@ package localstore
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -65,6 +68,7 @@ func TestModePutRequest(t *testing.T) {
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newItemsCountTest(db.pullIndex, tc.count)(t)
+				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 
@@ -85,6 +89,7 @@ func TestModePutRequest(t *testing.T) {
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newItemsCountTest(db.pullIndex, tc.count)(t)
+				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 		})
@@ -118,8 +123,11 @@ func TestModePutRequestPin(t *testing.T) {
 				newPinIndexTest(db, ch, nil)(t)
 			}
 
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			// gc index should be always 0 since we're pinning
 			newItemsCountTest(db.gcIndex, 0)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }
@@ -158,7 +166,10 @@ func TestModePutRequestCache(t *testing.T) {
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
 
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			newItemsCountTest(db.gcIndex, tc.count)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }
@@ -195,9 +206,10 @@ func TestModePutSync(t *testing.T) {
 				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
 				newPullIndexTest(db, ch, binIDs[po], nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
-				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			}
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			newItemsCountTest(db.gcIndex, tc.count)(t)
 			newIndexGCSizeTest(db)(t)
 		})
@@ -237,6 +249,7 @@ func TestModePutUpload(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
+			newItemsCountTest(db.postageIndexIndex, 0)(t)
 		})
 	}
 }
@@ -274,6 +287,7 @@ func TestModePutUploadPin(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, nil)(t)
 			}
+			newItemsCountTest(db.postageIndexIndex, 0)(t)
 		})
 	}
 }
@@ -464,6 +478,90 @@ func TestModePut_sameChunk(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// TestModePut_sameChunk puts the same chunk multiple times
+// and validates that all relevant indexes have only one item
+// in them.
+func TestModePut_sameStamp(t *testing.T) {
+	ctx := context.Background()
+	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync, storage.ModePutUpload}
+	for _, mode1 := range modes {
+		for _, mode2 := range modes {
+			t.Run(fmt.Sprintf("chunk on same index - timestamps in order"), func(t *testing.T) {
+				db := newTestDB(t, nil)
+				// call unreserve on the batch with radius 0 so that
+				// localstore is aware of the batch and the chunk can
+				// be inserted into the database
+				first := generateTestRandomChunk()
+				second := generateTestRandomChunk()
+				stamp := first.Stamp()
+				ts := binary.BigEndian.Uint64(stamp.Timestamp())
+				buf := make([]byte, 8)
+				binary.BigEndian.PutUint64(buf, ts+1)
+				second = second.WithStamp(postage.NewStamp(stamp.BatchID(), stamp.Index(), buf, stamp.Sig()))
+				unreserveChunkBatch(t, db, 0, first, second)
+
+				_, err := db.Put(ctx, mode1, first)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = db.Put(ctx, mode2, second)
+				if err != nil {
+					t.Fatal(err)
+				}
+				newItemsCountTest(db.retrievalDataIndex, 1)(t)
+				newItemsCountTest(db.postageChunksIndex, 1)(t)
+				newItemsCountTest(db.postageRadiusIndex, 1)(t)
+				newItemsCountTest(db.postageIndexIndex, 1)(t)
+				newItemsCountTest(db.pullIndex, 1)(t)
+				_, err = db.Get(ctx, storage.ModeGetLookup, second.Address())
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				_, err = db.Get(ctx, storage.ModeGetLookup, first.Address())
+				if !errors.Is(storage.ErrNotFound, err) {
+					t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
+				}
+			})
+			t.Run(fmt.Sprintf("chunk on same index - timestamps in reverse order"), func(t *testing.T) {
+				db := newTestDB(t, nil)
+				// call unreserve on the batch with radius 0 so that
+				// localstore is aware of the batch and the chunk can
+				// be inserted into the database
+				first := generateTestRandomChunk()
+				second := generateTestRandomChunk()
+				stamp := first.Stamp()
+				ts := binary.BigEndian.Uint64(stamp.Timestamp())
+				buf := make([]byte, 8)
+				binary.BigEndian.PutUint64(buf, ts-1)
+				second = second.WithStamp(postage.NewStamp(stamp.BatchID(), stamp.Index(), buf, stamp.Sig()))
+				unreserveChunkBatch(t, db, 0, first, second)
+
+				_, err := db.Put(ctx, mode1, first)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = db.Put(ctx, mode2, second)
+				if err != nil {
+					t.Fatal(err)
+				}
+				newItemsCountTest(db.retrievalDataIndex, 1)(t)
+				newItemsCountTest(db.postageChunksIndex, 1)(t)
+				newItemsCountTest(db.postageRadiusIndex, 1)(t)
+				newItemsCountTest(db.postageIndexIndex, 1)(t)
+				newItemsCountTest(db.pullIndex, 1)(t)
+				_, err = db.Get(ctx, storage.ModeGetLookup, first.Address())
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				_, err = db.Get(ctx, storage.ModeGetLookup, second.Address())
+				if !errors.Is(storage.ErrNotFound, err) {
+					t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
+				}
+			})
+		}
 	}
 }
 

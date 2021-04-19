@@ -6,12 +6,12 @@ package postage_test
 
 import (
 	crand "crypto/rand"
+	"errors"
 	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -47,54 +47,64 @@ func TestStamperStamping(t *testing.T) {
 		st := newTestStampIssuer(t)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		if err := stamp.Valid(chunkAddr, owner); err != nil {
-			t.Fatal(err)
+		if err := stamp.Valid(chunkAddr, owner, 8, 12, true); err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
 	})
 
-	// invalid stamp, incorrect chunk address (it still returns postage.ErrOwnerMismatch)
-	t.Run("invalid stamp", func(t *testing.T) {
+	// tests that Stamps returns with postage.ErrBucketMismatch
+	t.Run("bucket mismatch", func(t *testing.T) {
 		st := newTestStampIssuer(t)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		a := chunkAddr.Bytes()
 		a[0] ^= 0xff
-		if err := stamp.Valid(swarm.NewAddress(a), owner); err != postage.ErrOwnerMismatch {
-			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
+		if err := stamp.Valid(swarm.NewAddress(a), owner, 8, 12, true); !errors.Is(err, postage.ErrBucketMismatch) {
+			t.Fatalf("expected ErrBucketMismatch, got %v", err)
+		}
+	})
+
+	// tests that Stamps returns with postage.ErrInvalidIndex
+	t.Run("invalid index", func(t *testing.T) {
+		st := newTestStampIssuer(t)
+		stamper := postage.NewStamper(st, signer)
+		// issue 1 stamp
+		chunkAddr, _ := createStamp(t, stamper)
+		// issue another 15
+		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
+		for i := 0; i < 14; i++ {
+			_, err = stamper.Stamp(chunkAddr)
+			if err != nil {
+				t.Fatalf("error adding stamp at step %d: %v", i, err)
+			}
+		}
+		stamp, err := stamper.Stamp(chunkAddr)
+		if err != nil {
+			t.Fatalf("error adding last stamp: %v", err)
+		}
+		if err := stamp.Valid(chunkAddr, owner, 8, 11, true); !errors.Is(err, postage.ErrInvalidIndex) {
+			t.Fatalf("expected ErrInvalidIndex, got %v", err)
 		}
 	})
 
 	// tests that Stamps returns with postage.ErrBucketFull iff
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
-		b := postagetesting.MustNewBatch(
-			postagetesting.WithOwner(owner),
-		)
-
-		st := postage.NewStampIssuer("", "", b.ID, b.Depth, 8)
+		st := newTestStampIssuer(t)
+		st = postage.NewStampIssuer("", "", st.ID(), 12, 8)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
-		// issue another 255
-		// collision depth is 8, committed batch depth is 16, bucket volume 2^8
-		for i := 0; i < 255; i++ {
-			h := make([]byte, 32)
-			_, err = io.ReadFull(crand.Reader, h)
+		// issue another 15
+		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
+		for i := 0; i < 15; i++ {
+			_, err = stamper.Stamp(chunkAddr)
 			if err != nil {
-				t.Fatal(err)
-			}
-			// generate a chunks matching on the first 8 bits,
-			// i.e., fall into the same collision bucket
-			h[0] = chunkAddr.Bytes()[0]
-			// calling Inc we pretend a stamp was issued to the address
-			err = st.Inc(swarm.NewAddress(h))
-			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
-		_, err = stamper.Stamp(chunkAddr)
-		if err != postage.ErrBucketFull {
+		if _, err = stamper.Stamp(chunkAddr); !errors.Is(err, postage.ErrBucketFull) {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
 		}
 	})
@@ -105,7 +115,7 @@ func TestStamperStamping(t *testing.T) {
 		st := newTestStampIssuer(t)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		if err := stamp.Valid(chunkAddr, owner); err != postage.ErrOwnerMismatch {
+		if err := stamp.Valid(chunkAddr, owner, 8, 12, true); !errors.Is(err, postage.ErrOwnerMismatch) {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // TestStampIssuerMarshalling tests the idempotence  of binary marshal/unmarshal.
@@ -38,17 +37,5 @@ func newTestStampIssuer(t *testing.T) *postage.StampIssuer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st := postage.NewStampIssuer("label", "keyID", id, 16, 8)
-	addr := make([]byte, 32)
-	for i := 0; i < 1<<8; i++ {
-		_, err := io.ReadFull(crand.Reader, addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = st.Inc(swarm.NewAddress(addr))
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	return st
+	return postage.NewStampIssuer("label", "keyID", id, 12, 8)
 }
