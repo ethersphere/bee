@@ -4,6 +4,7 @@ GOLANGCI_LINT_VERSION ?= v1.30.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER ?= $$($(GO) env GOPATH)/bin/beekeeper
+BEELOCAL_BRANCH ?= main
 
 COMMIT ?= "$(shell git describe --long --dirty --always --match "" || true)"
 LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
@@ -29,6 +30,10 @@ dist:
 .PHONY: beekeeper
 beekeeper:
 	test -f $(BEEKEEPER) || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
+
+.PHONY: beelocal
+beelocal:
+	curl -sSfL https://raw.githubusercontent.com/ethersphere/beelocal/$(BEELOCAL_BRANCH)/beelocal.sh | bash
 
 .PHONY: lint
 lint: linter
