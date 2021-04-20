@@ -9,17 +9,14 @@ import "github.com/ethersphere/bee/pkg/swarm"
 type Server = server
 
 type (
-	BytesPostResponse        = bytesPostResponse
-	ChunkAddressResponse     = chunkAddressResponse
-	SocPostResponse          = socPostResponse
-	FeedReferenceResponse    = feedReferenceResponse
-	BzzUploadResponse        = bzzUploadResponse
-	TagResponse              = tagResponse
-	TagRequest               = tagRequest
-	ListTagsResponse         = listTagsResponse
-	PinnedChunk              = pinnedChunk
-	ListPinnedChunksResponse = listPinnedChunksResponse
-	UpdatePinCounter         = updatePinCounter
+	BytesPostResponse     = bytesPostResponse
+	ChunkAddressResponse  = chunkAddressResponse
+	SocPostResponse       = socPostResponse
+	FeedReferenceResponse = feedReferenceResponse
+	BzzUploadResponse     = bzzUploadResponse
+	TagResponse           = tagResponse
+	TagRequest            = tagRequest
+	ListTagsResponse      = listTagsResponse
 )
 
 var (
