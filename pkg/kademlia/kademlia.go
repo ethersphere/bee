@@ -180,7 +180,6 @@ func (k *Kad) generateCommonBinPrefixes() {
 			}
 		}
 	}
-
 }
 
 // Clears the bit at pos in n.
@@ -242,7 +241,6 @@ func (k *Kad) manage() {
 			err := func() error {
 				// for each bin
 				for i := range k.commonBinPrefixes {
-
 					// and each pseudo address
 					for j := range k.commonBinPrefixes[i] {
 						pseudoAddr := k.commonBinPrefixes[i][j]
@@ -343,7 +341,6 @@ func (k *Kad) manage() {
 			}
 
 			err = k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
@@ -444,7 +441,7 @@ func (k *Kad) Start(ctx context.Context) error {
 
 func (k *Kad) connectBootnodes(ctx context.Context) {
 	var attempts, connected int
-	var totalAttempts = maxBootnodeAttempts * len(k.bootnodes)
+	totalAttempts := maxBootnodeAttempts * len(k.bootnodes)
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -672,12 +669,15 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 }
 
 // Connected is called when a peer has dialed in.
-func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
+// If forceConnection is true `overSaturated` is ignored.
+func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) error {
 	if !k.bootnode {
 		// don't run this check if we're a bootnode
-		po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-		if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
-			return topology.ErrOversaturated
+		if !forceConnection {
+			po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+			if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
+				return topology.ErrOversaturated
+			}
 		}
 	}
 
@@ -713,7 +713,6 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 
 	k.notifyPeerSig()
 	return nil
-
 }
 
 // Disconnected is called when peer disconnects.

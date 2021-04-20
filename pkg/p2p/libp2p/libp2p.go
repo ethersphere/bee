@@ -315,7 +315,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		s.protocolsmu.RUnlock()
 
 		if s.notifier != nil {
-			if err := s.notifier.Connected(ctx, peer); err != nil {
+			if err := s.notifier.Connected(ctx, peer, false); err != nil {
 				s.logger.Debugf("notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
 				// note: this cannot be unit tested since the node
 				// waiting on handshakeStream.FullClose() on the other side
@@ -334,7 +334,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		s.metrics.HandledStreamCount.Inc()
 		s.logger.Debugf("successfully connected to peer %s (inbound)", i.BzzAddress.ShortString())
 		s.logger.Infof("successfully connected to peer %s (inbound)", i.BzzAddress.Overlay)
-
 	})
 
 	h.Network().SetConnHandler(func(_ network.Conn) {

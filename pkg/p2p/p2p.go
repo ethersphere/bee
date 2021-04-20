@@ -35,14 +35,14 @@ type Disconnecter interface {
 	Blocklist(overlay swarm.Address, duration time.Duration) error
 }
 
-// PickyNotifer can decide whether a peer should be picked
+// PickyNotifier can decide whether a peer should be picked
 type PickyNotifier interface {
 	Pick(Peer) bool
 	Notifier
 }
 
 type Notifier interface {
-	Connected(context.Context, Peer) error
+	Connected(context.Context, Peer, bool) error
 	Disconnected(Peer)
 }
 

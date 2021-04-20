@@ -258,7 +258,6 @@ func TestManageWithBalancing(t *testing.T) {
 	for i := 1; i <= int(swarm.MaxPO); i++ {
 		waitBalanced(t, kad, uint8(i))
 	}
-
 }
 
 // TestBinSaturation tests the builtin binSaturated function.
@@ -967,12 +966,11 @@ func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addre
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	err = k.Connected(context.Background(), p2p.Peer{Address: peer})
+	err = k.Connected(context.Background(), p2p.Peer{Address: peer}, false)
 
 	if !errors.Is(err, expErr) {
 		t.Fatalf("expected error %v , got %v", expErr, err)
 	}
-
 }
 
 func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address) {
