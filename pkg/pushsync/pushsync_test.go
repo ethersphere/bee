@@ -51,9 +51,9 @@ var (
 	}))
 )
 
-// TestSendChunkAndGetReceipt inserts a chunk as uploaded chunk in db. This triggers sending a chunk to the closest node
+// TestPushClosest inserts a chunk as uploaded chunk in db. This triggers sending a chunk to the closest node
 // and expects a receipt. The message are intercepted in the outgoing stream to check for correctness.
-func TestSendChunkAndReceiveReceipt(t *testing.T) {
+func TestPushClosest(t *testing.T) {
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 
