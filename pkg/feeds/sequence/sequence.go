@@ -217,7 +217,7 @@ func (f *asyncFinder) at(ctx context.Context, at int64, min int, i *interval, c 
 		}
 		go func(l int) {
 			// TODO: remove hardcoded timeout and define it as constant or inject in the getter.
-			reqCtx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+			reqCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 			defer func() {
 				wg.Done()
 				cancel()
