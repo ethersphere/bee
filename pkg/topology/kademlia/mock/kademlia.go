@@ -8,6 +8,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -125,17 +126,30 @@ func (m *Mock) NeighborhoodDepth() uint8 {
 }
 
 // Connected is called when a peer dials in.
-func (m *Mock) Connected(_ context.Context, addr swarm.Address) error {
+func (m *Mock) Connected(_ context.Context, peer p2p.Peer, _ bool) error {
 	m.mtx.Lock()
-	m.peers = append(m.peers, addr)
+	m.peers = append(m.peers, peer.Address)
 	m.mtx.Unlock()
 	m.Trigger()
 	return nil
 }
 
 // Disconnected is called when a peer disconnects.
-func (m *Mock) Disconnected(_ swarm.Address) {
+func (m *Mock) Disconnected(peer p2p.Peer) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	for i, addr := range m.peers {
+		if addr.Equal(peer.Address) {
+			m.peers = append(m.peers[:i], m.peers[i+1:]...)
+			break
+		}
+	}
 	m.Trigger()
+}
+
+func (m *Mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
+	return nil
 }
 
 func (m *Mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {

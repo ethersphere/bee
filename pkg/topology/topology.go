@@ -11,6 +11,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -21,6 +22,7 @@ var (
 )
 
 type Driver interface {
+	p2p.Notifier
 	PeerAdder
 	ClosestPeerer
 	EachPeerer
