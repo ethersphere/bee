@@ -50,7 +50,7 @@ func (st *StampIssuer) inc(addr swarm.Address) (uint64, error) {
 		return 0, ErrBucketFull
 	}
 	st.buckets[b]++
-	return indexToBytes(b, index), nil
+	return indexToBytes(st.bucketDepth, b, index), nil
 }
 
 // toBucket calculates the index of the collision bucket for a swarm address
@@ -62,10 +62,20 @@ func toBucket(depth uint8, addr swarm.Address) uint32 {
 
 // indexToBytes creates an uint64 index from the bucket (neighbourhood index, <256)
 // and the within-bucket index
-func indexToBytes(bucket uint32, index uint32) uint64 {
-	//buf := make([]byte, IndexSize)
-	index64 := uint64(index) + uint64(bucket)<<((IndexSize-1)*8)
-	return index64
+func indexToBytes(depth uint8, bucket, index uint32) []byte {
+	buf := make([]byte, IndexSize)
+	index64 := uint64(index) + uint64(bucket)<<((IndexSize-1)*8) + uint64(depth)<<56
+	binary.BigEndian.PutUint64(buf, index64)
+	return buf
+}
+
+func bytesToIndex(buf []byte) (depth uint8, bucket, index uint32) {
+	index64 := binary.BigEndian.Uint64(buf)
+	uint64(index) + uint64(bucket)<<((IndexSize-1)*8) + uint64(depth)<<56
+	depth = uint8(index64 >> 56)
+	bucket = uint32(index64>>32) % (1 << 24)
+	index = uint32(index64)
+	return depth, bucket, index
 }
 
 // Label returns the label of the issuer.

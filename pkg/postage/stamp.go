@@ -24,6 +24,8 @@ var (
 	ErrOwnerMismatch = errors.New("owner mismatch")
 	// ErrStampInvalid is the error given if stamp cannot deserialise.
 	ErrStampInvalid = errors.New("invalid stamp")
+	// ErrBucketMismatch is the error given if stamp index bucket verification fails.
+	ErrBucketMismatch = errors.New("bucket mismatch")
 )
 
 var _ swarm.Stamp = (*Stamp)(nil)
@@ -134,6 +136,10 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
 	signerAddr, err := crypto.NewEthereumAddress(*signerPubkey)
 	if err != nil {
 		return err
+	}
+	depth, bucket, _ := bytesToIndex(s.index)
+	if toBucket(depth, chunkAddr) != bucket {
+		return ErrBucketMismatch
 	}
 	if !bytes.Equal(signerAddr, ownerAddr) {
 		return ErrOwnerMismatch

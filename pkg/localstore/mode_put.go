@@ -261,6 +261,17 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if exists {
 		return true, 0, nil
 	}
+	i, err := db.postageIndexIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return false, 0, err
+		}
+	} else {
+		gcSizeChange, err = db.setRemove(batch, item, true)
+		if err != nil {
+			return false, 0, err
+		}
+	}
 
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
@@ -276,6 +287,10 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 		return false, 0, err
 	}
 	err = db.postageChunksIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
+	err = db.postageIndexIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}

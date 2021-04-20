@@ -501,11 +501,11 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
 			value = make([]byte, 32)
-			copy(value[:32], fields.Address)
+			copy(value, fields.Address)
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e.Address = value
+			e.Address = value[:32]
 			return e, nil
 		},
 	})
