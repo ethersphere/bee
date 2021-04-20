@@ -60,6 +60,15 @@ func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, err
 	return &store{st, cs, rs, unreserveFunc}, nil
 }
 
+func (s *store) GetReserveState() *postage.Reservestate {
+	return &postage.Reservestate{
+		Radius:    s.rs.Radius,
+		Available: s.rs.Available,
+		Outer:     new(big.Int).Set(s.rs.Outer),
+		Inner:     new(big.Int).Set(s.rs.Inner),
+	}
+}
+
 // Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}

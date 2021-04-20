@@ -16,6 +16,7 @@ var _ postage.Storer = (*BatchStore)(nil)
 
 // BatchStore is a mock BatchStorer
 type BatchStore struct {
+	rs             *postage.Reservestate
 	cs             *postage.ChainState
 	id             []byte
 	batch          *postage.Batch
@@ -37,6 +38,13 @@ func New(opts ...Option) *BatchStore {
 	}
 
 	return bs
+}
+
+// WithChainState will set the initial chainstate in the ChainStore mock.
+func WithReserveState(rs *postage.Reservestate) Option {
+	return func(bs *BatchStore) {
+		bs.rs = rs
+	}
 }
 
 // WithChainState will set the initial chainstate in the ChainStore mock.
@@ -110,4 +118,8 @@ func (bs *BatchStore) PutChainState(cs *postage.ChainState) error {
 	}
 	bs.cs = cs
 	return nil
+}
+
+func (bs *BatchStore) GetReserveState() *postage.Reservestate {
+	return bs.rs
 }
