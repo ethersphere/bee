@@ -54,7 +54,7 @@ func dbExportCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			fmt.Printf("starting export process with data-dir at %s\n", dataDir)
+			logger.Infof("starting export process with data-dir at %s", dataDir)
 
 			path := filepath.Join(dataDir, "localstore")
 
@@ -79,7 +79,7 @@ func dbExportCmd(cmd *cobra.Command) {
 				return fmt.Errorf("error exporting database: %v", err)
 			}
 
-			fmt.Printf("database exported %d records successfully\n", c)
+			logger.Infof("database exported %d records successfully", c)
 
 			return nil
 		},
