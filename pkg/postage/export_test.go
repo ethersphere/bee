@@ -4,10 +4,6 @@
 
 package postage
 
-// func (st *StampIssuer) Inc(a swarm.Address) ([]byte, error) {
-// 	return st.inc(a)
-// }
-
 var (
 	IndexToBytes = indexToBytes
 	BytesToIndex = bytesToIndex

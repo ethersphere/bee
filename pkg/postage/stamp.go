@@ -76,7 +76,7 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	}
 	s.batchID = buf[:32]
 	s.index = buf[32:40]
-	s.sig = buf[40:105]
+	s.sig = buf[40:]
 	return nil
 }
 

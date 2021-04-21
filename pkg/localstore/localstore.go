@@ -589,6 +589,7 @@ func chunkToItem(ch swarm.Chunk) shed.Item {
 		Data:    ch.Data(),
 		Tag:     ch.TagID(),
 		BatchID: ch.Stamp().BatchID(),
+		Index:   ch.Stamp().Index(),
 		Sig:     ch.Stamp().Sig(),
 		Depth:   ch.Depth(),
 		Radius:  ch.Radius(),
