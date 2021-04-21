@@ -6,12 +6,9 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -24,22 +21,10 @@ func (c *command) initDeployCmd() error {
 				return cmd.Help()
 			}
 
-			var logger logging.Logger
-			switch v := strings.ToLower(c.config.GetString(optionNameVerbosity)); v {
-			case "0", "silent":
-				logger = logging.New(ioutil.Discard, 0)
-			case "1", "error":
-				logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
-			case "2", "warn":
-				logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
-			case "3", "info":
-				logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
-			case "4", "debug":
-				logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
-			case "5", "trace":
-				logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
-			default:
-				return fmt.Errorf("unknown verbosity level %q", v)
+			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %v", err)
 			}
 
 			dataDir := c.config.GetString(optionNameDataDir)
