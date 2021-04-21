@@ -7,5 +7,4 @@ package postage
 var (
 	IndexToBytes = indexToBytes
 	BytesToIndex = bytesToIndex
-	ToBucket     = toBucket
 )
