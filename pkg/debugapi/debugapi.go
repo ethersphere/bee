@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -47,6 +48,7 @@ type Service struct {
 	chequebookEnabled  bool
 	chequebook         chequebook.Service
 	swap               swap.ApiInterface
+	batchStore         postage.Storer
 	corsAllowedOrigins []string
 	metricsRegistry    *prometheus.Registry
 	lightNodes         *lightnode.Container
@@ -78,7 +80,7 @@ func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereu
 // Configure injects required dependencies and configuration parameters and
 // constructs HTTP routes that depend on them. It is intended and safe to call
 // this method only once.
-func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service) {
+func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service, batchStore postage.Storer) {
 	s.p2p = p2p
 	s.pingpong = pingpong
 	s.topologyDriver = topologyDriver
@@ -90,6 +92,7 @@ func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, t
 	s.chequebook = chequebook
 	s.swap = swap
 	s.lightNodes = lightNodes
+	s.batchStore = batchStore
 
 	s.setRouter(s.newRouter())
 }
