@@ -591,7 +591,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(p2ps, pingPong, kad, storer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService)
+		debugAPIService.Configure(p2ps, pingPong, kad, storer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService, batchStore)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
