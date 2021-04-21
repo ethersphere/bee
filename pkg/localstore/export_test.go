@@ -57,7 +57,7 @@ func TestExportImport(t *testing.T) {
 
 	db2 := newTestDB(t, nil)
 
-	c, err = db2.Import(&buf, false)
+	c, err = db2.Import(context.Background(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
