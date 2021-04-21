@@ -4,10 +4,12 @@
 
 package postage
 
-import (
-	"github.com/ethersphere/bee/pkg/swarm"
-)
+// func (st *StampIssuer) Inc(a swarm.Address) ([]byte, error) {
+// 	return st.inc(a)
+// }
 
-func (st *StampIssuer) Inc(a swarm.Address) (uint64, error) {
-	return st.inc(a)
-}
+var (
+	IndexToBytes = indexToBytes
+	BytesToIndex = bytesToIndex
+	ToBucket     = toBucket
+)

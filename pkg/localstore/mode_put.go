@@ -261,13 +261,14 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if exists {
 		return true, 0, nil
 	}
-	i, err := db.postageIndexIndex.Get(item)
+	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return false, 0, err
 		}
 	} else {
-		gcSizeChange, err = db.setRemove(batch, item, true)
+		// if a chunk is found with the same postage stamp, replace it with the new one
+		gcSizeChange, err = db.setRemove(batch, previous, true)
 		if err != nil {
 			return false, 0, err
 		}
@@ -301,12 +302,12 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 		return false, 0, err
 	}
 
-	gcSizeChange, err = db.preserveOrCache(batch, item, false, false)
+	gcSizeChangeNew, err := db.preserveOrCache(batch, item, false, false)
 	if err != nil {
 		return false, 0, err
 	}
 
-	return false, gcSizeChange, nil
+	return false, gcSizeChange + gcSizeChangeNew, nil
 }
 
 // preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache

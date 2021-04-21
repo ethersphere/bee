@@ -22,6 +22,8 @@ const (
 var (
 	// ErrOwnerMismatch is the error given for invalid signatures.
 	ErrOwnerMismatch = errors.New("owner mismatch")
+	// ErrInvalidIndex the error given for invalid stamp index.
+	ErrInvalidIndex = errors.New("invalid index")
 	// ErrStampInvalid is the error given if stamp cannot deserialise.
 	ErrStampInvalid = errors.New("invalid stamp")
 	// ErrBucketMismatch is the error given if stamp index bucket verification fails.
@@ -112,7 +114,7 @@ func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (s
 			}
 			return nil, err
 		}
-		if err = stamp.Valid(chunk.Address(), b.Owner); err != nil {
+		if err = stamp.Valid(chunk.Address(), b.Owner, b.Depth); err != nil {
 			return nil, err
 		}
 		return chunk.WithStamp(stamp).WithBatch(b.Radius, b.Depth), nil
@@ -124,7 +126,7 @@ func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (s
 // - authorisation - the batch owner is the stamp signer
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
-func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
+func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth uint8) error {
 	toSign, err := toSignDigest(chunkAddr.Bytes(), s.batchID, s.index)
 	if err != nil {
 		return err
@@ -137,9 +139,12 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte) error {
 	if err != nil {
 		return err
 	}
-	depth, bucket, _ := bytesToIndex(s.index)
-	if toBucket(depth, chunkAddr) != bucket {
+	bucketDepth, bucket, index := bytesToIndex(s.index)
+	if toBucket(bucketDepth, chunkAddr) != bucket {
 		return ErrBucketMismatch
+	}
+	if index >= 1<<int(depth-bucketDepth) {
+		return ErrInvalidIndex
 	}
 	if !bytes.Equal(signerAddr, ownerAddr) {
 		return ErrOwnerMismatch

@@ -5,7 +5,6 @@
 package postage
 
 import (
-	"encoding/binary"
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -41,9 +40,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	indexBytes := make([]byte, IndexSize)
-	binary.BigEndian.PutUint64(indexBytes, index)
-	toSign, err := toSignDigest(addr.Bytes(), st.issuer.batchID, indexBytes)
+	toSign, err := toSignDigest(addr.Bytes(), st.issuer.batchID, index)
 	if err != nil {
 		return nil, err
 	}
@@ -51,5 +48,5 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStamp(st.issuer.batchID, indexBytes, sig), nil
+	return NewStamp(st.issuer.batchID, index, sig), nil
 }
