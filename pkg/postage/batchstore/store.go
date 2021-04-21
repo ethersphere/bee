@@ -27,6 +27,7 @@ type store struct {
 	cs            *postage.ChainState // the chain state
 	rs            *reserveState       // the reserve state
 	unreserveFunc unreserveFn         // unreserve function
+	metrics       metrics             // metrics
 }
 
 // New constructs a new postage batch store.
@@ -57,7 +58,7 @@ func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, err
 			Available: Capacity,
 		}
 	}
-	return &store{st, cs, rs, unreserveFunc}, nil
+	return &store{st, cs, rs, unreserveFunc, newMetrics()}, nil
 }
 
 // Get returns a batch from the batchstore with the given ID.
