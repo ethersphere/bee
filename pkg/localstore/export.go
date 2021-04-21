@@ -36,7 +36,7 @@ const (
 	// about exported data format version
 	exportVersionFilename = ".swarm-export-version"
 	// current export format version
-	currentExportVersion = "1"
+	currentExportVersion = "2"
 )
 
 // Export writes a tar structured data to the writer of
