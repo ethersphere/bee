@@ -259,6 +259,9 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	}
 
 	s.logger.Tracef("handshake finished for peer (inbound) %s", remoteBzzAddress.Overlay.String())
+	if len(ack.WelcomeMessage) > 0 {
+		s.logger.Infof("greeting \"%s\" from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
+	}
 
 	return &Info{
 		BzzAddress: remoteBzzAddress,
