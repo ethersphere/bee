@@ -27,6 +27,11 @@ type Storer interface {
 	PutChainState(*ChainState) error
 	GetChainState() *ChainState
 	GetReserveState() *Reservestate
+	SetRadiusSetter(RadiusSetter)
+}
+
+type RadiusSetter interface {
+	SetRadius(uint8)
 }
 
 // Listener provides a blockchain event iterator.

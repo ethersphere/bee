@@ -57,6 +57,7 @@ func TestBatchStoreUnreserveEvents(t *testing.T) {
 	batchstore.Capacity = batchstore.Exp2(16)
 
 	bStore, unreserved := setupBatchStore(t)
+	bStore.SetRadiusSetter(noopRadiusSetter{})
 	batches := make(map[string]*postage.Batch)
 
 	t.Run("new batches only", func(t *testing.T) {
@@ -139,6 +140,7 @@ func TestBatchStoreUnreserveAll(t *testing.T) {
 	batchstore.Capacity = batchstore.Exp2(16)
 
 	bStore, unreserved := setupBatchStore(t)
+	bStore.SetRadiusSetter(noopRadiusSetter{})
 	var batches [][]byte
 	// iterate starting from batchstore.DefaultDepth to maxPO
 	_, depth := batchstore.GetReserve(bStore)
@@ -211,6 +213,7 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 		return nil
 	}
 	bStore, _ := batchstore.New(stateStore, unreserveFunc)
+	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	// initialise chainstate
 	err = bStore.PutChainState(&postage.ChainState{
@@ -535,6 +538,7 @@ func TestBatchStore_Unreserve(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			store, unreserved := setupBatchStore(t)
+			store.SetRadiusSetter(noopRadiusSetter{})
 			batches := addBatch(t, store,
 				depthValue(initBatchDepth, 3),
 				depthValue(initBatchDepth, 4),
@@ -651,6 +655,7 @@ func TestBatchStore_Topup(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			store, unreserved := setupBatchStore(t)
+			store.SetRadiusSetter(noopRadiusSetter{})
 			batches := addBatch(t, store,
 				depthValue(initBatchDepth, 2),
 				depthValue(initBatchDepth, 3),
@@ -771,6 +776,7 @@ func TestBatchStore_Dilution(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			store, unreserved := setupBatchStore(t)
+			store.SetRadiusSetter(noopRadiusSetter{})
 			batches := addBatch(t, store,
 				depthValue(initBatchDepth, 2),
 				depthValue(initBatchDepth, 3),
@@ -799,6 +805,7 @@ func TestBatchStore_EvictExpired(t *testing.T) {
 	initBatchDepth := uint8(8)
 
 	store, unreserved := setupBatchStore(t)
+	store.SetRadiusSetter(noopRadiusSetter{})
 	batches := addBatch(t, store,
 		depthValue(initBatchDepth, 2),
 		depthValue(initBatchDepth, 3),
