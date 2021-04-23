@@ -75,12 +75,12 @@ func initVersion(hash string, bytes *[]byte) {
 }
 
 var (
-	// ErrTooShort too short input
+	// ErrTooShort signals too short input.
 	ErrTooShort = errors.New("serialised input too short")
-	// ErrInvalid input to seralise invalid
-	ErrInvalid = errors.New("input invalid")
-	// ErrForkIvalid shows embedded node on a fork has no reference
-	ErrForkIvalid = errors.New("fork node without reference")
+	// ErrInvalidInput signals invalid input to serialise.
+	ErrInvalidInput = errors.New("input invalid")
+	// ErrInvalidVersionHash signals unknown version of hash.
+	ErrInvalidVersionHash = errors.New("invalid version hash")
 )
 
 var obfuscationKeyFn = rand.Read
@@ -96,7 +96,7 @@ func SetObfuscationKeyFn(fn func([]byte) (int, error)) {
 // MarshalBinary serialises the node
 func (n *Node) MarshalBinary() (bytes []byte, err error) {
 	if n.forks == nil {
-		return nil, ErrInvalid
+		return nil, ErrInvalidInput
 	}
 
 	// header
@@ -323,7 +323,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 		})
 	}
 
-	return fmt.Errorf("invalid version hash %x", versionHash)
+	return fmt.Errorf("%x: %w", versionHash, ErrInvalidVersionHash)
 }
 
 func (f *fork) fromBytes(b []byte) error {

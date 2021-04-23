@@ -95,6 +95,16 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+		if err := s.pinning.CreatePin(r.Context(), reference, false); err != nil {
+			logger.Debugf("bzz upload dir: creation of pin for %q failed: %v", reference, err)
+			logger.Error("bzz upload dir: creation of pin failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+	}
+
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	jsonhttp.OK(w, bzzUploadResponse{
 		Reference: reference,
