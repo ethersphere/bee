@@ -26,12 +26,12 @@ func RandomAddressAt(self swarm.Address, prox int) swarm.Address {
 		}
 		flipbyte := byte(1 << uint8(7-trans))
 		transbyteb := transbytea ^ byte(255)
-		randbyte := byte(rand.Intn(255))
+		randbyte := byte(rand.Intn(255)) // skipcq: GSC-G404
 		addr[pos] = ((addr[pos] & transbytea) ^ flipbyte) | randbyte&transbyteb
 	}
 
 	for i := pos + 1; i < len(addr); i++ {
-		addr[i] = byte(rand.Intn(255))
+		addr[i] = byte(rand.Intn(255)) // skipcq: GSC-G404
 	}
 
 	a := swarm.NewAddress(addr)

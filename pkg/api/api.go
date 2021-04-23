@@ -69,11 +69,11 @@ const (
 var (
 	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
 	errNoResolver           = errors.New("no resolver connected")
-	invalidRequest          = errors.New("could not validate request")
-	invalidContentType      = errors.New("invalid content-type")
-	invalidContentLength    = errors.New("invalid content-length")
-	directoryStoreError     = errors.New("could not store directory")
-	fileStoreError          = errors.New("could not store file")
+	errInvalidRequest       = errors.New("could not validate request")
+	errInvalidContentType   = errors.New("invalid content-type")
+	errInvalidContentLength = errors.New("invalid content-length")
+	errDirectoryStore       = errors.New("could not store directory")
+	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 )
 

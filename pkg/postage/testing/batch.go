@@ -43,7 +43,7 @@ func MustNewAddress() []byte {
 
 // NewBigInt will generate a new random big int (uint64 base value).
 func NewBigInt() *big.Int {
-	return (new(big.Int)).SetUint64(rand.Uint64())
+	return (new(big.Int)).SetUint64(rand.Uint64()) // skipcq: GSC-G404
 }
 
 // MustNewBatch will create a new test batch. Fields that are not supplied will
@@ -52,7 +52,7 @@ func MustNewBatch(opts ...BatchOption) *postage.Batch {
 	b := &postage.Batch{
 		ID:    MustNewID(),
 		Value: NewBigInt(),
-		Start: rand.Uint64(),
+		Start: rand.Uint64(), // skipcq: GSC-G404
 		Depth: defaultDepth,
 	}
 
