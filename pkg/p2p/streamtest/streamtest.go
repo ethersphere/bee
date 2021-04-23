@@ -104,6 +104,8 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 		defer close(record.done)
 
 		// pass a new context to handler,
+		streamIn.responseHeaders = streamOut.headers
+
 		// do not cancel it with the client stream context
 		err := handler(context.Background(), p2p.Peer{Address: r.base}, streamIn)
 		if err != nil && err != io.EOF {
