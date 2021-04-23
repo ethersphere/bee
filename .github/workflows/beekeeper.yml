@@ -85,15 +85,6 @@ jobs:
       - name: Test manifest
         id: manifest-1
         run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test pin chunk
-        id: pin-chunk-1
-        run: ./beekeeper check pin-chunk --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test pin bytes
-        id: pin-bytes-1
-        run: ./beekeeper check pin-bytes --db-capacity 2000 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      - name: Test pin remote chunks
-        id: pin-remote-1
-        run: ./beekeeper check pin-remote --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test pss
         id: pss
         run: ./beekeeper check pss --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --timeout 5m
@@ -168,8 +159,6 @@ jobs:
           if ${{ steps.retrieval-1.outcome=='failure' }}; then FAILED=retrieval-1; fi
           if ${{ steps.manifest-1.outcome=='failure' }}; then FAILED=manifest-1; fi
           if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
-          if ${{ steps.pin-chunk-1.outcome=='failure' }}; then FAILED=pin-chunk-1; fi
-          if ${{ steps.pin-bytes-1.outcome=='failure' }}; then FAILED=pin-bytes-1; fi
           if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
           if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi
           if ${{ steps.pushsync-bytes-2.outcome=='failure' }}; then FAILED=pushsync-bytes-2; fi
