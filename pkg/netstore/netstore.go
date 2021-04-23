@@ -39,6 +39,8 @@ func New(s storage.Storer, rcb recovery.Callback, r retrieval.Interface, logger 
 
 // Get retrieves a given chunk address.
 // It will request a chunk from the network whenever it cannot be found locally.
+// If the network path is taken, the method also stores the found chunk into the
+// local-store.
 func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	ch, err = s.Storer.Get(ctx, mode, addr)
 	if err != nil {
@@ -54,7 +56,12 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				return nil, ErrRecoveryAttempt
 			}
 
-			_, err = s.Storer.Put(ctx, storage.ModePutRequest, ch)
+			putMode := storage.ModePutRequest
+			if mode == storage.ModeGetRequestPin {
+				putMode = storage.ModePutRequestPin
+			}
+
+			_, err = s.Storer.Put(ctx, putMode, ch)
 			if err != nil {
 				return nil, fmt.Errorf("netstore retrieve put: %w", err)
 			}

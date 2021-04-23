@@ -346,6 +346,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *DB) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(s.metrics)
+func (db *DB) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(db.metrics)
 }

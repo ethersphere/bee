@@ -438,21 +438,21 @@ paths:
         default:
           description: Default response
 
-  "/pin/chunks/{address}":
+  "/pins/{address}":
     parameters:
       - in: path
         name: address
         schema:
           $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
         required: true
-        description: Swarm address of chunk
+        description: Swarm address of the root hash
     post:
-      summary: Pin chunk with given address
+      summary: Pin root hash with given address
       tags:
-        - Chunk pinning
+        - Root hash pinning
       responses:
         "200":
-          description: Pinning chunk with address
+          description: Pinning root hash with address
           content:
             application/json:
               schema:
@@ -466,12 +466,12 @@ paths:
         default:
           description: Default response
     delete:
-      summary: Unpin chunk with given address
+      summary: Unpin root hash with given address
       tags:
-        - Chunk pinning
+        - Root hash pinning
       responses:
         "200":
-          description: Unpinning chunk with address
+          description: Unpinning root hash with address
           content:
             application/json:
               schema:
@@ -485,12 +485,12 @@ paths:
         default:
           description: Default response
     get:
-      summary: Get pinning status of chunk with given address
+      summary: Get pinning status of root hash with given address
       tags:
-        - Chunk pinning
+        - Root hash pinning
       responses:
         "200":
-          description: Pinning state of chunk with address
+          description: Address of pinned root hash
           content:
             application/json:
               schema:
@@ -501,52 +501,15 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
-    put:
-      summary: Update chunk pin counter
-      tags:
-        - Chunk pinning
-      responses:
-        "200":
-          description: Pinning state of chunk with address
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PinningState"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
 
-  "/pin/chunks":
+  "/pins":
     get:
-      summary: Get list of pinned chunks
+      summary: Get list of pinned root hashes addresses
       tags:
-        - Chunk pinning
-      parameters:
-        - in: query
-          name: offset
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-          required: false
-          description: The number of items to skip before starting to collect the result set.
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 100
-          required: false
-          description: The numbers of items to return.
+        - Root hash pinning
       responses:
         "200":
-          description: List of pinned chunks
+          description: List of pinned root hashes addresses
           content:
             application/json:
               schema:
@@ -555,147 +518,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
-  "/pin/bytes/{address}":
-    parameters:
-      - in: path
-        name: address
-        schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
-        required: true
-        description: Swarm address of the bytes
-    post:
-      summary: Pin bytes with given address
-      tags:
-        - Bytes pinning
-      responses:
-        "200":
-          description: Pinning bytes chunks with address
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
-    delete:
-      summary: Unpin bytes chunks with given address
-      tags:
-        - Bytes pinning
-      responses:
-        "200":
-          description: Unpinning chunk with address
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
-
-  "/pin/files/{address}":
-    parameters:
-      - in: path
-        name: address
-        schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
-        required: true
-        description: Swarm address of the file
-    post:
-      summary: Pin file with given address
-      tags:
-        - File pinning
-      responses:
-        "200":
-          description: Pinning file chunks with address
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
-    delete:
-      summary: Unpin file chunks with given address
-      tags:
-        - File pinning
-      responses:
-        "200":
-          description: Unpinning file chunks with address
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
-
-  "/pin/bzz/{address}":
-    parameters:
-      - in: path
-        name: address
-        schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
-        required: true
-        description: Swarm address of the collection
-    post:
-      summary: Pin collection with given address
-      tags:
-        - Collection pinning
-      responses:
-        "200":
-          description: Pinning collection chunks (and all referenced files) with address
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
-    delete:
-      summary: Unpin file chunks with given address
-      tags:
-        - Collection pinning
-      responses:
-        "200":
-          description: Unpinning collection chunks (and all referenced files) with address
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 

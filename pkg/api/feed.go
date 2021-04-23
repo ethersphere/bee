@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -170,6 +171,16 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
+
+	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+		if err := s.pinning.CreatePin(r.Context(), ref, false); err != nil {
+			s.logger.Debugf("feed post: creation of pin for %q failed: %v", ref, err)
+			s.logger.Error("feed post: creation of pin failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+	}
+
 	jsonhttp.Created(w, feedReferenceResponse{Reference: ref})
 }
 

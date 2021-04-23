@@ -7,6 +7,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -66,6 +67,16 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+		if err := s.pinning.CreatePin(ctx, address, false); err != nil {
+			logger.Debugf("bytes upload: creation of pin for %q failed: %v", address, err)
+			logger.Error("bytes upload: creation of pin failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+	}
+
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.OK(w, bytesPostResponse{

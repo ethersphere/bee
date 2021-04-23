@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -83,7 +84,8 @@ type server struct {
 	storer      storage.Storer
 	resolver    resolver.Interface
 	pss         pss.Interface
-	traversal   traversal.Service
+	traversal   traversal.Traverser
+	pinning     pinning.Interface
 	logger      logging.Logger
 	tracer      *tracing.Tracer
 	feedFactory feeds.Factory
@@ -107,13 +109,14 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, feedFactory feeds.Factory, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		tags:        tags,
 		storer:      storer,
 		resolver:    resolver,
 		pss:         pss,
 		traversal:   traversalService,
+		pinning:     pinning,
 		feedFactory: feedFactory,
 		Options:     o,
 		logger:      logger,

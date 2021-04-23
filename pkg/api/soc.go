@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -133,6 +134,15 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("soc upload: chunk write error")
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
+	}
+
+	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+		if err := s.pinning.CreatePin(ctx, sch.Address(), false); err != nil {
+			s.logger.Debugf("soc upload: creation of pin for %q failed: %v", sch.Address(), err)
+			s.logger.Error("soc upload: creation of pin failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
 	}
 
 	jsonhttp.Created(w, chunkAddressResponse{Reference: sch.Address()})

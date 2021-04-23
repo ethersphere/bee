@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
+	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -36,12 +37,15 @@ func TestBzzFiles(t *testing.T) {
 		targets              = "0x222"
 		fileDownloadResource = func(addr string) string { return "/bzz/" + addr }
 		simpleData           = []byte("this is a simple text")
-		mockStatestore       = statestore.NewStateStore()
+		storerMock           = smock.NewStorer()
+		statestoreMock       = statestore.NewStateStore()
+		pinningMock          = pinning.NewServiceMock()
 		logger               = logging.New(ioutil.Discard, 0)
 		client, _, _         = newTestServer(t, testServerOptions{
-			Storer: smock.NewStorer(),
-			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logger,
+			Storer:  storerMock,
+			Pinning: pinningMock,
+			Tags:    tags.NewTags(statestoreMock, logger),
+			Logger:  logger,
 		})
 	)
 
@@ -83,14 +87,83 @@ func TestBzzFiles(t *testing.T) {
 				},
 			},
 		})
-		rootHash := "f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b"
+		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
+				Reference: address,
 			}),
 		)
+
+		has, err := storerMock.Has(context.Background(), address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatal("storer check root chunk address: have none; want one")
+		}
+
+		if have, want := len(pinningMock.Entries()), 0; have != want {
+			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
+		}
+	})
+
+	t.Run("tar-file-upload-with-pinning", func(t *testing.T) {
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+			{
+				data: []byte("image 1"),
+				name: "1.png",
+				dir:  "img",
+				header: http.Header{
+					"Content-Type": {"image/png"},
+				},
+			},
+			{
+				data: []byte("image 2"),
+				name: "2.png",
+				dir:  "img",
+				header: http.Header{
+					"Content-Type": {"image/png"},
+				},
+			},
+		})
+		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
+				Reference: address,
+			}),
+		)
+
+		has, err := storerMock.Has(context.Background(), address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatal("storer check root chunk address: have none; want one")
+		}
+
+		if have, want := len(pinningMock.Entries()), 1; have != want {
+			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
+		}
+		addrs, err := pinningMock.Pins()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if have, want := addrs[0], address; !have.Equal(want) {
+			t.Fatalf("root pin reference mismatch: have %q; want %q", have, want)
+		}
 	})
 
 	t.Run("encrypt-decrypt", func(t *testing.T) {

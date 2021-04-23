@@ -16,127 +16,63 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	// ErrInvalidType is returned when the reference was not expected type.
-	ErrInvalidType = errors.New("traversal: invalid type")
-)
-
-// Service is the service to find dependent chunks for an address.
-type Service interface {
-	// TraverseAddresses iterates through each address related to the supplied
-	// one, if possible.
-	TraverseAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
-
-	// TraverseBytesAddresses iterates through each address of a bytes.
-	TraverseBytesAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
-	// TraverseManifestAddresses iterates through each address of a manifest,
-	// as well as each entry found in it.
-	TraverseManifestAddresses(context.Context, swarm.Address, swarm.AddressIterFunc) error
+// Traverser represents service which traverse through address dependent chunks.
+type Traverser interface {
+	// Traverse iterates through each address related to the supplied one, if possible.
+	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
 }
 
-type traversalService struct {
-	storer storage.Storer
+// NewService is a convenient constructor for Service.
+func NewService(store storage.Storer) *Service {
+	return &Service{store: store}
 }
 
-func NewService(storer storage.Storer) Service {
-	return &traversalService{
-		storer: storer,
-	}
+// Service is implementation of Interface using storage.Storer as its storage.
+type Service struct {
+	store storage.Storer
 }
 
-func (s *traversalService) TraverseAddresses(
-	ctx context.Context,
-	reference swarm.Address,
-	chunkAddressFunc swarm.AddressIterFunc,
-) error {
-
-	isManifest, m, err := s.checkIsManifest(ctx, reference)
-	if err != nil {
-		return err
-	}
-
-	if isManifest {
-		return m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) error {
-			return s.processBytes(ctx, manifestNodeAddr, chunkAddressFunc)
-		})
-	}
-	return s.processBytes(ctx, reference, chunkAddressFunc)
-}
-
-func (s *traversalService) TraverseBytesAddresses(
-	ctx context.Context,
-	reference swarm.Address,
-	chunkAddressFunc swarm.AddressIterFunc,
-) error {
-	return s.processBytes(ctx, reference, chunkAddressFunc)
-}
-
-func (s *traversalService) TraverseManifestAddresses(
-	ctx context.Context,
-	reference swarm.Address,
-	chunkAddressFunc swarm.AddressIterFunc,
-) error {
-
-	isManifest, m, err := s.checkIsManifest(ctx, reference)
-	if err != nil {
-		return err
-	}
-	if !isManifest {
-		return ErrInvalidType
-	}
-
-	err = m.IterateAddresses(ctx, func(manifestNodeAddr swarm.Address) error {
-		return s.processBytes(ctx, manifestNodeAddr, chunkAddressFunc)
-	})
-	if err != nil {
-		return fmt.Errorf("traversal: iterate chunks: %s: %w", reference, err)
-	}
-
-	return nil
-}
-
-// checkIsManifest checks if the content is manifest.
-func (s *traversalService) checkIsManifest(
-	ctx context.Context,
-	reference swarm.Address,
-) (isManifest bool, m manifest.Interface, err error) {
-
-	// NOTE: 'encrypted' parameter only used for saving manifest
-	m, err = manifest.NewDefaultManifestReference(
-		reference,
-		loadsave.New(s.storer, storage.ModePutRequest, false),
-	)
-	if err != nil {
-		if err == manifest.ErrInvalidManifestType {
-			// ignore
-			err = nil
-			return
+// Traverse implements Traverser.Traverse method.
+func (s *Service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
+	processBytes := func(ref swarm.Address) error {
+		j, _, err := joiner.New(ctx, s.store, ref)
+		if err != nil {
+			return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
 		}
-		err = fmt.Errorf("traversal: read manifest: %s: %w", reference, err)
-		return
-	}
-	isManifest = true
-	return
-}
-
-func (s *traversalService) processBytes(
-	ctx context.Context,
-	reference swarm.Address,
-	chunkAddressFunc swarm.AddressIterFunc,
-) error {
-	j, _, err := joiner.New(ctx, s.storer, reference)
-	if err != nil {
-		return fmt.Errorf("traversal: joiner: %s: %w", reference, err)
+		err = j.IterateChunkAddresses(iterFn)
+		if err != nil {
+			return fmt.Errorf("traversal: iterate chunk address error for %q: %w", ref, err)
+		}
+		return nil
 	}
 
-	err = j.IterateChunkAddresses(chunkAddressFunc)
-	if err != nil {
-		return fmt.Errorf("traversal: iterate chunks: %s: %w", reference, err)
+	ls := loadsave.New(s.store, storage.ModePutRequest, false)
+	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
+	case errors.Is(err, manifest.ErrInvalidManifestType):
+		break
+	case err != nil:
+		return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
+	default:
+		err := mf.IterateAddresses(ctx, processBytes)
+		if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
+			// Based on the returned errors we conclude that it might
+			// not be a manifest, so we try non-manifest processing.
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
+		}
+		return nil
 	}
 
+	// Non-manifest processing.
+	if err := processBytes(addr); err != nil {
+		return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
+	}
 	return nil
 }

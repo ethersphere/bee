@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -288,36 +287,6 @@ func (m *MockStorer) MorePull(d ...storage.Descriptor) {
 
 func (m *MockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
 	panic("not implemented") // TODO: Implement
-}
-
-func (m *MockStorer) PinnedChunks(ctx context.Context, offset, cursor int) (pinnedChunks []*storage.Pinner, err error) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	if len(m.pinnedAddress) == 0 {
-		return pinnedChunks, nil
-	}
-	for i, addr := range m.pinnedAddress {
-		pi := &storage.Pinner{
-			Address:    swarm.NewAddress(addr.Bytes()),
-			PinCounter: m.pinnedCounter[i],
-		}
-		pinnedChunks = append(pinnedChunks, pi)
-	}
-	if pinnedChunks == nil {
-		return pinnedChunks, errors.New("pin chunks: leveldb: not found")
-	}
-	return pinnedChunks, nil
-}
-
-func (m *MockStorer) PinCounter(address swarm.Address) (uint64, error) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	for i, addr := range m.pinnedAddress {
-		if addr.String() == address.String() {
-			return m.pinnedCounter[i], nil
-		}
-	}
-	return 0, storage.ErrNotFound
 }
 
 func (m *MockStorer) Close() error {

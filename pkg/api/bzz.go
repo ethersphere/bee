@@ -224,6 +224,16 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+		if err := s.pinning.CreatePin(ctx, manifestReference, false); err != nil {
+			logger.Debugf("bzz upload file: creation of pin for %q failed: %v", manifestReference, err)
+			logger.Error("bzz upload file: creation of pin failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+	}
+
 	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
