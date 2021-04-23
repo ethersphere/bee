@@ -120,8 +120,8 @@ LOOP:
 
 // Cursors gets the last BinID for every bin in the local storage
 func (s *ps) Cursors(ctx context.Context) (curs []uint64, err error) {
-	curs = make([]uint64, 16)
-	for i := uint8(0); i < 16; i++ {
+	curs = make([]uint64, swarm.MaxBins)
+	for i := uint8(0); i < swarm.MaxBins; i++ {
 		binID, err := s.Storer.LastPullSubscriptionBinID(i)
 		if err != nil {
 			return nil, err
