@@ -151,13 +151,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			if err != nil {
 				ps.logger.Errorf("pushsync: chunk store: %v", err)
 			}
-			signature, err := ps.signer.Sign(ch.Address)
-			if err != nil {
-				return fmt.Errorf("receipt signature: %w", err)
-			}
 
 			// return back receipt
-			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
+			receipt := pb.Receipt{Address: chunk.Address().Bytes()}
 			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
