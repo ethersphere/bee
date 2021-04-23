@@ -22,29 +22,47 @@ import (
 )
 
 type testObserver struct {
-	called chan struct{}
+	receivedCalled chan notifyPaymentReceivedCall
+	sentCalled     chan notifyPaymentSentCall
+}
+
+type notifyPaymentReceivedCall struct {
 	peer   swarm.Address
 	amount *big.Int
 }
 
+type notifyPaymentSentCall struct {
+	peer   swarm.Address
+	amount *big.Int
+	err    error
+}
+
 func newTestObserver() *testObserver {
 	return &testObserver{
-		called: make(chan struct{}),
+		receivedCalled: make(chan notifyPaymentReceivedCall, 1),
+		sentCalled:     make(chan notifyPaymentSentCall, 1),
 	}
 }
 
 func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	return nil, nil
 }
+
 func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
-	close(t.called)
-	t.peer = peer
-	t.amount = amount
+	t.receivedCalled <- notifyPaymentReceivedCall{
+		peer:   peer,
+		amount: amount,
+	}
 	return nil
 }
 
-func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, err error) {}
-
+func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, err error) {
+	t.sentCalled <- notifyPaymentSentCall{
+		peer:   peer,
+		amount: amount,
+		err:    err,
+	}
+}
 func TestPayment(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -105,17 +123,34 @@ func TestPayment(t *testing.T) {
 	}
 
 	select {
-	case <-observer.called:
+	case call := <-observer.receivedCalled:
+		if call.amount.Cmp(amount) != 0 {
+			t.Fatalf("observer called with wrong amount. got %d, want %d", call.amount, amount)
+		}
+
+		if !call.peer.Equal(peerID) {
+			t.Fatalf("observer called with wrong peer. got %v, want %v", call.peer, peerID)
+		}
+
 	case <-time.After(time.Second):
 		t.Fatal("expected observer to be called")
 	}
 
-	if observer.amount.Cmp(amount) != 0 {
-		t.Fatalf("observer called with wrong amount. got %d, want %d", observer.amount, amount)
-	}
+	select {
+	case call := <-observer2.sentCalled:
+		if call.amount.Cmp(amount) != 0 {
+			t.Fatalf("observer called with wrong amount. got %d, want %d", call.amount, amount)
+		}
 
-	if !observer.peer.Equal(peerID) {
-		t.Fatalf("observer called with wrong peer. got %v, want %v", observer.peer, peerID)
+		if !call.peer.Equal(peerID) {
+			t.Fatalf("observer called with wrong peer. got %v, want %v", call.peer, peerID)
+		}
+		if call.err != nil {
+			t.Fatalf("observer called with error. got %v want nil", call.err)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("expected observer to be called")
 	}
 
 	totalSent, err := payer.TotalSent(peerID)

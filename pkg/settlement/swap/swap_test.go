@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -35,24 +36,45 @@ func (m *swapProtocolMock) EmitCheque(ctx context.Context, peer swarm.Address, c
 }
 
 type testObserver struct {
-	called  bool
-	peer    swarm.Address
-	amount  *big.Int
-	SentErr error
+	receivedCalled chan notifyPaymentReceivedCall
+	sentCalled     chan notifyPaymentSentCall
+}
+
+type notifyPaymentReceivedCall struct {
+	peer   swarm.Address
+	amount *big.Int
+}
+
+type notifyPaymentSentCall struct {
+	peer   swarm.Address
+	amount *big.Int
+	err    error
+}
+
+func newTestObserver() *testObserver {
+	return &testObserver{
+		receivedCalled: make(chan notifyPaymentReceivedCall, 1),
+		sentCalled:     make(chan notifyPaymentSentCall, 1),
+	}
 }
 
 func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	return nil, nil
 }
+
 func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
-	t.called = true
-	t.peer = peer
-	t.amount = amount
+	t.receivedCalled <- notifyPaymentReceivedCall{
+		peer:   peer,
+		amount: amount,
+	}
 	return nil
 }
+
 func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, err error) {
-	if err != nil {
-		t.SentErr = err
+	t.sentCalled <- notifyPaymentSentCall{
+		peer:   peer,
+		amount: amount,
+		err:    err,
 	}
 }
 
@@ -140,7 +162,7 @@ func TestReceiveCheque(t *testing.T) {
 		},
 	}
 
-	observer := &testObserver{}
+	observer := newTestObserver()
 
 	swap := swap.New(
 		&swapProtocolMock{},
@@ -160,17 +182,20 @@ func TestReceiveCheque(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !observer.called {
+	select {
+	case call := <-observer.receivedCalled:
+		if call.amount.Cmp(amount) != 0 {
+			t.Fatalf("observer called with wrong amount. got %d, want %d", call.amount, amount)
+		}
+
+		if !call.peer.Equal(peer) {
+			t.Fatalf("observer called with wrong peer. got %v, want %v", call.peer, peer)
+		}
+
+	case <-time.After(time.Second):
 		t.Fatal("expected observer to be called")
 	}
 
-	if observer.amount.Cmp(amount) != 0 {
-		t.Fatalf("observer called with wrong amount. got %d, want %d", observer.amount, amount)
-	}
-
-	if !observer.peer.Equal(peer) {
-		t.Fatalf("observer called with wrong peer. got %v, want %v", observer.peer, peer)
-	}
 }
 
 func TestReceiveChequeReject(t *testing.T) {
@@ -203,7 +228,7 @@ func TestReceiveChequeReject(t *testing.T) {
 		},
 	}
 
-	observer := &testObserver{}
+	observer := newTestObserver()
 
 	swap := swap.New(
 		&swapProtocolMock{},
@@ -226,9 +251,12 @@ func TestReceiveChequeReject(t *testing.T) {
 		t.Fatalf("wrong error. wanted %v, got %v", errReject, err)
 	}
 
-	if observer.called {
-		t.Fatal("observer was be called for rejected payment")
+	select {
+	case <-observer.receivedCalled:
+		t.Fatalf("observer called by error.")
+	default:
 	}
+
 }
 
 func TestReceiveChequeWrongChequebook(t *testing.T) {
@@ -255,7 +283,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		},
 	}
 
-	observer := &testObserver{}
+	observer := newTestObserver()
 	swapService := swap.New(
 		&swapProtocolMock{},
 		logger,
@@ -277,9 +305,12 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrWrongChequebook, err)
 	}
 
-	if observer.called {
-		t.Fatal("observer was be called for rejected payment")
+	select {
+	case <-observer.receivedCalled:
+		t.Fatalf("observer called by error.")
+	default:
 	}
+
 }
 
 func TestPay(t *testing.T) {
@@ -315,7 +346,7 @@ func TestPay(t *testing.T) {
 		},
 	}
 
-	observer := &testObserver{}
+	observer := newTestObserver()
 
 	var emitCalled bool
 	swap := swap.New(
@@ -391,13 +422,24 @@ func TestPayIssueError(t *testing.T) {
 		nil,
 	)
 
-	observer := &testObserver{}
+	observer := newTestObserver()
 	swap.SetAccountingAPI(observer)
 
 	swap.Pay(context.Background(), peer, amount)
-	if !errors.Is(observer.SentErr, errReject) {
-		t.Fatalf("wrong error. wanted %v, got %v", errReject, observer.SentErr)
+	select {
+	case call := <-observer.sentCalled:
+
+		if !call.peer.Equal(peer) {
+			t.Fatalf("observer called with wrong peer. got %v, want %v", call.peer, peer)
+		}
+		if !errors.Is(call.err, errReject) {
+			t.Fatalf("wrong error. wanted %v, got %v", errReject, call.err)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("expected observer to be called")
 	}
+
 }
 
 func TestPayUnknownBeneficiary(t *testing.T) {
@@ -416,7 +458,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		},
 	}
 
-	observer := &testObserver{}
+	observer := newTestObserver()
 
 	var disconnectCalled bool
 	swapService := swap.New(
@@ -441,8 +483,19 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 	)
 
 	swapService.Pay(context.Background(), peer, amount)
-	if !errors.Is(observer.SentErr, swap.ErrUnknownBeneficary) {
-		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrUnknownBeneficary, observer.SentErr)
+
+	select {
+	case call := <-observer.sentCalled:
+
+		if !call.peer.Equal(peer) {
+			t.Fatalf("observer called with wrong peer. got %v, want %v", call.peer, peer)
+		}
+		if !errors.Is(call.err, swap.ErrUnknownBeneficary) {
+			t.Fatalf("wrong error. wanted %v, got %v", swap.ErrUnknownBeneficary, call.err)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("expected observer to be called")
 	}
 
 	if !disconnectCalled {
