@@ -23,9 +23,9 @@ type (
 )
 
 var (
-	InvalidContentType  = invalidContentType
-	InvalidRequest      = invalidRequest
-	DirectoryStoreError = directoryStoreError
+	InvalidContentType  = errInvalidContentType
+	InvalidRequest      = errInvalidRequest
+	DirectoryStoreError = errDirectoryStore
 )
 
 var (

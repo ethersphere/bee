@@ -850,7 +850,7 @@ type batchValueTuple struct {
 	value      *big.Int
 }
 
-func batchValue(i int, v int) batchValueTuple {
+func batchValue(i, v int) batchValueTuple {
 	return batchValueTuple{batchIndex: i, value: big.NewInt(int64(v))}
 }
 
@@ -868,7 +868,7 @@ type batchDepthTuple struct {
 	depth      uint8
 }
 
-func batchDepth(i int, d int) batchDepthTuple {
+func batchDepth(i, d int) batchDepthTuple {
 	return batchDepthTuple{batchIndex: i, depth: uint8(d)}
 }
 

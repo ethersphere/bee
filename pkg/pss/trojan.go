@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	random "crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	random "math/rand"
+	"math"
+	"math/big"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -31,6 +33,8 @@ var (
 
 	// ErrVarLenTargets is returned when the given target list for a trojan chunk has addresses of different lengths
 	ErrVarLenTargets = errors.New("target list cannot have targets of different length")
+
+	maxUint32 = big.NewInt(math.MaxUint32)
 )
 
 // Topic is the type that classifies messages, allows client applications to subscribe to
@@ -202,7 +206,11 @@ func contains(col Targets, elem []byte) bool {
 func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
 	seeds := make([]uint32, 8)
 	for i := range seeds {
-		seeds[i] = random.Uint32()
+		b, err := random.Int(random.Reader, maxUint32)
+		if err != nil {
+			return nil, err
+		}
+		seeds[i] = uint32(b.Int64())
 	}
 	initnonce := make([]byte, 32)
 	for i := 0; i < 8; i++ {
