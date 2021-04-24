@@ -35,7 +35,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	if r.Body == http.NoBody {
 		logger.Error("bzz upload dir: request has no body")
-		jsonhttp.BadRequest(w, invalidRequest)
+		jsonhttp.BadRequest(w, errInvalidRequest)
 		return
 	}
 	contentType := r.Header.Get(contentTypeHeader)
@@ -43,7 +43,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	if err != nil {
 		logger.Errorf("bzz upload dir: invalid content-type")
 		logger.Debugf("bzz upload dir: invalid content-type err: %v", err)
-		jsonhttp.BadRequest(w, invalidContentType)
+		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
 
@@ -55,7 +55,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"])}
 	default:
 		logger.Error("bzz upload dir: invalid content-type for directory upload")
-		jsonhttp.BadRequest(w, invalidContentType)
+		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
 	defer r.Body.Close()
@@ -86,7 +86,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	if err != nil {
 		logger.Debugf("bzz upload dir: store dir err: %v", err)
 		logger.Errorf("bzz upload dir: store dir")
-		jsonhttp.InternalServerError(w, directoryStoreError)
+		jsonhttp.InternalServerError(w, errDirectoryStore)
 		return
 	}
 	if created {

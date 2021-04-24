@@ -7,12 +7,10 @@ package localstore
 import (
 	"context"
 	"errors"
-	"sort"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestPinCounter(t *testing.T) {
@@ -208,13 +206,4 @@ func runCountsTest(t *testing.T, name string, db *DB, r, a, push, pull, pin, gc 
 		t.Run("gc index count", newItemsCountTest(db.gcIndex, gc))
 		t.Run("gc size", newIndexGCSizeTest(db))
 	})
-}
-
-func chunksToSortedStrings(chunks []swarm.Chunk) []string {
-	var addresses []string
-	for _, c := range chunks {
-		addresses = append(addresses, c.Address().String())
-	}
-	sort.Strings(addresses)
-	return addresses
 }

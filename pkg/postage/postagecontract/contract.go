@@ -44,8 +44,8 @@ type postageContract struct {
 }
 
 func New(
-	owner common.Address,
-	postageContractAddress common.Address,
+	owner,
+	postageContractAddress,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
 	postageService postage.Service,
