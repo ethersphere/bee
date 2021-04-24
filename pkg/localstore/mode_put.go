@@ -183,6 +183,19 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		return true, 0, nil
 	}
 
+	previous, err := db.postageIndexIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return false, 0, err
+		}
+	} else {
+		// if a chunk is found with the same postage stamp, replace it with the new one
+		gcSizeChange, err = db.setRemove(batch, previous, true)
+		if err != nil {
+			return false, 0, err
+		}
+	}
+
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
@@ -291,10 +304,6 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-	err = db.postageIndexIndex.PutInBatch(batch, item)
-	if err != nil {
-		return false, 0, err
-	}
 
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
@@ -323,6 +332,10 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 	}
 
 	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
+		err = db.postageIndexIndex.PutInBatch(batch, item)
+		if err != nil {
+			return 0, err
+		}
 		return db.setPin(batch, item)
 	}
 
