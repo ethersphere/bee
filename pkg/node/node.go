@@ -399,6 +399,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
+	batchStore.SetRadiusSetter(kad)
 
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {

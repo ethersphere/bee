@@ -50,6 +50,8 @@ func TestNeighborhoodDepth(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
 	)
 
+	kad.SetRadius(swarm.MaxPO) // initial tests do not check for radius
+
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -111,8 +113,14 @@ func TestNeighborhoodDepth(t *testing.T) {
 	// depth is 7 because bin 7 is unsaturated (1 peer)
 	kDepth(t, kad, 7)
 
-	// expect shallow peers not in depth
+	// set the radius to be lower than unsaturated, expect radius as depth
+	kad.SetRadius(6)
+	kDepth(t, kad, 6)
 
+	// set the radius to MaxPO again so that intermediate checks can run
+	kad.SetRadius(swarm.MaxPO)
+
+	// expect shallow peers not in depth
 	for _, a := range shallowPeers {
 		if kad.IsWithinDepth(a) {
 			t.Fatal("expected address to outside of depth")
@@ -140,6 +148,13 @@ func TestNeighborhoodDepth(t *testing.T) {
 	addOne(t, signer, kad, ab, addr)
 	waitConn(t, &conns)
 	kDepth(t, kad, 8)
+
+	// again set radius to lower value, expect that as depth
+	kad.SetRadius(5)
+	kDepth(t, kad, 5)
+
+	// reset radius to MaxPO for the rest of the checks
+	kad.SetRadius(swarm.MaxPO)
 
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
@@ -303,6 +318,8 @@ func TestManageWithBalancing(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
 	)
 
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+
 	// implement satiration function (while having access to Kademlia instance)
 	sfImpl := func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 		return kad.IsBalanced(bin), false
@@ -418,6 +435,7 @@ func TestOversaturation(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
 	)
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -473,6 +491,7 @@ func TestOversaturationBootnode(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BootnodeMode: true})
 	)
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
