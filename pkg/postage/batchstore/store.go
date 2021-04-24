@@ -28,6 +28,9 @@ type store struct {
 	rs            *reserveState       // the reserve state
 	unreserveFunc unreserveFn         // unreserve function
 	metrics       metrics             // metrics
+
+	radiusSetter postage.RadiusSetter // setter for radius notifications
+	//radiusSetterMu sync.Mutex
 }
 
 // New constructs a new postage batch store.
@@ -58,7 +61,15 @@ func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, err
 			Available: Capacity,
 		}
 	}
-	return &store{st, cs, rs, unreserveFunc, newMetrics()}, nil
+	s := &store{
+		store:         st,
+		cs:            cs,
+		rs:            rs,
+		unreserveFunc: unreserveFunc,
+		metrics:       newMetrics(),
+	}
+
+	return s, nil
 }
 
 func (s *store) GetReserveState() *postage.Reservestate {
@@ -99,6 +110,8 @@ func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
 	if err != nil {
 		return err
 	}
+	s.radiusSetter.SetRadius(s.rs.Radius)
+
 	return s.store.Put(batchKey(b.ID), b)
 }
 
@@ -130,6 +143,8 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	if err != nil {
 		return err
 	}
+	s.radiusSetter.SetRadius(s.rs.Radius)
+
 	return s.store.Put(chainStateKey, cs)
 }
 
@@ -137,6 +152,12 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 // the batch store.
 func (s *store) GetChainState() *postage.ChainState {
 	return s.cs
+}
+
+func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
+	//s.radiusSetterMu.Lock()
+	s.radiusSetter = r
+	//s.radiusSetterMu.Unlock()
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.

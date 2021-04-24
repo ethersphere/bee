@@ -67,6 +67,7 @@ type Kad struct {
 	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
 	bootnodes         []ma.Multiaddr
 	depth             uint8                // current neighborhood depth
+	radius            uint8                // storage area of responsibility
 	depthMu           sync.RWMutex         // protect depth changes
 	manageC           chan struct{}        // trigger the manage forever loop to connect to new peers
 	waitNext          map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
@@ -87,7 +88,12 @@ type retryInfo struct {
 }
 
 // New returns a new Kademlia.
-func New(base swarm.Address, addressbook addressbook.Interface, discovery discovery.Driver, p2p p2p.Service, logger logging.Logger, o Options) *Kad {
+func New(base swarm.Address,
+	addressbook addressbook.Interface,
+	discovery discovery.Driver,
+	p2p p2p.Service,
+	logger logging.Logger,
+	o Options) *Kad {
 	if o.SaturationFunc == nil {
 		o.SaturationFunc = binSaturated
 	}
@@ -340,7 +346,7 @@ func (k *Kad) manage() {
 							k.connectedPeers.Add(peer, po)
 
 							k.depthMu.Lock()
-							k.depth = recalcDepth(k.connectedPeers)
+							k.depth = recalcDepth(k.connectedPeers, k.radius)
 							k.depthMu.Unlock()
 
 							k.logger.Debugf("connected to peer: %s for bin: %d", peer, i)
@@ -421,7 +427,7 @@ func (k *Kad) manage() {
 				k.connectedPeers.Add(peer, po)
 
 				k.depthMu.Lock()
-				k.depth = recalcDepth(k.connectedPeers)
+				k.depth = recalcDepth(k.connectedPeers, k.radius)
 				k.depthMu.Unlock()
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
@@ -518,7 +524,7 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
 func binSaturated(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
-	potentialDepth := recalcDepth(peers)
+	potentialDepth := recalcDepth(peers, swarm.MaxPO)
 
 	// short circuit for bins which are >= depth
 	if bin >= potentialDepth {
@@ -544,7 +550,7 @@ func binSaturated(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 }
 
 // recalcDepth calculates and returns the kademlia depth.
-func recalcDepth(peers *pslice.PSlice) uint8 {
+func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 	// handle edge case separately
 	if peers.Length() <= nnLowWatermark {
 		return 0
@@ -590,9 +596,15 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 		return false, false, nil
 	})
 	if shallowestUnsaturated > candidate {
+		if radius < candidate {
+			return radius
+		}
 		return candidate
 	}
 
+	if radius < shallowestUnsaturated {
+		return radius
+	}
 	return shallowestUnsaturated
 }
 
@@ -761,7 +773,7 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()
-	k.depth = recalcDepth(k.connectedPeers)
+	k.depth = recalcDepth(k.connectedPeers, k.radius)
 	k.depthMu.Unlock()
 
 	k.notifyPeerSig()
@@ -779,7 +791,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()
-	k.depth = recalcDepth(k.connectedPeers)
+	k.depth = recalcDepth(k.connectedPeers, k.radius)
 	k.depthMu.Unlock()
 
 	select {
@@ -1016,6 +1028,23 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 	}
 
 	return true
+}
+
+func (k *Kad) SetRadius(r uint8) {
+	k.depthMu.Lock()
+	defer k.depthMu.Unlock()
+	if k.radius == r {
+		return
+	}
+	k.radius = r
+	oldD := k.depth
+	k.depth = recalcDepth(k.connectedPeers, k.radius)
+	if k.depth != oldD {
+		select {
+		case k.manageC <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (k *Kad) Snapshot() *topology.KadParams {

@@ -33,7 +33,7 @@ func TestBatchStorePut(t *testing.T) {
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, unreserve)
-
+	batchStore.SetRadiusSetter(noopRadiusSetter{})
 	batchStorePutBatch(t, batchStore, testBatch)
 
 	var got postage.Batch
@@ -46,6 +46,7 @@ func TestBatchStoreGetChainState(t *testing.T) {
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil)
+	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err := batchStore.PutChainState(testChainState)
 	if err != nil {
@@ -60,6 +61,7 @@ func TestBatchStorePutChainState(t *testing.T) {
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil)
+	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	batchStorePutChainState(t, batchStore, testChainState)
 	var got postage.ChainState
@@ -101,3 +103,7 @@ func batchStorePutChainState(t *testing.T, st postage.Storer, cs *postage.ChainS
 		t.Fatalf("postage storer put chain state: %v", err)
 	}
 }
+
+type noopRadiusSetter struct{}
+
+func (_ noopRadiusSetter) SetRadius(_ uint8) {}

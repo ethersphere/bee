@@ -123,3 +123,7 @@ func (bs *BatchStore) PutChainState(cs *postage.ChainState) error {
 func (bs *BatchStore) GetReserveState() *postage.Reservestate {
 	return bs.rs
 }
+
+func (bs *BatchStore) SetRadiusSetter(r postage.RadiusSetter) {
+	panic("not implemented")
+}
