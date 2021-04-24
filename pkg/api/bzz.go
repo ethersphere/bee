@@ -43,7 +43,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload: parse content type header %q: %v", contentType, err)
 		logger.Errorf("bzz upload: parse content type header %q", contentType)
-		jsonhttp.BadRequest(w, invalidContentType)
+		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
 
@@ -122,7 +122,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 		if err != nil {
 			logger.Debugf("bzz upload file: content length, file %q: %v", fileName, err)
 			logger.Errorf("bzz upload file: content length, file %q", fileName)
-			jsonhttp.BadRequest(w, invalidContentLength)
+			jsonhttp.BadRequest(w, errInvalidContentLength)
 			return
 		}
 	} else {
@@ -160,7 +160,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: file store, file %q", fileName)
-		jsonhttp.InternalServerError(w, fileStoreError)
+		jsonhttp.InternalServerError(w, errFileStore)
 		return
 	}
 

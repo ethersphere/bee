@@ -20,7 +20,7 @@ import (
 
 var (
 	testLog = logging.New(ioutil.Discard, 0)
-	testErr = errors.New("fails")
+	errTest = errors.New("fails")
 )
 
 type mockListener struct {
@@ -40,7 +40,7 @@ func TestBatchServiceCreate(t *testing.T) {
 	t.Run("expect put create put error", func(t *testing.T) {
 		svc, _ := newTestStoreAndService(
 			mock.WithChainState(testChainState),
-			mock.WithPutErr(testErr, 0),
+			mock.WithPutErr(errTest, 0),
 		)
 
 		if err := svc.Create(
@@ -97,7 +97,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 
 	t.Run("expect get error", func(t *testing.T) {
 		svc, _ := newTestStoreAndService(
-			mock.WithGetErr(testErr, 0),
+			mock.WithGetErr(errTest, 0),
 		)
 
 		if err := svc.TopUp(testBatch.ID, testNormalisedBalance); err == nil {
@@ -107,7 +107,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 
 	t.Run("expect put error", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
-			mock.WithPutErr(testErr, 1),
+			mock.WithPutErr(errTest, 1),
 		)
 		putBatch(t, batchStore, testBatch)
 
@@ -144,7 +144,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 	t.Run("expect get error", func(t *testing.T) {
 		svc, _ := newTestStoreAndService(
-			mock.WithGetErr(testErr, 0),
+			mock.WithGetErr(errTest, 0),
 		)
 
 		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance); err == nil {
@@ -154,7 +154,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 	t.Run("expect put error", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
-			mock.WithPutErr(testErr, 1),
+			mock.WithPutErr(errTest, 1),
 		)
 		putBatch(t, batchStore, testBatch)
 
@@ -190,7 +190,7 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 	t.Run("expect put error", func(t *testing.T) {
 		svc, batchStore := newTestStoreAndService(
 			mock.WithChainState(testChainState),
-			mock.WithPutErr(testErr, 1),
+			mock.WithPutErr(errTest, 1),
 		)
 		putChainState(t, batchStore, testChainState)
 
