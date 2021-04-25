@@ -330,11 +330,13 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 	} else {
 		item.Radius = item2.Radius
 	}
-
-	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
-		err = db.postageIndexIndex.PutInBatch(batch, item)
-		if err != nil {
-			return 0, err
+	withinR := withinRadiusFn(db, item)
+	if !forceCache && (withinR || forcePin) {
+		if withinR {
+			err = db.postageIndexIndex.PutInBatch(batch, item)
+			if err != nil {
+				return 0, err
+			}
 		}
 		return db.setPin(batch, item)
 	}

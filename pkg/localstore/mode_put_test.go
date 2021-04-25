@@ -64,6 +64,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newItemsCountTest(db.postageIndexIndex, 0)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 
@@ -83,6 +84,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newItemsCountTest(db.postageIndexIndex, 0)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 		})
@@ -118,6 +120,7 @@ func TestModePutRequestPin(t *testing.T) {
 
 			// gc index should be always 0 since we're pinning
 			newItemsCountTest(db.gcIndex, 0)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 		})
 	}
 }
@@ -157,6 +160,7 @@ func TestModePutRequestCache(t *testing.T) {
 			}
 
 			newItemsCountTest(db.gcIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, 0)(t)
 		})
 	}
 }
@@ -193,10 +197,10 @@ func TestModePutSync(t *testing.T) {
 				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
 				newPullIndexTest(db, ch, binIDs[po], nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
-				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			}
 			newItemsCountTest(db.gcIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, 0)(t)
 			newIndexGCSizeTest(db)(t)
 		})
 	}
@@ -235,6 +239,7 @@ func TestModePutUpload(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
+			newItemsCountTest(db.postageIndexIndex, 0)(t)
 		})
 	}
 }
@@ -272,6 +277,7 @@ func TestModePutUploadPin(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, nil)(t)
 			}
+			newItemsCountTest(db.postageIndexIndex, 0)(t)
 		})
 	}
 }
