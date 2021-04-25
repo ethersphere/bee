@@ -209,7 +209,10 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	if err != nil {
 		return false, 0, err
 	}
-
+	err = db.postageIndexIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
@@ -304,7 +307,10 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-
+	err = db.postageIndexIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
@@ -330,14 +336,7 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 	} else {
 		item.Radius = item2.Radius
 	}
-	withinR := withinRadiusFn(db, item)
-	if !forceCache && (withinR || forcePin) {
-		if withinR {
-			err = db.postageIndexIndex.PutInBatch(batch, item)
-			if err != nil {
-				return 0, err
-			}
-		}
+	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
 		return db.setPin(batch, item)
 	}
 

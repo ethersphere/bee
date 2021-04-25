@@ -241,12 +241,6 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSiz
 	if err != nil {
 		return 0, err
 	}
-	fmt.Printf("%v | %v", item.BatchID, item.Index)
-	err = db.postageIndexIndex.DeleteInBatch(batch, item)
-	if err != nil {
-		panic(1)
-		return 0, err
-	}
 
 	// unless called by GC which iterates through the gcIndex
 	// a check is needed for decrementing gcSize
