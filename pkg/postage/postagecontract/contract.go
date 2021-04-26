@@ -16,13 +16,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
+	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	postageStampABI   = parseABI(listener.PostageStampABIJSON)
+	postageStampABI   = parseABI(postageabi.PostageStampABIv0_1_0)
 	erc20ABI          = parseABI(sw3abi.ERC20ABIv0_3_1)
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 

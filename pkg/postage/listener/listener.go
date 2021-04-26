@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
+	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 )
 
 const (
@@ -26,8 +27,8 @@ const (
 
 var (
 	chainUpdateInterval     = 5 * time.Second
-	postageStampABI         = parseABI(PostageStampABIJSON)
-	priceOracleABI          = parseABI(PriceOracleABIJSON)
+	postageStampABI         = parseABI(postageabi.PostageStampABIv0_1_0)
+	priceOracleABI          = parseABI(postageabi.PriceOracleABIv0_1_0)
 	batchCreatedTopic       = postageStampABI.Events["BatchCreated"].ID
 	batchTopupTopic         = postageStampABI.Events["BatchTopUp"].ID
 	batchDepthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
