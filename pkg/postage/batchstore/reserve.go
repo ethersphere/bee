@@ -40,7 +40,7 @@ import (
 var ErrBatchNotFound = errors.New("postage batch not found or expired")
 
 // DefaultDepth is the initial depth for the reserve
-const DefaultDepth = 5
+const DefaultDepth = 12 // 12 is the testnet depth at the time of merging to master
 
 // Capacity is the number of chunks in reserve. `2^23` (8388608) was chosen to remain
 // relatively near the current 5M chunks ~25GB.

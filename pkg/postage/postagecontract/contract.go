@@ -22,6 +22,8 @@ import (
 )
 
 var (
+	bucketDepth = uint8(16)
+
 	postageStampABI   = parseABI(postageabi.PostageStampABIv0_1_0)
 	erc20ABI          = parseABI(sw3abi.ERC20ABIv0_3_1)
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
@@ -141,7 +143,6 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error) {
-	bucketDepth := uint8(10)
 
 	if depth < bucketDepth {
 		return nil, ErrInvalidDepth
