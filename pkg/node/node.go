@@ -310,7 +310,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	validStamp := postage.ValidStamp(batchStore)
 	post := postage.NewService(stateStore, chainID)
 
-	var postageContractService postagecontract.Interface
+	var (
+		postageContractService postagecontract.Interface
+		batchSvc               postage.EventUpdater
+	)
+
 	if !o.Standalone {
 		postageContractAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID)
 		if o.PostageContractAddress != "" {
@@ -332,7 +336,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress)
 		b.listenerCloser = eventListener
 
-		_ = batchservice.New(batchStore, logger, eventListener)
+		batchSvc = batchservice.New(batchStore, logger, eventListener)
 
 		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
 		if err != nil {
@@ -400,6 +404,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
+	batchSvc.Start()
 
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {

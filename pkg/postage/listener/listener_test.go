@@ -275,6 +275,8 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return nil
 }
 
+func (u *updater) Start() {}
+
 type mockFilterer struct {
 	filterLogEvents    []types.Log
 	subscriptionEvents []types.Log
