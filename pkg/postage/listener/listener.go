@@ -31,7 +31,6 @@ const (
 
 var (
 	chainUpdateInterval = 5 * time.Second
-	chainUpdateInterval = 5 * time.Second
 	postageStampABI     = parseABI(postageabi.PostageStampABIv0_1_0)
 	priceOracleABI      = parseABI(postageabi.PriceOracleABIv0_1_0)
 	// batchCreatedTopic is the postage contract's batch created event topic
@@ -158,13 +157,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 }
 
 func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		defer cancel()
-		select {
-		case <-l.quit:
-		}
-	}()
+	ctx := context.Background()
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
 	for {

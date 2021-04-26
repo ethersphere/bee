@@ -15,8 +15,8 @@ import (
 const (
 	batchKeyPrefix  = "batchstore_batch_"
 	valueKeyPrefix  = "batchstore_value_"
-	chainStateKey   = "batchstore_chain_"
-	reserveStateKey = "batchstore_reserve_"
+	chainStateKey   = "batchstore_chainstate"
+	reserveStateKey = "batchstore_reservestate"
 )
 
 type unreserveFn func(batchID []byte, radius uint8) error

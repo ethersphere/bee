@@ -50,10 +50,11 @@ func newValue(price, value *big.Int) *big.Int {
 // - reserve exceeds capacity
 // - value-consistency of unreserved POs
 func TestBatchStoreUnreserveEvents(t *testing.T) {
-	// temporarily reset reserve Capacity
-	defer func(i int64) {
+	defer func(i int64, d uint8) {
 		batchstore.Capacity = i
-	}(batchstore.Capacity)
+		batchstore.DefaultDepth = d
+	}(batchstore.Capacity, batchstore.DefaultDepth)
+	batchstore.DefaultDepth = 5
 	batchstore.Capacity = batchstore.Exp2(16)
 
 	bStore, unreserved := setupBatchStore(t)
@@ -133,10 +134,11 @@ func TestBatchStoreUnreserveEvents(t *testing.T) {
 }
 
 func TestBatchStoreUnreserveAll(t *testing.T) {
-	// temporarily reset reserve Capacity
-	defer func(i int64) {
+	defer func(i int64, d uint8) {
 		batchstore.Capacity = i
-	}(batchstore.Capacity)
+		batchstore.DefaultDepth = d
+	}(batchstore.Capacity, batchstore.DefaultDepth)
+	batchstore.DefaultDepth = 5
 	batchstore.Capacity = batchstore.Exp2(16)
 
 	bStore, unreserved := setupBatchStore(t)
@@ -324,9 +326,11 @@ func checkReserve(bStore postage.Storer, unreserved map[string]uint8) (uint8, er
 //		└──┴──┴──┴──┴───────> time
 //
 func TestBatchStore_Unreserve(t *testing.T) {
-	defer func(i int64) {
+	defer func(i int64, d uint8) {
 		batchstore.Capacity = i
-	}(batchstore.Capacity)
+		batchstore.DefaultDepth = d
+	}(batchstore.Capacity, batchstore.DefaultDepth)
+	batchstore.DefaultDepth = 5
 	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
 	// 8 is the initial batch depth we add the initial state batches with.
 	// the default radius is 5 (defined in reserve.go file), which means there
@@ -573,9 +577,11 @@ func TestBatchStore_Unreserve(t *testing.T) {
 //		└──┴──┴──┴──┴──┴─────> time
 //
 func TestBatchStore_Topup(t *testing.T) {
-	defer func(i int64) {
+	defer func(i int64, d uint8) {
 		batchstore.Capacity = i
-	}(batchstore.Capacity)
+		batchstore.DefaultDepth = d
+	}(batchstore.Capacity, batchstore.DefaultDepth)
+	batchstore.DefaultDepth = 5
 	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
 	initBatchDepth := uint8(8)
 
@@ -688,9 +694,11 @@ func TestBatchStore_Topup(t *testing.T) {
 //		└──┴──┴──┴──┴──┴─────> time
 //
 func TestBatchStore_Dilution(t *testing.T) {
-	defer func(i int64) {
+	defer func(i int64, d uint8) {
 		batchstore.Capacity = i
-	}(batchstore.Capacity)
+		batchstore.DefaultDepth = d
+	}(batchstore.Capacity, batchstore.DefaultDepth)
+	batchstore.DefaultDepth = 5
 	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
 	initBatchDepth := uint8(8)
 
@@ -797,10 +805,11 @@ func TestBatchStore_Dilution(t *testing.T) {
 }
 
 func TestBatchStore_EvictExpired(t *testing.T) {
-	// temporarily reset reserve Capacity
-	defer func(i int64) {
+	defer func(i int64, d uint8) {
 		batchstore.Capacity = i
-	}(batchstore.Capacity)
+		batchstore.DefaultDepth = d
+	}(batchstore.Capacity, batchstore.DefaultDepth)
+	batchstore.DefaultDepth = 5
 	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
 	initBatchDepth := uint8(8)
 

@@ -106,4 +106,4 @@ func batchStorePutChainState(t *testing.T, st postage.Storer, cs *postage.ChainS
 
 type noopRadiusSetter struct{}
 
-func (n *noopRadiusSetter) SetRadius(_ uint8) {}
+func (n noopRadiusSetter) SetRadius(_ uint8) {}
