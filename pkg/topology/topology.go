@@ -88,6 +88,22 @@ type KadBins struct {
 	Bin13 BinInfo `json:"bin_13"`
 	Bin14 BinInfo `json:"bin_14"`
 	Bin15 BinInfo `json:"bin_15"`
+	Bin16 BinInfo `json:"bin_16"`
+	Bin17 BinInfo `json:"bin_17"`
+	Bin18 BinInfo `json:"bin_18"`
+	Bin19 BinInfo `json:"bin_19"`
+	Bin20 BinInfo `json:"bin_20"`
+	Bin21 BinInfo `json:"bin_21"`
+	Bin22 BinInfo `json:"bin_22"`
+	Bin23 BinInfo `json:"bin_23"`
+	Bin24 BinInfo `json:"bin_24"`
+	Bin25 BinInfo `json:"bin_25"`
+	Bin26 BinInfo `json:"bin_26"`
+	Bin27 BinInfo `json:"bin_27"`
+	Bin28 BinInfo `json:"bin_28"`
+	Bin29 BinInfo `json:"bin_29"`
+	Bin30 BinInfo `json:"bin_30"`
+	Bin31 BinInfo `json:"bin_31"`
 }
 
 type KadParams struct {

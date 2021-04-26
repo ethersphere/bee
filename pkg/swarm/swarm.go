@@ -23,7 +23,7 @@ const (
 	BmtBranches             = 128
 	ChunkSize               = SectionSize * Branches
 	HashSize                = 32
-	MaxPO             uint8 = 15
+	MaxPO             uint8 = 31
 	ExtendedPO        uint8 = MaxPO + 5
 	MaxBins                 = MaxPO + 1
 	ChunkWithSpanSize       = ChunkSize + SpanSize

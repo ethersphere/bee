@@ -156,16 +156,16 @@ func TestNeighborhoodDepth(t *testing.T) {
 
 	// add a whole bunch of peers in bin 15, expect depth to stay at 15
 	for i := 0; i < 15; i++ {
-		addr = test.RandomAddressAt(base, 15)
+		addr = test.RandomAddressAt(base, int(swarm.MaxPO))
 		addOne(t, signer, kad, ab, addr)
 	}
 
 	waitCounter(t, &conns, 15)
-	kDepth(t, kad, 15)
+	kDepth(t, kad, 31)
 
 	// remove one at 14, depth should be 14
 	removeOne(kad, addrs[len(addrs)-5])
-	kDepth(t, kad, 14)
+	kDepth(t, kad, 30)
 
 	// empty bin 9 and expect depth 9
 	for i := 0; i < 4; i++ {
