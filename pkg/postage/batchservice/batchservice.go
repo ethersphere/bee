@@ -25,10 +25,7 @@ type Interface interface {
 
 // New will create a new BatchService.
 func New(storer postage.Storer, logger logging.Logger, listener postage.Listener) Interface {
-	svc := &batchService{storer, logger, listener}
-	cs := svc.storer.GetChainState()
-	svc.listener.Listen(cs.Block+1, svc)
-	return svc
+	return &batchService{storer, logger, listener}
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -109,4 +106,9 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 
 	svc.logger.Debugf("batch service: updated block height to %d", blockNumber)
 	return nil
+}
+
+func (svc *batchService) Start() {
+	cs := svc.storer.GetChainState()
+	svc.listener.Listen(cs.Block+1, svc)
 }

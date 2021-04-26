@@ -30,7 +30,6 @@ type store struct {
 	metrics       metrics             // metrics
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
-	//radiusSetterMu sync.Mutex
 }
 
 // New constructs a new postage batch store.
@@ -110,8 +109,10 @@ func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
 	if err != nil {
 		return err
 	}
-	s.radiusSetter.SetRadius(s.rs.Radius)
 
+	if s.radiusSetter != nil {
+		s.radiusSetter.SetRadius(s.rs.Radius)
+	}
 	return s.store.Put(batchKey(b.ID), b)
 }
 
@@ -143,7 +144,11 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	if err != nil {
 		return err
 	}
-	s.radiusSetter.SetRadius(s.rs.Radius)
+	// this needs to be improved, since we can miss some calls on
+	// startup. the same goes for the other call to radiusSetter
+	if s.radiusSetter != nil {
+		s.radiusSetter.SetRadius(s.rs.Radius)
+	}
 
 	return s.store.Put(chainStateKey, cs)
 }
@@ -155,9 +160,7 @@ func (s *store) GetChainState() *postage.ChainState {
 }
 
 func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
-	//s.radiusSetterMu.Lock()
 	s.radiusSetter = r
-	//s.radiusSetterMu.Unlock()
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.
