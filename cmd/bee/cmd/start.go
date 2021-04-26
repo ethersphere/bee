@@ -154,6 +154,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				SwapEnable:               c.config.GetBool(optionNameSwapEnable),
 				PostageContractAddress:   c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:       c.config.GetString(optionNamePriceOracleAddress),
+				FullNodeMode:             c.config.GetBool(optionNameFullNode),
 			})
 			if err != nil {
 				return err

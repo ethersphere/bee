@@ -57,6 +57,7 @@ const (
 	optionNameSwapEnable                = "swap-enable"
 	optionNamePostageContractAddress    = "postage-stamp-address"
 	optionNamePriceOracleAddress        = "price-oracle-address"
+	optionNameFullNode                  = "full-node"
 )
 
 func init() {
@@ -224,4 +225,5 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle address")
+	cmd.Flags().Bool(optionNameFullNode, true, "cause the node to start in full mode")
 }

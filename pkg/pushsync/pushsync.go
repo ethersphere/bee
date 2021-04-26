@@ -66,19 +66,21 @@ type PushSync struct {
 	tracer         *tracing.Tracer
 	validStamp     func(swarm.Chunk, []byte) (swarm.Chunk, error)
 	signer         crypto.Signer
+	isFullNode     bool
 }
 
 var timeToLive = 5 * time.Second                      // request time to live
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
-func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
+func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		streamer:       streamer,
 		storer:         storer,
 		topologyDriver: topology,
 		tagger:         tagger,
+		isFullNode:     isFullNode,
 		unwrap:         unwrap,
 		logger:         logger,
 		accounting:     accounting,
@@ -317,8 +319,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk) (rr *pb.R
 
 		defersFn()
 
+		includeSelf := ps.isFullNode
+
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), skipPeers...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, skipPeers...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
