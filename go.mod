@@ -8,6 +8,7 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/ethereum/go-ethereum v1.9.23
+	github.com/ethersphere/go-storage-incentives-abi v0.1.0
 	github.com/ethersphere/go-sw3-abi v0.3.2
 	github.com/ethersphere/langos v1.0.0
 	github.com/foxcpp/go-mockdns v0.0.0-20201212160233-ede2f9158d15
