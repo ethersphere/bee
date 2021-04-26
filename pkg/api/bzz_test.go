@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -46,12 +47,14 @@ func TestBzzFiles(t *testing.T) {
 			Pinning: pinningMock,
 			Tags:    tags.NewTags(statestoreMock, logger),
 			Logger:  logger,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
 	t.Run("invalid-content-type", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource,
 			http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: api.InvalidContentType.Error(),
@@ -89,6 +92,7 @@ func TestBzzFiles(t *testing.T) {
 		})
 		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -138,6 +142,7 @@ func TestBzzFiles(t *testing.T) {
 		})
 		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -172,6 +177,7 @@ func TestBzzFiles(t *testing.T) {
 		var resp api.BzzUploadResponse
 		jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
@@ -202,6 +208,7 @@ func TestBzzFiles(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
@@ -242,6 +249,7 @@ func TestBzzFiles(t *testing.T) {
 
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
@@ -280,6 +288,7 @@ func TestBzzFiles(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
@@ -392,11 +401,13 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 				Storer: smock.NewStorer(),
 				Tags:   tags.NewTags(mockStatestore, logger),
 				Logger: logger,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
 			})
 
 			var resp api.BzzUploadResponse
 
 			testOpts := []jsonhttptest.Option{
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 				jsonhttptest.WithRequestBody(upload.reader),
 				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
 				jsonhttptest.WithUnmarshalJSONResponse(&resp),
@@ -505,6 +516,7 @@ func TestFeedIndirection(t *testing.T) {
 			Storer: storer,
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 	// tar all the test case files
@@ -520,6 +532,7 @@ func TestFeedIndirection(t *testing.T) {
 	var resp api.BzzUploadResponse
 
 	options := []jsonhttptest.Option{
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 		jsonhttptest.WithRequestBody(tarReader),
 		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 		jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),

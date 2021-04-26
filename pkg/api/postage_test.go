@@ -16,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/postage"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 )
@@ -133,14 +135,14 @@ func TestPostageCreateStamp(t *testing.T) {
 }
 
 func TestPostageGetStamps(t *testing.T) {
-	batchID := make([]byte, 32) // this will break once the fallback batchid is gone
-	client, _, _ := newTestServer(t, testServerOptions{})
+	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 			Stamps: []api.PostageStampResponse{
 				{
-					BatchID:     batchID,
+					BatchID:     batchOk,
 					Utilization: 0,
 				},
 			},
@@ -149,20 +151,18 @@ func TestPostageGetStamps(t *testing.T) {
 }
 
 func TestPostageGetStamp(t *testing.T) {
-	batchID := make([]byte, 32) // this will break once the fallback batchid is gone
+	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	t.Run("ok", func(t *testing.T) {
-		client, _, _ := newTestServer(t, testServerOptions{})
-
-		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(batchID), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+batchOkStr, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
-				BatchID:     batchID,
+				BatchID:     batchOk,
 				Utilization: 0,
 			}),
 		)
 	})
 	t.Run("ok", func(t *testing.T) {
-		client, _, _ := newTestServer(t, testServerOptions{})
 		badBatch := []byte{0, 1, 2}
 
 		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
@@ -173,7 +173,6 @@ func TestPostageGetStamp(t *testing.T) {
 		)
 	})
 	t.Run("ok", func(t *testing.T) {
-		client, _, _ := newTestServer(t, testServerOptions{})
 		badBatch := []byte{0, 1, 2, 4}
 
 		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,

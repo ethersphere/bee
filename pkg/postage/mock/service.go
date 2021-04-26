@@ -4,7 +4,11 @@
 
 package mock
 
-import "github.com/ethersphere/bee/pkg/postage"
+import (
+	"errors"
+
+	"github.com/ethersphere/bee/pkg/postage"
+)
 
 type optionFunc func(*mockPostage)
 
@@ -22,24 +26,22 @@ func New(o ...Option) postage.Service {
 		v.apply(m)
 	}
 
-	// Add the fallback value we have in the api right now.
-	// In the future this needs to go away once batch id becomes de facto
-	// mandatory in the package.
-
-	id := make([]byte, 32)
-	st := postage.NewStampIssuer("test fallback", "test identity", id, 24, 6)
-	m.Add(st)
-
 	return m
 }
 
-// WithMockBatch sets the mock batch on the mock postage service.
-func WithMockBatch(id []byte) Option {
-	return optionFunc(func(m *mockPostage) {})
+// WithAcceptAll sets the mock to return a new BatchIssuer on every
+// call to GetStampIssuer.
+func WithAcceptAll() Option {
+	return optionFunc(func(m *mockPostage) { m.acceptAll = true })
+}
+
+func WithIssuer(s *postage.StampIssuer) Option {
+	return optionFunc(func(m *mockPostage) { m.i = s })
 }
 
 type mockPostage struct {
-	i *postage.StampIssuer
+	i         *postage.StampIssuer
+	acceptAll bool
 }
 
 func (m *mockPostage) Add(s *postage.StampIssuer) {
@@ -50,8 +52,16 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 	return []*postage.StampIssuer{m.i}
 }
 
-func (m *mockPostage) GetStampIssuer(_ []byte) (*postage.StampIssuer, error) {
-	return m.i, nil
+func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
+	if m.acceptAll {
+		return postage.NewStampIssuer("test fallback", "test identity", id, 24, 6), nil
+	}
+
+	if m.i != nil {
+		return m.i, nil
+	}
+
+	return nil, errors.New("stampissuer not found")
 }
 
 func (m *mockPostage) Load() error {
