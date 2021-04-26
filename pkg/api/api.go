@@ -235,8 +235,7 @@ func requestPostageBatchId(r *http.Request) ([]byte, error) {
 		return b, nil
 	}
 
-	// fallback to a slice of 32 zeros
-	return make([]byte, 32), nil
+	return nil, errInvalidPostageBatch
 }
 
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {

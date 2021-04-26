@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -86,12 +87,14 @@ func TestPinHandlers(t *testing.T) {
 			Tags:      tags.NewTags(statestore.NewStateStore(), logging.New(ioutil.Discard, 0)),
 			Pinning:   pinning.NewServiceMock(),
 			Logger:    logging.New(ioutil.Discard, 5),
+			Post:      mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
 	t.Run("bytes", func(t *testing.T) {
 		const rootHash = "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2aeb"
 		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(strings.NewReader("this is a simple text")),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
@@ -108,6 +111,7 @@ func TestPinHandlers(t *testing.T) {
 		}})
 		rootHash := "9e178dbd1ed4b748379e25144e28dfb29c07a4b5114896ef454480115a56b237"
 		jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
@@ -119,6 +123,7 @@ func TestPinHandlers(t *testing.T) {
 
 		rootHash = "dd13a5a6cc9db3ef514d645e6719178dbfb1a90b49b9262cafce35b0d27cf245"
 		jsonhttptest.Request(t, client, http.MethodPost, "/bzz?name=somefile.txt", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader("Content-Type", "text/plain"),
 			jsonhttptest.WithRequestBody(strings.NewReader("this is a simple text")),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -134,6 +139,7 @@ func TestPinHandlers(t *testing.T) {
 			rootHash = chunk.Address().String()
 		)
 		jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{
 				Reference: chunk.Address(),
