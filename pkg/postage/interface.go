@@ -17,6 +17,7 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error
 	UpdatePrice(price *big.Int) error
 	UpdateBlockNumber(blockNumber uint64) error
+	Start()
 }
 
 // Storer represents the persistence layer for batches on the current (highest
