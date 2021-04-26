@@ -22,14 +22,6 @@ func New(o ...Option) postage.Service {
 		v.apply(m)
 	}
 
-	// Add the fallback value we have in the api right now.
-	// In the future this needs to go away once batch id becomes de facto
-	// mandatory in the package.
-
-	id := make([]byte, 32)
-	st := postage.NewStampIssuer("test fallback", "test identity", id, 24, 6)
-	m.Add(st)
-
 	return m
 }
 
@@ -50,8 +42,13 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 	return []*postage.StampIssuer{m.i}
 }
 
-func (m *mockPostage) GetStampIssuer(_ []byte) (*postage.StampIssuer, error) {
-	return m.i, nil
+func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
+	if m.i != nil {
+		return m.i
+	}
+
+	// fallback - return
+	return postage.NewStampIssuer("test fallback", "test identity", id, 24, 6), nil
 }
 
 func (m *mockPostage) Load() error {

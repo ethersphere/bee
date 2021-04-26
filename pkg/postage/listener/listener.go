@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package listener
 
 import (
@@ -26,13 +30,18 @@ const (
 )
 
 var (
-	chainUpdateInterval     = 5 * time.Second
-	postageStampABI         = parseABI(postageabi.PostageStampABIv0_1_0)
-	priceOracleABI          = parseABI(postageabi.PriceOracleABIv0_1_0)
-	batchCreatedTopic       = postageStampABI.Events["BatchCreated"].ID
-	batchTopupTopic         = postageStampABI.Events["BatchTopUp"].ID
+	chainUpdateInterval = 5 * time.Second
+	chainUpdateInterval = 5 * time.Second
+	postageStampABI     = parseABI(postageabi.PostageStampABIv0_1_0)
+	priceOracleABI      = parseABI(postageabi.PriceOracleABIv0_1_0)
+	// batchCreatedTopic is the postage contract's batch created event topic
+	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
+	// batchTopupTopic is the postage contract's batch topup event topic
+	batchTopupTopic = postageStampABI.Events["BatchTopUp"].ID
+	// batchDepthIncreaseTopic is the postage contract's batch dilution event topic
 	batchDepthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
-	priceUpdateTopic        = priceOracleABI.Events["PriceUpdate"].ID
+	// priceUpdateTopic is the price oracle's price update event topic
+	priceUpdateTopic = priceOracleABI.Events["PriceUpdate"].ID
 )
 
 type BlockHeightContractFilterer interface {
@@ -149,7 +158,13 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 }
 
 func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		select {
+		case <-l.quit:
+		}
+	}()
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
 	for {
@@ -160,7 +175,7 @@ func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
 		case <-l.quit:
 			return nil
 		}
-		to, err := l.ev.BlockNumber(context.Background())
+		to, err := l.ev.BlockNumber(ctx)
 		if err != nil {
 			return err
 		}
