@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/tags"
@@ -45,11 +46,13 @@ func TestChunkUploadDownload(t *testing.T) {
 			Storer:  storerMock,
 			Pinning: pinningMock,
 			Tags:    tag,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
 	t.Run("empty chunk", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "data length",
 				Code:    http.StatusBadRequest,
@@ -59,6 +62,7 @@ func TestChunkUploadDownload(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
@@ -77,6 +81,7 @@ func TestChunkUploadDownload(t *testing.T) {
 
 	t.Run("pin-invalid-value", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "invalid-pin"),
@@ -89,6 +94,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
@@ -101,6 +107,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	t.Run("pin-ok", func(t *testing.T) {
 		address := chunk.Address()
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: address}),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "True"),

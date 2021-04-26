@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -57,7 +56,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -202,30 +200,26 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	addressbook := addressbook.New(stateStore)
 
-	var swapBackend *ethclient.Client
-	var overlayEthAddress common.Address
-	var chainID int64
-	var transactionService transaction.Service
-	var transactionMonitor transaction.Monitor
 	var chequebookFactory chequebook.Factory
 	var chequebookService chequebook.Service
 	var chequeStore chequebook.ChequeStore
 	var cashoutService chequebook.CashoutService
 
-	if o.SwapEnable {
-		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
-			p2pCtx,
-			logger,
-			stateStore,
-			o.SwapEndpoint,
-			signer,
-		)
-		if err != nil {
-			return nil, err
-		}
-		b.ethClientCloser = swapBackend.Close
-		b.transactionMonitorCloser = transactionMonitor
+	swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
+		p2pCtx,
+		logger,
+		stateStore,
+		o.SwapEndpoint,
+		signer,
+	)
+	if err != nil {
+		return nil, err
+	}
 
+	b.ethClientCloser = swapBackend.Close
+	b.transactionMonitorCloser = transactionMonitor
+
+	if o.SwapEnable {
 		chequebookFactory, err = InitChequebookFactory(
 			logger,
 			swapBackend,
