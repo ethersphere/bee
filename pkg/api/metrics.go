@@ -44,7 +44,7 @@ func newMetrics() metrics {
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "http_error_responses",
+				Name:      "reponse_error_codes",
 				Help:      "How many 5XX HTTP errors were returned",
 			},
 			[]string{"code", "method"},
@@ -68,8 +68,8 @@ func (s *server) pageviewMetricsHandler(h http.Handler) http.Handler {
 func (s *server) errorPageviewMetricsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wrapper := NewErrorResponseWriter(w)
-		h.ServeHTTP(w, r)
-		if wrapper.statusCode >= 500 {
+		h.ServeHTTP(wrapper, r)
+		if wrapper.statusCode >= 400 {
 			s.metrics.ErrorPageViews.WithLabelValues(
 				fmt.Sprintf("%d", wrapper.statusCode),
 				r.Method,
