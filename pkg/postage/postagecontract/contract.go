@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	BucketDepth = uint8(16)
+	BucketDepth = uint8(10)
 
 	postageStampABI   = parseABI(postageabi.PostageStampABIv0_1_0)
 	erc20ABI          = parseABI(sw3abi.ERC20ABIv0_3_1)
