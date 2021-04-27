@@ -35,7 +35,8 @@ func WithIntervalsResp(addrs []swarm.Address, top uint64, err error) Option {
 func WithChunks(chs ...swarm.Chunk) Option {
 	return optionFunc(func(p *PullStorage) {
 		for _, c := range chs {
-			p.chunks[c.Address().String()] = c.Data()
+			c := c
+			p.chunks[c.Address().String()] = c
 		}
 	})
 }
@@ -67,7 +68,7 @@ type PullStorage struct {
 	putCalls    int
 	setCalls    int
 
-	chunks    map[string][]byte
+	chunks    map[string]swarm.Chunk
 	evilAddr  swarm.Address
 	evilChunk swarm.Chunk
 
@@ -80,7 +81,7 @@ type PullStorage struct {
 // NewPullStorage returns a new PullStorage mock.
 func NewPullStorage(opts ...Option) *PullStorage {
 	s := &PullStorage{
-		chunks: make(map[string][]byte),
+		chunks: make(map[string]swarm.Chunk),
 	}
 	for _, v := range opts {
 		v.apply(s)
@@ -128,7 +129,7 @@ func (s *PullStorage) Get(_ context.Context, _ storage.ModeGet, addrs ...swarm.A
 		}
 
 		if v, ok := s.chunks[a.String()]; ok {
-			chs = append(chs, swarm.NewChunk(a, v))
+			chs = append(chs, v)
 		} else if !ok {
 			return nil, storage.ErrNotFound
 		}
@@ -141,7 +142,8 @@ func (s *PullStorage) Put(_ context.Context, _ storage.ModePut, chs ...swarm.Chu
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	for _, c := range chs {
-		s.chunks[c.Address().String()] = c.Data()
+		c := c
+		s.chunks[c.Address().String()] = c
 	}
 	s.putCalls++
 	return nil

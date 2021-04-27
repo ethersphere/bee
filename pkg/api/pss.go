@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -69,8 +70,23 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		s.logger.Debugf("pss: postage batch id: %v", err)
+		s.logger.Error("pss: postage batch id")
+		jsonhttp.BadRequest(w, "invalid postage batch id")
+		return
+	}
+	i, err := s.post.GetStampIssuer(batch)
+	if err != nil {
+		s.logger.Debugf("pss: postage batch issuer: %v", err)
+		s.logger.Error("pss: postage batch issue")
+		jsonhttp.BadRequest(w, "postage stamp issuer")
+		return
+	}
+	stamper := postage.NewStamper(i, s.signer)
 
-	err = s.pss.Send(r.Context(), topic, payload, recipient, targets)
+	err = s.pss.Send(r.Context(), topic, payload, stamper, recipient, targets)
 	if err != nil {
 		s.logger.Debugf("pss send payload: %v. topic: %s", err, topicVar)
 		s.logger.Error("pss send payload")

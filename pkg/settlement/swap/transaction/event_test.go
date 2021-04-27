@@ -25,7 +25,7 @@ type transferEvent struct {
 	Value *big.Int
 }
 
-func newTransferLog(address common.Address, from common.Address, to common.Address, value *big.Int) *types.Log {
+func newTransferLog(address, from, to common.Address, value *big.Int) *types.Log {
 	return &types.Log{
 		Topics: []common.Hash{
 			erc20ABI.Events["Transfer"].ID,

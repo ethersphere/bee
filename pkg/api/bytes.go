@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -50,14 +49,31 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	pipe := builder.NewPipelineBuilder(ctx, s.storer, requestModePut(r), requestEncrypt(r))
-	address, err := builder.FeedPipeline(ctx, pipe, r.Body, r.ContentLength)
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		logger.Debugf("bytes upload: postage batch id:%v", err)
+		logger.Error("bytes upload: postage batch id")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	if err != nil {
+		logger.Debugf("bytes upload: get putter:%v", err)
+		logger.Error("bytes upload: putter")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	p := requestPipelineFn(putter, r)
+	address, err := p(ctx, r.Body, r.ContentLength)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)
 		logger.Error("bytes upload: split write all")
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
+
 	if created {
 		_, err = tag.DoneSplit(address)
 		if err != nil {

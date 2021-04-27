@@ -705,3 +705,72 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+
+  "/stamps":
+    get:
+      summary: Get all available stamps for this node
+      tags:
+        - Get stamp batches
+      responses:
+        "200":
+          description: Returns an array of all available postage batches.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchesResponse"
+
+        default:
+          description: Default response
+
+  "/stamps/{id}":
+    get:
+      summary: Get an individual postage batch status
+      tags:
+        - Get stamp batch
+      responses:
+        "200":
+          description: Returns an individual postage batch state
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
+
+  "/stamps/{amount}/{depth}":
+    get:
+      summary: Buy a new postage batch
+      tags:
+        - Buy stamp batch
+      parameters:
+        - in: path
+          name: amount
+          type: integer
+          required: true
+          description: Amount added to the balance
+        - in: path
+          name: depth
+          type: integer
+          required: true
+          description: Batch depth. Must be higher than default bucket depth (16)
+        - in: query
+          name: label
+          type: string
+          required: false
+          description: An optional label for this batch
+      responses:
+        "200":
+          description: Returns the newly created postage batch ID
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/BatchIDResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+         default:
+          description: Default response
+

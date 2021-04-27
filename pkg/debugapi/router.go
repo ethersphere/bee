@@ -77,6 +77,10 @@ func (s *Service) newRouter() *mux.Router {
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
+	router.Handle("/reservestate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.reserveStateHandler),
+	})
+
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})

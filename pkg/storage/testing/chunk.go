@@ -21,10 +21,14 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 )
 
-// fixtreuChunks are pregenerated content-addressed chunks necessary for explicit
+var mockStamp swarm.Stamp
+
+// fixtureChunks are pregenerated content-addressed chunks necessary for explicit
 // test scenarios where random generated chunks are not good enough.
 var fixtureChunks = map[string]swarm.Chunk{
 	"0025": swarm.NewChunk(
@@ -48,6 +52,9 @@ var fixtureChunks = map[string]swarm.Chunk{
 func init() {
 	// needed for GenerateTestRandomChunk
 	rand.Seed(time.Now().UnixNano())
+
+	mockStamp = postagetesting.MustNewStamp()
+
 }
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
@@ -55,7 +62,8 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)
 	ch, _ := cac.New(data)
-	return ch
+	stamp := postagetesting.MustNewStamp()
+	return ch.WithStamp(stamp)
 }
 
 // GenerateTestRandomInvalidChunk generates a random, however invalid, content
@@ -65,7 +73,8 @@ func GenerateTestRandomInvalidChunk() swarm.Chunk {
 	_, _ = rand.Read(data)
 	key := make([]byte, swarm.SectionSize)
 	_, _ = rand.Read(key)
-	return swarm.NewChunk(swarm.NewAddress(key), data)
+	stamp := postagetesting.MustNewStamp()
+	return swarm.NewChunk(swarm.NewAddress(key), data).WithStamp(stamp)
 }
 
 // GenerateTestRandomChunks generates a slice of random
@@ -78,6 +87,15 @@ func GenerateTestRandomChunks(count int) []swarm.Chunk {
 	return chunks
 }
 
+// GenerateTestRandomChunkAt generates an invalid (!) chunk with address of proximity order po wrt target.
+func GenerateTestRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
+	data := make([]byte, swarm.ChunkSize)
+	_, _ = rand.Read(data)
+	addr := swarmtesting.RandomAddressAt(target, po)
+	stamp := postagetesting.MustNewStamp()
+	return swarm.NewChunk(addr, data).WithStamp(stamp)
+}
+
 // FixtureChunk gets a pregenerated content-addressed chunk and
 // panics if one is not found.
 func FixtureChunk(prefix string) swarm.Chunk {
@@ -85,5 +103,5 @@ func FixtureChunk(prefix string) swarm.Chunk {
 	if !ok {
 		panic("no fixture found")
 	}
-	return c
+	return c.WithStamp(mockStamp)
 }
