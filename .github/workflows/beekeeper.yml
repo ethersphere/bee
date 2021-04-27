@@ -73,7 +73,7 @@ jobs:
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" 
       - name: Test gc
         id: gc-chunk-1
-        run: ./beekeeper check gc --db-capacity 2000 --reserve --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --wait 15
+        run: ./beekeeper check gc --db-capacity 2000 --reserve --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --wait 15s
       - name: Test settlements
         id: settlements-1
         run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" -t 1000000000000
