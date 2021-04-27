@@ -380,8 +380,9 @@ func TestModePutUpload_parallel(t *testing.T) {
 }
 
 // TestModePut_sameChunk puts the same chunk multiple times
-// and validates that all relevant indexes have only one item
-// in them.
+// and validates that all relevant indexes have the correct counts.
+// The test assumes that chunk fall into the reserve part of
+// the store.
 func TestModePut_sameChunk(t *testing.T) {
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -396,6 +397,18 @@ func TestModePut_sameChunk(t *testing.T) {
 				{
 					name:      "ModePutRequest",
 					mode:      storage.ModePutRequest,
+					pullIndex: true,
+					pushIndex: false,
+				},
+				{
+					name:      "ModePutRequestPin",
+					mode:      storage.ModePutRequest,
+					pullIndex: true,
+					pushIndex: false,
+				},
+				{
+					name:      "ModePutRequestCache",
+					mode:      storage.ModePutRequestCache,
 					pullIndex: false,
 					pushIndex: false,
 				},
