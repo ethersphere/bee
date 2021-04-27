@@ -5,7 +5,9 @@
 package api
 
 import (
+	// "bufio"
 	"fmt"
+	// "net"
 	"net/http"
 	"time"
 
@@ -76,17 +78,37 @@ func (s *server) responseCodeMetricsHandler(h http.Handler) http.Handler {
 	})
 }
 
-type responseWriter struct {
+// UpgradedResponseWriter adds more functionality on top of ResponseWriter
+type UpgradedResponseWriter interface {
 	http.ResponseWriter
-	statusCode int
+	http.Pusher
+	http.Hijacker
+	http.Flusher
+	http.CloseNotifier
+}
+
+type responseWriter struct {
+	UpgradedResponseWriter
+	statusCode  int
+	wroteHeader bool
 }
 
 func newResponseWriter(w http.ResponseWriter) *responseWriter {
 	// StatusOK is called by default if nothing else is called
-	return &responseWriter{w, http.StatusOK}
+	uw := w.(UpgradedResponseWriter)
+	return &responseWriter{uw, http.StatusOK, false}
+}
+
+func (rw *responseWriter) Status() int {
+	return rw.statusCode
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
+	if rw.wroteHeader {
+		return
+	}
 	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
+	rw.UpgradedResponseWriter.WriteHeader(code)
+	rw.wroteHeader = true
+	return
 }
