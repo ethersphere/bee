@@ -221,6 +221,15 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		return false, 0, err
 	}
 
+	if !forceCache {
+		// if we are here it means the chunk has a valid stamp
+		// therefore we'd like to be able to pullsync it
+		err = db.pullIndex.PutInBatch(batch, item)
+		if err != nil {
+			return false, 0, err
+		}
+	}
+
 	return false, gcSizeChange, nil
 }
 

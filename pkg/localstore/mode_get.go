@@ -154,23 +154,22 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 		return err
 	}
 
-	updatedTimestamp := false
 	// update the gc item timestamp in case
 	// it exists
 	_, err = db.gcIndex.Get(item)
+	item.AccessTimestamp = now()
 	if err == nil {
-		updatedTimestamp = true
-		item.AccessTimestamp = now()
 		err = db.gcIndex.PutInBatch(batch, item)
 		if err != nil {
 			return err
 		}
+	} else if !errors.Is(err, leveldb.ErrNotFound) {
+		return err
 	}
+	// if the item is not in the gc we don't
+	// update the gc index, since the item is
+	// in the reserve.
 
-	if !updatedTimestamp {
-		// update access timestamp
-		item.AccessTimestamp = now()
-	}
 	// update retrieve access index
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
