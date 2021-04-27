@@ -42,7 +42,7 @@ type ClosestPeerer interface {
 	// given chunk address.
 	// This function will ignore peers with addresses provided in skipPeers.
 	// Returns topology.ErrWantSelf in case base is the closest to the address.
-	ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
+	ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 type EachPeerer interface {
@@ -114,4 +114,5 @@ type KadParams struct {
 	NNLowWatermark int       `json:"nnLowWatermark"` // low watermark for depth calculation
 	Depth          uint8     `json:"depth"`          // current depth
 	Bins           KadBins   `json:"bins"`           // individual bin info
+	LightNodes     BinInfo   `json:"lightNodes"`     // light nodes bin info
 }

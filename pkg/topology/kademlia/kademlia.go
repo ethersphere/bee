@@ -16,11 +16,11 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery"
-	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -648,12 +648,12 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 		return errOverlayMismatch
 	}
 
-	return k.announce(ctx, peer)
+	return k.Announce(ctx, peer)
 }
 
 // announce a newly connected peer to our connected peers, but also
 // notify the peer about our already connected peers
-func (k *Kad) announce(ctx context.Context, peer swarm.Address) error {
+func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 	addrs := []swarm.Address{}
 
 	_ = k.connectedPeers.EachBinRev(func(connectedPeer swarm.Address, _ uint8) (bool, bool, error) {
@@ -747,7 +747,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
 }
 
 func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
-	if err := k.announce(ctx, addr); err != nil {
+	if err := k.Announce(ctx, addr); err != nil {
 		return err
 	}
 
@@ -858,16 +858,24 @@ func isIn(a swarm.Address, addresses []p2p.Peer) bool {
 }
 
 // ClosestPeer returns the closest peer to a given address.
-func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
+func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
 	peers := k.p2p.Peers()
 	var peersToDisconnect []swarm.Address
-	closest := k.base
+	var closest = swarm.ZeroAddress
+
+	if includeSelf {
+		closest = k.base
+	}
 
 	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		if closest.IsZero() {
+			closest = peer
+		}
+
 		for _, a := range skipPeers {
 			if a.Equal(peer) {
 				return false, false, nil
@@ -899,6 +907,10 @@ func (k *Kad) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (swarm
 	})
 	if err != nil {
 		return swarm.Address{}, err
+	}
+
+	if closest.IsZero() { //no peers
+		return swarm.Address{}, topology.ErrNotFound // only for light nodes
 	}
 
 	for _, v := range peersToDisconnect {

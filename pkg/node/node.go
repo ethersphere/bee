@@ -28,11 +28,11 @@ import (
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
-	"github.com/ethersphere/bee/pkg/kademlia"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
@@ -55,6 +55,8 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology/kademlia"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/traversal"
 	ma "github.com/multiformats/go-multiaddr"
@@ -116,6 +118,7 @@ type Options struct {
 	SwapFactoryAddress       string
 	SwapInitialDeposit       string
 	SwapEnable               bool
+	FullNodeMode             bool
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
@@ -255,13 +258,16 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		)
 	}
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, logger, tracer, libp2p.Options{
+	lightNodes := lightnode.NewContainer()
+
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
 		EnableQUIC:     o.EnableQUIC,
 		Standalone:     o.Standalone,
 		WelcomeMessage: o.WelcomeMessage,
+		FullNode:       o.FullNodeMode,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -412,10 +418,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
-	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
-		return nil, fmt.Errorf("retrieval service: %w", err)
-	}
-
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
@@ -432,14 +434,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, pssService.TryUnwrap, logger, acc, pricer, signer, tracer)
+	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, logger, acc, pricer, signer, tracer)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
-
-	if err = p2ps.AddProtocol(pushSyncProtocol.Protocol()); err != nil {
-		return nil, fmt.Errorf("pushsync service: %w", err)
-	}
 
 	if o.GlobalPinningEnabled {
 		// register function for chunk repair upon receiving a trojan message
@@ -447,21 +445,39 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.recoveryHandleCleanup = pssService.Register(recovery.Topic, chunkRepairHandler)
 	}
 
-	pushSyncPusher := pusher.New(networkID, storer, kad, pushSyncProtocol, tagService, logger, tracer)
-	b.pusherCloser = pushSyncPusher
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, tagService, logger, tracer)
+	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSync := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, logger)
-	b.pullSyncCloser = pullSync
+	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, logger)
+	b.pullSyncCloser = pullSyncProtocol
 
-	if err = p2ps.AddProtocol(pullSync.Protocol()); err != nil {
-		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{})
+	b.pullerCloser = pullerService
+
+	retrieveProtocolSpec := retrieve.Protocol()
+	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
+	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
+
+	if o.FullNodeMode {
+		logger.Info("starting in full mode")
+	} else {
+		logger.Info("starting in light mode")
+		p2p.WithBlocklistStreams(p2p.DefaultBlocklistTime, retrieveProtocolSpec)
+		p2p.WithBlocklistStreams(p2p.DefaultBlocklistTime, pushSyncProtocolSpec)
+		p2p.WithBlocklistStreams(p2p.DefaultBlocklistTime, pullSyncProtocolSpec)
 	}
 
-	puller := puller.New(stateStore, kad, pullSync, logger, puller.Options{})
-
-	b.pullerCloser = puller
+	if err = p2ps.AddProtocol(retrieveProtocolSpec); err != nil {
+		return nil, fmt.Errorf("retrieval service: %w", err)
+	}
+	if err = p2ps.AddProtocol(pushSyncProtocolSpec); err != nil {
+		return nil, fmt.Errorf("pushsync service: %w", err)
+	}
+	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
+		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	}
 
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
@@ -509,10 +525,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
 		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
-		debugAPIService.MustRegisterMetrics(puller.Metrics()...)
+		debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
-		debugAPIService.MustRegisterMetrics(pushSyncPusher.Metrics()...)
-		debugAPIService.MustRegisterMetrics(pullSync.Metrics()...)
+		debugAPIService.MustRegisterMetrics(pusherService.Metrics()...)
+		debugAPIService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
 		debugAPIService.MustRegisterMetrics(retrieve.Metrics()...)
 
 		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
@@ -531,7 +547,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(p2ps, pingPong, kad, storer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService)
+		debugAPIService.Configure(p2ps, pingPong, kad, lightNodes, storer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {

@@ -64,7 +64,7 @@ func (m *Mock) AddPeers(ctx context.Context, addr ...swarm.Address) error {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) ClosestPeer(addr swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (m *Mock) ClosestPeer(addr swarm.Address, _ bool, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
 	panic("not implemented") // TODO: Implement
 }
 
