@@ -64,6 +64,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newItemsCountTest(db.pullIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 
@@ -83,6 +84,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newItemsCountTest(db.pullIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 		})
