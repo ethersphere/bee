@@ -45,7 +45,7 @@ var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging t
 // Capacity is the number of chunks in reserve. `2^23` (8388608) was chosen to remain
 // relatively near the current 5M chunks ~25GB.
 // Utilization is estimated at 50%-60%, which should result in about 4~5mil chunks in reserve.
-var Capacity = exp2(10)
+var Capacity = exp2(23)
 
 var big1 = big.NewInt(1)
 
