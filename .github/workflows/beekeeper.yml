@@ -56,6 +56,10 @@ jobs:
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
           echo "kubeconfig: ${HOME}/.kube/config" > ~/.beekeeper.yaml
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
       - name: Set testing cluster (DNS discovery)
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
@@ -122,10 +126,6 @@ jobs:
       - name: Destroy the cluster
         run: |
           ./beeinfra.sh uninstall
-      - name: Apply patches
-        run: |
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
-          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
       - name: Set testing cluster (storage incentives setup)
         run: |
           timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --k3s --pay-threshold 1000000000000 --postage --db-capacity 100
