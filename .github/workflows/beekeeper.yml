@@ -56,6 +56,10 @@ jobs:
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
           echo "kubeconfig: ${HOME}/.kube/config" > ~/.beekeeper.yaml
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
       - name: Set testing cluster (DNS discovery)
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
@@ -67,6 +71,9 @@ jobs:
       - name: Test fullconnectivity
         id: fullconnectivity-1
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" 
+      - name: Test gc
+        id: gc-chunk-1
+        run: ./beekeeper check gc --db-capacity 2000 --reserve --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --wait 15
       - name: Test settlements
         id: settlements-1
         run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" -t 1000000000000
@@ -79,9 +86,6 @@ jobs:
       - name: Test retrieval
         id: retrieval-1
         run: ./beekeeper check retrieval --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3
-      - name: Test gc
-        id: gc-chunk-1
-        run: ./beekeeper check gc --db-capacity 2000 --reserve --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --wait 15
       - name: Test manifest
         id: manifest-1
         run: ./beekeeper check manifest --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
