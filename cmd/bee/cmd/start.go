@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"io/ioutil"
 
@@ -107,6 +108,13 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return err
 			}
 
+			bootNode := c.config.GetBool(optionNameBootnodeMode)
+			fullNode := c.config.GetBool(optionNameFullNode)
+
+			if bootNode && !fullNode {
+				return errors.New("boot node must be started as a full node")
+			}
+
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
 				DataDir:                  c.config.GetString(optionNameDataDir),
 				DBCapacity:               c.config.GetUint64(optionNameDBCapacity),
@@ -134,11 +142,12 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				PaymentEarly:             c.config.GetString(optionNamePaymentEarly),
 				ResolverConnectionCfgs:   resolverCfgs,
 				GatewayMode:              c.config.GetBool(optionNameGatewayMode),
-				BootnodeMode:             c.config.GetBool(optionNameBootnodeMode),
+				BootnodeMode:             bootNode,
 				SwapEndpoint:             c.config.GetString(optionNameSwapEndpoint),
 				SwapFactoryAddress:       c.config.GetString(optionNameSwapFactoryAddress),
 				SwapInitialDeposit:       c.config.GetString(optionNameSwapInitialDeposit),
 				SwapEnable:               c.config.GetBool(optionNameSwapEnable),
+				FullNodeMode:             fullNode,
 			})
 			if err != nil {
 				return err

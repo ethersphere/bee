@@ -18,6 +18,10 @@ var (
 	ErrAlreadyConnected = errors.New("already connected")
 )
 
+const (
+	DefaultBlocklistTime = 1 * time.Minute
+)
+
 // ConnectionBackoffError indicates that connection calls will not be executed until `tryAfter` timetamp.
 // The reason is provided in the wrappped error.
 type ConnectionBackoffError struct {
