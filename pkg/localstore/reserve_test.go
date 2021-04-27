@@ -77,8 +77,8 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, int(gcTarget)))
 
-	// postageRadiusIndex "leaks" since the batches of the evicted chunks were not called with
-	// the Unreserve(swarm.MaxPO+1), so the entry in the postageRadiusIndex does not get removed.
+	// postageRadiusIndex gets removed only when the batches are called with evict on MaxPO+1
+	// therefore, the expected index count here is larger than one would expect.
 	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
@@ -279,8 +279,8 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount*2+90))
 
-	// postageRadiusIndex "leaks" since the batches of the evicted chunks were not called with
-	// the Unreserve(swarm.MaxPO+1), so the entry in the postageRadiusIndex does not get removed.
+	// postageRadiusIndex gets removed only when the batches are called with evict on MaxPO+1
+	// therefore, the expected index count here is larger than one would expect.
 	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount*2+100))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
