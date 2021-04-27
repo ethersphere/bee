@@ -263,6 +263,23 @@ components:
         reference:
           $ref: "#/components/schemas/SwarmReference"
 
+    PostageBatchResponse:
+      type: object
+      properties:
+        $ref: "#/components/schemas/PostageBatch"
+
+    PostageBatchesResponse:
+      type: object
+      properties:
+        stamps:
+          $ref: "#/components/schemas/PostageBatches"
+
+    BatchIDResponse:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/SwarmAddress"
+
     Response:
       type: object
       properties:
@@ -282,6 +299,20 @@ components:
       properties:
         status:
           type: string
+
+    PostageBatch:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/SwarmAddress"
+        utilization:
+          type: integer
+
+    PostageBatches:
+      type: array
+      items:
+        $ref: "#/components/schemas/PostageBatch"
+
 
     Settlement:
       type: object

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -47,6 +48,7 @@ func TestTags(t *testing.T) {
 			Storer: mock.NewStorer(),
 			Tags:   tag,
 			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
@@ -105,11 +107,13 @@ func TestTags(t *testing.T) {
 		)
 
 		_ = jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
 		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tr.Uid), 10)),
@@ -229,6 +233,7 @@ func TestTags(t *testing.T) {
 
 		// upload content with tag
 		jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, fmt.Sprint(tagId)),
 		)
@@ -268,6 +273,7 @@ func TestTags(t *testing.T) {
 
 		respHeaders := jsonhttptest.Request(t, client, http.MethodPost,
 			bzzResource+"?name=somefile", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader([]byte("some data"))),
 			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
 			jsonhttptest.WithRequestHeader("Content-Type", "application/octet-stream"),
@@ -290,6 +296,7 @@ func TestTags(t *testing.T) {
 		expectedResponse := api.BzzUploadResponse{Reference: expectedHash}
 
 		respHeaders := jsonhttptest.Request(t, client, http.MethodPost, bzzResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
@@ -307,6 +314,7 @@ func TestTags(t *testing.T) {
 		// create a tag using the API
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tr),
 		)
@@ -327,6 +335,7 @@ func TestTags(t *testing.T) {
 		copy(content[:swarm.ChunkSize], dataChunk)
 
 		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, bytesResource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			jsonhttptest.WithExpectedJSONResponse(fileUploadResponse{
 				Reference: rootAddress,

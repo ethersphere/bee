@@ -18,10 +18,13 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -182,12 +185,13 @@ func TestPssSend(t *testing.T) {
 			mtx.Unlock()
 			return err
 		}
-
+		mp           = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
 		p            = newMockPss(sendFn)
 		client, _, _ = newTestServer(t, testServerOptions{
 			Pss:    p,
 			Storer: mock.NewStorer(),
 			Logger: logger,
+			Post:   mp,
 		})
 
 		recipient = hex.EncodeToString(publicKeyBytes)
@@ -211,8 +215,36 @@ func TestPssSend(t *testing.T) {
 		)
 	})
 
+	t.Run("err - bad batch", func(t *testing.T) {
+		hexbatch := hex.EncodeToString(batchInvalid)
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid postage batch id",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
+
+	t.Run("ok batch", func(t *testing.T) {
+		hexbatch := hex.EncodeToString(batchOk)
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		)
+	})
+	t.Run("bad request - batch empty", func(t *testing.T) {
+		hexbatch := hex.EncodeToString(batchEmpty)
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		)
+	})
+
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12?recipient="+recipient, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "OK",
@@ -233,6 +265,7 @@ func TestPssSend(t *testing.T) {
 
 	t.Run("without recipient", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "OK",
@@ -391,7 +424,7 @@ func newMockPss(f pssSendFn) *mpss {
 }
 
 // Send arbitrary byte slice with the given topic to Targets.
-func (m *mpss) Send(ctx context.Context, topic pss.Topic, payload []byte, recipient *ecdsa.PublicKey, targets pss.Targets) error {
+func (m *mpss) Send(ctx context.Context, topic pss.Topic, payload []byte, _ postage.Stamper, recipient *ecdsa.PublicKey, targets pss.Targets) error {
 	chunk, err := pss.Wrap(ctx, topic, payload, recipient, targets)
 	if err != nil {
 		return err

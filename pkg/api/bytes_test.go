@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -35,11 +36,13 @@ func TestBytes(t *testing.T) {
 	var (
 		storerMock   = mock.NewStorer()
 		pinningMock  = pinning.NewServiceMock()
+		logger       = logging.New(ioutil.Discard, 0)
 		client, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Tags:    tags.NewTags(statestore.NewStateStore(), logging.New(ioutil.Discard, 0)),
 			Pinning: pinningMock,
-			Logger:  logging.New(ioutil.Discard, 5),
+			Logger:  logger,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
@@ -52,6 +55,7 @@ func TestBytes(t *testing.T) {
 	t.Run("upload", func(t *testing.T) {
 		chunkAddr := swarm.MustParseHexAddress(expHash)
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			jsonhttptest.WithExpectedJSONResponse(api.BytesPostResponse{
 				Reference: chunkAddr,
@@ -74,6 +78,7 @@ func TestBytes(t *testing.T) {
 	t.Run("upload-with-pinning", func(t *testing.T) {
 		var res api.BytesPostResponse
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithUnmarshalJSONResponse(&res),

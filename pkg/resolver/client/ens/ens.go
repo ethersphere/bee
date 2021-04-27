@@ -141,7 +141,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func wrapDial(endpoint string, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
+func wrapDial(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
 	// Dial the eth client.
 	ethCl, err := ethclient.Dial(endpoint)
 	if err != nil {
