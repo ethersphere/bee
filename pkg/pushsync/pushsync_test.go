@@ -570,7 +570,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameter
 		unwrap = func(swarm.Chunk) {}
 	}
 
-	return pushsync.New(addr, recorderDisconnecter, storer, mockTopology, mtag, unwrap, logger, mockAccounting, mockPricer, signer, nil), storer, mtag, mockAccounting
+	return pushsync.New(addr, recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, logger, mockAccounting, mockPricer, signer, nil), storer, mtag, mockAccounting
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

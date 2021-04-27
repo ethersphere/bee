@@ -19,11 +19,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
-	"github.com/ethersphere/bee/pkg/crypto"
 	beeCrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/discovery/mock"
-	"github.com/ethersphere/bee/pkg/kademlia"
-	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
@@ -31,6 +28,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/kademlia"
+	"github.com/ethersphere/bee/pkg/topology/pslice"
 )
 
 func init() {
@@ -536,7 +535,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	connectOne(t, signer, kad, ab, peer, nil)
 
-	p, err := kad.ClosestPeer(addr)
+	p, err := kad.ClosestPeer(addr, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,7 +546,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	// disconnect the peer, expect error
 	kad.Disconnected(p2p.Peer{Address: peer})
-	_, err = kad.ClosestPeer(addr)
+	_, err = kad.ClosestPeer(addr, true)
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
 	}
@@ -745,7 +744,7 @@ func TestClosestPeer(t *testing.T) {
 	}
 	defer kad.Close()
 
-	pk, _ := crypto.GenerateSecp256k1Key()
+	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	for _, v := range connectedPeers {
 		addOne(t, beeCrypto.NewDefaultSigner(pk), kad, ab, v.Address)
 	}
@@ -755,37 +754,50 @@ func TestClosestPeer(t *testing.T) {
 	for _, tc := range []struct {
 		chunkAddress swarm.Address // chunk address to test
 		expectedPeer int           // points to the index of the connectedPeers slice. -1 means self (baseOverlay)
+		includeSelf  bool
 	}{
 		{
 			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111, wants peer 2
 			expectedPeer: 2,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("c000000000000000000000000000000000000000000000000000000000000000"), // 1100, want peer 0
 			expectedPeer: 0,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("e000000000000000000000000000000000000000000000000000000000000000"), // 1110, want peer 0
 			expectedPeer: 0,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("a000000000000000000000000000000000000000000000000000000000000000"), // 1010, want peer 0
 			expectedPeer: 0,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100, want peer 1
 			expectedPeer: 1,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101, want peer 1
 			expectedPeer: 1,
+			includeSelf:  true,
 		},
 		{
-			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // want self
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // 1000 want self
 			expectedPeer: -1,
+			includeSelf:  true,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // 1000 want peer 1
+			expectedPeer: 1,                                                                                             // smallest distance: 2894...
+			includeSelf:  false,
 		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress)
+		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
@@ -1010,7 +1022,7 @@ func TestStart(t *testing.T) {
 
 func newTestKademlia(connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
-		pk, _  = crypto.GenerateSecp256k1Key()                       // random private key
+		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
 		base   = test.RandomAddress()                                // base address
 		ab     = addressbook.New(mockstate.NewStateStore())          // address book
