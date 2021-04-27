@@ -6,6 +6,7 @@ package postage_test
 
 import (
 	crand "crypto/rand"
+	"errors"
 	"io"
 	"testing"
 
@@ -46,10 +47,19 @@ func TestStamperStamping(t *testing.T) {
 		st := newTestStampIssuer(t)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		d, b, i := postage.BytesToIndex(stamp.Index())
 		if err := stamp.Valid(chunkAddr, owner, 16); err != nil {
-			t.Fatalf("expected no error, got %v; depth=%d, bucket=%d, index=%d, bytes=%x", err, d, b, i, stamp.Index())
-			// t.Fatal(err)
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	// tests if an incorrect bucket depth returns ErrInvalidBucketDepth stamp
+	t.Run("invalid bucket depth", func(t *testing.T) {
+		st := newTestStampIssuer(t)
+		st = postage.NewStampIssuer("", "", st.ID(), 20, 17)
+		stamper := postage.NewStamper(st, signer)
+		chunkAddr, stamp := createStamp(t, stamper)
+		if err := stamp.Valid(chunkAddr, owner, 16); !errors.Is(err, postage.ErrInvalidBucketDepth) {
+			t.Fatalf("expected ErrInvalidBucketDepth, got %v", err)
 		}
 	})
 
@@ -60,9 +70,8 @@ func TestStamperStamping(t *testing.T) {
 		chunkAddr, stamp := createStamp(t, stamper)
 		a := chunkAddr.Bytes()
 		a[0] ^= 0xff
-		d, b, i := postage.BytesToIndex(stamp.Index())
-		if err := stamp.Valid(swarm.NewAddress(a), owner, 16); err != postage.ErrBucketMismatch {
-			t.Fatalf("expected ErrBucketMismatch, got %v; depth=%d, bucket=%d, index=%d, bytes=%x", err, d, b, i, stamp.Index())
+		if err := stamp.Valid(swarm.NewAddress(a), owner, 16); !errors.Is(err, postage.ErrBucketMismatch) {
+			t.Fatalf("expected ErrBucketMismatch, got %v", err)
 		}
 	})
 
@@ -84,9 +93,8 @@ func TestStamperStamping(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error adding last stamp: %v", err)
 		}
-		d, b, i := postage.BytesToIndex(stamp.Index())
-		if err := stamp.Valid(chunkAddr, owner, 12); err != postage.ErrInvalidIndex {
-			t.Fatalf("expected ErrInvalidIndex, got %v; depth=%d, bucket=%d, index=%d, bytes=%x", err, d, b, i, stamp.Index())
+		if err := stamp.Valid(chunkAddr, owner, 12); !errors.Is(err, postage.ErrInvalidIndex) {
+			t.Fatalf("expected ErrInvalidIndex, got %v", err)
 		}
 	})
 
@@ -94,7 +102,7 @@ func TestStamperStamping(t *testing.T) {
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
 		st := newTestStampIssuer(t)
-		st = postage.NewStampIssuer("", "", st.ID(), 12, 8)
+		st = postage.NewStampIssuer("", "", st.ID(), 20, 16)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
@@ -107,7 +115,7 @@ func TestStamperStamping(t *testing.T) {
 			}
 		}
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
-		if _, err = stamper.Stamp(chunkAddr); err != postage.ErrBucketFull {
+		if _, err = stamper.Stamp(chunkAddr); !errors.Is(err, postage.ErrBucketFull) {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
 		}
 	})
@@ -118,7 +126,7 @@ func TestStamperStamping(t *testing.T) {
 		st := newTestStampIssuer(t)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		if err := stamp.Valid(chunkAddr, owner, 8); err != postage.ErrOwnerMismatch {
+		if err := stamp.Valid(chunkAddr, owner, 16); !errors.Is(err, postage.ErrOwnerMismatch) {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})

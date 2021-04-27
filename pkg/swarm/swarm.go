@@ -157,6 +157,7 @@ type Stamp interface {
 	BatchID() []byte
 	Index() []byte
 	Sig() []byte
+	Timestamp() []byte
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }

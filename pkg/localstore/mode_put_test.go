@@ -64,7 +64,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
-				newItemsCountTest(db.postageIndexIndex, 0)(t)
+				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 
@@ -84,7 +84,7 @@ func TestModePutRequest(t *testing.T) {
 				}
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
-				newItemsCountTest(db.postageIndexIndex, 0)(t)
+				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 		})
@@ -118,9 +118,11 @@ func TestModePutRequestPin(t *testing.T) {
 				newPinIndexTest(db, ch, nil)(t)
 			}
 
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			// gc index should be always 0 since we're pinning
 			newItemsCountTest(db.gcIndex, 0)(t)
-			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }
@@ -159,8 +161,10 @@ func TestModePutRequestCache(t *testing.T) {
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
 
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			newItemsCountTest(db.gcIndex, tc.count)(t)
-			newItemsCountTest(db.postageIndexIndex, 0)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }
@@ -199,8 +203,9 @@ func TestModePutSync(t *testing.T) {
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 				newIndexGCSizeTest(db)(t)
 			}
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			newItemsCountTest(db.gcIndex, tc.count)(t)
-			newItemsCountTest(db.postageIndexIndex, 0)(t)
 			newIndexGCSizeTest(db)(t)
 		})
 	}
@@ -447,6 +452,36 @@ func TestModePut_sameChunk(t *testing.T) {
 							}
 							return 0
 						}
+
+						newItemsCountTest(db.retrievalDataIndex, tc.count)(t)
+						newItemsCountTest(db.pullIndex, count(tcn.pullIndex))(t)
+						newItemsCountTest(db.pushIndex, count(tcn.pushIndex))(t)
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestModePut_sameChunk puts the same chunk multiple times
+// and validates that all relevant indexes have only one item
+// in them.
+func TestModePut_sameStamp(t *testing.T) {
+	modes := []storage.ModePut{storage.ModePutRequest,storage.ModePutRequestPin,storage.ModePutSync,storage.ModePutUpload}
+	for _, mode1 := range modes {
+		for _, mode2 := range modes {
+			t.Run(fmt.Sprintf("chunk on same index - timestamps in order"), func(t *testing.T) {
+			})
+				t.Run(fmt.Sprintf("chunk on same index - timestamps in reverse order"), func(t *testing.T) {
+							})
+					db := newTestDB(t, nil)
+					// call unreserve on the batch with radius 0 so that
+					// localstore is aware of the batch and the chunk can
+					// be inserted into the database
+					first := generateTestRandomChunk()
+					second := generateTestRandomChunk()
+					unreserveChunkBatch(t, db, 0, chunks...)
+
 
 						newItemsCountTest(db.retrievalDataIndex, tc.count)(t)
 						newItemsCountTest(db.pullIndex, count(tcn.pullIndex))(t)

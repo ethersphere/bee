@@ -148,6 +148,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 	item.BinID = i.BinID
 	item.BatchID = i.BatchID
 	item.Index = i.Index
+	item.Timestamp = i.Timestamp
 
 	i, err = db.pushIndex.Get(item)
 	if err != nil {

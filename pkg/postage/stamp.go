@@ -15,11 +15,14 @@ import (
 
 // StampSize is the number of bytes in the serialisation of a stamp
 const (
-	StampSize = 105
-	IndexSize = 8
+	StampSize   = 113
+	IndexSize   = 8
+	BucketDepth = 16
 )
 
 var (
+	// ErrInvalidBucketDepth is the error given when bucketdepth as in the index does not match
+	ErrInvalidBucketDepth = errors.New("invalid bucket depth")
 	// ErrOwnerMismatch is the error given for invalid signatures.
 	ErrOwnerMismatch = errors.New("owner mismatch")
 	// ErrInvalidIndex the error given for invalid stamp index.
@@ -34,14 +37,15 @@ var _ swarm.Stamp = (*Stamp)(nil)
 
 // Stamp represents a postage stamp as attached to a chunk.
 type Stamp struct {
-	batchID []byte // postage batch ID
-	index   []byte // index of the batch
-	sig     []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature of batchID|index|address by owner or grantee
+	batchID   []byte // postage batch ID
+	index     []byte // index of the batch
+	timestamp []byte // to signal order when assigning the indexes to multiple chunks
+	sig       []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature of batchID|index|address by owner or grantee
 }
 
 // NewStamp constructs a new stamp from a given batch ID, index and signatures.
-func NewStamp(batchID, index, sig []byte) *Stamp {
-	return &Stamp{batchID, index, sig}
+func NewStamp(batchID, index, timestamp, sig []byte) *Stamp {
+	return &Stamp{batchID, index, timestamp, sig}
 }
 
 // BatchID returns the batch ID of the stamp.
@@ -59,13 +63,19 @@ func (s *Stamp) Sig() []byte {
 	return s.sig
 }
 
+// Timestamp returns the timestamp of the stamp
+func (s *Stamp) Timestamp() []byte {
+	return s.timestamp
+}
+
 // MarshalBinary gives the byte slice serialisation of a stamp:
 // batchID[32]|index[32]|SignatureUser[65]|SignatureOwner[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, StampSize)
 	copy(buf, s.batchID)
 	copy(buf[32:40], s.index)
-	copy(buf[40:], s.sig)
+	copy(buf[40:48], s.timestamp)
+	copy(buf[48:], s.sig)
 	return buf, nil
 }
 
@@ -76,13 +86,14 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	}
 	s.batchID = buf[:32]
 	s.index = buf[32:40]
-	s.sig = buf[40:]
+	s.timestamp = buf[40:48]
+	s.sig = buf[48:]
 	return nil
 }
 
 // toSignDigest creates a digest to represent the stamp which is to be signed by
 // the owner.
-func toSignDigest(addr, batchId, index []byte) ([]byte, error) {
+func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(addr)
 	if err != nil {
@@ -93,6 +104,10 @@ func toSignDigest(addr, batchId, index []byte) ([]byte, error) {
 		return nil, err
 	}
 	_, err = h.Write(index)
+	if err != nil {
+		return nil, err
+	}
+	_, err = h.Write(timestamp)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +142,7 @@ func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (s
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
 func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth uint8) error {
-	toSign, err := toSignDigest(chunkAddr.Bytes(), s.batchID, s.index)
+	toSign, err := toSignDigest(chunkAddr.Bytes(), s.batchID, s.index, s.timestamp)
 	if err != nil {
 		return err
 	}
@@ -140,6 +155,9 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth uint8) er
 		return err
 	}
 	bucketDepth, bucket, index := bytesToIndex(s.index)
+	if bucketDepth != BucketDepth {
+		return ErrInvalidBucketDepth
+	}
 	if toBucket(bucketDepth, chunkAddr) != bucket {
 		return ErrBucketMismatch
 	}

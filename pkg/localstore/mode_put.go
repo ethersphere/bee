@@ -18,6 +18,7 @@ package localstore
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"time"
 
@@ -189,7 +190,11 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 			return false, 0, err
 		}
 	} else {
-		// if a chunk is found with the same postage stamp, replace it with the new one
+		// if a chunk is found with the same postage stamp index,
+		// replace it with the new one only if timestamp is later
+		if !later(previous, item) {
+			return false, 0, err
+		}
 		gcSizeChange, err = db.setRemove(batch, previous, true)
 		if err != nil {
 			return false, 0, err
@@ -387,4 +392,10 @@ func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
 		}
 	}
 	return false
+}
+
+func later(previous, current shed.Item) bool {
+	pts := binary.BigEndian.Uint64(previous.Timestamp)
+	cts := binary.BigEndian.Uint64(current.Timestamp)
+	return cts > pts
 }

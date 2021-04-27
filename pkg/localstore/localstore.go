@@ -272,7 +272,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			b := make([]byte, headerSize)
 			binary.BigEndian.PutUint64(b[:8], fields.BinID)
 			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
-			stamp, err := postage.NewStamp(fields.BatchID, fields.Index, fields.Sig).MarshalBinary()
+			stamp, err := postage.NewStamp(fields.BatchID, fields.Index, fields.Timestamp, fields.Sig).MarshalBinary()
 			if err != nil {
 				return nil, err
 			}
@@ -289,6 +289,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			}
 			e.BatchID = stamp.BatchID()
 			e.Index = stamp.Index()
+			e.Timestamp = stamp.Timestamp()
 			e.Sig = stamp.Sig()
 			e.Data = value[headerSize:]
 			return e, nil
@@ -487,7 +488,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 
-	db.postageIndexIndex, err = db.shed.NewIndex("BatchID|BatchIndex->Hash", shed.IndexFuncs{
+	db.postageIndexIndex, err = db.shed.NewIndex("BatchID|BatchIndex->Hash|Timestamp", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 40)
 			copy(key[:32], fields.BatchID)
@@ -500,12 +501,14 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			value = make([]byte, 32)
+			value = make([]byte, 40)
 			copy(value, fields.Address)
+			copy(value[32:], fields.Timestamp)
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e.Address = value[:32]
+			e.Timestamp = value[32:]
 			return e, nil
 		},
 	})
@@ -585,14 +588,15 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 // chunkToItem creates new Item with data provided by the Chunk.
 func chunkToItem(ch swarm.Chunk) shed.Item {
 	return shed.Item{
-		Address: ch.Address().Bytes(),
-		Data:    ch.Data(),
-		Tag:     ch.TagID(),
-		BatchID: ch.Stamp().BatchID(),
-		Index:   ch.Stamp().Index(),
-		Sig:     ch.Stamp().Sig(),
-		Depth:   ch.Depth(),
-		Radius:  ch.Radius(),
+		Address:   ch.Address().Bytes(),
+		Data:      ch.Data(),
+		Tag:       ch.TagID(),
+		BatchID:   ch.Stamp().BatchID(),
+		Index:     ch.Stamp().Index(),
+		Timestamp: ch.Stamp().Timestamp(),
+		Sig:       ch.Stamp().Sig(),
+		Depth:     ch.Depth(),
+		Radius:    ch.Radius(),
 	}
 }
 
