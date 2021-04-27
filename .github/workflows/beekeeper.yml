@@ -126,6 +126,9 @@ jobs:
       - name: Destroy the cluster
         run: |
           ./beeinfra.sh uninstall
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
       - name: Set testing cluster (storage incentives setup)
         run: |
           timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --k3s --pay-threshold 1000000000000 --postage --db-capacity 100
