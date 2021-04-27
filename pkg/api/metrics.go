@@ -44,7 +44,7 @@ func newMetrics() metrics {
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "reponse_code_count",
+				Name:      "response_code_count",
 				Help:      "Response count grouped by status code",
 			},
 			[]string{"code", "method"},
