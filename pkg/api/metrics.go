@@ -17,10 +17,10 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	RequestCount     prometheus.Counter
-	ResponseDuration prometheus.Histogram
-	PingRequestCount prometheus.Counter
-	ErrorPageViews   *prometheus.CounterVec
+	RequestCount       prometheus.Counter
+	ResponseDuration   prometheus.Histogram
+	PingRequestCount   prometheus.Counter
+	ResponseCodeCounts *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
@@ -40,12 +40,12 @@ func newMetrics() metrics {
 			Help:      "Histogram of API response durations.",
 			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
-		ErrorPageViews: prometheus.NewCounterVec(
+		ResponseCodeCounts: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "reponse_error_codes",
-				Help:      "How many 5XX HTTP errors were returned",
+				Name:      "reponse_code_count",
+				Help:      "Response count grouped by status code",
 			},
 			[]string{"code", "method"},
 		),
@@ -65,30 +65,28 @@ func (s *server) pageviewMetricsHandler(h http.Handler) http.Handler {
 	})
 }
 
-func (s *server) errorPageviewMetricsHandler(h http.Handler) http.Handler {
+func (s *server) responseCodeMetricsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wrapper := NewErrorResponseWriter(w)
+		wrapper := newResponseWriter(w)
 		h.ServeHTTP(wrapper, r)
-		if wrapper.statusCode >= 400 {
-			s.metrics.ErrorPageViews.WithLabelValues(
-				fmt.Sprintf("%d", wrapper.statusCode),
-				r.Method,
-			).Inc()
-		}
+		s.metrics.ResponseCodeCounts.WithLabelValues(
+			fmt.Sprintf("%d", wrapper.statusCode),
+			r.Method,
+		).Inc()
 	})
 }
 
-type errResponseWriter struct {
+type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
 }
 
-func NewErrorResponseWriter(w http.ResponseWriter) *errResponseWriter {
+func newResponseWriter(w http.ResponseWriter) *responseWriter {
 	// StatusOK is called by default if nothing else is called
-	return &errResponseWriter{w, http.StatusOK}
+	return &responseWriter{w, http.StatusOK}
 }
 
-func (erw *errResponseWriter) WriteHeader(code int) {
-	erw.statusCode = code
-	erw.ResponseWriter.WriteHeader(code)
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }

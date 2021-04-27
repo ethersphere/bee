@@ -178,7 +178,7 @@ func (s *server) setupRouting() {
 		handlers.CompressHandler,
 		// todo: add recovery handler
 		s.pageviewMetricsHandler,
-		s.errorPageviewMetricsHandler,
+		s.responseCodeMetricsHandler,
 		func(h http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
