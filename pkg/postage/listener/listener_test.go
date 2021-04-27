@@ -279,7 +279,7 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return nil
 }
 
-func (u *updater) Start() {}
+func (u *updater) Start() <-chan struct{} { return nil }
 
 type mockFilterer struct {
 	filterLogEvents    []types.Log

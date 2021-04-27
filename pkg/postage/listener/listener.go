@@ -54,9 +54,8 @@ type listener struct {
 
 	postageStampAddress common.Address
 	priceOracleAddress  common.Address
-
-	quit chan struct{}
-	wg   sync.WaitGroup
+	quit                chan struct{}
+	wg                  sync.WaitGroup
 }
 
 func New(
@@ -71,21 +70,8 @@ func New(
 
 		postageStampAddress: postageStampAddress,
 		priceOracleAddress:  priceOracleAddress,
-
-		quit: make(chan struct{}),
+		quit:                make(chan struct{}),
 	}
-}
-
-func (l *listener) Listen(from uint64, updater postage.EventUpdater) {
-	l.wg.Add(1)
-
-	go func() {
-		defer l.wg.Done()
-		err := l.sync(from, updater)
-		if err != nil {
-			l.logger.Errorf("event listener sync: %v", err)
-		}
-	}()
 }
 
 func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
@@ -156,64 +142,87 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) sync(from uint64, updater postage.EventUpdater) error {
-	ctx := context.Background()
+func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan struct{} {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-l.quit
+		cancel()
+	}()
+
+	synced := make(chan struct{})
+	closeOnce := new(sync.Once)
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
-	for {
-		select {
-		case <-paged:
-			// if we paged then it means there's more things to sync on
-		case <-time.After(chainUpdateInterval):
-		case <-l.quit:
-			return nil
-		}
-		to, err := l.ev.BlockNumber(ctx)
-		if err != nil {
-			return err
-		}
 
-		if to < from {
-			// if the blockNumber is actually less than what we already, it might mean the backend is not synced or some reorg scenario
-			continue
-		}
-
-		if to < tailSize {
-			// in a test blockchain there might be not be enough blocks yet
-			continue
-		}
-
-		// consider to-tailSize as the "latest" block we need to sync to
-		to = to - tailSize
-
-		// do some paging (sub-optimal)
-		if to-from > blockPage {
-			paged <- struct{}{}
-			to = from + blockPage
-		}
-
-		events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
-		if err != nil {
-			return err
-		}
-
-		// this is called before processing the events
-		// so that the eviction in batchstore gets the correct
-		// block height context for the gc round. otherwise
-		// expired batches might be "revived".
-		err = updater.UpdateBlockNumber(to)
-		if err != nil {
-			return err
-		}
-
-		for _, e := range events {
-			if err = l.processEvent(e, updater); err != nil {
+	l.wg.Add(1)
+	listenf := func() error {
+		defer l.wg.Done()
+		for {
+			select {
+			case <-paged:
+				// if we paged then it means there's more things to sync on
+			case <-time.After(chainUpdateInterval):
+			case <-l.quit:
+				return nil
+			}
+			to, err := l.ev.BlockNumber(ctx)
+			if err != nil {
 				return err
 			}
-		}
 
-		from = to + 1
+			if to < tailSize {
+				// in a test blockchain there might be not be enough blocks yet
+				continue
+			}
+
+			// consider to-tailSize as the "latest" block we need to sync to
+			to = to - tailSize
+
+			if to < from {
+				// if the blockNumber is actually less than what we already, it might mean the backend is not synced or some reorg scenario
+				continue
+			}
+
+			// do some paging (sub-optimal)
+			if to-from > blockPage {
+				paged <- struct{}{}
+				to = from + blockPage
+			} else {
+				closeOnce.Do(func() { close(synced) })
+			}
+
+			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
+			if err != nil {
+				return err
+			}
+
+			// this is called before processing the events
+			// so that the eviction in batchstore gets the correct
+			// block height context for the gc round. otherwise
+			// expired batches might be "revived".
+			err = updater.UpdateBlockNumber(to)
+			if err != nil {
+				return err
+			}
+
+			for _, e := range events {
+				if err = l.processEvent(e, updater); err != nil {
+					return err
+				}
+			}
+
+			from = to + 1
+		}
 	}
+
+	go func() {
+		err := listenf()
+		if err != nil {
+			l.logger.Errorf("event listener sync: %v", err)
+		}
+	}()
+
+	return synced
 }
 
 func (l *listener) Close() error {
