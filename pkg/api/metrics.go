@@ -84,7 +84,9 @@ type UpgradedResponseWriter interface {
 	http.Pusher
 	http.Hijacker
 	http.Flusher
-	http.CloseNotifier
+	// staticcheck SA1019 CloseNotifier interface is required by gorilla compress handler
+	// nolint:staticcheck
+	http.CloseNotifier // skipcq: SCC-SA1019
 }
 
 type responseWriter struct {
@@ -110,5 +112,4 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.UpgradedResponseWriter.WriteHeader(code)
 	rw.wroteHeader = true
-	return
 }
