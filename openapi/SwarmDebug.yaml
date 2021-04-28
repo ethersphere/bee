@@ -236,7 +236,7 @@ paths:
           required: true
           description: Underlay address of peer
       responses:
-        "200":
+        "201":
           description: Returns overlay address of connected peer
           content:
             application/json:
@@ -318,7 +318,7 @@ paths:
           required: true
           description: Swarm address of peer
       responses:
-        "200":
+        "201":
           description: Returns round trip time for given peer
           content:
             application/json:
@@ -430,7 +430,7 @@ paths:
             schema:
               $ref: "SwarmCommon.yaml#/components/schemas/WelcomeMessage"
       responses:
-        "200":
+        "201":
           description: OK
           content:
             application/json:
@@ -482,7 +482,7 @@ paths:
       tags:
         - Chequebook
       responses:
-        "200":
+        "201":
           description: OK
           content:
             application/json:
@@ -553,7 +553,7 @@ paths:
       tags:
         - Chequebook
       responses:
-        "200":
+        "201":
           description: Transaction hash of the deposit transaction
           content:
             application/json:
@@ -579,7 +579,7 @@ paths:
       tags:
         - Chequebook
       responses:
-        "200":
+        "201":
           description: Transaction hash of the withdraw transaction
           content:
             application/json:

@@ -91,7 +91,7 @@ func TestBzzFiles(t *testing.T) {
 			},
 		})
 		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
-		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -141,7 +141,7 @@ func TestBzzFiles(t *testing.T) {
 			},
 		})
 		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
-		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestBody(tr),
@@ -176,7 +176,7 @@ func TestBzzFiles(t *testing.T) {
 
 		var resp api.BzzUploadResponse
 		jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusOK,
+			fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
@@ -207,7 +207,7 @@ func TestBzzFiles(t *testing.T) {
 		rootHash := "4f9146b3813ccbd7ce45a18be23763d7e436ab7a3982ef39961c6f3cd4da1dcf"
 
 		jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusOK,
+			fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -248,7 +248,7 @@ func TestBzzFiles(t *testing.T) {
 		</html>`
 
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusOK,
+			fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -287,7 +287,7 @@ func TestBzzFiles(t *testing.T) {
 		rootHash := "65148cd89b58e91616773f5acea433f7b5a6274f2259e25f4893a332b74a7e28"
 
 		jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusOK,
+			fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -416,7 +416,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 				testOpts = append(testOpts, jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"))
 			}
 
-			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusOK,
+			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusCreated,
 				testOpts...,
 			)
 
@@ -541,7 +541,7 @@ func TestFeedIndirection(t *testing.T) {
 	}
 
 	// verify directory tar upload response
-	jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusOK, options...)
+	jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusCreated, options...)
 
 	if resp.Reference.String() == "" {
 		t.Fatalf("expected file reference, did not got any")
