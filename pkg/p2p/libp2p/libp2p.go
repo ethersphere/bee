@@ -703,6 +703,10 @@ func (s *Service) Close() error {
 	if err := s.libp2pPeerstore.Close(); err != nil {
 		return err
 	}
+	if err := s.natManager.Close(); err != nil {
+		return err
+	}
+
 	return s.host.Close()
 }
 
