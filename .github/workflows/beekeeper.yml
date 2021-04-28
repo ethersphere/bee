@@ -56,11 +56,13 @@ jobs:
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
           echo "kubeconfig: ${HOME}/.kube/config" > ~/.beekeeper.yaml
-      - name: Set testing cluster (Node connection and clef disabled)
+      - name: Add entries to /etc/hosts
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbootnode-${i}.beekeeper.localhost bootnode-${i}-debug.beekeeper.localhost"; done | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.2.$((i+1))\tbee-${i}.beekeeper.localhost bee-${i}-debug.beekeeper.localhost"; done | sudo tee -a /etc/hosts
+      - name: Set testing cluster (Node connection and clef disabled)
+        run: |
           timeout 10m ./beeinfra.sh build --local
           kubectl label node $HOSTNAME node-group=bee-staging
       - name: Beekeeper start bee cluster
