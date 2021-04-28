@@ -47,7 +47,7 @@ jobs:
           export TAG=$(curl -s https://api.github.com/repos/ethersphere/beekeeper/releases/latest | jq -r .tag_name)
           curl -Ls https://github.com/ethersphere/beekeeper/releases/download/${TAG}/beekeeper-linux-amd64 -o beekeeper
           chmod +x beekeeper
-      - name: Prepare testing cluster (DNS discovery)
+      - name: Prepare testing cluster (Node connection and clef disabled)
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           timeout 30m ./beeinfra.sh prepare --geth --k3s
@@ -60,11 +60,16 @@ jobs:
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-      - name: Set testing cluster (DNS discovery)
+      - name: Set testing cluster (Node connection and clef disabled)
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
-          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s --pay-threshold 1000000000000 --postage
+          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbootnode-${i}.beekeeper.localhost bootnode-${i}-debug.beekeeper.localhost"; done | sudo tee -a /etc/hosts
+          for ((i=0; i<REPLICA; i++)); do echo -e "127.0.2.$((i+1))\tbee-${i}.beekeeper.localhost bee-${i}-debug.beekeeper.localhost"; done | sudo tee -a /etc/hosts
+          timeout 10m ./beeinfra.sh build --local
+          kubectl label node $HOSTNAME node-group=bee-staging
+      - name: Beekeeper start bee cluster
+        run: |
+          ./beekeeper start cluster --persistence=false --swap-enable true --db-capacity 2000 -c 2 --api-domain localhost --debug-api-domain localhost --ingress-class traefik --bee-image registry.localhost:5000/ethersphere/bee:latest
       - name: Test pingpong
         id: pingpong-1
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
@@ -101,7 +106,10 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (Node connection and clef enabled)
         run: |
-          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --pay-threshold 1000000000000 --postage
+          timeout 10m ./beeinfra.sh build --local
+      - name: Beekeeper start bee cluster
+        run: |
+          ./beekeeper start cluster --persistence=false --swap-enable true --clef-signer-enable true --db-capacity 2000 -c 2 --api-domain localhost --debug-api-domain localhost --ingress-class traefik --bee-image registry.localhost:5000/ethersphere/bee:latest
       - name: Test pingpong
         id: pingpong-2
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
