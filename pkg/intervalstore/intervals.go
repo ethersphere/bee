@@ -24,6 +24,7 @@ package intervalstore
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 )
@@ -68,19 +69,23 @@ func (i *Intervals) add(start, end uint64) {
 	if end < i.start {
 		return
 	}
+	endCheck := end + 1
+	if end == math.MaxUint64 {
+		endCheck = end
+	}
 	minStartJ := -1
 	maxEndJ := -1
 	j := 0
 	for ; j < len(i.ranges); j++ {
 		if minStartJ < 0 {
-			if (start <= i.ranges[j][0] && end+1 >= i.ranges[j][0]) || (start <= i.ranges[j][1]+1 && end+1 >= i.ranges[j][1]) {
+			if (start <= i.ranges[j][0] && endCheck >= i.ranges[j][0]) || (start <= i.ranges[j][1]+1 && endCheck >= i.ranges[j][1]) {
 				if i.ranges[j][0] < start {
 					start = i.ranges[j][0]
 				}
 				minStartJ = j
 			}
 		}
-		if (start <= i.ranges[j][1] && end+1 >= i.ranges[j][1]) || (start <= i.ranges[j][0] && end+1 >= i.ranges[j][0]) {
+		if (start <= i.ranges[j][1] && endCheck >= i.ranges[j][1]) || (start <= i.ranges[j][0] && endCheck >= i.ranges[j][0]) {
 			if i.ranges[j][1] > end {
 				end = i.ranges[j][1]
 			}

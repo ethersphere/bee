@@ -16,7 +16,10 @@
 
 package intervalstore
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // Test tests Interval methods Add, Next and Last for various
 // initial state.
@@ -469,5 +472,19 @@ func TestMerge(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("interval #%d: expected %s, got %s", i, tc.expected, got)
 		}
+	}
+}
+
+// TestMaxUint64 is a regression test to verify that interval
+// is handled correctly at the edges.
+func TestMaxUint64(t *testing.T) {
+	intervals := NewIntervals(1)
+	intervals.Add(math.MaxUint64-1, math.MaxUint64)
+	intervals.Add(1, math.MaxUint64)
+	intervals.Add(2, math.MaxUint64)
+	intervals.Add(math.MaxUint64, math.MaxUint64)
+	wantstr := "[[1 18446744073709551615]]"
+	if s := intervals.String(); s != wantstr {
+		t.Fatalf("got interval string '%s' want '%s'", s, wantstr)
 	}
 }
