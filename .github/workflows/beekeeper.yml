@@ -71,6 +71,7 @@ jobs:
           kubectl label node $HOSTNAME node-group=bee-staging
       - name: Beekeeper start bee cluster
         run: |
+          ./beekeeper create namespace beekeeper
           ./beekeeper start cluster --persistence=false --swap-enable true --db-capacity 2000 -c 2 --api-domain localhost --debug-api-domain localhost --ingress-class traefik --bee-image registry.localhost:5000/ethersphere/bee:latest
       - name: Test pingpong
         id: pingpong-1
