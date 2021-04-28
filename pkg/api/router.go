@@ -177,6 +177,7 @@ func (s *server) setupRouting() {
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
 		// todo: add recovery handler
+		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
 		func(h http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
