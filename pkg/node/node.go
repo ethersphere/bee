@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -56,6 +57,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -200,24 +202,31 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	addressbook := addressbook.New(stateStore)
 
-	var chequebookFactory chequebook.Factory
-	var chequebookService chequebook.Service
-	var chequeStore chequebook.ChequeStore
-	var cashoutService chequebook.CashoutService
-
-	swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
-		p2pCtx,
-		logger,
-		stateStore,
-		o.SwapEndpoint,
-		signer,
+	var (
+		swapBackend        *ethclient.Client
+		overlayEthAddress  common.Address
+		chainID            int64
+		transactionService transaction.Service
+		transactionMonitor transaction.Monitor
+		chequebookFactory  chequebook.Factory
+		chequebookService  chequebook.Service
+		chequeStore        chequebook.ChequeStore
+		cashoutService     chequebook.CashoutService
 	)
-	if err != nil {
-		return nil, err
+	if !o.Standalone {
+		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
+			p2pCtx,
+			logger,
+			stateStore,
+			o.SwapEndpoint,
+			signer,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("init chain: %w", err)
+		}
+		b.ethClientCloser = swapBackend.Close
+		b.transactionMonitorCloser = transactionMonitor
 	}
-
-	b.ethClientCloser = swapBackend.Close
-	b.transactionMonitorCloser = transactionMonitor
 
 	if o.SwapEnable {
 		chequebookFactory, err = InitChequebookFactory(
@@ -398,17 +407,19 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
-	syncedChan := batchSvc.Start()
 
-	// wait for the postage contract listener to sync
-	logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+	if batchSvc != nil {
+		syncedChan := batchSvc.Start()
+		// wait for the postage contract listener to sync
+		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 
-	// arguably this is not a very nice solution since we dont support
-	// interrupts at this stage of the application lifecycle. some changes
-	// would be needed on the cmd level to support context cancellation at
-	// this stage
-	<-syncedChan
+		// arguably this is not a very nice solution since we dont support
+		// interrupts at this stage of the application lifecycle. some changes
+		// would be needed on the cmd level to support context cancellation at
+		// this stage
+		<-syncedChan
 
+	}
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
@@ -683,8 +694,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		errs.add(fmt.Errorf("p2p server: %w", err))
 	}
 
-	if err := b.transactionMonitorCloser.Close(); err != nil {
-		errs.add(fmt.Errorf("transaction monitor: %w", err))
+	if b.transactionMonitorCloser != nil {
+		if err := b.transactionMonitorCloser.Close(); err != nil {
+			errs.add(fmt.Errorf("transaction monitor: %w", err))
+		}
 	}
 
 	if c := b.ethClientCloser; c != nil {
