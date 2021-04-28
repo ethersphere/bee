@@ -201,7 +201,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			host: h,
 		}
 	} else {
-		natAddrResolver, err = newStaticAddressResolver(o.NATAddr)
+		natAddrResolver, err = newStaticAddressResolver(o.NATAddr, net.LookupIP)
 		if err != nil {
 			return nil, fmt.Errorf("static nat: %w", err)
 		}
