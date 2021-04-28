@@ -72,7 +72,7 @@ jobs:
       - name: Beekeeper start bee cluster
         run: |
           ./beekeeper create namespace beekeeper
-          ./beekeeper start cluster --persistence=false --swap-enable true --db-capacity 2000 -c 2 --api-domain localhost --debug-api-domain localhost --ingress-class traefik --bee-image registry.localhost:5000/ethersphere/bee:latest
+          ./beekeeper start cluster --persistence=false --swap-enable true --db-capacity 2000 -c 2 --api-domain localhost --debug-api-domain localhost --ingress-class traefik --bee-image "registry.localhost:5000/ethersphere/bee:latest"
       - name: Test pingpong
         id: pingpong-1
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
@@ -112,7 +112,7 @@ jobs:
           timeout 10m ./beeinfra.sh build --local
       - name: Beekeeper start bee cluster
         run: |
-          ./beekeeper start cluster --persistence=false --swap-enable true --clef-signer-enable true --db-capacity 2000 -c 2 --api-domain localhost --debug-api-domain localhost --ingress-class traefik --bee-image registry.localhost:5000/ethersphere/bee:latest
+          ./beekeeper start cluster --persistence=false --swap-enable true --clef-signer-enable true --db-capacity 2000 -c 2 --api-domain localhost --debug-api-domain localhost --ingress-class traefik --bee-image "registry.localhost:5000/ethersphere/bee:latest"
       - name: Test pingpong
         id: pingpong-2
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
