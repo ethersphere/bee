@@ -227,7 +227,7 @@ func (i *Intervals) UnmarshalBinary(data []byte) (err error) {
 		if err != nil {
 			return fmt.Errorf("parsing the second element in range %d: %v", j, err)
 		}
-		i.ranges = append(i.ranges, [2]uint64{start, end})
+		i.add(start, end)
 	}
 
 	return nil
