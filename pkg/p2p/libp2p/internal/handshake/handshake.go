@@ -81,7 +81,7 @@ type Info struct {
 }
 
 func (i *Info) LightString() string {
-	if i.FullNode {
+	if !i.FullNode {
 		return " (light)"
 	}
 
