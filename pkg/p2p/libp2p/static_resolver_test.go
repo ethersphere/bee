@@ -6,19 +6,13 @@ package libp2p_test
 
 import (
 	"net"
-	"runtime"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
-	mockdns "github.com/foxcpp/go-mockdns"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 func TestStaticAddressResolver(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skipf("skipped all dns resolver tests on %v", runtime.GOOS)
-	}
-
 	for _, tc := range []struct {
 		name              string
 		natAddr           string
@@ -87,24 +81,18 @@ func TestStaticAddressResolver(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, err := mockdns.NewServer(map[string]mockdns.Zone{
-				"ipv4.com.": {
-					A: []string{"192.168.1.34"},
-				},
-				"ipv4and6.com.": {
-					A:    []string{"192.168.1.34"},
-					AAAA: []string{"2001:db8::8a2e:370:1111"},
-				},
-			}, false)
-			if err != nil {
-				t.Fatalf("new mockdns: %v", err)
-			}
-			defer srv.Close()
-
-			srv.PatchNet(net.DefaultResolver)
-			defer mockdns.UnpatchNet(net.DefaultResolver)
-
-			r, err := libp2p.NewStaticAddressResolver(tc.natAddr)
+			r, err := libp2p.NewStaticAddressResolver(tc.natAddr, func(host string) ([]net.IP, error) {
+				hosts := map[string][]net.IP{
+					"ipv4.com": {
+						net.ParseIP("192.168.1.34"),
+					},
+					"ipv4and6.com": {
+						net.ParseIP("192.168.1.34"),
+						net.ParseIP("2001:db8::8a2e:370:1111"),
+					},
+				}
+				return hosts[host], nil
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
