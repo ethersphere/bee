@@ -545,7 +545,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	if blocked {
-		s.logger.Errorf("blocked connection from blocklisted peer %s", info.ID)
+		s.logger.Errorf("blocked connection to blocklisted peer %s", info.ID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("peer blocklisted")
@@ -703,6 +703,10 @@ func (s *Service) Close() error {
 	if err := s.libp2pPeerstore.Close(); err != nil {
 		return err
 	}
+	if err := s.natManager.Close(); err != nil {
+		return err
+	}
+
 	return s.host.Close()
 }
 
