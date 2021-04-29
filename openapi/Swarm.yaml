@@ -47,7 +47,7 @@ paths:
               type: string
               format: binary
       responses:
-        "200":
+        "201":
           description: Ok
           headers:
             "swarm-tag":
@@ -138,7 +138,7 @@ paths:
               type: string
               format: binary
       responses:
-        "200":
+        "201":
           description: Ok
           headers:
             "swarm-tag":
@@ -198,7 +198,7 @@ paths:
               type: string
               format: binary
       responses:
-        "200":
+        "201":
           description: Ok
           headers:
             "swarm-tag":
@@ -375,7 +375,9 @@ paths:
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/403"    
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -451,7 +453,7 @@ paths:
       tags:
         - Root hash pinning
       responses:
-        "200":
+        "201":
           description: Pinning root hash with address
           content:
             application/json:
@@ -546,7 +548,7 @@ paths:
           required: false
           description: Recipient publickey
       responses:
-        "200":
+        "201":
           description: Subscribed to topic
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
@@ -761,7 +763,7 @@ paths:
           required: false
           description: An optional label for this batch
       responses:
-        "200":
+        "201":
           description: Returns the newly created postage batch ID
           content:
             application/json:
