@@ -19,7 +19,7 @@ servers:
         default: "localhost"
         description: Base address of the local bee node main API
       port:
-        default: 1633
+        default: "1633"
         description: Service port provided in bee node config
   - url: "http://{apiRoot}:{port}"
     variables:
@@ -27,7 +27,7 @@ servers:
         default: "localhost"
         description: Base address of the local bee node main API
       port:
-        default: 1633
+        default: "1633"
         description: Service port provided in bee node config
 
 paths:
@@ -445,7 +445,7 @@ paths:
       - in: path
         name: address
         schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
         required: true
         description: Swarm address of the root hash
     post:
@@ -463,8 +463,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     delete:
@@ -482,8 +482,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     get:
@@ -496,9 +496,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PinningState"
+                $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -515,7 +519,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/BzzChunksPinned"
+                $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReferencesList"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
@@ -725,6 +729,13 @@ paths:
           description: Default response
 
   "/stamps/{id}":
+    parameters:
+      - in: path
+        name: id
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
+        required: true
+        description: Swarm address of the stamp
     get:
       summary: Get an individual postage batch status
       tags:
@@ -735,7 +746,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatch"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
@@ -749,17 +760,20 @@ paths:
       parameters:
         - in: path
           name: amount
-          type: integer
+          schema:
+            type: integer
           required: true
           description: Amount added to the balance
         - in: path
           name: depth
-          type: integer
+          schema:
+            type: integer
           required: true
           description: Batch depth. Must be higher than default bucket depth (16)
         - in: query
           name: label
-          type: string
+          schema:
+            type: string
           required: false
           description: An optional label for this batch
       responses:
@@ -773,6 +787,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
-         default:
+        default:
           description: Default response
 

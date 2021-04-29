@@ -237,14 +237,6 @@ components:
           items:
             $ref: "#/components/schemas/Address"
 
-    PinningState:
-      type: object
-      properties:
-        address:
-          $ref: "#/components/schemas/SwarmAddress"
-        pinCounter:
-          type: integer
-
     PssRecipient:
       type: string
 
@@ -263,11 +255,6 @@ components:
         reference:
           $ref: "#/components/schemas/SwarmReference"
 
-    PostageBatchResponse:
-      type: object
-      properties:
-        $ref: "#/components/schemas/PostageBatch"
-
     PostageBatchesResponse:
       type: object
       properties:
@@ -278,7 +265,7 @@ components:
       type: object
       properties:
         batchID:
-          $ref: "#/components/schemas/SwarmAddress"
+          $ref: "#/components/schemas/BatchID"
 
     Response:
       type: object
@@ -304,7 +291,7 @@ components:
       type: object
       properties:
         batchID:
-          $ref: "#/components/schemas/SwarmAddress"
+          $ref: "#/components/schemas/BatchID"
         utilization:
           type: integer
 
@@ -356,10 +343,22 @@ components:
       pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
       example: "swarm.eth"
 
+    BatchID:
+      pattern: "^[A-Fa-f0-9]{64}$"
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+
     SwarmOnlyReference:
       oneOf:
         - $ref: "#/components/schemas/SwarmAddress"
         - $ref: "#/components/schemas/SwarmEncryptedReference"
+
+    SwarmOnlyReferencesList:
+      type: object
+      properties:
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/SwarmOnlyReference"
 
     SwarmReference:
       oneOf:
