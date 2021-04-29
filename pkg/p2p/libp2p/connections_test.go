@@ -40,7 +40,6 @@ func TestConnectDisconnect(t *testing.T) {
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -66,7 +65,6 @@ func TestDoubleConnect(t *testing.T) {
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -91,7 +89,6 @@ func TestDoubleDisconnect(t *testing.T) {
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -195,7 +192,6 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
@@ -236,7 +232,6 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	defer cancel()
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{})
-
 	s2, _ := newService(t, 2, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -286,6 +281,7 @@ func TestConnectRepeatHandshake(t *testing.T) {
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+
 	addr := serviceUnderlayAddress(t, s1)
 
 	_, err := s2.Connect(ctx, addr)
@@ -321,7 +317,6 @@ func TestBlocklisting(t *testing.T) {
 	addr1 := serviceUnderlayAddress(t, s1)
 	addr2 := serviceUnderlayAddress(t, s2)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err := s2.Connect(context.Background(), addr1)
 	if err != nil {
 		t.Fatal(err)
@@ -337,7 +332,6 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err = s2.Connect(context.Background(), addr1)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
@@ -346,7 +340,6 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err = s1.Connect(context.Background(), addr2)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
