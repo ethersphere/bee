@@ -346,9 +346,6 @@ func TestBlocklisting(t *testing.T) {
 	}
 	t.Logf("s1 connect threw error: %v", err)
 
-	// expectPeersEventually is needed since s1 will not know that s2 blocked it
-	// therefore it will add s2 to the peers list, but since s2 disconnects, it should
-	// eventually be removed from the peers list.
 	expectPeers(t, s1)
 	expectPeersEventually(t, s2)
 }
