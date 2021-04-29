@@ -344,7 +344,6 @@ func TestBlocklisting(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
 	}
-	t.Logf("s1 connect threw error: %v", err)
 
 	expectPeers(t, s1)
 	expectPeersEventually(t, s2)
