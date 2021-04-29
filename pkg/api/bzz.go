@@ -254,7 +254,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.OK(w, bzzUploadResponse{
+	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: manifestReference,
 	})
 }

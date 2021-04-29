@@ -44,7 +44,7 @@ func (s *server) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, nil)
+	jsonhttp.Created(w, nil)
 }
 
 // unpinRootHash unpin's an already pinned root hash. This method is idempotent.

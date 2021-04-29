@@ -95,7 +95,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.OK(w, bytesPostResponse{
+	jsonhttp.Created(w, bytesPostResponse{
 		Reference: address,
 	})
 }

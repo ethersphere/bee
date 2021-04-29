@@ -50,7 +50,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 			}),

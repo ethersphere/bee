@@ -290,7 +290,7 @@ func TestPostageHeaderError(t *testing.T) {
 		})
 		t.Run(endpoint+": ok batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchOk)
-			expCode := http.StatusOK
+			expCode := http.StatusCreated
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),

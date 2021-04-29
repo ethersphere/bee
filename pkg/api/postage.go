@@ -68,7 +68,7 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, &postageCreateResponse{
+	jsonhttp.Created(w, &postageCreateResponse{
 		BatchID: batchID,
 	})
 }

@@ -61,7 +61,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
@@ -80,7 +80,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("pin-invalid-value", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
@@ -93,7 +93,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
@@ -106,7 +106,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 	t.Run("pin-ok", func(t *testing.T) {
 		address := chunk.Address()
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: address}),

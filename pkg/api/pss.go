@@ -94,7 +94,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, nil)
+	jsonhttp.Created(w, nil)
 }
 
 func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {

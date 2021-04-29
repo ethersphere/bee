@@ -482,7 +482,7 @@ paths:
       tags:
         - Chequebook
       responses:
-        "200":
+        "201":
           description: OK
           content:
             application/json:
@@ -553,7 +553,7 @@ paths:
       tags:
         - Chequebook
       responses:
-        "200":
+        "201":
           description: Transaction hash of the deposit transaction
           content:
             application/json:
@@ -579,7 +579,7 @@ paths:
       tags:
         - Chequebook
       responses:
-        "200":
+        "201":
           description: Transaction hash of the withdraw transaction
           content:
             application/json:
