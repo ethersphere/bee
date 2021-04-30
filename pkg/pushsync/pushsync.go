@@ -149,22 +149,18 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 			if err != nil {
-				fmt.Println("I")
 				ps.logger.Errorf("pushsync: chunk store: %v", err)
 			}
 			signature, err := ps.signer.Sign(ch.Address)
 			if err != nil {
-				fmt.Println("II")
 				return fmt.Errorf("receipt signature: %w", err)
 			}
 
 			// return back receipt
 			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
 			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
-				fmt.Println("III")
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
-			fmt.Println("IV")
 			return ps.accounting.Debit(p.Address, price)
 		}
 
@@ -245,9 +241,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						}
 					}()
 
-					w := protobuf.NewWriter(streamer)
-					ctx, cancel = context.WithTimeout(ctx, timeToWaitForPushsyncToNeighbor)
-					defer cancel()
+					w, r := protobuf.NewWriterAndReader(streamer)
 					stamp, err := chunk.Stamp().MarshalBinary()
 					if err != nil {
 						return
@@ -263,16 +257,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 					var receipt pb.Receipt
 					if err = r.ReadMsgWithContext(ctx, &receipt); err != nil {
-						fmt.Println("VI")
-						fmt.Println(err)
 						return
 					}
 
 					if !chunk.Address().Equal(swarm.NewAddress(receipt.Address)) {
 						// if the receipt is invalid, give up
-						fmt.Println("VII")
-						fmt.Println(chunk.Address())
-						fmt.Println(receipt.Address)
 						return
 					}
 
