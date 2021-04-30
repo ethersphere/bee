@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
@@ -35,15 +36,15 @@ func TestBalances(t *testing.T) {
 		[]debugapi.BalanceResponse{
 			{
 				Peer:    "DEAD",
-				Balance: big.NewInt(1000000000000000000),
+				Balance: bigint.NewBigInt(1000000000000000000),
 			},
 			{
 				Peer:    "BEEF",
-				Balance: big.NewInt(-100000000000000000),
+				Balance: bigint.NewBigInt(-100000000000000000),
 			},
 			{
 				Peer:    "PARTY",
-				Balance: big.NewInt(0),
+				Balance: bigint.NewBigInt(0),
 			},
 		},
 	}
@@ -89,7 +90,7 @@ func TestBalancesPeers(t *testing.T) {
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/balances/"+peer, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.BalanceResponse{
 			Peer:    peer,
-			Balance: big.NewInt(100000000000000000),
+			Balance: bigint.NewBigInt(100000000000000000),
 		}),
 	)
 }
@@ -188,15 +189,15 @@ func TestConsumedBalances(t *testing.T) {
 		[]debugapi.BalanceResponse{
 			{
 				Peer:    "DEAD",
-				Balance: big.NewInt(1000000000000000000),
+				Balance: bigint.NewBigInt(1000000000000000000),
 			},
 			{
 				Peer:    "BEEF",
-				Balance: big.NewInt(-100000000000000000),
+				Balance: bigint.NewBigInt(-100000000000000000),
 			},
 			{
 				Peer:    "PARTY",
-				Balance: big.NewInt(0),
+				Balance: bigint.NewBigInt(0),
 			},
 		},
 	}
@@ -242,7 +243,7 @@ func TestConsumedPeers(t *testing.T) {
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/consumed/"+peer, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.BalanceResponse{
 			Peer:    peer,
-			Balance: big.NewInt(1000000000000000000),
+			Balance: bigint.NewBigInt(1000000000000000000),
 		}),
 	)
 }
