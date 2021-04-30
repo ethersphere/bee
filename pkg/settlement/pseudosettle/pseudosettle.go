@@ -69,7 +69,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
-				Headler: s.headler,
 			},
 		},
 	}
@@ -118,21 +117,6 @@ func (s *Service) peerAllowance(peer swarm.Address) (limit *big.Int, stamp int64
 	}
 
 	return peerDebt, currentTime, nil
-}
-
-func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
-	allowedLimit, timestamp, err := s.peerAllowance(peerAddress)
-	if err != nil {
-		return p2p.Headers{}
-	}
-
-	returnHeaders, err = MakeAllowanceResponseHeaders(allowedLimit, timestamp)
-	if err != nil {
-		return p2p.Headers{}
-	}
-	s.logger.Debugf("settlement headler: response with allowance as %v, timestamp as %v, for peer %s", allowedLimit, timestamp, peerAddress)
-
-	return returnHeaders
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {

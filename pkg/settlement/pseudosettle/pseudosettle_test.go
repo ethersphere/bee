@@ -130,13 +130,26 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(messages) != 1 {
-		t.Fatalf("got %v messages, want %v", len(messages), 1)
+	receivedMessages, err := protobuf.ReadMessages(
+		bytes.NewReader(record.Out()),
+		func() protobuf.Message { return new(pb.PaymentAck) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(messages) != 1 || len(receivedMessages) != 1 {
+		t.Fatalf("got %v/%v messages, want %v/%v", len(messages), len(receivedMessages), 1, 1)
 	}
 
 	sentAmount := big.NewInt(0).SetBytes(messages[0].(*pb.Payment).Amount)
+	receivedAmount := big.NewInt(0).SetBytes(receivedMessages[0].(*pb.PaymentAck).Amount)
 	if sentAmount.Cmp(amount) != 0 {
 		t.Fatalf("got message with amount %v, want %v", sentAmount, amount)
+	}
+
+	if sentAmount.Cmp(receivedAmount) != 0 {
+		t.Fatalf("wrong settlement amount, got %v, want %v", receivedAmount, sentAmount)
 	}
 
 	select {
@@ -245,13 +258,26 @@ func TestTimeLimitedPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(messages) != 1 {
-		t.Fatalf("got %v messages, want %v", len(messages), 1)
+	receivedMessages, err := protobuf.ReadMessages(
+		bytes.NewReader(record.Out()),
+		func() protobuf.Message { return new(pb.PaymentAck) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(messages) != 1 || len(receivedMessages) != 1 {
+		t.Fatalf("got %v/%v messages, want %v/%v", len(messages), len(receivedMessages), 1, 1)
 	}
 
 	sentAmount := big.NewInt(0).SetBytes(messages[0].(*pb.Payment).Amount)
+	receivedAmount := big.NewInt(0).SetBytes(receivedMessages[0].(*pb.PaymentAck).Amount)
 	if sentAmount.Cmp(amount) != 0 {
 		t.Fatalf("got message with amount %v, want %v", sentAmount, amount)
+	}
+
+	if sentAmount.Cmp(receivedAmount) != 0 {
+		t.Fatalf("wrong settlement amount, got %v, want %v", receivedAmount, sentAmount)
 	}
 
 	select {
@@ -327,7 +353,6 @@ func TestTimeLimitedPayment(t *testing.T) {
 	if l := len(records); l != 2 {
 		t.Fatalf("got %v records, want %v", l, 2)
 	}
-
 	record = records[1]
 
 	if err := record.Err(); err != nil {
@@ -342,18 +367,31 @@ func TestTimeLimitedPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(messages) != 1 {
-		t.Fatalf("got %v messages, want %v", len(messages), 1)
+	receivedMessages, err = protobuf.ReadMessages(
+		bytes.NewReader(record.Out()),
+		func() protobuf.Message { return new(pb.PaymentAck) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(messages) != 1 || len(receivedMessages) != 1 {
+		t.Fatalf("got %v/%v messages, want %v/%v", len(messages), len(receivedMessages), 1, 1)
 	}
 
 	sentAmount = big.NewInt(0).SetBytes(messages[0].(*pb.Payment).Amount)
+	receivedAmount = big.NewInt(0).SetBytes(receivedMessages[0].(*pb.PaymentAck).Amount)
 	if sentAmount.Cmp(amount) != 0 {
 		t.Fatalf("got message with amount %v, want %v", sentAmount, amount)
 	}
 
+	if sentAmount.Cmp(receivedAmount) != 0 {
+		t.Fatalf("wrong settlement amount, got %v, want %v", receivedAmount, sentAmount)
+	}
+
 	select {
 	case call := <-observer.receivedCalled:
-		if call.amount.Cmp(amount) != 0 {
+		if call.amount.Cmp(receivedAmount) != 0 {
 			t.Fatalf("observer called with wrong amount. got %d, want %d", call.amount, amount)
 		}
 
@@ -367,7 +405,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 
 	select {
 	case call := <-observer2.sentCalled:
-		if call.amount.Cmp(amount) != 0 {
+		if call.amount.Cmp(receivedAmount) != 0 {
 			t.Fatalf("observer called with wrong amount. got %d, want %d", call.amount, amount)
 		}
 
@@ -439,13 +477,26 @@ func TestTimeLimitedPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(messages) != 1 {
-		t.Fatalf("got %v messages, want %v", len(messages), 1)
+	receivedMessages, err = protobuf.ReadMessages(
+		bytes.NewReader(record.Out()),
+		func() protobuf.Message { return new(pb.PaymentAck) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(messages) != 1 || len(receivedMessages) != 1 {
+		t.Fatalf("got %v/%v messages, want %v/%v", len(messages), len(receivedMessages), 1, 1)
 	}
 
 	sentAmount = big.NewInt(0).SetBytes(messages[0].(*pb.Payment).Amount)
-	if sentAmount.Cmp(testRefreshRateBigInt) != 0 {
-		t.Fatalf("got message with amount %v, want %v", sentAmount, testRefreshRate)
+	receivedAmount = big.NewInt(0).SetBytes(receivedMessages[0].(*pb.PaymentAck).Amount)
+	if sentAmount.Cmp(amount) != 0 {
+		t.Fatalf("got message with amount %v, want %v", sentAmount, amount)
+	}
+
+	if receivedAmount.Cmp(testRefreshRateBigInt) != 0 {
+		t.Fatalf("wrong settlement amount, got %v, want %v", receivedAmount, testRefreshRateBigInt)
 	}
 
 	select {
@@ -623,15 +674,28 @@ func TestTimeLimitedPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(messages) != 1 {
-		t.Fatalf("got %v messages, want %v", len(messages), 1)
+	receivedMessages, err = protobuf.ReadMessages(
+		bytes.NewReader(record.Out()),
+		func() protobuf.Message { return new(pb.PaymentAck) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(messages) != 1 || len(receivedMessages) != 1 {
+		t.Fatalf("got %v/%v messages, want %v/%v", len(messages), len(receivedMessages), 1, 1)
 	}
 
 	testAmount := big.NewInt(6 * testRefreshRate)
 
 	sentAmount = big.NewInt(0).SetBytes(messages[0].(*pb.Payment).Amount)
-	if sentAmount.Cmp(testAmount) != 0 {
-		t.Fatalf("got message with amount %v, want %v", sentAmount, testAmount)
+	receivedAmount = big.NewInt(0).SetBytes(receivedMessages[0].(*pb.PaymentAck).Amount)
+	if sentAmount.Cmp(amount) != 0 {
+		t.Fatalf("got message with amount %v, want %v", sentAmount, amount)
+	}
+
+	if receivedAmount.Cmp(testAmount) != 0 {
+		t.Fatalf("wrong settlement amount, got %v, want %v", receivedAmount, testAmount)
 	}
 
 	select {
