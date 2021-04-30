@@ -136,7 +136,8 @@ func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	r := protobuf.NewReader(stream)
+	// lock peer here
+	w, r := protobuf.NewWriterAndReader(stream)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -148,25 +149,28 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
+	attemptedAmount := big.NewInt(0).SetBytes(req.Amount)
+	paymentAmount := attemptedAmount
 
-	responseHeaders := stream.ResponseHeaders()
-
-	allowance, timestamp, err := ParseAllowanceResponseHeaders(responseHeaders)
+	allowance, timestamp, err := s.peerAllowance(p.Address)
 	if err != nil {
 		return err
 	}
 
-	receivedPayment := big.NewInt(0).SetBytes(req.Amount)
-
-	if allowance.Cmp(receivedPayment) < 0 {
-		s.logger.Trace("pseudosettle allowance exceeded")
-		return fmt.Errorf("pseudosettle allowance exceeded. amount was %d, should have been %d max", receivedPayment, allowance)
+	if allowance.Cmp(attemptedAmount) < 0 {
+		paymentAmount = allowance
+		s.logger.Trace("pseudosettle accepting reduced payment from peer %v of %d", p.Address, paymentAmount)
+	} else {
+		s.logger.Tracef("pseudosettle accepting payment message from peer %v of %d", p.Address, paymentAmount)
 	}
 
-	receivedPaymentF64, _ := big.NewFloat(0).SetInt(receivedPayment).Float64()
-
-	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
-	s.logger.Tracef("pseudosettle received payment message from peer %v of %d", p.Address, receivedPayment)
+	err = w.WriteMsgWithContext(ctx, &pb.PaymentAck{
+		Amount:    paymentAmount.Bytes(),
+		Timestamp: timestamp,
+	})
+	if err != nil {
+		return err
+	}
 
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(p.Address, SettlementReceivedPrefix), &lastTime)
@@ -177,7 +181,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		lastTime.Total = big.NewInt(0)
 	}
 
-	lastTime.Total = lastTime.Total.Add(lastTime.Total, receivedPayment)
+	lastTime.Total = lastTime.Total.Add(lastTime.Total, paymentAmount)
 	lastTime.Timestamp = timestamp
 
 	err = s.store.Put(totalKey(p.Address, SettlementReceivedPrefix), lastTime)
@@ -185,7 +189,9 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
-	return s.accountingAPI.NotifyPaymentReceived(p.Address, receivedPayment)
+	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
+	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
+	return s.accountingAPI.NotifyPaymentReceived(p.Address, paymentAmount)
 }
 
 // Pay initiates a payment to the given peer
@@ -230,20 +236,15 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		}
 	}()
 
-	returnedHeaders := stream.Headers()
-
-	allowance, timestamp, err := ParseAllowanceResponseHeaders(returnedHeaders)
-	if err != nil {
-		return
-	}
-
-	if amount.Cmp(allowance) > 0 {
-		s.logger.Infof("pseudosettle using reduced settlement %d instead of %d", allowance, amount)
-		amount = allowance
-	}
+	/*
+		if amount.Cmp(allowance) > 0 {
+			s.logger.Infof("pseudosettle using reduced settlement %d instead of %d", allowance, amount)
+			amount = allowance
+		}
+	*/
 
 	s.logger.Tracef("pseudosettle sending payment message to peer %v of %d", peer, amount)
-	w := protobuf.NewWriter(stream)
+	w, r := protobuf.NewWriterAndReader(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
 		Amount: amount.Bytes(),
 	})
@@ -251,19 +252,32 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
-	lastTime.Total = lastTime.Total.Add(lastTime.Total, amount)
-	lastTime.Timestamp = timestamp
+	var paymentAck pb.PaymentAck
+	err = r.ReadMsgWithContext(ctx, &paymentAck)
+	if err != nil {
+		return
+	}
+
+	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
+
+	if acceptedAmount.Cmp(amount) > 0 {
+		err = fmt.Errorf("pseudosettle other peer %v accepted payment larger than expected", peer)
+		return
+	}
+
+	// check paymentAck.Timestamp
+	// check if value is appropriate
+
+	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
+	lastTime.Timestamp = paymentAck.Timestamp
 
 	err = s.store.Put(totalKey(peer, SettlementSentPrefix), lastTime)
 	if err != nil {
 		return
 	}
 
-	s.accountingAPI.NotifyPaymentSent(peer, amount, nil)
-	amountFloat, _ := new(big.Float).SetInt(amount).Float64()
-	if amountFloat < 0 {
-		fmt.Println(amount)
-	}
+	s.accountingAPI.NotifyPaymentSent(peer, acceptedAmount, nil)
+	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 }
 
