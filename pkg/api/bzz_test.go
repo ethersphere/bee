@@ -108,7 +108,11 @@ func TestBzzFiles(t *testing.T) {
 			t.Fatal("storer check root chunk address: have none; want one")
 		}
 
-		if have, want := len(pinningMock.Entries()), 0; have != want {
+		refs, err := pinningMock.Pins()
+		if err != nil {
+			t.Fatal("unable to get pinned references")
+		}
+		if have, want := len(refs), 0; have != want {
 			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
 		}
 	})
@@ -140,33 +144,33 @@ func TestBzzFiles(t *testing.T) {
 				},
 			},
 		})
-		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+		reference := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
-				Reference: address,
+				Reference: reference,
 			}),
 		)
 
-		has, err := storerMock.Has(context.Background(), address)
+		has, err := storerMock.Has(context.Background(), reference)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !has {
-			t.Fatal("storer check root chunk address: have none; want one")
+			t.Fatal("storer check root chunk reference: have none; want one")
 		}
 
-		if have, want := len(pinningMock.Entries()), 1; have != want {
-			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
-		}
-		addrs, err := pinningMock.Pins()
+		refs, err := pinningMock.Pins()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if have, want := addrs[0], address; !have.Equal(want) {
+		if have, want := len(refs), 1; have != want {
+			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
+		}
+		if have, want := refs[0], reference; !have.Equal(want) {
 			t.Fatalf("root pin reference mismatch: have %q; want %q", have, want)
 		}
 	})

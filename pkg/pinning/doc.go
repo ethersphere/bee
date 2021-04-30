@@ -3,5 +3,5 @@
 // license that can be found in the LICENSE file.
 
 // Package pinning provides a simple set of
-// operations for tracking pinned addresses.
+// operations for tracking pinned references.
 package pinning

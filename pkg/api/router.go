@@ -143,7 +143,7 @@ func (s *server) setupRouting() {
 			"GET": http.HandlerFunc(s.listPinnedRootHashes),
 		})),
 	)
-	handle("/pins/{address}", web.ChainHandlers(
+	handle("/pins/{reference}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getPinnedRootHash),
