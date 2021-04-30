@@ -31,46 +31,46 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string) {
 	const pinsBasePath = "/pins"
 
 	var (
-		pinsAddressPath        = pinsBasePath + "/" + rootHash
-		pinsInvalidAddressPath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2zzz"
-		pinsUnknownAddressPath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2ccc"
+		pinsReferencePath        = pinsBasePath + "/" + rootHash
+		pinsInvalidReferencePath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2zzz"
+		pinsUnknownReferencePath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2ccc"
 	)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsInvalidAddressPath, http.StatusBadRequest)
+	jsonhttptest.Request(t, client, http.MethodGet, pinsInvalidReferencePath, http.StatusBadRequest)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsUnknownAddressPath, http.StatusNotFound,
+	jsonhttptest.Request(t, client, http.MethodGet, pinsUnknownReferencePath, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusNotFound),
 			Code:    http.StatusNotFound,
 		}),
 	)
 
-	jsonhttptest.Request(t, client, http.MethodPost, pinsAddressPath, http.StatusCreated,
+	jsonhttptest.Request(t, client, http.MethodPost, pinsReferencePath, http.StatusCreated,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusCreated),
 			Code:    http.StatusCreated,
 		}),
 	)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsAddressPath, http.StatusOK,
+	jsonhttptest.Request(t, client, http.MethodGet, pinsReferencePath, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(struct {
-			Address swarm.Address `json:"address"`
+			Reference swarm.Address `json:"reference"`
 		}{
-			Address: swarm.MustParseHexAddress(rootHash),
+			Reference: swarm.MustParseHexAddress(rootHash),
 		}),
 	)
 
 	jsonhttptest.Request(t, client, http.MethodGet, pinsBasePath, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(struct {
-			Addresses []swarm.Address `json:"addresses"`
+			References []swarm.Address `json:"references"`
 		}{
-			Addresses: []swarm.Address{swarm.MustParseHexAddress(rootHash)},
+			References: []swarm.Address{swarm.MustParseHexAddress(rootHash)},
 		}),
 	)
 
-	jsonhttptest.Request(t, client, http.MethodDelete, pinsAddressPath, http.StatusOK)
+	jsonhttptest.Request(t, client, http.MethodDelete, pinsReferencePath, http.StatusOK)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsAddressPath, http.StatusNotFound,
+	jsonhttptest.Request(t, client, http.MethodGet, pinsReferencePath, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusNotFound),
 			Code:    http.StatusNotFound,

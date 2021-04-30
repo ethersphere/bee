@@ -32,49 +32,49 @@ func TestPinningService(t *testing.T) {
 	)
 
 	pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-	addr, err := builder.FeedPipeline(ctx, pipe, strings.NewReader(content), int64(len(content)))
+	ref, err := builder.FeedPipeline(ctx, pipe, strings.NewReader(content), int64(len(content)))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("create and list", func(t *testing.T) {
-		if err := service.CreatePin(ctx, addr, false); err != nil {
+		if err := service.CreatePin(ctx, ref, false); err != nil {
 			t.Fatalf("CreatePin(...): unexpected error: %v", err)
 		}
-		addrs, err := service.Pins()
+		refs, err := service.Pins()
 		if err != nil {
 			t.Fatalf("Pins(...): unexpected error: %v", err)
 		}
-		if have, want := len(addrs), 1; have != want {
+		if have, want := len(refs), 1; have != want {
 			t.Fatalf("Pins(...): have %d; want %d", have, want)
 		}
-		if have, want := addrs[0], addr; !have.Equal(want) {
-			t.Fatalf("address mismatch: have %q; want %q", have, want)
+		if have, want := refs[0], ref; !have.Equal(want) {
+			t.Fatalf("reference mismatch: have %q; want %q", have, want)
 		}
 	})
 
 	t.Run("create idempotent and list", func(t *testing.T) {
-		if err := service.CreatePin(ctx, addr, false); err != nil {
+		if err := service.CreatePin(ctx, ref, false); err != nil {
 			t.Fatalf("CreatePin(...): unexpected error: %v", err)
 		}
-		addrs, err := service.Pins()
+		refs, err := service.Pins()
 		if err != nil {
 			t.Fatalf("Pins(...): unexpected error: %v", err)
 		}
-		if have, want := len(addrs), 1; have != want {
+		if have, want := len(refs), 1; have != want {
 			t.Fatalf("Pins(...): have %d; want %d", have, want)
 		}
-		if have, want := addrs[0], addr; !have.Equal(want) {
-			t.Fatalf("address mismatch: have %q; want %q", have, want)
+		if have, want := refs[0], ref; !have.Equal(want) {
+			t.Fatalf("reference mismatch: have %q; want %q", have, want)
 		}
 	})
 
 	t.Run("delete and has", func(t *testing.T) {
-		err := service.DeletePin(ctx, addr)
+		err := service.DeletePin(ctx, ref)
 		if err != nil {
 			t.Fatalf("DeletePin(...): unexpected error: %v", err)
 		}
-		has, err := service.HasPin(addr)
+		has, err := service.HasPin(ref)
 		if err != nil {
 			t.Fatalf("HasPin(...): unexpected error: %v", err)
 		}
@@ -84,11 +84,11 @@ func TestPinningService(t *testing.T) {
 	})
 
 	t.Run("delete idempotent and has", func(t *testing.T) {
-		err := service.DeletePin(ctx, addr)
+		err := service.DeletePin(ctx, ref)
 		if err != nil {
 			t.Fatalf("DeletePin(...): unexpected error: %v", err)
 		}
-		has, err := service.HasPin(addr)
+		has, err := service.HasPin(ref)
 		if err != nil {
 			t.Fatalf("HasPin(...): unexpected error: %v", err)
 		}
