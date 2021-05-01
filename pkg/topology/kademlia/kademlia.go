@@ -10,9 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"math/bits"
 	"sync"
 	"time"
+
+	random "crypto/rand"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/discovery"
@@ -38,6 +41,7 @@ var (
 	shortRetry                 = 30 * time.Second
 	saturationPeers            = 4
 	overSaturationPeers        = 16
+	broadcastBinSize           = 4
 )
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
@@ -668,28 +672,31 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 	addrs := []swarm.Address{}
 
-	_ = k.connectedPeers.EachBinRev(func(connectedPeer swarm.Address, _ uint8) (bool, bool, error) {
-		if connectedPeer.Equal(peer) {
-			return false, false, nil
+	//r := rand.New(securerand.NewSource())
+
+	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
+
+		connectedPeers, err := randomSubset(k.connectedPeers.BinPeers(bin), broadcastBinSize)
+		if err != nil {
+			return err
 		}
 
-		addrs = append(addrs, connectedPeer)
-
-		// this needs to be in a separate goroutine since a peer we are gossipping to might
-		// be slow and since this function is called with the same context from kademlia connect
-		// function, this might result in the unfortunate situation where we end up on
-		// `err := k.discovery.BroadcastPeers(ctx, peer, addrs...)` with an already expired context
-		// indicating falsely, that the peer connection has timed out.
-		k.wg.Add(1)
-		go func(connectedPeer swarm.Address) {
-			defer k.wg.Done()
-			if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
-				k.logger.Debugf("could not gossip peer %s to peer %s: %v", peer, connectedPeer, err)
+		for _, connectedPeer := range connectedPeers {
+			if connectedPeer.Equal(peer) {
+				continue
 			}
-		}(connectedPeer)
 
-		return false, false, nil
-	})
+			addrs = append(addrs, connectedPeer)
+
+			k.wg.Add(1)
+			go func(connectedPeer swarm.Address) {
+				defer k.wg.Done()
+				if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
+					k.logger.Debugf("could not gossip peer %s to peer %s: %v", peer, connectedPeer, err)
+				}
+			}(connectedPeer)
+		}
+	}
 
 	if len(addrs) == 0 {
 		return nil
@@ -697,6 +704,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
+		fmt.Println("DISCONNECT")
 		_ = k.p2p.Disconnect(peer)
 	}
 
@@ -1165,4 +1173,22 @@ func (k *Kad) Close() error {
 	}
 
 	return nil
+}
+
+func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
+
+	if count >= len(addrs) {
+		return addrs, nil
+	}
+
+	for i := 0; i < len(addrs); i++ {
+		b, err := random.Int(random.Reader, big.NewInt(int64(len(addrs))))
+		if err != nil {
+			return nil, err
+		}
+		j := int(b.Int64())
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	}
+
+	return addrs[:count], nil
 }

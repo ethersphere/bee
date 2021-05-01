@@ -6,6 +6,7 @@ package pslice_test
 
 import (
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -235,6 +236,78 @@ func TestIterators(t *testing.T) {
 	ps.Remove(peers[1], 1)
 	testIterator(t, ps, false, false, 0, []swarm.Address{})
 	testIteratorRev(t, ps, false, false, 0, []swarm.Address{})
+}
+
+func TestBinPeers(t *testing.T) {
+
+	for _, tc := range []struct {
+		peersCount []int
+	}{
+		{
+			peersCount: []int{0, 0, 0, 0},
+		},
+		{
+			peersCount: []int{0, 2, 0, 4},
+		},
+		{
+			peersCount: []int{0, 0, 6, 0},
+		},
+		{
+			peersCount: []int{3, 4, 5, 6},
+		},
+	} {
+
+		t.Run("", func(t *testing.T) {
+
+			binPeers := make([][]swarm.Address, len(tc.peersCount))
+
+			// prepare slice
+			ps := pslice.New(len(tc.peersCount))
+			for bin, peersCount := range tc.peersCount {
+				for i := 0; i < peersCount; i++ {
+					peer := test.RandomAddress()
+					binPeers[bin] = append(binPeers[bin], peer)
+					ps.Add(peer, uint8(bin))
+				}
+			}
+
+			// compare
+			for bin := range tc.peersCount {
+				if !isEqual(binPeers[bin], ps.BinPeers(uint8(bin))) {
+					t.Fatal("peers list do not match")
+				}
+			}
+
+			// out of bound bin check
+			bins := ps.BinPeers(uint8(len(tc.peersCount)))
+			if bins != nil {
+				t.Fatal("peers must be nil for out of bound bind")
+			}
+		})
+	}
+}
+
+func isEqual(a, b []swarm.Address) bool {
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	sort.Slice(a, func(i, j int) bool {
+		return a[i].String() < a[j].String()
+	})
+
+	sort.Slice(b, func(i, j int) bool {
+		return b[i].String() < b[j].String()
+	})
+
+	for i, addr := range a {
+		if !b[i].Equal(addr) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // TestIteratorsJumpStop tests that the EachBin and EachBinRev iterators jump to next bin and stop as expected.

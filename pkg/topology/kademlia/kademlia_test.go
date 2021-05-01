@@ -1241,7 +1241,7 @@ func isIn(addr swarm.Address, addrs []swarm.Address) bool {
 func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
 	t.Helper()
 
-	timeout := time.After(3 * time.Second)
+	timeout := time.After(5 * time.Second)
 	for {
 		select {
 		case <-timeout:
