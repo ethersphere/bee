@@ -81,6 +81,10 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.reserveStateHandler),
 	})
 
+	router.Handle("/chainstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chainStateHandler),
+	})
+
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
