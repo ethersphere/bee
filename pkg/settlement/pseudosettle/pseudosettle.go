@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -31,7 +32,8 @@ var (
 	SettlementReceivedPrefix = "pseudosettle_total_received_"
 	SettlementSentPrefix     = "pseudosettle_total_sent_"
 
-	ErrSettlementTooSoon = errors.New("settlement too soon")
+	ErrSettlementTooSoon  = errors.New("settlement too soon")
+	ErrNoPseudoSettlePeer = errors.New("settlement peer not found")
 )
 
 type Service struct {
@@ -42,11 +44,18 @@ type Service struct {
 	metrics       metrics
 	refreshRate   *big.Int
 	timeNow       func() time.Time
+	peersMu       sync.Mutex
+	peers         map[string]*pseudoSettlePeer
+}
+
+type pseudoSettlePeer struct {
+	lock sync.Mutex // lock to be held during receiving a payment from this peer
 }
 
 type lastPayment struct {
-	Timestamp int64
-	Total     *big.Int
+	Timestamp      int64
+	CheckTimestamp int64
+	Total          *big.Int
 }
 
 func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accountingAPI settlement.AccountingAPI, refreshRate *big.Int) *Service {
@@ -58,6 +67,7 @@ func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer
 		accountingAPI: accountingAPI,
 		refreshRate:   refreshRate,
 		timeNow:       time.Now,
+		peers:         make(map[string]*pseudoSettlePeer),
 	}
 }
 
@@ -71,7 +81,32 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 				Handler: s.handler,
 			},
 		},
+		ConnectIn:     s.init,
+		ConnectOut:    s.init,
+		DisconnectIn:  s.terminate,
+		DisconnectOut: s.terminate,
 	}
+}
+
+func (s *Service) init(ctx context.Context, p p2p.Peer) error {
+	s.peersMu.Lock()
+	defer s.peersMu.Unlock()
+
+	peerData, ok := s.peers[p.Address.String()]
+	if !ok {
+		peerData = &pseudoSettlePeer{}
+		s.peers[p.Address.String()] = peerData
+	}
+
+	return nil
+}
+
+func (s *Service) terminate(p p2p.Peer) error {
+	s.peersMu.Lock()
+	defer s.peersMu.Unlock()
+
+	delete(s.peers, p.Address.String())
+	return nil
 }
 
 func totalKey(peer swarm.Address, prefix string) string {
@@ -133,8 +168,20 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
+
 	attemptedAmount := big.NewInt(0).SetBytes(req.Amount)
 	paymentAmount := attemptedAmount
+
+	s.peersMu.Lock()
+	pseudoSettlePeer, ok := s.peers[p.Address.String()]
+	if !ok {
+		s.peersMu.Unlock()
+		return ErrNoPseudoSettlePeer
+	}
+	s.peersMu.Unlock()
+
+	pseudoSettlePeer.lock.Lock()
+	defer pseudoSettlePeer.lock.Unlock()
 
 	allowance, timestamp, err := s.peerAllowance(p.Address)
 	if err != nil {
@@ -241,19 +288,37 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	if err != nil {
 		return
 	}
+	checkTime := s.timeNow().Unix()
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
-
 	if acceptedAmount.Cmp(amount) > 0 {
 		err = fmt.Errorf("pseudosettle other peer %v accepted payment larger than expected", peer)
 		return
 	}
 
+	experiencedInterval := checkTime - lastTime.CheckTimestamp
+	allegedInterval := paymentAck.Timestamp - lastTime.Timestamp
+
+	if allegedInterval < 0 {
+		return
+	}
+
+	experienceDifferenceRecent := paymentAck.Timestamp - checkTime
+
+	if experienceDifferenceRecent < -2 || experienceDifferenceRecent > 2 {
+		return
+	}
+
+	experienceDifferenceInterval := experiencedInterval - allegedInterval
+	if experienceDifferenceInterval < -3 || experienceDifferenceInterval > 3 {
+		return
+	}
 	// check paymentAck.Timestamp
 	// check if value is appropriate
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
 	lastTime.Timestamp = paymentAck.Timestamp
+	lastTime.CheckTimestamp = checkTime
 
 	err = s.store.Put(totalKey(peer, SettlementSentPrefix), lastTime)
 	if err != nil {
