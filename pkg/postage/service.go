@@ -48,7 +48,7 @@ func NewService(store storage.StateStorer, chainID int64) (Service, error) {
 	}
 
 	n := 0
-	if err := s.store.Iterate(ps.key(), func(_, _ []byte) (stop bool, err error) {
+	if err := s.store.Iterate(s.key(), func(_, _ []byte) (stop bool, err error) {
 		n++
 		return false, nil
 	}); err != nil {
