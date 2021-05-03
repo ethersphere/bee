@@ -19,18 +19,21 @@ import (
 func TestSaveLoad(t *testing.T) {
 	store := storemock.NewStateStore()
 	saved := func(id int64) postage.Service {
-		ps := postage.NewService(store, id)
+		ps, err := postage.NewService(store, id)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for i := 0; i < 16; i++ {
 			ps.Add(newTestStampIssuer(t))
 		}
-		if err := ps.Save(); err != nil {
+		if err := ps.Close(); err != nil {
 			t.Fatal(err)
 		}
 		return ps
 	}
 	loaded := func(id int64) postage.Service {
-		ps := postage.NewService(store, id)
-		if err := ps.Load(); err != nil {
+		ps, err := postage.NewService(store, id)
+		if err != nil {
 			t.Fatal(err)
 		}
 		return ps
@@ -48,7 +51,10 @@ func TestSaveLoad(t *testing.T) {
 
 func TestGetStampIssuer(t *testing.T) {
 	store := storemock.NewStateStore()
-	ps := postage.NewService(store, int64(0))
+	ps, err := postage.NewService(store, int64(0))
+	if err != nil {
+		t.Fatal(err)
+	}
 	ids := make([][]byte, 8)
 	for i := range ids {
 		id := make([]byte, 32)
