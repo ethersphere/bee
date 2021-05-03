@@ -5,5 +5,4 @@
 package hive
 
 var MaxBatchSize = maxBatchSize
-var LimitRate = limitRate
 var LimitBurst = limitBurst
