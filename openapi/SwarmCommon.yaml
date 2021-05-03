@@ -29,9 +29,9 @@ components:
             $ref: "#/components/schemas/P2PUnderlay"
         ethereum:
           $ref: "#/components/schemas/EthereumAddress"
-        public_key:
+        publicKey:
           $ref: "#/components/schemas/PublicKey"
-        pss_public_key:
+        pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
 
     Balance:
@@ -131,7 +131,7 @@ components:
     ChequebookAddress:
       type: object
       properties:
-        chequebookaddress:
+        chequebookAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
     DateTime:
@@ -314,9 +314,9 @@ components:
     Settlements:
       type: object
       properties:
-        totalreceived:
+        totalReceived:
           type: integer
-        totalsent:
+        totalSent:
           type: integer
         settlements:
           type: array
@@ -410,7 +410,7 @@ components:
     WelcomeMessage:
       type: object
       properties:
-        welcome_message:
+        welcomeMessage:
           type: string
 
     FeedType:
