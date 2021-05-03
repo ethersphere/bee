@@ -92,7 +92,10 @@ func TestPayment(t *testing.T) {
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
 	recipient.SetAccountingAPI(observer)
-	recipient.Init(context.Background(), peer)
+	err := recipient.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
@@ -219,7 +222,10 @@ func TestTimeLimitedPayment(t *testing.T) {
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
 	recipient.SetAccountingAPI(observer)
-	recipient.Init(context.Background(), peer)
+	err := recipient.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
