@@ -43,12 +43,13 @@ func TestHandlerRateLimit(t *testing.T) {
 	// create a hive server that handles the incoming stream
 	server := hive.New(nil, addressbookclean, networkID, logger)
 
+	serverAddress := test.RandomAddress()
+
 	// setup the stream recorder to record stream data
 	serverRecorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
+		streamtest.WithBaseAddr(serverAddress),
 	)
-
-	serverAddress := test.RandomAddress()
 
 	peers := make([]swarm.Address, hive.LimitBurst+1)
 	for i := range peers {
