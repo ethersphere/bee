@@ -38,7 +38,7 @@ const (
 
 var (
 	ErrRateLimitExceed = errors.New("rate limit exceeded")
-	limitBurst         = 8 * 32
+	limitBurst         = 4 * int(swarm.MaxBins)
 	limitRate          = rate.Every(time.Minute)
 )
 
